@@ -87,31 +87,47 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
 
         // Write workload
         $viewName = $this->getWorkloadViewName();
-        $content = view($viewName, ['config' => $config, 'driver' => $this])->render();
-        file_put_contents("$k8sPath/{$this->getWorkloadYamlDestination()}", $content);
+        $dest = $this->getWorkloadYamlDestination();
+        if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+            $content = view($viewName, ['config' => $config, 'driver' => $this])->render();
+            file_put_contents("$k8sPath/{$dest}", $content);
+        }
 
         // Write volumes
         if ($viewName = $this->getStorageViewName()) {
+            $storageDest = $this->getStorageYamlDestination();
             $vols = view($viewName, ['config' => $config, 'driver' => $this])->render();
 
             foreach ($config->getEnvironments() as $env) {
-                file_put_contents("$k8sPath/overlays/$env/{$this->getStorageYamlDestination()}", $vols);
+                $dest = "overlays/$env/{$storageDest}";
+                if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                    file_put_contents("$k8sPath/{$dest}", $vols);
+                }
             }
         }
 
         // Write for local only
         if ($viewName = $this->getPatchViewName()) {
-            $patch = view($viewName, ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/{$this->getPatchYamlDestination()}", $patch);
+            $dest = $this->getPatchYamlDestination();
+            if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                $patch = view($viewName, ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$dest}", $patch);
+            }
         }
 
         // Write companion manifests (Local only)
         if ($this->hasCompanion()) {
-            $content = view('k8s.companion.deployment', ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/overlays/local/{$this->value}-companion.yaml", $content);
+            $compDest = "overlays/local/{$this->value}-companion.yaml";
+            if (! $config->isLocked(".infrastructure/k8s/{$compDest}")) {
+                $content = view('k8s.companion.deployment', ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$compDest}", $content);
+            }
 
-            $ingress = view('k8s.companion.ingress', ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/overlays/local/{$this->value}-companion-ingress.yaml", $ingress);
+            $ingressDest = "overlays/local/{$this->value}-companion-ingress.yaml";
+            if (! $config->isLocked(".infrastructure/k8s/{$ingressDest}")) {
+                $ingress = view('k8s.companion.ingress', ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$ingressDest}", $ingress);
+            }
         }
     }
 
@@ -266,26 +282,50 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
 
     public function getEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
-        $envs = [
-            'DB_CONNECTION' => $this->dbConnection(),
-            'DB_HOST' => $this->dbHost(),
-            'DB_PORT' => (string) $this->dbPort(),
-            'DB_DATABASE' => 'laravel',
-            'DB_USERNAME' => $this->dbUsername(),
-            'DB_PASSWORD' => 'larakubesecretpassword',
-        ];
+        return array_merge(
+            $this->getPublicEnvironmentVariables($config, $environment),
+            $this->getSecretEnvironmentVariables($config, $environment)
+        );
+    }
 
-        if ($this === self::MONGODB) {
-            $envs['DB_URI'] = 'mongodb://root:larakubesecretpassword@mongodb:27017/laravel?authSource=admin';
-            $envs['AUTORUN_LARAVEL_MIGRATION_SKIP_DB_CHECK'] = 'true';
-        }
-
+    public function getPublicEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
         if ($this === self::SQLITE) {
             return [
                 'DB_CONNECTION' => 'sqlite',
                 'DB_DATABASE' => '/var/lib/larakube/database.sqlite',
                 'AUTORUN_LARAVEL_MIGRATION_SKIP_DB_CHECK' => 'true',
             ];
+        }
+
+        $envs = [
+            'DB_CONNECTION' => $this->dbConnection(),
+            'DB_HOST' => $config ? $config->getInternalFqdn($this, $environment) : $this->dbHost(),
+            'DB_PORT' => (string) $this->dbPort(),
+            'DB_DATABASE' => 'laravel',
+            'DB_USERNAME' => $this->dbUsername(),
+        ];
+
+        if ($this === self::MONGODB) {
+            $envs['AUTORUN_LARAVEL_MIGRATION_SKIP_DB_CHECK'] = 'true';
+        }
+
+        return $envs;
+    }
+
+    public function getSecretEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
+        if ($this === self::SQLITE) {
+            return [];
+        }
+
+        $envs = [
+            'DB_PASSWORD' => 'larakubesecretpassword',
+        ];
+
+        if ($this === self::MONGODB) {
+            $host = $config ? $config->getInternalFqdn($this, $environment) : 'mongodb';
+            $envs['DB_URI'] = "mongodb://root:larakubesecretpassword@{$host}:27017/laravel?authSource=admin";
         }
 
         return $envs;

@@ -2,14 +2,10 @@
 
 namespace App\Data;
 
-use App\Contracts\AsDependency;
-use App\Contracts\HasArtisanCommands;
-use App\Contracts\HasComposerDependencies;
 use App\Contracts\HasDependencies;
 use App\Contracts\HasEnvironmentVariables;
 use App\Contracts\HasHosts;
-use App\Contracts\HasJsDependencies;
-use App\Contracts\HasLifecycleHooks;
+use App\Contracts\HasPodName;
 use App\Contracts\RequiresPhpExtensions;
 use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
@@ -23,86 +19,109 @@ use App\Enums\PhpVersion;
 use App\Enums\ScoutDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
-use App\Traits\InteractsWithDocker;
 use App\Traits\LaraKubeOutput;
-use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Spatie\LaravelData\Data;
 
-class ConfigData implements Arrayable
+class ConfigData extends Data
 {
-    use InteractsWithDocker, LaraKubeOutput;
+    use LaraKubeOutput;
 
     const string CONFIG_FILE = '.larakube.json';
 
     public function __construct(
-        protected ?string $id = null,
-        protected ?string $name = null,
-        protected ?string $path = null,
-        protected ?array $blueprints = [],
-        protected ?string $serverVariation = null,
-        protected ?string $frontend = null,
-        protected ?string $phpVersion = null,
-        protected ?string $os = null,
-        protected ?string $email = null,
-        protected ?array $additionalExtensions = [],
-        protected ?array $features = [],
-        protected ?string $scoutDriver = null,
-        protected ?array $scoutDrivers = [],
-        protected ?string $packageManager = null,
-        protected ?string $objectStorage = null,
-        protected ?array $objectStorages = [],
-        protected ?string $cacheDriver = null,
-        protected ?array $cacheDrivers = [],
-        protected ?string $database = null,
-        protected ?array $databases = [],
-        protected ?string $strategy = null,
-        protected ?array $environments = [],
-        protected ?string $productionImage = null,
-        protected ?string $productionHost = null,
-        protected ?bool $githubActions = null,
-        protected ?bool $isSystem = false,
-        protected bool $isScaffolding = false,
-        protected ?array $lockedFiles = [],
+        public string $id = '',
+        public ?string $name = null,
+        public ?string $path = null,
+        /** @var array<Blueprint> */
+        public array $blueprints = [],
+        public ?ServerVariation $serverVariation = null,
+        public ?FrontendStack $frontend = null,
+        public ?PhpVersion $phpVersion = null,
+        public ?OperatingSystem $os = null,
+        public ?string $email = null,
+        public array $additionalExtensions = [],
+        /** @var array<LaravelFeature> */
+        public array $features = [],
+        public ?ScoutDriver $scoutDriver = null,
+        /** @var array<ScoutDriver> */
+        public array $scoutDrivers = [],
+        public ?PackageManager $packageManager = null,
+        public ?StorageDriver $objectStorage = null,
+        /** @var array<StorageDriver> */
+        public array $objectStorages = [],
+        public ?CacheDriver $cacheDriver = null,
+        /** @var array<CacheDriver> */
+        public array $cacheDrivers = [],
+        public ?DatabaseDriver $database = null,
+        /** @var array<DatabaseDriver> */
+        public array $databases = [],
+        public DeploymentStrategy $strategy = DeploymentStrategy::SINGLE_NODE,
+        public array $environments = ['local', 'production'],
+        public ?string $productionImage = null,
+        public ?string $productionHost = null,
+        public bool $githubActions = true,
+        public bool $isSystem = false,
+        public bool $isScaffolding = false,
+        public array $lockedFiles = [],
+        /** @var array<CloudData> */
+        public array $cloud = [],
     ) {
-        $this->id = $id ?? (string) Str::uuid();
+        if (empty($this->id)) {
+            $this->id = (string) Str::uuid();
+        }
     }
 
-    public function getLockedFiles(): array
-    {
-        return $this->lockedFiles ?? [];
-    }
+    // --- 🧬 DATA HELPERS ---
 
     public function isLocked(string $path): bool
     {
+        $projectPath = realpath($this->getPath()) ?: $this->getPath();
+
+        // Normalize the path: remove leading ./ but preserve leading . for hidden files
+        $normalizedPath = $path;
+        if (str_starts_with($path, './')) {
+            $normalizedPath = substr($path, 2);
+        }
+
+        // Ensure we have an absolute path for realpath resolution
+        $absolutePath = str_starts_with($normalizedPath, '/') ? $normalizedPath : $projectPath.'/'.$normalizedPath;
+        $filePath = realpath($absolutePath) ?: $absolutePath;
+
+        // Convert to relative path for comparison
+        $relative = str_replace($projectPath.'/', '', $filePath);
+
+        return in_array($relative, $this->lockedFiles);
+    }
+
+    public function addLockedFile(string $path): void
+    {
         $relative = str_replace($this->getPath().'/', '', $path);
-
-        return in_array($relative, $this->getLockedFiles());
+        if (! in_array($relative, $this->lockedFiles)) {
+            $this->lockedFiles[] = $relative;
+        }
     }
 
-    public function isSystem(): bool
+    public function removeLockedFile(string $path): void
     {
-        return $this->isSystem ?? false;
+        $relative = str_replace($this->getPath().'/', '', $path);
+        $this->lockedFiles = array_values(array_diff($this->lockedFiles, [$relative]));
     }
 
-    public function setIsSystem(bool $isSystem): void
+    public function getPath(): string
     {
-        $this->isSystem = $isSystem;
+        return $this->path ?? getcwd();
     }
 
-    public function isScaffolding(): bool
+    public function setPath(string $path): void
     {
-        return $this->isScaffolding;
+        $this->path = $path;
     }
 
-    public function setIsScaffolding(bool $isScaffolding): void
+    public function getName(): string
     {
-        $this->isScaffolding = $isScaffolding;
-    }
-
-    public function getId(): ?string
-    {
-        return $this->id;
+        return $this->name ?? basename($this->getPath());
     }
 
     public function setName(string $name): void
@@ -110,44 +129,21 @@ class ConfigData implements Arrayable
         $this->name = $name;
     }
 
-    public function getName(): ?string
+    public function getInfrastructurePath(): string
     {
-        return $this->name;
+        return $this->getPath().'/.infrastructure';
     }
 
-    public function setPath(string $path, bool $skip_check = false): void
+    public function getK8sPath(): string
     {
-        if ($skip_check || is_dir($path)) {
-            $this->path = $path;
-        }
+        return $this->getInfrastructurePath().'/k8s';
     }
 
-    public function getPath(): ?string
-    {
-        return $this->path;
-    }
+    // --- 🏗 ARCHITECTURAL COMPATIBILITY GETTERS ---
 
-    public function getInfrastructurePath(): ?string
-    {
-        return $this->path ? "$this->path/.infrastructure" : null;
-    }
-
-    public function getK8sPath(): ?string
-    {
-        return $this->path ? "{$this->getInfrastructurePath()}/k8s" : null;
-    }
-
-    public function setBlueprints(array $blueprints): void
-    {
-        $this->blueprints = array_values(array_unique(array_map(fn ($b) => $b instanceof Blueprint ? $b->value : $b, $blueprints)));
-    }
-
-    /**
-     * @return Blueprint[]
-     */
     public function getBlueprints(): array
     {
-        return ! empty($this->blueprints) ? array_filter(array_map(fn (string $b) => Blueprint::tryFrom($b), $this->blueprints)) : [];
+        return $this->blueprints;
     }
 
     public function hasBlueprints(): bool
@@ -155,480 +151,121 @@ class ConfigData implements Arrayable
         return ! empty($this->blueprints);
     }
 
-    public function hasBlueprint(Blueprint $blueprint): bool
-    {
-        return in_array($blueprint->value, $this->blueprints, true);
-    }
-
-    public function addBlueprint(Blueprint $blueprint): void
-    {
-        $this->blueprints = array_values(array_unique(array_merge($this->blueprints, [$blueprint->value])));
-    }
-
-    public function removeBlueprint(Blueprint $blueprint): void
-    {
-        $this->blueprints = array_values(array_diff($this->blueprints, [$blueprint->value]));
-    }
-
-    public function setServerVariation(?ServerVariation $serverVariation): void
-    {
-        $this->serverVariation = $serverVariation?->value;
-    }
-
-    public function getServerVariation(): ?ServerVariation
-    {
-        return $this->serverVariation ? ServerVariation::from($this->serverVariation) : null;
-    }
-
-    public function hasServerVariation(): bool
-    {
-        return ! is_null($this->serverVariation);
-    }
-
-    public function setFrontend(?FrontendStack $frontend): void
-    {
-        $this->frontend = $frontend?->value;
-    }
-
-    public function getFrontend(): ?FrontendStack
-    {
-        return $this->frontend ? FrontendStack::from($this->frontend) : null;
-    }
-
-    public function setPhpVersion(PhpVersion $phpVersion): void
-    {
-        $this->phpVersion = $phpVersion->value;
-    }
-
-    public function getPhpVersion(): PhpVersion
-    {
-        return $this->phpVersion ? PhpVersion::from($this->phpVersion) : PhpVersion::PHP_8_5;
-    }
-
-    public function hasPhpVersion(): bool
-    {
-        return ! is_null($this->phpVersion);
-    }
-
-    public function setOs(OperatingSystem $os): void
-    {
-        $this->os = $os->value;
-    }
-
-    public function getOs(): OperatingSystem
-    {
-        return $this->os ? OperatingSystem::from($this->os) : OperatingSystem::ALPINE;
-    }
-
-    public function hasOs(): bool
-    {
-        return ! is_null($this->os);
-    }
-
-    public function setEmail(string $email): void
-    {
-        $this->email = $email;
-    }
-
-    public function getEmail(): ?string
-    {
-        return $this->email;
-    }
-
-    public function hasEmail(): bool
-    {
-        return ! is_null($this->email);
-    }
-
-    public function setAdditionalExtensions(array $extensions): void
-    {
-        $this->additionalExtensions = array_values(array_unique($extensions));
-    }
-
-    public function getAdditionalExtensions(): array
-    {
-        return $this->additionalExtensions ?? [];
-    }
-
-    public function hasAdditionalExtensions(): bool
-    {
-        return $this->additionalExtensions && count($this->additionalExtensions) > 0;
-    }
-
-    public function addAdditionalExtension(string ...$extension): void
-    {
-        $this->additionalExtensions = array_values(array_unique(array_merge($this->additionalExtensions, $extension)));
-    }
-
-    public function removeAdditionalExtension(string ...$extension): void
-    {
-        $this->additionalExtensions = array_values(array_diff($this->additionalExtensions, $extension));
-    }
-
-    public function setFeatures(array $features): void
-    {
-        $this->features = array_values(array_unique(array_map(function (LaravelFeature|string $feature) {
-            return $feature instanceof LaravelFeature ? $feature->value : LaravelFeature::tryFrom($feature)?->value;
-        }, $features)));
-    }
-
     public function getFeatures(): array
     {
-        return ! empty($this->features) ? array_filter(array_map(fn (string $feature) => LaravelFeature::tryFrom($feature), $this->features)) : [];
+        return $this->features;
     }
 
     public function hasFeatures(): bool
     {
-        return $this->features && count($this->features) > 0;
+        return ! empty($this->getFeatures());
+    }
+
+    public function hasCacheDrivers(): bool
+    {
+        return ! empty($this->cacheDrivers);
     }
 
     public function hasFeature(LaravelFeature $feature): bool
     {
-        return in_array($feature->value, $this->features, true);
+        return in_array($feature, $this->getFeatures());
     }
 
-    public function addFeature(LaravelFeature ...$feature): void
+    public function getDatabase(): ?DatabaseDriver
     {
-        $this->features = array_values(array_unique(array_merge($this->features, array_map(fn ($f) => $f->value, $feature))));
+        return $this->database;
     }
 
-    public function removeFeature(LaravelFeature ...$feature): void
+    public function getDatabases(): array
     {
-        $this->features = array_values(array_diff($this->features, array_map(fn ($f) => $f->value, $feature)));
-    }
-
-    public function setScoutDriver(?ScoutDriver $scoutDriver): void
-    {
-        $this->scoutDriver = $scoutDriver?->value;
-    }
-
-    public function getScoutDriver(): ?ScoutDriver
-    {
-        return $this->scoutDriver ? ScoutDriver::from($this->scoutDriver) : null;
-    }
-
-    public function setScoutDrivers(array $drivers): void
-    {
-        $this->scoutDrivers = array_values(array_unique(array_map(fn ($d) => $d instanceof ScoutDriver ? $d->value : ScoutDriver::tryFrom($d)?->value, $drivers)));
-    }
-
-    public function addScoutDriver(ScoutDriver ...$driver): void
-    {
-        foreach ($driver as $d) {
-            if (is_null($this->scoutDriver)) {
-                $this->scoutDriver = $d->value;
-            } elseif ($this->scoutDriver !== $d->value) {
-                $this->scoutDrivers = array_values(array_unique(array_merge($this->scoutDrivers, [$d->value])));
-            }
-        }
-    }
-
-    /**
-     * @return ScoutDriver[]
-     */
-    public function getScoutDrivers(): array
-    {
-        $all = [];
-        if ($primary = $this->getScoutDriver()) {
-            $all[] = $primary;
-        }
-        foreach ($this->scoutDrivers as $d) {
-            if ($driver = ScoutDriver::tryFrom($d)) {
-                $all[] = $driver;
-            }
-        }
-
-        return array_unique($all, SORT_REGULAR);
-    }
-
-    public function setPackageManager(PackageManager $packageManager): void
-    {
-        $this->packageManager = $packageManager->value;
-    }
-
-    public function getPackageManager(): ?PackageManager
-    {
-        return $this->packageManager ? PackageManager::from($this->packageManager) : null;
-    }
-
-    public function hasPackageManager(): bool
-    {
-        return ! is_null($this->packageManager);
-    }
-
-    public function setObjectStorage(?StorageDriver $objectStorage): void
-    {
-        $this->objectStorage = $objectStorage?->value;
-    }
-
-    public function getObjectStorage(): ?StorageDriver
-    {
-        return $this->objectStorage ? StorageDriver::tryFrom($this->objectStorage) : null;
-    }
-
-    public function setObjectStorages(array $storages): void
-    {
-        $this->objectStorages = array_values(array_unique(array_map(fn ($s) => $s instanceof StorageDriver ? $s->value : StorageDriver::tryFrom($s)?->value, $storages)));
-    }
-
-    public function addObjectStorage(StorageDriver ...$storage): void
-    {
-        foreach ($storage as $s) {
-            if (is_null($this->objectStorage)) {
-                $this->objectStorage = $s->value;
-            } elseif ($this->objectStorage !== $s->value) {
-                $this->objectStorages = array_values(array_unique(array_merge($this->objectStorages, [$s->value])));
-            }
-        }
-    }
-
-    /**
-     * @return StorageDriver[]
-     */
-    public function getObjectStorages(): array
-    {
-        $all = [];
-        if ($primary = $this->getObjectStorage()) {
-            $all[] = $primary;
-        }
-        foreach ($this->objectStorages as $s) {
-            if ($driver = StorageDriver::tryFrom($s)) {
-                $all[] = $driver;
-            }
-        }
-
-        return array_unique($all, SORT_REGULAR);
-    }
-
-    public function setCacheDriver(CacheDriver $cacheDriver): void
-    {
-        $this->cacheDriver = $cacheDriver->value;
+        return array_unique(array_filter([
+            $this->database,
+            ...$this->databases,
+        ]), SORT_REGULAR);
     }
 
     public function getCacheDriver(): CacheDriver
     {
-        return $this->cacheDriver ? CacheDriver::from($this->cacheDriver) : CacheDriver::DATABASE;
+        return $this->cacheDriver ?? CacheDriver::DATABASE;
     }
 
-    public function setCacheDrivers(array $drivers): void
-    {
-        $this->cacheDrivers = array_values(array_unique(array_map(fn ($d) => $d instanceof CacheDriver ? $d->value : CacheDriver::tryFrom($d)?->value, $drivers)));
-    }
-
-    public function addCacheDriver(CacheDriver ...$driver): void
-    {
-        foreach ($driver as $d) {
-            if (is_null($this->cacheDriver)) {
-                $this->cacheDriver = $d->value;
-            } elseif ($this->cacheDriver !== $d->value) {
-                $this->cacheDrivers = array_values(array_unique(array_merge($this->cacheDrivers, [$d->value])));
-            }
-        }
-    }
-
-    /**
-     * @return CacheDriver[]
-     */
     public function getCacheDrivers(): array
     {
-        $all = [];
-        if ($primary = $this->getCacheDriver()) {
-            $all[] = $primary;
-        }
-        foreach ($this->cacheDrivers as $d) {
-            if ($driver = CacheDriver::tryFrom($d)) {
-                $all[] = $driver;
-            }
-        }
-
-        return array_unique($all, SORT_REGULAR);
-    }
-
-    public function hasCacheDriver(): bool
-    {
-        return ! is_null($this->cacheDriver) || count($this->cacheDrivers) > 0;
-    }
-
-    public function setDatabase(DatabaseDriver $database): void
-    {
-        $this->database = $database->value;
-    }
-
-    public function getDatabase(): DatabaseDriver
-    {
-        return $this->database ? DatabaseDriver::from($this->database) : DatabaseDriver::SQLITE;
-    }
-
-    public function setDatabases(array $databases): void
-    {
-        $this->databases = array_values(array_unique(array_map(function (DatabaseDriver|string $database) {
-            return $database instanceof DatabaseDriver ? $database->value : DatabaseDriver::tryFrom($database)?->value;
-        }, $databases)));
-    }
-
-    public function hasDatabases(): bool
-    {
-        return ! is_null($this->database) || ($this->databases && count($this->databases) > 0);
-    }
-
-    public function hasDatabase(DatabaseDriver $database): bool
-    {
-        if ($this->database === $database->value) {
-            return true;
-        }
-
-        return in_array($database->value, $this->databases, true);
-    }
-
-    public function addDatabase(DatabaseDriver ...$database): void
-    {
-        foreach ($database as $db) {
-            if (is_null($this->database)) {
-                $this->database = $db->value;
-            } elseif ($this->database !== $db->value) {
-                $this->databases = array_values(array_unique(array_merge($this->databases, [$db->value])));
-            }
-        }
-    }
-
-    public function removeDatabase(DatabaseDriver ...$database): void
-    {
-        foreach ($database as $db) {
-            if ($this->database === $db->value) {
-                $this->database = null;
-            }
-        }
-        $this->databases = array_values(array_diff($this->databases, array_map(fn ($d) => $d->value, $database)));
-    }
-
-    /**
-     * Get ALL databases (Primary + Additional)
-     *
-     * @return DatabaseDriver[]
-     */
-    public function getDatabases(): array
-    {
-        $databases = array_unique(array_filter([$this->database, ...($this->databases ?? [])]));
-        $all = [];
-
-        foreach ($databases as $db) {
-            if ($driver = DatabaseDriver::tryFrom($db)) {
-                $all[] = $driver;
-            }
-        }
-
-        return $all;
-    }
-
-    public function setStrategy(DeploymentStrategy $strategy): void
-    {
-        $this->strategy = $strategy->value;
-    }
-
-    public function getStrategy(): DeploymentStrategy
-    {
-        return $this->strategy ? DeploymentStrategy::from($this->strategy) : DeploymentStrategy::SINGLE_NODE;
-    }
-
-    public function hasStrategy(): bool
-    {
-        return ! is_null($this->strategy);
-    }
-
-    /**
-     * Alias for getDatabase() with a fallback.
-     */
-    public function getPrimaryDatabase(): DatabaseDriver
-    {
-        return $this->getDatabase() ?? DatabaseDriver::MYSQL;
-    }
-
-    /**
-     * Get the core dependencies that the main application needs.
-     *
-     * @return AsDependency[]
-     */
-    public function getCoreDependencies(): array
-    {
-        return array_filter([
-            $this->getPrimaryDatabase(),
-            $this->getCacheDriver(),
-        ], fn ($dep) => $dep instanceof AsDependency);
-    }
-
-    /**
-     * Build the Kubernetes initContainer command for waiting on dependencies.
-     *
-     * @param  AsDependency[]  $dependencies
-     */
-    public function buildWaitForCommand(array $dependencies): ?string
-    {
-        if (empty($dependencies)) {
-            return null;
-        }
-
-        $checks = [];
-        foreach ($dependencies as $dep) {
-            foreach ($dep->getDependencyConfig($this) as $host => $port) {
-                // Skip invalid hosts or ports
-                if (empty($host) || empty($port)) {
-                    continue;
-                }
-
-                // If it's explicitly the host machine or a known local-only file driver
-                if ($host !== '127.0.0.1' && $host !== 'localhost' && $host !== 'sqlite') {
-                    $checks[] = "nc -z -v -w 1 $host $port";
-                }
-            }
-        }
-
-        if (empty($checks)) {
-            return null;
-        }
-
-        $cmd = implode(' && ', $checks);
-
-        return "[\"sh\", \"-c\", \"until $cmd; do echo 'Waiting for dependencies...'; sleep 2; done;\"]";
-    }
-
-    public function hasPrimaryDatabase(): bool
-    {
-        return ! is_null($this->database);
-    }
-
-    public function setGithubActions(bool $githubActions): void
-    {
-        $this->githubActions = $githubActions;
-    }
-
-    public function hasGithubActions(): bool
-    {
-        return ! is_null($this->githubActions);
-    }
-
-    public function getGithubActions(): bool
-    {
-        return $this->githubActions ?? true;
-    }
-
-    public function setEnvironments(array $environments): void
-    {
-        $this->environments = array_values(array_unique($environments));
-    }
-
-    public function addEnvironment(string $environment): void
-    {
-        $this->environments = array_values(array_unique(array_merge($this->environments ?? [], [$environment])));
+        return array_unique(array_filter([
+            $this->cacheDriver,
+            ...$this->cacheDrivers,
+        ]), SORT_REGULAR);
     }
 
     public function getEnvironments(): array
     {
-        return $this->environments ?? ['local', 'production'];
+        return $this->environments;
     }
 
-    public function setProductionImage(?string $image): void
+    public function getScoutDriver(): ?ScoutDriver
     {
-        $this->productionImage = $image;
+        return $this->scoutDriver;
+    }
+
+    public function getScoutDrivers(): array
+    {
+        return array_unique(array_filter([
+            $this->scoutDriver,
+            ...$this->scoutDrivers,
+        ]), SORT_REGULAR);
+    }
+
+    public function getObjectStorage(): ?StorageDriver
+    {
+        return $this->objectStorage;
+    }
+
+    public function getObjectStorages(): array
+    {
+        return array_unique(array_filter([
+            $this->objectStorage,
+            ...$this->objectStorages,
+        ]), SORT_REGULAR);
+    }
+
+    public function getFrontend(): ?FrontendStack
+    {
+        return $this->frontend;
+    }
+
+    public function getServerVariation(): ?ServerVariation
+    {
+        return $this->serverVariation;
+    }
+
+    public function getOs(): OperatingSystem
+    {
+        return $this->os ?? OperatingSystem::ALPINE;
+    }
+
+    public function getOsSuffix(): string
+    {
+        return $this->getOs()->getSuffix();
+    }
+
+    public function getPhpVersion(): PhpVersion
+    {
+        return $this->phpVersion ?? PhpVersion::PHP_8_5;
+    }
+
+    public function getStrategy(): DeploymentStrategy
+    {
+        return $this->strategy;
+    }
+
+    public function getPackageManager(): PackageManager
+    {
+        return $this->packageManager ?? PackageManager::NPM;
+    }
+
+    public function getProductionHost(): string
+    {
+        return $this->productionHost ?? "{$this->getName()}.dev.test";
     }
 
     public function getProductionImage(): ?string
@@ -636,414 +273,334 @@ class ConfigData implements Arrayable
         return $this->productionImage;
     }
 
-    public function setProductionHost(?string $host): void
+    public function hasOs(): bool
+    {
+        return ! is_null($this->os);
+    }
+
+    public function hasPhpVersion(): bool
+    {
+        return ! is_null($this->phpVersion);
+    }
+
+    public function hasStrategy(): bool
+    {
+        return ! is_null($this->strategy);
+    }
+
+    public function getGithubActions(): bool
+    {
+        return $this->githubActions;
+    }
+
+    public function getIsSystem(): bool
+    {
+        return $this->isSystem;
+    }
+
+    public function hasGithubActions(): bool
+    {
+        return $this->githubActions;
+    }
+
+    public function isSystem(): bool
+    {
+        return $this->isSystem;
+    }
+
+    public function isScaffolding(): bool
+    {
+        return $this->isScaffolding;
+    }
+
+    public function hasEmail(): bool
+    {
+        return ! is_null($this->email);
+    }
+
+    public function setEmail(string $email): self
+    {
+        $this->email = $email;
+
+        return $this;
+    }
+
+    public function getAdditionalExtensions(): array
+    {
+        return $this->additionalExtensions;
+    }
+
+    public function hasAdditionalExtensions(): bool
+    {
+        return ! empty($this->additionalExtensions);
+    }
+
+    public function getId(): string
+    {
+        return $this->id;
+    }
+
+    // --- 🧬 SETTERS (Fluid) ---
+
+    public function setServerVariation(ServerVariation $variation): self
+    {
+        $this->serverVariation = $variation;
+
+        return $this;
+    }
+
+    public function setFrontend(FrontendStack $frontend): self
+    {
+        $this->frontend = $frontend;
+
+        return $this;
+    }
+
+    public function setPhpVersion(PhpVersion $version): self
+    {
+        $this->phpVersion = $version;
+
+        return $this;
+    }
+
+    public function setOs(OperatingSystem $os): self
+    {
+        $this->os = $os;
+
+        return $this;
+    }
+
+    public function setDatabase(DatabaseDriver $database): self
+    {
+        $this->database = $database;
+
+        return $this;
+    }
+
+    public function setCacheDriver(CacheDriver $driver): self
+    {
+        $this->cacheDriver = $driver;
+
+        return $this;
+    }
+
+    public function setScoutDriver(?ScoutDriver $driver): self
+    {
+        $this->scoutDriver = $driver;
+
+        return $this;
+    }
+
+    public function setObjectStorage(?StorageDriver $storage): self
+    {
+        $this->objectStorage = $storage;
+
+        return $this;
+    }
+
+    public function setStrategy(DeploymentStrategy $strategy): self
+    {
+        $this->strategy = $strategy;
+
+        return $this;
+    }
+
+    public function setPackageManager(PackageManager $manager): self
+    {
+        $this->packageManager = $manager;
+
+        return $this;
+    }
+
+    public function setIsScaffolding(bool $value): self
+    {
+        $this->isScaffolding = $value;
+
+        return $this;
+    }
+
+    public function setGithubActions(bool $value): self
+    {
+        $this->githubActions = $value;
+
+        return $this;
+    }
+
+    public function setProductionHost(string $host): self
     {
         $this->productionHost = $host;
+
+        return $this;
     }
 
-    public function getProductionHost(): string
+    public function setEnvironments(array $envs): self
     {
-        return $this->productionHost ?? "{$this->name}.dev.test";
+        $this->environments = $envs;
+
+        return $this;
     }
 
-    public function hasProductionHost(): bool
+    public function setAdditionalExtensions(array $exts): self
     {
-        return ! is_null($this->productionHost);
+        $this->additionalExtensions = $exts;
+
+        return $this;
     }
 
-    public static function fromArray(array $data): self
+    public function setBlueprints(array $blueprints): self
     {
-        $config = new self(
-            id: $data['id'] ?? null,
-            name: $data['name'] ?? null,
-            path: $data['path'] ?? null,
-            blueprints: $data['blueprints'] ?? [],
-            serverVariation: $data['serverVariation'] ?? null,
-            frontend: $data['frontend'] ?? null,
-            phpVersion: $data['phpVersion'] ?? null,
-            os: $data['os'] ?? null,
-            email: $data['email'] ?? null,
-            additionalExtensions: $data['additionalExtensions'] ?? [],
-            features: $data['features'] ?? [],
-            scoutDriver: $data['scoutDriver'] ?? null,
-            scoutDrivers: $data['scoutDrivers'] ?? [],
-            packageManager: $data['packageManager'] ?? null,
-            objectStorage: $data['objectStorage'] ?? null,
-            objectStorages: $data['objectStorages'] ?? [],
-            cacheDriver: $data['cacheDriver'] ?? null,
-            cacheDrivers: $data['cacheDrivers'] ?? [],
-            database: $data['database'] ?? null,
-            databases: $data['databases'] ?? [],
-            strategy: $data['strategy'] ?? 'single-node',
-            environments: $data['environments'] ?? ['local', 'production'],
-            productionImage: $data['production_image'] ?? null,
-            productionHost: $data['production_host'] ?? null,
-            githubActions: $data['githubActions'] ?? true,
-            isSystem: $data['is_system'] ?? false,
-            lockedFiles: $data['locked_files'] ?? [],
-        );
+        $this->blueprints = array_map(fn ($b) => is_string($b) ? Blueprint::from($b) : $b, $blueprints);
 
-        $config->resolveDependencies();
-
-        return $config;
+        return $this;
     }
 
-    public static function loadFromFile(?string $directory = null): self
+    public function setFeatures(array $features): self
     {
-        $directory = $directory ?: getcwd();
-        $path = "$directory/".self::CONFIG_FILE;
+        $this->features = array_map(fn ($f) => is_string($f) ? LaravelFeature::from($f) : $f, $features);
 
-        if (! file_exists($path)) {
-            throw new RuntimeException("LaraKube DNA not found at: {$path}");
-        }
-
-        $json = file_get_contents($path);
-        $data = json_decode($json, true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new RuntimeException("LaraKube DNA is malformed at: {$path}");
-        }
-
-        // --- 🏗 RUNTIME CONTEXT ---
-        // We set the path from the actual directory being loaded,
-        // ensuring portability across different machines/developers.
-        $data['path'] = realpath($directory) ?: $directory;
-
-        return self::fromArray($data);
+        return $this;
     }
 
-    public function toArray(): array
+    public function setDatabases(array $dbs): self
     {
-        $this->resolveDependencies();
+        $this->databases = array_map(fn ($d) => is_string($d) ? DatabaseDriver::from($d) : $d, $dbs);
 
-        return [
-            'id' => $this->id,
-            'name' => $this->name,
-            'blueprints' => $this->blueprints,
-            'serverVariation' => $this->serverVariation,
-            'frontend' => $this->frontend,
-            'phpVersion' => $this->phpVersion,
-            'os' => $this->os,
-            'email' => $this->email,
-            'additionalExtensions' => $this->additionalExtensions,
-            'features' => $this->features,
-            'scoutDriver' => $this->scoutDriver,
-            'scoutDrivers' => $this->scoutDrivers,
-            'packageManager' => $this->packageManager,
-            'objectStorage' => $this->objectStorage,
-            'objectStorages' => $this->objectStorages,
-            'cacheDriver' => $this->cacheDriver,
-            'cacheDrivers' => $this->cacheDrivers,
-            'database' => $this->database,
-            'databases' => $this->databases,
-            'strategy' => $this->strategy,
-            'environments' => $this->environments,
-            'production_image' => $this->productionImage,
-            'production_host' => $this->productionHost,
-            'githubActions' => $this->githubActions,
-            'is_system' => $this->isSystem,
-            'locked_files' => $this->lockedFiles,
-        ];
+        return $this;
     }
 
-    public function toString(): string
+    public function setCacheDrivers(array $ds): self
     {
-        return json_encode($this->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $this->cacheDrivers = array_map(fn ($d) => is_string($d) ? CacheDriver::from($d) : $d, $ds);
+
+        return $this;
     }
 
-    public function backupToCluster(string $namespace): bool
+    public function setScoutDrivers(array $ds): self
     {
-        $json = json_encode($this->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $this->scoutDrivers = array_map(fn ($d) => is_string($d) ? ScoutDriver::from($d) : $d, $ds);
 
-        // Use a temporary file to avoid shell escaping issues with large JSON blobs
-        $tmpFile = tempnam(sys_get_temp_dir(), 'larakube-cfg');
-        file_put_contents($tmpFile, $json);
-
-        // Create secret with metadata labels for global discovery
-        $appName = $this->name ?? 'app';
-        $command = 'kubectl create secret generic larakube-blueprint '.
-                   "-n {$namespace} ".
-                   "--from-file=.larakube.json={$tmpFile} ".
-                   '--dry-run=client -o yaml | '.
-                   "kubectl label -f - --local larakube.io/project={$appName} larakube.io/config=blueprint -o yaml | ".
-                   'kubectl apply -f -';
-
-        exec($command, $output, $result);
-
-        @unlink($tmpFile);
-
-        return $result === 0;
+        return $this;
     }
 
-    public static function restoreFromCluster(?string $namespace = null, ?string $appName = null): ?self
+    public function setObjectStorages(array $ss): self
     {
-        if ($namespace) {
-            $command = "kubectl get secret larakube-blueprint -n {$namespace} -o jsonpath='{.data.\\.larakube\\.json}' 2>/dev/null";
-        } elseif ($appName) {
-            // Search all namespaces for a secret labeled with this app name
-            $command = "kubectl get secrets -A -l larakube.io/project={$appName},larakube.io/config=blueprint -o jsonpath='{.items[0].data.\\.larakube\\.json}' 2>/dev/null";
-        } else {
-            return null;
-        }
+        $this->objectStorages = array_map(fn ($s) => is_string($s) ? StorageDriver::from($s) : $s, $ss);
 
-        $encoded = shell_exec($command);
-
-        if (! $encoded) {
-            return null;
-        }
-
-        $json = base64_decode($encoded);
-        if (! $json) {
-            return null;
-        }
-
-        $data = json_decode($json, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return null;
-        }
-
-        return self::fromArray($data);
+        return $this;
     }
 
-    public function saveToFile(string $directory): void
+    public function addBlueprint(Blueprint ...$blueprints): self
     {
-        $path = "$directory/".self::CONFIG_FILE;
-
-        if (! is_dir($directory)) {
-            @mkdir($directory, 0755, true);
+        foreach ($blueprints as $blueprint) {
+            $this->blueprints[] = $blueprint;
         }
 
-        file_put_contents(
-            $path,
-            json_encode($this->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
-        );
+        return $this;
     }
 
-    public function getPhpImage(bool $isCli = false): string
+    public function addFeature(LaravelFeature ...$features): self
     {
-        $osSuffix = $this->getOs()?->getSuffix() ?? '';
-
-        $variation = $this->getServerVariation()?->value;
-
-        if ($isCli) {
-            $variation = 'cli';
+        foreach ($features as $feature) {
+            $this->features[] = $feature;
         }
 
-        return "serversideup/php:{$this->getPhpVersion()?->value}-$variation$osSuffix";
+        return $this;
     }
 
-    public function getOsSuffix(): string
+    public function addDatabase(DatabaseDriver ...$dbs): self
     {
-        $suffix = $this->getOs()?->getSuffix() ?? '';
-
-        if ($this->getServerVariation() === ServerVariation::FPM_APACHE) {
-            return '';
+        foreach ($dbs as $db) {
+            $this->databases[] = $db;
         }
 
-        return $suffix;
+        return $this;
     }
 
-    /**
-     * Surgically install a single component and its dependencies.
-     */
-    public function installComponent(object $component): void
+    public function addCacheDriver(CacheDriver ...$ds): self
     {
-        $projectPath = $this->getPath();
-        $composerPackages = [];
-        $artisanCommands = [];
-        $jsCommands = [];
-
-        if ($component instanceof HasComposerDependencies) {
-            $composerPackages = $component->getComposerDependencies($this);
+        foreach ($ds as $d) {
+            $this->cacheDrivers[] = $d;
         }
 
-        if ($component instanceof HasArtisanCommands) {
-            foreach ($component->getArtisanCommands($this) as $cmd) {
-                $artisanCommands[] = "php artisan $cmd";
-            }
-        }
-
-        if ($component instanceof HasJsDependencies) {
-            $jsCommands = $component->getJsDependencies($this);
-        }
-
-        if ($component instanceof HasLifecycleHooks) {
-            $component->onPostInstall($projectPath, $this);
-        }
-
-        // Execute PHP installation if needed
-        if (! empty($composerPackages) || (! empty($artisanCommands) && $this->isScaffolding())) {
-            $phpCommands = [];
-            $noScripts = $this->isScaffolding() ? '' : ' --no-scripts';
-
-            if (! empty($composerPackages)) {
-                $phpCommands[] = 'composer require '.implode(' ', array_unique($composerPackages)).' --with-all-dependencies --ignore-platform-reqs'.$noScripts;
-            }
-
-            if ($this->isScaffolding()) {
-                foreach ($artisanCommands as $cmd) {
-                    $phpCommands[] = $cmd;
-                }
-            }
-
-            // Inject a safe environment for Artisan commands to prevent connection errors on boot
-            $safeEnv = '-e REDIS_CLIENT=null -e CACHE_STORE=array -e SESSION_DRIVER=array -e DB_CONNECTION=sqlite';
-            $this->runInContainer(implode(' && ', $phpCommands), $projectPath, envs: $safeEnv);
-        }
-
-        // Execute JS installation if needed
-        if (! empty($jsCommands)) {
-            $js = [...$jsCommands, $this->getPackageManager()->buildCommand()];
-            $this->runInContainer(implode(' && ', $js), $projectPath, $this->getFrontend()->getPodName($this));
-        }
+        return $this;
     }
 
-    public function installComponents(): void
+    public function addScoutDriver(ScoutDriver ...$ds): self
     {
-        $projectPath = $this->getPath();
-        $appName = $this->getName();
-
-        $pods = $this->getComponents();
-
-        $composerPackages = [];
-        $devComposerPackages = [];
-        $artisanCommands = [];
-        $jsCommands = [];
-
-        foreach ($pods as $pod) {
-            if ($pod instanceof HasComposerDependencies) {
-                $composerPackages = array_merge($composerPackages, $pod->getComposerDependencies($this));
-            }
-
-            if ($pod instanceof HasArtisanCommands) {
-                foreach ($pod->getArtisanCommands($this) as $cmd) {
-                    $artisanCommands[] = "php artisan $cmd";
-                }
-            }
-
-            if ($pod instanceof HasJsDependencies) {
-                $jsCommands = array_merge($jsCommands, $pod->getJsDependencies($this));
-            }
-
-            if ($pod instanceof HasLifecycleHooks) {
-                $pod->onPostInstall($projectPath, $this);
-            }
+        foreach ($ds as $d) {
+            $this->scoutDrivers[] = $d;
         }
 
-        // PHP
-        if (! empty($composerPackages) || (! empty($artisanCommands) && $this->isScaffolding())) {
-            $this->laraKubeInfo('Installing PHP requirements...');
-
-            $phpCommands = [];
-            $noScripts = $this->isScaffolding() ? '' : ' --no-scripts';
-
-            if (! empty($composerPackages)) {
-                $uniquePackages = array_unique($composerPackages);
-                $phpCommands[] = 'composer require '.implode(' ', $uniquePackages).' --with-all-dependencies --ignore-platform-reqs'.$noScripts;
-            }
-
-            if ($this->isScaffolding()) {
-                foreach ($artisanCommands as $cmd) {
-                    $phpCommands[] = $cmd;
-                }
-            }
-
-            // Inject a safe environment for Artisan commands to prevent connection errors on boot
-            $safeEnv = '-e REDIS_CLIENT=null -e CACHE_STORE=array -e SESSION_DRIVER=array -e DB_CONNECTION=sqlite';
-            $this->runInContainer(implode(' && ', $phpCommands), $projectPath, envs: $safeEnv);
-        }
-
-        // JS
-
-        if (! empty($jsCommands)) {
-            $this->laraKubeInfo('Installing JS packages and building assets...');
-
-            $js = [...$jsCommands, $this->getPackageManager()->buildCommand()];
-
-            $this->runInContainer(implode(' && ', $js), $projectPath, $this->getFrontend()->getPodName($this));
-        }
+        return $this;
     }
 
-    public function hardenViteConfig(): void
+    public function addObjectStorage(StorageDriver ...$ss): self
     {
-        $projectPath = $this->path;
-        $viteFile = file_exists("$projectPath/vite.config.ts") ? "$projectPath/vite.config.ts" : "$projectPath/vite.config.js";
-
-        if (! file_exists($viteFile)) {
-            return;
+        foreach ($ss as $s) {
+            $this->objectStorages[] = $s;
         }
 
-        $content = file_get_contents($viteFile);
-        $appName = $this->getName();
-        $viteHost = $this->getServiceHost('vite', 'local');
-
-        // Check if the config is already "K8s Ready"
-        $isK8sReady = str_contains($content, "host: '{$viteHost}'") && str_contains($content, 'cors: true');
-
-        // 1. Aggressive Cleanups (ONLY for new scaffolding)
-        if ($this->isScaffolding()) {
-            $this->laraKubeInfo('Hardening Vite configuration for Kubernetes...');
-
-            // Strip Wayfinder
-            $content = preg_replace("/import\s+({?\s*wayfinder\s*}?)\s+from\s+['\"].*?wayfinder.*?['\"];?\n?/s", '', $content);
-            $content = preg_replace("/\bwayfinder\s*\((?:[^()]|(?R))*\),?\n?/s", '', $content);
-
-            // Disable Inertia SSR
-            $content = preg_replace('/inertia\(\)/', 'inertia({ ssr: false })', $content);
-        }
-
-        // 2. Network Alignment
-        // We only auto-edit if there is NO server block, or if we are scaffolding.
-        // If it's an existing project with a custom server block, we stay hands-off and advise.
-        if (! str_contains($content, 'server: {') || $this->isScaffolding()) {
-            $harden = view('k8s.viteserver', ['viteHost' => $viteHost])->render();
-
-            if (! str_contains($content, 'server: {')) {
-                $content = preg_replace('/(defineConfig\s*\(\s*\{)/', "$1\n{$harden}", $content);
-            } else {
-                // Scaffolding update for existing block
-                $content = preg_replace("/origin:\s*['\"].*?\.dev\.test['\"]/", "origin: 'https://{$viteHost}'", $content);
-                $content = preg_replace("/host:\s*['\"].*?\.dev\.test['\"]/", "host: '{$viteHost}'", $content);
-            }
-
-            file_put_contents($viteFile, $content);
-        } elseif (! $isK8sReady) {
-            $harden = view('k8s.viteserver', ['viteHost' => $viteHost])->render();
-            $this->laraKubeNewLine();
-            $this->laraKubeWarn(" ⚠ VITE ADVISORY: Your {$viteFile} looks custom.");
-            $this->laraKubeLine("   To ensure HMR works in Kubernetes, please ensure your 'server' block includes:");
-            $this->laraKubeNewLine();
-            $this->laraKubeLine($harden);
-            $this->laraKubeNewLine();
-        }
+        return $this;
     }
 
-    public function getAppUrl(string $environment = 'local'): string
+    public function removeDatabase(DatabaseDriver $db): self
     {
-        if ($environment === 'production' && $this->hasProductionHost()) {
-            return "https://{$this->getProductionHost()}";
+        $this->databases = array_filter($this->databases, fn ($d) => $d !== $db);
+        if ($this->database === $db) {
+            $this->database = null;
         }
 
-        return "https://{$this->getName()}.dev.test";
+        return $this;
     }
 
-    public function getServiceHost(string $service, string $environment = 'local'): string
+    public function removeFeature(LaravelFeature $f): self
     {
-        if ($environment === 'production' && $this->hasProductionHost()) {
-            return "{$service}-{$this->getProductionHost()}";
-        }
+        $this->features = array_filter($this->features, fn ($feature) => $feature !== $f);
 
-        return "{$service}-{$this->getName()}.dev.test";
+        return $this;
     }
 
-    /**
-     * Get all active architectural components.
-     */
+    public function removeCacheDriver(CacheDriver $d): self
+    {
+        $this->cacheDrivers = array_filter($this->cacheDrivers, fn ($driver) => $driver !== $d);
+        if ($this->cacheDriver === $d) {
+            $this->cacheDriver = null;
+        }
+
+        return $this;
+    }
+
+    public function removeObjectStorage(StorageDriver $s): self
+    {
+        $this->objectStorages = array_filter($this->objectStorages, fn ($driver) => $driver !== $s);
+        if ($this->objectStorage === $s) {
+            $this->objectStorage = null;
+        }
+
+        return $this;
+    }
+
+    public function removeBlueprint(Blueprint $b): self
+    {
+        $this->blueprints = array_filter($this->blueprints, fn ($blueprint) => $blueprint !== $b);
+
+        return $this;
+    }
+
+    public function setIsSystem(bool $value): self
+    {
+        $this->isSystem = $value;
+
+        return $this;
+    }
+
+    // --- 🏗 ARCHITECTURAL MAPPING ---
+
     public function getComponents(): array
     {
         return array_filter([
-            ...$this->getBlueprints(),
-            $this->getServerVariation(),
+            ...$this->blueprints,
+            $this->serverVariation,
             ...$this->getDatabases(),
             ...$this->getCacheDrivers(),
             ...$this->getScoutDrivers(),
@@ -1052,35 +609,72 @@ class ConfigData implements Arrayable
         ]);
     }
 
-    /**
-     * Recursively resolve and apply all component dependencies to the configuration state.
-     * Only loops as long as the state is actually modified, safely handling circular dependencies.
-     */
+    public function getCoreDependencies(): array
+    {
+        return array_filter([
+            $this->database,
+            $this->cacheDriver,
+        ]);
+    }
+
+    public function buildWaitForCommand(array $dependencies, bool $waitForWeb = false): ?string
+    {
+        $checks = [];
+
+        // Always wait for the web pod to be healthy before starting secondary pods.
+        // The web pod runs migrations, so other pods must not start until it is ready.
+        // NOTE: We hit the ClusterIP service port (80), not the container port (8080).
+        if ($waitForWeb) {
+            $checks[] = 'curl -sf http://web/up';
+        }
+
+        // 🛡️ SECURITY: System projects connect to global/native resources (e.g. SQLite on a PVC).
+        // Skip external TCP service checks for system projects — they have no external services to wait for.
+        if (! $this->isSystem()) {
+            foreach ($dependencies as $dep) {
+                if ($dep instanceof HasPodName) {
+                    // Determine port
+                    $port = match (true) {
+                        $dep instanceof DatabaseDriver => $dep->dbPort() ?: null,
+                        $dep instanceof CacheDriver => $dep->dbPort() ?: null,
+                        $dep instanceof ScoutDriver => $dep === ScoutDriver::DATABASE ? null : $dep->port(),
+                        $dep instanceof StorageDriver => $dep->port(),
+                        default => null
+                    };
+
+                    if ($port) {
+                        $checks[] = "nc -z -v -w 1 {$dep->getPodName($this)} {$port}";
+                    }
+                }
+            }
+        }
+
+        if (empty($checks)) {
+            return null;
+        }
+
+        return 'until '.implode(' && ', $checks)."; do echo 'Waiting for dependencies...'; sleep 2; done;";
+    }
+
     public function resolveDependencies(): void
     {
         $settled = false;
-
         while (! $settled) {
             $settled = true;
-            $components = $this->getComponents();
-
-            foreach ($components as $component) {
+            foreach ($this->getComponents() as $component) {
                 if ($component instanceof HasDependencies) {
                     foreach ($component->getDependencies($this) as $dependency) {
-                        if ($dependency instanceof ServerVariation && $this->getServerVariation() !== $dependency) {
-                            $this->setServerVariation($dependency);
+                        if ($dependency instanceof ServerVariation && $this->serverVariation !== $dependency) {
+                            $this->serverVariation = $dependency;
                             $settled = false;
                         } elseif ($dependency instanceof LaravelFeature && ! $this->hasFeature($dependency)) {
-                            $this->addFeature($dependency);
+                            $this->features[] = $dependency;
                             $settled = false;
                         } elseif ($dependency instanceof DatabaseDriver && ! $this->hasDatabase($dependency)) {
-                            $this->addDatabase($dependency);
+                            $this->databases[] = $dependency;
                             $settled = false;
                         } elseif ($dependency instanceof CacheDriver && ! in_array($dependency, $this->getCacheDrivers())) {
-                            $this->addCacheDriver($dependency);
-                            $settled = false;
-                        } elseif ($dependency instanceof StorageDriver && ! in_array($dependency, $this->getObjectStorages())) {
-                            $this->addObjectStorage($dependency);
+                            $this->cacheDrivers[] = $dependency;
                             $settled = false;
                         }
                     }
@@ -1089,33 +683,87 @@ class ConfigData implements Arrayable
         }
     }
 
-    public function hasCacheStore(string $store): bool
+    public function hasDatabase(DatabaseDriver $driver): bool
     {
-        return $this->cacheDriver === $store || in_array($store, $this->cacheDrivers, true);
+        return $this->database === $driver || in_array($driver, $this->getDatabases());
     }
 
-    public function hasFeatureName(string $feature): bool
+    public function hasCacheDriver(): bool
     {
-        return in_array($feature, $this->features, true);
+        return ! is_null($this->cacheDriver) || ! empty($this->cacheDrivers);
     }
+
+    public function getInternalFqdn(HasPodName $dependency, string $environment = 'local'): string
+    {
+        $podName = $dependency->getPodName($this);
+        $namespace = "{$this->getName()}-{$environment}";
+
+        return "{$podName}.{$namespace}.svc.cluster.local";
+    }
+
+    public function getAppUrl(string $environment = 'local'): string
+    {
+        if ($environment === 'production' && $this->productionHost) {
+            return "https://{$this->productionHost}";
+        }
+
+        return "https://{$this->getName()}.dev.test";
+    }
+
+    public function getServiceHost(string $service, string $environment = 'local'): string
+    {
+        if ($environment === 'production' && $this->productionHost) {
+            return "{$service}-{$this->productionHost}";
+        }
+
+        return "{$service}-{$this->getName()}.dev.test";
+    }
+
+    public function getPhpImage(bool $isCli = false): string
+    {
+        $osSuffix = $this->getOs()?->getSuffix() ?? '';
+        $variation = $isCli ? 'cli' : $this->serverVariation?->value ?? 'fpm-nginx';
+
+        return "serversideup/php:{$this->getPhpVersion()->value}-$variation$osSuffix";
+    }
+
+    // --- 🔐 ENVIRONMENT AGGREGATION ---
 
     public function getAllEnvironmentVariables(string $environment = 'local'): array
     {
-        $envs = $this->getServerVariation()?->getEnvironmentVariables($this, $environment) ?? [];
+        return array_merge(
+            $this->getAllPublicEnvironmentVariables($environment),
+            $this->getAllSecretEnvironmentVariables($environment)
+        );
+    }
 
-        // 🛡️ DEFAULT PHP PERFORMANCE & STABILITY
+    public function getAllPublicEnvironmentVariables(string $environment = 'local'): array
+    {
+        $envs = $this->serverVariation?->getPublicEnvironmentVariables($this, $environment) ?? [];
         $envs = array_merge([
             'APP_URL' => $this->getAppUrl($environment),
             'ASSET_URL' => $this->getAppUrl($environment),
         ], $envs);
 
-        if ($environment === 'local' && $this->getFrontend()?->requiresNodePod()) {
+        if ($environment === 'local' && $this->frontend?->requiresNodePod()) {
             $envs['VITE_URL'] = 'https://'.$this->getServiceHost('vite', 'local');
         }
 
         foreach ($this->getComponents() as $component) {
-            if ($component instanceof HasEnvironmentVariables) {
-                $envs = array_merge($envs, $component->getEnvironmentVariables($this, $environment));
+            if ($component instanceof HasEnvironmentVariables && ! ($component instanceof ServerVariation)) {
+                $envs = array_merge($envs, $component->getPublicEnvironmentVariables($this, $environment));
+            }
+        }
+
+        return $envs;
+    }
+
+    public function getAllSecretEnvironmentVariables(string $environment = 'local'): array
+    {
+        $envs = $this->serverVariation?->getSecretEnvironmentVariables($this, $environment) ?? [];
+        foreach ($this->getComponents() as $component) {
+            if ($component instanceof HasEnvironmentVariables && ! ($component instanceof ServerVariation)) {
+                $envs = array_merge($envs, $component->getSecretEnvironmentVariables($this, $environment));
             }
         }
 
@@ -1124,8 +772,7 @@ class ConfigData implements Arrayable
 
     public function getAllPhpExtensions(): array
     {
-        $extensions = $this->getAdditionalExtensions();
-
+        $extensions = $this->additionalExtensions;
         foreach ($this->getComponents() as $component) {
             if ($component instanceof RequiresPhpExtensions) {
                 $extensions = array_merge($extensions, $component->getPhpExtensions());
@@ -1142,17 +789,13 @@ class ConfigData implements Arrayable
 
     public function getAllHosts(string $environment = 'local'): array
     {
-        $hosts = [
-            parse_url($this->getAppUrl($environment), PHP_URL_HOST) => 'Primary Application',
-        ];
-
-        if ($this->getFrontend()?->requiresNodePod()) {
-            $viteHost = $environment === 'production' && $this->hasProductionHost()
-                ? "vite-{$this->getProductionHost()}"
+        $hosts = [parse_url($this->getAppUrl($environment), PHP_URL_HOST) => 'Primary Application'];
+        if ($this->frontend?->requiresNodePod()) {
+            $viteHost = ($environment === 'production' && $this->productionHost)
+                ? "vite-{$this->productionHost}"
                 : "vite-{$this->getName()}.dev.test";
             $hosts[$viteHost] = 'Vite Asset Server';
         }
-
         foreach ($this->getComponents() as $component) {
             if ($component instanceof HasHosts) {
                 $hosts = array_merge($hosts, $component->getHosts($this, $environment));
@@ -1160,5 +803,84 @@ class ConfigData implements Arrayable
         }
 
         return $hosts;
+    }
+
+    // --- ☁️ CLOUD HELPERS ---
+
+    public function getCloudConfig(string $environment = 'production'): array
+    {
+        return $this->cloud[$environment] ?? [];
+    }
+
+    public function getCloudIp(string $environment = 'production'): ?string
+    {
+        return $this->getCloudConfig($environment)['ip'] ?? null;
+    }
+
+    public function getCloudUser(string $environment = 'production'): string
+    {
+        return $this->getCloudConfig($environment)['user'] ?? 'larakube';
+    }
+
+    public function getCloudPort(string $environment = 'production'): int
+    {
+        return (int) ($this->getCloudConfig($environment)['port'] ?? 22);
+    }
+
+    public function getCloudKey(string $environment = 'production'): string
+    {
+        return $this->getCloudConfig($environment)['key'] ?? ($_SERVER['HOME'] ?? '').'/.ssh/id_rsa';
+    }
+
+    // --- 💾 PERSISTENCE ---
+
+    public static function loadFromFile(?string $directory = null): self
+    {
+        $directory = $directory ?: getcwd();
+        $path = "$directory/".self::CONFIG_FILE;
+
+        if (! file_exists($path)) {
+            throw new RuntimeException("LaraKube DNA not found at: {$path}");
+        }
+
+        $json = file_get_contents($path);
+
+        return self::from(json_decode($json, true));
+    }
+
+    public function saveToFile(string $directory): void
+    {
+        $path = "$directory/".self::CONFIG_FILE;
+        if (! is_dir($directory)) {
+            @mkdir($directory, 0755, true);
+        }
+        file_put_contents($path, $this->toJson(JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    public function backupToCluster(string $namespace): bool
+    {
+        $json = $this->toJson(JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $tmpFile = tempnam(sys_get_temp_dir(), 'larakube-cfg');
+        file_put_contents($tmpFile, $json);
+        $appName = $this->getName();
+        $command = "kubectl create secret generic larakube-blueprint -n {$namespace} --from-file=.larakube.json={$tmpFile} --dry-run=client -o yaml | kubectl label -f - --local larakube.io/project={$appName} larakube.io/config=blueprint -o yaml | kubectl apply -f -";
+        exec($command, $output, $result);
+        @unlink($tmpFile);
+
+        return $result === 0;
+    }
+
+    public static function restoreFromCluster(?string $namespace = null, ?string $appName = null): ?self
+    {
+        $command = $namespace
+            ? "kubectl get secret larakube-blueprint -n {$namespace} -o jsonpath='{.data.\\.larakube\\.json}' 2>/dev/null"
+            : "kubectl get secrets -A -l larakube.io/project={$appName},larakube.io/config=blueprint -o jsonpath='{.items[0].data.\\.larakube\\.json}' 2>/dev/null";
+
+        $encoded = shell_exec($command);
+        if (! $encoded) {
+            return null;
+        }
+
+        return self::from(json_decode(base64_decode($encoded), true));
     }
 }

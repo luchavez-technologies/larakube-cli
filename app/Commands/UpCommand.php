@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithEnvironments;
@@ -19,17 +20,20 @@ use function Laravel\Prompts\info;
 
 class UpCommand extends Command
 {
-    use GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput;
+    use GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'up {environment? : The environment to deploy (local or production)}
+    protected $signature = 'up {environment=local : The environment to orchestrate (default: local)}
                             {--console : Open the LaraKube Console after deployment}
                             {--no-console : Disable the console prompt}
-                            {--no-sync : Skip architectural DNA sync with current machine}
+                            {--no-k8s : Skip syncing local Kubernetes manifests}
+                            {--no-env : Skip syncing local .env files}
+                            {--build : Force building the Docker image}
+                            {--no-build : Skip building the Docker image}
                             {--dry-run : Validate manifests without deploying}
                             {--test : Run smoke test without prompting}
                             {--no-test : Skip smoke test without prompting}';
@@ -39,7 +43,7 @@ class UpCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Deploy the application to Kubernetes';
+    protected $description = 'Initialize and start the application in the local Kubernetes cluster';
 
     /**
      * Execute the console command.
@@ -108,12 +112,17 @@ class UpCommand extends Command
         // --- 🏗 ARCHITECTURAL SYNC (Local Only) ---
         // Every time we run 'up' locally, we ensure the local overlays
         // match the current machine's paths (e.g. hostPath code mounts).
-        if ($environment === 'local' && ! $this->option('no-sync')) {
-            $this->withSpin('Syncing architectural DNA with current machine...', function () use ($config) {
-                $this->orchestrateProjectScaffolding($config, false, false);
+        if ($environment === 'local') {
+            $syncK8s = ! $this->option('no-k8s');
+            $syncEnv = ! $this->option('no-env');
 
-                return true;
-            });
+            if ($syncK8s || $syncEnv) {
+                $this->withSpin('Syncing architectural DNA with current machine...', function () use ($config, $syncK8s, $syncEnv) {
+                    $this->orchestrateProjectScaffolding($config, false, false, false, $syncK8s, $syncEnv);
+
+                    return true;
+                });
+            }
         }
 
         if ($environment === 'local') {
@@ -131,7 +140,7 @@ class UpCommand extends Command
             // 📦 2. Handle missing dependencies (Surgical)
             if (! is_dir($projectPath.'/vendor') || ! is_dir($projectPath.'/node_modules')) {
                 $this->laraKubeInfo('Missing local dependencies. Orchestrating installation...');
-                $config->installComponents();
+                $this->installComponents($config);
             }
         }
 
@@ -169,10 +178,16 @@ class UpCommand extends Command
             }
         }
 
-        // 1. Build image if local
-        if ($environment === 'local') {
-            $this->laraKubeInfo("Building local Docker image '$appName:latest'...");
-            $this->buildImage($config);
+        // 1. Build image if local (Docker-Compose logic: only if missing or forced)
+        if ($environment === 'local' && ! $this->option('no-build')) {
+            $imageTag = "{$appName}:latest";
+            $shouldBuild = $this->option('build') || ! $this->imageExists($imageTag);
+
+            if ($shouldBuild) {
+                $this->buildImage($config);
+            } else {
+                $this->laraKubeInfo("Using existing image '$imageTag' (Use --build to force a rebuild)");
+            }
         }
 
         // 2. Ensure Namespace exists
@@ -186,8 +201,57 @@ class UpCommand extends Command
 
         if (file_exists($envPath)) {
             $this->withSpin('Injecting configuration and blueprint...', function () use ($namespace, $envPath, $projectPath, $config, $environment) {
-                exec("kubectl create configmap laravel-config -n $namespace --from-env-file=$envPath --dry-run=client -o yaml | kubectl apply -f -");
-                exec("kubectl create secret generic laravel-secrets -n $namespace --from-env-file=$envPath --dry-run=client -o yaml | kubectl apply -f -");
+                // 🔐 SECURE SEPARATION: Split .env into ConfigMap and Secrets
+                $envLines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                $publicLiterals = '';
+                $secretLiterals = '';
+
+                // Known Secret Keys from the Blueprint
+                $knownSecrets = array_keys($config->getAllSecretEnvironmentVariables($environment));
+
+                foreach ($envLines as $line) {
+                    if (str_starts_with(trim($line), '#')) {
+                        continue;
+                    }
+
+                    if (! str_contains($line, '=')) {
+                        continue;
+                    }
+
+                    [$key, $value] = explode('=', $line, 2);
+                    $key = trim($key);
+                    $value = trim($value);
+
+                    // Skip empty keys
+                    if (empty($key)) {
+                        continue;
+                    }
+
+                    // HEURISTIC GUARD: Is it a known secret OR does it look like one?
+                    $isSecret = in_array($key, $knownSecrets) ||
+                                str_contains($key, 'PASSWORD') ||
+                                str_contains($key, 'SECRET') ||
+                                str_contains($key, 'KEY') ||
+                                str_contains($key, 'TOKEN');
+
+                    $literal = ' --from-literal='.escapeshellarg("$key=$value");
+
+                    if ($isSecret) {
+                        $secretLiterals .= $literal;
+                    } else {
+                        $publicLiterals .= $literal;
+                    }
+                }
+
+                // 1. Create Public ConfigMap
+                if (! empty($publicLiterals)) {
+                    exec("kubectl create configmap laravel-config -n $namespace $publicLiterals --dry-run=client -o yaml | kubectl apply -f -");
+                }
+
+                // 2. Create Sensitive Secret
+                if (! empty($secretLiterals)) {
+                    exec("kubectl create secret generic laravel-secrets -n $namespace $secretLiterals --dry-run=client -o yaml | kubectl apply -f -");
+                }
 
                 // Persist locally and sync blueprint to cluster for resilience
                 $this->saveProjectConfig($projectPath, $config, $environment);
@@ -250,8 +314,8 @@ class UpCommand extends Command
 
         $this->renderStarPrompt();
 
-        if ($config->getId()) {
-            $this->logToConsole($config->getId(), 'up', "Deployed project '{$config->getName()}' to {$environment} environment.");
+        if ($config->id) {
+            $this->logToConsole($config->id, 'up', "Deployed project '{$config->getName()}' to {$environment} environment.");
         }
 
         return 0;

@@ -15,12 +15,12 @@ spec:
 @if($config->isSystem())
       serviceAccountName: larakube-dashboard
 @endif
-@if($waitCmd = $config->buildWaitForCommand($feature->getDependencies($config)))
+@if($waitCmd = $config->buildWaitForCommand($feature->getDependencies($config), waitForWeb: true))
       initContainers:
         - name: wait-for-deps
           image: {{ $config->getName() }}:latest
           imagePullPolicy: IfNotPresent
-          command: {!! $waitCmd !!}
+          command: ["sh", "-c", "{!! $waitCmd !!}"]
 @endif
       containers:
         - name: php

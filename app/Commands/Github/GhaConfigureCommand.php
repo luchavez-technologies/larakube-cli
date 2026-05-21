@@ -6,7 +6,6 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
-use Symfony\Component\Yaml\Yaml;
 
 class GhaConfigureCommand extends Command
 {
@@ -71,15 +70,12 @@ class GhaConfigureCommand extends Command
         // 4. Upload KUBECONFIG (Surgical Extraction)
         $this->laraKubeInfo("Setting KUBECONFIG secret for {$environment}...");
 
-        $yamlFile = getcwd().'/.larakube.yml';
-        $ip = null;
-        if (file_exists($yamlFile)) {
-            $cloudConfig = Yaml::parseFile($yamlFile);
-            $ip = $cloudConfig['cloud'][$environment]['ip'] ?? null;
-        }
+        $config = $this->getProjectConfigObject($projectPath);
+        $ip = $config->getCloudIp($environment);
 
         if (! $ip) {
-            $this->laraKubeError("Could not find IP for environment '{$environment}' in .larakube.yml");
+            $this->laraKubeError("Could not find IP for environment '{$environment}' in cloud configuration.");
+            $this->line('  Please run <fg=yellow;options=bold>larakube cloud:configure</> first.');
 
             return 1;
         }

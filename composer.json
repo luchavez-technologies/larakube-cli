@@ -23,6 +23,7 @@
         "laravel-zero/framework": "^12.0.2",
         "laravel/mcp": "^0.7.0",
         "laravel/prompts": "^0.3.16",
+        "spatie/laravel-data": "^4.23",
         "symfony/yaml": "^8.0"
     },
     "require-dev": {

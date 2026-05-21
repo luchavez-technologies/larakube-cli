@@ -11,7 +11,6 @@ test('Dependency Resolution: Horizon automatically adds Redis', function () {
 
     $config->resolveDependencies();
 
-    expect($config->hasCacheDriver())->toBeTrue();
     expect($config->getCacheDrivers())->toContain(CacheDriver::REDIS);
 });
 

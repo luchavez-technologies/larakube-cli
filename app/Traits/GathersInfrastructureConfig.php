@@ -186,15 +186,6 @@ trait GathersInfrastructureConfig
             $config->setEmail($email);
         }
 
-        if (! $config->hasProductionHost()) {
-            $host = text(
-                label: 'What is your production domain/subdomain?',
-                placeholder: "{$config->getName()}.luchtech.dev",
-                required: true,
-            );
-            $config->setProductionHost($host);
-        }
-
         // 7. Extensions
         if (! $config->hasAdditionalExtensions()) {
             info('Default extensions: ctype, curl, dom, fileinfo, filter, hash, mbstring, mysqli, opcache, openssl, pcntl, pcre, pdo_mysql, pdo_pgsql, redis, session, tokenizer, xml, zip');

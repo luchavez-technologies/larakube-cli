@@ -7,7 +7,6 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
-use Symfony\Component\Yaml\Yaml;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\password;
@@ -70,40 +69,62 @@ class CloudConfigureCommand extends Command
             default: 'production'
         );
 
-        $yamlFile = getcwd().'/.larakube.yml';
-        $config = file_exists($yamlFile) ? Yaml::parseFile($yamlFile) : [];
+        $projectPath = getcwd();
+        $config = $this->getProjectConfigObject($projectPath);
+        $cloud = $config->getCloudConfig($environment);
+
+        $this->laraKubeInfo("Configuring cloud infrastructure for '{$environment}'...");
 
         $ip = text(
             label: 'Server IP address',
-            default: $config['cloud'][$environment]['ip'] ?? '',
+            default: $cloud['ip'] ?? '',
             required: true
         );
 
         $user = text(
             label: 'SSH User',
-            default: $config['cloud'][$environment]['user'] ?? 'larakube',
+            default: $cloud['user'] ?? 'larakube',
             required: true
         );
 
         $port = text(
             label: 'SSH Port',
-            default: $config['cloud'][$environment]['port'] ?? '22'
+            default: $cloud['port'] ?? '22'
         );
 
         $key = text(
             label: 'Path to SSH Private Key',
-            default: $config['cloud'][$environment]['key'] ?? home_path('.ssh/id_rsa')
+            default: $cloud['key'] ?? $_SERVER['HOME'].'/.ssh/id_rsa'
         );
 
-        $config['cloud'][$environment] = [
+        $config->setCloudConfig($environment, [
             'ip' => $ip,
             'user' => $user,
             'port' => (int) $port,
             'key' => $key,
-        ];
+        ]);
 
-        file_put_contents($yamlFile, Yaml::dump($config, 4, 2));
-        $this->laraKubeInfo('✅ Deployment configuration saved to .larakube.yml');
+        // 🌐 Ensure Production Domain is set if this is production
+        if ($environment === 'production') {
+            $currentHost = $config->getRealProductionHost();
+            if (! $currentHost || $currentHost === "{$config->getName()}.com") {
+                $this->newLine();
+                $this->info(' 🌐 ARCHITECTURAL ALIGNMENT');
+                $this->line('   Remote deployments require a real production domain.');
+
+                $host = text(
+                    label: 'What is your REAL production domain/subdomain?',
+                    placeholder: "{$config->getName()}.com",
+                    default: $currentHost ?: "{$config->getName()}.com",
+                    required: true
+                );
+
+                $config->setProductionHost($host);
+            }
+        }
+
+        $this->saveProjectConfig($projectPath, $config);
+        $this->laraKubeInfo('✅ Cloud configuration saved to .larakube.json');
 
         return 0;
     }
@@ -115,18 +136,12 @@ class CloudConfigureCommand extends Command
             default: 'production'
         );
 
-        $yamlFile = getcwd().'/.larakube.yml';
-        if (! file_exists($yamlFile)) {
-            $this->laraKubeError('.larakube.yml not found. Please run cloud:configure first.');
+        $projectPath = getcwd();
+        $config = $this->getProjectConfigObject($projectPath);
+        $cloud = $config->getCloudConfig($environment);
 
-            return 1;
-        }
-
-        $config = Yaml::parseFile($yamlFile);
-        $cloud = $config['cloud'][$environment] ?? null;
-
-        if (! $cloud) {
-            $this->laraKubeError("Configuration for environment '{$environment}' not found in .larakube.yml");
+        if (empty($cloud)) {
+            $this->laraKubeError("Configuration for environment '{$environment}' not found. Please run cloud:configure first.");
 
             return 1;
         }
@@ -142,7 +157,7 @@ class CloudConfigureCommand extends Command
         $this->laraKubeInfo("Connecting to {$cloud['user']}@{$cloud['ip']} for initial setup...");
 
         // 1. SSH and Setup Directory Structure
-        $projectName = basename(getcwd());
+        $projectName = $config->getName();
         $deployPath = "/home/{$cloud['user']}/{$projectName}";
 
         $this->laraKubeInfo("Cloning repository to {$deployPath}...");
@@ -258,11 +273,11 @@ BASH;
 
     protected function setupGhcrSecret(string $environment): void
     {
-        $yamlFile = getcwd().'/.larakube.yml';
-        $cloudConfig = Yaml::parseFile($yamlFile);
-        $cloud = $cloudConfig['cloud'][$environment] ?? null;
+        $projectPath = getcwd();
+        $config = $this->getProjectConfigObject($projectPath);
+        $cloud = $config->getCloudConfig($environment);
 
-        if (! $cloud) {
+        if (empty($cloud)) {
             $this->laraKubeWarn("Cloud config not found for {$environment}. Skipping registry secret setup.");
 
             return;
@@ -318,24 +333,19 @@ BASH;
             default: 'production'
         );
 
-        $yamlFile = getcwd().'/.larakube.yml';
-        if (! file_exists($yamlFile)) {
-            $this->laraKubeError('.larakube.yml not found. Please run cloud:configure first.');
+        $projectPath = getcwd();
+        $config = $this->getProjectConfigObject($projectPath);
+        $cloud = $config->getCloudConfig($environment);
+
+        if (empty($cloud)) {
+            $this->laraKubeError("Configuration for environment '{$environment}' not found. Please run cloud:configure first.");
 
             return 1;
         }
 
-        $config = Yaml::parseFile($yamlFile);
-        $cloud = $config['cloud'][$environment] ?? null;
-
-        if (! $cloud) {
-            $this->laraKubeError("Configuration for environment '{$environment}' not found in .larakube.yml");
-
-            return 1;
-        }
-
-        if (! isset($config['users'])) {
-            $config['users'] = [];
+        $allCloud = $config->toArray()['cloud'] ?? [];
+        if (! isset($allCloud['users'])) {
+            $allCloud['users'] = [];
         }
 
         $this->laraKubeInfo('LaraKube Teammate Access Manager');
@@ -345,7 +355,7 @@ BASH;
             $name = text('Full Name', required: true);
             $key = text('Public SSH Key', required: true);
 
-            $config['users'][] = [
+            $allCloud['users'][] = [
                 'username' => $username,
                 'name' => $name,
                 'state' => 'present',
@@ -356,12 +366,18 @@ BASH;
                 ],
             ];
 
-            file_put_contents($yamlFile, Yaml::dump($config, 4, 2));
-            $this->laraKubeInfo("✅ Teammate '{$username}' added to .larakube.yml");
+            $config->setCloudConfig($environment, $cloud); // Still need this to ensure it's in the array
+            // Actually users is cross-env usually, but let's keep it in the cloud object root
+            $configData = $config->toArray();
+            $configData['cloud']['users'] = $allCloud['users'];
+
+            $config = ConfigData::fromArray($configData);
+            $this->saveProjectConfig($projectPath, $config);
+            $this->laraKubeInfo("✅ Teammate '{$username}' added to .larakube.json");
         }
 
-        if (empty($config['users'])) {
-            $this->laraKubeWarn('No users defined in .larakube.yml. Skipping sync.');
+        if (empty($allCloud['users'])) {
+            $this->laraKubeWarn('No users defined in cloud configuration. Skipping sync.');
 
             return 0;
         }
@@ -369,7 +385,7 @@ BASH;
         if (confirm('Sync all users to the remote server now?', true)) {
             $this->laraKubeInfo("Syncing users to {$cloud['ip']}...");
 
-            foreach ($config['users'] as $user) {
+            foreach ($allCloud['users'] as $user) {
                 $username = $user['username'];
                 if (($user['state'] ?? 'present') === 'present') {
                     $this->laraKubeInfo("  👤 Ensuring user: {$username}");

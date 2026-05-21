@@ -11,8 +11,8 @@ test('Strategy: Multi-Node HA produces ReadWriteMany PVCs in base config', funct
 
     $manifests = generateManifests($config);
 
-    // Extract base/config.yaml part
-    preg_match('/--- FILE: base\/config\.yaml ---\n(.*?)--- FILE:/s', $manifests, $matches);
+    // Extract base/volumes.yaml part
+    preg_match('/--- FILE: base\/volumes\.yaml ---\n(.*?)--- FILE:/s', $manifests, $matches);
     $baseConfig = $matches[1] ?? '';
 
     expect($baseConfig)->toContain('ReadWriteMany');
@@ -26,8 +26,8 @@ test('Strategy: Single-Node Hero produces ReadWriteOnce PVCs in base config', fu
 
     $manifests = generateManifests($config);
 
-    // Extract base/config.yaml part
-    preg_match('/--- FILE: base\/config\.yaml ---\n(.*?)--- FILE:/s', $manifests, $matches);
+    // Extract base/volumes.yaml part
+    preg_match('/--- FILE: base\/volumes\.yaml ---\n(.*?)--- FILE:/s', $manifests, $matches);
     $baseConfig = $matches[1] ?? '';
 
     expect($baseConfig)->toContain('ReadWriteOnce');

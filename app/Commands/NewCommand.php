@@ -18,6 +18,7 @@ use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithDynamicOptions;
 use App\Traits\InteractsWithProjectConfig;
@@ -33,7 +34,7 @@ use function Laravel\Prompts\text;
 
 class NewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
@@ -144,8 +145,8 @@ class NewCommand extends Command
         $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config) {
             $this->orchestrateProjectScaffolding($config);
 
-            if ($config->getId()) {
-                $this->logToConsole($config->getId(), 'new', 'New architectural masterpiece created', [
+            if ($config->id) {
+                $this->logToConsole($config->id, 'new', 'New architectural masterpiece created', [
                     'name' => $config->getName(),
                     'blueprints' => $config->getBlueprints(),
                     'server' => $config->getServerVariation()?->value,
@@ -157,7 +158,7 @@ class NewCommand extends Command
 
         // Register with Console
         $this->registerWithConsole([
-            'uuid' => $config->getId(),
+            'uuid' => $config->id,
             'name' => $appName,
             'path' => $projectPath,
             'blueprints' => $config->getBlueprints(), // Note: I should check if ConfigData has a getter for array or just use raw property if accessible

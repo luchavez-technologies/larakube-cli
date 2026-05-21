@@ -1,25 +1,5 @@
 --- FILE: base/config.yaml ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: kitchen-sink-laravel-storage-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: kitchen-sink-laravel-data-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+# Redundant - Assets moved to volumes.yaml and Runtime Config
 
 
 --- FILE: base/kustomization.yaml ---
@@ -31,7 +11,7 @@ resources:
   - scheduler-cronjob.yaml
   - queues-deployment.yaml
   - laravel.yaml
-  - config.yaml
+  - volumes.yaml
 
 
 --- FILE: base/laravel.yaml ---
@@ -84,7 +64,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-
           volumeMounts:
             - name: storage
               mountPath: /var/www/html/storage/logs
@@ -175,7 +154,7 @@ spec:
         - name: wait-for-deps
           image: kitchen-sink:latest
           imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "until nc -z -v -w 1 web 80; do echo 'Waiting for dependencies...'; sleep 2; done;"]
+          command: ["sh", "-c", "until curl -sf http://web/up; do echo 'Waiting for dependencies...'; sleep 2; done;"]
       containers:
         - name: php
           image: kitchen-sink:latest
@@ -252,14 +231,14 @@ spec:
         - name: wait-for-deps
           image: kitchen-sink:latest
           imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "until nc -z -v -w 1 web 80; do echo 'Waiting for dependencies...'; sleep 2; done;"]
+          command: ["sh", "-c", "until curl -sf http://web/up; do echo 'Waiting for dependencies...'; sleep 2; done;"]
       containers:
         - name: php
           image: kitchen-sink:latest
           imagePullPolicy: IfNotPresent
-          args: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+          args: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8081"]
           ports:
-            - containerPort: 8080
+            - containerPort: 8081
           envFrom:
             - configMapRef:
                 name: laravel-config
@@ -291,13 +270,13 @@ spec:
               subPath: app/public
           livenessProbe:
             tcpSocket:
-              port: 8080
+              port: 8081
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 10
           readinessProbe:
             tcpSocket:
-              port: 8080
+              port: 8081
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 10
@@ -316,7 +295,7 @@ spec:
   ports:
     - protocol: TCP
       port: 8080
-      targetPort: 8080
+      targetPort: 8081
   type: ClusterIP
 
 
@@ -336,7 +315,7 @@ spec:
             - name: wait-for-deps
               image: kitchen-sink:latest
               imagePullPolicy: IfNotPresent
-              command: ["sh", "-c", "until nc -z -v -w 1 web 80; do echo 'Waiting for dependencies...'; sleep 2; done;"]
+              command: ["sh", "-c", "until curl -sf http://web/up; do echo 'Waiting for dependencies...'; sleep 2; done;"]
           containers:
             - name: php
               image: kitchen-sink:latest
@@ -383,32 +362,32 @@ spec:
                 claimName: kitchen-sink-laravel-data-pvc
 
 
---- FILE: overlays/local/config-patch.yaml ---
+--- FILE: base/volumes.yaml ---
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: laravel-config
-data:
-  APP_ENV: local
-  APP_DEBUG: "true"
-  APP_URL: "https://kitchen-sink.dev.test"
-  ASSET_URL: "https://kitchen-sink.dev.test"
-  DB_CONNECTION: "sqlite"
-  DB_DATABASE: "/var/lib/larakube/database.sqlite"
-  AUTORUN_LARAVEL_MIGRATION_SKIP_DB_CHECK: "true"
-  CACHE_STORE: "database"
-  SESSION_DRIVER: "database"
-  QUEUE_CONNECTION: "database"
-  REVERB_APP_ID: "larakube"
-  REVERB_APP_KEY: "larakubekey"
-  REVERB_APP_SECRET: "larakubesecret"
-  REVERB_HOST: "reverb-kitchen-sink.dev.test"
-  REVERB_PORT: "8080"
-  REVERB_SCHEME: "http"
-  BOOST_PHP_EXECUTABLE_PATH: "&quot;larakube php&quot;"
-  BOOST_COMPOSER_EXECUTABLE_PATH: "&quot;larakube composer&quot;"
-  BOOST_NPM_EXECUTABLE_PATH: "&quot;larakube npm&quot;"
-  BOOST_VENDOR_BIN_EXECUTABLE_PATH: "&quot;larakube art&quot;"
+  name: kitchen-sink-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kitchen-sink-laravel-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+
+--- FILE: overlays/local/config-patch.yaml ---
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/local/infrastructure.yaml ---
@@ -688,32 +667,26 @@ spec:
         - kitchen-sink.dev.test
 
 
---- FILE: overlays/production/config-patch.yaml ---
+--- FILE: overlays/local/pvc-patch.yaml ---
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: laravel-config
-data:
-  APP_ENV: production
-  APP_DEBUG: "false"
-  APP_URL: "https://kitchen-sink.dev.test"
-  ASSET_URL: "https://kitchen-sink.dev.test"
-  DB_CONNECTION: "sqlite"
-  DB_DATABASE: "/var/lib/larakube/database.sqlite"
-  AUTORUN_LARAVEL_MIGRATION_SKIP_DB_CHECK: "true"
-  CACHE_STORE: "database"
-  SESSION_DRIVER: "database"
-  QUEUE_CONNECTION: "database"
-  REVERB_APP_ID: "larakube"
-  REVERB_APP_KEY: "larakubekey"
-  REVERB_APP_SECRET: "larakubesecret"
-  REVERB_HOST: "reverb-kitchen-sink.dev.test"
-  REVERB_PORT: "443"
-  REVERB_SCHEME: "https"
-  BOOST_PHP_EXECUTABLE_PATH: "&quot;larakube php&quot;"
-  BOOST_COMPOSER_EXECUTABLE_PATH: "&quot;larakube composer&quot;"
-  BOOST_NPM_EXECUTABLE_PATH: "&quot;larakube npm&quot;"
-  BOOST_VENDOR_BIN_EXECUTABLE_PATH: "&quot;larakube art&quot;"
+  name: kitchen-sink-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kitchen-sink-laravel-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+
+--- FILE: overlays/production/config-patch.yaml ---
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/production/deployment-patch.yaml ---

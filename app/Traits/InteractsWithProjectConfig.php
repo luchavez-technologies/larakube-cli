@@ -67,7 +67,7 @@ trait InteractsWithProjectConfig
             $data[$key] = $value;
         }
 
-        ConfigData::fromArray($data)->saveToFile($projectPath);
+        ConfigData::from($data)->saveToFile($projectPath);
     }
 
     /**

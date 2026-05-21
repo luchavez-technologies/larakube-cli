@@ -66,6 +66,19 @@ enum Blueprint: string implements HasArtisanCommands, HasCommandOptions, HasComp
 
     public function getEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
+        return array_merge(
+            $this->getPublicEnvironmentVariables($config, $environment),
+            $this->getSecretEnvironmentVariables($config, $environment)
+        );
+    }
+
+    public function getPublicEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
+        return [];
+    }
+
+    public function getSecretEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
         return match ($this) {
             self::STATAMIC => [
                 'STATAMIC_LICENSE_KEY' => '',

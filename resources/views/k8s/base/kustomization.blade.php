@@ -3,4 +3,4 @@ kind: Kustomization
 
 resources:
   - laravel.yaml
-  - config.yaml
+  - volumes.yaml

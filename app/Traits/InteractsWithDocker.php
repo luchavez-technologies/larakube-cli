@@ -29,6 +29,13 @@ trait InteractsWithDocker
         return "docker run --rm --init -v $path:/var/www/html -w /var/www/html --user root $baseEnvs $envs {$image} ";
     }
 
+    protected function imageExists(string $image): bool
+    {
+        $id = shell_exec('docker images -q '.escapeshellarg($image).' 2>/dev/null');
+
+        return ! empty(trim($id ?? ''));
+    }
+
     /**
      * Build the local project image.
      */
@@ -40,7 +47,21 @@ trait InteractsWithDocker
         $imageTag = "$appName:latest";
         $this->laraKubeInfo("Building local image '$imageTag'...");
 
-        passthru("docker build -t $imageTag -f $path/Dockerfile.php $path");
+        $target = '';
+        $buildArgs = '';
+
+        if (file_exists("$path/Dockerfile.php")) {
+            $content = file_get_contents("$path/Dockerfile.php");
+            if (str_contains($content, 'AS development')) {
+                $target = '--target development';
+
+                $uid = function_exists('posix_getuid') ? posix_getuid() : 1000;
+                $gid = function_exists('posix_getgid') ? posix_getgid() : 1000;
+                $buildArgs = "--build-arg USER_ID=$uid --build-arg GROUP_ID=$gid";
+            }
+        }
+
+        passthru("docker build $target $buildArgs -t $imageTag -f $path/Dockerfile.php $path");
 
         // --- 🛡 K3D IMAGE BRIDGE ---
         // If k3d cluster exists, import the image so the pods can see it

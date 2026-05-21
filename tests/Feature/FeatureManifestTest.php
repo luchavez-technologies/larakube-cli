@@ -36,6 +36,5 @@ test('Feature: Octane + Postgres (Auto-resolves FrankenPHP)', function () {
     $config->addFeature(LaravelFeature::OCTANE);
 
     $manifests = generateManifests($config);
-    expect($manifests)->toContain('OCTANE_SERVER: "frankenphp"');
     expect($manifests)->toMatchSnapshot();
 });

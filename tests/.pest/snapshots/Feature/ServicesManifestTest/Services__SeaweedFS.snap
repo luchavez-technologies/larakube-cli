@@ -1,25 +1,5 @@
 --- FILE: base/config.yaml ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: seaweed-test-laravel-storage-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: seaweed-test-laravel-data-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+# Redundant - Assets moved to volumes.yaml and Runtime Config
 
 
 --- FILE: base/kustomization.yaml ---
@@ -29,7 +9,7 @@ kind: Kustomization
 resources:
   - seaweedfs-deployment.yaml
   - laravel.yaml
-  - config.yaml
+  - volumes.yaml
 
 
 --- FILE: base/laravel.yaml ---
@@ -82,7 +62,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-
           volumeMounts:
             - name: storage
               mountPath: /var/www/html/storage/logs
@@ -174,7 +153,7 @@ spec:
       containers:
         - name: seaweedfs
           image: chrislusf/seaweedfs:4.20
-          args: 
+          args: ["server", "-dir=/data", "-s3"]
 
           ports:
             - containerPort: 9333
@@ -235,29 +214,32 @@ spec:
   type: ClusterIP
 
 
---- FILE: overlays/local/config-patch.yaml ---
+--- FILE: base/volumes.yaml ---
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: laravel-config
-data:
-  APP_ENV: local
-  APP_DEBUG: "true"
-  APP_URL: "https://seaweed-test.dev.test"
-  ASSET_URL: "https://seaweed-test.dev.test"
-  DB_CONNECTION: "sqlite"
-  DB_DATABASE: "/var/lib/larakube/database.sqlite"
-  AUTORUN_LARAVEL_MIGRATION_SKIP_DB_CHECK: "true"
-  CACHE_STORE: "database"
-  SESSION_DRIVER: "database"
-  FILESYSTEM_DISK: "s3"
-  AWS_ACCESS_KEY_ID: "larakube"
-  AWS_SECRET_ACCESS_KEY: "larakubesecretpassword"
-  AWS_DEFAULT_REGION: "us-east-1"
-  AWS_BUCKET: "laravel"
-  AWS_URL: "https://s3-seaweed-test.dev.test"
-  AWS_USE_PATH_STYLE_ENDPOINT: "true"
-  AWS_ENDPOINT: "http://seaweedfs:8333"
+  name: seaweed-test-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaweed-test-laravel-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+
+--- FILE: overlays/local/config-patch.yaml ---
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/local/infrastructure.yaml ---
@@ -402,6 +384,24 @@ spec:
         - seaweed-test.dev.test
 
 
+--- FILE: overlays/local/pvc-patch.yaml ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaweed-test-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaweed-test-laravel-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+
 --- FILE: overlays/local/seaweedfs-ingress.yaml ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -471,28 +471,7 @@ spec:
 
 
 --- FILE: overlays/production/config-patch.yaml ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: laravel-config
-data:
-  APP_ENV: production
-  APP_DEBUG: "false"
-  APP_URL: "https://seaweed-test.dev.test"
-  ASSET_URL: "https://seaweed-test.dev.test"
-  DB_CONNECTION: "sqlite"
-  DB_DATABASE: "/var/lib/larakube/database.sqlite"
-  AUTORUN_LARAVEL_MIGRATION_SKIP_DB_CHECK: "true"
-  CACHE_STORE: "database"
-  SESSION_DRIVER: "database"
-  FILESYSTEM_DISK: "s3"
-  AWS_ACCESS_KEY_ID: "larakube"
-  AWS_SECRET_ACCESS_KEY: "larakubesecretpassword"
-  AWS_DEFAULT_REGION: "us-east-1"
-  AWS_BUCKET: "laravel"
-  AWS_URL: "https://s3-seaweed-test.dev.test"
-  AWS_USE_PATH_STYLE_ENDPOINT: "true"
-  AWS_ENDPOINT: "http://seaweedfs:8333"
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/production/deployment-patch.yaml ---

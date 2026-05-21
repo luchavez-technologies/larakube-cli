@@ -7,6 +7,7 @@ use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithDynamicOptions;
 use App\Traits\InteractsWithProjectConfig;
@@ -20,7 +21,7 @@ use function Laravel\Prompts\info;
 
 class InitCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
@@ -125,7 +126,7 @@ class InitCommand extends Command
         // Collect instructions from all components
         $allInstructions = [];
         foreach ($config->getComponents() as $component) {
-            if ($component instanceof HasArtisanCommands && ! $config->isScaffolding()) {
+            if ($component instanceof HasArtisanCommands && ! $config->isScaffolding) {
                 foreach ($component->getArtisanCommands($config) as $cmd) {
                     $allInstructions[] = "Run: <fg=blue>larakube art $cmd</>";
                 }

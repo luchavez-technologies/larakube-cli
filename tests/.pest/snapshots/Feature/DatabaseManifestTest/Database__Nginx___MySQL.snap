@@ -1,14 +1,5 @@
 --- FILE: base/config.yaml ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mysql-test-laravel-storage-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+# Redundant - Assets moved to volumes.yaml and Runtime Config
 
 
 --- FILE: base/kustomization.yaml ---
@@ -18,7 +9,7 @@ kind: Kustomization
 resources:
   - mysql-deployment.yaml
   - laravel.yaml
-  - config.yaml
+  - volumes.yaml
 
 
 --- FILE: base/laravel.yaml ---
@@ -76,7 +67,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-
           volumeMounts:
             - name: storage
               mountPath: /var/www/html/storage/logs
@@ -218,24 +208,32 @@ spec:
   type: ClusterIP
 
 
---- FILE: overlays/local/config-patch.yaml ---
+--- FILE: base/volumes.yaml ---
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: laravel-config
-data:
-  APP_ENV: local
-  APP_DEBUG: "true"
-  APP_URL: "https://mysql-test.dev.test"
-  ASSET_URL: "https://mysql-test.dev.test"
-  DB_CONNECTION: "mysql"
-  DB_HOST: "mysql"
-  DB_PORT: "3306"
-  DB_DATABASE: "laravel"
-  DB_USERNAME: "laravel"
-  DB_PASSWORD: "larakubesecretpassword"
-  CACHE_STORE: "database"
-  SESSION_DRIVER: "database"
+  name: mysql-test-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-test-laravel-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+
+--- FILE: overlays/local/config-patch.yaml ---
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/local/infrastructure.yaml ---
@@ -373,6 +371,38 @@ spec:
             claimName: mysql-test-mysql-pvc
 
 
+--- FILE: overlays/local/mysql-volumes.yaml ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-test-mysql-pv
+  labels:
+    larakube-project: mysql-test
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /STABLE_TEST_PATH/.infrastructure/volume_data/mysql
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-test-mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: mysql-test-mysql-pv
+  resources:
+    requests:
+      storage: 1Gi
+
+
 --- FILE: overlays/local/patches.yaml ---
 ---
 apiVersion: apps/v1
@@ -439,24 +469,18 @@ spec:
         - mysql-test.dev.test
 
 
---- FILE: overlays/production/config-patch.yaml ---
+--- FILE: overlays/local/pvc-patch.yaml ---
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: laravel-config
-data:
-  APP_ENV: production
-  APP_DEBUG: "false"
-  APP_URL: "https://mysql-test.dev.test"
-  ASSET_URL: "https://mysql-test.dev.test"
-  DB_CONNECTION: "mysql"
-  DB_HOST: "mysql"
-  DB_PORT: "3306"
-  DB_DATABASE: "laravel"
-  DB_USERNAME: "laravel"
-  DB_PASSWORD: "larakubesecretpassword"
-  CACHE_STORE: "database"
-  SESSION_DRIVER: "database"
+  name: mysql-test-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+
+--- FILE: overlays/production/config-patch.yaml ---
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/production/deployment-patch.yaml ---
@@ -517,6 +541,38 @@ resources:
 patches:
   - path: ingress-patch.yaml
   - path: deployment-patch.yaml
+
+
+--- FILE: overlays/production/mysql-volumes.yaml ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-test-mysql-pv
+  labels:
+    larakube-project: mysql-test
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /STABLE_TEST_PATH/.infrastructure/volume_data/mysql
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-test-mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: mysql-test-mysql-pv
+  resources:
+    requests:
+      storage: 1Gi
 
 
 --- FILE: overlays/production/namespace.yaml ---

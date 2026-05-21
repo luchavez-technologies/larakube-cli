@@ -1,14 +1,5 @@
 --- FILE: base/config.yaml ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mariadb-test-laravel-storage-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+# Redundant - Assets moved to volumes.yaml and Runtime Config
 
 
 --- FILE: base/kustomization.yaml ---
@@ -18,7 +9,7 @@ kind: Kustomization
 resources:
   - mariadb-deployment.yaml
   - laravel.yaml
-  - config.yaml
+  - volumes.yaml
 
 
 --- FILE: base/laravel.yaml ---
@@ -76,7 +67,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-
           volumeMounts:
             - name: storage
               mountPath: /var/www/html/storage/logs
@@ -218,24 +208,32 @@ spec:
   type: ClusterIP
 
 
---- FILE: overlays/local/config-patch.yaml ---
+--- FILE: base/volumes.yaml ---
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: laravel-config
-data:
-  APP_ENV: local
-  APP_DEBUG: "true"
-  APP_URL: "https://mariadb-test.dev.test"
-  ASSET_URL: "https://mariadb-test.dev.test"
-  DB_CONNECTION: "mysql"
-  DB_HOST: "mariadb"
-  DB_PORT: "3306"
-  DB_DATABASE: "laravel"
-  DB_USERNAME: "laravel"
-  DB_PASSWORD: "larakubesecretpassword"
-  CACHE_STORE: "database"
-  SESSION_DRIVER: "database"
+  name: mariadb-test-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-test-laravel-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+
+--- FILE: overlays/local/config-patch.yaml ---
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/local/infrastructure.yaml ---
@@ -373,6 +371,38 @@ spec:
             claimName: mariadb-test-mariadb-pvc
 
 
+--- FILE: overlays/local/mariadb-volumes.yaml ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mariadb-test-mariadb-pv
+  labels:
+    larakube-project: mariadb-test
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /STABLE_TEST_PATH/.infrastructure/volume_data/mariadb
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-test-mariadb-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: mariadb-test-mariadb-pv
+  resources:
+    requests:
+      storage: 1Gi
+
+
 --- FILE: overlays/local/patches.yaml ---
 ---
 apiVersion: apps/v1
@@ -439,24 +469,18 @@ spec:
         - mariadb-test.dev.test
 
 
---- FILE: overlays/production/config-patch.yaml ---
+--- FILE: overlays/local/pvc-patch.yaml ---
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: laravel-config
-data:
-  APP_ENV: production
-  APP_DEBUG: "false"
-  APP_URL: "https://mariadb-test.dev.test"
-  ASSET_URL: "https://mariadb-test.dev.test"
-  DB_CONNECTION: "mysql"
-  DB_HOST: "mariadb"
-  DB_PORT: "3306"
-  DB_DATABASE: "laravel"
-  DB_USERNAME: "laravel"
-  DB_PASSWORD: "larakubesecretpassword"
-  CACHE_STORE: "database"
-  SESSION_DRIVER: "database"
+  name: mariadb-test-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+
+--- FILE: overlays/production/config-patch.yaml ---
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/production/deployment-patch.yaml ---
@@ -517,6 +541,38 @@ resources:
 patches:
   - path: ingress-patch.yaml
   - path: deployment-patch.yaml
+
+
+--- FILE: overlays/production/mariadb-volumes.yaml ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mariadb-test-mariadb-pv
+  labels:
+    larakube-project: mariadb-test
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /STABLE_TEST_PATH/.infrastructure/volume_data/mariadb
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-test-mariadb-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: mariadb-test-mariadb-pv
+  resources:
+    requests:
+      storage: 1Gi
 
 
 --- FILE: overlays/production/namespace.yaml ---

@@ -105,21 +105,27 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
 
     public function getEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
+        return array_merge(
+            $this->getPublicEnvironmentVariables($config, $environment),
+            $this->getSecretEnvironmentVariables($config, $environment)
+        );
+    }
+
+    public function getPublicEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
         return match ($this) {
             self::REVERB => [
                 'REVERB_APP_ID' => 'larakube',
                 'REVERB_APP_KEY' => 'larakubekey',
-                'REVERB_APP_SECRET' => 'larakubesecret',
-                'REVERB_HOST' => $config ? $config->getServiceHost('reverb', $environment) : '0.0.0.0',
+                'REVERB_HOST' => $config ? $config->getInternalFqdn($this, $environment) : 'reverb',
                 'REVERB_PORT' => $environment === 'production' ? '443' : '8080',
                 'REVERB_SCHEME' => $environment === 'production' ? 'https' : 'http',
             ],
             self::MAILPIT => $environment !== 'production' ? [
                 'MAIL_MAILER' => 'smtp',
-                'MAIL_HOST' => $this->getPodName(),
+                'MAIL_HOST' => $config ? $config->getInternalFqdn($this, $environment) : $this->getPodName(),
                 'MAIL_PORT' => '1025',
                 'MAIL_USERNAME' => 'null',
-                'MAIL_PASSWORD' => 'null',
                 'MAIL_ENCRYPTION' => 'null',
             ] : [],
             self::QUEUES => [
@@ -131,6 +137,19 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
                 'BOOST_NPM_EXECUTABLE_PATH' => '"larakube npm"',
                 'BOOST_VENDOR_BIN_EXECUTABLE_PATH' => '"larakube art"',
             ],
+            default => [],
+        };
+    }
+
+    public function getSecretEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
+        return match ($this) {
+            self::REVERB => [
+                'REVERB_APP_SECRET' => 'larakubesecret',
+            ],
+            self::MAILPIT => $environment !== 'production' ? [
+                'MAIL_PASSWORD' => 'null',
+            ] : [],
             default => [],
         };
     }
@@ -166,7 +185,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
             self::HORIZON => '["php", "artisan", "horizon"]',
             self::TASK_SCHEDULING => '["php", "artisan", "schedule:run"]',
             self::QUEUES => '["php", "artisan", "queue:work"]',
-            self::REVERB => '["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]',
+            self::REVERB => '["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8081"]',
             default => '[]',
         };
     }
@@ -283,33 +302,42 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
         $workspacePath = dirname($config->getPath());
 
         if ($viewName = $this->getWorkloadViewName()) {
-            $content = view($viewName, [
-                'config' => $config,
-                'feature' => $this,
-                'binaryPath' => $binaryPath,
-                'workspacePath' => $workspacePath,
-            ])->render();
-            file_put_contents("$k8sPath/{$this->getWorkloadYamlDestination()}", $content);
+            $dest = $this->getWorkloadYamlDestination();
+            if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                $content = view($viewName, [
+                    'config' => $config,
+                    'feature' => $this,
+                    'binaryPath' => $binaryPath,
+                    'workspacePath' => $workspacePath,
+                ])->render();
+                file_put_contents("$k8sPath/{$dest}", $content);
+            }
         }
 
         if ($viewName = $this->getNetworkViewName()) {
-            $network = view($viewName, [
-                'config' => $config,
-                'feature' => $this,
-                'binaryPath' => $binaryPath,
-                'workspacePath' => $workspacePath,
-            ])->render();
-            file_put_contents("$k8sPath/{$this->getNetworkYamlDestination()}", $network);
+            $dest = $this->getNetworkYamlDestination();
+            if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                $network = view($viewName, [
+                    'config' => $config,
+                    'feature' => $this,
+                    'binaryPath' => $binaryPath,
+                    'workspacePath' => $workspacePath,
+                ])->render();
+                file_put_contents("$k8sPath/{$dest}", $network);
+            }
         }
 
         if ($viewName = $this->getPatchViewName()) {
-            $patch = view($viewName, [
-                'config' => $config,
-                'feature' => $this,
-                'binaryPath' => $binaryPath,
-                'workspacePath' => $workspacePath,
-            ])->render();
-            file_put_contents("$k8sPath/{$this->getPatchYamlDestination()}", $patch);
+            $dest = $this->getPatchYamlDestination();
+            if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                $patch = view($viewName, [
+                    'config' => $config,
+                    'feature' => $this,
+                    'binaryPath' => $binaryPath,
+                    'workspacePath' => $workspacePath,
+                ])->render();
+                file_put_contents("$k8sPath/{$dest}", $patch);
+            }
         }
     }
 
@@ -385,7 +413,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
             self::TASK_SCHEDULING => '["php", "artisan", "schedule:run"]',
             self::HORIZON => '["php", "artisan", "horizon"]',
             self::QUEUES => '["php", "artisan", "queue:work"]',
-            self::REVERB => '["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]',
+            self::REVERB => '["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8081"]',
             default => '[]',
         };
     }

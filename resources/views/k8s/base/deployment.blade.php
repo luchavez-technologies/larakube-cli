@@ -22,7 +22,7 @@ spec:
         - name: wait-for-deps
           image: {{ $config->getName() }}:latest
           imagePullPolicy: IfNotPresent
-          command: {!! $waitCmd !!}
+          command: ["sh", "-c", "{!! $waitCmd !!}"]
 @endif
       containers:
         - name: php
@@ -59,7 +59,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-
           volumeMounts:
             - name: storage
               mountPath: /var/www/html/storage/logs
@@ -85,7 +84,8 @@ spec:
 @endif
 @if($config->isSystem())
             - name: larakube-config
-              mountPath: /var/lib/larakube-config
+              mountPath: /var/www/html/.larakube.json
+              subPath: .larakube.json
             - name: larakube-workspace
               mountPath: /var/lib/larakube-workspace
               readOnly: true

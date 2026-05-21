@@ -53,12 +53,25 @@ enum ServerVariation: string implements AsDependency, HasArtisanCommands, HasCom
 
     public function getEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
+        return array_merge(
+            $this->getPublicEnvironmentVariables($config, $environment),
+            $this->getSecretEnvironmentVariables($config, $environment)
+        );
+    }
+
+    public function getPublicEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
         return match ($this) {
             self::FRANKENPHP => [
                 'OCTANE_SERVER' => 'frankenphp',
             ],
             default => [],
         };
+    }
+
+    public function getSecretEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
+        return [];
     }
 
     public function getHosts(ConfigData $config, string $environment = 'local'): array
@@ -112,9 +125,7 @@ enum ServerVariation: string implements AsDependency, HasArtisanCommands, HasCom
     public function getStartCommand(bool $isLocal): string
     {
         if ($this == self::FRANKENPHP) {
-            $watchFlag = $isLocal ? ', "--watch"' : '';
-
-            return "[\"php\", \"artisan\", \"octane:start\", \"--server=frankenphp\", \"--port=8080\", \"--host=0.0.0.0\"$watchFlag]";
+            return '["php", "artisan", "octane:start", "--server=frankenphp", "--port=8080", "--host=0.0.0.0"]';
         }
 
         return '[]';

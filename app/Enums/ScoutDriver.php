@@ -112,22 +112,41 @@ enum ScoutDriver: string implements AsDependency, HasCommandOptions, HasComposer
 
     public function getEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
+        return array_merge(
+            $this->getPublicEnvironmentVariables($config, $environment),
+            $this->getSecretEnvironmentVariables($config, $environment)
+        );
+    }
+
+    public function getPublicEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
         return match ($this) {
             self::MEILISEARCH => [
                 'SCOUT_DRIVER' => 'meilisearch',
-                'MEILISEARCH_HOST' => 'http://meilisearch:7700',
-                'MEILISEARCH_KEY' => 'larakubesecretpassword',
+                'MEILISEARCH_HOST' => 'http://'.($config ? $config->getInternalFqdn($this, $environment) : 'meilisearch').':7700',
             ],
             self::TYPESENSE => [
                 'SCOUT_DRIVER' => 'typesense',
-                'TYPESENSE_HOST' => 'typesense',
+                'TYPESENSE_HOST' => $config ? $config->getInternalFqdn($this, $environment) : 'typesense',
                 'TYPESENSE_PORT' => '8108',
                 'TYPESENSE_PROTOCOL' => 'http',
-                'TYPESENSE_API_KEY' => 'larakubesecretpassword',
             ],
             self::DATABASE => [
                 'SCOUT_DRIVER' => 'database',
             ],
+        };
+    }
+
+    public function getSecretEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
+        return match ($this) {
+            self::MEILISEARCH => [
+                'MEILISEARCH_KEY' => 'larakubesecretpassword',
+            ],
+            self::TYPESENSE => [
+                'TYPESENSE_API_KEY' => 'larakubesecretpassword',
+            ],
+            self::DATABASE => [],
         };
     }
 
@@ -158,27 +177,42 @@ enum ScoutDriver: string implements AsDependency, HasCommandOptions, HasComposer
         $k8sPath = $config->getK8sPath();
 
         if ($viewName = $this->getWorkloadViewName()) {
-            $content = view($viewName, ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/{$this->getWorkloadYamlDestination()}", $content);
+            $dest = $this->getWorkloadYamlDestination();
+            if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                $content = view($viewName, ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$dest}", $content);
+            }
         }
 
         if ($viewName = $this->getNetworkViewName()) {
-            $ingress = view($viewName, ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/{$this->getNetworkYamlDestination()}", $ingress);
+            $dest = $this->getNetworkYamlDestination();
+            if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                $ingress = view($viewName, ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$dest}", $ingress);
+            }
         }
 
         if ($this->hasCompanion()) {
-            $companion = view('k8s.companion.deployment', ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/base/{$this->value}-companion-deployment.yaml", $companion);
+            $compDest = "base/{$this->value}-companion-deployment.yaml";
+            if (! $config->isLocked(".infrastructure/k8s/{$compDest}")) {
+                $companion = view('k8s.companion.deployment', ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$compDest}", $companion);
+            }
 
-            $ingress = view('k8s.companion.ingress', ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/overlays/local/{$this->value}-companion-ingress.yaml", $ingress);
+            $ingressDest = "overlays/local/{$this->value}-companion-ingress.yaml";
+            if (! $config->isLocked(".infrastructure/k8s/{$ingressDest}")) {
+                $ingress = view('k8s.companion.ingress', ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$ingressDest}", $ingress);
+            }
         }
 
         if ($this === self::MEILISEARCH || $this === self::TYPESENSE) {
             foreach (['local', 'production'] as $env) {
-                $vols = view("k8s.{$this->value}.volumes", ['config' => $config, 'driver' => $this, 'environment' => $env])->render();
-                file_put_contents("$k8sPath/overlays/$env/{$this->value}-volumes.yaml", $vols);
+                $dest = "overlays/$env/{$this->value}-volumes.yaml";
+                if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                    $vols = view("k8s.{$this->value}.volumes", ['config' => $config, 'driver' => $this, 'environment' => $env])->render();
+                    file_put_contents("$k8sPath/{$dest}", $vols);
+                }
             }
         }
     }

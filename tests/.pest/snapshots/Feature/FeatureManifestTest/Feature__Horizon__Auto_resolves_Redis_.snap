@@ -1,25 +1,5 @@
 --- FILE: base/config.yaml ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: horizon-auto-redis-laravel-storage-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: horizon-auto-redis-laravel-data-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+# Redundant - Assets moved to volumes.yaml and Runtime Config
 
 
 --- FILE: base/horizon-deployment.yaml ---
@@ -41,7 +21,7 @@ spec:
         - name: wait-for-deps
           image: horizon-auto-redis:latest
           imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "until nc -z -v -w 1 redis 6379 && nc -z -v -w 1 web 80 && nc -z -v -w 1 redis 6379; do echo 'Waiting for dependencies...'; sleep 2; done;"]
+          command: ["sh", "-c", "until curl -sf http://web/up && nc -z -v -w 1 redis 6379; do echo 'Waiting for dependencies...'; sleep 2; done;"]
       containers:
         - name: php
           image: horizon-auto-redis:latest
@@ -99,10 +79,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - redis-deployment.yaml
   - horizon-deployment.yaml
+  - redis-deployment.yaml
   - laravel.yaml
-  - config.yaml
+  - volumes.yaml
 
 
 --- FILE: base/laravel.yaml ---
@@ -124,11 +104,6 @@ spec:
       labels:
         app: web
     spec:
-      initContainers:
-        - name: wait-for-deps
-          image: horizon-auto-redis:latest
-          imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "until nc -z -v -w 1 redis 6379; do echo 'Waiting for dependencies...'; sleep 2; done;"]
       containers:
         - name: php
           image: horizon-auto-redis:latest
@@ -160,7 +135,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-
           volumeMounts:
             - name: storage
               mountPath: /var/www/html/storage/logs
@@ -277,25 +251,32 @@ spec:
   type: ClusterIP
 
 
---- FILE: overlays/local/config-patch.yaml ---
+--- FILE: base/volumes.yaml ---
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: laravel-config
-data:
-  APP_ENV: local
-  APP_DEBUG: "true"
-  APP_URL: "https://horizon-auto-redis.dev.test"
-  ASSET_URL: "https://horizon-auto-redis.dev.test"
-  DB_CONNECTION: "sqlite"
-  DB_DATABASE: "/var/lib/larakube/database.sqlite"
-  AUTORUN_LARAVEL_MIGRATION_SKIP_DB_CHECK: "true"
-  REDIS_HOST: "redis"
-  CACHE_STORE: "redis"
-  SESSION_DRIVER: "redis"
-  QUEUE_CONNECTION: "redis"
-  APP_MAINTENANCE_DRIVER: "cache"
-  APP_MAINTENANCE_STORE: "redis"
+  name: horizon-auto-redis-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: horizon-auto-redis-laravel-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+
+--- FILE: overlays/local/config-patch.yaml ---
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/local/infrastructure.yaml ---
@@ -485,6 +466,24 @@ spec:
         - horizon-auto-redis.dev.test
 
 
+--- FILE: overlays/local/pvc-patch.yaml ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: horizon-auto-redis-laravel-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: horizon-auto-redis-laravel-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+
 --- FILE: overlays/local/redis-companion-ingress.yaml ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -549,24 +548,7 @@ spec:
 
 
 --- FILE: overlays/production/config-patch.yaml ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: laravel-config
-data:
-  APP_ENV: production
-  APP_DEBUG: "false"
-  APP_URL: "https://horizon-auto-redis.dev.test"
-  ASSET_URL: "https://horizon-auto-redis.dev.test"
-  DB_CONNECTION: "sqlite"
-  DB_DATABASE: "/var/lib/larakube/database.sqlite"
-  AUTORUN_LARAVEL_MIGRATION_SKIP_DB_CHECK: "true"
-  REDIS_HOST: "redis"
-  CACHE_STORE: "redis"
-  SESSION_DRIVER: "redis"
-  QUEUE_CONNECTION: "redis"
-  APP_MAINTENANCE_DRIVER: "cache"
-  APP_MAINTENANCE_STORE: "redis"
+# Managed by LaraKube CLI (Runtime Injection)
 
 
 --- FILE: overlays/production/deployment-patch.yaml ---

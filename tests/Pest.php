@@ -13,10 +13,12 @@ use App\Data\ConfigData;
 */
 
 use App\Traits\GeneratesProjectInfrastructure;
+use App\Traits\InteractsWithArchitecturalEngine;
 use Laravel\Prompts\Prompt;
+use Symfony\Component\Yaml\Yaml;
 use Tests\TestCase;
 
-uses(TestCase::class)->in('Feature');
+uses(TestCase::class)->in('Feature', 'Unit');
 
 /**
  * Helper to generate manifests and return their content as a string for snapshotting.
@@ -40,7 +42,7 @@ function generateManifests(ConfigData $config): string
     // We need to mock some properties that the trait expects
     $test = new class
     {
-        use GeneratesProjectInfrastructure;
+        use GeneratesProjectInfrastructure, InteractsWithArchitecturalEngine;
 
         // Proxy to protected method
         public function runScaffolding(ConfigData $config)
@@ -105,6 +107,88 @@ function generateManifests(ConfigData $config): string
     exec('rm -rf '.escapeshellarg($tempDir));
 
     return $combined;
+}
+
+/**
+ * Generate manifests and return them as an array of parsed YAML objects.
+ */
+function generateManifestsAsArray(ConfigData $config): array
+{
+    // Bypass all interactive prompts during tests
+    Prompt::fallbackUsing(fn () => true);
+
+    $tempDir = sys_get_temp_dir().'/larakube-array-test-'.uniqid();
+    mkdir($tempDir, 0755, true);
+
+    $config->setPath($tempDir);
+    $config->resolveDependencies();
+
+    $test = new class
+    {
+        use GeneratesProjectInfrastructure, InteractsWithArchitecturalEngine;
+
+        public function runScaffolding(ConfigData $config)
+        {
+            $this->orchestrateProjectScaffolding($config, installFeatures: false, buildImage: false, dryRun: false);
+        }
+
+        public function line($string, $style = null, $verbosity = null) {}
+
+        public function info($string, $verbosity = null) {}
+
+        public function warn($string, $verbosity = null) {}
+
+        public function error($string, $verbosity = null) {}
+
+        public function newLine($count = 1) {}
+
+        public function withSpin($text, $callback)
+        {
+            return $callback();
+        }
+
+        public function laraKubeInfo($text) {}
+    };
+
+    $test->runScaffolding($config);
+
+    $k8sPath = $config->getK8sPath();
+    $manifests = [];
+
+    if (is_dir($k8sPath)) {
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($k8sPath));
+        foreach ($files as $file) {
+            if ($file->isFile() && $file->getExtension() === 'yaml') {
+                $relative = str_replace($tempDir.'/.infrastructure/k8s/', '', $file->getPathname());
+                $content = file_get_contents($file->getPathname());
+
+                if (str_contains($content, '---')) {
+                    $docs = explode('---', $content);
+                    $parsedDocs = [];
+                    foreach ($docs as $doc) {
+                        if (trim($doc)) {
+                            try {
+                                $parsedDocs[] = Yaml::parse($doc);
+                            } catch (Exception) {
+                                // Skip unparseable docs (e.g. comments only)
+                            }
+                        }
+                    }
+                    $manifests[$relative] = $parsedDocs;
+                } else {
+                    try {
+                        $manifests[$relative] = Yaml::parse($content);
+                    } catch (Exception) {
+                        $manifests[$relative] = null;
+                    }
+                }
+            }
+        }
+    }
+
+    exec('rm -rf '.escapeshellarg($tempDir));
+
+    return $manifests;
 }
 
 /*

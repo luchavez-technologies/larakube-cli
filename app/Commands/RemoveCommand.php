@@ -226,8 +226,8 @@ class RemoveCommand extends Command
         $this->withSpin('Updating infrastructure DNA...', function () use ($config) {
             $this->saveProjectConfig($config->getPath(), $config);
             $this->orchestrateProjectScaffolding($config, false, false);
-            if ($config->getId()) {
-                $this->logToConsole($config->getId(), 'remove', 'Architectural components removed');
+            if ($config->id) {
+                $this->logToConsole($config->id, 'remove', 'Architectural components removed');
             }
 
             return true;

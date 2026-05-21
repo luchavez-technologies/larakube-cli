@@ -1,2 +1,1 @@
-{{-- 1. Persistence --}}
-@include('k8s.base.pvc')
+# Redundant - Assets moved to volumes.yaml and Runtime Config

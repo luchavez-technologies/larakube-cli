@@ -13,17 +13,23 @@ RESET="\033[0m"
 cd "$(dirname "$0")"
 
 # Smart Argument Handling
-if [[ "$1" == "--all" ]]; then
-    BUILD_TYPE="--all"
-    VERSION=${2:-"local"}
-elif [[ "$1" == "--local" ]]; then
-    BUILD_TYPE="--local"
-    VERSION=${2:-"local"}
-else
-    # Default to --local build
-    BUILD_TYPE="--local"
-    VERSION=${1:-"local"}
-fi
+NO_INSTALL=false
+BUILD_TYPE="--local"
+VERSION="local"
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --all) BUILD_TYPE="--all"; shift ;;
+        --local) BUILD_TYPE="--local"; shift ;;
+        --no-install) NO_INSTALL=true; shift ;;
+        *) 
+            if [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$1" == "local" ]]; then
+                VERSION=$1
+            fi
+            shift 
+            ;;
+    esac
+done
 
 # Helper to run PHP via Docker
 run_php() {
@@ -58,12 +64,16 @@ case $BUILD_TYPE in
 
         build_standalone $OS $ARCH
         
-        echo "🚚 Installing local binary to /usr/local/bin/larakube (requires sudo)..."
-        sudo mv builds/standalone/$OS/$OS-$ARCH /usr/local/bin/larakube
-        sudo chmod +x /usr/local/bin/larakube
-        
-        echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} is now live on your system!"
-        echo "👉 Verify by running: larakube --version"
+        if [ "$NO_INSTALL" = false ]; then
+            echo "🚚 Installing local binary to /usr/local/bin/larakube (requires sudo)..."
+            sudo mv builds/standalone/$OS/$OS-$ARCH /usr/local/bin/larakube
+            sudo chmod +x /usr/local/bin/larakube
+            echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} is now live on your system!"
+            echo "👉 Verify by running: larakube --version"
+        else
+            echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} built successfully (skipped installation)."
+            echo "👉 Run locally with: ./php builds/larakube.phar"
+        fi
         ;;
 
     "--all")

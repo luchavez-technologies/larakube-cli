@@ -19,6 +19,15 @@ trait GeneratesProjectInfrastructure
         $envFile = $isProduction ? '.env.production' : '.env';
         $envPath = $projectPath.'/'.$envFile;
 
+        // --- 🛡️ SECURITY: Locked File Protection ---
+        // If the user has manually locked this file in .larakube.json, we stay hands-off.
+        if (method_exists($this, 'getProjectConfig')) {
+            $config = $this->getProjectConfig($projectPath);
+            if ($config->isLocked($envFile)) {
+                return;
+            }
+        }
+
         if (! file_exists($envPath)) {
             if ($isProduction && file_exists($projectPath.'/.env')) {
                 copy($projectPath.'/.env', $envPath);
@@ -121,8 +130,10 @@ trait GeneratesProjectInfrastructure
 
     protected function generateK8sManifests(ConfigData $config): void
     {
+        $config->resolveDependencies();
+
         $appName = $config->getName();
-        $k8sPath = $config->getk8sPath();
+        $k8sPath = $config->getK8sPath();
         @mkdir($config->getInfrastructurePath(), 0755, true);
         @mkdir("$k8sPath/base", 0755, true);
         @mkdir("$k8sPath/overlays/local", 0755, true);
@@ -143,10 +154,12 @@ trait GeneratesProjectInfrastructure
             'base/kustomization.yaml',
             'base/laravel.yaml',
             'base/config.yaml',
+            'base/volumes.yaml',
             'overlays/local/kustomization.yaml',
             'overlays/local/infrastructure.yaml',
             'overlays/local/patches.yaml',
             'overlays/local/config-patch.yaml',
+            'overlays/local/pvc-patch.yaml',
             'overlays/production/kustomization.yaml',
             'overlays/production/namespace.yaml',
             'overlays/production/deployment-patch.yaml',
@@ -200,7 +213,7 @@ trait GeneratesProjectInfrastructure
         ];
 
         // Add Features, Databases, Cache, Object Storage
-        $pods = array_filter([...$config->getFeatures(), ...$config->getDatabases(), $config->getCacheDriver(), $config->getObjectStorage(), $config->getScoutDriver()]);
+        $pods = $config->getComponents();
 
         foreach ($pods as $pod) {
             if ($pod instanceof HasKubernetesFiles) {
@@ -241,7 +254,12 @@ trait GeneratesProjectInfrastructure
 
         if ($type === 'resources') {
             if (! str_contains($content, "  - $filename") && ! str_contains($content, "- $filename")) {
+                $oldContent = $content;
                 $content = preg_replace('/resources:\s*\n/', "resources:\n  - $filename\n", $content, 1);
+                if ($oldContent === $content) {
+                    // This means it didn't match.
+                    $this->laraKubeError("Failed to append $filename to $kustomizationFile. Regex mismatch.");
+                }
             }
         } elseif ($type === 'patches') {
             if (! str_contains($content, "path: $filename")) {
@@ -313,7 +331,7 @@ trait GeneratesProjectInfrastructure
      *
      * @throws RandomException
      */
-    protected function orchestrateProjectScaffolding(ConfigData $config, bool $installFeatures = true, bool $buildImage = true, bool $dryRun = false): void
+    protected function orchestrateProjectScaffolding(ConfigData $config, bool $installFeatures = true, bool $buildImage = true, bool $dryRun = false, bool $syncK8s = true, bool $syncEnv = true): void
     {
         if ($dryRun) {
             $this->laraKubeInfo("Architectural Preview for '{$config->getName()}':");
@@ -325,7 +343,7 @@ trait GeneratesProjectInfrastructure
             $globalConfig = file_exists($globalConfigPath) ? json_decode(file_get_contents($globalConfigPath), true) : [];
             $trusted = $globalConfig['trusted_system_uuids'] ?? [];
 
-            if (! in_array($config->getId(), $trusted)) {
+            if (! in_array($config->id, $trusted)) {
                 $shouldTrust = false;
 
                 if ($this->hasOption('force') && $this->option('force')) {
@@ -342,7 +360,7 @@ trait GeneratesProjectInfrastructure
                 }
 
                 if ($shouldTrust) {
-                    $trusted[] = $config->getId();
+                    $trusted[] = $config->id;
                     $globalConfig['trusted_system_uuids'] = array_unique($trusted);
                     @mkdir($_SERVER['HOME'].'/.larakube', 0755, true);
                     file_put_contents($globalConfigPath, json_encode($globalConfig, JSON_PRETTY_PRINT));
@@ -353,6 +371,9 @@ trait GeneratesProjectInfrastructure
                 }
             }
         }
+
+        // 0. Ensure architectural dependencies are resolved
+        $config->resolveDependencies();
 
         // 0. Persist configuration for self-healing
         if ($dryRun) {
@@ -369,37 +390,41 @@ trait GeneratesProjectInfrastructure
         }
 
         // 2. Sync .env (Source of Truth)
-        $envChanges = $config->getAllEnvironmentVariables();
+        if ($syncEnv) {
+            $envChanges = $config->getAllEnvironmentVariables();
 
-        if ($dryRun) {
-            $this->line('  <fg=gray>[.ENV]</> Would sync the following variables to local .env and .env.production:');
-            foreach ($envChanges as $k => $v) {
-                $this->line("         $k=$v");
-            }
-
-            $prodEnvChanges = $config->getAllEnvironmentVariables('production');
-            $this->line('  <fg=gray>[.ENV.PRODUCTION]</> Would sync the following variables ONLY to .env.production:');
-            foreach ($prodEnvChanges as $k => $v) {
-                if ($v !== ($envChanges[$k] ?? null)) {
+            if ($dryRun) {
+                $this->line('  <fg=gray>[.ENV]</> Would sync the following variables to local .env and .env.production:');
+                foreach ($envChanges as $k => $v) {
                     $this->line("         $k=$v");
                 }
+
+                $prodEnvChanges = $config->getAllEnvironmentVariables('production');
+                $this->line('  <fg=gray>[.ENV.PRODUCTION]</> Would sync the following variables ONLY to .env.production:');
+                foreach ($prodEnvChanges as $k => $v) {
+                    if ($v !== ($envChanges[$k] ?? null)) {
+                        $this->line("         $k=$v");
+                    }
+                }
+            } else {
+                $this->syncEnvFile($config->getPath(), $envChanges);
+                // Specifically sync production-only overrides to .env.production
+                $this->syncEnvFile($config->getPath(), $config->getAllEnvironmentVariables('production'), isProduction: true);
             }
-        } else {
-            $this->syncEnvFile($config->getPath(), $envChanges);
-            // Specifically sync production-only overrides to .env.production
-            $this->syncEnvFile($config->getPath(), $config->getAllEnvironmentVariables('production'), isProduction: true);
         }
 
         if (! $dryRun) {
             $this->ensureHttpsCompatibility($config);
-            $config->hardenViteConfig();
+            $this->hardenViteConfig($config);
         }
 
         // 4. Generate Dockerfiles
-        if ($dryRun) {
-            $this->line("  <fg=gray>[FILE]</> Would generate Dockerfile.php ({$config->getServerVariation()?->value}).");
-        } else {
-            $this->generateDockerfiles($config);
+        if ($syncK8s) {
+            if ($dryRun) {
+                $this->line("  <fg=gray>[FILE]</> Would generate Dockerfile.php ({$config->getServerVariation()?->value}).");
+            } else {
+                $this->generateDockerfiles($config);
+            }
         }
 
         // 4. Build the local image if requested
@@ -412,10 +437,12 @@ trait GeneratesProjectInfrastructure
         }
 
         // 5. Generate Manifests
-        if ($dryRun) {
-            $this->line('  <fg=gray>[K8S]</> Would generate base and overlay manifests in .infrastructure/k8s/');
-        } else {
-            $this->generateK8sManifests($config);
+        if ($syncK8s) {
+            if ($dryRun) {
+                $this->line('  <fg=gray>[K8S]</> Would generate base and overlay manifests in .infrastructure/k8s/');
+            } else {
+                $this->generateK8sManifests($config);
+            }
         }
 
         // 6. Install features
@@ -424,13 +451,63 @@ trait GeneratesProjectInfrastructure
                 $featuresList = array_map(fn ($f) => $f->value, $config->getFeatures());
                 $this->line('  <fg=gray>[PHP]</> Would install features: '.implode(', ', $featuresList));
             } else {
-                $config->installComponents();
+                $this->installComponents($config);
             }
         }
 
         if ($dryRun) {
             $this->line('');
             $this->line('  <fg=yellow;options=bold>⚠ No changes have been applied yet.</>');
+        }
+    }
+
+    public function hardenViteConfig(ConfigData $config): void
+    {
+        $projectPath = $config->getPath();
+        $viteFile = file_exists("$projectPath/vite.config.ts") ? "$projectPath/vite.config.ts" : "$projectPath/vite.config.js";
+
+        if (! file_exists($viteFile)) {
+            return;
+        }
+
+        $content = file_get_contents($viteFile);
+        $viteHost = $config->getServiceHost('vite', 'local');
+
+        // Check if the config is already "K8s Ready"
+        $isK8sReady = str_contains($content, "host: '{$viteHost}'") && str_contains($content, 'cors: true');
+
+        // 1. Aggressive Cleanups (ONLY for new scaffolding)
+        if ($config->isScaffolding) {
+            $this->laraKubeInfo('Hardening Vite configuration for Kubernetes...');
+
+            // Strip Wayfinder
+            $content = preg_replace("/import\s+({?\s*wayfinder\s*}?)\s+from\s+['\"].*?wayfinder.*?['\"];?\n?/s", '', $content);
+            $content = preg_replace("/\bwayfinder\s*\((?:[^()]|(?R))*\),?\n?/s", '', $content);
+
+            // Disable Inertia SSR
+            $content = preg_replace('/inertia\(\)/', 'inertia({ ssr: false })', $content);
+        }
+
+        // 2. Network Alignment
+        if (! str_contains($content, 'server: {') || $config->isScaffolding) {
+            $harden = view('k8s.viteserver', ['viteHost' => $viteHost])->render();
+
+            if (! str_contains($content, 'server: {')) {
+                $content = preg_replace('/(defineConfig\s*\(\s*\{)/', "$1\n{$harden}", $content);
+            } else {
+                $content = preg_replace("/origin:\s*['\"].*?\.dev\.test['\"]/", "origin: 'https://{$viteHost}'", $content);
+                $content = preg_replace("/host:\s*['\"].*?\.dev\.test['\"]/", "host: '{$viteHost}'", $content);
+            }
+
+            file_put_contents($viteFile, $content);
+        } elseif (! $isK8sReady) {
+            $harden = view('k8s.viteserver', ['viteHost' => $viteHost])->render();
+            $this->laraKubeNewLine();
+            $this->laraKubeWarn(" ⚠ VITE ADVISORY: Your {$viteFile} looks custom.");
+            $this->laraKubeLine("   To ensure HMR works in Kubernetes, please ensure your 'server' block includes:");
+            $this->laraKubeNewLine();
+            $this->laraKubeLine($harden);
+            $this->laraKubeNewLine();
         }
     }
 }

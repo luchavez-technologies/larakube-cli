@@ -66,32 +66,48 @@ enum CacheDriver: string implements AsDependency, HasArtisanCommands, HasCommand
 
         // Write workload
         if ($viewName = $this->getWorkloadViewName()) {
-            $content = view($viewName, ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/{$this->getWorkloadYamlDestination()}", $content);
+            $dest = $this->getWorkloadYamlDestination();
+            if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                $content = view($viewName, ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$dest}", $content);
+            }
         }
 
         // Write volumes (Memcached doesn't usually need persistent volumes in local dev, same as Redis here)
         if ($viewName = $this->getStorageViewName()) {
+            $storageDest = $this->getStorageYamlDestination();
             $vols = view($viewName, ['config' => $config, 'driver' => $this])->render();
 
             foreach ($config->getEnvironments() as $env) {
-                file_put_contents("$k8sPath/overlays/$env/{$this->getStorageYamlDestination()}", $vols);
+                $dest = "overlays/$env/{$storageDest}";
+                if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                    file_put_contents("$k8sPath/{$dest}", $vols);
+                }
             }
         }
 
         // Write for local only
         if ($viewName = $this->getPatchViewName()) {
-            $patch = view($viewName, ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/{$this->getPatchYamlDestination()}", $patch);
+            $dest = $this->getPatchYamlDestination();
+            if (! $config->isLocked(".infrastructure/k8s/{$dest}")) {
+                $patch = view($viewName, ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$dest}", $patch);
+            }
         }
 
         // Write companion manifests (Local only)
         if ($this->hasCompanion()) {
-            $content = view('k8s.companion.deployment', ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/overlays/local/{$this->value}-companion.yaml", $content);
+            $compDest = "overlays/local/{$this->value}-companion.yaml";
+            if (! $config->isLocked(".infrastructure/k8s/{$compDest}")) {
+                $content = view('k8s.companion.deployment', ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$compDest}", $content);
+            }
 
-            $ingress = view('k8s.companion.ingress', ['config' => $config, 'driver' => $this])->render();
-            file_put_contents("$k8sPath/overlays/local/{$this->value}-companion-ingress.yaml", $ingress);
+            $ingressDest = "overlays/local/{$this->value}-companion-ingress.yaml";
+            if (! $config->isLocked(".infrastructure/k8s/{$ingressDest}")) {
+                $ingress = view('k8s.companion.ingress', ['config' => $config, 'driver' => $this])->render();
+                file_put_contents("$k8sPath/{$ingressDest}", $ingress);
+            }
         }
     }
 
@@ -200,9 +216,17 @@ enum CacheDriver: string implements AsDependency, HasArtisanCommands, HasCommand
 
     public function getEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
+        return array_merge(
+            $this->getPublicEnvironmentVariables($config, $environment),
+            $this->getSecretEnvironmentVariables($config, $environment)
+        );
+    }
+
+    public function getPublicEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
         return match ($this) {
             self::REDIS => [
-                'REDIS_HOST' => 'redis',
+                'REDIS_HOST' => $config ? $config->getInternalFqdn($this, $environment) : 'redis',
                 'CACHE_STORE' => 'redis',
                 'SESSION_DRIVER' => 'redis',
                 'QUEUE_CONNECTION' => 'redis',
@@ -210,7 +234,7 @@ enum CacheDriver: string implements AsDependency, HasArtisanCommands, HasCommand
                 'APP_MAINTENANCE_STORE' => 'redis',
             ],
             self::MEMCACHED => [
-                'MEMCACHED_HOST' => 'memcached',
+                'MEMCACHED_HOST' => $config ? $config->getInternalFqdn($this, $environment) : 'memcached',
                 'CACHE_STORE' => 'memcached',
                 'SESSION_DRIVER' => 'memcached',
             ],
@@ -220,6 +244,11 @@ enum CacheDriver: string implements AsDependency, HasArtisanCommands, HasCommand
             ],
             default => [],
         };
+    }
+
+    public function getSecretEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
+    {
+        return [];
     }
 
     public function getHosts(ConfigData $config, string $environment = 'local'): array

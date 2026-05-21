@@ -15,12 +15,12 @@ spec:
 @if($config->isSystem())
       serviceAccountName: larakube-dashboard
 @endif
-@if($waitCmd = $config->buildWaitForCommand($feature->getDependencies($config)))
+@if($waitCmd = $config->buildWaitForCommand($feature->getDependencies($config), waitForWeb: true))
       initContainers:
         - name: wait-for-deps
           image: {{ $config->getName() }}:latest
           imagePullPolicy: IfNotPresent
-          command: {!! $waitCmd !!}
+          command: ["sh", "-c", "{!! $waitCmd !!}"]
 @endif
       containers:
         - name: php
@@ -28,7 +28,7 @@ spec:
           imagePullPolicy: IfNotPresent
           args: {!! $feature->getK8sDeploymentArgs() !!}
           ports:
-            - containerPort: 8080
+            - containerPort: 8081
           envFrom:
             - configMapRef:
                 name: laravel-config
@@ -71,13 +71,13 @@ spec:
 @endif
           livenessProbe:
             tcpSocket:
-              port: 8080
+              port: 8081
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 10
           readinessProbe:
             tcpSocket:
-              port: 8080
+              port: 8081
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 10
@@ -106,5 +106,5 @@ spec:
   ports:
     - protocol: TCP
       port: 8080
-      targetPort: 8080
+      targetPort: 8081
   type: ClusterIP

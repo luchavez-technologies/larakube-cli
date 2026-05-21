@@ -15,6 +15,7 @@ use App\Enums\StorageDriver;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithDynamicOptions;
 use App\Traits\InteractsWithProjectConfig;
@@ -29,7 +30,7 @@ use function Laravel\Prompts\select;
 
 class AddCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
@@ -352,7 +353,7 @@ class AddCommand extends Command
                     ?? StorageDriver::tryFrom($item)
                     ?? Blueprint::tryFrom($item);
 
-                if ($component instanceof HasArtisanCommands && ! $config->isScaffolding()) {
+                if ($component instanceof HasArtisanCommands && ! $config->isScaffolding) {
                     foreach ($component->getArtisanCommands($config) as $cmd) {
                         $allInstructions[] = "Run: <fg=blue>larakube art $cmd</>";
                     }
@@ -416,8 +417,8 @@ class AddCommand extends Command
 
         $this->withSpin("Adding database '$engine->value'...", function () use ($engine, $config) {
             $engine->updateK8s($config);
-            if ($config->getId()) {
-                $this->logToConsole($config->getId(), 'add', "Added database '{$engine->value}'");
+            if ($config->id) {
+                $this->logToConsole($config->id, 'add', "Added database '{$engine->value}'");
             }
         });
 
@@ -433,7 +434,7 @@ class AddCommand extends Command
         }
 
         $this->saveProjectConfig($projectPath, $config);
-        $config->installComponent($engine);
+        $this->installComponent($config, $engine);
     }
 
     protected function addCacheDriver(CacheDriver $driver, ConfigData $config): void
@@ -462,8 +463,8 @@ class AddCommand extends Command
 
         $this->withSpin("Adding cache driver '{$driver->value}'...", function () use ($driver, $config) {
             $driver->updateK8s($config);
-            if ($config->getId()) {
-                $this->logToConsole($config->getId(), 'add', "Added cache driver '{$driver->value}'");
+            if ($config->id) {
+                $this->logToConsole($config->id, 'add', "Added cache driver '{$driver->value}'");
             }
         });
 
@@ -475,7 +476,7 @@ class AddCommand extends Command
         }
 
         $this->saveProjectConfig($projectPath, $config);
-        $config->installComponent($driver);
+        $this->installComponent($config, $driver);
     }
 
     protected function addStorage(StorageDriver $storage, ConfigData $config): void
@@ -504,8 +505,8 @@ class AddCommand extends Command
 
         $this->withSpin("Adding storage '{$storage->value}'...", function () use ($storage, $config) {
             $storage->updateK8s($config);
-            if ($config->getId()) {
-                $this->logToConsole($config->getId(), 'add', "Added storage '{$storage->value}'");
+            if ($config->id) {
+                $this->logToConsole($config->id, 'add', "Added storage '{$storage->value}'");
             }
         });
 
@@ -517,7 +518,7 @@ class AddCommand extends Command
         }
 
         $this->saveProjectConfig($projectPath, $config);
-        $config->installComponent($storage);
+        $this->installComponent($config, $storage);
     }
 
     protected function addScoutDriver(ScoutDriver $scout, ConfigData $config): void
@@ -577,10 +578,10 @@ class AddCommand extends Command
         $this->orchestrateProjectScaffolding($config, false, false);
         $this->generateDockerfiles($config);
         $this->buildImage($config);
-        $config->installComponent($blueprint);
+        $this->installComponent($config, $blueprint);
 
-        if ($config->getId()) {
-            $this->logToConsole($config->getId(), 'add', "Applied blueprint '{$blueprint->value}'");
+        if ($config->id) {
+            $this->logToConsole($config->id, 'add', "Applied blueprint '{$blueprint->value}'");
         }
     }
 
@@ -603,14 +604,14 @@ class AddCommand extends Command
 
         $this->withSpin("Adding feature '{$feature->value}'...", function () use ($feature, $config) {
             $feature->updateK8s($config);
-            if ($config->getId()) {
-                $this->logToConsole($config->getId(), 'add', "Added feature '{$feature->value}'");
+            if ($config->id) {
+                $this->logToConsole($config->id, 'add', "Added feature '{$feature->value}'");
             }
         });
 
         $config->addFeature($feature);
         $this->saveProjectConfig($projectPath, $config);
-        $config->installComponent($feature);
+        $this->installComponent($config, $feature);
     }
 
     protected function updatePhpVersion(PhpVersion $version, ConfigData $config): void

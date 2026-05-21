@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Console\Application as Artisan;
 use Illuminate\Support\ServiceProvider;
 use Phar;
+use Spatie\LaravelData\LaravelDataServiceProvider;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -36,12 +37,17 @@ class AppServiceProvider extends ServiceProvider
                     'make:mcp-resource',
                     'make:mcp-server',
                     'make:mcp-tool',
+                    'mcp:inspector',
 
                     // Laravel Generators
                     'make:command',
                     'make:factory',
                     'make:model',
                     'make:test',
+
+                    // Spatie Data
+                    'make:data',
+                    'data:cache-structures',
                 ];
 
                 foreach ($toHide as $name) {
@@ -70,6 +76,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->register(LaravelDataServiceProvider::class);
     }
 }

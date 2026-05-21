@@ -20,6 +20,9 @@ class DownCommand extends Command
      */
     protected $signature = 'down {environment=local : The environment to remove}
                             {--force : Skip confirmation}
+                            {--vols : Wipe local volume data (irreversible)}
+                            {--k8s : Wipe local generated Kubernetes manifests}
+                            {--full : Total cleanup: Removes namespace, volumes, and local data}
                             {--dry-run : Show what would be deleted without making any changes}';
 
     /**
@@ -46,14 +49,34 @@ class DownCommand extends Command
 
         if ($this->option('dry-run')) {
             $this->laraKubeInfo("DRY RUN: Project '$appName' cleanup preview:");
-            $this->line("  <fg=gray>[K8S]</> Would delete namespace '$namespace' and ALL internal volumes.");
+            $this->line("  <fg=gray>[K8S-CLUSTER]</> Would delete namespace '$namespace' and cluster-scoped PVs.");
+
+            if ($this->option('k8s') || $this->option('full')) {
+                $this->line('  <fg=yellow>[MANIFESTS]</> Would delete generated K8s files in .infrastructure/k8s/');
+            }
+
+            if ($this->option('vols') || $this->option('full')) {
+                $this->line('  <fg=red>[DATA]</> Would IRREVERSIBLY delete local volume data in .infrastructure/volume_data/');
+            }
+
             $this->laraKubeInfo('DRY RUN COMPLETE: No resources were modified.');
 
             return 0;
         }
 
         if (! $this->option('force')) {
-            $this->laraKubeError('WARNING: This will delete the namespace and all cluster volumes.');
+            $isNuclear = $this->option('vols') || $this->option('full') || $this->option('k8s');
+
+            $warning = 'WARNING: This will delete the namespace and cluster-scoped volumes.';
+            if ($this->option('full')) {
+                $warning = 'WARNING: NUCLEAR OPTION. This will delete the namespace, volumes, manifests, AND ALL DATABASE DATA.';
+            } elseif ($this->option('vols')) {
+                $warning = 'WARNING: This will delete the namespace AND ALL LOCAL DATABASE DATA.';
+            } elseif ($this->option('k8s')) {
+                $warning = 'WARNING: This will delete the namespace AND ALL LOCAL GENERATED MANIFESTS.';
+            }
+
+            $this->laraKubeError($warning);
             $confirm = text(
                 label: "To confirm, please type the project name '$appName':",
                 required: true
@@ -66,13 +89,38 @@ class DownCommand extends Command
             }
         }
 
-        $this->laraKubeInfo("Removing namespace '$namespace'...");
-        passthru("kubectl delete namespace $namespace");
+        // 1. Cluster Cleanup
+        $this->laraKubeInfo("Removing namespace '$namespace' (this will wipe ConfigMaps and Secrets)...");
+        passthru("kubectl delete namespace $namespace 2>/dev/null");
 
         $this->laraKubeInfo('Cleaning up cluster-scoped PersistentVolumes...');
-        passthru("kubectl delete pv -l larakube-project=$appName");
+        passthru("kubectl delete pv -l larakube-project=$appName 2>/dev/null");
 
-        // Give the local storage provisioner a moment to actually wipe the host files
+        // 2. Manifest Cleanup (Local)
+        if ($this->option('k8s') || $this->option('full')) {
+            $this->withSpin('Wiping local generated manifests...', function () use ($projectPath) {
+                $k8sPath = $projectPath.'/.infrastructure/k8s';
+                if (is_dir($k8sPath)) {
+                    exec('rm -rf '.escapeshellarg($k8sPath));
+                }
+
+                return true;
+            });
+        }
+
+        // 3. Volume Cleanup (Local)
+        if ($this->option('vols') || $this->option('full')) {
+            $this->withSpin('Wiping local volume data...', function () use ($projectPath) {
+                $volumePath = $projectPath.'/.infrastructure/volume_data';
+                if (is_dir($volumePath)) {
+                    exec('rm -rf '.escapeshellarg($volumePath).'/*');
+                }
+
+                return true;
+            });
+        }
+
+        // 4. Cool-down
         $this->withSpin('Ensuring cluster-native volumes are wiped...', function () {
             sleep(5);
 

@@ -1,6 +1,15 @@
 <?php
 
 use App\Data\ConfigData;
+use App\Traits\GeneratesProjectInfrastructure;
+use App\Traits\LaraKubeOutput;
+
+class ViteHardenHelper
+{
+    use GeneratesProjectInfrastructure, LaraKubeOutput;
+
+    public function laraKubeInfo(string $message): void {}
+}
 
 test('Vite Hardening: Strips Wayfinder and injects K8s config', function () {
     $tempDir = sys_get_temp_dir().'/vite-harden-test-'.uniqid();
@@ -28,7 +37,7 @@ TS;
     $config->setPath($tempDir);
     $config->setIsScaffolding(true);
 
-    $config->hardenViteConfig();
+    (new ViteHardenHelper)->hardenViteConfig($config);
 
     $result = file_get_contents($tempDir.'/vite.config.ts');
 
@@ -64,7 +73,7 @@ TS;
     $config->setPath($tempDir);
     $config->setIsScaffolding(true);
 
-    $config->hardenViteConfig();
+    (new ViteHardenHelper)->hardenViteConfig($config);
 
     $result = file_get_contents($tempDir.'/vite.config.ts');
 
