@@ -2,75 +2,84 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
+    branches:
+      - main
+    tags:
+      - 'v*'
   pull_request:
-    branches: [ "main" ]
-
-permissions:
-  contents: write
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    branches:
+      - main
 
 jobs:
-  test-and-build:
-    name: Test and Build
+  test:
+    name: Run Tests
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup PHP 8.4
-      uses: shivammathur/setup-php@v2
-      with:
-        php-version: '8.4'
-        tools: composer:v2
-        extensions: pcntl, posix, mbstring, openssl, phar, dom, xml, libxml
-        ini-values: phar.readonly=0
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl
+          coverage: none
 
-    - name: Install Dependencies
-      run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
-    - name: Run Pest Tests
-      run: ./vendor/bin/pest
+      - name: Run Tests
+        run: ./vendor/bin/pest
 
-    - name: Build All Platforms
-      run: ./build --all ${{ github.sha }}
+  publish:
+    name: Build and Publish
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
-    - name: Organize Artifacts
-      run: |
-        mkdir -p artifacts
-        cp builds/standalone/linux/linux-x64 artifacts/larakube-linux-x64
-        cp builds/standalone/linux/linux-arm artifacts/larakube-linux-arm
-        cp builds/standalone/mac/mac-x64 artifacts/larakube-mac-x64
-        cp builds/standalone/mac/mac-arm artifacts/larakube-mac-arm
-        chmod +x artifacts/*
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Upload Binaries to Release
-      uses: softprops/action-gh-release@v2
-      if: github.event_name != 'pull_request'
-      with:
-        files: artifacts/*
-        tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'canary' }}
-        name: ${{ github.ref_type == 'tag' && github.ref_name || 'Canary (Main Branch)' }}
-        body: |
-          LaraKube Standalone Binaries
-          Build Date: ${{ github.event.head_commit.timestamp }}
-          Commit: ${{ github.sha }}
-          
-          Download the binary for your platform and move it to `/usr/local/bin/larakube`.
-        draft: false
-        prerelease: ${{ github.ref_type != 'tag' }}
-        make_latest: ${{ github.ref_type == 'tag' && 'true' || 'false' }}
-        generate_release_notes: true
-        overwrite_files: true
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, phar
+          ini-values: phar.readonly=0
 
-    - name: Upload Artifacts (Workflow Run)
-      uses: actions/upload-artifact@v4
-      with:
-        name: larakube-binaries
-        path: artifacts/
-        if-no-files-found: error
-        retention-days: 7
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Build Standalone Binaries
+        run: ./build --all ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+
+      - name: Organize Artifacts
+        run: |
+          mkdir -p artifacts
+          cp builds/standalone/linux/linux-x64 artifacts/larakube-linux-x64
+          cp builds/standalone/linux/linux-arm artifacts/larakube-linux-arm
+          cp builds/standalone/mac/mac-x64 artifacts/larakube-mac-x64
+          cp builds/standalone/mac/mac-arm artifacts/larakube-mac-arm
+          chmod +x artifacts/*
+
+      - name: Upload Binaries to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'canary' }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || 'Canary (Main Branch)' }}
+          body: |
+            LaraKube Standalone Binaries
+            Build Date: ${{ github.event.head_commit.timestamp }}
+            Commit: ${{ github.sha }}
+            Version: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+            
+            Download the binary for your platform and move it to `/usr/local/bin/larakube`.
+          draft: false
+          prerelease: ${{ github.ref_type != 'tag' }}
+          make_latest: ${{ github.ref_type == 'tag' && 'true' || 'false' }}
+          generate_release_notes: true
+          overwrite_files: true
