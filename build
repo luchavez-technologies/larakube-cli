@@ -23,7 +23,8 @@ while [[ "$#" -gt 0 ]]; do
         --local) BUILD_TYPE="--local"; shift ;;
         --no-install) NO_INSTALL=true; shift ;;
         *) 
-            if [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$1" == "local" ]]; then
+            # If it doesn't start with --, assume it's the version
+            if [[ ! "$1" =~ ^-- ]]; then
                 VERSION=$1
             fi
             shift 
