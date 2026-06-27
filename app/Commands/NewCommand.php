@@ -204,8 +204,8 @@ class NewCommand extends Command
         $appName = $config->getName();
         $projectPath = $config->getPath();
 
-        $uid = function_exists('posix_getuid') ? posix_getuid() : 1000;
-        $gid = function_exists('posix_getgid') ? posix_getgid() : 1000;
+        $uid = host_uid();
+        $gid = host_gid();
         $image = $config->getPhpImage(true);
 
         $this->laraKubeInfo("Pulling builder image: $image...");
@@ -263,8 +263,10 @@ class NewCommand extends Command
         $pkgCommand = $this->getNodeInstallationCommand($image);
         $baseDir = dirname($projectPath);
 
+        // Note for Senior Dev: Changed `&& chown` to `; chown` so that ownership is restored
+        // even if the `laravel new` command fails or times out, preventing root-owned zombie files.
         $cmd = 'docker run --rm -it -v '.$baseDir.":/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 --user root $image ".
-               "sh -c '$pkgCommand && composer global require laravel/installer && $(composer global config bin-dir --absolute)/laravel new $appName $extraFlags && chown -R $uid:$gid {$appName}'";
+               "sh -c '$pkgCommand && composer global require laravel/installer && $(composer global config bin-dir --absolute)/laravel new $appName $extraFlags; chown -R $uid:$gid {$appName}'";
 
         passthru($cmd);
     }

@@ -82,8 +82,8 @@ trait InteractsWithDocker
      */
     protected function buildImage(ConfigData $config): void
     {
-        $uid = function_exists('posix_getuid') ? posix_getuid() : 1000;
-        $gid = function_exists('posix_getgid') ? posix_getgid() : 1000;
+        $uid = host_uid();
+        $gid = host_gid();
         $appName = $config->getName();
         $path = $config->getPath();
 
@@ -303,8 +303,8 @@ trait InteractsWithDocker
      */
     protected function chownToHostUser(string $path): void
     {
-        $uid = function_exists('posix_getuid') ? posix_getuid() : 1000;
-        $gid = function_exists('posix_getgid') ? posix_getgid() : 1000;
+        $uid = host_uid();
+        $gid = host_gid();
 
         $appName = basename($path);
         $image = "$appName:local";

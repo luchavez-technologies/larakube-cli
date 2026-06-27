@@ -624,6 +624,11 @@ class ConfigData extends Data
         return $this->scoutDriver;
     }
 
+    public function hasScoutDriver(): bool
+    {
+        return ! is_null($this->scoutDriver);
+    }
+
     public function getScoutDrivers(): array
     {
         return array_unique(array_filter([
@@ -637,6 +642,11 @@ class ConfigData extends Data
         return $this->objectStorage;
     }
 
+    public function hasObjectStorage(): bool
+    {
+        return ! is_null($this->objectStorage);
+    }
+
     public function getObjectStorages(): array
     {
         return array_unique(array_filter([
@@ -648,6 +658,11 @@ class ConfigData extends Data
     public function getFrontend(): ?FrontendStack
     {
         return $this->frontend;
+    }
+
+    public function hasFrontend(): bool
+    {
+        return ! is_null($this->frontend);
     }
 
     /**
@@ -680,6 +695,11 @@ class ConfigData extends Data
         return $this->serverVariation;
     }
 
+    public function hasServerVariation(): bool
+    {
+        return ! is_null($this->serverVariation);
+    }
+
     public function getOs(): OperatingSystem
     {
         return $this->os ?? OperatingSystem::ALPINE;
@@ -693,6 +713,11 @@ class ConfigData extends Data
     public function getPhpVersion(): PhpVersion
     {
         return $this->phpVersion ?? PhpVersion::PHP_8_5;
+    }
+
+    public function hasPhpVersion(): bool
+    {
+        return ! is_null($this->phpVersion);
     }
 
     /**
@@ -730,6 +755,11 @@ class ConfigData extends Data
         return $this->packageManager ?? PackageManager::NPM;
     }
 
+    public function hasPackageManager(): bool
+    {
+        return ! is_null($this->packageManager);
+    }
+
     /**
      * Resolved web hostname for an environment — the env's configured `web`
      * host, or the local TLD fallback (this project's own override, or the
@@ -750,11 +780,6 @@ class ConfigData extends Data
     public function hasOs(): bool
     {
         return ! is_null($this->os);
-    }
-
-    public function hasPhpVersion(): bool
-    {
-        return ! is_null($this->phpVersion);
     }
 
     public function hasStrategy(): bool
