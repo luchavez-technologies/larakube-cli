@@ -22,38 +22,109 @@ class SetupCommand extends Command
     public function handle(): int
     {
         $this->renderHeader();
-        $this->laraKubeInfo('LaraKube Environment Setup');
+        $this->renderSetupHeader();
 
         if (! $this->isLinux()) {
-            $this->laraKubeError('larakube setup only runs on Linux and WSL2.');
-            $this->newLine();
-            $this->line('  <fg=gray>On macOS, use OrbStack or Docker Desktop\'s built-in Kubernetes.</>');
-            $this->line('  <fg=gray>On Windows, open your WSL2 terminal and run this command there.</>');
+            $this->renderError('larakube setup only runs on Linux and WSL2.');
+            $this->laraKubeLine('On macOS, use OrbStack or Docker Desktop\'s built-in Kubernetes.');
+            $this->laraKubeLine('On Windows, open your WSL2 terminal and run this command there.');
 
             return 1;
         }
 
         // Step 1 — Docker Engine
+        $this->renderStep('Container Runtime', 'Docker Engine for building images');
         if (! $this->ensureDockerInstalled()) {
             return 1;
         }
-
-        $this->newLine();
+        $this->renderDivider();
 
         // Step 2 — k3s cluster (delegates entirely to cluster:setup)
+        $this->renderStep('Kubernetes Cluster', 'Lightweight k3s distribution');
         $result = $this->call('cluster:setup');
 
         if ($result !== 0) {
             return $result;
         }
-
-        $this->newLine();
+        $this->renderDivider();
 
         // Step 3 — k9s (optional terminal UI for browsing the cluster)
+        $this->renderStep('Optional Tools', 'k9s terminal UI for cluster browsing');
         $this->offerK9s();
+        $this->renderDivider();
+
+        // ── Done ──
+        $this->renderCompletion();
 
         return 0;
     }
+
+    // ─────────────────────────────────────────────
+    //   Aesthetics
+    // ─────────────────────────────────────────────
+
+    protected function renderSetupHeader(): void
+    {
+        $this->line('');
+        $this->line('  <fg=blue;options=bold>Environment Setup</>');
+        $this->line('  <fg=gray>One-time configuration for your local development environment</>');
+        $this->line('');
+    }
+
+    protected function renderStep(string $title, string $subtitle): void
+    {
+        $this->line('');
+        $this->line("  <fg=white;options=bold>  > {$title}</>");
+        $this->line("  <fg=gray>  {$subtitle}</>");
+        $this->line('');
+    }
+
+    protected function renderDivider(): void
+    {
+        $this->line('  <fg=gray>'.str_repeat('─', 50).'</>');
+    }
+
+    protected function renderInfo(string $message): void
+    {
+        $this->line("  <fg=cyan;options=bold>[i]</>  <fg=white>{$message}</>");
+    }
+
+    protected function renderSuccess(string $message): void
+    {
+        $this->line("  <fg=green;options=bold>[+]</>  <fg=green>{$message}</>");
+    }
+
+    protected function renderWarn(string $message): void
+    {
+        $this->line("  <fg=yellow;options=bold>[!]</>  <fg=yellow>{$message}</>");
+    }
+
+    protected function renderError(string $message): void
+    {
+        $this->line("  <fg=red;options=bold>[x]</>  <fg=red>{$message}</>");
+    }
+
+    protected function renderCompletion(): void
+    {
+        $this->line('');
+        $this->line('  <fg=gray>'.str_repeat('─', 53).'</>');
+        $this->line('');
+        $this->line('  <fg=green;options=bold>[+]  LaraKube environment is ready!</>');
+        $this->line('');
+        $this->line('  <fg=gray>   ┌─────────────────────────────────────────────────────┐</>');
+        $this->line('  <fg=gray>   │  Quick Start                                        │</>');
+        $this->line('  <fg=gray>   │                                                     │</>');
+        $this->line('  <fg=gray>   │</>  <fg=cyan;options=bold>larakube up</>      Start your project                <fg=gray>│</>');
+        $this->line('  <fg=gray>   │</>  <fg=cyan;options=bold>larakube new</>     Scaffold a new Laravel project    <fg=gray>│</>');
+        $this->line('  <fg=gray>   │</>  <fg=cyan;options=bold>k9s</>             Browse your cluster                <fg=gray>│</>');
+        $this->line('  <fg=gray>   │                                                     │</>');
+        $this->line('  <fg=gray>   └─────────────────────────────────────────────────────┘</>');
+        $this->line('');
+    }
+
+    // ─────────────────────────────────────────────
+    //   Docker
+    // ─────────────────────────────────────────────
 
     protected function ensureDockerInstalled(): bool
     {
@@ -66,11 +137,11 @@ class SetupCommand extends Command
                 $os = trim((string) shell_exec('docker info --format \'{{.OperatingSystem}}\' 2>/dev/null'));
 
                 if (str_contains($os, 'Docker Desktop')) {
-                    $this->laraKubeWarn('Docker Desktop detected.');
+                    $this->renderWarn('Docker Desktop detected.');
                     $this->line('  LaraKube works with it, but Docker Engine installed directly in WSL2 is more reliable.');
                     $this->line('  See: <fg=cyan>https://cli.larakube.app/onboarding/operating-systems/windows</>');
                 } else {
-                    $this->laraKubeInfo('Docker Engine already installed and running.');
+                    $this->renderSuccess('Docker Engine already installed and running.');
                 }
 
                 return true;
@@ -81,16 +152,16 @@ class SetupCommand extends Command
             $hasDockerService = trim((string) shell_exec('systemctl cat docker 2>/dev/null')) !== '';
 
             if (! $hasDockerService) {
-                $this->laraKubeWarn('Docker Desktop is installed but not running.');
-                $this->line('  Docker Desktop\'s daemon cannot be started from WSL2.');
-                $this->newLine();
-                $this->line('  You have two options:');
+                $this->renderWarn('Docker Desktop is installed but not running.');
+                $this->laraKubeLine('Docker Desktop\'s daemon cannot be started from WSL2.');
+                $this->laraKubeNewLine();
+                $this->laraKubeLine('You have two options:');
                 $this->line('  <fg=yellow>A)</> Start Docker Desktop from Windows and re-run <fg=cyan>larakube setup</>.');
                 $this->line('  <fg=yellow>B)</> Install Docker Engine natively in WSL2 (works even when Docker Desktop is off).');
-                $this->newLine();
+                $this->laraKubeNewLine();
 
                 if (! confirm('Install Docker Engine natively now?', default: true)) {
-                    $this->line('  <fg=gray>Start Docker Desktop from Windows, then re-run larakube setup.</>');
+                    $this->laraKubeLine('Start Docker Desktop from Windows, then re-run larakube setup.');
 
                     return false;
                 }
@@ -98,16 +169,16 @@ class SetupCommand extends Command
                 return $this->installDockerEngine();
             }
 
-            $this->laraKubeInfo('Docker Engine found — starting the service...');
+            $this->renderInfo('Docker Engine found — starting the service...');
             passthru('sudo systemctl start docker 2>/dev/null', $startCode);
 
             if ($startCode !== 0) {
-                $this->laraKubeError('Could not start Docker. Run: sudo systemctl start docker');
+                $this->renderError('Could not start Docker. Run: sudo systemctl start docker');
 
                 return false;
             }
 
-            $this->laraKubeInfo('✅ Docker Engine running.');
+            $this->renderSuccess('Docker Engine running.');
 
             return true;
         }
@@ -122,14 +193,14 @@ class SetupCommand extends Command
         $alreadyInstalled = trim((string) shell_exec('dpkg -l docker-ce 2>/dev/null | grep -c "^ii"')) === '1';
 
         if ($alreadyInstalled) {
-            $this->laraKubeInfo('Docker Engine package found — enabling service...');
+            $this->renderInfo('Docker Engine package found — enabling service...');
             shell_exec('sudo systemctl enable --now docker 2>/dev/null');
-            $this->laraKubeInfo('✅ Docker Engine running.');
+            $this->renderSuccess('Docker Engine running.');
 
             return true;
         }
 
-        $this->laraKubeInfo('Installing Docker Engine...');
+        $this->renderInfo('Installing Docker Engine...');
         // The get.docker.com script warns about an existing docker CLI (Docker Desktop)
         // and about running inside WSL — both warnings are expected here and safe to
         // ignore. Each warning pauses for 20s before continuing automatically.
@@ -138,7 +209,7 @@ class SetupCommand extends Command
         passthru('curl -fsSL https://get.docker.com | sh', $installCode);
 
         if ($installCode !== 0) {
-            $this->laraKubeError('Docker Engine installation failed. See output above.');
+            $this->renderError('Docker Engine installation failed. See output above.');
 
             return false;
         }
@@ -150,9 +221,9 @@ class SetupCommand extends Command
 
         shell_exec('sudo systemctl enable --now docker 2>/dev/null');
 
-        $this->laraKubeInfo('✅ Docker Engine installed.');
-        $this->line('  You\'ve been added to the <fg=cyan>docker</> group, but your current shell session');
-        $this->line('  won\'t pick it up until you run: <fg=cyan>newgrp docker</> (or open a new terminal).');
+        $this->renderSuccess('Docker Engine installed.');
+        $this->line('  You\'ve been added to the <fg=cyan;options=bold>docker</> group, but your current shell session');
+        $this->line('  won\'t pick it up until you run: <fg=cyan;options=bold>newgrp docker</> (or open a new terminal).');
 
         return true;
     }
@@ -160,15 +231,15 @@ class SetupCommand extends Command
     protected function offerK9s(): void
     {
         if ($this->resolveK9sBin() !== null) {
-            $this->laraKubeInfo('k9s already installed.');
+            $this->renderSuccess('k9s already installed.');
 
             return;
         }
 
-        $this->line('  <fg=yellow>💡 Optional:</> <fg=cyan>k9s</> is a terminal UI for browsing your cluster.');
+        $this->renderInfo('k9s is a terminal UI for browsing your Kubernetes cluster.');
 
         if (! confirm('Install k9s now?', default: true)) {
-            $this->line('  <fg=gray>Skipped — install it later with: larakube k9s</>');
+            $this->line('  Skipped — install it later with: <fg=cyan;options=bold>larakube k9s</>');
 
             return;
         }
