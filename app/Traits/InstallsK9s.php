@@ -27,9 +27,9 @@ trait InstallsK9s
      * - macOS: Homebrew
      * - Linux/WSL2: GitHub release tarball into ~/.larakube/bin (no sudo, no snap)
      */
-    protected function installK9s(): bool
+    protected function installK9s(?string $version = null): bool
     {
-        $version = 'v0.32.5';
+        $version ??= 'v0.32.5';
 
         if ($this->isDarwin()) {
             $brew = trim((string) shell_exec('command -v brew 2>/dev/null'));

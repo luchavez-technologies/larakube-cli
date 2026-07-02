@@ -58,12 +58,12 @@ trait LaraKubeOutput
         }
 
         $lines = [
-            ' ██╗      █████╗ ██████╗  █████╗ ██╗  ██╗██╗   ██╗██████╗ ███████╗',
-            ' ██║     ██╔══██╗██╔══██╗██╔══██╗██║ ██╔╝██║   ██║██╔══██╗██╔════╝',
-            ' ██║     ███████║██████╔╝███████║█████╔╝ ██║   ██║██████╔╝█████╗  ',
-            ' ██║     ██╔══██║██╔══██╗██╔══██║██╔═██╗ ██║   ██║██╔══██╗██╔══╝  ',
-            ' ███████╗██║  ██║██║  ██║██║  ██║██║  ██╗╚██████╔╝██████╔╝███████╗',
-            ' ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝',
+            ' ██╗      █████╗ ██████╗  █████╗ ██╗  ██╗██╗   ██╗██████╗ ███████╗ ',
+            ' ██║     ██╔══██╗██╔══██╗██╔══██╗██║ ██╔╝██║   ██║██╔══██╗██╔════╝ ',
+            ' ██║     ███████║██████╔╝███████║█████╔╝ ██║   ██║██████╔╝█████╗   ',
+            ' ██║     ██╔══██║██╔══██╗██╔══██║██╔═██╗ ██║   ██║██╔══██╗██╔══╝   ',
+            ' ███████╗██║  ██║██║  ██║██║  ██║██║  ██╗╚██████╔╝██████╔╝███████╗ ',
+            ' ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝ ',
         ];
 
         $gradients = [
@@ -77,18 +77,13 @@ trait LaraKubeOutput
         $gradient = $gradients[$themeName];
 
         echo "\n";
+        echo "  \e[38;5;{$gradient[0]}m╔═══════════════════════════════════════════════════════════════════╗\e[0m\n";
         foreach ($lines as $index => $line) {
             $color = $gradient[$index] ?? 240;
-            echo "  \e[38;5;{$color}m{$line}\e[0m\n";
+            echo "  \e[38;5;{$color}m║{$line}║\e[0m\n";
         }
-
-        render(<<<'HTML'
-            <div class="mx-2 mt-2">
-                <div class="px-2 py-0.5 bg-blue-900 text-blue-200 font-bold uppercase w-66 justify-center">
-                    The Professional Kubernetes Orchestrator for Laravel
-                </div>
-            </div>
-        HTML);
+        echo "  \e[38;5;{$gradient[0]}m╚═══════════════════════════════════════════════════════════════════╝\e[0m\n";
+        echo "  \e[2m  Kubernetes for Laravel — from Development to Deployment\e[0m\n";
 
         State::$headerRendered = true;
     }
@@ -266,5 +261,153 @@ trait LaraKubeOutput
     protected function withSpin(string $message, callable $callback): mixed
     {
         return $this->task($message, $callback);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  Inv3ntor01's Style output helpers
+    //  Methods that mimic the aesthetic of the standalone installer
+    //  (box-drawing banner, info/success/warn/error icons, etc.)
+    // ─────────────────────────────────────────────────────────────
+
+    protected function shInfo(string $message): void
+    {
+        $this->line('  <fg=cyan>●</>  '.$this->maskSecrets($message));
+    }
+
+    protected function shSuccess(string $message): void
+    {
+        $this->line('  <fg=green>✔</>  '.$this->maskSecrets($message));
+    }
+
+    protected function shWarn(string $message): void
+    {
+        $this->line('  <fg=yellow>⚠</>  '.$this->maskSecrets($message));
+    }
+
+    protected function shError(string $message): void
+    {
+        $this->line('  <fg=red>✘</>  '.$this->maskSecrets($message));
+    }
+
+    protected function shStep(string $title, string $description): void
+    {
+        $this->newLine();
+        $this->line('  <fg=white;options=bold>> '.$title.'</>');
+        $this->line('  <fg=gray>'.$description.'</>');
+    }
+
+    protected function shHeader(string $title): void
+    {
+        $this->newLine();
+        $this->line('  <fg=blue>+-- '.$title.'</>');
+    }
+
+    protected function shFooter(): void
+    {
+        $this->line('  <fg=blue>+------------------------------------------------------</>');
+    }
+
+    protected function shDivider(): void
+    {
+        $this->line('  <fg=gray>'.str_repeat('-', 56).'</>');
+    }
+
+    /**
+     * Run a command in the background with nohup/poll, capturing exit code.
+     * Shows an info message before starting, then waits silently.
+     * The caller must check the return code and show success/failure.
+     */
+    protected function shRunSilent(string $label, string $shellCommand, ?string &$log = null): int
+    {
+        $log ??= tempnam(sys_get_temp_dir(), 'larakube-progress');
+        $exitFile = tempnam(sys_get_temp_dir(), 'larakube-exit');
+
+        $this->line("  <fg=cyan>●</>  {$label}...");
+
+        $pid = trim((string) shell_exec(
+            $shellCommand.' >'.escapeshellarg($log).' 2>&1; echo $? >'.escapeshellarg($exitFile).' & disown; echo $!',
+        ));
+
+        if (! is_numeric($pid)) {
+            return -1;
+        }
+
+        $start = time();
+        while (true) {
+            if (file_exists($exitFile) && filesize($exitFile) > 0) {
+                break;
+            }
+            $alive = trim((string) shell_exec('kill -0 '.((int) $pid).' 2>/dev/null && echo 1 || echo 0'));
+            if ($alive !== '1') {
+                break;
+            }
+            if (time() - $start > 600) {
+                return -1;
+            }
+            usleep(500_000);
+        }
+
+        usleep(100_000);
+
+        $code = file_exists($exitFile) ? (int) trim((string) file_get_contents($exitFile)) : -1;
+        @unlink($exitFile);
+
+        return $code;
+    }
+
+    /**
+     * Run a command with live output streamed to the terminal.
+     * Shows an info message before starting and streams all output in real time.
+     * Returns the exit code.
+     */
+    protected function shRunPassthru(string $label, string $shellCommand): int
+    {
+        $this->line("  <fg=cyan>●</>  {$label}...");
+        passthru($shellCommand, $exitCode);
+
+        return $exitCode;
+    }
+
+    /**
+     * Execute a checklist of shell commands, marking each ☐ → ✅ as it completes.
+     * On failure the offending step is marked ✘ and the method returns false.
+     * The command's stdout/stderr is hidden (redirected to /dev/null).
+     *
+     * @param  array<array{label: string, command: string}>  $steps
+     */
+    protected function shRunSteps(string $title, array $steps): bool
+    {
+        $this->newLine();
+        echo "  \e[36m●\e[0m  {$title}\n";
+        $n = count($steps);
+
+        for ($i = 0; $i < $n; $i++) {
+            echo "  \e[90m☐\e[0m  {$steps[$i]['label']}\n";
+        }
+
+        for ($i = 0; $i < $n; $i++) {
+            $offset = $n - $i;
+
+            echo "\e[{$offset}A\r\e[0K  \e[36m●\e[0m  {$steps[$i]['label']}\n";
+            echo "\e[".($offset - 1).'B';
+            flush();
+
+            exec($steps[$i]['command'].' 2>/dev/null', $_, $code);
+
+            if ($code !== 0) {
+                echo "\e[{$offset}A\r\e[0K  \e[31m✘\e[0m  {$steps[$i]['label']}\n";
+                echo "\e[".($offset - 1).'B';
+                $this->newLine();
+
+                return false;
+            }
+
+            echo "\e[{$offset}A\r\e[0K  \e[32m✅\e[0m  {$steps[$i]['label']}\n";
+            echo "\e[".($offset - 1).'B';
+        }
+
+        $this->newLine();
+
+        return true;
     }
 }
