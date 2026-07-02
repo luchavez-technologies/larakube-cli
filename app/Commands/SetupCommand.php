@@ -243,7 +243,7 @@ class SetupCommand extends Command
         $this->newLine();
         $user = getenv('USER') ?: get_current_user();
         $this->shWarn('Docker requires '.$user.' to be in the "docker" group to run containers without sudo.');
-        
+
         if ($user && confirm('Add "'.$user.'" to the docker group now? (sudo usermod -aG docker '.$user.')', default: true)) {
             shell_exec('sudo usermod -aG docker '.escapeshellarg((string) $user).' 2>/dev/null');
             $this->line('  <fg=gray>Group added. To activate it in your current shell, run:</>');
