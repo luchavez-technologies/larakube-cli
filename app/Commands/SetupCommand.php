@@ -10,6 +10,8 @@ use Exception;
 use Illuminate\Support\Facades\Http;
 
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\password;
 
 use LaravelZero\Framework\Commands\Command;
 
@@ -35,7 +37,7 @@ class SetupCommand extends Command
     public function handle(): int
     {
         $this->renderHeader();
-        $this->shHeader('LaraKube Environment Setup');
+        note('LaraKube Environment Setup');
 
         if (! $this->isLinux()) {
             $this->shError('larakube setup only runs on Linux and WSL2.');
@@ -53,7 +55,7 @@ class SetupCommand extends Command
         }
 
         $this->newLine();
-        $this->shFooter();
+        note('Step 1 complete — Docker Engine is ready.');
 
         // Step 2 — k3s cluster (delegates entirely to cluster:setup)
         $result = $this->call('cluster:setup');
@@ -104,11 +106,11 @@ class SetupCommand extends Command
                 $os = trim((string) shell_exec('docker info --format \'{{.OperatingSystem}}\' 2>/dev/null'));
 
                 if (str_contains($os, 'Docker Desktop')) {
-                    $this->shWarn('Docker Desktop detected.');
+                    $this->laraKubeWarn('Docker Desktop detected.');
                     $this->line('  LaraKube works with it, but Docker Engine installed directly in WSL2 is more reliable.');
                     $this->line('  See: <fg=cyan>https://cli.larakube.app/onboarding/operating-systems/windows</>');
                 } else {
-                    $this->shSuccess('Docker Engine already installed and running.');
+                    $this->laraKubeInfo('Docker Engine already installed and running.');
                 }
 
                 return true;
@@ -119,7 +121,7 @@ class SetupCommand extends Command
             $hasDockerService = trim((string) shell_exec('systemctl cat docker 2>/dev/null')) !== '';
 
             if (! $hasDockerService) {
-                $this->shWarn('Docker Desktop is installed but not running.');
+                $this->laraKubeWarn('Docker Desktop is installed but not running.');
                 $this->line('  Docker Desktop\'s daemon cannot be started from WSL2.');
                 $this->newLine();
                 $this->line('  You have two options:');
@@ -127,7 +129,7 @@ class SetupCommand extends Command
                 $this->line('  <fg=yellow>B)</> Install Docker Engine natively in WSL2 (works even when Docker Desktop is off).');
                 $this->newLine();
 
-                if (! confirm('Install Docker Engine natively now?', default: true)) {
+                if (! confirm(label: 'Install Docker Engine natively now?', default: true)) {
                     $this->line('  <fg=gray>Start Docker Desktop from Windows, then re-run larakube setup.</>');
 
                     return false;
@@ -136,16 +138,16 @@ class SetupCommand extends Command
                 return $this->installDockerEngine();
             }
 
-            $this->shInfo('Docker Engine found — starting the service...');
+            $this->laraKubeInfo('Docker Engine found — starting the service...');
             passthru('sudo systemctl start docker 2>/dev/null', $startCode);
 
             if ($startCode !== 0) {
-                $this->shError('Could not start Docker. Run: sudo systemctl start docker');
+                $this->laraKubeError('Could not start Docker. Run: sudo systemctl start docker');
 
                 return false;
             }
 
-            $this->shSuccess('Docker Engine running.');
+            $this->laraKubeInfo('Docker Engine running.');
 
             return true;
         }
@@ -155,105 +157,111 @@ class SetupCommand extends Command
 
     protected function installDockerEngine(): bool
     {
-        // If the docker-ce package is already installed (e.g. a prior run that left
-        // the service stopped), skip the installer and just enable the service.
-        $alreadyInstalled = trim((string) shell_exec('dpkg -l docker-ce 2>/dev/null | grep -c "^ii"')) === '1';
+        // If the docker binary already exists, try enabling the service
+        $hasDocker = trim((string) shell_exec('command -v docker 2>/dev/null')) !== '';
 
-        if ($alreadyInstalled) {
-            $this->shInfo('Docker Engine package found — enabling service...');
+        if ($hasDocker) {
+            $this->laraKubeInfo('Docker Engine binary found — enabling service...');
             shell_exec('sudo systemctl enable --now docker 2>/dev/null');
-            $this->shSuccess('Docker Engine running.');
+            $this->laraKubeInfo('Docker Engine running.');
 
             return true;
         }
 
-        // --- Detect OS -------------------------------------------------------
-        $osRelease = @file_get_contents('/etc/os-release');
-        preg_match('/^ID=(\w+)/m', $osRelease ?: '', $id);
-        preg_match('/^VERSION_CODENAME=(\w+)/m', $osRelease ?: '', $codename);
-        $distro = strtolower($id[1] ?? 'unknown');
-        $codename = $codename[1] ?? '';
+        // Authenticate sudo upfront
+        $this->newLine();
+        $sudoPassword = password(label: 'Sudo password is required for installation.', required: true);
+        $this->newLine();
 
-        if (! in_array($distro, ['ubuntu', 'debian'], true)) {
-            $this->shError('Unsupported distribution: '.$distro);
-            $this->line('  <fg=gray>Please install Docker manually: https://docs.docker.com/engine/install/</>');
+        exec('echo '.escapeshellarg($sudoPassword).' | sudo -S -v 2>/dev/null', $_, $sudoCode);
+
+        if ($sudoCode !== 0) {
+            $this->laraKubeError('Incorrect sudo password. Please re-run the command and try again.');
 
             return false;
         }
 
-        $repoUrl = 'https://download.docker.com/linux/'.$distro;
-        $arch = trim((string) shell_exec('dpkg --print-architecture 2>/dev/null')) ?: 'amd64';
+        unset($sudoPassword);
 
-        // Build the repository sources entry
-        $sourcesEntry = "Types: deb\nURIs: {$repoUrl}\nSuites: {$codename}\nComponents: stable\nArchitectures: {$arch}\nSigned-By: /etc/apt/keyrings/docker.asc";
+        // --- Detect package manager ------------------------------------------
+        $hasApt = trim((string) shell_exec('command -v apt-get 2>/dev/null')) !== '';
 
-        // Authenticate sudo upfront
-        $this->newLine();
-        $this->shInfo('Sudo access is required for installation.');
-        $this->line('  <fg=gray>Enter your password to continue.</>');
-        $this->newLine();
-        passthru('sudo -v 2>&1');
-        $this->newLine();
+        if ($hasApt) {
+            // --- apt-based (Debian, Ubuntu, Mint, Pop, etc.) -----------------
+            $osRelease = @file_get_contents('/etc/os-release');
+            preg_match('/^ID=(\w+)/m', $osRelease ?: '', $id);
+            preg_match('/^VERSION_CODENAME=(\w+)/m', $osRelease ?: '', $codename);
+            $distro = strtolower($id[1] ?? 'ubuntu');
+            $codename = $codename[1] ?? '';
 
-        // --- Build step list ------------------------------------------------
-        $steps = [
-            [
-                'label' => 'Update apt package index',
-                'command' => 'sudo apt update -qq',
-            ],
-            [
-                'label' => 'Install prerequisites (ca-certificates, curl)',
-                'command' => 'sudo apt install -y -qq ca-certificates curl',
-            ],
-            [
-                'label' => 'Create keyring directory',
-                'command' => 'sudo install -m 0755 -d /etc/apt/keyrings',
-            ],
-            [
-                'label' => "Download Docker's GPG key",
-                'command' => 'sudo curl -fsSL '.$repoUrl.'/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc',
-            ],
-            [
-                'label' => 'Add Docker apt repository ('.ucfirst($distro).' '.$codename.')',
-                'command' => 'echo '.escapeshellarg($sourcesEntry).' | sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null',
-            ],
-            [
-                'label' => 'Update apt with Docker repository',
-                'command' => 'sudo apt update -qq',
-            ],
-            [
-                'label' => 'Install Docker packages',
-                'command' => 'sudo apt install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin',
-            ],
-        ];
+            $repoUrl = 'https://download.docker.com/linux/'.$distro;
+            $arch = trim((string) shell_exec('dpkg --print-architecture 2>/dev/null')) ?: 'amd64';
 
-        $ok = $this->shRunSteps('Docker Installation Steps', $steps);
+            $sourcesEntry = "Types: deb\nURIs: {$repoUrl}\nSuites: {$codename}\nComponents: stable\nArchitectures: {$arch}\nSigned-By: /etc/apt/keyrings/docker.asc";
+
+            $steps = [
+                ['label' => 'Update apt package index', 'command' => 'sudo apt update -qq'],
+                ['label' => 'Install prerequisites (ca-certificates, curl)', 'command' => 'sudo apt install -y -qq ca-certificates curl'],
+                ['label' => 'Create keyring directory', 'command' => 'sudo install -m 0755 -d /etc/apt/keyrings'],
+                ['label' => "Download Docker's GPG key", 'command' => 'sudo curl -fsSL '.$repoUrl.'/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc'],
+                ['label' => 'Add Docker apt repository ('.ucfirst($distro).' '.$codename.')', 'command' => 'echo '.escapeshellarg($sourcesEntry).' | sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null'],
+                ['label' => 'Update apt with Docker repository', 'command' => 'sudo apt update -qq'],
+                ['label' => 'Install Docker packages', 'command' => 'sudo apt install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin'],
+            ];
+
+            $bar = $this->output->createProgressBar(count($steps));
+            $bar->setFormat(' <fg=blue>%current%/%max% [%bar%] %message%</>');
+            $bar->setBarCharacter('<fg=blue>=</>');
+            $bar->setEmptyBarCharacter('<fg=gray>-</>');
+            $bar->setProgressCharacter('<fg=blue>></>');
+            $this->newLine();
+            $bar->setMessage('Starting...');
+            $bar->start();
+
+            $ok = true;
+            foreach ($steps as $step) {
+                $bar->setMessage($step['label']);
+                exec($step['command'].' 2>/dev/null', $_, $code);
+                if ($code !== 0) {
+                    $bar->finish();
+                    $ok = false;
+                    break;
+                }
+                $bar->advance();
+            }
+
+            if ($ok) {
+                $bar->finish();
+            }
+            $this->newLine();
+        } else {
+            // --- Universal fallback (Fedora, CentOS, RHEL, Arch, openSUSE, etc.)
+            $this->laraKubeInfo('Installing Docker Engine via official script...');
+            $this->line('  <fg=gray>Works on Fedora, CentOS, RHEL, Arch, openSUSE, and more.</>');
+            passthru('curl -fsSL https://get.docker.com | sudo sh', $code);
+            $ok = $code === 0;
+        }
 
         if (! $ok) {
-            $this->shError('Docker Engine installation failed.');
+            $this->laraKubeError('Docker Engine installation failed.');
             $this->line('  <fg=gray>Check the output above for details. You can also install manually:</>');
-            $this->line('  <fg=cyan>  https://docs.docker.com/engine/install/'.$distro.'/</>');
+            $this->line('  <fg=cyan>  https://docs.docker.com/engine/install/</>');
 
             return false;
         }
 
         shell_exec('sudo systemctl enable --now docker 2>/dev/null');
 
-        $this->shSuccess('Docker Engine installed.');
+        $this->laraKubeInfo('Docker Engine installed.');
         $this->newLine();
         $user = getenv('USER') ?: get_current_user();
-        $this->shWarn('Docker requires '.$user.' to be in the "docker" group to run containers without sudo.');
+        $this->laraKubeWarn('Docker requires '.$user.' to be in the "docker" group to run containers without sudo.');
 
-        if ($user && confirm('Add "'.$user.'" to the docker group now? (sudo usermod -aG docker '.$user.')', default: true)) {
+        if ($user && confirm(label: 'Add "'.$user.'" to the docker group now? (sudo usermod -aG docker '.$user.')', default: true)) {
             shell_exec('sudo usermod -aG docker '.escapeshellarg((string) $user).' 2>/dev/null');
-            $this->line('  <fg=gray>Group added. To activate it in your current shell, run:</>');
-            $this->line('  <fg=cyan>  newgrp docker</>');
-            $this->newLine();
-            $this->line('  <fg=gray>Or close and reopen your terminal.</>');
+            note("Group added.\n\nTo activate it in your current shell, run:\n  newgrp docker\n\nOr close and reopen your terminal.");
         } else {
-            $this->line('  <fg=gray>You can do this later manually:</>');
-            $this->line('  <fg=cyan>  sudo usermod -aG docker $USER</>');
-            $this->line('  <fg=gray>Then run <fg=cyan>newgrp docker</> or restart your terminal.</>');
+            note("You can do this later manually:\n\n  sudo usermod -aG docker \$USER\n\nThen run newgrp docker or restart your terminal.");
         }
 
         $this->reminders[] = 'Run <fg=cyan>newgrp docker</> (or open a new terminal) — your shell hasn\'t picked up the docker group yet. Skipping this will make `docker`/`larakube up --build` fail with a permission error.';
@@ -274,7 +282,7 @@ class SetupCommand extends Command
 
         $this->line('  <fg=yellow>💡 Optional:</> <fg=cyan>k9s</> is a terminal UI for browsing your cluster.');
 
-        if (! confirm('Install k9s now?', default: true)) {
+        if (! confirm(label: 'Install k9s now?', default: true)) {
             $this->line('  <fg=gray>Skipped — install it later with: larakube k9s</>');
 
             return;
@@ -306,7 +314,7 @@ class SetupCommand extends Command
         }
 
         $this->line('  <fg=yellow>⚠</>  k3s <fg=green>'.$latest.'</> available (current: <fg=yellow>'.$current.'</>)');
-        if (confirm('Upgrade k3s to '.$latest.'?', default: true)) {
+        if (confirm(label: 'Upgrade k3s to '.$latest.'?', default: true)) {
             $cmd = 'curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION='.escapeshellarg($latest).' sh -s - --disable=traefik --write-kubeconfig-mode=644';
             exec('sudo '.$cmd.' 2>/dev/null', $_, $code);
             if ($code === 0) {
@@ -333,7 +341,7 @@ class SetupCommand extends Command
         }
 
         $this->line('  <fg=yellow>⚠</>  k9s <fg=green>'.$latest.'</> available (current: <fg=yellow>'.$current.'</>)');
-        if (confirm('Upgrade k9s to '.$latest.'?', default: true)) {
+        if (confirm(label: 'Upgrade k9s to '.$latest.'?', default: true)) {
             $this->installK9s($latest);
             if ($this->resolveK9sBin() !== null) {
                 $this->shSuccess('k9s upgraded to '.$latest);

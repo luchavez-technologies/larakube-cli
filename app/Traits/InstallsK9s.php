@@ -34,7 +34,7 @@ trait InstallsK9s
         if ($this->isDarwin()) {
             $brew = trim((string) shell_exec('command -v brew 2>/dev/null'));
             if ($brew === '') {
-                $this->warn('  Homebrew not found. Install it from https://brew.sh then run: brew install k9s');
+                $this->laraKubeWarn('Homebrew not found. Install it from https://brew.sh then run: brew install k9s');
 
                 return false;
             }
@@ -80,7 +80,7 @@ trait InstallsK9s
             return false;
         }
 
-        $this->warn('  k9s install not supported on this platform. See https://k9scli.io/topics/install/');
+        $this->laraKubeWarn('k9s install not supported on this platform. See https://k9scli.io/topics/install/');
 
         return false;
     }
