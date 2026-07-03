@@ -354,12 +354,14 @@ class ConfigDataTest extends TestCase
         $this->assertSame([], $config->getManageableServices());
     }
 
-    public function test_set_production_host_writes_into_environment_map()
+    public function test_set_host_creates_the_environment_and_writes_into_the_environment_map()
     {
-        $config = ConfigData::from([]);
-        $config->setProductionHost('app.example.com');
+        $config = ConfigData::from(['environments' => ['local' => []]]);
+        $this->assertFalse($config->hasEnvironment('production'));
 
-        $this->assertSame('app.example.com', $config->getProductionHost());
+        $config->setHost('production', 'web', 'app.example.com');
+
+        $this->assertSame('app.example.com', $config->getWebHost('production'));
         $this->assertSame('app.example.com', $config->getEnvironment('production')->hosts['web']);
     }
 

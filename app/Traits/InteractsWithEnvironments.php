@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use function Laravel\Prompts\select;
+use function Laravel\Prompts\text;
 
 trait InteractsWithEnvironments
 {
@@ -10,8 +11,9 @@ trait InteractsWithEnvironments
      * Get the available environments for this project. Sole source of truth
      * is `.larakube.json` — so if the user renames "production" to "main" or
      * adds a "qa" env, `larakube heal` is the only step needed; no command
-     * code references hardcoded env names. Falls back to the conventional
-     * pair only when no project config exists yet (fresh init).
+     * code references hardcoded env names. Falls back to `local` only when no
+     * project config exists yet (fresh init) — cloud environments are opt-in,
+     * created via `larakube env`/`cloud:configure`, never assumed.
      */
     protected function getAvailableEnvironments(): array
     {
@@ -22,7 +24,7 @@ trait InteractsWithEnvironments
 
         $envs = $config?->getEnvironments() ?? [];
 
-        return ! empty($envs) ? $envs : ['local', 'production'];
+        return ! empty($envs) ? $envs : ['local'];
     }
 
     /**
@@ -51,9 +53,11 @@ trait InteractsWithEnvironments
 
     /**
      * Prompt for a non-local environment. Used by cloud/gha commands where
-     * targeting 'local' makes no sense. Auto-selects when only one cloud
-     * env exists; falls back to the first available env when there are none
-     * (defensive — shouldn't happen in practice).
+     * targeting 'local' makes no sense. Auto-selects when only one cloud env
+     * exists. Environments are opt-in, so a fresh project routinely has NONE
+     * yet — that's the common case here, not a defensive edge case — so it
+     * prompts for a brand-new name (suggesting "production") rather than
+     * falling back to a picker that would only offer "local".
      */
     protected function askForCloudEnvironment(string $label = 'Which environment would you like to target?'): string
     {
@@ -64,7 +68,13 @@ trait InteractsWithEnvironments
         }
 
         if (empty($envs)) {
-            return $this->askForEnvironment($label);
+            return text(
+                label: $label,
+                placeholder: 'production',
+                default: 'production',
+                hint: 'No cloud environment exists yet — name the one you want to create.',
+                required: true,
+            );
         }
 
         return select(

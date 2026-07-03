@@ -85,7 +85,10 @@ class InitCommand extends Command
         }
 
         $config->setName($name);
-        $config->setEnvironments(['local', 'production']);
+        // Environments are opt-in: a fresh project starts with `local` only.
+        // Cloud environments (production, staging, …) are created on demand
+        // via `larakube env` or `cloud:configure`.
+        $config->setEnvironments(['local']);
 
         $this->laraKubeInfo("Initializing LaraKube for project: {$config->getName()}...");
 
@@ -147,6 +150,8 @@ class InitCommand extends Command
         ]);
 
         info('Next steps: larakube up');
+        $this->line('  <fg=gray>Ready to deploy? Create a cloud environment first:</>');
+        $this->line('  <fg=yellow>larakube env production</> <fg=gray>(or</> <fg=yellow>larakube cloud:configure</><fg=gray>)</>');
 
         return 0;
     }

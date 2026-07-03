@@ -18,7 +18,6 @@ use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\DeploymentStrategy;
 use App\Enums\FrontendStack;
-use App\Enums\IngressController;
 use App\Enums\OperatingSystem;
 use App\Enums\PhpVersion;
 use App\Enums\ServerVariation;
@@ -57,6 +56,11 @@ test('the init wizard runs every prompt step without a missing-symbol crash', fu
 
     $result = $runner->run($config);
 
-    // The ingress step (the one that fataled in v0.9.0) executed and set a value.
-    expect($result->getIngress('production'))->toBeInstanceOf(IngressController::class);
+    // gatherConfig no longer touches a "production" env at all — cloud
+    // environments are created on demand via `larakube env`/`cloud:configure`,
+    // never scaffolded here. The regression guard is simply that every
+    // prompt step (the one that fataled in v0.9.0) — including the final
+    // GitHub Actions prompt — ran to completion without a missing-symbol fatal.
+    expect($result)->toBeInstanceOf(ConfigData::class)
+        ->and($result->hasGithubActions())->toBeTrue();
 });

@@ -116,7 +116,10 @@ class NewCommand extends Command
         $projectPath .= "/$appName";
 
         $config->setPath($projectPath, true);
-        $config->setEnvironments(['local', 'production']);
+        // Environments are opt-in: a fresh project starts with `local` only.
+        // Cloud environments (production, staging, …) are created on demand
+        // via `larakube env` or `cloud:configure`.
+        $config->setEnvironments(['local']);
 
         $this->laraKubeInfo("Scaffolding architectural masterpiece: $appName...");
 
@@ -127,12 +130,6 @@ class NewCommand extends Command
             $this->laraKubeError('Failed to create Laravel application.');
 
             return 1;
-        }
-
-        // Create .env.production (never fatal — ownership is fixed above, but a stray
-        // permission issue here must not abort an otherwise-complete scaffold).
-        if (file_exists("$projectPath/.env") && ! @copy("$projectPath/.env", "$projectPath/.env.production")) {
-            $this->laraKubeWarn('Could not write .env.production — copy .env to .env.production manually if you need it.');
         }
 
         $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config) {
@@ -161,6 +158,9 @@ class NewCommand extends Command
         $this->newLine();
         info('First, start your application:');
         $this->line("  cd {$appName} && larakube up");
+        $this->newLine();
+        $this->line('  <fg=gray>Ready to deploy? Create a cloud environment first:</>');
+        $this->line('  <fg=yellow>larakube env production</> <fg=gray>(or</> <fg=yellow>larakube cloud:configure</><fg=gray>)</>');
 
         // Collect instructions from all components
         $allInstructions = [];

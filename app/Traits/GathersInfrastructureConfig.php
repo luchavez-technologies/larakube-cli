@@ -3,13 +3,11 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
-use App\Data\EnvironmentData;
 use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\DeploymentStrategy;
 use App\Enums\FrontendStack;
-use App\Enums\IngressController;
 use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PackageManager;
@@ -273,43 +271,11 @@ trait GathersInfrastructureConfig
             }
         }
 
-        // 14. Ingress Controller (Production)
-        $prodEnv = $config->getEnvironment('production') ?? new EnvironmentData;
-        if (! $prodEnv->ingress) {
-            if ($config->isScaffolding()) {
-                $prodEnv->ingress = IngressController::TRAEFIK;
-            } else {
-                $controller = select(
-                    label: 'Which Ingress Controller will you use in production?',
-                    options: IngressController::getSelectOptions($config),
-                    default: IngressController::TRAEFIK->value,
-                );
-
-                $prodEnv->ingress = IngressController::from($controller);
-            }
-            $config->environments['production'] = $prodEnv;
-        }
-
-        // 15. Managed Services (Production)
-        if (empty($config->getManaged('production'))) {
-            $managedOptions = $config->getManageableServices();
-
-            if (! empty($managedOptions)) {
-                if ($config->isScaffolding()) {
-                    $managed = [];
-                } else {
-                    $managed = multiselect(
-                        label: 'Which services are managed externally in production (e.g. AWS RDS, ElastiCache, Meilisearch Cloud, S3)?',
-                        options: $managedOptions,
-                        hint: 'These services will be orchestrated locally but skipped in production manifests.',
-                    );
-                }
-
-                $prodEnv = $config->getEnvironment('production') ?? new EnvironmentData;
-                $prodEnv->managed = $managed;
-                $config->environments['production'] = $prodEnv;
-            }
-        }
+        // Cloud environments (production or otherwise) are opt-in, not scaffolded
+        // here — `new`/`init` produce a `local`-only blueprint. Ingress, managed
+        // services, hosts, and registry for a cloud env are gathered on demand by
+        // `larakube env` or `cloud:configure` (see GathersEnvironmentData), the
+        // first time that environment is actually needed.
 
         if (! $config->hasGithubActions()) {
             $config->setGithubActions(confirm(label: 'Would you like to use GitHub Actions?'));

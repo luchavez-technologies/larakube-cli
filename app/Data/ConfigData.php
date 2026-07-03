@@ -131,7 +131,10 @@ class ConfigData extends Data
             $this->id = (string) Str::uuid();
         }
 
-        // Fresh-init default: every project gets local + production.
+        // Bare-construction convenience default (mainly for tests/ad-hoc
+        // ConfigData use). `new`/`init` immediately overwrite this via
+        // setEnvironments(['local']) — cloud environments are opt-in, created
+        // on demand via `larakube env`/`cloud:configure`, never scaffolded here.
         if (empty($this->environments)) {
             $this->environments = [
                 'local' => new EnvironmentData,
@@ -742,11 +745,6 @@ class ConfigData extends Data
             ?? "{$this->getName()}.".$this->getLocalTld();
     }
 
-    public function getProductionHost(): string
-    {
-        return $this->getWebHost('production');
-    }
-
     public function hasOs(): bool
     {
         return ! is_null($this->os);
@@ -912,8 +910,8 @@ class ConfigData extends Data
 
     /**
      * Set a service's host for the given env. Creates the env if missing.
-     * This is the generic form that env-aware cloud commands should use
-     * (instead of setProductionHost) so they don't hardcode env names.
+     * This is the generic, env-aware form every cloud command should use —
+     * no hardcoded env names.
      */
     public function setHost(string $environment, string $service, string $host): self
     {
@@ -921,11 +919,6 @@ class ConfigData extends Data
         $this->environments[$environment]->hosts[$service] = $host;
 
         return $this;
-    }
-
-    public function setProductionHost(string $host): self
-    {
-        return $this->setHost('production', 'web', $host);
     }
 
     /**
@@ -1481,7 +1474,7 @@ class ConfigData extends Data
      * host wired up yet. Cloud config lives on the environment (not a
      * detached top-level map) so the two can't drift.
      */
-    public function getCloud(string $environment = 'production'): ?CloudData
+    public function getCloud(string $environment): ?CloudData
     {
         return $this->getEnvironment($environment)?->cloud;
     }
@@ -1493,27 +1486,27 @@ class ConfigData extends Data
      *
      * @return array<string, mixed>
      */
-    public function getCloudConfig(string $environment = 'production'): array
+    public function getCloudConfig(string $environment): array
     {
         return $this->getCloud($environment)?->toArray() ?? [];
     }
 
-    public function getCloudIp(string $environment = 'production'): ?string
+    public function getCloudIp(string $environment): ?string
     {
         return $this->getCloud($environment)?->ip;
     }
 
-    public function getCloudUser(string $environment = 'production'): string
+    public function getCloudUser(string $environment): string
     {
         return $this->getCloud($environment)?->user ?? 'larakube';
     }
 
-    public function getCloudPort(string $environment = 'production'): int
+    public function getCloudPort(string $environment): int
     {
         return $this->getCloud($environment)?->port ?? 22;
     }
 
-    public function getCloudKey(string $environment = 'production'): string
+    public function getCloudKey(string $environment): string
     {
         return $this->getCloud($environment)?->key ?? ($_SERVER['HOME'] ?? '').'/.ssh/id_rsa';
     }

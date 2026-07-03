@@ -23,7 +23,7 @@ class BundleBuildCommand extends Command
     use AssemblesBundle, InstallsK3s, InteractsWithProjectConfig, InteractsWithRemoteDeploy, LaraKubeOutput;
 
     protected $signature = 'bundle:build
-                            {environment=production : The environment to bundle}
+                            {environment? : The environment to bundle (default: auto-detected offline/cloud env)}
                             {--arch= : Target CPU architecture (amd64|arm64) — match the customer server, not your Mac}
                             {--update : Build a lightweight update bundle (skips K3s and dependency images)}
                             {--tar : Compress the bundle into a .tar.gz file after assembly}
@@ -46,11 +46,12 @@ class BundleBuildCommand extends Command
             return 1;
         }
 
-        // Auto-detect offline environments when the user relies on the default.
-        $explicitEnv = $this->hasArgument('environment') && $this->argument('environment') !== 'production';
-        $env = (string) $this->argument('environment');
+        // No environment given — auto-detect. Offline environments are this
+        // command's home turf, so they win first; fall back to the project's
+        // other cloud environments when none are marked offline.
+        $env = $this->argument('environment');
 
-        if (! $explicitEnv) {
+        if ($env === null) {
             $offlineEnvs = collect($config->environments)
                 ->filter(fn ($e) => $e->offline ?? false)
                 ->keys()
@@ -64,11 +65,23 @@ class BundleBuildCommand extends Command
                     label: 'Multiple offline environments found. Which one?',
                     options: $offlineEnvs,
                 );
+            } else {
+                $cloudEnvs = $config->getCloudEnvironments();
+                if (count($cloudEnvs) === 1) {
+                    $env = $cloudEnvs[0];
+                } elseif (count($cloudEnvs) > 1) {
+                    $env = \Laravel\Prompts\select(
+                        label: 'Which environment would you like to bundle?',
+                        options: $cloudEnvs,
+                    );
+                }
             }
         }
 
-        if ($config->getEnvironment($env) === null) {
-            $this->laraKubeError("Unknown environment '{$env}'. Pick one of: ".implode(', ', $config->getCloudEnvironments()));
+        if ($env === null || $config->getEnvironment($env) === null) {
+            $this->laraKubeError($env === null
+                ? 'No cloud environment configured yet. Run `larakube env` first (e.g. `larakube env production`).'
+                : "Unknown environment '{$env}'. Pick one of: ".implode(', ', $config->getCloudEnvironments()));
 
             return 1;
         }
