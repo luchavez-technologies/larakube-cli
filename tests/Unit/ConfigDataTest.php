@@ -365,6 +365,77 @@ class ConfigDataTest extends TestCase
         $this->assertSame('app.example.com', $config->getEnvironment('production')->hosts['web']);
     }
 
+    public function test_get_web_hosts_returns_just_the_primary_when_no_additional_hosts_are_set()
+    {
+        $config = ConfigData::from([
+            'name' => 'myapp',
+            'environments' => ['production' => ['hosts' => ['web' => 'app.example.com']]],
+        ]);
+
+        $this->assertSame(['app.example.com'], $config->getWebHosts('production'));
+    }
+
+    public function test_get_web_hosts_lists_the_primary_first_then_additional_hosts_in_order()
+    {
+        $config = ConfigData::from([
+            'name' => 'myapp',
+            'environments' => [
+                'production' => [
+                    'hosts' => ['web' => 'app.example.com'],
+                    'additionalWebHosts' => ['admin.example.com', 'mybrand.io'],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(
+            ['app.example.com', 'admin.example.com', 'mybrand.io'],
+            $config->getWebHosts('production'),
+        );
+    }
+
+    public function test_get_web_hosts_dedupes_an_additional_host_that_matches_the_primary()
+    {
+        $config = ConfigData::from([
+            'name' => 'myapp',
+            'environments' => [
+                'production' => [
+                    'hosts' => ['web' => 'app.example.com'],
+                    'additionalWebHosts' => ['app.example.com', 'admin.example.com'],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(['app.example.com', 'admin.example.com'], $config->getWebHosts('production'));
+    }
+
+    public function test_add_additional_web_host_is_idempotent_and_creates_the_environment_if_missing()
+    {
+        $config = ConfigData::from(['name' => 'myapp', 'environments' => ['local' => []]]);
+        $this->assertFalse($config->hasEnvironment('production'));
+
+        $config->addAdditionalWebHost('production', 'admin.example.com');
+        $config->addAdditionalWebHost('production', 'admin.example.com');
+
+        $this->assertSame(['admin.example.com'], $config->getEnvironment('production')->additionalWebHosts);
+    }
+
+    public function test_remove_additional_web_host_is_a_no_op_when_the_environment_or_host_is_missing()
+    {
+        $config = ConfigData::from(['name' => 'myapp', 'environments' => ['local' => []]]);
+
+        // No exception, no side effect, for an environment that doesn't exist.
+        $config->removeAdditionalWebHost('production', 'admin.example.com');
+        $this->assertFalse($config->hasEnvironment('production'));
+
+        $config->addAdditionalWebHost('production', 'admin.example.com');
+        $config->removeAdditionalWebHost('production', 'someone-else.example.com');
+
+        $this->assertSame(['admin.example.com'], $config->getEnvironment('production')->additionalWebHosts);
+
+        $config->removeAdditionalWebHost('production', 'admin.example.com');
+        $this->assertSame([], $config->getEnvironment('production')->additionalWebHosts);
+    }
+
     public function test_each_environment_can_choose_its_own_ingress_controller()
     {
         $config = ConfigData::from([

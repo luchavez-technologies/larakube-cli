@@ -153,7 +153,7 @@ class CloudDeployCommand extends Command
         // After a successful MANAGED deploy, remind where to point DNS — every host
         // on the cluster shares the ingress LoadBalancer IP, so promote CNAMEs.
         if ($result === 0 && $cloud && $cloud->isManaged()) {
-            $hosts = array_values(array_filter([$config->getHost($environment, 'web')]));
+            $hosts = $config->getWebHosts($environment);
             if ($hosts !== []) {
                 $this->printIngressDnsGuidance($hosts, $this->traefikLoadBalancerIp($context));
             }

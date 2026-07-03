@@ -85,10 +85,10 @@ trait InteractsWithTraefik
      * until Traefik was reinstalled. ensureSystemCertExists() is a no-op when
      * the cert already covers the current TLD.
      */
-    protected function refreshTraefikCerts(string $appName, ?string $tld = null): void
+    protected function refreshTraefikCerts(string $appName, ?string $tld = null, array $additionalHosts = []): void
     {
         $this->ensureSystemCertExists();
-        $this->ensureAppCertExists($appName, $tld);
+        $this->ensureAppCertExists($appName, $tld, $additionalHosts);
         $this->applyTraefikCertResources('traefik');
     }
 
@@ -108,9 +108,10 @@ trait InteractsWithTraefik
     {
         $appName = $config->getName();
         $tld = $config->getLocalTld();
+        $additionalHosts = $config->getEnvironment('local')?->additionalWebHosts ?? [];
 
-        $this->withSpin('Syncing local TLS certificates...', function () use ($appName, $tld) {
-            $this->refreshTraefikCerts($appName, $tld);
+        $this->withSpin('Syncing local TLS certificates...', function () use ($appName, $tld, $additionalHosts) {
+            $this->refreshTraefikCerts($appName, $tld, $additionalHosts);
 
             return true;
         });

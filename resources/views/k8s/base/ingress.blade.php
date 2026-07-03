@@ -11,7 +11,8 @@ metadata:
 @endif
 spec:
   rules:
-    - host: {{ $config->getWebHost('local') }}
+@foreach($config->getWebHosts('local') as $host)
+    - host: {{ $host }}
       http:
         paths:
           - path: /
@@ -21,6 +22,9 @@ spec:
                 name: {{ $config->getServerVariation()->getPodName($config) }}
                 port:
                   number: 80
+@endforeach
   tls:
     - hosts:
-        - {{ $config->getWebHost('local') }}
+@foreach($config->getWebHosts('local') as $host)
+        - {{ $host }}
+@endforeach

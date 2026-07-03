@@ -28,7 +28,8 @@ spec:
   ingressClassName: {{ $config->getIngress($environment)->getIngressClass() }}
 @endif
   rules:
-    - host: {{ $config->getWebHost($environment) }}
+@foreach($config->getWebHosts($environment) as $host)
+    - host: {{ $host }}
       http:
         paths:
           - path: /
@@ -38,9 +39,12 @@ spec:
                 name: {{ $config->getServerVariation()->getPodName($config) }}
                 port:
                   number: 80
+@endforeach
   tls:
     - hosts:
-        - {{ $config->getWebHost($environment) }}
+@foreach($config->getWebHosts($environment) as $host)
+        - {{ $host }}
+@endforeach
 @if($config->getStrategy($environment) === \App\Enums\DeploymentStrategy::SINGLE_NODE && !($config->environments[$environment]?->offline ?? false))
       secretName: {{ $config->getName() }}-tls
 @endif

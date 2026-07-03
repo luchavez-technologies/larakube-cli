@@ -140,6 +140,24 @@ test('database and cache consoles never appear in getAllHosts — shared compani
         ->and($hosts)->not->toContain('redis.demo.kube');
 });
 
+test('getAllHosts includes additionalWebHosts, labeled distinctly from the primary application host', function () {
+    $config = ConfigData::from([
+        'name' => 'demo',
+        'environments' => [
+            'production' => [
+                'hosts' => ['web' => 'app.example.com'],
+                'additionalWebHosts' => ['admin.example.com', 'mybrand.io'],
+            ],
+        ],
+    ]);
+
+    $hosts = $config->getAllHosts('production');
+
+    expect($hosts)->toHaveKey('app.example.com', 'Primary Application')
+        ->and($hosts)->toHaveKey('admin.example.com', 'Web (alias)')
+        ->and($hosts)->toHaveKey('mybrand.io', 'Web (alias)');
+});
+
 test('only client-facing endpoints are promptable for custom hosts', function () {
     // Reverb (ws) and S3 are worth a vanity subdomain prompt...
     expect(LaravelFeature::REVERB)->toBeInstanceOf(HasPromptableHosts::class)

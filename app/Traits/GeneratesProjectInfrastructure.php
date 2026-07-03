@@ -298,7 +298,7 @@ trait GeneratesProjectInfrastructure
         // 0. Copy certificates for local development (e.g. for Vite HTTPS)
         $projectCertsPath = $config->getPath().'/.infrastructure/traefik/certificates';
         @mkdir($projectCertsPath, 0755, true);
-        $this->ensureAppCertExists($config->getName(), $config->getLocalTld());
+        $this->ensureAppCertExists($config->getName(), $config->getLocalTld(), $config->getEnvironment('local')?->additionalWebHosts ?? []);
         @copy($this->getAppCertPath($config->getName()), "$projectCertsPath/local-dev.pem");
         @copy($this->getAppKeyPath($config->getName()), "$projectCertsPath/local-dev-key.pem");
         @copy($this->getLocalCaCertPath(), "$projectCertsPath/local-ca.pem");

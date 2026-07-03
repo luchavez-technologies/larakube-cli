@@ -745,6 +745,54 @@ class ConfigData extends Data
             ?? "{$this->getName()}.".$this->getLocalTld();
     }
 
+    /**
+     * Every hostname that should route to this env's web pod — the primary
+     * (getWebHost()) first, then any additionalWebHosts (deduped). Ingress
+     * generation, DNS guidance, and the local-cert SAN list all loop over
+     * this instead of the single primary host, so a Laravel app using
+     * subdomain route groups (or just a second domain) gets every host wired
+     * to Traefik, not just the canonical one that feeds APP_URL.
+     *
+     * @return array<int, string>
+     */
+    public function getWebHosts(string $environment): array
+    {
+        return array_values(array_unique(array_filter([
+            $this->getWebHost($environment),
+            ...($this->getEnvironment($environment)?->additionalWebHosts ?? []),
+        ])));
+    }
+
+    /**
+     * Add an extra hostname that routes to this env's web pod, alongside the
+     * primary. Creates the env if missing. Idempotent.
+     */
+    public function addAdditionalWebHost(string $environment, string $host): self
+    {
+        $this->addEnvironment($environment);
+        if (! in_array($host, $this->environments[$environment]->additionalWebHosts, true)) {
+            $this->environments[$environment]->additionalWebHosts[] = $host;
+        }
+
+        return $this;
+    }
+
+    /** Remove a previously-added additional web host. No-op if not present. */
+    public function removeAdditionalWebHost(string $environment, string $host): self
+    {
+        $env = $this->getEnvironment($environment);
+        if ($env === null) {
+            return $this;
+        }
+
+        $env->additionalWebHosts = array_values(array_filter(
+            $env->additionalWebHosts,
+            fn (string $h) => $h !== $host,
+        ));
+
+        return $this;
+    }
+
     public function hasOs(): bool
     {
         return ! is_null($this->os);
@@ -1452,6 +1500,9 @@ class ConfigData extends Data
     public function getAllHosts(string $environment = 'local'): array
     {
         $hosts = [parse_url($this->getAppUrl($environment), PHP_URL_HOST) => 'Primary Application'];
+        foreach ($this->getEnvironment($environment)?->additionalWebHosts ?? [] as $additionalHost) {
+            $hosts[$additionalHost] = 'Web (alias)';
+        }
         if ($this->frontend?->requiresNodePod()) {
             // Vite host derives from web host on any non-local env (so a
             // renamed/added env like "main" or "staging" works the same

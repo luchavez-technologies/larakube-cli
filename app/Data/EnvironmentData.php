@@ -66,6 +66,19 @@ class EnvironmentData extends Data
          */
         public array $hosts = [],
         /**
+         * Extra hostnames that route to the SAME web pod as `hosts['web']` —
+         * for a Laravel app using subdomain route groups
+         * (https://laravel.com/docs/routing#route-group-subdomain-routing),
+         * or simply a second marketing domain. Each gets its own Ingress
+         * rule (same backend) and, in the cloud, its own independently
+         * obtained TLS cert. `hosts['web']` stays the one canonical
+         * APP_URL/ASSET_URL; these are additional routable domains, not
+         * alternates for it.
+         *
+         * @var array<int, string>
+         */
+        public array $additionalWebHosts = [],
+        /**
          * Connection config for deploying this env to a remote cluster (VPS SSH
          * or a managed kube-context). Null for envs not (yet) wired to a cluster
          * — local never has one. Spatie Data auto-casts this nested object from a

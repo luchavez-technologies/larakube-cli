@@ -82,6 +82,8 @@ trait GathersEnvironmentData
             $envData->hosts[$service] = $host;
         }
 
+        $envData->additionalWebHosts = $this->gatherAdditionalWebHosts($config, $envName);
+
         // Container registry: optional. Only relevant for cloud environments.
         if ($envName !== 'local') {
             $configureRegistry = confirm(
@@ -96,6 +98,34 @@ trait GathersEnvironmentData
         }
 
         return $envData;
+    }
+
+    /**
+     * Prompt for extra hostnames that route to the SAME web pod as the
+     * primary — a Laravel app using subdomain route groups
+     * (https://laravel.com/docs/routing#route-group-subdomain-routing), or
+     * just a second domain. Purely additive/optional, so this is never
+     * called from EnsuresRealHosts::ensureHosts() (the deploy-time guard,
+     * which stays fast and only re-prompts when the PRIMARY host is
+     * missing/placeholder/local) — only from setup contexts (`larakube env`,
+     * `cloud:configure`, `cloud:configure --only=hosts`). Pre-fills with
+     * whatever's already configured, so re-running doesn't lose entries.
+     *
+     * @return array<int, string>
+     */
+    protected function gatherAdditionalWebHosts(ConfigData $config, string $envName): array
+    {
+        $current = $config->getEnvironment($envName)?->additionalWebHosts ?? [];
+
+        $input = text(
+            label: "Any additional hostnames for {$envName}'s web pod? (optional, comma-separated)",
+            placeholder: 'admin.example.com, api.example.com',
+            default: implode(', ', $current),
+            hint: 'For a Laravel app using subdomain route groups, or just a second domain — all route to the same pod as the primary web host.',
+            required: false,
+        );
+
+        return array_values(array_unique(array_filter(array_map('trim', explode(',', $input)))));
     }
 
     /**

@@ -9,9 +9,9 @@ function localCaHarness(): object
     {
         use ManagesLocalCa;
 
-        public function ensureCert(string $appName, ?string $tld = null): void
+        public function ensureCert(string $appName, ?string $tld = null, array $additionalHosts = []): void
         {
-            $this->ensureAppCertExists($appName, $tld);
+            $this->ensureAppCertExists($appName, $tld, $additionalHosts);
         }
 
         public function certPath(string $appName): string
@@ -91,6 +91,53 @@ test('ensureAppCertExists reuses the existing cert when the TLD is unchanged', f
     $firstCert = file_get_contents($harness->certPath($appName));
 
     $harness->ensureCert($appName, 'test');
+    $secondCert = file_get_contents($harness->certPath($appName));
+
+    expect($secondCert)->toBe($firstCert);
+
+    cleanupLocalCaFor($appName);
+});
+
+test('generateAppCert SAN covers additional hosts alongside the app wildcard — a genuinely different local name, not just a subdomain', function () {
+    $appName = 'lc-multi-'.uniqid();
+    $harness = localCaHarness();
+
+    $harness->ensureCert($appName, 'test', ['mybrand.test', 'admin.'.$appName.'.test']);
+
+    $crt = $harness->certPath($appName);
+    expect($harness->hostCovered($crt, "{$appName}.test"))->toBeTrue()
+        ->and($harness->hostCovered($crt, 'mybrand.test'))->toBeTrue()
+        ->and($harness->hostCovered($crt, "admin.{$appName}.test"))->toBeTrue()
+        // never asked for, must not be covered
+        ->and($harness->hostCovered($crt, 'unrelated.test'))->toBeFalse();
+
+    cleanupLocalCaFor($appName);
+});
+
+test('ensureAppCertExists regenerates when a new additional host is added, even though the primary + wildcard still validate', function () {
+    $appName = 'lc-addhost-'.uniqid();
+    $harness = localCaHarness();
+
+    $harness->ensureCert($appName, 'test');
+    $firstCert = file_get_contents($harness->certPath($appName));
+
+    $harness->ensureCert($appName, 'test', ['mybrand.test']);
+    $secondCert = file_get_contents($harness->certPath($appName));
+
+    expect($secondCert)->not->toBe($firstCert)
+        ->and($harness->hostCovered($harness->certPath($appName), 'mybrand.test'))->toBeTrue();
+
+    cleanupLocalCaFor($appName);
+});
+
+test('ensureAppCertExists reuses the cert when the same additional hosts are requested again', function () {
+    $appName = 'lc-samehosts-'.uniqid();
+    $harness = localCaHarness();
+
+    $harness->ensureCert($appName, 'test', ['mybrand.test']);
+    $firstCert = file_get_contents($harness->certPath($appName));
+
+    $harness->ensureCert($appName, 'test', ['mybrand.test']);
     $secondCert = file_get_contents($harness->certPath($appName));
 
     expect($secondCert)->toBe($firstCert);

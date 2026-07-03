@@ -92,13 +92,19 @@ trait ManagesLocalCa
     }
 
     /**
-     * Ensure the per-app cert exists for {appName}.{tld} + *.{appName}.{tld}.
-     * Regenerates if missing, expiring within 30 days, or covering the wrong TLD
-     * (e.g. an old .dev.test cert from Phase 1 that needs upgrading to .kube).
+     * Ensure the per-app cert exists for {appName}.{tld} + *.{appName}.{tld}
+     * + any additionalWebHosts (a fixed subdomain the wildcard already covers,
+     * or a genuinely different local name it doesn't — e.g. a second brand).
+     * Regenerates if missing, expiring within 30 days, covering the wrong TLD
+     * (e.g. an old .dev.test cert from Phase 1 that needs upgrading to .kube),
+     * or missing one of the additional hosts (so adding a new one later
+     * triggers a refresh, not just the initial cert creation).
      * $tld defaults to the developer's global TLD; pass the project's own
      * getLocalTld() so a project-pinned TLD override gets a matching cert.
+     *
+     * @param  array<int, string>  $additionalHosts
      */
-    protected function ensureAppCertExists(string $appName, ?string $tld = null): void
+    protected function ensureAppCertExists(string $appName, ?string $tld = null, array $additionalHosts = []): void
     {
         $this->ensureLocalCaExists();
         @mkdir($this->getAppCertsDir(), 0700, true);
@@ -109,7 +115,8 @@ trait ManagesLocalCa
 
         if (file_exists($crt) && file_exists($key)
             && $this->certIsValid($crt)
-            && $this->certCoversHost($crt, "{$appName}.{$tld}")) {
+            && $this->certCoversHost($crt, "{$appName}.{$tld}")
+            && collect($additionalHosts)->every(fn (string $host) => $this->certCoversHost($crt, $host))) {
             // Refresh the sidecar even when the cert itself didn't need
             // regenerating, so trust:check stays accurate for certs generated
             // before this was tracked.
@@ -118,7 +125,7 @@ trait ManagesLocalCa
             return;
         }
 
-        $this->generateAppCert($appName, $tld);
+        $this->generateAppCert($appName, $tld, $additionalHosts);
     }
 
     /**
@@ -143,13 +150,27 @@ trait ManagesLocalCa
         $this->generateSystemCert();
     }
 
-    protected function generateAppCert(string $appName, ?string $tld = null): void
+    /**
+     * $additionalHosts are extra SANs beyond {appName}.{tld} + its wildcard —
+     * a fixed subdomain (already covered by the wildcard, listed anyway,
+     * harmless) or a genuinely different local name (not covered by the
+     * wildcard; this is what actually fixes it). Self-signed certs have no
+     * ACME/DNS-challenge complexity, so listing arbitrary extra hostnames
+     * here is trivial.
+     *
+     * @param  array<int, string>  $additionalHosts
+     */
+    protected function generateAppCert(string $appName, ?string $tld = null, array $additionalHosts = []): void
     {
         $dir = $this->getAppCertsDir();
         $csr = "{$dir}/{$appName}-dev.csr";
         $cnf = "{$dir}/{$appName}-dev.cnf";
 
         $tld = $tld ?? GlobalConfigData::load()->getLocalTld();
+        $sans = implode(',', array_map(
+            fn (string $host) => "DNS:{$host}",
+            array_unique(["{$appName}.{$tld}", "*.{$appName}.{$tld}", ...$additionalHosts]),
+        ));
         $cnfContent = <<<CNF
 [req]
 distinguished_name = req_distinguished_name
@@ -162,7 +183,7 @@ CN = {$appName}.{$tld}
 [v3_req]
 basicConstraints = CA:FALSE
 keyUsage         = nonRepudiation, digitalSignature, keyEncipherment
-subjectAltName   = DNS:{$appName}.{$tld},DNS:*.{$appName}.{$tld}
+subjectAltName   = {$sans}
 CNF;
 
         $this->writeCert($cnf, $cnfContent, $csr, $this->getAppKeyPath($appName), $this->getAppCertPath($appName));

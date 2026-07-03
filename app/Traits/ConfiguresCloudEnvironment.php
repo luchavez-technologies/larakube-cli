@@ -81,6 +81,7 @@ trait ConfiguresCloudEnvironment
             $config->addEnvironment($environment, new EnvironmentData(
                 ingress: $this->gatherEnvironmentIngress($config, $environment),
                 managed: $this->gatherEnvironmentManaged($config, $environment),
+                additionalWebHosts: $this->gatherAdditionalWebHosts($config, $environment),
             ));
             $this->saveProjectConfig($projectPath, $config);
 
@@ -164,6 +165,7 @@ trait ConfiguresCloudEnvironment
         }
 
         $this->ensureHosts($config, $environment);
+        $config->environments[$environment]->additionalWebHosts = $this->gatherAdditionalWebHosts($config, $environment);
         $this->saveProjectConfig($projectPath, $config);
         $this->laraKubeInfo("✅ Hosts saved for '{$environment}'.");
 

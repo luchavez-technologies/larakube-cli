@@ -7,4 +7,6 @@ metadata:
 spec:
   tls:
     - hosts:
-        - {{ $config->getWebHost('local') }}
+@foreach($config->getWebHosts('local') as $host)
+        - {{ $host }}
+@endforeach

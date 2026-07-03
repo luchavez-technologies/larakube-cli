@@ -166,7 +166,7 @@ class CloudProvisionDoksCommand extends Command
 
         $this->newLine();
         $this->laraKubeInfo("✅ '{$environment}' will deploy to this DOKS cluster.");
-        $this->printIngressDnsGuidance([$host], $ip);
+        $this->printIngressDnsGuidance($config->getWebHosts($environment), $ip);
         $this->newLine();
         $this->line('  <fg=green>Then:</>');
         $this->line("    <fg=yellow>larakube cloud:configure {$environment} --only=registry</> <fg=gray># container registry (e.g. GHCR)</>");
