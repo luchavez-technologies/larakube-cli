@@ -10,23 +10,34 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Run Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      # @senior-dev: optional — pin to SHA for immutability
+      #   actions/checkout@v7 → actions/checkout@<commit-sha-of-v7.0.0>
+      #   shivammathur/setup-php@v2 → shivammathur/setup-php@<commit-sha-of-2.37.2>
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl
           coverage: none
 
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Audit Dependencies
+        run: composer audit
 
       - name: Check Code Style (Pint)
         run: ./vendor/bin/pint --test
@@ -37,30 +48,30 @@ jobs:
       - name: Run Tests
         run: ./vendor/bin/pest
 
-  publish:
-    name: Build and Publish
+  # ── Branch Push: Canary Release ──────────────────────────────────────────
+  canary:
+    name: Canary Build
     needs: test
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    if: github.ref_type != 'tag' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
-
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, phar
           ini-values: phar.readonly=0
 
       - name: Install Dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+        run: composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader
 
       - name: Build Standalone Binaries
-        run: ./build --all ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+        run: ./build --all ${{ github.sha }}
 
       - name: Organize Artifacts
         run: |
@@ -71,38 +82,120 @@ jobs:
           cp builds/standalone/mac/mac-arm artifacts/larakube-mac-arm
           chmod +x artifacts/*
 
-      - name: Upload Binaries to Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload Binaries to Canary Release
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'canary' }}
-          name: ${{ github.ref_type == 'tag' && github.ref_name || 'Canary (Main Branch)' }}
+          tag_name: canary
+          name: 'Canary (Main Branch)'
+          body: |
+            LaraKube Canary Build
+            Commit: ${{ github.sha }}
+
+            Download the binary for your platform and move it to `/usr/local/bin/larakube`.
+          draft: false
+          prerelease: true
+          make_latest: 'false'
+          generate_release_notes: true
+          overwrite_files: true
+
+  # ── Tag Push: Stable Release ─────────────────────────────────────────────
+  # @senior-dev: CREATE "release" GitHub Environment:
+  #   1. Repo → Settings → Environments → New Environment → name: "release"
+  #   2. Required reviewers: 1 (add yourself)
+  #   3. Branch filter: main
+  #   4. Environment secrets: add GPG_PRIVATE_KEY + GPG_PASSPHRASE
+  #
+  # @senior-dev: GENERATE a GPG signing key:
+  #   gpg --full-generate-key (RSA 4096, no expiry)
+  #   gpg --armor --export-secret-keys <key-id>  # paste into GPG_PRIVATE_KEY
+  publish:
+    name: Build and Publish
+    needs: test
+    if: github.ref_type == 'tag'
+    environment: release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, phar
+          ini-values: phar.readonly=0
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader
+
+      # @senior-dev: enable these steps once GPG_PRIVATE_KEY + GPG_PASSPHRASE are set
+      # - name: Import GPG Key
+      #   run: |
+      #     echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --import
+      #     echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --passphrase-fd 0 --pinentry-mode loopback --sign /dev/null
+      #
+      # - name: Sign Phar and Generate Checksums
+      #   run: |
+      #     cd artifacts
+      #     sha256sum * > checksums.txt
+      #     gpg --detach-sign --armor checksums.txt
+
+      - name: Build Standalone Binaries
+        run: ./build --all ${{ github.ref_name }}
+
+      - name: Organize Artifacts
+        run: |
+          mkdir -p artifacts
+          cp builds/standalone/linux/linux-x64 artifacts/larakube-linux-x64
+          cp builds/standalone/linux/linux-arm artifacts/larakube-linux-arm
+          cp builds/standalone/mac/mac-x64 artifacts/larakube-mac-x64
+          cp builds/standalone/mac/mac-arm artifacts/larakube-mac-arm
+          chmod +x artifacts/*
+
+      # @senior-dev: add checksums.txt + checksums.txt.asc once GPG is active
+      #   files: |
+      #     artifacts/*
+      #     artifacts/checksums.txt
+      #     artifacts/checksums.txt.asc
+      - name: Upload Binaries to Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/*
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           body: |
             LaraKube Standalone Binaries
             Build Date: ${{ github.event.head_commit.timestamp }}
             Commit: ${{ github.sha }}
-            Version: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
-            
+            Version: ${{ github.ref_name }}
+
             Download the binary for your platform and move it to `/usr/local/bin/larakube`.
           draft: false
-          prerelease: ${{ github.ref_type != 'tag' }}
-          make_latest: ${{ github.ref_type == 'tag' && 'true' || 'false' }}
+          prerelease: false
+          make_latest: 'true'
           generate_release_notes: true
           overwrite_files: true
 
+  # ── Homebrew Tap Update ───────────────────────────────────────────────────
   tap:
     name: Update Homebrew Tap
     needs: publish
     if: github.ref_type == 'tag'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout CLI repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: cli
 
+      # @senior-dev: create a fine-grained GitHub PAT with contents:write
+      # on homebrew-larakube repo, then add as repo secret: TAP_GITHUB_TOKEN
       - name: Checkout Homebrew tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: luchavez-technologies/homebrew-larakube
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
