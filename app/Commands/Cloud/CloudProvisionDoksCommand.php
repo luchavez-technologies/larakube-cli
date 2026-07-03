@@ -169,7 +169,7 @@ class CloudProvisionDoksCommand extends Command
         $this->printIngressDnsGuidance([$host], $ip);
         $this->newLine();
         $this->line('  <fg=green>Then:</>');
-        $this->line("    <fg=yellow>larakube cloud:configure:registry {$environment}</> <fg=gray># container registry (e.g. GHCR)</>");
+        $this->line("    <fg=yellow>larakube cloud:configure {$environment} --only=registry</> <fg=gray># container registry (e.g. GHCR)</>");
         $this->line("    <fg=yellow>larakube cloud:deploy {$environment}</>           <fg=gray># once DNS resolves</>");
         $this->newLine();
     }
@@ -261,8 +261,8 @@ class CloudProvisionDoksCommand extends Command
         $this->line("       <fg=cyan>app.example.com  A  {$ip}</>");
         $this->newLine();
         $this->line('  2️⃣  <fg=yellow>From your project</>, record this cluster + a registry (no hand-editing):');
-        $this->line('       <fg=yellow>larakube cloud:configure:base <env></>      <fg=gray># pick this DOKS context as the target</>');
-        $this->line('       <fg=yellow>larakube cloud:configure:registry <env></>  <fg=gray># container registry (e.g. GHCR)</>');
+        $this->line('       <fg=yellow>larakube cloud:configure <env></>                  <fg=gray># pick this DOKS context as the target</>');
+        $this->line('       <fg=yellow>larakube cloud:configure <env> --only=registry</>  <fg=gray># container registry (e.g. GHCR)</>');
         $this->newLine();
         $this->line('  3️⃣  <fg=yellow>Deploy</> once DNS resolves:');
         $this->line('       <fg=yellow>larakube cloud:deploy <env></>');

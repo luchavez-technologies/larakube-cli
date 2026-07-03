@@ -68,7 +68,7 @@ class ClusterRevokeCommand extends Command
         if ($this->option('with-secret')) {
             $this->deleteGithubSecret($namespace);
         } else {
-            $this->line('  <fg=gray>The GitHub {ENV}_KUBECONFIG secret (if any) now points at a dead token — harmless. Re-grant with `cloud:configure:gha`, or pass --with-secret to delete it.</>');
+            $this->line('  <fg=gray>The GitHub {ENV}_KUBECONFIG secret (if any) now points at a dead token — harmless. Re-grant with `cloud:configure --only=ci`, or pass --with-secret to delete it.</>');
         }
 
         return 0;

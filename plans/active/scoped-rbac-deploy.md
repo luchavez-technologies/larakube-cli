@@ -96,7 +96,7 @@ MetalLB `IPAddressPool`/`L2Advertisement`, Traefik install.
 - **Local dogfood (Option A):** `kubectl create token deployer -n {app}-{env}` —
   short-lived, used for the apply immediately, then discarded. Admin stays the
   persistent local credential; the scoped one is ephemeral locally.
-- **CI handoff (`gha:configure`):** a long-lived `kubernetes.io/service-account-token`
+- **CI handoff (`cloud:configure --only=ci`):** a long-lived `kubernetes.io/service-account-token`
   **Secret** (standard non-expiring pattern). Build the kubeconfig from it, upload
   as `{ENV}_KUBECONFIG`. Re-mintable; `rbacGrantedAt` records the last mint.
 
@@ -116,7 +116,7 @@ deterministic (`deployer` in `{app}-{env}`), so they are derived, never stored.
 ## 🛠 Commands
 
 **Who mints the SA:** local **admin-context** commands only — `cloud:deploy`
-(manual path) and `gha:configure` (CI path). The GHA **runner never mints** it: by
+(manual path) and `cloud:configure --only=ci` (CI path). The GHA **runner never mints** it: by
 design it holds only the scoped creds (no admin), and a namespace-scoped token
 can't create RBAC anyway. The runner is a pure **consumer** of `{ENV}_KUBECONFIG`.
 Both minters share one idempotent `ensureScopedRbac()` (namespace + SA + Role +
@@ -126,14 +126,14 @@ RoleBinding via admin); they differ only in the token.
   **apply the overlay with the scoped token** (dogfoods the Role; missing perms
   surface locally where admin can fix them). Re-applies every deploy → self-heals
   a widened Role after a CLI upgrade.
-- **`gha:configure`:** `ensureScopedRbac()` → mint **Secret-bound** (long-lived)
+- **`cloud:configure --only=ci`:** `ensureScopedRbac()` → mint **Secret-bound** (long-lived)
   token → assemble scoped kubeconfig → upload `{ENV}_KUBECONFIG`. Replaces the
   admin-cert upload. Stamp `rbacGrantedAt`.
 
 **Role-refresh caveat:** the scoped SA cannot modify its own `Role`, so a CLI
 upgrade that *widens* the Role only takes effect when a **local admin** re-applies
 it. `cloud:deploy` does this automatically each run; a **pure-GHA** user must
-re-run `gha:configure` (or a future `cluster:grant` refresh — task #7 family).
+re-run `cloud:configure --only=ci` (or a future `cluster:grant` refresh — task #7 family).
 - **`cluster:users`** (new, under the `cluster:*` family; user called it
   `context:users`): list everything labeled `app.kubernetes.io/managed-by=larakube`
   across namespaces, rendered with **Laravel Prompts `table()`**:
@@ -175,7 +175,7 @@ re-run `gha:configure` (or a future `cluster:grant` refresh — task #7 family).
 1. [x] `InteractsWithScopedRbac` trait — pure builders + orchestration (ensureScopedRbac, mintScopedKubeconfig, kubectlSupportsTokens).
 2. [x] Wire into `cloud:deploy` (Option A) — bootstrap, then scoped apply (strips the cluster-scoped Namespace doc).
 3. [x] Tested on the Droplet — VPS gap closed (manual + GitHub Actions).
-4. [x] `gha:configure` — Secret-bound token + scoped kubeconfig upload; stamps `rbacGrantedAt`; workflow strips the Namespace.
+4. [x] `cloud:configure --only=ci` — Secret-bound token + scoped kubeconfig upload; stamps `rbacGrantedAt`; workflow strips the Namespace.
 5. [x] `cluster:users` — list (Prompt Table) + live-Role scope detail.
 6. [x] `rbacGrantedAt` on `CloudData`.
 7. [x] Docs — `security/` section (overview, server-hardening, surgical-credentials, rotating-credentials).
@@ -187,9 +187,9 @@ re-run `gha:configure` (or a future `cluster:grant` refresh — task #7 family).
    deploy validation still pending. *(Partially done.)*
 2. [x] **Token Secret is async** — `mintScopedKubeconfig` polls until populated.
 3. [x] **RBAC propagation lag** — `applyScopedDeploy` retries the first scoped apply.
-4. [x] **kubectl ≥ 1.24 preflight** — `kubectlSupportsTokens()` guards `gha:configure`.
+4. [x] **kubectl ≥ 1.24 preflight** — `kubectlSupportsTokens()` guards `cloud:configure --only=ci`.
 5. [x] **Offboarding/rotation** — `cluster:revoke {namespace}` (+ `--with-secret`,
-   `--force`) and `cloud:configure:gha {env} --rotate`. Documented in
+   `--force`) and `cloud:configure {env} --only=ci --rotate`. Documented in
    `security/rotating-credentials.md`.
 6. [x] **Naming overlap** — `cloud:configure:users` (SSH teammates) vs `cluster:users`
    (K8s deploy SAs) — documented. NOTE: the SSH-teammates approach is itself under

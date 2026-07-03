@@ -75,7 +75,7 @@ class K9sCommand extends Command
         if ($context) {
             $contextFlag = ' --context '.escapeshellarg($context);
         } elseif ($environment !== 'local') {
-            $this->laraKubeWarn("No deploy target saved for '{$environment}' — opening k9s on your current context. Run `larakube cloud:configure:base {$environment}` to record it.");
+            $this->laraKubeWarn("No deploy target saved for '{$environment}' — opening k9s on your current context. Run `larakube cloud:configure {$environment}` to record it.");
         }
 
         $this->laraKubeInfo("Launching K9s for project <fg=cyan;options=bold>{$config->getName()}</> in namespace: <fg=yellow;options=bold>{$namespace}</>...");

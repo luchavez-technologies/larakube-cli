@@ -49,7 +49,7 @@ class CloudData extends Data
         public ?string $arch = null,
         /**
          * When the CI deploy credential (the namespace-scoped Secret-bound token
-         * uploaded as {ENV}_KUBECONFIG by `cloud:configure:gha`) was last minted —
+         * uploaded as {ENV}_KUBECONFIG by `cloud:configure --only=ci`) was last minted —
          * ISO-8601. Null = no scoped CI credential has been issued yet. Presence
          * is the "scoped CI is set up" marker; lets us warn when a token is stale.
          */

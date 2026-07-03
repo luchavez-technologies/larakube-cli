@@ -16,7 +16,7 @@ namespace App\Traits;
  *
  * The builders are PURE (no I/O) so they're unit-testable; the orchestration
  * helpers at the bottom (ensureScopedRbac / mintScopedKubeconfig) run them and do
- * the kubectl I/O, shared by cloud:deploy and cloud:configure:gha.
+ * the kubectl I/O, shared by cloud:deploy and cloud:configure --only=ci.
  * See plans/active/scoped-rbac-deploy.md.
  */
 trait InteractsWithScopedRbac
@@ -203,7 +203,7 @@ YAML;
     }
 
     // --- Orchestration (I/O) — runs the pure builders above. Shared by
-    //     cloud:deploy (dogfooded apply) and cloud:configure:gha (CI handoff). ---
+    //     cloud:deploy (dogfooded apply) and cloud:configure --only=ci (CI handoff). ---
 
     /**
      * Apply the SA + namespaced Role + RoleBinding for {app}-{env} using the

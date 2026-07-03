@@ -6,11 +6,9 @@ use App\Contracts\HasArtisanCommands;
 use App\Contracts\HasHiddenComponents;
 use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
-use App\Data\EnvironmentData;
 use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
-use App\Enums\IngressController;
 use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PhpVersion;
@@ -18,11 +16,13 @@ use App\Enums\ScoutDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 use App\Traits\CheckPrerequisites;
+use App\Traits\GathersEnvironmentData;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithDynamicOptions;
+use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Str;
@@ -37,7 +37,7 @@ use Random\RandomException;
 
 class AddCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, GathersEnvironmentData, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
@@ -630,32 +630,26 @@ class AddCommand extends Command
 
     protected function updateCloudConfig(ConfigData $config): void
     {
-        $this->laraKubeInfo('Updating Cloud Configuration...');
+        $cloudEnvs = $config->getCloudEnvironments();
+        if (empty($cloudEnvs)) {
+            $this->laraKubeWarn('No cloud environment configured yet. Run `larakube env` first (e.g. `larakube env production`).');
 
-        // 1. Ingress Controller (production)
-        $prodEnv = $config->getEnvironment('production') ?? new EnvironmentData;
-        $controller = select(
-            label: 'Which Ingress Controller will you use in production?',
-            options: IngressController::getSelectOptions($config),
-            default: $prodEnv->ingress?->value ?? IngressController::TRAEFIK->value,
+            return;
+        }
+
+        $environment = count($cloudEnvs) === 1 ? $cloudEnvs[0] : select(
+            label: 'Which environment would you like to update?',
+            options: $cloudEnvs,
         );
-        $prodEnv->ingress = IngressController::from($controller);
-        $config->environments['production'] = $prodEnv;
 
-        // 2. Managed Services
-        $managedOptions = $config->getManageableServices();
+        $this->laraKubeInfo("Updating cloud configuration for '{$environment}'...");
 
-        if (! empty($managedOptions)) {
-            $managed = multiselect(
-                label: 'Which services are managed externally in production (e.g. AWS RDS, ElastiCache, Meilisearch Cloud, S3)?',
-                options: $managedOptions,
-                default: $config->getManaged('production'),
-                hint: 'These services will be orchestrated locally but skipped in production manifests.',
-            );
+        // Same ingress/managed-services wizard `larakube env` and `cloud:configure`
+        // use, pre-filled with this env's current values.
+        $config->environments[$environment]->ingress = $this->gatherEnvironmentIngress($config, $environment);
 
-            $prodEnv = $config->getEnvironment('production') ?? new EnvironmentData;
-            $prodEnv->managed = $managed;
-            $config->environments['production'] = $prodEnv;
+        if (! empty($config->getManageableServices())) {
+            $config->environments[$environment]->managed = $this->gatherEnvironmentManaged($config, $environment);
         }
 
         $this->finishArchitecturalPivot($config);

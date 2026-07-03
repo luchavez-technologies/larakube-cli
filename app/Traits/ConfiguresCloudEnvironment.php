@@ -2,41 +2,47 @@
 
 namespace App\Traits;
 
-use App\Contracts\HasPromptableHosts;
 use App\Contracts\PlexProvisionable;
+use App\Data\EnvironmentData;
 use App\Data\GlobalConfigData;
-use App\Data\RegistryData;
 use App\Enums\RegistryProvider;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\password;
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 /**
- * The individual cloud-setup steps, shared by the guided `cloud:configure` and
- * the discoverable `cloud:configure:*` commands. Keeping them here means one
- * implementation backs every entry point. Each step takes an optional
- * environment (falls back to a picker) and returns a command exit code.
+ * The individual cloud-setup steps behind the unified `cloud:configure`
+ * command — the bare command chains all of them (configureAll); `--only=`
+ * re-runs a single one. Keeping them here (rather than inline in the command)
+ * means one implementation backs every entry point. Each step takes an
+ * optional environment (falls back to a picker) and returns a command exit
+ * code.
  *
  * Composing commands must also use InteractsWithEnvironments,
- * InteractsWithProjectConfig and LaraKubeOutput (which provides getGhCommand()).
+ * InteractsWithProjectConfig, GeneratesProjectInfrastructure (configureBase()
+ * generates a brand-new environment's manifests) and LaraKubeOutput (which
+ * provides getGhCommand() and withSpin()).
  */
 trait ConfiguresCloudEnvironment
 {
     // The deploy-target picker (managed kube-context or VPS) lives here, so
     // configureBase can record a managed cluster without hand-edited config.
-    use ResolvesEnvironmentContext;
+    // GathersEnvironmentData is the same ingress/managed-services/registry
+    // wizard `larakube env` uses, so an environment created on demand here
+    // (§ below) is indistinguishable from one created via `env`. EnsuresRealHosts
+    // is the same local/placeholder-host guard `cloud:deploy` uses.
+    use EnsuresRealHosts, GathersEnvironmentData, ResolvesEnvironmentContext;
 
     /**
      * The full guided setup: pick the environment once, then run every step in
      * the right order — server + web host (base), an optional Commons join, and
-     * CI + secrets (gha) — so there's nothing to sequence or memorise. Stops at
-     * the first failing step.
+     * CI + secrets — so there's nothing to sequence or memorise. Stops at the
+     * first failing step.
      */
-    protected function configureAll(): int
+    protected function configureAll(?string $environment = null): int
     {
-        $environment = $this->askForCloudEnvironment(
+        $environment ??= $this->askForCloudEnvironment(
             label: 'Which cloud environment are you setting up?',
         );
 
@@ -45,11 +51,12 @@ trait ConfiguresCloudEnvironment
             return $code;
         }
 
-        // 2. Offer a shared Commons (runs BEFORE gha, so the rewritten .env ships).
+        // 2. Offer a shared Commons (runs BEFORE ci, so the rewritten .env ships).
         $this->maybeJoinCommons($environment);
 
-        // 3. CI workflow + GitHub/GHCR secrets.
-        return $this->configureGha($environment);
+        // 3. CI workflow + Git-forge secrets (GitHub Actions or GitLab CI,
+        // auto-detected from the git remote — see detectCiPlatform()).
+        return $this->configureCi($environment, false);
     }
 
     protected function configureBase(?string $environment = null): int
@@ -60,65 +67,133 @@ trait ConfiguresCloudEnvironment
 
         $projectPath = getcwd();
         $config = $this->getProjectConfigObject($projectPath);
+        $isNewEnvironment = ! $config->hasEnvironment($environment);
+
+        // Environments are opt-in — 'production' (or any other name) doesn't
+        // exist until someone asks for it. First time this env is configured,
+        // run the SAME ingress/managed-services wizard `larakube env` uses, and
+        // mirror the rest of what `larakube env` does (seed .env.{env}, keep it
+        // gitignored) — so an environment created entirely through
+        // `cloud:configure` ends up a complete, deployable environment, not
+        // just a blueprint entry with no manifests.
+        if ($isNewEnvironment) {
+            $this->laraKubeInfo("Environment '{$environment}' isn't in your blueprint yet — let's set it up.");
+            $config->addEnvironment($environment, new EnvironmentData(
+                ingress: $this->gatherEnvironmentIngress($config, $environment),
+                managed: $this->gatherEnvironmentManaged($config, $environment),
+            ));
+            $this->saveProjectConfig($projectPath, $config);
+
+            $newEnvFile = ".env.{$environment}";
+            if (! file_exists("{$projectPath}/{$newEnvFile}") && file_exists("{$projectPath}/.env")) {
+                copy("{$projectPath}/.env", "{$projectPath}/{$newEnvFile}");
+                $this->laraKubeInfo("Created {$newEnvFile}");
+            }
+
+            $gitignorePath = "{$projectPath}/.gitignore";
+            if (file_exists($gitignorePath)) {
+                $gitignore = file_get_contents($gitignorePath);
+                if (! str_contains($gitignore, '.env.*')) {
+                    file_put_contents($gitignorePath, $gitignore."\n.env.*\n");
+                    $this->laraKubeInfo('Updated .gitignore to exclude .env.* files');
+                }
+            }
+        }
 
         $this->laraKubeInfo("Configuring the deploy target for '{$environment}'...");
 
-        // Pick a managed kube-context (DOKS/EKS/…) OR a VPS, and OVERWRITE any
-        // existing cloud config — no hand-editing of .larakube.json required. The
-        // picker records {context, provider} for a managed cluster (and defaults
-        // its storageClass) or {ip, user, port, key} for a VPS.
-        $config = $this->promptCloudTarget($config, $environment, $projectPath);
+        // Pick a managed kube-context (DOKS/EKS/…) OR a VPS. This OVERWRITES any
+        // existing cloud config, so a re-run on an already-configured env asks
+        // for confirmation first — everything else here is idempotent (skips
+        // re-prompting when a real value already exists), this is the one step
+        // that isn't, so it needs its own guard against an accidental reset.
+        $existingCloud = $config->getCloud($environment);
+        $hasExistingTarget = $existingCloud !== null && ($existingCloud->ip !== null || $existingCloud->context !== null);
 
-        // 🌐 Ensure Web Domain is set for this env (fires for any non-local env).
-        // Re-prompt when the host is missing, the {name}.com placeholder, OR a
-        // local .kube host — which must never ship to a remote environment.
-        $currentHost = $config->getHost($environment, 'web');
-        if (! $currentHost || $currentHost === "{$config->getName()}.com" || $this->isLocalDomain((string) $currentHost)) {
-            $this->newLine();
-            $this->info(' 🌐 ARCHITECTURAL ALIGNMENT');
-            $this->line("   Remote deployments require a real web domain for '{$environment}'.");
-
-            $host = text(
-                label: "What is the REAL web domain/subdomain for '{$environment}'?",
-                placeholder: $environment === 'production'
-                    ? "{$config->getName()}.com"
-                    : "{$environment}.{$config->getName()}.com",
-                default: $currentHost ?: '',
-                required: true,
-            );
-
-            $config->setHost($environment, 'web', $host);
+        if (! $hasExistingTarget || confirm(
+            "'{$environment}' already targets '".($existingCloud->context ?? $existingCloud->ip)."' — reconfigure the deploy target?",
+            false,
+        )) {
+            $config = $this->promptCloudTarget($config, $environment, $projectPath);
         }
 
-        // 🌐 Sweep every client-facing non-web host (Reverb WS, S3/CDN public
-        // endpoint, …). Uses the same missing/local guard as the web check above.
-        // Components declare promptable services via HasPromptableHosts; anything
-        // blank or local at deploy time will break the app just like the web host.
-        foreach ($config->getComponents($environment) as $component) {
-            if (! $component instanceof HasPromptableHosts) {
-                continue;
-            }
-            foreach ($component->getPromptableHostServices() as $service => $label) {
-                $current = (string) $config->getHost($environment, $service);
-                if ($current !== '' && ! $this->isLocalDomain($current)) {
-                    continue;
-                }
-                $serviceHost = text(
-                    label: "Real {$label} host for '{$environment}'?",
-                    placeholder: 'leave blank to derive from web host',
-                    default: $current,
-                    required: false,
-                );
-                if ($serviceHost !== '') {
-                    $config->setHost($environment, $service, $serviceHost);
-                }
-            }
-        }
+        // 🌐 Ensure a real web host + every client-facing non-web host (Reverb WS,
+        // S3/CDN public endpoint, …) — the same guard `cloud:deploy` and the CI
+        // steps use, so a placeholder or local value can't slip through whichever
+        // entry point the user happens to use.
+        $this->ensureHosts($config, $environment);
 
         $this->saveProjectConfig($projectPath, $config);
+
+        // New environments need their manifests generated at least once — an
+        // existing env's overlays are already current (every `up`/`env`/`heal`
+        // regenerates them), so this only fires when there's actually something
+        // missing on disk.
+        if ($isNewEnvironment) {
+            $this->withSpin("Generating manifests for '{$environment}'...", function () use ($config) {
+                $this->orchestrateProjectScaffolding($config, false, false);
+
+                return true;
+            });
+        }
+
         $this->laraKubeInfo('✅ Cloud configuration saved to .larakube.json');
 
         return 0;
+    }
+
+    /**
+     * Re-run just the host guard for an environment — the `--only=hosts` step
+     * of `cloud:configure`. Covers every client-facing host the project uses
+     * (web, Reverb WS, object-storage S3/CDN), not just the web host the old
+     * `cloud:configure:base` prompted for.
+     */
+    protected function configureHosts(?string $environment = null): int
+    {
+        $environment ??= $this->askForCloudEnvironment(
+            label: 'Which environment are you updating hosts for?',
+        );
+
+        $projectPath = getcwd();
+        $config = $this->getProjectConfigObject($projectPath);
+
+        if (! $config->hasEnvironment($environment)) {
+            $this->laraKubeError("Environment '{$environment}' is not in your blueprint. Run `larakube cloud:configure {$environment}` first.");
+
+            return 1;
+        }
+
+        $this->ensureHosts($config, $environment);
+        $this->saveProjectConfig($projectPath, $config);
+        $this->laraKubeInfo("✅ Hosts saved for '{$environment}'.");
+
+        return 0;
+    }
+
+    /**
+     * Detect which CI forge this project's git remote points at, so the guided
+     * flow and `--only=ci` call the right existing workflow generator without
+     * a `--platform` flag — that's the bigger forge/registry axis from
+     * paas-core-expansion.md §7.1, deferred. Defaults to GitHub when the
+     * remote is missing/unrecognized, matching today's behavior.
+     */
+    protected function detectCiPlatform(): string
+    {
+        $remote = trim((string) shell_exec('git remote get-url origin 2>/dev/null'));
+
+        return str_contains($remote, 'gitlab.com') ? 'gitlab' : 'github';
+    }
+
+    /**
+     * Dispatch to the right CI workflow generator for the detected forge —
+     * the `--only=ci` step of `cloud:configure` (replaces the old
+     * `cloud:configure:gha` / `:gitlab`).
+     */
+    protected function configureCi(?string $environment, bool $rotate): int
+    {
+        return $this->detectCiPlatform() === 'gitlab'
+            ? $this->configureGitlab($environment, $rotate)
+            : $this->configureGha($environment, $rotate);
     }
 
     /**
@@ -140,43 +215,7 @@ trait ConfiguresCloudEnvironment
             return 1;
         }
 
-        $provider = select(
-            label: "Which container registry for {$environment}?",
-            options: [
-                RegistryProvider::GHCR->value => RegistryProvider::GHCR->label(),
-                RegistryProvider::DOCKERHUB->value => RegistryProvider::DOCKERHUB->label(),
-            ],
-        );
-
-        $registryProvider = RegistryProvider::from($provider);
-
-        // The image path MUST include the owner (ghcr.io/<owner>/<repo>,
-        // docker.io/<owner>/<repo>) — a bare name pushes to a namespace you can't
-        // write to ("denied"). Best default: the GitHub repo (owner/repo) parsed
-        // straight from the git remote; fall back to the gh-detected owner + app.
-        $default = $this->guessImageFromGitRemote($projectPath);
-        if ($default === '' && $registryProvider === RegistryProvider::GHCR) {
-            $owner = trim((string) shell_exec($this->getGhCommand().' api user -q .login 2>/dev/null'));
-            if ($owner !== '') {
-                $default = $owner.'/'.$config->getName();
-            }
-        }
-
-        $image = text(
-            label: 'Image repository path (owner/repo)',
-            placeholder: $default !== '' ? $default : 'your-username/'.$config->getName(),
-            default: $default,
-            required: true,
-            hint: 'Must include the owner — e.g. '.($default !== '' ? $default : 'acme/'.$config->getName()),
-            validate: fn (string $v) => str_contains(trim($v), '/')
-                ? null
-                : 'Include the owner: owner/repo (e.g. your-username/'.$config->getName().').',
-        );
-
-        $registry = new RegistryData(
-            provider: $registryProvider,
-            image: trim($image),
-        );
+        $registry = $this->promptRegistry($config, $environment, required: true);
 
         $config->environments[$environment]->registry = $registry;
         $this->saveProjectConfig($projectPath, $config);
@@ -188,27 +227,6 @@ trait ConfiguresCloudEnvironment
         $this->info("Image: {$imageLabel}");
 
         return 0;
-    }
-
-    /**
-     * Parse `owner/repo` from the project's git `origin` remote — works for both
-     * SSH (`git@github.com:owner/repo.git`) and HTTPS
-     * (`https://github.com/owner/repo`) forms by taking the last two path
-     * segments. Returns '' when there's no remote.
-     */
-    protected function guessImageFromGitRemote(string $projectPath): string
-    {
-        $remote = trim((string) shell_exec('git -C '.escapeshellarg($projectPath).' remote get-url origin 2>/dev/null'));
-        if ($remote === '') {
-            return '';
-        }
-
-        $remote = (string) preg_replace('/\.git$/', '', $remote);
-        $parts = array_values(array_filter(preg_split('#[/:]#', $remote) ?: []));
-
-        return count($parts) >= 2
-            ? $parts[count($parts) - 2].'/'.$parts[count($parts) - 1]
-            : '';
     }
 
     /**
@@ -274,58 +292,20 @@ trait ConfiguresCloudEnvironment
         $this->laraKubeWarn("🛡 SECURITY CHECK: GitHub Actions will use your local '{$envFile}' as the source of truth.");
 
         // Domain guard — same check as cloud:deploy and configureBase. Fires when
-        // the web host is missing or still a local .kube/.dev.test value. Prompts
-        // for the real domain and rewrites APP_URL + ASSET_URL in the env file
-        // before uploading, so the secret never ships a local URL.
+        // the web host is missing or still a local .kube/.dev.test value. Rewrites
+        // APP_URL + ASSET_URL in the env file before uploading, so the secret
+        // never ships a local URL.
         $config = $this->getProjectConfigObject($projectPath);
-        $currentHost = $config->getHost($environment, 'web');
+        $previousHost = $config->getHost($environment, 'web');
 
-        if (! $currentHost || $this->isLocalDomain((string) $currentHost)) {
-            $this->newLine();
-            $this->line('  <fg=red>APP_URL is still a local dev domain. Set the real production domain first.</>');
-            if ($currentHost) {
-                $this->line("  <fg=gray>Current:</> <fg=yellow>{$currentHost}</>");
-            }
-            $this->newLine();
+        $host = $this->ensureHosts($config, $environment);
 
-            $host = text(
-                label: "Real web domain for '{$environment}'?",
-                placeholder: $environment === 'production'
-                    ? "{$config->getName()}.com"
-                    : "{$environment}.{$config->getName()}.com",
-                default: $currentHost ?: '',
-                required: true,
-            );
-
-            $config->setHost($environment, 'web', $host);
+        if ($host !== $previousHost) {
             $this->syncEnvFile($projectPath, ['APP_URL' => 'https://'.$host], false, $environment);
             $this->alignEnvironmentAssetUrl($projectPath, $environment, $host);
             $this->laraKubeInfo("Updated APP_URL and ASSET_URL to https://{$host}");
         } else {
             $this->line('  Please ensure you have set your production-ready values (APP_KEY, APP_URL, etc.) in this file.');
-        }
-
-        // Non-web client-facing hosts (Reverb, S3/CDN public endpoint, …).
-        // Same missing/local guard — these break CI deploys just like a local APP_URL.
-        foreach ($config->getComponents($environment) as $component) {
-            if (! $component instanceof HasPromptableHosts) {
-                continue;
-            }
-            foreach ($component->getPromptableHostServices() as $service => $label) {
-                $current = (string) $config->getHost($environment, $service);
-                if ($current !== '' && ! $this->isLocalDomain($current)) {
-                    continue;
-                }
-                $serviceHost = text(
-                    label: "Real {$label} host for '{$environment}'?",
-                    placeholder: 'leave blank to derive from web host',
-                    default: $current,
-                    required: false,
-                );
-                if ($serviceHost !== '') {
-                    $config->setHost($environment, $service, $serviceHost);
-                }
-            }
         }
 
         $this->saveProjectConfig($projectPath, $config);
@@ -476,8 +456,8 @@ trait ConfiguresCloudEnvironment
 
     /**
      * Upload the env-file secret + mint and upload a namespace-scoped kubeconfig.
-     * Extracted from the old gha:configure command so cloud:configure:gha owns the
-     * full flow end-to-end with no sub-command indirection.
+     * Backs `cloud:configure --only=ci`'s GitHub Actions path end-to-end with no
+     * sub-command indirection.
      */
     protected function uploadGhaSecrets(string $projectPath, string $environment, string $repoFlag, bool $rotate = false): int
     {
@@ -517,7 +497,7 @@ trait ConfiguresCloudEnvironment
 
         if (! $adminContext) {
             $this->laraKubeError("No cluster target for '{$environment}'.");
-            $this->line('  Run <fg=yellow;options=bold>larakube cloud:configure:base '.$environment.'</> (or cloud:init) first.');
+            $this->line('  Run <fg=yellow;options=bold>larakube cloud:configure '.$environment.'</> (or cloud:init) first.');
 
             return 1;
         }
@@ -588,20 +568,6 @@ trait ConfiguresCloudEnvironment
         }
 
         $this->info("  ✅ Secret '{$name}' uploaded successfully.");
-    }
-
-    protected function isLocalDomain(string $host): bool
-    {
-        if (str_contains($host, '.dev.test')) {
-            return true;
-        }
-        foreach (GlobalConfigData::ALLOWED_TLDS as $tld) {
-            if (str_contains($host, '.'.$tld)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     protected function confirmNoLocalUrls(string $envFile, string $envContent): bool
@@ -685,25 +651,21 @@ trait ConfiguresCloudEnvironment
             $this->laraKubeWarn("Could not parse a GitLab project path from remote: {$remote}");
         }
 
-        // Domain guard (same check as GHA)
+        // Domain guard (same check as GHA/cloud:deploy) — also sweeps every
+        // client-facing non-web host (Reverb, S3/CDN, …), which this GitLab
+        // path used to skip.
         $config = $this->getProjectConfigObject($projectPath);
-        $currentHost = $config->getHost($environment, 'web');
+        $previousHost = $config->getHost($environment, 'web');
 
-        if (! $currentHost || $this->isLocalDomain((string) $currentHost)) {
-            $this->newLine();
-            $this->line('  <fg=red>APP_URL is still a local dev domain. Set the real production domain first.</>');
-            $host = text(
-                label: "Real web domain for '{$environment}'?",
-                placeholder: "{$config->getName()}.com",
-                default: $currentHost ?: '',
-                required: true,
-            );
-            $config->setHost($environment, 'web', $host);
+        $host = $this->ensureHosts($config, $environment);
+
+        if ($host !== $previousHost) {
             $this->syncEnvFile($projectPath, ['APP_URL' => 'https://'.$host], false, $environment);
             $this->alignEnvironmentAssetUrl($projectPath, $environment, $host);
             $this->laraKubeInfo("Updated APP_URL and ASSET_URL to https://{$host}");
-            $this->saveProjectConfig($projectPath, $config);
         }
+
+        $this->saveProjectConfig($projectPath, $config);
 
         // Upload secrets via glab (if available) or print manual instructions
         $this->laraKubeInfo("Step 1: Uploading CI/CD variables for '{$environment}'...");
@@ -807,7 +769,7 @@ trait ConfiguresCloudEnvironment
         }
 
         if (empty($cloudEnvs)) {
-            $this->laraKubeWarn('No cloud environments with a deploy target found — run `larakube cloud:init` or `cloud:configure:base` first.');
+            $this->laraKubeWarn('No cloud environments with a deploy target found — run `larakube cloud:init` or `cloud:configure` first.');
 
             return 1;
         }

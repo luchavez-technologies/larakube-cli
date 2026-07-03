@@ -2,26 +2,20 @@
 
 namespace App\Commands;
 
-use App\Data\ConfigData;
-use App\Data\EnvironmentData;
-use App\Data\RegistryData;
-use App\Enums\IngressController;
-use App\Enums\RegistryProvider;
+use App\Traits\GathersEnvironmentData;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromptsForHosts;
 
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\multiselect;
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class EnvCommand extends Command
 {
-    use GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput, PromptsForHosts;
+    use GathersEnvironmentData, GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput, PromptsForHosts;
 
     /**
      * The name and signature of the console command.
@@ -104,16 +98,17 @@ class EnvCommand extends Command
         $isOffline = $config->environments[$envName]->offline ?? false;
 
         // 5. Offline environments don't need CI/CD — they deploy via bundles.
-        //    For online environments, offer to set up the GitHub Actions workflow.
+        //    For online environments, offer to set up the CI workflow (GitHub
+        //    Actions or GitLab CI, auto-detected from the git remote).
         if (! $isOffline) {
             $configureCicd = confirm(
-                label: "Set up the GitHub Actions deploy workflow for '{$envName}' now?",
+                label: "Set up the CI/CD deploy workflow for '{$envName}' now?",
                 default: false,
-                hint: 'Generates .github/workflows/larakube-deploy-'.$envName.'.yml (you pick its trigger branch) and uploads secrets.',
+                hint: 'Generates the deploy workflow (you pick its trigger branch) and uploads secrets.',
             );
 
             if ($configureCicd) {
-                $this->call('cloud:configure:gha', ['environment' => $envName]);
+                $this->call('cloud:configure', ['environment' => $envName, '--only' => 'ci']);
 
                 return;
             }
@@ -124,102 +119,8 @@ class EnvCommand extends Command
         if ($isOffline) {
             $this->line("  2. Build the air-gapped bundle:   <fg=yellow>larakube bundle:build {$envName} --tar</>");
         } else {
-            $this->line("  2. Set up CI/CD (per-env workflow + branch):  <fg=yellow>larakube cloud:configure:gha {$envName}</>");
+            $this->line("  2. Set up CI/CD (per-env workflow + branch):  <fg=yellow>larakube cloud:configure {$envName} --only=ci</>");
             $this->line("  3. Or deploy manually:  <fg=yellow>larakube cloud:deploy {$envName}</>");
-        }
-    }
-
-    /**
-     * Prompt for the new environment's per-env overrides (ingress, managed
-     * services, web host). All optional — defaults produce an env that uses
-     * Traefik, deploys everything locally, and has no external web host.
-     */
-    protected function gatherEnvironmentData(ConfigData $config, string $envName): EnvironmentData
-    {
-        $envData = new EnvironmentData;
-
-        // Ingress: rare to differ from Traefik unless infra demands it.
-        $ingress = select(
-            label: "Which Ingress Controller will {$envName} use?",
-            options: IngressController::getSelectOptions($config),
-            default: IngressController::TRAEFIK->value,
-        );
-        $envData->ingress = IngressController::from($ingress);
-
-        // Managed services: every backing service this project could offload
-        // to a managed provider (DB, cache, search, object storage).
-        $managedOptions = $config->getManageableServices();
-        if (! empty($managedOptions)) {
-            $envData->managed = multiselect(
-                label: "Which services are managed externally in {$envName} (e.g. AWS RDS, ElastiCache, Meilisearch Cloud, S3)?",
-                options: $managedOptions,
-                hint: 'Selected services will be skipped in this env\'s manifests.',
-            );
-        }
-
-        // Client-facing hosts — the optional web host plus any HasPromptableHosts
-        // service overrides (Reverb WS, object-storage S3/CDN). Shared via
-        // PromptsForHosts so the bundle installer and other flows reuse one wizard.
-        // Admin consoles aren't prompted; they get a derived ingress host.
-        foreach ($this->promptForHosts($envName, $this->resolveEnvComponents($config, $envName, $envData)) as $service => $host) {
-            $envData->hosts[$service] = $host;
-        }
-
-        // Container registry: optional. Only relevant for cloud environments.
-        if ($envName !== 'local') {
-            $configureRegistry = confirm(
-                label: "Configure a container registry for {$envName}?",
-                default: false,
-                hint: 'Required for GitHub Actions CI/CD (push to GHCR or Docker Hub)',
-            );
-
-            if ($configureRegistry) {
-                $provider = select(
-                    label: "Which container registry for {$envName}?",
-                    options: [
-                        RegistryProvider::GHCR->value => RegistryProvider::GHCR->label(),
-                        RegistryProvider::DOCKERHUB->value => RegistryProvider::DOCKERHUB->label(),
-                    ],
-                );
-
-                $image = text(
-                    label: 'Image repository path (optional, e.g. owner/repo)',
-                    placeholder: "Leave blank for default: {$config->getName()}",
-                    required: false,
-                );
-
-                $envData->registry = new RegistryData(
-                    provider: RegistryProvider::from($provider),
-                    image: $image !== '' ? $image : null,
-                );
-            }
-        }
-
-        return $envData;
-    }
-
-    /**
-     * Project components that would be active in the new env, evaluated
-     * with the freshly-gathered EnvironmentData so per-env feature filters
-     * (addFeatures/excludeFeatures) are respected even before the env is
-     * persisted to the config.
-     */
-    protected function resolveEnvComponents(ConfigData $config, string $envName, EnvironmentData $envData): array
-    {
-        // Briefly install the in-progress EnvironmentData so getFeatures()
-        // sees the right addFeatures/excludeFeatures for this env, then
-        // restore the prior map.
-        $previous = $config->environments[$envName] ?? null;
-        $config->environments[$envName] = $envData;
-
-        try {
-            return $config->getComponents($envName);
-        } finally {
-            if ($previous === null) {
-                unset($config->environments[$envName]);
-            } else {
-                $config->environments[$envName] = $previous;
-            }
         }
     }
 }

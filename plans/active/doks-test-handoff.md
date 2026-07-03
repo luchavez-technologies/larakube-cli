@@ -64,8 +64,13 @@ A self-contained brief so a fresh agent can pick up the DigitalOcean Kubernetes
    PVC; multi-node needs **RWX**, which `do-block-storage` can't do → `Pending`
    pods. Use 1-node + `single-node`. Full design + the **non-negotiable "no silent
    gotcha on upgrade" guard**: `plans/active/multi-node-storage.md`.
-3. **Managed-env config UX is rough:** `cloud:configure:base` is VPS-only (asks
-   IP/SSH). The managed `context` is set via the `cloud:deploy` picker or hand-edit.
+3. ~~**Managed-env config UX is rough:** `cloud:configure:base` is VPS-only~~ —
+   **stale, already fixed independently of this plan.** `cloud:configure` (the
+   `:base` sub-command was later merged into it, see
+   `plans/active/paas-core-expansion.md` §7.2) already offers a kube-context
+   picker (VPS **or** managed) via `promptCloudTarget()`, falling back to a
+   manual IP/SSH prompt only when no contexts are found — no hand-edit needed
+   for the managed case.
 4. **Traefik ACME on DOKS is UNPROVEN** — get HTTP green first. The cert needs DNS
    resolving + port 80 reachable + the annotation present.
 5. **Pull secret:** only GHCR is wired. Public image or GHCR for run #1; Docker Hub

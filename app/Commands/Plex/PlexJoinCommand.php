@@ -383,7 +383,7 @@ class PlexJoinCommand extends Command
         $this->line('  Next:');
 
         // Local joins write straight to .env and apply via `larakube up` — the
-        // git-commit + cloud:configure:gha steps are cloud-only ceremony.
+        // git-commit + cloud:configure --only=ci steps are cloud-only ceremony.
         if ($env === 'local') {
             $this->line('    1. <fg=yellow>larakube up</> — apply the Commons connection to your local cluster.');
             $this->line('    2. The app now uses the Commons, not its own pods.');
@@ -392,7 +392,7 @@ class PlexJoinCommand extends Command
         }
 
         $this->line('    1. <fg=yellow>git add . && git commit</> (blueprint + regenerated manifests now target the Commons)');
-        $this->line("    2. <fg=yellow>larakube cloud:configure:gha {$env}</> (re-upload the .env.{$env} secret)");
+        $this->line("    2. <fg=yellow>larakube cloud:configure {$env} --only=ci</> (re-upload the .env.{$env} secret)");
         $this->line('    3. Deploy as usual — the app now uses the Commons, not its own pods.');
     }
 }

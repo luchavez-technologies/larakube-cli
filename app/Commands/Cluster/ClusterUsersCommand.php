@@ -131,7 +131,7 @@ class ClusterUsersCommand extends Command
 
         if (empty($deployers) && empty($teammates)) {
             $this->laraKubeInfo('No LaraKube ServiceAccounts on this cluster yet.');
-            $this->line('  Deploy SAs come from `cloud:deploy` / `cloud:configure:gha`; teammates from `cluster:grant`.');
+            $this->line('  Deploy SAs come from `cloud:deploy` / `cloud:configure --only=ci`; teammates from `cluster:grant`.');
 
             return 0;
         }

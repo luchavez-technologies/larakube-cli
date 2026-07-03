@@ -27,7 +27,7 @@
 
 ### Docs backlog (do after testing; `larakube-docs` repo unless noted)
 - [ ] **#18 — Monitoring stack** — expand `development/monitoring.md` (`monitor:init`, exporters, `cloud:configure:monitoring`). Note: a draft `docs/development/monitoring.md` + `sidebars.ts` entry are already uncommitted in the docs repo.
-- [ ] **#19 — GitLab CI deploy** — new page for `cloud:configure:gitlab` (mirror `github-actions.md`); register in `sidebars.ts`.
+- [ ] **#19 — GitLab CI deploy** — new page for `cloud:configure --only=ci` on a GitLab remote (mirror `github-actions.md`); register in `sidebars.ts`. Note: the §7.2 consolidation (`plans/active/paas-core-expansion.md`) already **shipped** — `cloud:configure:gitlab` is gone, GitLab is now auto-detected by `--only=ci` from the git remote (no `--platform=gitlab` flag exists — that's deferred to unbuilt Phase 1). Document the current auto-detect surface.
 - [ ] **#20 — Custom local TLDs** — `config:tld` + multi-TLD (networking.md / configuration.md).
 - [ ] **#21 — Tunnels** — `cloud:configure:tunnel` in `development/tunneling.md`.
 - [ ] **#22 — Companions** — add/list/remove + recommendations (commands/management.md).
@@ -35,7 +35,7 @@
 - [ ] **#24 — PHP extensions** — `ext:add` / `ext:remove` (onboarding/configuration.md).
 - [ ] **#25 — `larakube clone`** — give it a real home (commands/management.md).
 - [ ] **#26 — bundle custom CA** — `bundle:build --ca-cert/--ca-key` (deployment/airgapped-bundles.md).
-- [ ] **#27 — command-reference sweep + changelog + sidebars** — add every new command to `commands/*.md`, write the release changelog entry, register new pages.
+- [ ] **#27 — command-reference sweep + changelog + sidebars** — add every new command to `commands/*.md`, write the release changelog entry, register new pages. ⚠️ **Partial defer:** hold the `cloud:configure:*` entries (base/gha/gitlab/registry) until after v1.0.0 §7.2 consolidates them into one `cloud:configure --platform/--registry/--only` surface; the rest of the sweep is safe now.
 - [ ] **#28 — verify existing pages now accurate** — reverb.md (local ingress now true), `about` env table, mariadb 11+, doks-quickstart.
 
 ### Done this session (context, not tasks)
@@ -777,8 +777,8 @@ larakube cloud:init:doks --context=do-sfo3-my-cluster
 
 ```bash
 # After DNS propagates (app.example.com → LoadBalancer IP):
-larakube cloud:configure:registry production    # set up GHCR/Docker Hub
-larakube cloud:configure:gha production         # upload secrets + generate workflow
+larakube cloud:configure production --only=registry    # set up GHCR/Docker Hub
+larakube cloud:configure production --only=ci           # upload secrets + generate workflow
 # Push to main → GHA workflow deploys to DOKS
 
 # Or deploy directly:
@@ -838,9 +838,9 @@ brew audit --new luchavez-technologies/larakube/larakube
 
 ---
 
-## 14. `cloud:configure:gitlab` — GitLab CI Deploy Pipeline
+## 14. `cloud:configure --only=ci` (GitLab) — GitLab CI Deploy Pipeline
 
-**Goal:** Verify that `cloud:configure:gitlab` generates a valid `.gitlab-ci.yml` and uploads CI/CD variables to GitLab.
+**Goal:** Verify that `cloud:configure --only=ci`, run inside a project with a GitLab `origin` remote, auto-detects GitLab (via `detectCiPlatform()`), generates a valid `.gitlab-ci.yml`, and uploads CI/CD variables to GitLab. (The old dedicated `cloud:configure:gitlab` command is gone — there's no way to force GitLab when the remote is something else, e.g. a GitLab project mirrored from GitHub; that's a known gap of the auto-detect-only approach, worth surfacing if it bites someone.)
 
 > **Prerequisites:**
 > - Project hosted on GitLab (remote origin = `git@gitlab.com:...`)
@@ -851,7 +851,7 @@ brew audit --new luchavez-technologies/larakube/larakube
 cd /path/to/your-laravel-app
 
 # Configure for production
-larakube cloud:configure:gitlab production
+larakube cloud:configure production --only=ci
 
 # Expected flow:
 #   Targeting GitLab project: mygroup/myapp
@@ -884,7 +884,7 @@ git push origin main
 
 ```bash
 # Add staging
-larakube cloud:configure:gitlab staging
+larakube cloud:configure staging --only=ci
 # .gitlab-ci.yml now contains build:staging + deploy:staging as well
 ```
 
@@ -895,7 +895,7 @@ larakube cloud:configure:gitlab staging
 PATH_BACKUP=$PATH
 export PATH=$(echo $PATH | sed 's|/opt/homebrew/bin:||')
 
-larakube cloud:configure:gitlab production
+larakube cloud:configure production --only=ci
 # Should print the variables to set manually instead of uploading them:
 #   PRODUCTION_KUBECONFIG = (base64 kubeconfig — run: ...)
 #   PRODUCTION_ENV_FILE_BASE64 = (base64 of .env.production — run: ...)

@@ -4,6 +4,7 @@ namespace App\Commands\Cloud;
 
 use App\Data\RegistryData;
 use App\Enums\RegistryProvider;
+use App\Traits\EnsuresRealHosts;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\GuardsSharedStorage;
 use App\Traits\InteractsWithEnvironments;
@@ -21,7 +22,8 @@ use LaravelZero\Framework\Commands\Command;
 class CloudDeployCommand extends Command
 {
     // getGhCommand() comes via LaraKubeOutput → InteractsWithGlobalConfig.
-    use GeneratesProjectInfrastructure, GuardsSharedStorage, InteractsWithEnvironments, InteractsWithProjectConfig, InteractsWithRemoteDeploy, InteractsWithScopedRbac, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext;
+    // EnsuresRealHosts is the same local/placeholder-host guard cloud:configure uses.
+    use EnsuresRealHosts, GeneratesProjectInfrastructure, GuardsSharedStorage, InteractsWithEnvironments, InteractsWithProjectConfig, InteractsWithRemoteDeploy, InteractsWithScopedRbac, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext;
 
     protected $signature = 'cloud:deploy
         {environment? : The environment to deploy to}
@@ -62,26 +64,15 @@ class CloudDeployCommand extends Command
 
         $appName = $config->getName() ?? basename($projectPath);
 
-        // --- 🌐 WEB DOMAIN GUARD (any cloud env) ---
-        // Fires for every non-local env — if user renamed `production` to
-        // `main` or added `staging`, we still demand a real web host before
-        // pushing to the cluster.
-        $currentHost = $config->getHost($environment, 'web');
-        $defaultHost = "{$appName}.com";
+        // --- 🌐 WEB + CLIENT-FACING HOST GUARD (any cloud env) ---
+        // Same guard `cloud:configure`'s base/ci steps use — fires for every
+        // non-local env if the web host (or a Reverb/S3/CDN host) is missing, still
+        // the `{name}.com` placeholder, or a local .kube/.dev.test value that must
+        // never ship to a remote environment.
+        $previousHost = $config->getHost($environment, 'web');
+        $host = $this->ensureHosts($config, $environment);
 
-        if (empty($currentHost) || $currentHost === $defaultHost) {
-            $this->newLine();
-            $this->warn(" 🌐 WEB DOMAIN REQUIRED FOR '{$environment}'");
-            $this->line('   Current web host: <fg=yellow>'.($currentHost ?: '(not set)').'</>');
-            $this->newLine();
-
-            $newHost = \Laravel\Prompts\text(
-                label: "What is the REAL web domain/subdomain for '{$environment}'?",
-                placeholder: $environment === 'production' ? 'myapp.com' : "{$environment}.myapp.com",
-                required: true,
-            );
-
-            $config->setHost($environment, 'web', $newHost);
+        if ($host !== $previousHost) {
             $this->saveProjectConfig($projectPath, $config);
 
             // Reflect the domain in the env file's APP_URL. syncEnvFile targets
@@ -90,7 +81,7 @@ class CloudDeployCommand extends Command
             // (only APP_URL) rather than a full syncEnv, so we never clobber other
             // env values — e.g. a Plex-managed DB_HOST. (The manifest regen below
             // uses syncEnv:false for the same reason.)
-            $this->syncEnvFile($projectPath, ['APP_URL' => 'https://'.$newHost], false, $environment);
+            $this->syncEnvFile($projectPath, ['APP_URL' => 'https://'.$host], false, $environment);
         }
 
         // Keep ASSET_URL aligned with this environment's web domain. @vite
@@ -98,7 +89,7 @@ class CloudDeployCommand extends Command
         // "*.kube" value sends deployed assets to the dev host (404 / unstyled). Runs
         // for every cloud env on every deploy and only rewrites an empty or local
         // value, never a real CDN/asset host.
-        $this->alignEnvironmentAssetUrl($projectPath, $environment, $config->getHost($environment, 'web'));
+        $this->alignEnvironmentAssetUrl($projectPath, $environment, $host);
 
         // Always regenerate manifests from the blueprint, so a CLI upgrade or a
         // blueprint change is reflected on every deploy — not only when the domain
@@ -109,29 +100,21 @@ class CloudDeployCommand extends Command
             return true;
         });
 
-        // Resolve the env's deploy target. It lives in .larakube.json
-        // (environments.{env}.cloud); if it's not recorded yet (e.g. the server
-        // was provisioned before this was persisted), ask once and save it — so
-        // the target is in the blueprint and future deploys are zero-prompt. The
-        // env's OWN kube-context is derived from it (larakube-<ip>), never the
-        // global current-context, so local dev pointed elsewhere is undisturbed.
-        // A target is "saved" if it has a VPS ip OR a managed kube-context.
+        // Resolve the env's deploy target + its OWN kube-context. It lives in
+        // .larakube.json (environments.{env}.cloud); if it's not recorded yet
+        // (e.g. the server was provisioned before this was persisted), ask once
+        // and save it — so the target is in the blueprint and future deploys are
+        // zero-prompt. Never the global current-context, so local dev pointed
+        // elsewhere is undisturbed.
+        [$config, $context] = $this->resolveEnvironmentContext($config, $environment, $projectPath);
         $cloud = $config->getCloud($environment);
-        if (! $cloud || (! $cloud->ip && ! $cloud->context)) {
-            $config = $this->captureCloudConnection($config, $environment, $projectPath);
-            $cloud = $config->getCloud($environment);
-        }
-
-        // Resolve the env's own context (managed → its kube-context; VPS →
-        // larakube-<ip>), never the global current-context.
-        $context = $this->environmentContextOrCurrent($config, $environment);
 
         // A managed cluster (context, no IP) can't be SSH-sideloaded, so it needs
         // a registry to push to. Fail clearly instead of falling into the SSH path.
         $registry = $config->getRegistry($environment);
         if ($cloud && $cloud->isManaged() && ! $registry) {
             $this->laraKubeError("'{$environment}' targets a managed cluster ('{$cloud->context}') but has no registry configured.");
-            $this->line("   <fg=gray>Managed clusters can't be SSH-sideloaded. Run</> <fg=yellow>larakube cloud:configure:registry {$environment}</> <fg=gray>first.</>");
+            $this->line("   <fg=gray>Managed clusters can't be SSH-sideloaded. Run</> <fg=yellow>larakube cloud:configure {$environment} --only=registry</> <fg=gray>first.</>");
 
             return 1;
         }

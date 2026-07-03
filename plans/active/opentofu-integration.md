@@ -47,7 +47,7 @@ infra itself) are complementary, not overlapping.
 | Encryption key | Random passphrase generated once, stored in global config `~/.larakube` (machine-local). Supplied at runtime via the `TF_ENCRYPTION` env var, never written into HCL. Caveat: lose the passphrase → state unrecoverable (acceptable: single server, re-import/recreate). |
 | Concurrency/locking | **Not needed** — single operator runs `cloud:create`. Why global local state is fine without a remote backend. |
 | Team state (later) | If ever multi-operator: optional **generic S3-compatible backend** (bring-your-own bucket: AWS S3 / R2 / MinIO / Backblaze / DO Spaces). Out of scope for v1. |
-| App secrets (.env / kubeconfig) | **Not Tofu's job.** Stay in GitHub Secrets via the existing `cloud:configure:gha` flow. Putting them in Tofu would write them into state in plaintext. Tofu = infra only. |
+| App secrets (.env / kubeconfig) | **Not Tofu's job.** Stay in GitHub Secrets via the existing `cloud:configure --only=ci` flow. Putting them in Tofu would write them into state in plaintext. Tofu = infra only. |
 | Provisioning CI | **None in v1** — `cloud:create` from the CLI covers it (infra is rare + high-blast-radius; teams gate it). Optional later: a manual `workflow_dispatch` provisioning workflow with the DO token as a GH secret. Never on the push-triggered deploy path. |
 | Secrets | DO token flows via `TF_VAR_do_token` + global config — never written into HCL. |
 | VPS resources (v1) | Droplet + SSH key + DO Cloud Firewall (from a shared, provider-agnostic firewall policy). |
@@ -156,7 +156,7 @@ UFW/fail2ban/key-only SSH, disable root login, kubeconfig sync, Traefik. No reim
 - Optional least-privilege RBAC via existing traits.
 
 **Handoff to the existing deploy flow (both paths).** OpenTofu stops at infra. The kubeconfig
-then feeds the *unchanged* `cloud:configure:gha` flow:
+then feeds the *unchanged* `cloud:configure --only=ci` flow:
 - VPS: kubeconfig comes from `syncKubeconfig()` (k3s handoff).
 - DOKS: kubeconfig comes from `tofu output` → fed into the same `mintScopedKubeconfig()`.
 - Either way `.env.{env}` → `{ENV}_ENV_FILE_BASE64` and the scoped `{ENV}_KUBECONFIG` upload to

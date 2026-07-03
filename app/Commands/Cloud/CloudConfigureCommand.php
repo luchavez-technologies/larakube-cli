@@ -17,10 +17,17 @@ class CloudConfigureCommand extends Command
 
     /**
      * The name and signature of the console command. The bare command runs the
-     * full guided setup; the individual steps live in the discoverable
-     * `cloud:configure:*` commands (base / gha / registry / users).
+     * full guided setup (deploy target + hosts → optional Commons → CI).
+     * `--only` re-runs a single step instead — replaces the old
+     * `cloud:configure:registry` / `:gha` / `:gitlab` sub-commands. There's no
+     * direct replacement for the old `:base`: its host half is `--only=hosts`
+     * (now covering every client-facing host, not just web); its deploy-target
+     * half only changes via a full guided re-run (`cloud:configure {env}`).
      */
-    protected $signature = 'cloud:configure';
+    protected $signature = 'cloud:configure
+        {environment? : The environment to configure}
+        {--only= : Re-run just one step instead of the full guided flow: registry|ci|hosts}
+        {--rotate : Revoke the current deploy token/secrets and mint fresh ones (use after a leak) — only with --only=ci}';
 
     /**
      * The console command description.
@@ -38,6 +45,22 @@ class CloudConfigureCommand extends Command
             return 1;
         }
 
-        return $this->configureAll();
+        $environment = $this->argument('environment');
+        $only = $this->option('only');
+
+        return match ($only) {
+            null => $this->configureAll($environment),
+            'registry' => $this->configureRegistry($environment),
+            'ci' => $this->configureCi($environment, (bool) $this->option('rotate')),
+            'hosts' => $this->configureHosts($environment),
+            default => $this->unsupportedOnlyValue($only),
+        };
+    }
+
+    private function unsupportedOnlyValue(string $only): int
+    {
+        $this->laraKubeError("Unknown --only value '{$only}'. Use one of: registry, ci, hosts.");
+
+        return 1;
     }
 }

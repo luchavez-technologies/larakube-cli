@@ -110,7 +110,7 @@ trait ResolvesEnvironmentContext
      * provisioned `larakube-<ip>` VPS) or enter a new VPS by IP — so a managed
      * target can be recorded without hand-editing .larakube.json. Returns the
      * reloaded config. Used by both first-use auto-capture (captureCloudConnection)
-     * and explicit reconfiguration (`cloud:configure:base`).
+     * and explicit reconfiguration (`cloud:configure`'s base step).
      */
     protected function promptCloudTarget(ConfigData $config, string $environment, string $projectPath): ConfigData
     {

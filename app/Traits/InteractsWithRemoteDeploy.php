@@ -503,7 +503,7 @@ trait InteractsWithRemoteDeploy
         // VPS (larakube-<ip>) OR managed (cloud.context) — resolved one way.
         $context = $this->environmentContextOrCurrent($config, $environment);
         if (! $context) {
-            $this->laraKubeError("No cluster context for '{$environment}'. Run `cloud:configure:base` or `cloud:init` first.");
+            $this->laraKubeError("No cluster context for '{$environment}'. Run `cloud:configure` or `cloud:init` first.");
 
             return 1;
         }
@@ -569,7 +569,7 @@ trait InteractsWithRemoteDeploy
 
         // GHCR packages are private in LaraKube, so the cluster always needs a pull
         // secret — create it here (admin context) so manual deploys work without a
-        // separate `cloud:configure:gha` run or a public package.
+        // separate `cloud:configure --only=ci` run or a public package.
         if ($registry->provider === RegistryProvider::GHCR) {
             $this->ensureGhcrPullSecret($context, $namespace);
         }

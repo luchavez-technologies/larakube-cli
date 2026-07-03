@@ -583,8 +583,8 @@ class CloudCreateCommand extends Command
         $this->line('  <fg=green>Next steps:</>');
         $this->line("    <fg=yellow>kubectl config use-context {$context}</>");
         if ($environment) {
-            $this->line("    <fg=yellow>larakube cloud:configure:registry {$environment}</>  <fg=gray># container registry</>");
-            $this->line("    <fg=yellow>larakube cloud:configure:gha {$environment}</>       <fg=gray># CI secrets (.env + scoped kubeconfig)</>");
+            $this->line("    <fg=yellow>larakube cloud:configure {$environment} --only=registry</>  <fg=gray># container registry</>");
+            $this->line("    <fg=yellow>larakube cloud:configure {$environment} --only=ci</>       <fg=gray># CI secrets (.env + scoped kubeconfig)</>");
             $this->line("    <fg=yellow>larakube cloud:deploy {$environment}</>");
         }
         $this->newLine();

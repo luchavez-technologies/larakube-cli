@@ -1,5 +1,11 @@
 # Plan: LaraKube Platform — The Ploi Alternative Built on Kubernetes
 
+> **Superseded by `plans/active/larakube-cloud.md`** for the LaraKube Cloud product plan — that file
+> folds in this one's Ploi comparison and phase framing, adds technology grounding for VPS→K8s migration
+> (Velero), multi-provider/BYOC provisioning, fleet monitoring, and ephemeral dev sandboxes, and is kept
+> up to date against the current codebase. Left in place for the comparison table and phase detail below,
+> which are still accurate; don't extend this file further — extend the new one.
+
 > **Vision:** A hosted server-management platform for Laravel developers that starts as simple as Ploi but grows with you — from a $6 VPS to a multi-region managed Kubernetes cluster, **with zero re-architecture**.
 >
 > The core insight Ploi misses: Kubernetes is the right abstraction from day one. Everything LaraKube already does (manifests, namespaces, rolling updates, offline bundles, Plex multi-tenancy) becomes the engine of a polished product.
@@ -68,8 +74,8 @@ The platform never owns the customer's server. It orchestrates the CLI against i
 
 **Key technical pieces needed in CLI:**
 - `cloud:provision` already done ✅
-- `cloud:configure:gha` already done ✅
-- GitLab CI provider (`plans/active/gitlab-ci-provider.md`) — prioritise
+- `cloud:configure --only=ci` (was `cloud:configure:gha`, merged in `paas-core-expansion.md` §7.2) already done ✅
+- ~~GitLab CI provider (`plans/active/gitlab-ci-provider.md`) — prioritise~~ — **already built** (`ConfiguresCloudEnvironment::configureGitlab()`, `.gitlab-ci.yml` generation, auto-detected by `cloud:configure --only=ci`); that plan file is stale and should be archived, not prioritised
 - An API / machine-readable output mode so the platform can parse CLI output
 - Webhook receiver for `git push` → trigger deploy
 
