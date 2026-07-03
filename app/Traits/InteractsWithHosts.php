@@ -156,10 +156,14 @@ trait InteractsWithHosts
      * Sync cluster-wide shared service hosts (Mailpit, Traefik dashboard, Console,
      * Grafana) into /etc/hosts and the Windows hosts file on WSL.
      *
-     * Called after reconcileSharedCluster() in UpCommand, so the shared services
-     * are already deployed. Without this, their ingress hosts existed only in the
-     * cluster and were never written to the local hosts file — browsers couldn't
-     * resolve them.
+     * Called after reconcileSharedCluster() in UpCommand. Always-on services
+     * (Mailpit) are deployed unconditionally, so their host is always synced.
+     * Install-gated services (Traefik dashboard, Console, Grafana) are only
+     * RE-POINTED by reconcileSharedCluster() when already present — `up` never
+     * auto-installs them — so their host is only synced once the same presence
+     * probe confirms they're actually there. Otherwise a project that never ran
+     * `monitor:init` would get a "grafana.<tld>" entry pointing at an Ingress
+     * that was never created.
      *
      * Unlike ensureHostsAreSet() this is fully automated (no confirm prompt) because
      * the hosts are managed by LaraKube itself, not user project config, and they
@@ -174,6 +178,12 @@ trait InteractsWithHosts
             if (! $service->targetsEnvironment('local')) {
                 continue;
             }
+
+            $probe = $service->presenceProbe();
+            if ($probe !== null && trim((string) shell_exec("kubectl get {$probe} --no-headers 2>/dev/null")) === '') {
+                continue;
+            }
+
             $hosts[] = $service->host($domain);
         }
 
@@ -210,6 +220,12 @@ trait InteractsWithHosts
         if (rtrim($updated) === rtrim($current)) {
             return;
         }
+
+        // No confirm prompt (this is LaraKube-managed, not the user's project
+        // hosts — see docblock), but the sudo password prompt that follows
+        // needs SOME explanation, or it looks like it's coming from nowhere.
+        $this->line("  <fg=gray>Updating /etc/hosts for {$appName} (requires sudo)...</>");
+        passthru('sudo -v');
 
         $tmpPath = sys_get_temp_dir().'/larakube_hosts';
         file_put_contents($tmpPath, $updated);
