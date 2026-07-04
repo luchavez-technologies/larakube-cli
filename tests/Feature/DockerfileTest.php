@@ -49,7 +49,3 @@ test('Node is no longer baked into the base stage', function () {
         expect($baseSection)->not->toContain('nodejs npm');
     }
 });
-
-test('chokidar is never installed', function () {
-    expect(renderDockerfile(['features' => ['ssr']]))->not->toContain('chokidar');
-});

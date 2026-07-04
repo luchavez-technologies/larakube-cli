@@ -100,8 +100,12 @@ class ExecCommand extends Command
             default => $cleanService,
         };
 
-        // Execute the command.
-        passthru("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- /bin/sh -c \"{$command}\" 2>/dev/null || {$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- {$command}");
+        // Execute the command through the container's shell (escapeshellarg keeps
+        // any quotes/operators in $command intact as ONE argument to `sh -c`).
+        // No swallowed stderr and no argv-only fallback: a real failure from the
+        // command itself should be visible, not masked by a confusing second
+        // attempt that treats the whole string as a single binary name.
+        passthru("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- /bin/sh -c ".escapeshellarg($command));
 
         return 0;
     }

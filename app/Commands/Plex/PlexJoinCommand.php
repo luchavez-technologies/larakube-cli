@@ -4,7 +4,6 @@ namespace App\Commands\Plex;
 
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
-use App\Enums\StorageDriver;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -271,62 +270,6 @@ class PlexJoinCommand extends Command
             $this->laraKubeLine('  Joining now would point it at an EMPTY Commons database and strand that data.');
             $this->laraKubeLine('  Migrate the data first (plex:migrate — see the guide §1e), or keep it on its own');
             $this->laraKubeLine("  {$label} (mixed mode) and only join Redis.");
-
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Read the shared Commons S3 credentials from the plex-admin Secret. Returns
-     * ['access' => ..., 'secret' => ...] or null if the secret/keys are missing.
-     */
-    protected function readCommonsS3Credentials(): ?array
-    {
-        $ns = $this->plexNamespace();
-        $read = fn (string $key): string => trim((string) shell_exec(
-            $this->plexKubectl()." get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.'.$key.'}').' 2>/dev/null',
-        ));
-
-        $access = $read('S3_ACCESS_KEY');
-        $secret = $read('S3_SECRET_KEY');
-
-        if ($access === '' || $secret === '') {
-            return null;
-        }
-
-        return ['access' => (string) base64_decode($access), 'secret' => (string) base64_decode($secret)];
-    }
-
-    /**
-     * Create this tenant's bucket on its Commons S3 backend (idempotent). The
-     * per-backend command (weed / mc / …) comes from the StorageDriver enum, run
-     * via `kubectl exec deploy/<value> -- sh -c '…'` so the pod expands its creds.
-     */
-    protected function allocateStorageBucket(StorageDriver $driver, string $bucket): bool
-    {
-        $ns = $this->plexNamespace();
-        $service = $driver->value;
-        $cmd = $driver->commonsBucketCreateCommand($bucket);
-
-        $output = [];
-        $code = 0;
-        $this->withSpin("Creating object-storage bucket '{$bucket}' in the Commons...", function () use ($ns, $service, $cmd, &$output, &$code) {
-            exec(
-                $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$service.' -- sh -c '.escapeshellarg($cmd).' 2>&1',
-                $output,
-                $code,
-            );
-
-            return $code === 0;
-        });
-
-        if ($code !== 0) {
-            $this->laraKubeError("Could not create the Commons S3 bucket '{$bucket}'.");
-            foreach (array_slice($output, -4) as $line) {
-                $this->laraKubeLine('    '.$line);
-            }
 
             return false;
         }

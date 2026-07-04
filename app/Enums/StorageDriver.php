@@ -221,14 +221,17 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getPublicEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
         $s3Host = $config ? $config->getServiceHost('s3', $environment) : 's3.'.GlobalConfigData::load()->getLocalTld();
+        $bucket = 'laravel';
 
         $envs = [
             'FILESYSTEM_DISK' => 's3',
             'AWS_ACCESS_KEY_ID' => 'larakube',
             'AWS_DEFAULT_REGION' => 'us-east-1',
-            'AWS_BUCKET' => 'laravel',
-            'AWS_URL' => 'https://'.$s3Host,
-            'AWS_TEMPORARY_URL' => 'https://'.$s3Host,
+            'AWS_BUCKET' => $bucket,
+            // Path-style URLs need the bucket IN the path (host alone 404s/denies
+            // — there's no bucket literally named after the object's key prefix).
+            'AWS_URL' => 'https://'.$s3Host.'/'.$bucket,
+            'AWS_TEMPORARY_URL' => 'https://'.$s3Host.'/'.$bucket,
             'AWS_USE_PATH_STYLE_ENDPOINT' => 'true',
         ];
 
@@ -301,9 +304,13 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
                 '1. Visit the Console: https://'.$config->getServiceHost('s3-console'),
                 '2. Login with: larakube / larakubesecretpassword',
                 '3. Create a bucket named "laravel"',
-                '4. To make it (or just a folder in it) public, run:',
-                '   larakube exec --service=minio "mc anonymous set download local/laravel"',
+                '4. To make it (or just a folder in it) public, open a shell in the pod:',
+                '     larakube shell minio',
+                '   then, inside it:',
+                '     mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"',
+                '     mc anonymous set download local/laravel',
                 '   (append a path for just a folder, e.g. local/laravel/public; use "public" instead of "download" to also allow public uploads)',
+                ...$this->temporaryUrlInstructions(5),
             ],
             self::SEAWEEDFS => [
                 'SeaweedFS requires a one-time bucket creation after "larakube up":',
@@ -312,6 +319,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
                 'To make it public, SeaweedFS has no single-command bucket ACL like MinIO — check the exact',
                 'subcommand for your version with: larakube exec --service=seaweedfs "echo help | /usr/bin/weed shell"',
                 '(look for an s3.bucket.policy / s3.configure entry), or configure anonymous access via the Filer UI above.',
+                ...$this->temporaryUrlInstructions(2),
             ],
             self::GARAGE => [
                 'Garage requires a one-time manual initialization after "larakube up":',
@@ -326,6 +334,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
                 '9. Garage has no bucket ACL — publish it as a static website instead to make it public:',
                 '   larakube exec --service=garage "/garage bucket website --allow laravel"',
                 '   Files are then served, unauthenticated, from: https://'.$config->getServiceHost('s3-web'),
+                ...$this->temporaryUrlInstructions(10),
             ],
         };
     }
@@ -379,6 +388,40 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     }
 
     /**
+     * Whether plex:migrate can copy this backend's existing bucket into the
+     * Commons (a live network mirror — no local staging file, unlike the
+     * database dump/restore pair). Independent of isPlexReady(): a backend
+     * can be join-ready (fresh empty bucket) without a migrate path yet.
+     */
+    public function isMigratable(): bool
+    {
+        return match ($this) {
+            self::MINIO => true,
+            default => false,
+        };
+    }
+
+    /**
+     * Shell command — run via `kubectl exec` INSIDE the SELF-HOSTED pod —
+     * that mirrors this driver's self-hosted "laravel" bucket into a Commons
+     * tenant bucket. Both the self-hosted server (reachable at 127.0.0.1
+     * inside its own pod, using its own root creds) and the Commons server
+     * (reachable cross-namespace via cluster DNS) are S3 endpoints the pod's
+     * own `mc` binary can talk to directly, so this is a single hop with no
+     * local staging file. Null for engines without a migrate path yet.
+     */
+    public function selfHostedMirrorCommand(string $targetBucket, string $commonsHost, string $accessKey, string $secretKey): ?string
+    {
+        return match ($this) {
+            self::MINIO => 'export MC_CONFIG_DIR=/tmp/mc; '.
+                'mc alias set src http://127.0.0.1:'.$this->port().' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && '.
+                'mc alias set dst http://'.$commonsHost.' '.escapeshellarg($accessKey).' '.escapeshellarg($secretKey).' >/dev/null 2>&1 && '.
+                'mc mirror --overwrite src/laravel dst/'.$targetBucket,
+            default => null,
+        };
+    }
+
+    /**
      * Shell command — run via `kubectl exec deploy/<value> -- sh -c '<this>'` —
      * that idempotently creates a tenant's bucket on this Commons S3 backend.
      * Bucket-per-tenant isolation under the shared admin key. The pod's shell
@@ -412,6 +455,39 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         // Each S3 backend is its own Commons service (keyed by value), so several
         // can coexist when different tenants declare different backends.
         return $this->value;
+    }
+
+    /**
+     * Shared step warning that Storage::temporaryUrl() needs a separate
+     * 's3-external' disk to work outside the cluster — every StorageDriver
+     * shares the same AWS_ENDPOINT (internal)/AWS_URL (public) split in
+     * getPublicEnvironmentVariables(), so the fix is identical regardless of
+     * backend. $step numbers the first line to continue each driver's list.
+     *
+     * @return array<int, string>
+     */
+    private function temporaryUrlInstructions(int $step): array
+    {
+        return [
+            "{$step}. Storage::temporaryUrl() needs a SEPARATE disk to work outside the cluster:",
+            '   Storage::url() already returns a public link (it just templates AWS_URL), but',
+            '   Storage::temporaryUrl() SIGNS the request against AWS_ENDPOINT (internal cluster DNS) —',
+            '   so the signed link it returns is unreachable from a browser. Add this disk to',
+            '   config/filesystems.php (\'disks\' array), next to the default \'s3\' one:',
+            '     \'s3-external\' => [',
+            '         \'driver\' => \'s3\',',
+            '         \'key\' => env(\'AWS_ACCESS_KEY_ID\'),',
+            '         \'secret\' => env(\'AWS_SECRET_ACCESS_KEY\'),',
+            '         \'region\' => env(\'AWS_DEFAULT_REGION\'),',
+            '         \'bucket\' => env(\'AWS_BUCKET\'),',
+            '         \'url\' => env(\'AWS_URL\'),',
+            '         \'endpoint\' => env(\'AWS_URL\'),  // signed against the PUBLIC host, unlike \'s3\'',
+            '         \'use_path_style_endpoint\' => env(\'AWS_USE_PATH_STYLE_ENDPOINT\', false),',
+            '         \'throw\' => false,',
+            '     ],',
+            '   Then call Storage::disk(\'s3-external\')->temporaryUrl($path, $expiration) for any link',
+            '   shown to a user; keep plain Storage::temporaryUrl() (default \'s3\' disk) out of that path.',
+        ];
     }
 
     /**
