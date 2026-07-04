@@ -40,7 +40,7 @@ class CloudCreateCommand extends Command
         {--provider= : Cloud provider slug (do, aws, …). Default or prompted.}
         {--vps : Create a VPS / droplet (SSH + k3s, single-node)}
         {--managed : Create a managed Kubernetes cluster}
-        {environment? : The project environment to bind to this stack (optional)}';
+        {environment? : Inside a project, the environment to bind to this stack. Outside one, used as the stack name.}';
 
     protected $description = 'Provision infrastructure with OpenTofu — provider, then VPS or managed k8s';
 
@@ -80,17 +80,125 @@ class CloudCreateCommand extends Command
         $this->line('  <fg=gray>Using:</> <fg=cyan>'.$bin['path'].'</> '.($bin['isOpenTofu'] ? '(OpenTofu — encrypted state)' : '(Terraform — plaintext state)'));
         $this->newLine();
 
-        [$config, $projectPath, $environment] = $this->resolveEnvironment();
+        [$config, $projectPath, $environment, $standaloneName] = $this->resolveEnvironment($this->argument('environment'));
+        $nameBase = $config?->getName() ?? $standaloneName;
 
-        // Attach to an existing compatible stack, or create a new one?
+        // Attach to an existing compatible stack, or create a new one? Defaults
+        // to "attach" when this project/name already has a stack of this exact
+        // kind — a stack is meant to be reused across every environment of a
+        // project (see StackData's docblock), so that's virtually always what's
+        // wanted once one already exists. Still a real confirm either way, never
+        // auto-skipped.
         $existing = $this->stacksOfKind($targetKind);
-        if (! empty($existing) && ! confirm('Create a NEW '.$targetKind.' stack? (No = attach this env to an existing one)', true)) {
-            return $this->attachToExisting($existing, $targetKind, $provider, $config, $projectPath, $environment);
+        if (! empty($existing)) {
+            $expectedStack = $this->findExpectedStack($nameBase, $targetKind);
+
+            $prompt = $expectedStack
+                ? "Attach this environment to your existing '{$expectedStack->name}' {$targetKind} stack instead of creating a new one?"
+                : "Attach to an existing {$targetKind} stack instead of creating a new one?";
+
+            if (confirm($prompt, default: $expectedStack !== null)) {
+                return $this->attachToExisting($existing, $targetKind, $provider, $config, $projectPath, $environment, $expectedStack);
+            }
         }
 
         return $targetKind === 'vps'
-            ? $this->createVps($bin, $provider, $config, $projectPath, $environment)
-            : $this->createManaged($bin, $provider, $config, $projectPath, $environment);
+            ? $this->createVps($bin, $provider, $config, $projectPath, $environment, $nameBase)
+            : $this->createManaged($bin, $provider, $config, $projectPath, $environment, $nameBase);
+    }
+
+    /**
+     * Resolve the optional project + environment to bind. Standalone (no project)
+     * is allowed — you just provision infra without wiring an env to it. $rawArgument
+     * becomes the standalone stack-name base in that case instead of being
+     * discarded — see promptStackName(). Takes it as a parameter (rather than
+     * reading $this->argument() internally) so this is callable without a bound
+     * console input.
+     *
+     * @return array{0: ?ConfigData, 1: ?string, 2: ?string, 3: ?string}
+     */
+    protected function resolveEnvironment(?string $rawArgument): array
+    {
+        if (! $this->isLaraKubeProject()) {
+            $this->line('  <fg=gray>Not in a LaraKube project — provisioning infra only (no environment binding).</>');
+            $this->newLine();
+
+            return [null, null, null, $rawArgument];
+        }
+
+        $projectPath = getcwd();
+        $config = $this->getProjectConfigObject($projectPath);
+        $environment = $rawArgument ?: $this->askForCloudEnvironment(
+            label: 'Which environment should deploy to this stack?',
+        );
+
+        return [$config, $projectPath, $environment, null];
+    }
+
+    /** Registered stacks matching a kind (vps/managed). @return array<string, StackData> */
+    protected function stacksOfKind(string $kind): array
+    {
+        return array_filter(
+            $this->getGlobalConfig()->getStacks(),
+            fn (StackData $s) => $s->kind === $kind,
+        );
+    }
+
+    /**
+     * The stack this environment would attach to by default under the
+     * deterministic "{name}-{kind}" naming convention, if one's already
+     * registered. Used to default the create-vs-attach confirm to "attach"
+     * without ever skipping it outright — see handle().
+     */
+    protected function findExpectedStack(?string $nameBase, string $targetKind): ?StackData
+    {
+        if (! $nameBase) {
+            return null;
+        }
+
+        return $this->getGlobalConfig()->findStack($this->slug($nameBase.'-'.$targetKind));
+    }
+
+    protected function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment): void
+    {
+        $stack = new StackData(
+            name: $name,
+            provider: 'do',
+            kind: $kind,
+            region: $region,
+            context: $context,
+            ip: $ip,
+            createdAt: gmdate('c'),
+        );
+        if ($config && $environment) {
+            $stack->bind($config->getName(), $environment);
+        }
+        $this->putStack($stack);
+    }
+
+    /** Persist a stack into the global registry (single load+save). */
+    protected function putStack(StackData $stack): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->putStack($stack);
+        $config->save();
+    }
+
+    /**
+     * Default stack name is always "{name}-{kind}" — never an environment. A
+     * stack is explicitly meant to be reused across every environment of a
+     * project (see StackData's docblock), so baking one env into the name
+     * would misrepresent it the moment a second environment attaches. $kind
+     * is always 'vps' or 'managed' — the two fundamental provisioning models
+     * this registry distinguishes; which specific managed flavor (DOKS,
+     * later EKS/GKE) is tracked separately via StackData::$provider.
+     */
+    protected function promptStackName(?string $nameBase, string $kind): string
+    {
+        $base = ($nameBase !== null && $nameBase !== '' ? $nameBase : 'standalone').'-'.$kind;
+        $default = $this->slug($base);
+
+        return $this->slug(text(label: 'Stack name', default: $default, hint: 'Also the Tofu workdir name under ~/.larakube/tofu/'));
     }
 
     /** Resolve which provider to provision for. */
@@ -183,51 +291,20 @@ class CloudCreateCommand extends Command
     }
 
     /**
-     * Resolve the optional project + environment to bind. Standalone (no project)
-     * is allowed — you just provision infra without wiring an env to it.
-     *
-     * @return array{0: ?ConfigData, 1: ?string, 2: ?string}
-     */
-    private function resolveEnvironment(): array
-    {
-        if (! $this->isLaraKubeProject()) {
-            $this->line('  <fg=gray>Not in a LaraKube project — provisioning infra only (no environment binding).</>');
-            $this->newLine();
-
-            return [null, null, null];
-        }
-
-        $projectPath = getcwd();
-        $config = $this->getProjectConfigObject($projectPath);
-        $environment = $this->argument('environment') ?: $this->askForCloudEnvironment(
-            label: 'Which environment should deploy to this stack?',
-        );
-
-        return [$config, $projectPath, $environment];
-    }
-
-    /** Registered stacks matching a kind (vps/doks). @return array<string, StackData> */
-    private function stacksOfKind(string $kind): array
-    {
-        return array_filter(
-            $this->getGlobalConfig()->getStacks(),
-            fn (StackData $s) => $s->kind === $kind,
-        );
-    }
-
-    /**
      * Attach an environment to an already-provisioned stack — no apply. The env's
-     * deploy target becomes that stack's context (managed) or IP (VPS).
+     * deploy target becomes that stack's context (managed) or IP (VPS). $preferred
+     * (this project's exact-name match, if any) is pre-selected but not forced —
+     * the picker still shows every compatible stack.
      *
      * @param  array<string, StackData>  $existing
      */
-    private function attachToExisting(array $existing, string $target, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment): int
+    private function attachToExisting(array $existing, string $target, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment, ?StackData $preferred = null): int
     {
         $options = [];
         foreach ($existing as $s) {
             $options[$s->name] = $s->name.'  ('.($s->region ?? '?').($s->ip ? ', '.$s->ip : '').', ctx: '.($s->context ?? '?').')';
         }
-        $name = select(label: 'Attach to which stack?', options: $options);
+        $name = select(label: 'Attach to which stack?', options: $options, default: $preferred?->name);
         $stack = $existing[$name];
 
         if (! $config || ! $environment) {
@@ -254,7 +331,7 @@ class CloudCreateCommand extends Command
     }
 
     /** Provision a new droplet/VM, then run the k3s + hardening pipeline. */
-    private function createVps(array $bin, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment): int
+    private function createVps(array $bin, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment, ?string $nameBase): int
     {
         $this->laraKubeWarn('Recommended: 1GB RAM minimum for stable K3s deployments.');
         $this->newLine();
@@ -274,7 +351,7 @@ class CloudCreateCommand extends Command
             return 1;
         }
 
-        $stackName = $this->promptStackName($config, $environment, 'vps');
+        $stackName = $this->promptStackName($nameBase, 'vps');
         $region = $this->promptRegion();
         $size = text(label: 'Droplet size slug', default: 's-1vcpu-1gb', hint: 'e.g. s-1vcpu-1gb, s-2vcpu-2gb');
         $adminCidr = $this->promptAdminCidr();
@@ -335,9 +412,9 @@ class CloudCreateCommand extends Command
     }
 
     /** Provision a new managed cluster, merge its kubeconfig, then install Traefik. */
-    private function createManaged(array $bin, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment): int
+    private function createManaged(array $bin, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment, ?string $nameBase): int
     {
-        $stackName = $this->promptStackName($config, $environment, 'doks');
+        $stackName = $this->promptStackName($nameBase, 'managed');
         $region = $this->promptRegion();
         $size = text(label: 'Node size slug', default: 's-2vcpu-4gb', hint: 'e.g. s-2vcpu-4gb');
         $nodeCount = (int) text(label: 'Node count', default: '2', validate: fn ($v) => ((int) $v) >= 1 ? null : 'At least 1 node.');
@@ -366,7 +443,7 @@ class CloudCreateCommand extends Command
 
         $this->mergeKubeconfig($kubeconfig);
         $this->laraKubeInfo("✅ Cluster ready. Context: <fg=cyan>{$context}</>");
-        $this->registerStack($stackName, 'doks', $region, null, $context, $config, $environment);
+        $this->registerStack($stackName, 'managed', $region, null, $context, $config, $environment);
 
         // Traefik + Let's Encrypt via the existing managed flow (idempotent).
         $this->newLine();
@@ -415,23 +492,6 @@ class CloudCreateCommand extends Command
         return true;
     }
 
-    private function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment): void
-    {
-        $stack = new StackData(
-            name: $name,
-            provider: 'do',
-            kind: $kind,
-            region: $region,
-            context: $context,
-            ip: $ip,
-            createdAt: gmdate('c'),
-        );
-        if ($config && $environment) {
-            $stack->bind($config->getName(), $environment);
-        }
-        $this->putStack($stack);
-    }
-
     private function updateStackContext(string $name, string $context): void
     {
         if ($stack = $this->getGlobalConfig()->findStack($name)) {
@@ -446,14 +506,6 @@ class CloudCreateCommand extends Command
             $stack->bind($appName, $environment);
             $this->putStack($stack);
         }
-    }
-
-    /** Persist a stack into the global registry (single load+save). */
-    private function putStack(StackData $stack): void
-    {
-        $config = $this->getGlobalConfig();
-        $config->putStack($stack);
-        $config->save();
     }
 
     /** Record a VPS deploy target (ip + SSH) on an environment's cloud config. */
@@ -544,14 +596,6 @@ class CloudCreateCommand extends Command
         }
 
         return trim((string) file_get_contents($pub));
-    }
-
-    private function promptStackName(?ConfigData $config, ?string $environment, string $kind): string
-    {
-        $base = 'larakube-'.($config ? $config->getName() : 'standalone').($environment ? '-'.$environment : '').'-'.$kind;
-        $default = $this->slug($base);
-
-        return $this->slug(text(label: 'Stack name', default: $default, hint: 'Also the Tofu workdir name under ~/.larakube/tofu/'));
     }
 
     private function promptRegion(): string
