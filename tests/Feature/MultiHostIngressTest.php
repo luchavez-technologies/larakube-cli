@@ -7,10 +7,12 @@
  * strategic-merge `patches:` REPLACES list fields wholesale (no merge key
  * defined for IngressTLS in the K8s API schema) — so the local overlay patch
  * MUST loop the same hosts as the base, or a multi-host local env gets its
- * tls.hosts silently truncated back to one by the patch. These tests run a
- * REAL `kubectl kustomize` build (not just render the raw template) to prove
- * that merge actually produces the full host list, not just assert the
- * template's own output.
+ * tls.hosts silently truncated back to one by the patch. The invariant that
+ * prevents this — both templates must render the identical host list, in the
+ * identical order — is asserted directly below rather than via a real
+ * `kubectl kustomize` build: `kubectl` isn't available in CI (ubuntu-latest
+ * has no kubectl preinstalled) and segfaults on any invocation in the local
+ * dev container, so a live-build test would only ever skip, everywhere.
  */
 
 use App\Data\ConfigData;
@@ -77,20 +79,6 @@ function scaffoldMultiHostProject(ConfigData $config): string
     return $tempDir;
 }
 
-/** Real `kubectl kustomize` build, parsed into a list of YAML documents. */
-function kustomizeBuild(string $overlayPath): array
-{
-    $yaml = shell_exec('kubectl kustomize '.escapeshellarg($overlayPath).' 2>&1');
-    expect($yaml)->not->toBeNull();
-
-    $docs = array_map(
-        fn (string $doc) => Yaml::parse($doc),
-        preg_split('/^---$/m', $yaml) ?: [],
-    );
-
-    return array_values(array_filter($docs));
-}
-
 test('production overlay renders one Ingress rule per web host, sharing the same backend, and lists them all under tls.hosts', function () {
     $manifests = generateManifestsAsArray(multiHostConfig());
     $ingress = $manifests['overlays/production/ingress-patch.yaml'];
@@ -124,43 +112,15 @@ test('a project with no additionalWebHosts renders exactly the old single-rule s
         ->and($ingress['spec']['tls'][0]['hosts'])->toBe(['app.example.com']);
 });
 
-test('REAL kustomize build: the local overlay patch does not truncate tls.hosts back to one host', function () {
-    // `kubectl` segfaults for ANY invocation in this dev container (confirmed:
-    // even `kubectl version --client` crashes — an arm64/emulation issue, not
-    // a kustomize-specific one). Skip rather than false-fail; the structural
-    // test below covers the same regression without needing a real build.
-    exec('kubectl version --client 2>&1', $out, $kubectlWorks);
-    if ($kubectlWorks !== 0) {
-        $this->markTestSkipped('kubectl is unusable in this environment (segfaults) — see structural test below instead');
-    }
-
-    $config = multiHostConfig();
-    $expectedHosts = $config->getWebHosts('local');
-    expect($expectedHosts)->toHaveCount(3); // primary + the 2 additionalWebHosts above
-
-    $tempDir = scaffoldMultiHostProject($config);
-
-    try {
-        $docs = kustomizeBuild("{$tempDir}/.infrastructure/k8s/overlays/local");
-        $ingress = collect($docs)->first(fn ($doc) => ($doc['kind'] ?? null) === 'Ingress');
-
-        expect($ingress)->not->toBeNull('kustomize build produced no Ingress document');
-
-        // The regression this test exists to catch: if the local overlay
-        // patch's tls.hosts loop is ever reverted to a single literal host,
-        // kustomize's strategic-merge patch REPLACES the base's list with
-        // that single host — this assertion would drop back to count(1).
-        expect($ingress['spec']['tls'][0]['hosts'])->toEqualCanonicalizing($expectedHosts);
-    } finally {
-        exec('rm -rf '.escapeshellarg($tempDir));
-    }
-});
-
-test('structural fallback (no live kustomize build available): base and local-overlay-patch templates agree on the exact host list and order', function () {
-    // Doesn't exercise the real strategic-merge (see the skipped test above),
-    // but pins the invariant that merge relies on: both templates must loop
-    // the identical getWebHosts('local') list, in the identical order, or a
-    // merge — real or hypothetical — could disagree between them.
+test('base and local-overlay-patch templates agree on the exact host list and order', function () {
+    // Pins the invariant a kustomize strategic-merge relies on: both
+    // templates must loop the identical getWebHosts('local') list, in the
+    // identical order. If the local overlay patch's tls.hosts loop is ever
+    // reverted to a single literal host, this assertion catches the drift
+    // directly — kustomize's real merge behavior (patches REPLACE list
+    // fields wholesale, per the file-level docblock above) is what makes
+    // that drift dangerous, but isn't itself exercised here since kubectl
+    // isn't reliably available in CI or this dev container.
     $config = multiHostConfig();
     $tempDir = scaffoldMultiHostProject($config);
 
