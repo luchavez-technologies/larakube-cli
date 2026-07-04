@@ -32,13 +32,17 @@ use Laravel\Prompts\Prompt;
 /**
  * Same trait stack the real cloud:configure:* commands compose (per
  * ConfiguresCloudEnvironment's own docblock), exposing configureBase() and
- * detectCiPlatform() for direct testing.
+ * detectCiPlatform() for direct testing. $gitRemote overrides gitRemoteUrl()
+ * so detectCiPlatform() can be tested against a simulated remote — no real
+ * git binary/repo needed.
  */
-function configuresCloudEnvironmentRunner(): object
+function configuresCloudEnvironmentRunner(string $gitRemote = ''): object
 {
-    return new class
+    return new class($gitRemote)
     {
         use ConfiguresCloudEnvironment, GeneratesProjectInfrastructure, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput;
+
+        public function __construct(private string $gitRemote = '') {}
 
         public function run(?string $environment): int
         {
@@ -48,6 +52,11 @@ function configuresCloudEnvironmentRunner(): object
         public function detect(): string
         {
             return $this->detectCiPlatform();
+        }
+
+        protected function gitRemoteUrl(): string
+        {
+            return $this->gitRemote;
         }
     };
 }
@@ -160,23 +169,11 @@ test('re-running configureBase on an env with an existing deploy target does NOT
 });
 
 test('detectCiPlatform defaults to github when there is no git remote at all', function () {
-    // Doesn't need a working `git` binary — a missing/empty remote is the
-    // same outcome either way, and this dev container has no `git` installed.
-    expect(configuresCloudEnvironmentRunner()->detect())->toBe('github');
+    expect(configuresCloudEnvironmentRunner('')->detect())->toBe('github');
 });
 
 test('detectCiPlatform routes a gitlab.com remote to gitlab, and anything else to github', function () {
-    exec('command -v git', $out, $gitAvailable);
-    if ($gitAvailable !== 0) {
-        $this->markTestSkipped('git binary not available in this test environment');
-    }
-
-    $runner = configuresCloudEnvironmentRunner();
-
-    exec('git init -q '.escapeshellarg($this->tempDir));
-    exec('git -C '.escapeshellarg($this->tempDir).' remote add origin git@gitlab.com:acme/consoltest.git');
-    expect($runner->detect())->toBe('gitlab');
-
-    exec('git -C '.escapeshellarg($this->tempDir).' remote set-url origin git@github.com:acme/consoltest.git');
-    expect($runner->detect())->toBe('github');
+    expect(configuresCloudEnvironmentRunner('git@gitlab.com:acme/consoltest.git')->detect())->toBe('gitlab')
+        ->and(configuresCloudEnvironmentRunner('git@github.com:acme/consoltest.git')->detect())->toBe('github')
+        ->and(configuresCloudEnvironmentRunner('https://gitlab.com/acme/consoltest')->detect())->toBe('gitlab');
 });

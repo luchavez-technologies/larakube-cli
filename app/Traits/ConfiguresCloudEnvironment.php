@@ -181,9 +181,18 @@ trait ConfiguresCloudEnvironment
      */
     protected function detectCiPlatform(): string
     {
-        $remote = trim((string) shell_exec('git remote get-url origin 2>/dev/null'));
+        return str_contains($this->gitRemoteUrl(), 'gitlab.com') ? 'gitlab' : 'github';
+    }
 
-        return str_contains($remote, 'gitlab.com') ? 'gitlab' : 'github';
+    /**
+     * The project's `origin` remote URL, or '' if there's none (or no git
+     * repo at all). Split out from detectCiPlatform() so tests can simulate
+     * a remote by overriding this one method — no real git binary/repo
+     * needed to exercise the actual GitHub/GitLab dispatch logic.
+     */
+    protected function gitRemoteUrl(): string
+    {
+        return trim((string) shell_exec('git remote get-url origin 2>/dev/null'));
     }
 
     /**
