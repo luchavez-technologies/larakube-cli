@@ -23,7 +23,8 @@ class EnvCommand extends Command
      * @var string
      */
     protected $signature = 'env {name? : The name of the new environment}
-                            {--offline : Mark this environment for air-gapped / offline distribution}';
+                            {--offline : Mark this environment for air-gapped / offline distribution}
+                            {--edit : Re-run the ingress/managed-services/hosts wizard on an existing environment, prefilled with its current settings}';
 
     /**
      * The console command description.
@@ -69,7 +70,11 @@ class EnvCommand extends Command
             }
         }
 
-        // 3. Update Project DNA — gather per-env settings if this is a fresh env.
+        // 3. Update Project DNA — gather per-env settings if this is a fresh env,
+        // or re-gather (prefilled with current values) if --edit was passed for
+        // review/editing an existing one. Assigns individual fields rather than
+        // replacing the whole EnvironmentData object, so untouched settings this
+        // wizard doesn't cover (cloud target, resources, tunnel, …) survive intact.
         if (! $config->hasEnvironment($envName)) {
             $this->laraKubeInfo("Creating environment '{$envName}'...");
             $envData = $this->gatherEnvironmentData($config, $envName);
@@ -77,8 +82,19 @@ class EnvCommand extends Command
                 $envData->offline = true;
             }
             $config->addEnvironment($envName, $envData);
+        } elseif ($this->option('edit')) {
+            $this->laraKubeInfo("Editing environment '{$envName}'...");
+            $fresh = $this->gatherEnvironmentData($config, $envName);
+            $existing = $config->environments[$envName];
+            $existing->ingress = $fresh->ingress;
+            $existing->managed = $fresh->managed;
+            $existing->hosts = $fresh->hosts;
+            $existing->additionalWebHosts = $fresh->additionalWebHosts;
+            if ($fresh->registry !== null) {
+                $existing->registry = $fresh->registry;
+            }
         } else {
-            $this->laraKubeInfo("Environment '{$envName}' already exists in DNA; keeping current settings.");
+            $this->laraKubeInfo("Environment '{$envName}' already exists in DNA; keeping current settings. Pass --edit to review and update it.");
         }
         $this->saveProjectConfig($projectPath, $config);
 

@@ -292,7 +292,7 @@ class BundleInstallCommand extends Command
             ]);
         } else {
             $this->laraKubeInfo('Configuring hostnames...');
-            $hosts = $this->promptForHosts($env, $config->getComponents($env), $webDefault);
+            $hosts = $this->promptForHosts($env, $config->getComponents($env));
             foreach ($hosts as $service => $host) {
                 $config->setHost($service, $host, $env);
             }

@@ -23,10 +23,18 @@ use function Laravel\Prompts\text;
 trait PromptsForHosts
 {
     /**
+     * $currentHosts is existing [service => host] values to prefill every
+     * prompt with — pass [] for a brand-new environment (blank defaults,
+     * current behavior), or the env's current `hosts` map to turn this into
+     * a review/edit prompt instead of a create-only one. Empty defaults are
+     * how a caller signals "unset"; they never silently carry a value the
+     * user can't see.
+     *
      * @param  iterable<object>  $components  the env's resolved components
+     * @param  array<string, string>  $currentHosts
      * @return array<string, string> [service => host] for values entered (blanks omitted)
      */
-    protected function promptForHosts(string $envName, iterable $components, ?string $webDefault = null): array
+    protected function promptForHosts(string $envName, iterable $components, array $currentHosts = []): array
     {
         $hosts = [];
 
@@ -34,7 +42,7 @@ trait PromptsForHosts
         $webHost = text(
             label: "Web host for {$envName} (optional, e.g. staging.example.com)",
             placeholder: 'leave blank to skip',
-            default: $webDefault ?? '',
+            default: $currentHosts['web'] ?? '',
             required: false,
         );
         if ($webHost !== '') {
@@ -51,6 +59,7 @@ trait PromptsForHosts
                 $override = text(
                     label: "Custom host for {$label} in {$envName} (optional)",
                     placeholder: 'leave blank to derive from web host',
+                    default: $currentHosts[$service] ?? '',
                     required: false,
                 );
                 if ($override !== '') {

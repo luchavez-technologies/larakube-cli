@@ -63,10 +63,14 @@ trait GathersEnvironmentData
     }
 
     /**
-     * The full new-environment wizard: ingress, managed services, client-facing
+     * The full environment wizard: ingress, managed services, client-facing
      * hosts, and (for non-local envs) a container registry. All optional —
      * defaults produce an env that uses Traefik, deploys everything locally,
-     * and has no external web host.
+     * and has no external web host. Every sub-prompt defaults to the env's
+     * CURRENT value when one already exists (via $config, already loaded with
+     * it), so calling this again on an existing environment doubles as a
+     * review/edit flow — `larakube env {name} --edit` does exactly this,
+     * prefilled instead of blank.
      */
     protected function gatherEnvironmentData(ConfigData $config, string $envName): EnvironmentData
     {
@@ -78,17 +82,24 @@ trait GathersEnvironmentData
         // service overrides (Reverb WS, object-storage S3/CDN). Shared via
         // PromptsForHosts so the bundle installer and other flows reuse one wizard.
         // Admin consoles aren't prompted; they get a derived ingress host.
-        foreach ($this->promptForHosts($envName, $this->resolveEnvComponents($config, $envName, $envData)) as $service => $host) {
+        $currentHosts = $config->getEnvironment($envName)?->hosts ?? [];
+        foreach ($this->promptForHosts($envName, $this->resolveEnvComponents($config, $envName, $envData), $currentHosts) as $service => $host) {
             $envData->hosts[$service] = $host;
         }
 
         $envData->additionalWebHosts = $this->gatherAdditionalWebHosts($config, $envName);
 
         // Container registry: optional. Only relevant for cloud environments.
+        // Defaults to true when one's already configured, so re-running this
+        // (e.g. via --edit) naturally offers to review it rather than
+        // requiring an extra opt-in on top of already having one.
         if ($envName !== 'local') {
+            $hasRegistry = $config->getEnvironment($envName)?->registry !== null;
             $configureRegistry = confirm(
-                label: "Configure a container registry for {$envName}?",
-                default: false,
+                label: $hasRegistry
+                    ? "Review/update the container registry for {$envName}?"
+                    : "Configure a container registry for {$envName}?",
+                default: $hasRegistry,
                 hint: 'Required for GitHub Actions CI/CD (push to GHCR or Docker Hub)',
             );
 
@@ -129,30 +140,36 @@ trait GathersEnvironmentData
     }
 
     /**
-     * Prompt for a container registry provider + image repository path, image
-     * defaulted from the git remote (or the gh-authenticated user for GHCR).
-     * Shared by the new-env wizard above and `cloud:configure --only=registry`
-     * — the only difference between callers is
-     * whether the image is required (registry setup you explicitly asked
-     * for) or optional (one optional step among many in a new-env wizard).
+     * Prompt for a container registry provider + image repository path.
+     * Defaults to whatever's already configured for this env when one
+     * exists (so this doubles as a review/edit prompt, same as the other
+     * gather* methods), falling back to the git remote (or the
+     * gh-authenticated user for GHCR) for a brand-new registry. Shared by
+     * the new-env wizard above and `cloud:configure --only=registry` — the
+     * only difference between callers is whether the image is required
+     * (registry setup you explicitly asked for) or optional (one optional
+     * step among many in a new-env wizard).
      */
     protected function promptRegistry(ConfigData $config, string $envName, bool $required): RegistryData
     {
+        $currentRegistry = $config->getEnvironment($envName)?->registry;
+
         $provider = select(
             label: "Which container registry for {$envName}?",
             options: [
                 RegistryProvider::GHCR->value => RegistryProvider::GHCR->label(),
                 RegistryProvider::DOCKERHUB->value => RegistryProvider::DOCKERHUB->label(),
             ],
+            default: $currentRegistry?->provider->value ?? RegistryProvider::GHCR->value,
         );
         $registryProvider = RegistryProvider::from($provider);
 
         // The image path MUST include the owner (ghcr.io/<owner>/<repo>,
         // docker.io/<owner>/<repo>) — a bare name pushes to a namespace you
-        // can't write to ("denied"). Best default: the GitHub repo (owner/repo)
-        // parsed straight from the git remote; fall back to the gh-detected
-        // owner + app name.
-        $default = $this->guessImageFromGitRemote(getcwd());
+        // can't write to ("denied"). Best default: whatever's already
+        // configured; otherwise the GitHub repo (owner/repo) parsed straight
+        // from the git remote; fall back to the gh-detected owner + app name.
+        $default = $currentRegistry?->image ?? $this->guessImageFromGitRemote(getcwd());
         if ($default === '' && $registryProvider === RegistryProvider::GHCR) {
             $owner = trim((string) shell_exec($this->getGhCommand().' api user -q .login 2>/dev/null'));
             if ($owner !== '') {
