@@ -21,7 +21,7 @@ class PlexJoinCommand extends Command
     protected $signature = 'plex:join
         {environment=production : The cloud environment to join to the Commons}
         {--rotate : Reset this tenant\'s Commons credentials}
-        {--yes : Skip the confirmation prompt}';
+        {--migrate : Auto-migrate existing self-hosted data into the Commons instead of refusing to join}';
 
     protected $description = 'Join this project to the shared Commons as a Tenant';
 
@@ -94,25 +94,58 @@ class PlexJoinCommand extends Command
 
         // Pick which eligible services to share on the Commons — you can join a
         // SUBSET (e.g. Redis but keep MySQL self-hosted). Everything downstream
-        // (bootstrap, allocation, .env) is driven by this list. --yes joins all.
-        if (! $this->option('yes')) {
-            $services = multiselect(
-                label: "Which services should '{$tenant}' join on the Commons?",
-                options: array_combine($services, $services),
-                default: $services,
-                hint: 'Space to toggle · deselect any you want to keep self-hosted.',
-            );
+        // (bootstrap, allocation, .env) is driven by this list. Under
+        // --no-interaction, Prompts auto-resolves to `default` (all of them) —
+        // no need for a custom flag to skip this.
+        $services = multiselect(
+            label: "Which services should '{$tenant}' join on the Commons?",
+            options: array_combine($services, $services),
+            default: $services,
+            hint: 'Space to toggle · deselect any you want to keep self-hosted.',
+        );
+
+        if (empty($services)) {
+            $this->laraKubeInfo('No services selected — nothing to join.');
+
+            return 0;
+        }
+
+        // 3. Existing-data guard: never silently strand a self-hosted DB or
+        //    object storage bucket — detect it and either delegate to
+        //    plex:migrate (copy first) or drop that service to mixed mode.
+        $existingData = $this->detectExistingData($config, $env, $services);
+
+        if (! empty($existingData)) {
+            $labels = array_map(fn (array $d) => $d['label'], $existingData);
+            $plural = count($labels) > 1;
+            $this->laraKubeWarn('Existing self-hosted data found for: '.implode(', ', $labels).'.');
+            $this->laraKubeLine('  Joining now would point '.($plural ? 'them' : 'it').' at an EMPTY Commons '.($plural ? 'services' : 'service').' and strand that data.');
+
+            // --migrate is the explicit shortcut for "yes, migrate now" —
+            // skips the question entirely. Otherwise ALWAYS ask: this decision
+            // (copy real data now vs. do your own backup and run plex:migrate
+            // later) deserves its own explicit answer every time.
+            $shouldMigrate = $this->option('migrate')
+                || confirm('Migrate this data into the Commons now instead of refusing to join?', false);
+
+            if ($shouldMigrate) {
+                $this->laraKubeNewLine();
+                $this->laraKubeInfo('Delegating to plex:migrate to copy the existing data first…');
+                $this->laraKubeNewLine();
+
+                // No --yes to forward — --no-interaction (if this run has it)
+                // propagates to the nested call automatically.
+                return $this->call('plex:migrate', ['environment' => $env]);
+            }
+
+            // Declined — mixed mode: drop those specific services, keep the rest.
+            $services = array_values(array_diff($services, array_keys($existingData)));
 
             if (empty($services)) {
-                $this->laraKubeInfo('No services selected — nothing to join.');
+                $this->laraKubeInfo('No services left to join — nothing to do.');
 
                 return 0;
             }
-        }
-
-        // 3. Existing-data guard: never silently strand a self-hosted DB.
-        if (! $this->guardExistingData($config, $env, $services)) {
-            return 1;
         }
 
         // 4. Ensure the Commons exists and offers what we need.
@@ -247,34 +280,47 @@ class PlexJoinCommand extends Command
     }
 
     /**
-     * Refuse to cut over an app that still self-hosts a service holding data —
-     * joining would point it at an empty Commons DB. (Migration is plex:migrate.)
+     * Detect which of the services about to be joined still hold real
+     * self-hosted data — an existing PVC, not yet Commons-managed — for
+     * BOTH the database and object storage (either would silently strand
+     * real data if we just repointed .env at an empty Commons service).
+     *
+     * @param  array<int, string>  $services
+     * @return array<string, array{label: string, pvc: string}>
      */
-    protected function guardExistingData(ConfigData $config, string $env, array $services): bool
+    protected function detectExistingData(ConfigData $config, string $env, array $services): array
     {
+        $namespace = $config->getNamespace($env);
+        $managed = $config->getManaged($env);
+        $found = [];
+
         $dbDriver = $config->getDatabase();
         $dbService = $dbDriver?->commonsServiceName();
-        if ($dbService === null || ! in_array($dbService, $services, true) || in_array($dbService, $config->getManaged($env), true)) {
-            return true; // no shareable DB here, not joining it, or already managed → nothing to strand.
+        if ($dbDriver !== null && $dbService !== null && in_array($dbService, $services, true) && ! in_array($dbService, $managed, true)) {
+            $pvc = $config->getName().'-'.$dbService.'-pvc';
+            if ($this->pvcExists($pvc, $namespace)) {
+                $found[$dbService] = ['label' => $dbDriver->getLabel(), 'pvc' => $pvc];
+            }
         }
 
-        $namespace = $config->getNamespace($env);
-        $pvc = $config->getName().'-'.$dbService.'-pvc';
-        $exists = trim((string) shell_exec(
+        $storage = $config->getObjectStorage();
+        $storageService = $storage?->commonsServiceName();
+        if ($storage !== null && $storageService !== null && in_array($storageService, $services, true) && ! in_array($storageService, $managed, true)) {
+            $pvc = $config->getName().'-'.$storage->value.'-pvc';
+            if ($this->pvcExists($pvc, $namespace)) {
+                $found[$storageService] = ['label' => $storage->getLabel(), 'pvc' => $pvc];
+            }
+        }
+
+        return $found;
+    }
+
+    /** Whether a PVC exists in the given namespace, via the resolved Plex context. */
+    protected function pvcExists(string $pvc, string $namespace): bool
+    {
+        return trim((string) shell_exec(
             $this->plexKubectl().' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' -o name 2>/dev/null',
         )) !== '';
-
-        if ($exists) {
-            $label = $dbDriver?->getLabel() ?? $dbService;
-            $this->laraKubeError("This app still runs its own {$label} in '{$namespace}' (PVC {$pvc}).");
-            $this->laraKubeLine('  Joining now would point it at an EMPTY Commons database and strand that data.');
-            $this->laraKubeLine('  Migrate the data first (plex:migrate — see the guide §1e), or keep it on its own');
-            $this->laraKubeLine("  {$label} (mixed mode) and only join Redis.");
-
-            return false;
-        }
-
-        return true;
     }
 
     /**

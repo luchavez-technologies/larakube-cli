@@ -23,10 +23,26 @@ class PlexLeaveCommand extends Command
         {environment=production : The cloud environment to remove from the Commons}
         {--backup= : Path for the pre-drop pg_dump backup (default: ./<tenant>-commons-<env>.sql)}
         {--no-backup : Skip the safety backup before dropping (dangerous)}
+        {--restore : Phase 2 — copy Commons data into the now-live self-hosted pod(s), then finish leaving}
         {--force : Skip the name confirmation}';
 
     protected $description = 'Remove this project from the shared Commons (drops its tenant database/role)';
 
+    /**
+     * Leaving is two phases, because the self-hosted pod(s) don't even exist
+     * yet when you first decide to leave (they were dropped from the
+     * manifests when you joined):
+     *
+     *   1. `plex:leave {env}` — clears the plex/managed markers + regenerates
+     *      manifests so self-hosted service(s) come back. Touches NOTHING on
+     *      the Commons side yet. Tells you to redeploy.
+     *   2. `plex:leave {env} --restore` (after redeploying) — verifies the
+     *      self-hosted pod(s) are actually Ready, copies the Commons data
+     *      INTO them, and only once that succeeds does the destructive
+     *      Commons-side drop/flush/delete + registry removal happen. Same
+     *      "never destroy the source until the copy is verified" rule
+     *      plex:migrate follows, just in the opposite direction.
+     */
     public function handle(): int
     {
         $this->renderHeader();
@@ -83,10 +99,51 @@ class PlexLeaveCommand extends Command
         // Which engine holds the tenant DB — legacy entries predate db_service,
         // so default to Postgres (the only Commons backend back then).
         $dbDriver = DatabaseDriver::tryFrom($entry['db_service'] ?? 'postgres') ?? DatabaseDriver::POSTGRESQL;
-        $ns = $this->plexNamespace();
+        $namespace = $config->getNamespace($env);
+        $storage = $config->getObjectStorage();
 
         $this->line("  <fg=gray>Tenant:</> <fg=cyan>{$tenant}</>  <fg=gray>env:</> <fg=cyan>{$env}</>  <fg=gray>context:</> <fg=cyan>".($context ?: 'current').'</>');
-        $this->laraKubeWarn('⚠ This will PERMANENTLY drop this tenant from the Commons:');
+
+        // Like plex:join's "migrate now?" — if the self-hosted service(s) are
+        // ALREADY back and Ready (you already ran step 1 + redeployed, maybe
+        // in an earlier run), proactively offer to finish right now instead
+        // of requiring you to remember the --restore flag exists.
+        $shouldRestore = (bool) $this->option('restore');
+
+        if (! $shouldRestore) {
+            $targets = array_values(array_filter([
+                $db ? $dbDriver->value : null,
+                $s3Bucket && $storage !== null ? $storage->value : null,
+            ]));
+
+            if (! empty($targets) && $this->allSelfHostedReady($targets, $namespace)) {
+                $this->laraKubeInfo('Self-hosted service(s) already look up and Ready.');
+                $shouldRestore = confirm('Restore the Commons data now and finish leaving?', true);
+            }
+        }
+
+        return $shouldRestore
+            ? $this->finishLeaving($config, $env, $tenant, $appName, $namespace, $registry, $db, $dbDriver, $redisIndex, $s3Bucket, $s3Service)
+            : $this->prepareToLeave($config, $projectPath, $env, $tenant, $appName, $db, $dbDriver, $redisIndex, $s3Bucket);
+    }
+
+    /**
+     * Phase 1: warn what leaving will eventually do, then clear the
+     * plex/managed markers and regenerate manifests so the self-hosted
+     * service(s) come back. The Commons itself is untouched.
+     */
+    protected function prepareToLeave(
+        ConfigData $config,
+        string $projectPath,
+        string $env,
+        string $tenant,
+        string $appName,
+        ?string $db,
+        DatabaseDriver $dbDriver,
+        ?int $redisIndex,
+        ?string $s3Bucket,
+    ): int {
+        $this->laraKubeWarn('Leaving will eventually PERMANENTLY drop this tenant from the Commons:');
         if ($db) {
             $this->laraKubeLine("    • {$dbDriver->getLabel()} database \"{$db}\" and login \"{$tenant}\" (all data)");
         }
@@ -97,14 +154,9 @@ class PlexLeaveCommand extends Command
             $this->laraKubeLine("    • Object-storage bucket \"{$s3Bucket}\" (all objects)");
         }
         $this->laraKubeLine('    • the tenant entry in the Commons registry');
+        $this->laraKubeLine('  ...but NOT yet. This step only brings the self-hosted service(s) back; the');
+        $this->laraKubeLine('  Commons is only touched (and only after copying its data back) in step 2.');
         $this->laraKubeNewLine();
-
-        // The app should be torn down first — its pods still point at this data.
-        if ($this->appStillDeployed($config, $env)) {
-            $this->laraKubeWarn("Heads up: '{$appName}' still appears deployed in '{$config->getNamespace($env)}'.");
-            $this->laraKubeLine("  Tear it down first (larakube down {$env}) so nothing is mid-write while we drop the data.");
-            $this->laraKubeNewLine();
-        }
 
         if (! $this->option('force')) {
             $confirm = text(label: "To confirm, type the app name '{$appName}':", required: true);
@@ -115,9 +167,100 @@ class PlexLeaveCommand extends Command
             }
         }
 
-        // 1. Backup the tenant database before dropping (default ON — irreversible).
+        $this->clearPlexMarkers($projectPath, $config, $env);
+
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo('Regenerating manifests so the self-hosted service(s) come back...');
+        if ($this->callSilent('heal', ['--force' => true]) !== 0) {
+            $this->laraKubeWarn('Could not auto-regenerate manifests. Run `larakube heal --force` yourself.');
+        }
+
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo('✅ Step 1 done — nothing on the Commons has been touched yet.');
+        $this->line('  Next:');
+        $this->line('    1. '.($env === 'local'
+            ? '<fg=yellow>larakube up</>'
+            : "<fg=yellow>larakube cloud:deploy {$env}</>").' — bring the self-hosted service(s) back online.');
+        $this->line("    2. Once it's Ready: <fg=yellow>larakube plex:leave {$env} --restore</> — copies the Commons data back, then finishes leaving.");
+
+        return 0;
+    }
+
+    /**
+     * Phase 2: verify the self-hosted pod(s) exist and are Ready, copy the
+     * Commons data INTO them, then (only once that succeeds) do the
+     * destructive Commons-side drop/flush/delete + registry removal.
+     */
+    protected function finishLeaving(
+        ConfigData $config,
+        string $env,
+        string $tenant,
+        string $appName,
+        string $namespace,
+        array $registry,
+        ?string $db,
+        DatabaseDriver $dbDriver,
+        ?int $redisIndex,
+        ?string $s3Bucket,
+        string $s3Service,
+    ): int {
+        $ns = $this->plexNamespace();
+        $storage = $config->getObjectStorage();
+
+        // Nowhere to restore into unless the self-hosted pod(s) are actually
+        // up — verify before touching anything.
+        $targets = array_filter([
+            $db ? $dbDriver->value : null,
+            $s3Bucket && $storage !== null ? $storage->value : null,
+        ]);
+
+        foreach ($targets as $podName) {
+            if (! $this->deployReady($podName, $namespace)) {
+                $this->laraKubeError("Self-hosted '{$podName}' isn't Ready yet in '{$namespace}'.");
+                $this->laraKubeLine('  Redeploy first ('.($env === 'local' ? 'larakube up' : "larakube cloud:deploy {$env}").') and wait for it to come up, then retry.');
+
+                return 1;
+            }
+        }
+
+        if ($this->appStillDeployed($config, $env)) {
+            $this->laraKubeWarn("Heads up: '{$appName}' still appears deployed in '{$namespace}'.");
+            $this->laraKubeLine('  Its pods may still be pointed at the Commons mid-restore — consider tearing it down first.');
+            $this->laraKubeNewLine();
+        }
+
+        if (! $this->option('force')) {
+            $this->laraKubeWarn('This will copy the Commons data back, then PERMANENTLY drop this tenant from the Commons.');
+            $confirm = text(label: "To confirm, type the app name '{$appName}':", required: true);
+            if ($confirm !== $appName) {
+                $this->laraKubeError('Name mismatch. Leave aborted.');
+
+                return 1;
+            }
+        }
+
+        // 1. Restore the database Commons -> self-hosted.
+        if ($db && ! $this->restoreDatabaseToSelfHosted($namespace, $ns, $dbDriver, $db)) {
+            $this->laraKubeError('Restoring the database into the self-hosted pod failed — aborting before touching the Commons.');
+
+            return 1;
+        }
+
+        // 2. Restore object storage Commons -> self-hosted.
+        if ($s3Bucket && $storage !== null && ! $this->restoreStorageToSelfHosted($namespace, $ns, $storage, $s3Bucket)) {
+            $this->laraKubeError('Restoring object storage into the self-hosted pod failed — aborting before touching the Commons.');
+
+            return 1;
+        }
+
+        if ($db || $s3Bucket) {
+            $this->laraKubeInfo('Commons data copied back to the self-hosted service(s).');
+        }
+
+        // 3. Safety backup of the Commons copy before dropping it — an
+        //    independent artifact even after the restore above.
         if ($db && ! $this->option('no-backup')) {
-            $backupPath = $this->option('backup') ?: $projectPath."/{$tenant}-commons-{$env}.sql";
+            $backupPath = $this->option('backup') ?: getcwd()."/{$tenant}-commons-{$env}.sql";
             if (! $this->backupTenantDatabase($ns, $dbDriver, $db, $backupPath)) {
                 $this->laraKubeError('Backup failed — aborting before any destructive change. Re-run with --no-backup to skip (dangerous).');
 
@@ -126,21 +269,21 @@ class PlexLeaveCommand extends Command
             $this->line("  <fg=gray>Backed up to</> {$backupPath}");
         }
 
-        // 2. Drop the tenant's database + login from its Commons engine.
+        // 4. Drop the tenant's database + login from its Commons engine.
         if ($db && ! $this->dropTenantDatabase($ns, $dbDriver, $db, $tenant)) {
             return 1;
         }
 
-        // 3. Flush the tenant's Redis logical DB (best-effort — index is freed by
-        //    the registry removal regardless).
+        // 5. Flush the tenant's Redis logical DB (best-effort — index is freed
+        //    by the registry removal regardless).
         if ($redisIndex !== null) {
             $this->withSpin("Flushing Redis db {$redisIndex}...", fn () => passthru(
                 $this->plexKubectl().' exec -n '.escapeshellarg($ns)." deploy/redis -- redis-cli -n {$redisIndex} FLUSHDB 2>/dev/null",
             ));
         }
 
-        // 3b. Delete the tenant's S3 bucket (best-effort). The per-backend command
-        //     comes from the StorageDriver enum, so this works for SeaweedFS/MinIO.
+        // 6. Delete the tenant's S3 bucket from the Commons (best-effort) —
+        //    now that its contents are safely mirrored back.
         $s3Driver = StorageDriver::tryFrom($s3Service);
         if ($s3Bucket && $s3Driver !== null) {
             $cmd = $s3Driver->commonsBucketDeleteCommand($s3Bucket);
@@ -149,17 +292,132 @@ class PlexLeaveCommand extends Command
             ));
         }
 
-        // 4. Remove the tenant from the Commons registry (frees its redis index).
+        // 7. Remove the tenant from the Commons registry (frees its redis index).
         $this->saveRegistry($this->registryRemove($registry, $tenant));
         $this->line("  <fg=gray>Removed</> {$tenant} <fg=gray>from the Commons registry.</>");
-
-        // 5. Clear this env's plex + managed markers for the Commons services, so
-        //    heal/regenerate treats the app as self-hosted again (migrate-off path).
-        $this->clearPlexMarkers($projectPath, $config, $env);
 
         $this->printNext($env, $appName);
 
         return 0;
+    }
+
+    /**
+     * Whether every given self-hosted deployment already has a Ready replica
+     * — used to proactively offer --restore's behavior the moment it's
+     * actually possible, without requiring the flag to be remembered.
+     *
+     * @param  array<int, string>  $podNames
+     */
+    protected function allSelfHostedReady(array $podNames, string $namespace): bool
+    {
+        foreach ($podNames as $podName) {
+            if (! $this->deployReady($podName, $namespace)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Whether a deployment has at least one Ready replica in the namespace. */
+    protected function deployReady(string $podName, string $namespace): bool
+    {
+        $ready = trim((string) shell_exec(
+            $this->plexKubectl().' get deploy '.escapeshellarg($podName).
+            ' -n '.escapeshellarg($namespace)." -o jsonpath='{.status.readyReplicas}' 2>/dev/null",
+        ));
+
+        return $ready !== '' && (int) $ready >= 1;
+    }
+
+    /**
+     * Copy the Commons tenant database into the self-hosted pod's own
+     * "laravel" database — dump from Commons to a local staging file (also
+     * doubles as an artifact if anything goes wrong), then restore into the
+     * self-hosted pod. Mirrors plex:migrate's dump/restore, reversed.
+     */
+    protected function restoreDatabaseToSelfHosted(string $namespace, string $ns, DatabaseDriver $driver, string $db): bool
+    {
+        $dumpFile = tempnam(sys_get_temp_dir(), 'larakube_plex_leave_dump');
+        $dumpCode = 0;
+
+        $this->withSpin("Dumping tenant database '{$db}' from the Commons...", function () use ($ns, $driver, $db, $dumpFile, &$dumpCode) {
+            exec(
+                $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$driver->value.
+                ' -- sh -c '.escapeshellarg($driver->commonsBackupCommand($db)).
+                ' > '.escapeshellarg($dumpFile).' 2>/dev/null',
+                $output,
+                $dumpCode,
+            );
+
+            return $dumpCode === 0;
+        });
+
+        if ($dumpCode !== 0 || ! file_exists($dumpFile) || filesize($dumpFile) === 0) {
+            @unlink($dumpFile);
+
+            return false;
+        }
+
+        $restoreCode = 0;
+        $this->withSpin("Restoring into the self-hosted {$driver->getLabel()}...", function () use ($namespace, $driver, $dumpFile, &$restoreCode) {
+            exec(
+                $this->plexKubectl().' exec -i -n '.escapeshellarg($namespace).' deploy/'.$driver->value.
+                ' -- sh -c '.escapeshellarg($driver->selfHostedRestoreCommand()).
+                ' < '.escapeshellarg($dumpFile).' 2>/dev/null',
+                $output,
+                $restoreCode,
+            );
+
+            return $restoreCode === 0;
+        });
+
+        @unlink($dumpFile);
+
+        return $restoreCode === 0;
+    }
+
+    /**
+     * Pull a Commons tenant bucket's contents back into the self-hosted
+     * "laravel" bucket. Backends without a migrate path (isMigratable()
+     * false) can't be automated — warns and lets leaving continue rather
+     * than blocking on a backend we have no way to copy.
+     */
+    protected function restoreStorageToSelfHosted(string $namespace, string $ns, StorageDriver $storage, string $bucket): bool
+    {
+        if (! $storage->isMigratable()) {
+            $this->laraKubeWarn("'{$storage->getLabel()}' has no restore path yet — pull bucket '{$bucket}' back manually before it's dropped from the Commons.");
+
+            return true;
+        }
+
+        $creds = $this->readCommonsS3Credentials();
+        if ($creds === null) {
+            $this->laraKubeError('Commons S3 credentials (plex-admin) not found.');
+
+            return false;
+        }
+
+        $commonsHost = "{$storage->commonsServiceName()}.{$ns}.svc.cluster.local:{$storage->port()}";
+        $cmd = $storage->commonsToSelfHostedMirrorCommand($bucket, $commonsHost, $creds['access'], $creds['secret']);
+
+        if ($cmd === null) {
+            return false;
+        }
+
+        $code = 0;
+        $this->withSpin("Mirroring bucket '{$bucket}' back to the self-hosted {$storage->getLabel()}...", function () use ($namespace, $storage, $cmd, &$code) {
+            exec(
+                $this->plexKubectl().' exec -n '.escapeshellarg($namespace).' deploy/'.$storage->value.
+                ' -- sh -c '.escapeshellarg($cmd).' 2>&1',
+                $output,
+                $code,
+            );
+
+            return $code === 0;
+        });
+
+        return $code === 0;
     }
 
     /**
@@ -266,9 +524,6 @@ class PlexLeaveCommand extends Command
     {
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ '{$appName}' has left the Commons.");
-        $this->line('  Next:');
-        $this->line('    • <fg=yellow>git add .larakube.json && git commit</> (managed/plex markers changed)');
-        $this->line("    • Decommissioning? <fg=yellow>larakube down {$env}</> (if you haven't already)");
-        $this->line('    • Staying? Re-add your own DB, then <fg=yellow>larakube heal</> + redeploy — the app is self-hosted again.');
+        $this->line('  The app is fully self-hosted again, with its Commons data restored.');
     }
 }

@@ -422,6 +422,23 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     }
 
     /**
+     * Inverse of selfHostedMirrorCommand() — run via `kubectl exec` INSIDE
+     * the SELF-HOSTED pod, pulls a Commons tenant bucket's contents BACK into
+     * this driver's self-hosted "laravel" bucket. Used by plex:leave
+     * --restore once a self-hosted pod exists again to receive the data.
+     */
+    public function commonsToSelfHostedMirrorCommand(string $sourceBucket, string $commonsHost, string $accessKey, string $secretKey): ?string
+    {
+        return match ($this) {
+            self::MINIO => 'export MC_CONFIG_DIR=/tmp/mc; '.
+                'mc alias set dst http://127.0.0.1:'.$this->port().' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && '.
+                'mc alias set src http://'.$commonsHost.' '.escapeshellarg($accessKey).' '.escapeshellarg($secretKey).' >/dev/null 2>&1 && '.
+                'mc mirror --overwrite src/'.$sourceBucket.' dst/laravel',
+            default => null,
+        };
+    }
+
+    /**
      * Shell command — run via `kubectl exec deploy/<value> -- sh -c '<this>'` —
      * that idempotently creates a tenant's bucket on this Commons S3 backend.
      * Bucket-per-tenant isolation under the shared admin key. The pod's shell

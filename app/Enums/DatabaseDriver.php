@@ -567,6 +567,22 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
     }
 
     /**
+     * Restore a SQL dump (piped on stdin) into the SELF-HOSTED pod's own
+     * "laravel" database — the inverse of selfHostedDumpCommand(), used by
+     * plex:leave --restore to copy Commons data back after rejoining a
+     * self-hosted pod. Same fixed db name selfHostedDumpCommand assumes.
+     */
+    public function selfHostedRestoreCommand(): string
+    {
+        return match ($this) {
+            self::POSTGRESQL => 'psql -U postgres -v ON_ERROR_STOP=1 -d laravel',
+            self::MYSQL => 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" laravel',
+            self::MARIADB => 'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" laravel',
+            default => '',
+        };
+    }
+
+    /**
      * The in-pod command that dumps a tenant database to stdout (the plex:leave
      * safety backup). $db is a sanitized identifier. Same sh -c invocation as
      * commonsAdminClient so the password env var expands in the pod.

@@ -446,7 +446,10 @@ trait InteractsWithPlex
         $spec = $this->getCommonsSpec();
 
         if ($spec === null) {
-            if (! $this->option('yes') && ! confirm('No Commons on this cluster yet. Create one now?', true)) {
+            // Defaults to yes: bootstrapping the Commons is non-destructive
+            // (plex:init is idempotent), so --no-interaction auto-proceeds
+            // instead of auto-refusing.
+            if (! confirm('No Commons on this cluster yet. Create one now?', true)) {
                 $this->laraKubeError('A Commons is required. Run `larakube plex:init` first.');
 
                 return false;
