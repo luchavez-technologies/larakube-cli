@@ -3,7 +3,9 @@
 namespace App\Commands\Plex;
 
 use App\Contracts\HasPromptableHosts;
+use App\Data\GlobalConfigData;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -16,7 +18,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class PlexInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns;
+    use InteractsWithClusterContext, InteractsWithHosts, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns;
 
     protected $signature = 'plex:init
         {--services= : Comma-separated services to provision non-interactively, e.g. postgres,redis,meilisearch (no prompt; nothing assumed)}
@@ -238,8 +240,11 @@ class PlexInitCommand extends Command
      * identified by the HasPromptableHosts contract on its driver (object storage
      * today; Postgres/Redis/search stay in-cluster and are never prompted). Each
      * host-bearing service gets its OWN host (so distinct S3 backends don't
-     * collide). Source: --s3-host, an already-set value (kept), or a prompt.
-     * Optional — blank leaves the service in-cluster only.
+     * collide). Source: --s3-host, an already-set value (kept), an auto-derived
+     * "{service}.{tld}" on the local cluster (nothing to prompt for — there's no
+     * real DNS locally, and syncClusterHosts() below registers it automatically),
+     * or a prompt for a real cluster. Optional — blank leaves the service
+     * in-cluster only.
      *
      * @param  array<string, mixed>  $spec
      * @return array<string, mixed>
@@ -247,6 +252,8 @@ class PlexInitCommand extends Command
     protected function ensurePublicHosts(array $spec): array
     {
         $catalog = $this->commonsServiceCatalog();
+        $isLocal = $this->targetsLocalCluster();
+        $tld = GlobalConfigData::load()->getLocalTld();
 
         foreach (array_keys($spec['services'] ?? []) as $service) {
             if (! ($spec['services'][$service]['enabled'] ?? false)) {
@@ -260,7 +267,9 @@ class PlexInitCommand extends Command
             }
 
             $host = (string) ($this->option('s3-host') ?? '');
-            if ($host === '' && $this->option('services') === null) {
+            if ($host === '' && $isLocal) {
+                $host = "{$service}.{$tld}";
+            } elseif ($host === '' && $this->option('services') === null) {
                 $host = text(
                     label: "Public host for the Commons '{$service}' (object storage)?",
                     placeholder: 's3.example.com — leave blank for in-cluster only',
@@ -274,6 +283,14 @@ class PlexInitCommand extends Command
         }
 
         return $spec;
+    }
+
+    /** Whether the resolved Plex context is the local k3d cluster. */
+    protected function targetsLocalCluster(): bool
+    {
+        $context = $this->plexContext ?: trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
+
+        return $context === $this->getLaraKubeContext();
     }
 
     /**
@@ -370,9 +387,19 @@ class PlexInitCommand extends Command
         }
 
         // A Commons is multi-tenant by design — every app that joins adds another
-        // host on this same ingress IP, so promote the CNAME-anchor pattern.
+        // host on this same ingress IP, so promote the CNAME-anchor pattern —
+        // unless it's the local cluster, where there's no real DNS to anchor:
+        // just register the host(s) directly (same automated, no-prompt
+        // primitive `up` uses for Mailpit/Grafana/Console).
         if ($publicHosts !== []) {
-            $this->printIngressDnsGuidance($publicHosts, $this->traefikLoadBalancerIp($this->plexContext));
+            if ($this->targetsLocalCluster()) {
+                if ($this->isWsl()) {
+                    $this->syncWindowsHosts($publicHosts, 'larakube-plex');
+                }
+                $this->syncHostsEntries($publicHosts, 'larakube-plex');
+            } else {
+                $this->printIngressDnsGuidance($publicHosts, $this->traefikLoadBalancerIp($this->plexContext));
+            }
         }
 
         $this->newLine();
