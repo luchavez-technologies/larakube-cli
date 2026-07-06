@@ -8,6 +8,123 @@
 
 # LaraKube CLI — Test & Docs Tracker (consolidated)
 
+## 🆕 v0.22.0 + v0.23.0 — Manual Test Guide (2026-07-04 session batch)
+
+Covers everything shipped in commits `c531e3d`..`80a5024` (tags `v0.22.0`,
+`v0.23.0`): opt-in environments, the `cloud:configure` consolidation, the
+Grafana `/etc/hosts` fix, multi-host web hosts (`additionalWebHosts`),
+`larakube env {name} --edit`, and the `cloud:create` stack-naming fix. The
+automated suite (`./php vendor/bin/pest`, 547 passing) already covers unit/
+feature-level correctness — this is the manual, real-project walkthrough to
+build confidence before wider use. Ordered by blast radius: free/local steps
+first, real-cloud-cost steps (💰) last.
+
+### Phase A — Opt-in environments (free, local)
+- [ ] `larakube new testapp` (or `init` on an existing Laravel app) — confirm `.larakube.json`'s `environments` has **only** `local`. No `production` key, no `.env.production` file.
+- [ ] `larakube env production` — the ingress/managed/hosts/additional-hosts/registry wizard runs; confirm `.env.production` is created (copied from `.env`) and `.gitignore` gains a `.env.*` line.
+
+### Phase B — `cloud:configure` consolidation (free, no real cloud target needed)
+- [ ] `larakube list | grep configure` — only `cloud:configure` and `cloud:configure:tunnel` appear. No `:base`/`:gha`/`:gitlab`/`:registry`.
+- [ ] `larakube cloud:configure production --only=hosts` on an env not yet in the blueprint — errors cleanly ("not in your blueprint").
+- [ ] `larakube cloud:configure production --only=bogus` — errors "Unknown --only value".
+- [ ] On an env whose `web` host is already set, `cloud:configure {env} --only=hosts` — the prompt shows the **existing** host as its default, not blank.
+- [ ] Re-run bare `cloud:configure {env}` on an env that already has a saved deploy target — confirm the "already targets X — reconfigure?" prompt appears defaulting to **No**, and declining leaves `.larakube.local.json` untouched.
+
+### Phase C — Grafana `/etc/hosts` fix (free, local cluster)
+- [ ] On a project that has **never** run `monitor:init`, run `larakube up`, then `grep grafana /etc/hosts` — no entry should exist.
+- [ ] Run `larakube monitor:init`, then `larakube up` again — **now** `grafana.<tld>` should appear in `/etc/hosts` and resolve.
+
+### Phase D — Multi-host web hosts (free locally; optional 💰 step for real DNS)
+- [ ] `larakube env staging --edit` (or fresh `larakube env staging`) — when asked "Any additional hostnames," enter e.g. `admin.staging.example.com, api.staging.example.com`.
+- [ ] Check `.larakube.json`: `environments.staging.additionalWebHosts` has both.
+- [ ] `larakube kustomize staging` — the rendered Ingress has 3 `rules[]` entries (primary + 2 additional), the same backend service on each, and all 3 listed under `tls[0].hosts`.
+- [ ] Locally: set an `additionalWebHosts` entry on `local` (e.g. `admin.myapp.kube`), run `larakube up` — confirm `/etc/hosts` gets an entry for it, and `https://admin.myapp.kube` loads with a trusted cert (no browser warning) — proves the local CA's extra-SAN fix works, including for a name that isn't a subdomain of the project's own TLD.
+- [ ] 💰 On a real cloud env with DNS you control: point the additional host's DNS at the ingress IP, `cloud:deploy {env}` — confirm HTTPS works on the additional host with its own independently-issued Let's Encrypt cert, and the post-deploy DNS guidance lists every host, not just the primary.
+
+### Phase E — `larakube env {name} --edit` (free, local)
+- [ ] On an existing environment, `larakube env staging` with **no flag** — prints "already exists in DNA; keeping current settings. Pass --edit..." and makes zero changes.
+- [ ] `larakube env staging --edit` — every prompt (ingress, managed services, hosts, additional hosts, registry) shows the **current** value as its default; accept everything — `.larakube.json` is byte-identical afterward.
+- [ ] `larakube env staging --edit` again, this time actually change the ingress controller (e.g. Traefik → Nginx) — confirm only `ingress` changed; `cloud`, `resources`, `storageClass`, etc. (if set) are untouched.
+
+### Phase F — 💰 `cloud:create` naming (needs a DigitalOcean account + API token — real droplet/cluster cost)
+- [ ] Outside any project directory: `larakube cloud:create mycompany-infra` → pick VPS → the stack-name prompt should default to `mycompany-infra-vps`, not `larakube-mycompany-infra-vps`.
+- [ ] Inside a project (`cd` into one with `.larakube.json`): `larakube cloud:create staging` → pick VPS → default stack name is `{projectname}-vps` — no "staging" anywhere in it.
+- [ ] Still inside the same project, run `larakube cloud:create production` (a **different** environment) → pick VPS again → confirm you're asked "Attach this environment to your existing '{projectname}-vps' stack instead of creating a new one?" defaulting to **Yes** — confirming lets `production` share the same droplet as `staging`, each in its own `{app}-{env}` namespace.
+- [ ] For the same project, run `cloud:create` again and pick "managed" this time → confirm the default name is `{projectname}-managed` (a *different* stack from the vps one — no collision) and that a later re-run offers to attach to `{projectname}-managed` specifically, not the vps stack.
+- [ ] Destroy anything provisioned in this phase (`larakube cloud:destroy`) once verified, to stop the billing.
+
+## 🆕 v0.24.0 — `env:audit` Manual Test Guide (2026-07-04 session batch)
+
+Covers commit `40241cc` (tag `v0.24.0`): `env:audit`, the checklist command for
+"a teammate with edit/admin access is leaving — what do I even rotate?" (see
+`app/Commands/EnvAuditCommand.php`). The automated suite fakes every kubectl
+call (`tests/Feature/EnvAuditCommandTest.php`, `tests/Unit/Commands/
+EnvAuditCommandTest.php`) — it has never actually round-tripped through a
+real `laravel-secrets`/`laravel-config` object. This is that walkthrough.
+Free, local — no cloud cost.
+
+### Phase G — `env:audit` against a real deploy
+- [ ] Prereq: a project that has deployed at least once to some environment (`larakube up` for local, or `cloud:deploy` for a real env) — `laravel-secrets` + `laravel-config` must actually exist in that namespace.
+- [ ] Add one throwaway custom key to `.env.{environment}` that would never come from LaraKube itself, e.g. `AIRTABLE_API_KEY=key_live_test123`, and redeploy (`larakube up`, or `cloud:deploy` for a cloud env) so it lands in `laravel-secrets`.
+- [ ] `larakube env:audit {environment}` (or bare `env:audit` inside a project with one env — should auto-pick it) — confirm it prints the env/namespace/context line, then a **Secrets** table listing every key in `laravel-secrets`, and a **Config** table for `laravel-config`.
+- [ ] In the Secrets table, confirm `AIRTABLE_API_KEY` (or whatever you added) is classified **custom**, and a LaraKube-generated key (`DB_PASSWORD` for a non-sqlite DB, or `APP_KEY`) is classified **LaraKube-managed**.
+- [ ] **Safety check (the actual point of the command):** confirm the literal value `key_live_test123` never appears anywhere in the output — only the key name `AIRTABLE_API_KEY`. Same for every other secret's value (DB password, etc.).
+- [ ] Remove the throwaway key from `.env.{environment}` and redeploy, so it doesn't linger in a real cluster.
+
+### Phase H — Edge cases (free, local)
+- [ ] Run `env:audit {environment}` on an environment that's never been deployed (no `laravel-secrets`/`laravel-config` yet) — confirm it prints "No 'laravel-secrets' or 'laravel-config' found ... nothing deployed yet?" and exits 0, not an error.
+- [ ] Run bare `env:audit` **outside any project directory** with no arguments — confirm it errors "Provide a namespace, or run inside a project to pick an environment." and exits 1.
+- [ ] Standalone form: `env:audit <namespace> --context <kube-context>` outside a project — confirm it runs against that literal namespace/context and every key in the Secrets table is classified **unknown (no project context)** rather than managed/custom (there's no `.larakube.json` to diff against).
+
+## 🆕 v0.25.0 + v0.26.0 — Plex Migrate/Join/Leave Manual Test Guide (2026-07-05 session batch)
+
+Covers commits `06d3d13` (tag `v0.25.0`) and `bc4556c` (tag `v0.26.0`):
+`plex:migrate` gains object-storage (MinIO) support alongside the database,
+`plex:join` detects existing self-hosted data for BOTH DB and storage (not
+just DB, as before) and offers to migrate it inline, `plex:leave` gains a
+full two-phase restore-then-drop path, and the custom `--yes` flag is gone
+everywhere in favor of Artisan's built-in `--no-interaction`. Also covers the
+`StorageDriver` `AWS_URL` bucket-segment fix and the `ExecCommand`
+masked-error fix from the same batch. Needs a real cluster with a Commons
+(`plex:init`) and a project using Postgres + MinIO with real data in both.
+Free, local — no cloud cost unless noted.
+
+### Phase I — `plex:migrate` storage + idempotency (local, free)
+- [ ] On a project with self-hosted Postgres + MinIO holding real data, run `larakube plex:migrate local` — confirm ONE combined confirm/quiesce window covers both, `Dumping data from self-hosted database...` and `Mirroring files into Commons bucket '...'...` both run, and the app's pods pause/resume exactly once (watch `kubectl get pods` mid-run).
+- [ ] After it completes, confirm the files that existed in the self-hosted MinIO bucket now exist in the Commons bucket (`larakube shell minio` targeting `larakube-shared`, then `mc ls local/<tenant-bucket>`), and spot-check a DB table's row count matches.
+- [ ] Re-run `larakube plex:migrate local` immediately after a successful run — confirm it prints "already Commons-managed ... will only check for a leftover PVC" for both services and does NOT re-pause the app or re-dump/re-mirror anything.
+- [ ] Simulate a partial prior run (one service migrated, the other's PVC still present) — confirm the re-run only processes the un-migrated service.
+
+### Phase J — `plex:migrate` PVC-deletion UX (local, free)
+- [ ] With real leftover PVCs after a successful migrate, confirm the "Which self-hosted PVC(s) should be deleted?" checkbox lists each by label+name, defaults to all selected, and deselecting one keeps its PVC (prints the manual `kubectl delete pvc ...` line for it).
+- [ ] At the "Type the project name" prompt, type the WRONG name — confirm "Confirmation failed — no PVCs deleted" and nothing is deleted.
+- [ ] Type the correct name — confirm only the selected PVC(s) are actually deleted (`kubectl get pvc -n <namespace>` before/after).
+- [ ] `larakube plex:migrate local --no-interaction` with leftover PVCs — confirm it does NOT delete them (kept, with manual instructions printed) even though prompts are disabled — this is deliberate, not a bug.
+
+### Phase K — `plex:join` existing-data detection (local, free)
+- [ ] Self-host a fresh Postgres + MinIO with real data (skip `plex:migrate`), run `larakube plex:join local` — confirm it detects BOTH the DB and storage as existing data (not just DB, like before this batch) and asks "Migrate this data into the Commons now instead of refusing to join?".
+- [ ] Answer **no** — confirm mixed mode: only the services WITHOUT existing data (e.g. Redis) get joined; postgres/minio are dropped from the join with no error.
+- [ ] Re-run with `larakube plex:join local --migrate` — confirm it skips the question entirely and delegates straight to `plex:migrate`.
+- [ ] Re-run with `larakube plex:join local --no-interaction` (existing data still present, no `--migrate`) — confirm it does NOT block waiting for input; it silently resolves to "no" and falls into mixed mode (only `--migrate` bypasses straight to migrating; `--no-interaction` alone must never silently copy real data).
+
+### Phase L — `plex:leave` two-phase (local, free)
+- [ ] On an already-joined tenant, run `larakube plex:leave local` (no `--restore`) — confirm it warns what will EVENTUALLY be dropped, asks you to type the app name, then clears `managed`/`plex` in `.larakube.json` and regenerates manifests — confirm NOTHING in `larakube-shared` changes (`kubectl get pvc,deploy -n larakube-shared` before/after).
+- [ ] Follow the printed next step (`larakube up` for local) — confirm the self-hosted `postgres`/`minio` pods come back (fresh/empty).
+- [ ] Run `larakube plex:leave local` again with no flag — confirm it detects the self-hosted pods are now Ready and asks "Restore the Commons data now and finish leaving?" instead of just re-running step 1.
+- [ ] Answer yes — confirm: DB dumped from the Commons and restored into the self-hosted Postgres (row counts match), the MinIO bucket mirrored back into the self-hosted bucket, and only THEN is the Commons DB/login dropped, the Redis index flushed, the Commons bucket deleted, and the tenant removed from `plex-registry`.
+- [ ] Verify the app actually works against the restored self-hosted data afterward (visit the site; previously-uploaded files/rows are present).
+- [ ] Separately, run `plex:leave {env} --restore` BEFORE redeploying (self-hosted pod doesn't exist / isn't Ready) — confirm it refuses with "isn't Ready yet" and touches nothing on the Commons.
+
+### Phase M — `--no-interaction` replaces `--yes` (local, free)
+- [ ] `larakube plex:join local --help` / `plex:migrate local --help` / `plex:leave local --help` — confirm none list a custom `--yes` option (only Symfony's global `--no-interaction`/`-n`).
+- [ ] `larakube plex:join local --no-interaction` on a FRESH join (no existing data) — confirm it joins all eligible services with zero prompts, same as the old `--yes` used to.
+- [ ] `larakube plex:migrate local --no-interaction` — confirm "Proceed with migration?" auto-resolves to yes (the copy runs) but PVC deletion still behaves per Phase J's last item.
+
+### Phase N — `StorageDriver` / `ExecCommand` fixes (local, free)
+- [ ] On a project with self-hosted MinIO, check `.env`'s `AWS_URL` — confirm it includes the bucket segment (`https://s3.<tld>/laravel`), not just the bare host.
+- [ ] Open a `Storage::url('public/somefile.jpg')` link in a browser — loads correctly without manually appending the bucket.
+- [ ] `larakube exec --service=minio "<a command that fails inside the container>"` — confirm the REAL error from the command prints, not a generic "OCI runtime exec failed ... no such file or directory".
+
 ## ✅ Persisted task tracker
 
 ### Manual test phases (validate the v0.21.x batch before wider rollout)
