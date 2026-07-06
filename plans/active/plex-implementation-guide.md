@@ -36,7 +36,7 @@ the MVP.
 
 | Piece | Scope | Run by | When | Idempotent? |
 |---|---|---|---|---|
-| **Commons** (Postgres+Redis in `larakube-shared`) | **Cluster** (once per box) | operator | once, after `cloud:provision` | yes (apply + PVC persists) |
+| **Commons** (Postgres+Redis in `larakube-plex`) | **Cluster** (once per box) | operator | once, after `cloud:provision` | yes (apply + PVC persists) |
 | **`plex:join`** (DB/role/creds + config wiring) | **Tenant repo** | developer | once per app per env | yes (`--rotate` to reset creds) |
 | **Deploy** (`cloud:deploy` / `git push` → GHA) | Tenant repo | CI or operator | every release | yes (already) |
 
@@ -55,16 +55,16 @@ Instead:
 
 > **The Commons is cluster-owned and self-describing.** It's installed on the
 > cluster like Traefik or the `larakube-system` dashboard, and its "bylaws" live
-> in the `larakube-shared` namespace as in-cluster state. The CLI is **stateless**
+> in the `larakube-plex` namespace as in-cluster state. The CLI is **stateless**
 > about it — every `plex:*` command reads truth from the cluster, so it works from
 > any machine with kubectl and depends on **no** repo.
 
 The HOA metaphor still works, just relocated: **the cluster is the building, the
-operator is the HOA, and the bylaws are posted in `larakube-shared`** (a ConfigMap
+operator is the HOA, and the bylaws are posted in `larakube-plex`** (a ConfigMap
 anyone with access can read). No single homeowner (app) runs it — so there is no
 owner-app to go unmaintained.
 
-Two pieces of in-cluster truth (both in `larakube-shared`, see §4):
+Two pieces of in-cluster truth (both in `larakube-plex`, see §4):
 - **`plex-commons` ConfigMap — the spec ("what the Commons IS").** Which services
   are enabled, image versions, resource/PVC sizes, larakube version, created-at.
   The source of truth `plex:init` writes and `plex:status` reads.
@@ -124,7 +124,7 @@ deploy-time one. The rules that keep this from sprawling:
    the blueprint to topology — the exact thing the `managed`-host seam avoids.
    **Recommendation: leave `new`/`init` untouched.**
 2. **Any LaraKube server is Plex-eligible, at any time.** `cloud:provision` preps
-   the box project-agnostically; the Commons is just a new `larakube-shared`
+   the box project-agnostically; the Commons is just a new `larakube-plex`
    namespace. So a box where you already ran `cloud:provision` + `cloud:deploy`
    (or GHA) for app #1 can become a Plex host later — **adding a Commons never
    touches app #1.**
@@ -161,7 +161,7 @@ the Commons runs its **own, separate** Postgres. Joining is a **cutover between
 two instances**, not a move:
 
 - **`plex:init` never touches your app or its data.** It only stands up the shared
-  Commons in `larakube-shared`. Run it on a box that already hosts an app and the
+  Commons in `larakube-plex`. Run it on a box that already hosts an app and the
   app keeps running, untouched — you just have an (initially unused) Commons. It
   does **not** read your `.larakube.json` or your app's namespace.
 - **`plex:join` allocates a *new, empty* database/role for your app inside the
@@ -240,7 +240,7 @@ construction:
 
 ## 1f. Should the Commons be the default? — No; opt in *early* instead
 
-Tempting: put every app's DB in `larakube-shared` from day one so a future second
+Tempting: put every app's DB in `larakube-plex` from day one so a future second
 app never needs migration. **Recommendation: don't make it a default.**
 
 - It re-couples app topology to a shared layout the **90% solo-app case never
@@ -306,15 +306,15 @@ pin sizes/services) before any tenant joins.
 ```
 1. Confirm/select kube-context (InteractsWithClusterContext) — guard against
    pointing at the wrong cluster (reuse validateContextForEnvironment).
-2. Render the Commons manifests (see §4) for namespace `larakube-shared`:
+2. Render the Commons manifests (see §4) for namespace `larakube-plex`:
    - Postgres Deployment + ClusterIP Service + PVC + admin Secret
    - Redis    Deployment + ClusterIP Service
    - the `plex-registry` ConfigMap (tenant allocations) + admin Secret
    - resource requests/limits on everything (plan §3 "fairness")
 3. kubectl apply -f (idempotent). Wait for rollout (kubectl rollout status).
 4. Print the Commons FQDNs tenants will use:
-     postgres.larakube-shared.svc.cluster.local:5432
-     redis.larakube-shared.svc.cluster.local:6379
+     postgres.larakube-plex.svc.cluster.local:5432
+     redis.larakube-plex.svc.cluster.local:6379
 ```
 
 - **CI/CD-expressible:** it's just `kubectl apply` of static manifests + a
@@ -344,9 +344,9 @@ Run from inside a tenant repo (needs kubectl access to the Commons cluster).
 5. Record the allocation in the `plex-registry` ConfigMap (db name + redis index;
    NOT the password).
 6. Write tenant config:
-     a. .env.{env}:  DB_HOST=postgres.larakube-shared.svc.cluster.local
+     a. .env.{env}:  DB_HOST=postgres.larakube-plex.svc.cluster.local
                      DB_DATABASE=<tenant> DB_USERNAME=<tenant> DB_PASSWORD=<gen>
-                     REDIS_HOST=redis.larakube-shared.svc.cluster.local
+                     REDIS_HOST=redis.larakube-plex.svc.cluster.local
                      REDIS_DB=<index>
         (via GeneratesProjectInfrastructure::syncEnvFile — lock-aware)
      b. .larakube.json: environments[env].managed += [postgres, redis]
@@ -375,7 +375,7 @@ making any app repo the owner. (Data backup/restore is separate — §11.)
 
 ```
 - Read plex-registry ConfigMap → list tenants (db, redis index).
-- kubectl top pods -n larakube-shared (+ per-tenant namespaces if metrics-server)
+- kubectl top pods -n larakube-plex (+ per-tenant namespaces if metrics-server)
   → RAM headroom; warn when near the $12/2GB budget (plan §Capacity).
 - Show Commons health (rollout/ready, PVC usage).
 ```
@@ -396,14 +396,14 @@ making any app repo the owner. (Data backup/restore is separate — §11.)
 
 A managed service's host comes from `EnvironmentData::$hosts[$service]` /
 the injected `DB_HOST` env, so the **MVP needs no code change**: `plex:join`
-writes the literal `postgres.larakube-shared.svc.cluster.local` into `.env.{env}`.
+writes the literal `postgres.larakube-plex.svc.cluster.local` into `.env.{env}`.
 Kubernetes DNS resolves ClusterIP services across namespaces by FQDN, so a pod in
-`app-one-production` reaches the Commons in `larakube-shared` fine.
+`app-one-production` reaches the Commons in `larakube-plex` fine.
 
 > **Optional sugar (Phase 2+):** `ConfigData::getInternalFqdn()`
 > (`app/Data/ConfigData.php`) hardcodes the project's own namespace. Add a
 > per-env `sharedServices: true` (or a `managedHosts` map) so a managed in-cluster
-> service auto-resolves to `{service}.larakube-shared.svc.cluster.local` without
+> service auto-resolves to `{service}.larakube-plex.svc.cluster.local` without
 > the user/`join` writing the FQDN by hand. Nice-to-have, not required.
 
 ---
@@ -414,13 +414,13 @@ Mirror the existing single-project data services and the system-namespace
 precedent:
 
 - **Postgres** — model on `resources/views/k8s/postgres/deployment.blade.php`
-  (+ `volumes.blade.php`), but: namespace `larakube-shared`, a fixed admin Secret,
+  (+ `volumes.blade.php`), but: namespace `larakube-plex`, a fixed admin Secret,
   resource requests/limits, and a PVC sized for shared use (start 5–10Gi vs the
   per-project 1Gi).
 - **Redis** — model on `resources/views/k8s/redis/deployment.blade.php`
   (stateless; add limits).
 - **Namespace + labels** — model on `resources/views/k8s/system-dashboard.blade.php`
-  (namespace `larakube-shared`, label `larakube.io/managed-by: larakube`).
+  (namespace `larakube-plex`, label `larakube.io/managed-by: larakube`).
 - **`plex-commons` ConfigMap** — the spec / "bylaws": enabled services, image
   versions, resource + PVC sizes, larakube version, created-at (§1a).
 - **`plex-registry` ConfigMap** — `{tenant: {db, redis_index}}` allocation table.
@@ -439,7 +439,7 @@ network exposure, and inside the pod `psql -U postgres` uses local peer/trust
 auth (no password needed):
 
 ```bash
-kubectl exec -n larakube-shared deploy/postgres -- \
+kubectl exec -n larakube-plex deploy/postgres -- \
   psql -U postgres -v ON_ERROR_STOP=1 -c "
     SELECT 'CREATE DATABASE \"app_one\"'
       WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='app_one')\gexec
@@ -506,7 +506,7 @@ Assumes a fresh single-node DO droplet (the $12/2GB tier).
 ```bash
 # --- once, operator, against the droplet's kube-context ---
 larakube cloud:provision            # k3s + Traefik + swap (existing)
-larakube plex:init production       # Commons: Postgres + Redis in larakube-shared
+larakube plex:init production       # Commons: Postgres + Redis in larakube-plex
 
 # --- in the app-one repo ---
 larakube plex:join production       # db app_one + role + creds; managed=[pg,redis]

@@ -3,7 +3,7 @@
 ## Context
 
 Plex ("commons") infrastructure — shared MariaDB/Redis/SeaweedFS/Meilisearch in
-`larakube-shared` — currently only works in cloud environments (VPS + managed K8s).
+`larakube-plex` — currently only works in cloud environments (VPS + managed K8s).
 
 Air-gapped bundles (`bundle:build` + `bundle:install`) deploy a fully self-contained
 app stack. But they include their **own** database/cache/storage per bundle —
@@ -23,12 +23,12 @@ cluster for DBA access, backup automation, and resource efficiency.
 ### The "Commons bundle" concept
 
 A "Commons bundle" is a separate `bundle:build commons` artifact that installs
-only the `larakube-shared` namespace (MariaDB, Redis, SeaweedFS, Meilisearch)
+only the `larakube-plex` namespace (MariaDB, Redis, SeaweedFS, Meilisearch)
 without any app. App bundles are then installed as **tenants** against this commons.
 
 ```bash
 # On the enterprise server:
-sudo ./larakube bundle:install --commons-only   # installs larakube-shared only
+sudo ./larakube bundle:install --commons-only   # installs larakube-plex only
 sudo ./app1/larakube bundle:install --plex      # app1 joins the commons
 sudo ./app2/larakube bundle:install --plex      # app2 joins the same commons
 ```
@@ -60,7 +60,7 @@ per-app credentials.
 
 4. **Multiple commons** (stretch goal): If two vendors each have a commons bundle
    on the same server, they'd need different namespace names to avoid collision
-   (`larakube-shared-vendor1`, `larakube-shared-vendor2`). Requires namespaced
+   (`larakube-plex-vendor1`, `larakube-plex-vendor2`). Requires namespaced
    commons — added complexity.
 
 ---

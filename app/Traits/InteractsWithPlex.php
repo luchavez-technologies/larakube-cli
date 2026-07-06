@@ -16,7 +16,7 @@ use function Laravel\Prompts\confirm;
  * Postgres/Redis/Meili) that several LaraKube projects join.
  *
  * The Commons is cluster-owned and self-describing: its spec lives in a
- * `plex-commons` ConfigMap in the `larakube-shared` namespace, so these helpers
+ * `plex-commons` ConfigMap in the `larakube-plex` namespace, so these helpers
  * read truth from the cluster rather than any repo. The spec-shaping helpers are
  * pure (no I/O) so they can be unit-tested.
  */
@@ -628,7 +628,7 @@ trait InteractsWithPlex
      */
     protected function plexNamespace(): string
     {
-        return 'larakube-shared';
+        return 'larakube-plex';
     }
 
     /**

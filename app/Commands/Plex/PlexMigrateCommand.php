@@ -19,7 +19,7 @@ class PlexMigrateCommand extends Command
     use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
 
     protected $signature = 'plex:migrate
-        {environment=production : The environment whose data to migrate to the Commons}
+        {environment=local : The environment whose data to migrate to the Commons}
         {--keep-pvc : Keep the self-hosted PVC(s) after migration (don\'t delete them)}';
 
     protected $description = 'Copy this project\'s self-hosted database and/or object storage into the shared Commons, then join';
@@ -160,11 +160,11 @@ class PlexMigrateCommand extends Command
             $this->newLine();
             if ($driver !== null && ! $skipDbCopy) {
                 $this->laraKubeLine("  <fg=gray>Source:</> <fg=cyan>{$driver->getLabel()}</> in <fg=cyan>{$namespace}</>");
-                $this->laraKubeLine("  <fg=gray>Target:</> Commons {$driver->getLabel()} in <fg=cyan>larakube-shared</> (tenant: <fg=cyan>{$tenant}</>)");
+                $this->laraKubeLine("  <fg=gray>Target:</> Commons {$driver->getLabel()} in <fg=cyan>{$this->plexNamespace()}</> (tenant: <fg=cyan>{$tenant}</>)");
             }
             if ($storage !== null && ! $skipStorageCopy) {
                 $this->laraKubeLine("  <fg=gray>Source:</> <fg=cyan>{$storage->getLabel()}</> in <fg=cyan>{$namespace}</>");
-                $this->laraKubeLine("  <fg=gray>Target:</> Commons {$storage->getLabel()} in <fg=cyan>larakube-shared</> (bucket: <fg=cyan>".$this->plexBucketName($tenant).'</>)');
+                $this->laraKubeLine("  <fg=gray>Target:</> Commons {$storage->getLabel()} in <fg=cyan>{$this->plexNamespace()}</> (bucket: <fg=cyan>".$this->plexBucketName($tenant).'</>)');
             }
             $this->newLine();
             $this->laraKubeWarn('This will COPY data from the self-hosted pod(s) to the Commons. The original pod(s) stay running until you approve deletion.');
@@ -361,8 +361,11 @@ class PlexMigrateCommand extends Command
                 $this->laraKubeWarn("PVC '{$target['pvc']}' in '{$namespace}' still holds the old {$target['label']} data.");
             }
 
-            // Which PVCs to actually delete, keyed like $pvcTargets. --keep-pvc,
-            // or running non-interactively at all, keeps everything — this is
+            // Which PVCs to actually delete, identified by PVC name (a plain
+            // list array with an integer `default` confuses Laravel Prompts'
+            // list-vs-associative handling — keying by name avoids that AND
+            // reads naturally as the thing being selected). --keep-pvc, or
+            // running non-interactively at all, keeps everything — this is
             // the one truly irreversible step in the whole command, so it
             // NEVER auto-deletes just because prompts are disabled; it needs a
             // real human to pick which ones and type the app name to confirm.
@@ -370,8 +373,8 @@ class PlexMigrateCommand extends Command
                 $selected = [];
             } else {
                 $options = [];
-                foreach ($pvcTargets as $i => $target) {
-                    $options[$i] = "{$target['label']} ({$target['pvc']})";
+                foreach ($pvcTargets as $target) {
+                    $options[$target['pvc']] = "{$target['label']} ({$target['pvc']})";
                 }
 
                 $picked = multiselect(
@@ -389,21 +392,40 @@ class PlexMigrateCommand extends Command
                         required: true,
                     );
 
+                    $selected = $confirm === $appName ? $picked : [];
+
                     if ($confirm !== $appName) {
                         $this->laraKubeInfo('Confirmation failed — no PVCs deleted.');
-                        $selected = [];
-                    } else {
-                        $selected = array_intersect_key($pvcTargets, array_flip($picked));
                     }
                 }
             }
 
-            foreach ($pvcTargets as $i => $target) {
-                if (array_key_exists($i, $selected)) {
-                    shell_exec($selfHostedKubectl.' delete pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' 2>/dev/null');
-                    $this->line("  <fg=gray>Deleted:</> {$target['pvc']}");
-                } else {
+            foreach ($pvcTargets as $target) {
+                if (! in_array($target['pvc'], $selected, true)) {
                     $this->line("  <fg=gray>Kept — delete manually once verified:</>  <fg=yellow>kubectl delete pvc {$target['pvc']} -n {$namespace}</>");
+
+                    continue;
+                }
+
+                // --wait=false: a plain `kubectl delete pvc` blocks with NO
+                // timeout until the pvc-protection finalizer clears, which
+                // only happens once the pod still mounting it is gone — if
+                // its self-hosted deployment hasn't been torn down yet
+                // (needs `larakube up` after this env's services were marked
+                // managed), this would hang the CLI indefinitely with zero
+                // feedback. Issue the delete without waiting, then report
+                // what's actually true instead of assuming it finished.
+                shell_exec($selfHostedKubectl.' delete pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' --wait=false 2>/dev/null');
+
+                $stillThere = trim((string) shell_exec(
+                    $selfHostedKubectl.' get pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' -o name 2>/dev/null',
+                )) !== '';
+
+                if ($stillThere) {
+                    $this->laraKubeWarn("'{$target['pvc']}' is Terminating but stuck — its pod is likely still running and mounting it.");
+                    $this->laraKubeLine('  Run `larakube up` (or scale that deployment to 0) to release it — the delete you just issued will then finish on its own.');
+                } else {
+                    $this->line("  <fg=gray>Deleted:</> {$target['pvc']}");
                 }
             }
         }

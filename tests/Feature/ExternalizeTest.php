@@ -99,7 +99,7 @@ test('applying the flips externalizes the drivers without clobbering Commons-own
         'CACHE_STORE=file',
         'AWS_BUCKET=myapp-production',
         'AWS_ACCESS_KEY_ID=PLEXKEY',
-        'REDIS_HOST=redis.larakube-shared.svc.cluster.local',
+        'REDIS_HOST=redis.larakube-plex.svc.cluster.local',
     ]);
 
     $values = externalizer()->externalizedEnvValues(CacheDriver::REDIS, hasS3: true, config: extConfig());
@@ -113,7 +113,7 @@ test('applying the flips externalizes the drivers without clobbering Commons-own
         // Commons-owned connection values are untouched.
         ->toContain('AWS_BUCKET=myapp-production')
         ->toContain('AWS_ACCESS_KEY_ID=PLEXKEY')
-        ->toContain('REDIS_HOST=redis.larakube-shared.svc.cluster.local')
+        ->toContain('REDIS_HOST=redis.larakube-plex.svc.cluster.local')
         // No duplicate FILESYSTEM_DISK line (replaced in place, not appended).
         ->and(substr_count($out, 'FILESYSTEM_DISK='))->toBe(1);
 });

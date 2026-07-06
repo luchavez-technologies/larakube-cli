@@ -42,11 +42,11 @@ test('applyEnvValues replaces in place (even commented) and appends new keys', f
     $p = plexJoin();
 
     $content = "APP_NAME=Demo\n# DB_HOST=old\nDB_PASSWORD=keepme";
-    $out = $p->applyEnvValues($content, ['DB_HOST' => 'postgres.larakube-shared.svc.cluster.local', 'REDIS_DB' => 3]);
+    $out = $p->applyEnvValues($content, ['DB_HOST' => 'postgres.larakube-plex.svc.cluster.local', 'REDIS_DB' => 3]);
 
     expect($out)
         ->toContain('APP_NAME=Demo')                                          // untouched
-        ->toContain('DB_HOST=postgres.larakube-shared.svc.cluster.local')     // uncommented + replaced
+        ->toContain('DB_HOST=postgres.larakube-plex.svc.cluster.local')     // uncommented + replaced
         ->not->toContain('# DB_HOST=old')
         ->toContain('REDIS_DB=3')                                             // appended
         ->toContain('DB_PASSWORD=keepme');
@@ -56,11 +56,11 @@ test('commonsEnvValues emits only the requested services', function () {
     $p = plexJoin();
 
     $both = $p->commonsEnvValues('app_one', 'secret', 5, ['postgres', 'redis']);
-    expect($both['DB_HOST'])->toBe('postgres.larakube-shared.svc.cluster.local')
+    expect($both['DB_HOST'])->toBe('postgres.larakube-plex.svc.cluster.local')
         ->and($both['DB_DATABASE'])->toBe('app_one')
         ->and($both['DB_USERNAME'])->toBe('app_one')
         ->and($both['DB_PASSWORD'])->toBe('secret')
-        ->and($both['REDIS_HOST'])->toBe('redis.larakube-shared.svc.cluster.local')
+        ->and($both['REDIS_HOST'])->toBe('redis.larakube-plex.svc.cluster.local')
         ->and($both['REDIS_DB'])->toBe(5);
 
     $redisOnly = $p->commonsEnvValues('app_one', 'secret', 2, ['redis']);
@@ -76,7 +76,7 @@ test('commonsEnvValues wires S3 generically from the tenant backend + per-tenant
     $s3 = $p->commonsEnvValues('app_four', 'pw', null, ['seaweedfs'], ['service' => 'seaweedfs', 'port' => 8333, 'access' => 'larakube', 'secret' => 'sk']);
     expect($s3['FILESYSTEM_DISK'])->toBe('s3')
         ->and($s3['AWS_BUCKET'])->toBe('app-four')                                                  // per-tenant bucket, DNS-safe
-        ->and($s3['AWS_ENDPOINT'])->toBe('http://seaweedfs.larakube-shared.svc.cluster.local:8333') // its backend's endpoint
+        ->and($s3['AWS_ENDPOINT'])->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:8333') // its backend's endpoint
         ->and($s3['AWS_ACCESS_KEY_ID'])->toBe('larakube')
         ->and($s3['AWS_SECRET_ACCESS_KEY'])->toBe('sk')
         ->and($s3['AWS_USE_PATH_STYLE_ENDPOINT'])->toBe('true')
@@ -84,7 +84,7 @@ test('commonsEnvValues wires S3 generically from the tenant backend + per-tenant
 
     // A different backend lands on its OWN endpoint — generic, not collapsed onto seaweedfs.
     $minio = $p->commonsEnvValues('app_four', 'pw', null, ['minio'], ['service' => 'minio', 'port' => 9000, 'access' => 'k', 'secret' => 's']);
-    expect($minio['AWS_ENDPOINT'])->toBe('http://minio.larakube-shared.svc.cluster.local:9000');
+    expect($minio['AWS_ENDPOINT'])->toBe('http://minio.larakube-plex.svc.cluster.local:9000');
 
     // A configured public host → AWS_URL (path-style host/bucket, DNS-safe bucket).
     $withHost = $p->commonsEnvValues('app_four', 'pw', null, ['seaweedfs'], ['service' => 'seaweedfs', 'port' => 8333, 'access' => 'k', 'secret' => 's', 'host' => 's3.example.com']);
@@ -156,18 +156,18 @@ test('commonsEnvValues points DB_* at the tenant engine service (postgres/mysql/
     $p = plexJoin();
 
     $pg = $p->commonsEnvValues('app_one', 'secret', null, ['postgres']);
-    expect($pg['DB_HOST'])->toBe('postgres.larakube-shared.svc.cluster.local')
+    expect($pg['DB_HOST'])->toBe('postgres.larakube-plex.svc.cluster.local')
         ->and($pg['DB_PORT'])->toBe(5432);
 
     $my = $p->commonsEnvValues('app_one', 'secret', null, ['mysql']);
-    expect($my['DB_HOST'])->toBe('mysql.larakube-shared.svc.cluster.local')
+    expect($my['DB_HOST'])->toBe('mysql.larakube-plex.svc.cluster.local')
         ->and($my['DB_PORT'])->toBe(3306)
         ->and($my['DB_DATABASE'])->toBe('app_one')
         ->and($my['DB_USERNAME'])->toBe('app_one')
         ->and($my['DB_PASSWORD'])->toBe('secret');
 
     expect($p->commonsEnvValues('app_one', 'secret', null, ['mariadb'])['DB_HOST'])
-        ->toBe('mariadb.larakube-shared.svc.cluster.local');
+        ->toBe('mariadb.larakube-plex.svc.cluster.local');
 });
 
 test('MySQL/MariaDB Commons tenant SQL scopes a db + user and escapes the password', function () {

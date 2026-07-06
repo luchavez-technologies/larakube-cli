@@ -7,7 +7,7 @@
 
 1. The local cluster is ephemeral — Plex commons data would be lost on `larakube down`
 2. Most local dev testing uses a per-app MariaDB/Redis, not shared Plex infra
-3. The `larakube-shared` namespace would add ~250m CPU + memory pressure to the dev node
+3. The `larakube-plex` namespace would add ~250m CPU + memory pressure to the dev node
 
 That said, Plex on local **would be useful** for:
 - Testing multi-tenant flows (e.g. verifying `plexTenantIdentifier()` isolation)
@@ -46,7 +46,7 @@ Currently this is also guarded. With this change it becomes:
 
 ### Resource impact on local
 
-The `larakube-shared` namespace adds:
+The `larakube-plex` namespace adds:
 - MariaDB: ~256Mi memory
 - Redis: ~64Mi
 - SeaweedFS: ~128Mi
@@ -61,7 +61,7 @@ shared with Colima / OrbStack / Rancher Desktop).
 
 **Medium.** The guard removal is surgical (a few conditionals). The `larakube up`
 Plex path integration requires verifying the boot sequence handles the
-`larakube-shared` namespace in the same way cloud envs do. Also need to verify
+`larakube-plex` namespace in the same way cloud envs do. Also need to verify
 that `plex:leave local` correctly tears down only the app tenant (not the commons)
 since the commons are shared even on local.
 

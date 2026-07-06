@@ -7,7 +7,7 @@
 >   init|join|status|leave`. The *shared-services bundle* is the **Commons**; each
 >   app is a **Tenant**. Already used in the public docs (Scaling Journey).
 > - **Node coverage: works on single-node AND multi-node.** The Commons is a
->   Postgres+Redis in `larakube-shared`; tenants reach it via `managed` + a host
+>   Postgres+Redis in `larakube-plex`; tenants reach it via `managed` + a host
 >   pointing at its in-cluster address — node-count-agnostic. On multi-node the
 >   in-cluster Commons is a single instance (shared-fate); graduate it to a
 >   managed DB for HA via the *same* `managed` mechanism (different host only).
@@ -75,7 +75,7 @@ A project never declares "I share Postgres with another project." It declares, p
 | Topology | `managed` host for postgres |
 |---|---|
 | Local dev | _(not managed — runs its own pod)_ |
-| Single-node Tenement | `postgres.larakube-shared.svc.cluster.local` |
+| Single-node Tenement | `postgres.larakube-plex.svc.cluster.local` |
 | Graduated to managed DB / multi-node | `your-db.db.ondigitalocean.com` (or RDS, etc.) |
 
 **The project's manifests never deploy Postgres in the last two cases, and the only thing that changes between them is a hostname.** That is the answer to "Can LaraKube handle the evolution without confusion?" — yes, because a Tenant's view of its database is just a connection string, and graduating off the Tenement is a one-line host change, not a manifest rewrite.
@@ -87,7 +87,7 @@ This is a direct payoff of the v0.4.0 per-environment schema: `environments[env]
 - **Namespace isolation**: every project deploys to `{name}-{environment}` namespaces. Two projects never collide at the K8s object level.
 - **Ingress multiplexing**: Traefik is cluster-wide and routes by Host header. Two projects on two domains "just work" through one ingress.
 - **Project-agnostic provisioning**: `cloud:provision` preps the box (K3s, swap, Traefik, ACME) without baking in a single project, so a second project deploying to the same IP reuses the cluster.
-- **Shared-namespace precedent**: `larakube-system` already hosts cluster-wide infra (Console, Traefik). The shared Utilities get an analogous `larakube-shared` namespace.
+- **Shared-namespace precedent**: `larakube-system` already hosts cluster-wide infra (Console, Traefik). The shared Utilities get an analogous `larakube-plex` namespace.
 
 What's missing is: (1) a shared Utilities release, (2) per-tenant database/credential provisioning inside it, (3) resource limits so tenants can't starve each other, (4) a node inventory so the CLI knows who lives on the box, and (5) the host-resolution tweak for cross-namespace managed services.
 
@@ -95,7 +95,7 @@ What's missing is: (1) a shared Utilities release, (2) per-tenant database/crede
 
 ### 1. The Commons (shared Utilities release)
 
-A LaraKube-managed bundle deployed once per node into a `larakube-shared` namespace:
+A LaraKube-managed bundle deployed once per node into a `larakube-plex` namespace:
 
 - **Postgres** (single instance, multi-database)
 - **Redis** (single instance, per-tenant logical DB index or ACL user)
@@ -145,7 +145,7 @@ Docs must be explicit about what shared services do and don't isolate, so a newc
 | Stage | Data services | What the Tenant blueprint says | Migration action |
 |---|---|---|---|
 | **Local dev** | Own pods in `{name}-local` | services NOT managed | none |
-| **Single-node Tenement ($12)** | Shared Commons in `larakube-shared` | `managed: [postgres, redis]`, host → Commons FQDN | `larakube tenement join` |
+| **Single-node Tenement ($12)** | Shared Commons in `larakube-plex` | `managed: [postgres, redis]`, host → Commons FQDN | `larakube tenement join` |
 | **Graduate: managed DB / bigger box** | Provider-hosted (DO Managed DB, RDS) | `managed: [postgres, redis]`, host → provider endpoint | change host in `.env`; re-deploy |
 | **Multi-node HA** | Provider-hosted or dedicated | same as above | `strategy: cluster`; manifests already proven |
 
@@ -155,9 +155,9 @@ The crucial property: **local stays per-project isolated** (simplest for dev; RA
 
 Small, because the Tenant side is mostly covered by v0.4.0:
 
-1. **Cross-namespace managed host resolution.** `ConfigData::getInternalFqdn()` currently hardcodes the project's own namespace (`{name}-{environment}`). Managed-but-in-cluster services need to resolve to `{service}.larakube-shared.svc.cluster.local`. Add an optional shared-namespace target (per-env field like `sharedServices: true` or a `managedHosts` map) so a managed service can point at the Commons without the user typing the FQDN by hand.
+1. **Cross-namespace managed host resolution.** `ConfigData::getInternalFqdn()` currently hardcodes the project's own namespace (`{name}-{environment}`). Managed-but-in-cluster services need to resolve to `{service}.larakube-plex.svc.cluster.local`. Add an optional shared-namespace target (per-env field like `sharedServices: true` or a `managedHosts` map) so a managed service can point at the Commons without the user typing the FQDN by hand.
 2. **Node binding (optional).** A `node` hint per cloud env (or in `cloud[env]`) so the inventory knows which box a tenant targets. Could be derived from the cloud IP instead — decide during design.
-3. **Commons release.** A definition for the shared Utilities bundle (Postgres/Redis/Meili with limits + PVCs) deployed into `larakube-shared`.
+3. **Commons release.** A definition for the shared Utilities bundle (Postgres/Redis/Meili with limits + PVCs) deployed into `larakube-plex`.
 
 No breaking changes to existing blueprints — a non-Tenement project is unaffected.
 
@@ -168,7 +168,7 @@ Verb is **`plex`** (see Resolved decisions). All commands must be
 identically whether the node is single- or multi-node. They are not part of Tier 0.
 
 - `larakube plex init` — provision the Commons (Postgres + Redis in
-  `larakube-shared`) on the cluster (or a `--shared` flag on `cloud:provision`).
+  `larakube-plex`) on the cluster (or a `--shared` flag on `cloud:provision`).
 - `larakube plex join` — register the current project as a Tenant: create its
   DB/role, assign a Redis index, write `.env`, set `managed`.
 - `larakube plex status` — list tenants on the cluster + capacity/RAM headroom.
@@ -192,7 +192,7 @@ Rough budget for $12/2GB:
 ## 🚦 Phased delivery
 
 - **Phase 0 — Tier 0 (the simple version, do first).** Audit `cloud:provision` for idempotency; prove a second repo's deploy can't nuke the first's namespace; write the "Two apps, one server" CI/CD doc; add a capacity warning. Little-to-no new code. **This alone satisfies the user's actual near-term ask.**
-- **Phase 1 — Commons release.** _(Tier 1 begins.)_ The shared Utilities bundle (Postgres + Redis) with limits + PVCs in `larakube-shared`. `tenement init`. No tenant wiring yet; validate the shared services stand up. Must be expressible in a GHA workflow, not local-only.
+- **Phase 1 — Commons release.** _(Tier 1 begins.)_ The shared Utilities bundle (Postgres + Redis) with limits + PVCs in `larakube-plex`. `tenement init`. No tenant wiring yet; validate the shared services stand up. Must be expressible in a GHA workflow, not local-only.
 - **Phase 2 — Tenant join.** Per-tenant DB/role/password provisioning, Redis index assignment, `.env` writeback, `managed` wiring, cross-namespace FQDN resolution. One project runs against the Commons — verified via CI/CD deploy, not just local.
 - **Phase 3 — Second tenant + fairness.** Resource requests/limits everywhere, node inventory, `tenement status`, capacity warnings. Two projects coexisting verified end-to-end.
 - **Phase 4 — Graduation + multi-node + Meili + hardening docs.** Document the host-swap to managed DB, prove the same Tenant blueprint runs on a multi-node cluster unchanged (Commons backed by managed service), optional shared Meilisearch (multi-index), and the hardened-isolation upgrade (Redis ACL users, NetworkPolicies, ResourceQuotas).

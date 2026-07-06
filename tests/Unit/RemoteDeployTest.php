@@ -159,7 +159,7 @@ test('env split routes secrets to the Secret and the rest to the ConfigMap', fun
     $lines = [
         'APP_URL=https://app.test',
         '# a comment',
-        'DB_HOST=postgres.larakube-shared.svc.cluster.local',
+        'DB_HOST=postgres.larakube-plex.svc.cluster.local',
         'DB_PASSWORD=s3cr3t',
         'APP_KEY=base64:xxx',
         'NO_VALUE_LINE',
@@ -173,7 +173,7 @@ test('env split routes secrets to the Secret and the rest to the ConfigMap', fun
     expect($secret)->toContain('APP_URL=https://app.test')
         ->toContain('DB_PASSWORD=s3cr3t')
         ->toContain('APP_KEY=base64:xxx')
-        ->and($public)->toContain('DB_HOST=postgres.larakube-shared.svc.cluster.local')
+        ->and($public)->toContain('DB_HOST=postgres.larakube-plex.svc.cluster.local')
         ->and($public)->not->toContain('a comment')        // comments skipped
         ->and($public)->not->toContain('NO_VALUE_LINE');   // non KEY=VALUE skipped
 });

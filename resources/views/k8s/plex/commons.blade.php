@@ -1,4 +1,4 @@
-{{-- The shared "Commons" services for Plex. Applied with `-n larakube-shared`.
+{{-- The shared "Commons" services for Plex. Applied with `-n larakube-plex`.
      The plex-commons ConfigMap embeds the spec (self-describing — see plex:export).
      The admin Secret (plex-admin) and the plex-registry ConfigMap are managed by
      the CLI separately so re-running plex:init never rotates the password nor

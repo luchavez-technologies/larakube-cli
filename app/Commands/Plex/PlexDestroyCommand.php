@@ -17,7 +17,7 @@ class PlexDestroyCommand extends Command
     use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
 
     protected $signature = 'plex:destroy
-        {environment=production : The cloud environment whose Commons to destroy}
+        {environment=local : The environment whose Commons to destroy (local, or a cloud environment)}
         {--force : Skip the tenant guard and confirmation (destroys even with tenants)}';
 
     protected $description = 'Tear down the ENTIRE shared Commons (all services + ALL tenant data)';
@@ -39,7 +39,7 @@ class PlexDestroyCommand extends Command
         $env = (string) $this->argument('environment');
         if ($env === 'local') {
             $this->laraKubeWarn('You are destroying a Plex Commons in a local environment.');
-            $this->line('  <fg=gray>This deletes the <fg=red>larakube-shared</> namespace and ALL tenant data on K3D.</> <fg=yellow>This cannot be undone.</>');
+            $this->line("  <fg=gray>This deletes the <fg=red>{$this->plexNamespace()}</> namespace and ALL tenant data on K3D.</> <fg=yellow>This cannot be undone.</>");
             $this->newLine();
 
             if (! confirm('Destroy the local Commons?', false)) {
