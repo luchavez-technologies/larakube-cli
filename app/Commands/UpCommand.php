@@ -85,54 +85,60 @@ class UpCommand extends Command
 
         // --- 🛡️ ZERO-CLUSTER GUARD ---
         if (! $this->hasActiveCluster()) {
-            $laraKubeContext = $this->getLaraKubeContext();
+            $localContext = $this->findLocalClusterContext();
             $currentContext = trim(shell_exec('kubectl config current-context 2>/dev/null') ?? '');
 
-            // Scenario A: Wrong context selected (e.g. OrbStack is active but k3d-larakube exists)
-            if ($currentContext !== $laraKubeContext && $this->laraKubeContextExists()) {
+            // Scenario A: a local-looking context already exists but isn't
+            // selected (e.g. a cloud context is active while OrbStack/k3s/k3d
+            // sits unused). No single canonical name — findLocalClusterContext()
+            // scans the kubeconfig rather than checking one hardcoded string.
+            if ($localContext !== null && $currentContext !== $localContext) {
                 $this->laraKubeWarn('Incorrect Kubernetes context detected!');
                 $this->line("  Active context: <fg=cyan;options=bold>{$currentContext}</>");
-                $this->line("  LaraKube cluster: <fg=green;options=bold>{$laraKubeContext}</>");
+                $this->line("  Local cluster:  <fg=green;options=bold>{$localContext}</>");
                 $this->newLine();
 
-                if (confirm('Would you like to switch to the LaraKube cluster now?', true)) {
-                    $this->switchClusterContext($laraKubeContext);
+                if (confirm('Would you like to switch to the local cluster now?', true)) {
+                    $this->switchClusterContext($localContext);
                     if ($this->hasActiveCluster()) {
                         $this->laraKubeInfo('✅ Context switched! Cluster is reachable.');
                     } else {
                         // If it's still unreachable after switching, it might be stopped
-                        if (confirm('LaraKube cluster is selected but seems to be stopped. Start it now?', true)) {
-                            $this->withSpin('Starting k3d cluster...', fn () => exec('k3d cluster start larakube 2>/dev/null'));
+                        if (confirm('Local cluster is selected but seems to be stopped. Start it now?', true)) {
+                            $this->withSpin('Starting the local cluster...', fn () => $this->startLocalCluster($localContext));
                         }
                     }
 
                     // Final verification
                     if (! $this->hasActiveCluster()) {
-                        $this->laraKubeError('Failed to reach the cluster. Please ensure Docker is running.');
+                        $this->laraKubeError('Failed to reach the cluster. Make sure Docker/the cluster app (OrbStack, Docker Desktop) is running, or start it manually.');
 
                         return 1;
                     }
                 } else {
                     return 1;
                 }
-            } // Scenario B: LaraKube context exists but cluster is unreachable/stopped
-            elseif ($this->laraKubeContextExists()) {
+            } // Scenario B: local context is selected but unreachable/stopped
+            elseif ($localContext !== null) {
                 $context = $currentContext ?: 'Unknown';
-                $this->laraKubeWarn('LaraKube cluster exists but is unreachable!');
+                $this->laraKubeWarn('Local cluster exists but is unreachable!');
                 $this->line("  Current context: <fg=cyan;options=bold>{$context}</>");
                 $this->newLine();
                 $this->line('  👉 <fg=gray>Suggestions:</>');
-                $this->line('  1. Ensure your Docker daemon (OrbStack/Docker Desktop) is running.');
+                $this->line('  1. Ensure your Docker daemon / cluster app (OrbStack, Docker Desktop) is running.');
                 $this->line('  2. If using k3d, run: <fg=yellow>k3d cluster start larakube</>');
-                $this->line('  3. If you want to use a different cluster, run: <fg=yellow>larakube context</>');
+                $this->line('  3. If using native k3s, run: <fg=yellow>sudo systemctl start k3s</>');
+                $this->line('  4. If you want to use a different cluster, run: <fg=yellow>larakube context</>');
                 $this->newLine();
 
-                if (confirm('Would you like LaraKube to try starting your local k3d cluster?', true)) {
-                    $this->withSpin('Starting k3d cluster...', fn () => exec('k3d cluster start larakube 2>/dev/null'));
+                if (confirm('Would you like LaraKube to try starting it now?', true)) {
+                    $started = $this->withSpin('Starting the local cluster...', fn () => $this->startLocalCluster($localContext));
                     if ($this->hasActiveCluster()) {
                         $this->laraKubeInfo('✅ Cluster is back online!');
                     } else {
-                        $this->laraKubeError('Failed to reach the cluster. Please check your Docker logs.');
+                        $this->laraKubeError($started
+                            ? 'Failed to reach the cluster. Please check your Docker logs.'
+                            : 'No automated way to start this cluster type — open OrbStack/Docker Desktop (or start it manually), then retry.');
 
                         return 1;
                     }

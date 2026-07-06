@@ -48,21 +48,68 @@ trait InteractsWithClusterContext
     }
 
     /**
-     * Get the standard LaraKube k3d context name.
+     * Find a local-cluster-looking context already in the kubeconfig. There's
+     * no single canonical name anymore — `cluster:setup` names a native k3s
+     * install "k3s-larakube" (Linux/WSL2), a legacy/manual k3d install is
+     * "k3d-larakube", and macOS users bring their own (OrbStack's "orbstack",
+     * Docker Desktop's "docker-desktop") — so this scans every available
+     * context via isLocalContextName() rather than checking one hardcoded
+     * string. Prefers a LaraKube-provisioned context (k3s-larakube /
+     * k3d-larakube) over a generic bring-your-own one, since only the former
+     * can be auto-restarted by startLocalCluster() below. Null when no
+     * local-looking context exists at all.
      */
-    protected function getLaraKubeContext(): string
+    protected function findLocalClusterContext(): ?string
     {
-        return 'k3d-larakube';
+        $contexts = array_filter(explode("\n", trim((string) shell_exec(
+            'kubectl config get-contexts -o name 2>/dev/null',
+        ))));
+
+        $provisioned = null;
+        $any = null;
+
+        foreach ($contexts as $context) {
+            if (! $this->isLocalContextName($context)) {
+                continue;
+            }
+
+            $any ??= $context;
+
+            $lower = strtolower($context);
+            if (str_contains($lower, 'k3s-larakube') || str_contains($lower, 'k3d-larakube')) {
+                $provisioned ??= $context;
+            }
+        }
+
+        return $provisioned ?? $any;
     }
 
     /**
-     * Check if the LaraKube k3d context exists in the kubeconfig.
+     * Attempt to (re)start a discovered local cluster context, dispatched by
+     * its underlying engine. Returns false when there's no automated way to
+     * start it — OrbStack/Docker Desktop/minikube/kind/colima are apps this
+     * CLI doesn't drive; the caller should tell the user to open/start them
+     * manually instead.
      */
-    protected function laraKubeContextExists(): bool
+    protected function startLocalCluster(string $context): bool
     {
-        $output = shell_exec('kubectl config get-contexts -o name 2>/dev/null');
+        $lower = strtolower($context);
 
-        return str_contains($output ?? '', $this->getLaraKubeContext());
+        if (str_contains($lower, 'k3d')) {
+            exec('k3d cluster start larakube 2>/dev/null', $output, $code);
+
+            return $code === 0;
+        }
+
+        // A context named this way is only ever created by cluster:setup on a
+        // Linux/WSL2 host, so no separate platform check is needed here.
+        if (str_contains($lower, 'k3s-larakube')) {
+            exec('sudo systemctl start k3s 2>/dev/null', $output, $code);
+
+            return $code === 0;
+        }
+
+        return false;
     }
 
     /**
@@ -94,23 +141,14 @@ trait InteractsWithClusterContext
      */
     protected function isLocalContext(): bool
     {
-        $context = shell_exec('kubectl config current-context 2>/dev/null');
+        $context = trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
 
-        if (! $context) {
+        if ($context === '') {
             return false;
         }
 
-        $context = trim($context);
-
-        // 'k3s-larakube' is the context name cluster:setup gives a *local* native
-        // k3s install. Remote k3s (cloud:init) is named "larakube-<ip>", so
-        // it stays correctly classified as non-local.
-        $localKeywords = ['k3d', 'minikube', 'docker-desktop', 'orbstack', 'kind', 'colima', 'k3s-larakube'];
-
-        foreach ($localKeywords as $keyword) {
-            if (str_contains(strtolower($context), $keyword)) {
-                return true;
-            }
+        if ($this->isLocalContextName($context)) {
+            return true;
         }
 
         // Fallback: if the API server is on localhost or 127.0.0.1 it's local
@@ -118,6 +156,37 @@ trait InteractsWithClusterContext
         $server = trim((string) shell_exec('kubectl config view --minify -o jsonpath=\'{.clusters[0].cluster.server}\' 2>/dev/null'));
 
         return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
+    }
+
+    /**
+     * Whether a context NAME matches a known local-cluster naming convention
+     * (k3d, OrbStack, Docker Desktop, minikube, kind, colima, or LaraKube's own
+     * native k3s install). Pure — no kubectl calls — so callers that resolve
+     * an EXPLICIT context (e.g. picked via --context, without switching the
+     * global kubectl context) can check it directly, not just the ambient
+     * current-context isLocalContext() looks at.
+     *
+     * 'k3s-larakube' is the context name cluster:setup gives a *local* native
+     * k3s install. Remote k3s (cloud:init) is named "larakube-<ip>", so it
+     * stays correctly classified as non-local.
+     */
+    protected function isLocalContextName(string $context): bool
+    {
+        $context = strtolower(trim($context));
+
+        if ($context === '') {
+            return false;
+        }
+
+        $localKeywords = ['k3d', 'minikube', 'docker-desktop', 'orbstack', 'kind', 'colima', 'k3s-larakube'];
+
+        foreach ($localKeywords as $keyword) {
+            if (str_contains($context, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -144,7 +213,7 @@ trait InteractsWithClusterContext
 
         foreach ($contexts as $context) {
             $label = $context;
-            if ($context === $this->getLaraKubeContext() && ! $k3dRunning) {
+            if (str_contains(strtolower($context), 'k3d') && ! $k3dRunning) {
                 $label .= ' <fg=yellow>(stopped)</>';
             }
             $options[$context] = $label;

@@ -289,15 +289,23 @@ class PlexMigrateCommand extends Command
             }
 
             if ($storage !== null && ! $skipStorageCopy && $mirrorCode !== 0) {
-                if ($dumpFile !== null) {
-                    @unlink($dumpFile);
-                }
-                $this->laraKubeError("Mirroring self-hosted {$storage->getLabel()} into the Commons failed.");
-                foreach (array_slice($mirrorOutput, -6) as $line) {
-                    $this->laraKubeLine('    '.$line);
-                }
+                // The self-hosted bucket never existing (never created via the
+                // post-install instructions) isn't a real failure — there's no
+                // data to lose either way, so skip it rather than abort the
+                // whole migrate. Anything else IS a real failure.
+                if ($this->mirrorFailedBecauseBucketMissing($mirrorOutput)) {
+                    $this->laraKubeInfo("Self-hosted {$storage->getLabel()} has no bucket yet — nothing to migrate for storage, skipping.");
+                } else {
+                    if ($dumpFile !== null) {
+                        @unlink($dumpFile);
+                    }
+                    $this->laraKubeError("Mirroring self-hosted {$storage->getLabel()} into the Commons failed.");
+                    foreach (array_slice($mirrorOutput, -6) as $line) {
+                        $this->laraKubeLine('    '.$line);
+                    }
 
-                return 1;
+                    return 1;
+                }
             }
 
             if ($driver !== null && ! $skipDbCopy) {
@@ -349,10 +357,10 @@ class PlexMigrateCommand extends Command
 
         $pvcTargets = [];
         if ($driver !== null && $dbPvcExists) {
-            $pvcTargets[] = ['label' => $driver->getLabel(), 'pvc' => $dbPvc];
+            $pvcTargets[] = ['label' => $driver->getLabel(), 'pvc' => $dbPvc, 'deployment' => $driver->value];
         }
         if ($storage !== null && $storagePvcExists) {
-            $pvcTargets[] = ['label' => $storage->getLabel(), 'pvc' => $storagePvc];
+            $pvcTargets[] = ['label' => $storage->getLabel(), 'pvc' => $storagePvc, 'deployment' => $storage->value];
         }
 
         if (! empty($pvcTargets)) {
@@ -422,8 +430,35 @@ class PlexMigrateCommand extends Command
                 )) !== '';
 
                 if ($stillThere) {
-                    $this->laraKubeWarn("'{$target['pvc']}' is Terminating but stuck — its pod is likely still running and mounting it.");
-                    $this->laraKubeLine('  Run `larakube up` (or scale that deployment to 0) to release it — the delete you just issued will then finish on its own.');
+                    // Its own pod is still mounting it. Scale JUST that one
+                    // deployment to 0 — not the whole app (`larakube stop`
+                    // would pause everything, which is overkill and imprecise
+                    // here) — then give the already-issued delete a few
+                    // seconds to actually finish now that nothing holds it.
+                    // Safe regardless: this service is confirmed migrated and
+                    // approved for deletion, and gets dropped from the local
+                    // overlay entirely on the next heal+up anyway.
+                    $this->withSpin("Releasing '{$target['pvc']}' (scaling {$target['deployment']} to 0)...", function () use ($selfHostedKubectl, $target, $namespace, &$stillThere) {
+                        shell_exec($selfHostedKubectl.' scale deployment/'.escapeshellarg($target['deployment']).' --replicas=0 -n '.escapeshellarg($namespace).' 2>/dev/null');
+
+                        for ($i = 0; $i < 10; $i++) {
+                            $stillThere = trim((string) shell_exec(
+                                $selfHostedKubectl.' get pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' -o name 2>/dev/null',
+                            )) !== '';
+
+                            if (! $stillThere) {
+                                break;
+                            }
+
+                            usleep(500_000);
+                        }
+
+                        return ! $stillThere;
+                    });
+                }
+
+                if ($stillThere) {
+                    $this->laraKubeWarn("'{$target['pvc']}' is still Terminating — its pod may need a moment longer, or run `larakube up` to fully remove it.");
                 } else {
                     $this->line("  <fg=gray>Deleted:</> {$target['pvc']}");
                 }
@@ -449,6 +484,26 @@ class PlexMigrateCommand extends Command
         }
 
         return $joinCode;
+    }
+
+    /**
+     * Whether an `mc mirror` failure was simply because the self-hosted
+     * source bucket doesn't exist yet (e.g. never created via the storage
+     * driver's post-install instructions) — nothing to migrate, not a real
+     * failure. `mc` reports this as e.g. "Unable to stat source `src/laravel`.
+     * Bucket `laravel` does not exist."
+     *
+     * @param  array<int, string>  $output
+     */
+    protected function mirrorFailedBecauseBucketMissing(array $output): bool
+    {
+        foreach ($output as $line) {
+            if (stripos($line, 'does not exist') !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

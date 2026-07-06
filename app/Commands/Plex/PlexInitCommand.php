@@ -285,12 +285,27 @@ class PlexInitCommand extends Command
         return $spec;
     }
 
-    /** Whether the resolved Plex context is the local k3d cluster. */
+    /**
+     * Whether the resolved Plex context is a local dev cluster — k3s, OrbStack,
+     * Docker Desktop, or any of the other local-cluster naming conventions
+     * isLocalContextName() knows, not just one specific hardcoded name.
+     */
     protected function targetsLocalCluster(): bool
     {
         $context = $this->plexContext ?: trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
 
-        return $context === $this->getLaraKubeContext();
+        if ($this->isLocalContextName($context)) {
+            return true;
+        }
+
+        // Fallback: a local API server (e.g. a raw k3s "default" context)
+        // regardless of what it's named — scoped to the resolved context via
+        // --context so an explicitly-picked context is checked, not just
+        // whatever the ambient kubectl context happens to be.
+        $kubectl = $this->plexContext ? 'kubectl --context '.escapeshellarg($this->plexContext) : 'kubectl';
+        $server = trim((string) shell_exec($kubectl.' config view --minify -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}').' 2>/dev/null'));
+
+        return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
     }
 
     /**
