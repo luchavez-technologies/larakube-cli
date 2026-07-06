@@ -84,6 +84,21 @@ class CloudDeployCommand extends Command
             $this->syncEnvFile($projectPath, ['APP_URL' => 'https://'.$host], false, $environment);
         }
 
+        // First-deploy safety net: if `larakube env {$environment}` was never
+        // run, .env.{$environment} doesn't exist yet, and the narrow APP_URL
+        // patch above is the only per-env value ever written — APP_ENV,
+        // APP_DEBUG, DB_HOST, REDIS_HOST, VITE_URL, etc. would otherwise stay
+        // whatever a lazy copy-from-local seeded them as. Seed the full
+        // computed set for THIS environment only (never
+        // orchestrateProjectScaffolding's syncEnv:true below, which loops
+        // over every configured cloud environment and would risk clobbering
+        // already-deployed envs' Plex-managed values).
+        $envFilePath = $projectPath.'/.env.'.$environment;
+        if (! file_exists($envFilePath)) {
+            $this->laraKubeInfo("No .env.{$environment} found — seeding it with '{$environment}'-scoped values...");
+            $this->syncEnvFile($projectPath, $config->getAllEnvironmentVariables($environment), false, $environment);
+        }
+
         // Keep ASSET_URL aligned with this environment's web domain. @vite
         // prefixes asset URLs with ASSET_URL, so a leaked local "*.dev.test" or
         // "*.kube" value sends deployed assets to the dev host (404 / unstyled). Runs
