@@ -19,7 +19,7 @@ class PlexJoinCommand extends Command
     use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
 
     protected $signature = 'plex:join
-        {environment=production : The cloud environment to join to the Commons}
+        {environment=local : The environment to join to the Commons (local, or a cloud environment)}
         {--rotate : Reset this tenant\'s Commons credentials}
         {--migrate : Auto-migrate existing self-hosted data into the Commons instead of refusing to join}';
 
@@ -89,7 +89,7 @@ class PlexJoinCommand extends Command
             return 1;
         }
 
-        $this->line("  <fg=gray>Tenant:</> <fg=cyan>{$tenant}</>  <fg=gray>env:</> <fg=cyan>{$env}</>  <fg=gray>context:</> <fg=cyan>{$context}</>");
+        $this->line("  <fg=gray>Tenant:</> <fg=cyan>{$tenant}</>  <fg=gray>env:</> <fg=cyan>{$env}</>  <fg=gray>context:</> <fg=cyan>".($context ?: 'current').'</>');
         $this->laraKubeNewLine();
 
         // Pick which eligible services to share on the Commons — you can join a

@@ -16,7 +16,7 @@ class PlexStatusCommand extends Command
     use InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ReadsPlexCredentials, ResolvesEnvironmentContext;
 
     protected $signature = 'plex:status
-        {environment=production : The cloud environment whose Commons to inspect (used only inside a project)}
+        {environment=local : The environment whose Commons to inspect (used only inside a project)}
         {--context= : Target a specific kube-context (else: the project env context, or you are prompted)}';
 
     protected $description = 'Show the shared Commons services and its tenants';

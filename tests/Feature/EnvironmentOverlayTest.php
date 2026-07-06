@@ -164,3 +164,59 @@ test('a managed service is removed from the env that manages it via a delete-pat
     // stray, unreferenced manifest left behind).
     expect($manifests)->not->toHaveKey('overlays/production/postgres-volumes.yaml');
 });
+
+test('a service managed for local is removed from the local overlay too, independently of cloud envs', function () {
+    // Regression guard: `managed` used to have NO effect on the local
+    // overlay at all — a service marked managed for `local` (e.g. by
+    // plex:join/plex:migrate after joining a Commons) kept deploying its own
+    // Postgres/MinIO pods locally forever, regardless of managed status.
+    $config = ConfigData::from([
+        'name' => 'mgdlocal',
+        'serverVariation' => 'fpm-nginx',
+        'phpVersion' => '8.5',
+        'database' => 'postgres',
+        'environments' => [
+            'local' => [
+                'managed' => ['postgres'],
+            ],
+            'production' => [
+                'hosts' => ['web' => 'mgdlocal.com'],
+                // NOT managed for production — must still deploy there.
+            ],
+        ],
+    ]);
+
+    $manifests = generateManifestsAsArray($config);
+
+    // Base still ships the Postgres deployment (production still uses it).
+    expect($manifests)->toHaveKey('base/postgres-deployment.yaml');
+
+    // Local gets the same per-resource delete-patch shape production does.
+    expect($manifests)
+        ->toHaveKey('overlays/local/postgres-managed-delete-deployment.yaml')
+        ->toHaveKey('overlays/local/postgres-managed-delete-service.yaml');
+
+    $deploymentDelete = $manifests['overlays/local/postgres-managed-delete-deployment.yaml'];
+    expect($deploymentDelete['kind'])->toBe('Deployment')
+        ->and($deploymentDelete['$patch'])->toBe('delete')
+        ->and($deploymentDelete['metadata']['name'])->toBe('postgres');
+
+    expect($manifests['overlays/local/kustomization.yaml']['patches'])
+        ->toContain(['path' => 'postgres-managed-delete-deployment.yaml'])
+        ->toContain(['path' => 'postgres-managed-delete-service.yaml']);
+
+    // Postgres volumes are NOT registered as a local resource, nor written
+    // to disk — this is the actual bug: previously the local overlay always
+    // pulled in the base Deployment with no counteracting delete-patch, so
+    // `larakube up` kept redeploying a fresh, empty self-hosted Postgres no
+    // matter what plex:join/plex:migrate had already done.
+    expect($manifests['overlays/local/kustomization.yaml']['resources'] ?? [])
+        ->not->toContain('postgres-volumes.yaml');
+    expect($manifests)->not->toHaveKey('overlays/local/postgres-volumes.yaml');
+
+    // Production is unaffected — postgres isn't managed there, so it still
+    // gets its own volumes and no delete-patch (envs are independent).
+    expect($manifests['overlays/production/kustomization.yaml']['resources'] ?? [])
+        ->toContain('postgres-volumes.yaml');
+    expect($manifests)->not->toHaveKey('overlays/production/postgres-managed-delete-deployment.yaml');
+});

@@ -18,7 +18,7 @@ class PlexRemoveCommand extends Command
 
     protected $signature = 'plex:remove
         {service? : The Commons service to remove (postgres, redis, meilisearch, seaweedfs)}
-        {environment=production : The cloud environment whose Commons to edit}
+        {environment=local : The environment whose Commons to edit (local, or a cloud environment)}
         {--keep-data : Delete the workload but KEEP its PersistentVolumeClaim (data)}
         {--force : Skip the confirmation (and the tenant-in-use guard)}';
 
@@ -39,12 +39,6 @@ class PlexRemoveCommand extends Command
         }
 
         $env = (string) $this->argument('environment');
-        if ($env === 'local') {
-            $this->laraKubeError('Plex is a cloud topology — pick a cloud environment.');
-
-            return 1;
-        }
-
         $context = $this->environmentContextOrCurrent($config, $env);
         $this->plexContext = $context;
 

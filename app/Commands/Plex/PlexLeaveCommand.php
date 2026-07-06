@@ -20,7 +20,7 @@ class PlexLeaveCommand extends Command
     use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
 
     protected $signature = 'plex:leave
-        {environment=production : The cloud environment to remove from the Commons}
+        {environment=local : The environment to remove from the Commons (local, or a cloud environment)}
         {--backup= : Path for the pre-drop pg_dump backup (default: ./<tenant>-commons-<env>.sql)}
         {--no-backup : Skip the safety backup before dropping (dangerous)}
         {--restore : Phase 2 — copy Commons data into the now-live self-hosted pod(s), then finish leaving}

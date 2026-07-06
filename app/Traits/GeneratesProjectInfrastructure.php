@@ -407,15 +407,29 @@ trait GeneratesProjectInfrastructure
         }
 
         // 3. SYNCHRONIZED REGISTRATION (Explicit Deduplication)
-        // Base + local are environment-agnostic — collected from the full
-        // component set.
+        // Base is environment-agnostic — collected from the full component set.
+        // Local honours `managed` exactly like the cloud overlays below (skip +
+        // emit a delete-patch) — a Plex-joined service must actually stop
+        // deploying locally on `up`, not just skip volumes while the base
+        // Deployment keeps coming back regardless of managed status.
+        $managedLocal = $config->getManaged('local');
         $base = $local = $localPatches = [];
         foreach ($config->getComponents() as $pod) {
             if (! $pod instanceof HasKubernetesFiles) {
                 continue;
             }
+
             $files = $pod->getManifestFiles($config);
             $base = array_merge($base, $files['base'] ?? []);
+
+            if (in_array($pod->value, $managedLocal, true)) {
+                if ($pod instanceof RemovableWhenManaged) {
+                    $this->writeManagedDeletePatch($k8sPath, 'local', $pod, $config);
+                }
+
+                continue;
+            }
+
             $local = array_merge($local, $files['local'] ?? []);
             $localPatches = array_merge($localPatches, $files['patches'] ?? []);
         }
@@ -444,7 +458,8 @@ trait GeneratesProjectInfrastructure
 
                 // Externally managed in this env: don't register its cloud
                 // volumes, and emit a delete-patch so its base Deployment/
-                // Service is removed from this overlay (local keeps it).
+                // Service is removed from this overlay too (local gets the
+                // same treatment above, keyed off managed('local') instead).
                 if (in_array($pod->value, $managed, true)) {
                     if ($pod instanceof RemovableWhenManaged) {
                         $this->writeManagedDeletePatch($k8sPath, $env, $pod, $config);
@@ -503,7 +518,8 @@ trait GeneratesProjectInfrastructure
 
     /**
      * Write (and register) a kustomize delete-patch that removes an externally
-     * managed service's base resources from a cloud environment's overlay.
+     * managed service's base resources from an environment's overlay — cloud
+     * or local, whichever $env names.
      */
     protected function writeManagedDeletePatch(string $k8sPath, string $env, RemovableWhenManaged $pod, ConfigData $config): void
     {
