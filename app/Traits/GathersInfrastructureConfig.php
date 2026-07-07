@@ -197,7 +197,7 @@ trait GathersInfrastructureConfig
         if ($config->hasFeature(LaravelFeature::SCOUT)) {
             $driver = select(
                 label: 'Which primary search driver would you like to use for Scout?',
-                options: ScoutDriver::getSelectOptions($config),
+                options: ScoutDriver::getSelectOptionsWithSizes($config),
                 default: $config->getScoutDriver()?->value ?? ScoutDriver::MEILISEARCH->value,
             );
 
@@ -216,7 +216,7 @@ trait GathersInfrastructureConfig
         // 10. Object Storage
         $storage = select(
             label: 'Which primary object storage would you like to use?',
-            options: array_merge([null => 'None'], StorageDriver::getSelectOptions($config)),
+            options: array_merge([null => 'None'], StorageDriver::getSelectOptionsWithSizes($config)),
             default: $config->getObjectStorage()?->value,
         );
 
@@ -234,7 +234,7 @@ trait GathersInfrastructureConfig
 
         $database = select(
             label: 'What primary database engine would you like to use?',
-            options: DatabaseDriver::getSelectOptions($config),
+            options: DatabaseDriver::getSelectOptionsWithSizes($config),
             default: $config->getDatabase()?->value ?? $defaultDb,
         );
 
@@ -247,7 +247,7 @@ trait GathersInfrastructureConfig
         } else {
             $cache = select(
                 label: 'Which primary cache driver would you like to use?',
-                options: array_merge([null => 'None'], CacheDriver::getSelectOptions($config)),
+                options: array_merge([null => 'None'], CacheDriver::getSelectOptionsWithSizes($config)),
                 default: $config->getCacheDriver()?->value ?? CacheDriver::REDIS->value,
             );
 

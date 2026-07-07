@@ -182,6 +182,29 @@ enum CacheDriver: string implements AsDependency, HasArtisanCommands, HasCommand
         };
     }
 
+    public function getDownloadSize(?ConfigData $config = null): ?int
+    {
+        return match ($this) {
+            self::REDIS => 32,
+            self::MEMCACHED => 8,
+            default => null,
+        };
+    }
+
+    public function getOnDiskSize(?ConfigData $config = null): ?int
+    {
+        return match ($this) {
+            self::REDIS => 120,
+            self::MEMCACHED => 15,
+            default => null,
+        };
+    }
+
+    public function getAllocatedStorage(?ConfigData $config = null): ?string
+    {
+        return null;
+    }
+
     public function getEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
         return array_merge(

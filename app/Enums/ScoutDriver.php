@@ -90,6 +90,32 @@ enum ScoutDriver: string implements AsDependency, HasCommandOptions, HasComposer
         };
     }
 
+    public function getDownloadSize(?ConfigData $config = null): ?int
+    {
+        return match ($this) {
+            self::MEILISEARCH => 40,
+            self::TYPESENSE => 45,
+            default => null,
+        };
+    }
+
+    public function getOnDiskSize(?ConfigData $config = null): ?int
+    {
+        return match ($this) {
+            self::MEILISEARCH => 120,
+            self::TYPESENSE => 90,
+            default => null,
+        };
+    }
+
+    public function getAllocatedStorage(?ConfigData $config = null): ?string
+    {
+        return match ($this) {
+            self::MEILISEARCH, self::TYPESENSE => '1Gi',
+            default => null,
+        };
+    }
+
     public function getComposerDependencies(?ConfigData $context = null): array
     {
         return match ($this) {
