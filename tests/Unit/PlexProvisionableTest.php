@@ -46,25 +46,24 @@ test('plex-readiness reflects what is actually wired today', function () {
         ->and(ScoutDriver::TYPESENSE->isPlexReady())->toBeFalse()
         ->and(StorageDriver::SEAWEEDFS->isPlexReady())->toBeTrue()   // wired: Commons S3 backend
         ->and(StorageDriver::MINIO->isPlexReady())->toBeTrue()       // wired: SeaweedFS alternative
-        ->and(StorageDriver::GARAGE->isPlexReady())->toBeFalse();    // mapped, not yet wired (#94)
+        ->and(StorageDriver::GARAGE->isPlexReady())->toBeTrue();     // wired: shared "commons-admin" key, not a root credential
 });
 
 test('the catalog lists every shareable service, including coexisting S3 backends', function () {
     $catalog = plexCatalog()->commonsServiceCatalog();
 
-    // ready (wired today) services — both db engines + both S3 backends
+    // ready (wired today) services — both db engines + all three S3 backends
     expect($catalog['postgres']['ready'])->toBeTrue()
         ->and($catalog['mysql']['ready'])->toBeTrue()
         ->and($catalog['mariadb']['ready'])->toBeTrue()
         ->and($catalog['redis']['ready'])->toBeTrue()
         ->and($catalog['meilisearch']['ready'])->toBeTrue()
         ->and($catalog['seaweedfs']['ready'])->toBeTrue()
-        ->and($catalog['minio']['ready'])->toBeTrue();
+        ->and($catalog['minio']['ready'])->toBeTrue()
+        ->and($catalog['garage']['ready'])->toBeTrue();
 
-    // each S3 backend is its OWN entry (so they coexist), not collapsed into one;
-    // Garage maps but isn't the wired backend yet (#94).
-    expect($catalog)->toHaveKeys(['seaweedfs', 'minio', 'garage'])
-        ->and($catalog['garage']['ready'])->toBeFalse();
+    // each S3 backend is its OWN entry (so they coexist), not collapsed into one.
+    expect($catalog)->toHaveKeys(['seaweedfs', 'minio', 'garage']);
 
     // mapped-but-not-ready services are still listed
     expect($catalog['mongodb']['ready'])->toBeFalse()

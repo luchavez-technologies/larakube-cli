@@ -305,7 +305,7 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
     {
         // Databases publish no ingress host of their own. Admin consoles are no
         // longer per-project — they're the shared CompanionDriver apps in
-        // larakube-system (phpmyadmin.kube, etc.), surfaced via ManagesCompanions,
+        // larakube-companions (phpmyadmin.kube, etc.), surfaced via ManagesCompanions,
         // not a `mariadb.<project>.kube` route here. See showCompanionAccess().
         return [];
     }
@@ -553,13 +553,26 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
     /**
      * Restore a SQL dump (piped on stdin) into a specific database in the Commons
      * pod. $targetDb is the tenant identifier (already created via commonsTenantSql).
+     * $password authenticates AS that tenant for Postgres — restoring as the
+     * admin superuser would leave every table the dump creates owned by
+     * "postgres" instead of the tenant role, even though
+     * postgresCommonsCreateSql() already makes the tenant own the database and
+     * public schema: schema ownership doesn't extend to objects a DIFFERENT
+     * role's CREATE TABLE statement produces inside it. The tenant's own app
+     * connection (a different role again) would then get "permission denied"
+     * on its own tables. MySQL/MariaDB have no such gap — GRANT-based
+     * privileges apply to any table in the database regardless of who
+     * created it, so those two ignore $password and keep using root.
      */
-    public function commonsRestoreCommand(string $targetDb): string
+    public function commonsRestoreCommand(string $targetDb, string $password): string
     {
         $db = escapeshellarg($targetDb);
+        $role = escapeshellarg($targetDb); // db name === tenant login role, see postgresCommonsCreateSql()
 
         return match ($this) {
-            self::POSTGRESQL => "psql -U postgres -v ON_ERROR_STOP=1 -d {$db}",
+            // -h forces TCP/password auth — the local socket's peer auth would
+            // try to match the container's OS user (postgres), not this role.
+            self::POSTGRESQL => 'PGPASSWORD='.escapeshellarg($password)." psql -U {$role} -h 127.0.0.1 -v ON_ERROR_STOP=1 -d {$db}",
             self::MYSQL => "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" {$db}",
             self::MARIADB => "mariadb -uroot -p\"\$MYSQL_ROOT_PASSWORD\" {$db}",
             default => '',

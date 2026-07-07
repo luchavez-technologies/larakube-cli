@@ -1455,6 +1455,19 @@ class ConfigData extends Data
         return $envs;
     }
 
+    /**
+     * The .env KEY NAMES (not values) that `up` copies from .env into the
+     * local ConfigMap — deliberately NOT gated by isPlexBacked(), unlike
+     * getAllSecretEnvironmentVariables() above. That gate exists to stop
+     * env-SYNC from recomputing/clobbering a plex-backed value; this method
+     * doesn't compute any values at all, it only tells `up` which keys the
+     * running pod needs a connection value FOR — true whether that value
+     * happens to be self-hosted or Commons-backed. Excluding plex-backed
+     * drivers here used to mean their keys (DB_HOST, REDIS_HOST, …) never
+     * made it into the ConfigMap at all once joined to Plex, silently
+     * stranding the pod on a self-hosted host that plex:join had already
+     * torn down.
+     */
     public function getServiceConnectionVariableNames(string $environment = 'local'): array
     {
         $names = [];
@@ -1471,7 +1484,7 @@ class ConfigData extends Data
         ];
 
         foreach (array_filter($serviceDrivers) as $driver) {
-            if ($driver instanceof HasEnvironmentVariables && ! ($this->isPlexBacked($driver, $environment))) {
+            if ($driver instanceof HasEnvironmentVariables) {
                 $vars = $driver->getEnvironmentVariables($this, $environment);
                 $names = array_merge($names, array_keys($vars));
             }

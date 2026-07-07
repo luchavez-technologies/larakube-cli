@@ -45,7 +45,7 @@ test('databases publish no ingress host — consoles are shared companions, not 
     ]);
 
     // The DB console moved to the shared CompanionDriver apps (phpmyadmin.kube
-    // in larakube-system); the driver itself no longer publishes a host in any env.
+    // in larakube-companions); the driver itself no longer publishes a host in any env.
     expect(DatabaseDriver::MYSQL->getHosts($config, 'local'))->toBe([])
         ->and(DatabaseDriver::MYSQL->getHosts($config, 'production'))->toBe([]);
 

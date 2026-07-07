@@ -55,7 +55,7 @@ class CompanionAddCommand extends Command
             return true;
         });
 
-        $this->ensureHostsAreSet([$host], 'larakube-system');
+        $this->ensureHostsAreSet([$host], 'larakube-companions');
 
         $this->laraKubeInfo("✅ {$companion->getLabel()} installed.");
         $this->line("  <fg=gray>URL:</> <fg=blue>https://{$host}</>");

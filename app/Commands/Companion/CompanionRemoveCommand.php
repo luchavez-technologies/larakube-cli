@@ -48,7 +48,7 @@ class CompanionRemoveCommand extends Command
             return 0;
         }
 
-        if (! $this->option('force') && ! confirm("Remove {$companion->getLabel()} from larakube-system?", false)) {
+        if (! $this->option('force') && ! confirm("Remove {$companion->getLabel()} from larakube-companions?", false)) {
             return 0;
         }
 

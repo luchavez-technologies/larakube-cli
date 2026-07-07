@@ -8,7 +8,9 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
+use App\Traits\InteractsWithTraefik;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesLocalCa;
 use App\Traits\PromotesIngressDns;
 
 use function Laravel\Prompts\multiselect;
@@ -18,7 +20,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class PlexInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithHosts, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns;
+    use InteractsWithClusterContext, InteractsWithHosts, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithTraefik, LaraKubeOutput, ManagesLocalCa, PromotesIngressDns;
 
     protected $signature = 'plex:init
         {--services= : Comma-separated services to provision non-interactively, e.g. postgres,redis,meilisearch (no prompt; nothing assumed)}
@@ -110,6 +112,15 @@ class PlexInitCommand extends Command
             $this->withSpin("Waiting for {$service} to be ready...", fn () => passthru(
                 "{$kubectl} rollout status deploy/{$service} -n {$ns} --timeout=120s",
             ));
+        }
+
+        // 6b. Garage needs a one-time layout assignment + shared admin key
+        // creation before it can accept bucket operations — unlike MinIO's
+        // env-injected root creds, Garage generates its key server-side.
+        // Idempotent: skipped once already done, so re-running plex:init
+        // never re-assigns the layout or rotates the key.
+        if (in_array('garage', $enabled, true)) {
+            $this->ensureGarageBootstrap($ns, $kubectl);
         }
 
         $this->printCommonsReady($spec);
@@ -262,23 +273,43 @@ class PlexInitCommand extends Command
             if (! (($catalog[$service]['driver'] ?? null) instanceof HasPromptableHosts)) {
                 continue; // no client-facing host → in-cluster only
             }
-            if (! empty($spec['services'][$service]['host'])) {
-                continue; // already set (reconcile)
+            if (empty($spec['services'][$service]['host'])) {
+                $host = (string) ($this->option('s3-host') ?? '');
+                if ($host === '' && $isLocal) {
+                    $host = "{$service}.{$tld}";
+                } elseif ($host === '' && $this->option('services') === null) {
+                    $host = text(
+                        label: "Public host for the Commons '{$service}' (object storage)?",
+                        placeholder: 's3.example.com — leave blank for in-cluster only',
+                        hint: 'Sets up an ingress + tenant AWS_URL so files get public links.',
+                    );
+                }
+
+                if (trim($host) !== '') {
+                    $spec['services'][$service]['host'] = trim($host);
+                }
             }
 
-            $host = (string) ($this->option('s3-host') ?? '');
-            if ($host === '' && $isLocal) {
-                $host = "{$service}.{$tld}";
-            } elseif ($host === '' && $this->option('services') === null) {
-                $host = text(
-                    label: "Public host for the Commons '{$service}' (object storage)?",
-                    placeholder: 's3.example.com — leave blank for in-cluster only',
-                    hint: 'Sets up an ingress + tenant AWS_URL so files get public links.',
-                );
-            }
+            // Some backends have a second, local-only management host — MinIO's
+            // web console (port 9001) and SeaweedFS's master admin UI (port
+            // 9333). Both give full cross-tenant visibility (MinIO via its
+            // shared root creds, SeaweedFS with no auth at all — see
+            // commons.blade.php), so — unlike the S3 host above — these are
+            // ONLY ever auto-derived for a local dev cluster, never prompted
+            // for or set on a real cluster. Runs even when 'host' was already
+            // set (reconcile), so an existing Commons picks it up too.
+            $managementHosts = [
+                'minio' => ['field' => 'console_host', 'label' => 'console'],
+                'seaweedfs' => ['field' => 'admin_host', 'label' => 'admin'],
+            ];
 
-            if (trim($host) !== '') {
-                $spec['services'][$service]['host'] = trim($host);
+            if ($isLocal && isset($managementHosts[$service])) {
+                $field = $managementHosts[$service]['field'];
+                $label = $managementHosts[$service]['label'];
+
+                if (empty($spec['services'][$service][$field])) {
+                    $spec['services'][$service][$field] = "{$service}-{$label}.{$tld}";
+                }
             }
         }
 
@@ -306,6 +337,119 @@ class PlexInitCommand extends Command
         $server = trim((string) shell_exec($kubectl.' config view --minify -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}').' 2>/dev/null'));
 
         return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
+    }
+
+    /**
+     * One-time Garage bootstrap: assign + apply a single-node layout (required
+     * before ANY bucket/key operation works), then create the one shared
+     * "commons-admin" key every tenant bucket gets granted to (mirrors MinIO's
+     * shared root-credential model — but Garage generates its key server-side;
+     * there's no way to pre-set it the way MinIO's env-injected root user/pass
+     * can be). Both steps are idempotent: layout readiness is checked via exit
+     * code (a real bucket operation either works or it doesn't — far more
+     * reliable than matching `garage status`'s exact wording, which varies
+     * across versions), and the key is looked up by name before creating one.
+     */
+    protected function ensureGarageBootstrap(string $ns, string $kubectl): void
+    {
+        $lastExit = 0;
+        $exec = function (string $cmd) use ($kubectl, $ns, &$lastExit): string {
+            $output = [];
+            $code = 0;
+            exec(
+                "{$kubectl} exec -n {$ns} deploy/garage -- sh -c ".escapeshellarg($cmd).' 2>&1',
+                $output,
+                $code,
+            );
+            $lastExit = $code;
+
+            return implode("\n", $output);
+        };
+
+        $exec('/garage bucket list');
+        $layoutReady = $lastExit === 0;
+
+        if (! $layoutReady) {
+            $status = $exec('/garage status');
+            // The node ID is the long hex string starting each data row under
+            // "==== HEALTHY NODES ====".
+            preg_match('/^([0-9a-f]{16,})\s/m', $status, $m);
+            $nodeId = $m[1] ?? null;
+
+            if ($nodeId === null) {
+                $this->laraKubeWarn('Could not determine the Garage node ID from `garage status` — skipping layout bootstrap.');
+                $this->laraKubeLine('  Re-run `larakube plex:init` once Garage has fully started, or assign the layout manually: `larakube exec --service=garage "/garage status"`.');
+
+                return;
+            }
+
+            $applied = $this->withSpin('Assigning Garage single-node layout...', function () use ($exec, $nodeId, &$lastExit) {
+                $exec("/garage layout assign {$nodeId} --capacity 1GB --zone commons --tag commons");
+                $exec('/garage layout apply --version 1');
+
+                return $lastExit === 0;
+            });
+
+            if (! $applied) {
+                $this->laraKubeWarn('Garage layout assignment failed — bucket operations will fail until this is resolved manually.');
+
+                return;
+            }
+        }
+
+        $keyList = $exec('/garage key list');
+        if (str_contains($keyList, 'commons-admin')) {
+            return; // Already created — never rotate.
+        }
+
+        $keyOutput = '';
+        $created = $this->withSpin('Creating the shared Garage admin key...', function () use ($exec, &$keyOutput, &$lastExit) {
+            $keyOutput = $exec('/garage key create commons-admin');
+
+            return $lastExit === 0;
+        });
+
+        if (! $created) {
+            $this->laraKubeWarn('Could not create the Garage admin key — bucket operations will fail until this is resolved.');
+            $this->laraKubeLine('  '.$keyOutput);
+
+            return;
+        }
+
+        preg_match('/Key ID:\s*(\S+)/i', $keyOutput, $accessMatch);
+        preg_match('/Secret key:\s*(\S+)/i', $keyOutput, $secretMatch);
+        $access = $accessMatch[1] ?? null;
+        $secret = $secretMatch[1] ?? null;
+
+        if ($access === null || $secret === null) {
+            $this->laraKubeWarn('Created the Garage admin key but could not parse its credentials from the output.');
+            $this->laraKubeLine('  Run `larakube exec --service=garage "/garage key info commons-admin --show-secret"` to retrieve them, then store into the plex-admin Secret\'s S3_ACCESS_KEY/S3_SECRET_KEY.');
+
+            return;
+        }
+
+        // Same "add if missing, never rotate" pattern ensureCommonsSecret() uses.
+        // If MinIO already claimed these fields first, Garage's tenants would
+        // get the wrong credentials — enabling more than one credentialed S3
+        // backend in the same Commons at once isn't fully supported yet.
+        $existing = trim((string) shell_exec(
+            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.S3_ACCESS_KEY}').' 2>/dev/null',
+        ));
+
+        if ($existing !== '') {
+            $this->laraKubeWarn('Garage\'s admin key was created, but plex-admin already has S3 credentials from another backend.');
+            $this->laraKubeLine('  Only one shared credential pair is supported today — Garage tenants would get the wrong ones. Enabling more than one credentialed object-storage backend (e.g. MinIO + Garage) in the same Commons at once isn\'t fully supported yet.');
+
+            return;
+        }
+
+        shell_exec(
+            "{$kubectl} patch secret plex-admin -n {$ns} --type merge -p ".
+            escapeshellarg((string) json_encode(['data' => [
+                'S3_ACCESS_KEY' => base64_encode($access),
+                'S3_SECRET_KEY' => base64_encode($secret),
+            ]])),
+        );
     }
 
     /**
@@ -399,6 +543,14 @@ class PlexInitCommand extends Command
                 $this->line("      <fg=gray>public:</> <fg=cyan>https://{$cfg['host']}</>");
                 $publicHosts[] = (string) $cfg['host'];
             }
+            if (! empty($cfg['console_host'])) {
+                $this->line("      <fg=gray>console:</> <fg=cyan>https://{$cfg['console_host']}</>");
+                $publicHosts[] = (string) $cfg['console_host'];
+            }
+            if (! empty($cfg['admin_host'])) {
+                $this->line("      <fg=gray>admin:</> <fg=cyan>https://{$cfg['admin_host']}</>");
+                $publicHosts[] = (string) $cfg['admin_host'];
+            }
         }
 
         // A Commons is multi-tenant by design — every app that joins adds another
@@ -408,10 +560,35 @@ class PlexInitCommand extends Command
         // primitive `up` uses for Mailpit/Grafana/Console).
         if ($publicHosts !== []) {
             if ($this->targetsLocalCluster()) {
-                if ($this->isWsl()) {
-                    $this->syncWindowsHosts($publicHosts, 'larakube-plex');
+                // The system cert's SAN list is otherwise static (console/traefik/
+                // mailpit/grafana + companions) — without this, a browser hitting
+                // a Commons host gets a certificate hostname mismatch even though
+                // the Ingress/Service route correctly. Regenerating the on-disk
+                // cert alone isn't enough — Traefik reads it from a Secret mounted
+                // into its OWN pod, so the updated cert has to be pushed into the
+                // cluster (and Traefik restarted to pick it up) the same way `up`
+                // does on every local run.
+                $this->ensureSystemCertExists($publicHosts);
+                $this->applyTraefikCertResources('traefik');
+
+                // If dnsmasq already wildcards this TLD to 127.0.0.1, a static
+                // /etc/hosts entry is redundant AND actively harmful: it pins
+                // these hosts to whatever the cluster's LoadBalancer IP was at
+                // write time, which breaks everything once that IP goes stale
+                // (e.g. after an OrbStack restart) — while dnsmasq-covered
+                // hosts keep resolving correctly through 127.0.0.1 regardless.
+                // Same guard ensureHostsAreSet() already uses for regular
+                // project hosts; also clean up any stale entry a previous
+                // plex:init run left behind before dnsmasq covered this TLD.
+                $tld = GlobalConfigData::load()->getLocalTld();
+                if (! $this->isWsl() && $this->dnsmasqCoversKube($tld)) {
+                    $this->removeHostsBlock('larakube-plex');
+                } else {
+                    if ($this->isWsl()) {
+                        $this->syncWindowsHosts($publicHosts, 'larakube-plex');
+                    }
+                    $this->syncHostsEntries($publicHosts, 'larakube-plex');
                 }
-                $this->syncHostsEntries($publicHosts, 'larakube-plex');
             } else {
                 $this->printIngressDnsGuidance($publicHosts, $this->traefikLoadBalancerIp($this->plexContext));
             }

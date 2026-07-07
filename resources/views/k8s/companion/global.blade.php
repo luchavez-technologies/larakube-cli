@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $companion->value }}
-  namespace: larakube-system
+  namespace: larakube-companions
   labels:
     app.kubernetes.io/managed-by: larakube
     app.kubernetes.io/component: companion
@@ -38,7 +38,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ $companion->value }}
-  namespace: larakube-system
+  namespace: larakube-companions
   labels:
     app.kubernetes.io/managed-by: larakube
     app.kubernetes.io/component: companion
@@ -59,7 +59,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $companion->value }}
-  namespace: larakube-system
+  namespace: larakube-companions
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"

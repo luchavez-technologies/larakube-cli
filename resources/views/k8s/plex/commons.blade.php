@@ -375,10 +375,13 @@ spec:
         - name: seaweedfs
           image: {{ $spec['services']['seaweedfs']['image'] }}
           # All-in-one server with the S3 gateway enabled. S3 is in-cluster only
-          # (ClusterIP); tenants are isolated by their own bucket.
+          # (ClusterIP) by default; tenants are isolated by their own bucket.
+          # The master's own admin UI (9333) always binds too — only exposed
+          # via Service/Ingress when admin_host is set (see below).
           args: ["server", "-dir=/data", "-s3"]
           ports:
             - containerPort: {{ $spec['services']['seaweedfs']['port'] }}
+            - containerPort: 9333
           resources:
             requests:
               memory: "256Mi"
@@ -405,9 +408,14 @@ spec:
   selector:
     app: seaweedfs
   ports:
-    - protocol: TCP
+    - name: s3
+      protocol: TCP
       port: {{ $spec['services']['seaweedfs']['port'] }}
       targetPort: {{ $spec['services']['seaweedfs']['port'] }}
+    - name: master
+      protocol: TCP
+      port: 9333
+      targetPort: 9333
   type: ClusterIP
 @if(! empty($spec['services']['seaweedfs']['host']))
 ---
@@ -437,6 +445,39 @@ spec:
   tls:
     - hosts:
         - {{ $spec['services']['seaweedfs']['host'] }}
+@endif
+@if(! empty($spec['services']['seaweedfs']['admin_host']))
+---
+# Master admin UI (port 9333) — separate from the S3 API host above. Only
+# ever set for a LOCAL dev cluster (see ensurePublicHosts()): SeaweedFS's
+# master UI has NO built-in authentication at all, and shows the whole
+# cluster (all tenants' volumes), so exposing it on a real/shared Commons
+# would let anyone who reaches the host browse everything with zero login.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: seaweedfs-admin
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  rules:
+    - host: {{ $spec['services']['seaweedfs']['admin_host'] }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: seaweedfs
+                port:
+                  number: 9333
+  tls:
+    - hosts:
+        - {{ $spec['services']['seaweedfs']['admin_host'] }}
 @endif
 @endif
 @if(($spec['services']['minio']['enabled'] ?? false))
@@ -527,9 +568,14 @@ spec:
   selector:
     app: minio
   ports:
-    - protocol: TCP
+    - name: s3
+      protocol: TCP
       port: {{ $spec['services']['minio']['port'] }}
       targetPort: {{ $spec['services']['minio']['port'] }}
+    - name: console
+      protocol: TCP
+      port: 9001
+      targetPort: 9001
   type: ClusterIP
 @if(! empty($spec['services']['minio']['host']))
 ---
@@ -559,5 +605,181 @@ spec:
   tls:
     - hosts:
         - {{ $spec['services']['minio']['host'] }}
+@endif
+@if(! empty($spec['services']['minio']['console_host']))
+---
+# Admin console (port 9001) — separate from the S3 API host above. Only ever
+# set for a LOCAL dev cluster (see ensurePublicHosts()): MinIO's root creds
+# here ARE the shared cross-tenant admin key (see the Deployment above), so
+# exposing this console on a real/shared Commons would let anyone who reaches
+# the host browse every tenant's buckets. Not offered/prompted off-local.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-console
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  rules:
+    - host: {{ $spec['services']['minio']['console_host'] }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  number: 9001
+  tls:
+    - hosts:
+        - {{ $spec['services']['minio']['console_host'] }}
+@endif
+@endif
+@if(($spec['services']['garage']['enabled'] ?? false))
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: garage-data
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ $spec['services']['garage']['storage'] }}
+---
+# Single Commons-wide instance shared by every tenant (bucket-per-tenant
+# isolation, like MinIO/SeaweedFS) — single node, so replication_factor=1.
+# No root_domain under [s3_api] (unlike the per-project version): the Commons
+# is consumed path-style only (AWS_USE_PATH_STYLE_ENDPOINT=true, same as
+# every other self-hosted S3 backend), and [s3_web] is omitted entirely since
+# static-site bucket hosting isn't wired up for Commons tenants yet.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: garage-config
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+data:
+  garage.toml: |
+    metadata_dir = "/data/meta"
+    data_dir = "/data/data"
+    rpc_bind_addr = "[::]:3901"
+    rpc_secret = "3e8d49cdaecefd63e56dc6d2f791cb60f856cd7471555b038bde1ac0751682a8"
+    replication_factor = 1
+
+    [s3_api]
+    s3_region = "us-east-1"
+    api_bind_addr = "[::]:3900"
+
+    [admin]
+    api_bind_addr = "0.0.0.0:3903"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: garage
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: garage
+  template:
+    metadata:
+      labels:
+        app: garage
+    spec:
+      containers:
+        - name: garage
+          image: {{ $spec['services']['garage']['image'] }}
+          args: ["/garage", "server"]
+          ports:
+            - name: s3
+              containerPort: {{ $spec['services']['garage']['port'] }}
+            - name: admin
+              containerPort: 3903
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "{{ $spec['services']['garage']['memory'] }}"
+              cpu: "500m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/garage.toml
+              subPath: garage.toml
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: garage-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: garage-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+spec:
+  selector:
+    app: garage
+  ports:
+    - name: s3
+      protocol: TCP
+      port: {{ $spec['services']['garage']['port'] }}
+      targetPort: {{ $spec['services']['garage']['port'] }}
+    - name: admin
+      protocol: TCP
+      port: 3903
+      targetPort: 3903
+  type: ClusterIP
+@if(! empty($spec['services']['garage']['host']))
+---
+# Public S3 endpoint (so tenants can generate public file URLs via AWS_URL).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: garage-s3
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  rules:
+    - host: {{ $spec['services']['garage']['host'] }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: garage
+                port:
+                  number: {{ $spec['services']['garage']['port'] }}
+  tls:
+    - hosts:
+        - {{ $spec['services']['garage']['host'] }}
 @endif
 @endif

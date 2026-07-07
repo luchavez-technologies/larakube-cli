@@ -62,6 +62,7 @@ trait InteractsWithPlex
             'meilisearch' => ['image' => ScoutDriver::MEILISEARCH->getDockerImage(),    'port' => ScoutDriver::MEILISEARCH->port(),      'storage' => '5Gi',  'memory' => '512Mi'],
             'seaweedfs' => ['image' => StorageDriver::SEAWEEDFS->getDockerImage(),    'port' => StorageDriver::SEAWEEDFS->port(),      'storage' => '10Gi', 'memory' => '512Mi'],
             'minio' => ['image' => StorageDriver::MINIO->getDockerImage(),        'port' => StorageDriver::MINIO->port(),          'storage' => '10Gi', 'memory' => '512Mi'],
+            'garage' => ['image' => StorageDriver::GARAGE->getDockerImage(),       'port' => StorageDriver::GARAGE->port(),         'storage' => '10Gi', 'memory' => '512Mi'],
         ];
 
         $given = $spec['services'] ?? [];
@@ -540,6 +541,16 @@ trait InteractsWithPlex
         $data = $config->toArray();
         $data['environments'][$env]['managed'] = array_values(array_unique(array_merge(
             $data['environments'][$env]['managed'] ?? [],
+            $services,
+        )));
+        // Also mark `plex`, matching PlexJoinCommand::writeTenantConfig() — it's
+        // what stops heal/up's env-sync from recomputing this service's
+        // connection values and clobbering the Commons ones back to the
+        // self-hosted pattern. Without it, `managed` alone still drops the
+        // self-hosted pod, but .env keeps getting rewritten to point at a host
+        // that no longer exists.
+        $data['environments'][$env]['plex'] = array_values(array_unique(array_merge(
+            $data['environments'][$env]['plex'] ?? [],
             $services,
         )));
         ConfigData::from($data)->saveToFile($projectPath);

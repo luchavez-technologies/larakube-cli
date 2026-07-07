@@ -130,10 +130,17 @@ trait ManagesLocalCa
 
     /**
      * Ensure the system cert exists covering console.{tld}, traefik.{tld},
-     * mailpit.{tld}, grafana.{tld}, and the global companion hosts. Regenerates
-     * if missing, expiring, or covering the wrong TLD.
+     * mailpit.{tld}, grafana.{tld}, the global companion hosts, and any
+     * $additionalHosts the caller needs covered too (e.g. a Plex Commons'
+     * current public hosts — minio.test, minio-console.test, …). Regenerates
+     * if missing, expiring, covering the wrong TLD, or missing one of
+     * $additionalHosts (so a newly-added Commons host triggers a refresh, not
+     * just the initial cert creation) — mirrors ensureAppCertExists()'s
+     * pattern for the same reason.
+     *
+     * @param  array<int, string>  $additionalHosts
      */
-    protected function ensureSystemCertExists(): void
+    protected function ensureSystemCertExists(array $additionalHosts = []): void
     {
         $this->ensureLocalCaExists();
         @mkdir($this->getAppCertsDir(), 0700, true);
@@ -143,11 +150,12 @@ trait ManagesLocalCa
 
         if (file_exists($crt) && file_exists($key)
             && $this->certIsValid($crt)
-            && $this->certCoversHost($crt, 'console.'.GlobalConfigData::load()->getLocalTld())) {
+            && $this->certCoversHost($crt, 'console.'.GlobalConfigData::load()->getLocalTld())
+            && collect($additionalHosts)->every(fn (string $host) => $this->certCoversHost($crt, $host))) {
             return;
         }
 
-        $this->generateSystemCert();
+        $this->generateSystemCert($additionalHosts);
     }
 
     /**
@@ -190,7 +198,10 @@ CNF;
         file_put_contents($this->getAppCertTldPath($appName), $tld);
     }
 
-    protected function generateSystemCert(): void
+    /**
+     * @param  array<int, string>  $additionalHosts
+     */
+    protected function generateSystemCert(array $additionalHosts = []): void
     {
         $dir = $this->getAppCertsDir();
         $csr = "{$dir}/system-dev.csr";
@@ -200,8 +211,10 @@ CNF;
         $companionHosts = array_map(fn ($c) => "{$c->value}.{$tld}", CompanionDriver::cases());
         // mailpit.{tld} (shared catch-all SMTP UI) and grafana.{tld} (shared
         // monitoring dashboard) are global hosts in larakube-shared, like
-        // console/traefik, so the default cert must cover them.
-        $systemHosts = ["console.{$tld}", "traefik.{$tld}", "mailpit.{$tld}", "grafana.{$tld}", ...$companionHosts];
+        // console/traefik, so the default cert must cover them. $additionalHosts
+        // covers other global-namespace hosts this trait doesn't know about
+        // itself — e.g. a Plex Commons' current public hosts.
+        $systemHosts = array_unique(["console.{$tld}", "traefik.{$tld}", "mailpit.{$tld}", "grafana.{$tld}", ...$companionHosts, ...$additionalHosts]);
         $sans = implode(',', array_map(fn ($h) => "DNS:{$h}", $systemHosts));
 
         $cnfContent = <<<CNF

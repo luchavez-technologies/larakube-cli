@@ -37,26 +37,27 @@ trait ManagesCompanions
     protected function removeCompanion(CompanionDriver $companion): void
     {
         foreach (['deployment', 'service', 'ingress'] as $kind) {
-            exec("kubectl delete {$kind} ".escapeshellarg($companion->value).' -n larakube-system --ignore-not-found=true 2>/dev/null');
+            exec("kubectl delete {$kind} ".escapeshellarg($companion->value).' -n larakube-companions --ignore-not-found=true 2>/dev/null');
         }
     }
 
     /**
-     * Scale a companion's Deployment in larakube-system. 0 pauses it (the Deployment,
-     * Service, Ingress, and any config like phpMyAdmin's PMA_HOSTS are preserved —
-     * the companion analogue of `larakube stop`); 1 resumes it. Note: a subsequent
-     * `larakube up` re-applies needed companions and will scale a paused one back up,
-     * since `up` re-asserts desired state.
+     * Scale a companion's Deployment in larakube-companions. 0 pauses it (the
+     * Deployment, Service, Ingress, and any config like phpMyAdmin's PMA_HOSTS
+     * are preserved — the companion analogue of `larakube stop`); 1 resumes it.
+     * Note: a subsequent `larakube up` re-applies needed companions and will
+     * scale a paused one back up, since `up` re-asserts desired state.
      */
     protected function scaleCompanion(CompanionDriver $companion, int $replicas): void
     {
-        exec('kubectl scale deployment '.escapeshellarg($companion->value)." --replicas={$replicas} -n larakube-system 2>/dev/null");
+        exec('kubectl scale deployment '.escapeshellarg($companion->value)." --replicas={$replicas} -n larakube-companions 2>/dev/null");
     }
 
     /**
-     * Let the user pick from the companions currently deployed in larakube-system.
-     * Returns null (with a friendly note) when none are installed, so callers can
-     * exit cleanly. $action is the verb shown in the prompt (e.g. "stop", "remove").
+     * Let the user pick from the companions currently deployed in
+     * larakube-companions. Returns null (with a friendly note) when none are
+     * installed, so callers can exit cleanly. $action is the verb shown in the
+     * prompt (e.g. "stop", "remove").
      */
     protected function selectInstalledCompanion(string $action): ?CompanionDriver
     {
@@ -78,14 +79,14 @@ trait ManagesCompanions
 
     protected function isCompanionInstalled(CompanionDriver $companion): bool
     {
-        $result = shell_exec('kubectl get deployment '.escapeshellarg($companion->value).' -n larakube-system --no-headers 2>/dev/null');
+        $result = shell_exec('kubectl get deployment '.escapeshellarg($companion->value).' -n larakube-companions --no-headers 2>/dev/null');
 
         return $result !== null && trim($result) !== '';
     }
 
     protected function ensureCompanionNamespace(): void
     {
-        exec('kubectl create namespace larakube-system --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null');
+        exec('kubectl create namespace larakube-companions --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null');
     }
 
     /**
@@ -413,9 +414,9 @@ trait ManagesCompanions
     /**
      * Keep phpMyAdmin aware of this project's MySQL/MariaDB server.
      *
-     * Stores the known FQDN list in ConfigMap `phpmyadmin-hosts` in larakube-system,
-     * patches the Deployment's PMA_HOSTS env var to match, then triggers a rolling
-     * restart so the change takes effect.
+     * Stores the known FQDN list in ConfigMap `phpmyadmin-hosts` in
+     * larakube-companions, patches the Deployment's PMA_HOSTS env var to
+     * match, then triggers a rolling restart so the change takes effect.
      */
     protected function refreshPhpMyAdminServers(ConfigData $config, string $appName): void
     {
@@ -431,7 +432,7 @@ trait ManagesCompanions
 
         $fqdn = "{$db->getPodName()}.{$appName}.svc.cluster.local";
 
-        $existing = shell_exec("kubectl get configmap phpmyadmin-hosts -n larakube-system -o jsonpath='{.data.hosts}' 2>/dev/null") ?? '';
+        $existing = shell_exec("kubectl get configmap phpmyadmin-hosts -n larakube-companions -o jsonpath='{.data.hosts}' 2>/dev/null") ?? '';
         $existing = trim((string) $existing);
 
         $hosts = $existing !== '' ? explode(',', $existing) : [];
@@ -448,7 +449,7 @@ trait ManagesCompanions
             'kind: ConfigMap',
             'metadata:',
             '  name: phpmyadmin-hosts',
-            '  namespace: larakube-system',
+            '  namespace: larakube-companions',
             'data:',
             "  hosts: \"{$hostsStr}\"",
         ]);
@@ -458,7 +459,7 @@ trait ManagesCompanions
         exec('kubectl apply -f '.escapeshellarg($tmp).' 2>/dev/null');
         @unlink($tmp);
 
-        exec('kubectl set env deployment/phpmyadmin PMA_HOSTS='.escapeshellarg($hostsStr).' -n larakube-system 2>/dev/null');
-        exec('kubectl rollout restart deployment/phpmyadmin -n larakube-system 2>/dev/null');
+        exec('kubectl set env deployment/phpmyadmin PMA_HOSTS='.escapeshellarg($hostsStr).' -n larakube-companions 2>/dev/null');
+        exec('kubectl rollout restart deployment/phpmyadmin -n larakube-companions 2>/dev/null');
     }
 }

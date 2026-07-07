@@ -640,4 +640,33 @@ class ConfigDataTest extends TestCase
 
         $this->assertSame(['imagick', 'redis'], $config->getAdditionalExtensions());
     }
+
+    public function test_service_connection_variable_names_include_plex_backed_drivers()
+    {
+        // Regression guard: `up`'s ConfigMap injection for local uses this list
+        // as its sole allowlist for non-secret vars — excluding a plex-backed
+        // driver's keys (DB_HOST, REDIS_HOST, …) meant they never made it into
+        // the ConfigMap once joined to Plex, silently stranding the pod on a
+        // self-hosted host that plex:join had already torn down. The key NAMES
+        // are identical whether self-hosted or Commons-backed; only the VALUES
+        // (already written into .env by plex:join) differ.
+        $selfHosted = ConfigData::from([
+            'name' => 'demo',
+            'database' => 'postgres',
+        ]);
+
+        $plexBacked = ConfigData::from([
+            'name' => 'demo',
+            'database' => 'postgres',
+            'environments' => [
+                'local' => ['managed' => ['postgres'], 'plex' => ['postgres']],
+            ],
+        ]);
+
+        $this->assertContains('DB_HOST', $selfHosted->getServiceConnectionVariableNames('local'));
+        $this->assertSame(
+            $selfHosted->getServiceConnectionVariableNames('local'),
+            $plexBacked->getServiceConnectionVariableNames('local'),
+        );
+    }
 }

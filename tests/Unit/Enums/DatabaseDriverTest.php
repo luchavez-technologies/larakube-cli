@@ -69,3 +69,27 @@ test('postgres test database provision command checks pg_database before created
         ->and($cmd)->toContain('-d "$POSTGRES_DB"')
         ->and($cmd)->toContain('||');
 });
+
+test('postgres Commons restore connects as the tenant role, not admin', function () {
+    // Regression guard: postgresCommonsCreateSql() makes the tenant own its
+    // database + public schema, but that ownership doesn't extend to objects
+    // a DIFFERENT role's CREATE TABLE (from the restored dump) produces
+    // inside it — restoring as "postgres" left every table owned by the
+    // admin superuser, so the tenant's own app connection got "permission
+    // denied" on its own tables.
+    $cmd = DatabaseDriver::POSTGRESQL->commonsRestoreCommand('seahorse_local', 'tmp-pw-123');
+
+    expect($cmd)->toContain("-U 'seahorse_local'")
+        ->not->toContain('-U postgres')
+        ->and($cmd)->toContain("PGPASSWORD='tmp-pw-123'")
+        ->and($cmd)->toContain('-h 127.0.0.1') // force TCP/password auth, not local-socket peer auth
+        ->and($cmd)->toContain("-d 'seahorse_local'");
+});
+
+test('mysql/mariadb Commons restore is unaffected by the password param (grant-based, no ownership gap)', function () {
+    $mysql = DatabaseDriver::MYSQL->commonsRestoreCommand('demo', 'unused');
+    $mariadb = DatabaseDriver::MARIADB->commonsRestoreCommand('demo', 'unused');
+
+    expect($mysql)->toContain('-uroot')->not->toContain('unused')
+        ->and($mariadb)->toContain('-uroot')->not->toContain('unused');
+});

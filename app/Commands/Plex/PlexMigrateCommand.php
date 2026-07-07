@@ -189,9 +189,12 @@ class PlexMigrateCommand extends Command
             // ── Step 2: Allocate this tenant's slot in the Commons ─────────────
             // DB: temporary password; plex:join --yes (called at the end) re-runs
             // the idempotent SQL with a fresh password and saves it to .env.
+            // Kept in $tempDbPassword (not thrown away) — Step 4's restore needs
+            // it to connect AS the tenant role, not admin.
             // Storage: the bucket, under the shared Commons S3 credentials.
 
-            if ($driver !== null && ! $skipDbCopy && ! $this->allocateDatabase($driver, $tenant, bin2hex(random_bytes(16)))) {
+            $tempDbPassword = bin2hex(random_bytes(16));
+            if ($driver !== null && ! $skipDbCopy && ! $this->allocateDatabase($driver, $tenant, $tempDbPassword)) {
                 return 1;
             }
 
@@ -322,10 +325,10 @@ class PlexMigrateCommand extends Command
                 $restoreCode = 0;
                 $ns = $this->plexNamespace();
 
-                $this->withSpin("Restoring data into Commons tenant '{$tenant}'...", function () use ($ns, $driver, $tenant, $dumpFile, &$restoreOutput, &$restoreCode) {
+                $this->withSpin("Restoring data into Commons tenant '{$tenant}'...", function () use ($ns, $driver, $tenant, $tempDbPassword, $dumpFile, &$restoreOutput, &$restoreCode) {
                     exec(
                         $this->plexKubectl().' exec -i -n '.escapeshellarg($ns).' deploy/'.$driver->value.
-                        ' -- sh -c '.escapeshellarg($driver->commonsRestoreCommand($tenant)).
+                        ' -- sh -c '.escapeshellarg($driver->commonsRestoreCommand($tenant, $tempDbPassword)).
                         ' < '.escapeshellarg($dumpFile).' 2>&1',
                         $restoreOutput,
                         $restoreCode,

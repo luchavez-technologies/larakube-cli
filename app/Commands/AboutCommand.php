@@ -156,7 +156,7 @@ class AboutCommand extends Command
             $this->line('  <fg=gray>No external hosts configured.</>');
         }
 
-        // 5. Companion apps (shared, larakube-system) — the real DB/cache/search
+        // 5. Companion apps (shared, larakube-companions) — the real DB/cache/search
         // consoles, with per-project connection details. Local only; no-ops otherwise.
         $this->showCompanionAccess($config, $config->getName(), $environment);
 

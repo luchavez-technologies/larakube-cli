@@ -79,6 +79,12 @@ class PlexStatusCommand extends Command
             if ($on && ! empty($cfg['host'])) {
                 $this->line('      <fg=gray>public:</> <fg=cyan>https://'.$cfg['host'].'</>');
             }
+            if ($on && ! empty($cfg['console_host'])) {
+                $this->line('      <fg=gray>console:</> <fg=cyan>https://'.$cfg['console_host'].'</>');
+            }
+            if ($on && ! empty($cfg['admin_host'])) {
+                $this->line('      <fg=gray>admin:</> <fg=cyan>https://'.$cfg['admin_host'].'</>');
+            }
         }
 
         // Tenants from the registry (highlight this app if it's one).

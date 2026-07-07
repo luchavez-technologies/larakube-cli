@@ -225,7 +225,7 @@ enum CacheDriver: string implements AsDependency, HasArtisanCommands, HasCommand
     {
         // Caches publish no ingress host of their own. Admin consoles are no
         // longer per-project — they're the shared CompanionDriver apps in
-        // larakube-system (redisinsight.kube, etc.), surfaced via
+        // larakube-companions (redisinsight.kube, etc.), surfaced via
         // ManagesCompanions, not a `redis.<project>.kube` route here.
         return [];
     }

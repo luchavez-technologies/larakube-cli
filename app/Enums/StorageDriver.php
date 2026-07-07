@@ -310,7 +310,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
                 '     mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"',
                 '     mc anonymous set download local/laravel',
                 '   (append a path for just a folder, e.g. local/laravel/public; use "public" instead of "download" to also allow public uploads)',
-                ...$this->temporaryUrlInstructions(5),
+                $this->temporaryUrlTip(),
             ],
             self::SEAWEEDFS => [
                 'SeaweedFS requires a one-time bucket creation after "larakube up":',
@@ -319,7 +319,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
                 'To make it public, SeaweedFS has no single-command bucket ACL like MinIO — check the exact',
                 'subcommand for your version with: larakube exec --service=seaweedfs "echo help | /usr/bin/weed shell"',
                 '(look for an s3.bucket.policy / s3.configure entry), or configure anonymous access via the Filer UI above.',
-                ...$this->temporaryUrlInstructions(2),
+                $this->temporaryUrlTip(),
             ],
             self::GARAGE => [
                 'Garage requires a one-time manual initialization after "larakube up":',
@@ -334,7 +334,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
                 '9. Garage has no bucket ACL — publish it as a static website instead to make it public:',
                 '   larakube exec --service=garage "/garage bucket website --allow laravel"',
                 '   Files are then served, unauthenticated, from: https://'.$config->getServiceHost('s3-web'),
-                ...$this->temporaryUrlInstructions(10),
+                $this->temporaryUrlTip(),
             ],
         };
     }
@@ -380,9 +380,11 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function isPlexReady(): bool
     {
         // Wired Commons S3 backends (deployment + per-tenant bucket provisioning
-        // via commonsBucketCreateCommand). Garage is mapped but not wired (#94).
+        // via commonsBucketCreateCommand). Garage uses a shared "commons-admin"
+        // key created once at Commons bootstrap (see PlexInitCommand) instead of
+        // a single root credential like MinIO/SeaweedFS.
         return match ($this) {
-            self::SEAWEEDFS, self::MINIO => true,
+            self::SEAWEEDFS, self::MINIO, self::GARAGE => true,
             default => false,
         };
     }
@@ -443,14 +445,22 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
      * that idempotently creates a tenant's bucket on this Commons S3 backend.
      * Bucket-per-tenant isolation under the shared admin key. The pod's shell
      * expands the credential env vars (MinIO's root user/pass), so they stay out
-     * of the local process. Garage isn't wired yet (#94) and fails loudly.
+     * of the local process. Garage has no single root credential like MinIO's —
+     * instead every tenant bucket is explicitly granted to the one shared
+     * "commons-admin" key created at bootstrap (see PlexInitCommand), referenced
+     * by NAME (Garage resolves an unambiguous key name to its id) so this
+     * command never needs to know the generated key id/secret itself. `;`
+     * (not `&&`) between steps: a bucket that already exists makes `create`
+     * exit non-zero, but `allow` must still run so re-provisioning stays
+     * idempotent — the final exit code reflects `allow`, the real outcome.
      */
     public function commonsBucketCreateCommand(string $bucket): string
     {
         return match ($this) {
             self::SEAWEEDFS => "echo 's3.bucket.create -name {$bucket}' | weed shell",
             self::MINIO => $this->minioMcCommand('mb --ignore-existing local/'.$bucket),
-            self::GARAGE => 'echo "Garage Commons provisioning is not wired yet (#94)" >&2; exit 1',
+            self::GARAGE => "/garage bucket create {$bucket} 2>/dev/null; ".
+                "/garage bucket allow --read --write {$bucket} --key commons-admin",
         };
     }
 
@@ -463,7 +473,8 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         return match ($this) {
             self::SEAWEEDFS => "echo 's3.bucket.delete -name {$bucket}' | weed shell",
             self::MINIO => $this->minioMcCommand('rb --force local/'.$bucket),
-            self::GARAGE => 'echo "Garage Commons provisioning is not wired yet (#94)" >&2; exit 1',
+            self::GARAGE => "/garage bucket deny --read --write {$bucket} --key commons-admin 2>/dev/null; ".
+                "/garage bucket delete --yes {$bucket}",
         };
     }
 
@@ -475,36 +486,17 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     }
 
     /**
-     * Shared step warning that Storage::temporaryUrl() needs a separate
-     * 's3-external' disk to work outside the cluster — every StorageDriver
-     * shares the same AWS_ENDPOINT (internal)/AWS_URL (public) split in
-     * getPublicEnvironmentVariables(), so the fix is identical regardless of
-     * backend. $step numbers the first line to continue each driver's list.
-     *
-     * @return array<int, string>
+     * One-line pointer to the docs instead of printing the full
+     * Storage::temporaryUrl()-needs-a-separate-disk walkthrough inline — that
+     * used to make `larakube up`'s output look like it had spat out an error.
+     * Every StorageDriver shares the same AWS_ENDPOINT (internal)/AWS_URL
+     * (public) split in getPublicEnvironmentVariables(), so the gotcha (and
+     * its fix) is identical regardless of backend; the full walkthrough lives
+     * at docs/docs/storage/overview.md.
      */
-    private function temporaryUrlInstructions(int $step): array
+    private function temporaryUrlTip(): string
     {
-        return [
-            "{$step}. Storage::temporaryUrl() needs a SEPARATE disk to work outside the cluster:",
-            '   Storage::url() already returns a public link (it just templates AWS_URL), but',
-            '   Storage::temporaryUrl() SIGNS the request against AWS_ENDPOINT (internal cluster DNS) —',
-            '   so the signed link it returns is unreachable from a browser. Add this disk to',
-            '   config/filesystems.php (\'disks\' array), next to the default \'s3\' one:',
-            '     \'s3-external\' => [',
-            '         \'driver\' => \'s3\',',
-            '         \'key\' => env(\'AWS_ACCESS_KEY_ID\'),',
-            '         \'secret\' => env(\'AWS_SECRET_ACCESS_KEY\'),',
-            '         \'region\' => env(\'AWS_DEFAULT_REGION\'),',
-            '         \'bucket\' => env(\'AWS_BUCKET\'),',
-            '         \'url\' => env(\'AWS_URL\'),',
-            '         \'endpoint\' => env(\'AWS_URL\'),  // signed against the PUBLIC host, unlike \'s3\'',
-            '         \'use_path_style_endpoint\' => env(\'AWS_USE_PATH_STYLE_ENDPOINT\', false),',
-            '         \'throw\' => false,',
-            '     ],',
-            '   Then call Storage::disk(\'s3-external\')->temporaryUrl($path, $expiration) for any link',
-            '   shown to a user; keep plain Storage::temporaryUrl() (default \'s3\' disk) out of that path.',
-        ];
+        return 'Tip: Storage::temporaryUrl() needs a small config change to work outside the cluster — see https://cli.larakube.app/docs/storage/overview#temporary-urls-need-a-separate-disk';
     }
 
     /**

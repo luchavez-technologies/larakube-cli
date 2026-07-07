@@ -4,6 +4,10 @@ namespace App\Commands;
 
 use App\Contracts\HasReloadCommand;
 use App\Data\ConfigData;
+use App\Enums\CacheDriver;
+use App\Enums\DatabaseDriver;
+use App\Enums\ScoutDriver;
+use App\Enums\StorageDriver;
 use App\Traits\DeploysMonitoringExporters;
 use App\Traits\DetectsWsl;
 use App\Traits\EnsuresHostDependencies;
@@ -467,6 +471,40 @@ class UpCommand extends Command
                     $currentPath = shell_exec("kubectl get pv {$pvName} -o jsonpath='{.spec.hostPath.path}' 2>/dev/null");
                     if ($currentPath && trim($currentPath) !== $config->getPath()) {
                         // Path mismatch! Delete the PV (data is safe because it's a hostPath)
+                        exec("kubectl delete pv {$pvName} --grace-period=0 --force 2>/dev/null");
+                    }
+                }
+
+                // Driver-managed services (Postgres, MySQL, MariaDB, MinIO,
+                // SeaweedFS, Garage, Meilisearch, Typesense) each get their own
+                // static hostPath PV named {appName}-{driver}-pv, at
+                // .infrastructure/volume_data/{driver}. Redis has none — a
+                // missing PV just yields an empty jsonpath below, a no-op.
+                foreach ($config->getComponents() as $component) {
+                    if (! ($component instanceof DatabaseDriver || $component instanceof CacheDriver
+                        || $component instanceof ScoutDriver || $component instanceof StorageDriver)) {
+                        continue;
+                    }
+
+                    $pvName = "{$appName}-{$component->value}-pv";
+                    $currentPath = trim((string) shell_exec("kubectl get pv {$pvName} -o jsonpath='{.spec.hostPath.path}' 2>/dev/null"));
+
+                    if ($currentPath === '') {
+                        continue; // no such PV — nothing to check
+                    }
+
+                    $expectedPath = "{$config->getPath()}/.infrastructure/volume_data/{$component->value}";
+                    $status = trim((string) shell_exec("kubectl get pv {$pvName} -o jsonpath='{.status.phase}' 2>/dev/null"));
+
+                    // Released: its old PVC was deleted (e.g. Plex join/leave
+                    // tearing the self-hosted service down and back) but Retain
+                    // policy kept the PV — it can't auto-rebind to a NEW PVC in
+                    // this state, so the fresh apply's PVC gets stuck "pod has
+                    // unbound immediate PersistentVolumeClaims". Deleting it is
+                    // safe: Retain means the hostPath data survives, and
+                    // re-applying recreates an Available PV the new PVC binds
+                    // to immediately.
+                    if ($status === 'Released' || $currentPath !== $expectedPath) {
                         exec("kubectl delete pv {$pvName} --grace-period=0 --force 2>/dev/null");
                     }
                 }

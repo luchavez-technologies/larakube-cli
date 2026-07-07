@@ -191,6 +191,21 @@ trait InteractsWithHosts
             return;
         }
 
+        // If dnsmasq already wildcards this TLD to 127.0.0.1, a static
+        // /etc/hosts entry is redundant AND actively harmful: it pins these
+        // hosts to whatever the cluster's LoadBalancer IP was at write time,
+        // which breaks everything once that IP goes stale (e.g. after an
+        // OrbStack restart) — while dnsmasq-covered hosts keep resolving
+        // correctly through 127.0.0.1 regardless. Same guard
+        // ensureHostsAreSet() already uses for regular project hosts; also
+        // clean up any stale entry a previous `up` run left behind before
+        // dnsmasq covered this TLD.
+        if (! $this->isWsl() && $this->dnsmasqCoversKube($domain)) {
+            $this->removeHostsBlock('larakube-shared');
+
+            return;
+        }
+
         // On WSL also sync the Windows hosts file (browsers run on Windows, not WSL).
         if ($this->isWsl()) {
             $this->syncWindowsHosts($hosts, 'larakube-shared');
@@ -229,6 +244,40 @@ trait InteractsWithHosts
 
         $tmpPath = sys_get_temp_dir().'/larakube_hosts';
         file_put_contents($tmpPath, $updated);
+        exec("sudo cp $tmpPath /etc/hosts");
+        @unlink($tmpPath);
+    }
+
+    /**
+     * Remove a previously-written LaraKube /etc/hosts block (identified the
+     * same way syncHostsEntries() writes one), without replacing it with
+     * anything. Used when dnsmasq now covers the TLD: a static entry pinned
+     * to whatever the cluster's LoadBalancer IP was at write time is not just
+     * redundant but actively harmful once that IP goes stale (e.g. after an
+     * OrbStack restart) — it overrides the dnsmasq wildcard (→ 127.0.0.1)
+     * that would otherwise keep resolving correctly. No-op if the block
+     * isn't present.
+     */
+    protected function removeHostsBlock(string $appName): void
+    {
+        if (! file_exists('/etc/hosts')) {
+            return;
+        }
+
+        $blockId = "# LaraKube: {$appName}";
+        $current = (string) file_get_contents('/etc/hosts');
+        $pattern = '/\n?'.preg_quote($blockId, '/')."\n[^\n]*\n?/";
+        $stripped = preg_replace($pattern, "\n", $current) ?? $current;
+
+        if (rtrim($stripped) === rtrim($current)) {
+            return;
+        }
+
+        $this->line("  <fg=gray>Removing stale /etc/hosts entry for {$appName} (dnsmasq already covers this TLD)...</>");
+        passthru('sudo -v');
+
+        $tmpPath = sys_get_temp_dir().'/larakube_hosts';
+        file_put_contents($tmpPath, $stripped);
         exec("sudo cp $tmpPath /etc/hosts");
         @unlink($tmpPath);
     }
