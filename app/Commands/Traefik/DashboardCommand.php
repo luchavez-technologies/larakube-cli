@@ -6,6 +6,7 @@ use App\Data\GlobalConfigData;
 use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithSslTrust;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -63,7 +64,7 @@ class DashboardCommand extends Command
             default => 'xdg-open',
         };
 
-        passthru("{$command} {$url}");
+        Process::run("{$command} {$url}");
 
         return 0;
     }

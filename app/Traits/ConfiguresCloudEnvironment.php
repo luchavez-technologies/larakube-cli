@@ -6,6 +6,7 @@ use App\Contracts\PlexProvisionable;
 use App\Data\EnvironmentData;
 use App\Data\GlobalConfigData;
 use App\Enums\RegistryProvider;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\password;
@@ -33,6 +34,8 @@ trait ConfiguresCloudEnvironment
     // (§ below) is indistinguishable from one created via `env`. EnsuresRealHosts
     // is the same local/placeholder-host guard `cloud:deploy` uses.
     use EnsuresRealHosts, GathersEnvironmentData, ResolvesEnvironmentContext;
+
+    use StreamsProcessOutput;
 
     /**
      * The full guided setup: pick the environment once, then run every step in
@@ -192,7 +195,7 @@ trait ConfiguresCloudEnvironment
      */
     protected function gitRemoteUrl(): string
     {
-        return trim((string) shell_exec('git remote get-url origin 2>/dev/null'));
+        return trim(Process::run('git remote get-url origin')->output());
     }
 
     /**
@@ -284,7 +287,7 @@ trait ConfiguresCloudEnvironment
         $envFile = ".env.{$environment}";
 
         // GitHub repo guard — fail fast before any prompts.
-        $remote = trim((string) shell_exec('git remote get-url origin 2>/dev/null'));
+        $remote = $this->gitRemoteUrl();
         if (empty($remote)) {
             $this->laraKubeError('No GitHub remote found. Create a GitHub repository and add it as origin first:');
             $this->line('    git remote add origin git@github.com:<owner>/<repo>.git');
@@ -434,8 +437,8 @@ trait ConfiguresCloudEnvironment
         }
 
         $gh = $this->getGhCommand();
-        $username = trim(shell_exec("{$gh} api user -q .login 2>/dev/null") ?? '');
-        $token = trim(shell_exec("{$gh} auth token 2>/dev/null") ?? '');
+        $username = trim(Process::run("{$gh} api user -q .login")->output());
+        $token = trim(Process::run("{$gh} auth token")->output());
 
         if (! $username) {
             $username = text(label: 'GitHub Username', required: true);
@@ -453,8 +456,8 @@ trait ConfiguresCloudEnvironment
         $ctx = '--context '.escapeshellarg($context);
         $ns = escapeshellarg($namespace);
 
-        shell_exec("kubectl {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl {$ctx} apply -f -");
-        shell_exec(
+        Process::run("kubectl {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl {$ctx} apply -f -");
+        Process::run(
             "kubectl {$ctx} create secret docker-registry ghcr-login -n {$ns}"
             .' --docker-server=https://ghcr.io'
             .' --docker-username='.escapeshellarg($username)
@@ -523,7 +526,7 @@ trait ConfiguresCloudEnvironment
         $ctx = escapeshellarg($adminContext);
         $ns = escapeshellarg($namespace);
 
-        shell_exec("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
+        Process::run("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
 
         if (! $this->ensureScopedRbac($adminContext, $namespace, $config->getName(), $environment)) {
             $this->laraKubeError('Failed to create the namespace-scoped ServiceAccount/Role in the cluster.');
@@ -533,7 +536,7 @@ trait ConfiguresCloudEnvironment
 
         if ($rotate) {
             $this->laraKubeInfo('Rotating: revoking the current deploy token before minting a fresh one...');
-            shell_exec("kubectl --context {$ctx} -n {$ns} delete secret ".escapeshellarg($this->deployerName().'-token').' --ignore-not-found 2>/dev/null');
+            Process::run("kubectl --context {$ctx} -n {$ns} delete secret ".escapeshellarg($this->deployerName().'-token').' --ignore-not-found');
         }
 
         $kubeConfigContent = $this->mintScopedKubeconfig($adminContext, $namespace);
@@ -566,13 +569,13 @@ trait ConfiguresCloudEnvironment
         $tmpFile = tempnam(sys_get_temp_dir(), 'gh_secret');
         file_put_contents($tmpFile, $value);
 
-        $command = 'cat '.escapeshellarg($tmpFile)." | {$gh} secret set ".escapeshellarg($name)." {$repoFlag} 2>&1";
-        exec($command, $output, $resultCode);
+        $command = 'cat '.escapeshellarg($tmpFile)." | {$gh} secret set ".escapeshellarg($name)." {$repoFlag}";
+        $result = Process::run($command);
         @unlink($tmpFile);
 
-        if ($resultCode !== 0) {
+        if (! $result->successful()) {
             $this->laraKubeError("Failed to set GitHub secret: {$name}");
-            foreach ($output as $line) {
+            foreach (explode("\n", trim($result->output().$result->errorOutput())) as $line) {
                 $this->line("  <fg=red>{$line}</>");
             }
             exit(1);
@@ -625,9 +628,8 @@ trait ConfiguresCloudEnvironment
     protected function runRemoteCommand(array $cloud, string $remoteCommand): int
     {
         $sshCommand = "ssh -i {$cloud['key']} -p {$cloud['port']} {$cloud['user']}@{$cloud['ip']} ".escapeshellarg($remoteCommand);
-        passthru($sshCommand, $exitCode);
 
-        return (int) $exitCode;
+        return $this->runStreaming($sshCommand);
     }
 
     // ── GitLab CI ────────────────────────────────────────────────────────────
@@ -646,7 +648,7 @@ trait ConfiguresCloudEnvironment
         $envFile = ".env.{$environment}";
 
         // GitLab remote guard
-        $remote = trim((string) shell_exec('git remote get-url origin 2>/dev/null'));
+        $remote = $this->gitRemoteUrl();
         if (empty($remote)) {
             $this->laraKubeError('No git remote found. Add your GitLab repo as origin first:');
             $this->line('    git remote add origin git@gitlab.com:<group>/<repo>.git');
@@ -714,13 +716,13 @@ trait ConfiguresCloudEnvironment
         $context = $cloud?->context ?? ($cloud?->ip ? 'larakube-'.$cloud->ip : '');
 
         if ($context !== '') {
-            $kubeconfig = trim((string) shell_exec(
-                'kubectl config view --context '.escapeshellarg($context).' --minify --raw 2>/dev/null',
-            ));
+            $kubeconfig = trim(Process::run(
+                'kubectl config view --context '.escapeshellarg($context).' --minify --raw',
+            )->output());
             $kubeconfigB64 = base64_encode($kubeconfig);
 
             if ($glabPath) {
-                shell_exec("{$glabPath} variable set {$upperEnv}_KUBECONFIG ".escapeshellarg($kubeconfigB64).' --masked --protected 2>/dev/null');
+                Process::run("{$glabPath} variable set {$upperEnv}_KUBECONFIG ".escapeshellarg($kubeconfigB64).' --masked --protected');
                 $this->line("  <fg=gray>Uploaded</> {$upperEnv}_KUBECONFIG");
             } else {
                 $this->line("  <fg=yellow>{$upperEnv}_KUBECONFIG</> = <fg=gray>(base64 kubeconfig — run: kubectl config view --context {$context} --minify --raw | base64)</>");
@@ -735,7 +737,7 @@ trait ConfiguresCloudEnvironment
             $envB64 = base64_encode((string) file_get_contents($envFilePath));
 
             if ($glabPath) {
-                shell_exec("{$glabPath} variable set {$upperEnv}_ENV_FILE_BASE64 ".escapeshellarg($envB64).' --masked --protected 2>/dev/null');
+                Process::run("{$glabPath} variable set {$upperEnv}_ENV_FILE_BASE64 ".escapeshellarg($envB64).' --masked --protected');
                 $this->line("  <fg=gray>Uploaded</> {$upperEnv}_ENV_FILE_BASE64");
             } else {
                 $this->line("  <fg=yellow>{$upperEnv}_ENV_FILE_BASE64</> = <fg=gray>(base64 of {$envFile} — run: base64 {$envFile})</>");
@@ -812,7 +814,7 @@ trait ConfiguresCloudEnvironment
     protected function resolveGlabCommand(): ?string
     {
         $candidates = array_filter([
-            trim(shell_exec('command -v glab 2>/dev/null') ?? ''),
+            trim(Process::run('command -v glab')->output()),
             '/usr/local/bin/glab',
             '/opt/homebrew/bin/glab',
             '/home/linuxbrew/.linuxbrew/bin/glab',

@@ -5,6 +5,7 @@ namespace App\Commands;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class ContextImportCommand extends Command
@@ -31,7 +32,7 @@ class ContextImportCommand extends Command
         $local = $home.'/.kube/config';
 
         // Which context are we importing? (Deterministic name → re-import is idempotent.)
-        $incoming = trim((string) shell_exec('kubectl config view --kubeconfig='.escapeshellarg($file).' -o jsonpath='.escapeshellarg('{.current-context}').' 2>/dev/null'));
+        $incoming = trim(Process::run('kubectl config view --kubeconfig='.escapeshellarg($file).' -o jsonpath='.escapeshellarg('{.current-context}'))->output());
 
         // When run inside a project, align the imported context's NAME to what this
         // project's matching env resolves to — so the teammate gets the same
@@ -49,8 +50,8 @@ class ContextImportCommand extends Command
 
             // Merge with kubectl's own flatten engine — same-named entries are
             // overwritten (so re-importing the same file is a no-op refresh).
-            $merged = shell_exec('KUBECONFIG='.escapeshellarg($local).':'.escapeshellarg($source).' kubectl config view --flatten 2>/dev/null');
-            if ($merged === null || trim($merged) === '') {
+            $merged = Process::run('KUBECONFIG='.escapeshellarg($local).':'.escapeshellarg($source).' kubectl config view --flatten')->output();
+            if (trim($merged) === '') {
                 $this->laraKubeError('Failed to merge the kubeconfig. Is kubectl installed?');
                 $this->cleanupTemp($source, $file);
 
@@ -67,7 +68,7 @@ class ContextImportCommand extends Command
         $this->cleanupTemp($source, $file);
 
         if ($incoming !== '') {
-            shell_exec('kubectl config use-context '.escapeshellarg($incoming).' 2>/dev/null');
+            Process::run('kubectl config use-context '.escapeshellarg($incoming));
             $this->laraKubeInfo("✅ Imported — you're now on context '{$incoming}'.");
         } else {
             $this->laraKubeInfo('✅ Kubeconfig imported.');
@@ -98,7 +99,7 @@ class ContextImportCommand extends Command
         }
 
         // The credential's namespace tells us which env it's for.
-        $namespace = trim((string) shell_exec('kubectl config view --kubeconfig='.escapeshellarg($file).' --minify -o jsonpath='.escapeshellarg('{.contexts[0].context.namespace}').' 2>/dev/null'));
+        $namespace = trim(Process::run('kubectl config view --kubeconfig='.escapeshellarg($file).' --minify -o jsonpath='.escapeshellarg('{.contexts[0].context.namespace}'))->output());
         if ($namespace === '') {
             return null;
         }
@@ -116,8 +117,8 @@ class ContextImportCommand extends Command
 
         $tmp = tempnam(sys_get_temp_dir(), 'lk_import_');
         copy($file, $tmp);
-        exec('kubectl config rename-context '.escapeshellarg($incoming).' '.escapeshellarg($target).' --kubeconfig='.escapeshellarg($tmp).' 2>/dev/null', $out, $code);
-        if ($code !== 0) {
+        $success = Process::run('kubectl config rename-context '.escapeshellarg($incoming).' '.escapeshellarg($target).' --kubeconfig='.escapeshellarg($tmp))->successful();
+        if (! $success) {
             @unlink($tmp);
 
             return null;

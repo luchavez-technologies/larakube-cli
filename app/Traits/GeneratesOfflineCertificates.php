@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 trait GeneratesOfflineCertificates
 {
     /**
@@ -58,13 +60,13 @@ CNF;
             $caKey = $companyCaKey;
         } else {
             // Default: generate a fresh LaraKube CA.
-            exec('openssl genrsa -out '.escapeshellarg($caKey).' 2048 2>/dev/null');
-            exec('openssl req -x509 -new -nodes -key '.escapeshellarg($caKey).' -sha256 -days 3650 -out '.escapeshellarg($caCrt).' -subj "/CN=LaraKube Airgap CA" 2>/dev/null');
+            Process::run('openssl genrsa -out '.escapeshellarg($caKey).' 2048');
+            Process::run('openssl req -x509 -new -nodes -key '.escapeshellarg($caKey).' -sha256 -days 3650 -out '.escapeshellarg($caCrt).' -subj "/CN=LaraKube Airgap CA"');
         }
 
-        exec('openssl genrsa -out '.escapeshellarg($serverKey).' 2048 2>/dev/null');
-        exec('openssl req -new -key '.escapeshellarg($serverKey).' -out '.escapeshellarg($serverCsr).' -config '.escapeshellarg($cnfFile).' -extensions v3_req 2>/dev/null');
-        exec('openssl x509 -req -in '.escapeshellarg($serverCsr).' -CA '.escapeshellarg($caCrt).' -CAkey '.escapeshellarg($caKey).' -CAcreateserial -out '.escapeshellarg($serverCrt).' -days 3650 -sha256 -extfile '.escapeshellarg($cnfFile).' -extensions v3_req 2>/dev/null');
+        Process::run('openssl genrsa -out '.escapeshellarg($serverKey).' 2048');
+        Process::run('openssl req -new -key '.escapeshellarg($serverKey).' -out '.escapeshellarg($serverCsr).' -config '.escapeshellarg($cnfFile).' -extensions v3_req');
+        Process::run('openssl x509 -req -in '.escapeshellarg($serverCsr).' -CA '.escapeshellarg($caCrt).' -CAkey '.escapeshellarg($caKey).' -CAcreateserial -out '.escapeshellarg($serverCrt).' -days 3650 -sha256 -extfile '.escapeshellarg($cnfFile).' -extensions v3_req');
 
         return [
             'ca_crt' => $caCrt,

@@ -9,6 +9,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesCompanions;
 use App\Traits\ReadsPlexCredentials;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
 
@@ -123,8 +124,8 @@ class AboutCommand extends Command
         $this->newLine();
         $this->laraKubeInfo("Live Cluster Status ($environment)");
 
-        $output = shell_exec("kubectl get pods -n {$namespace} -o json 2>/dev/null");
-        $pods = $output ? (json_decode($output, true)['items'] ?? []) : [];
+        $output = Process::run("kubectl get pods -n {$namespace} -o json")->output();
+        $pods = $output !== '' ? (json_decode($output, true)['items'] ?? []) : [];
 
         if (empty($pods)) {
             $this->warn('  No active pods found in this environment. Run "larakube up" to deploy.');

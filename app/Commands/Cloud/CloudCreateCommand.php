@@ -11,6 +11,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
@@ -537,8 +538,8 @@ class CloudCreateCommand extends Command
         file_put_contents($tmp, $rawYaml);
 
         if (file_exists($local) && filesize($local) > 0) {
-            $merged = shell_exec('KUBECONFIG='.escapeshellarg($local).':'.escapeshellarg($tmp).' kubectl config view --flatten');
-            if ($merged) {
+            $merged = Process::run('KUBECONFIG='.escapeshellarg($local).':'.escapeshellarg($tmp).' kubectl config view --flatten')->output();
+            if ($merged !== '') {
                 file_put_contents($local, $merged);
             } else {
                 $this->laraKubeError('Failed to merge kubeconfig — left local config untouched.');
@@ -577,7 +578,7 @@ class CloudCreateCommand extends Command
      */
     private function sshKeyFingerprint(string $pubKeyPath): ?string
     {
-        $out = trim((string) shell_exec('ssh-keygen -l -E md5 -f '.escapeshellarg($pubKeyPath).' 2>/dev/null'));
+        $out = trim(Process::run('ssh-keygen -l -E md5 -f '.escapeshellarg($pubKeyPath))->output());
         // Format: "256 MD5:3b:16:..:cc comment (ED25519)"
         if (preg_match('/MD5:([0-9a-f:]+)/i', $out, $m)) {
             return strtolower($m[1]);

@@ -7,6 +7,7 @@ use App\Data\EnvironmentData;
 use App\Data\RegistryData;
 use App\Enums\IngressController;
 use App\Enums\RegistryProvider;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -171,7 +172,7 @@ trait GathersEnvironmentData
         // from the git remote; fall back to the gh-detected owner + app name.
         $default = $currentRegistry?->image ?? $this->guessImageFromGitRemote(getcwd());
         if ($default === '' && $registryProvider === RegistryProvider::GHCR) {
-            $owner = trim((string) shell_exec($this->getGhCommand().' api user -q .login 2>/dev/null'));
+            $owner = trim(Process::run($this->getGhCommand().' api user -q .login')->output());
             if ($owner !== '') {
                 $default = $owner.'/'.$config->getName();
             }
@@ -202,7 +203,7 @@ trait GathersEnvironmentData
      */
     protected function guessImageFromGitRemote(string $projectPath): string
     {
-        $remote = trim((string) shell_exec('git -C '.escapeshellarg($projectPath).' remote get-url origin 2>/dev/null'));
+        $remote = trim(Process::run('git -C '.escapeshellarg($projectPath).' remote get-url origin')->output());
         if ($remote === '') {
             return '';
         }

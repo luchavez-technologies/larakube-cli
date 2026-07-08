@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 trait DetectsWsl
 {
     /**
@@ -38,7 +40,7 @@ trait DetectsWsl
             return false;
         }
 
-        $context = trim(shell_exec('kubectl config current-context 2>/dev/null') ?? '');
+        $context = trim(Process::run('kubectl config current-context')->output());
 
         return $context === 'docker-desktop';
     }
@@ -65,7 +67,7 @@ trait DetectsWsl
      */
     protected function hasDockerCli(): bool
     {
-        return trim((string) shell_exec('command -v docker 2>/dev/null')) !== '';
+        return trim(Process::run('command -v docker')->output()) !== '';
     }
 
     /**
@@ -74,9 +76,9 @@ trait DetectsWsl
      */
     protected function isDockerDesktop(): bool
     {
-        $info = shell_exec('docker info --format "{{.OperatingSystem}}" 2>/dev/null');
+        $info = Process::run('docker info --format "{{.OperatingSystem}}"')->output();
 
-        return str_contains(strtolower($info ?? ''), 'docker desktop');
+        return str_contains(strtolower($info), 'docker desktop');
     }
 
     /**

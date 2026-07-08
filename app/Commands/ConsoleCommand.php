@@ -8,6 +8,8 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithSslTrust;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -15,7 +17,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class ConsoleCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithHosts, InteractsWithSslTrust, LaraKubeOutput;
+    use InteractsWithEnvironments, InteractsWithHosts, InteractsWithSslTrust, LaraKubeOutput, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -104,7 +106,7 @@ class ConsoleCommand extends Command
             }
         }
 
-        $exists = shell_exec('kubectl get namespace larakube-system --no-headers 2>/dev/null');
+        $exists = Process::run('kubectl get namespace larakube-system --no-headers')->successful();
 
         if (! $exists || $this->option('update')) {
             $label = $this->option('update') ? 'Updating LaraKube Console...' : 'The LaraKube Console is not installed. Would you like to install it now?';
@@ -128,7 +130,7 @@ class ConsoleCommand extends Command
 
                     $tmp = sys_get_temp_dir().'/larakube-dashboard.yaml';
                     file_put_contents($tmp, $manifest);
-                    passthru("kubectl apply -f {$tmp}");
+                    $this->runStreaming("kubectl apply -f {$tmp}");
                     unlink($tmp);
                 });
 
@@ -146,7 +148,7 @@ class ConsoleCommand extends Command
             default => 'xdg-open',
         };
 
-        passthru("{$command} {$url}");
+        Process::run("{$command} {$url}");
 
         return 0;
     }
@@ -158,7 +160,7 @@ class ConsoleCommand extends Command
         }
 
         $this->withSpin('Removing LaraKube Console resources...', function () {
-            passthru('kubectl delete namespace larakube-system --wait=false');
+            $this->runStreaming('kubectl delete namespace larakube-system --wait=false');
         });
 
         $this->laraKubeInfo('✅ LaraKube Console removal initiated.');

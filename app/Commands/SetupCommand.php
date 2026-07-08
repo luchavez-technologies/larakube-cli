@@ -6,6 +6,7 @@ use App\Traits\DetectsWsl;
 use App\Traits\InstallsK9s;
 use App\Traits\InteractsWithOs;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -89,13 +90,13 @@ class SetupCommand extends Command
 
     protected function ensureDockerInstalled(): bool
     {
-        $hasDocker = trim((string) shell_exec('command -v docker 2>/dev/null')) !== '';
+        $hasDocker = trim(Process::run('command -v docker')->output()) !== '';
 
         if ($hasDocker) {
-            exec('docker info 2>/dev/null', $_, $code);
+            $dockerInfoOk = Process::run('docker info')->successful();
 
-            if ($code === 0) {
-                $os = trim((string) shell_exec('docker info --format \'{{.OperatingSystem}}\' 2>/dev/null'));
+            if ($dockerInfoOk) {
+                $os = trim(Process::run('docker info --format \'{{.OperatingSystem}}\'')->output());
 
                 if (str_contains($os, 'Docker Desktop')) {
                     $this->laraKubeWarn('Docker Desktop detected.');
@@ -110,7 +111,7 @@ class SetupCommand extends Command
 
             // No docker.service unit means the docker CLI comes from Docker Desktop's
             // WSL integration — there is no local daemon to start via systemctl.
-            $hasDockerService = trim((string) shell_exec('systemctl cat docker 2>/dev/null')) !== '';
+            $hasDockerService = trim(Process::run('systemctl cat docker')->output()) !== '';
 
             if (! $hasDockerService) {
                 $this->laraKubeWarn('Docker Desktop is installed but not running.');
@@ -151,7 +152,7 @@ class SetupCommand extends Command
     {
         // If the docker-ce package is already installed (e.g. a prior run that left
         // the service stopped), skip the installer and just enable the service.
-        $alreadyInstalled = trim((string) shell_exec('dpkg -l docker-ce 2>/dev/null | grep -c "^ii"')) === '1';
+        $alreadyInstalled = trim(Process::run('dpkg -l docker-ce | grep -c "^ii"')->output()) === '1';
 
         if ($alreadyInstalled) {
             $this->laraKubeInfo('Docker Engine package found — enabling service...');

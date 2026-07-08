@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 use function Laravel\Prompts\confirm;
 
 /**
@@ -188,7 +190,7 @@ BASH;
 
         // Fetch remote config
         $tmpRemoteConfig = tempnam(sys_get_temp_dir(), 'k3s_remote');
-        exec("scp -i {$keyPath} -P {$port} {$user}@{$ip}:/etc/rancher/k3s/k3s.yaml {$tmpRemoteConfig}");
+        Process::run("scp -i {$keyPath} -P {$port} {$user}@{$ip}:/etc/rancher/k3s/k3s.yaml {$tmpRemoteConfig}");
 
         if (! file_exists($tmpRemoteConfig) || filesize($tmpRemoteConfig) === 0) {
             $this->laraKubeError('Failed to fetch remote kubeconfig.');
@@ -210,9 +212,9 @@ BASH;
         // We use the KUBECONFIG env var trick to let kubectl handle the YAML merging logic safely
         if (file_exists($localKubeConfig)) {
             $mergeCmd = "KUBECONFIG={$localKubeConfig}:{$tmpRemoteConfig} kubectl config view --flatten";
-            $mergedContent = shell_exec($mergeCmd);
+            $mergedContent = Process::run($mergeCmd)->output();
 
-            if ($mergedContent) {
+            if ($mergedContent !== '') {
                 file_put_contents($localKubeConfig, $mergedContent);
             } else {
                 $this->laraKubeError('Failed to merge Kubeconfig. Manual intervention required.');
@@ -234,9 +236,7 @@ BASH;
      */
     protected function traefikInstalledOnContext(string $contextName): bool
     {
-        exec('kubectl --context '.escapeshellarg($contextName).' get deployment -n traefik traefik 2>/dev/null', $out, $code);
-
-        return $code === 0;
+        return Process::run('kubectl --context '.escapeshellarg($contextName).' get deployment -n traefik traefik')->successful();
     }
 
     /**
@@ -256,12 +256,12 @@ BASH;
         $kubectl = 'kubectl --context '.escapeshellarg($contextName);
         $namespace = 'traefik';
 
-        shell_exec("{$kubectl} create namespace {$namespace} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        Process::run("{$kubectl} create namespace {$namespace} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
         // 1. Create ConfigMap for Traefik dynamic configuration
         $tmpCertsYml = sys_get_temp_dir().'/traefik-certs.yml';
         file_put_contents($tmpCertsYml, view('traefik.dev-certs')->render());
-        shell_exec("{$kubectl} create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        Process::run("{$kubectl} create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
         // 2. Create Secret for SSL certificates
         $certDir = base_path('resources/views/traefik/certificates');
@@ -275,7 +275,7 @@ BASH;
         if ($devPemContent && $devKeyPemContent) {
             file_put_contents($tmpDevPem, $devPemContent);
             file_put_contents($tmpDevKeyPem, $devKeyPemContent);
-            shell_exec("{$kubectl} create secret generic traefik-certificates -n {$namespace} --from-file=local-dev.pem={$tmpDevPem} --from-file=local-dev-key.pem={$tmpDevKeyPem} --dry-run=client -o yaml | {$kubectl} apply -f -");
+            Process::run("{$kubectl} create secret generic traefik-certificates -n {$namespace} --from-file=local-dev.pem={$tmpDevPem} --from-file=local-dev-key.pem={$tmpDevKeyPem} --dry-run=client -o yaml | {$kubectl} apply -f -");
         } else {
             $this->laraKubeWarn('Could not find local dev certificates. Skipping SSL secret creation.');
         }
@@ -283,7 +283,7 @@ BASH;
         // 3. Apply Traefik Cloud manifest
         $tmpInstall = sys_get_temp_dir().'/traefik-cloud.yaml';
         file_put_contents($tmpInstall, view('k8s.traefik-cloud', ['email' => $this->getEmail()])->render());
-        shell_exec("{$kubectl} apply -f {$tmpInstall} --request-timeout=60s --validate=false");
+        Process::run("{$kubectl} apply -f {$tmpInstall} --request-timeout=60s --validate=false");
 
         $this->laraKubeInfo('Traefik deployed and configured with HostPort and ACME (Let\'sEncrypt).');
 

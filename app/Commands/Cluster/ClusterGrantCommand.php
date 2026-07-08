@@ -7,6 +7,7 @@ use App\Traits\InteractsWithScopedRbac;
 use App\Traits\InteractsWithTeammateRbac;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
@@ -69,16 +70,16 @@ class ClusterGrantCommand extends Command
         // The RoleBinding lives IN the app namespace, so it must exist first
         // (admin creates it — same as cloud:deploy). A missing namespace is the
         // usual cause of a bind failure on a fresh cluster.
-        exec("kubectl --context {$ctx} get namespace ".escapeshellarg($appNs).' 2>/dev/null', $nsOut, $nsCode);
-        if ($nsCode !== 0) {
+        $nsExists = Process::run("kubectl --context {$ctx} get namespace ".escapeshellarg($appNs))->successful();
+        if (! $nsExists) {
             $this->laraKubeInfo("Namespace '{$appNs}' doesn't exist yet — creating it.");
-            shell_exec("kubectl --context {$ctx} create namespace ".escapeshellarg($appNs).' 2>/dev/null');
+            Process::run("kubectl --context {$ctx} create namespace ".escapeshellarg($appNs));
         }
 
         // 2. RoleBinding in the app namespace. roleRef is immutable, so to support
         //    upgrade/downgrade we delete any existing binding for this user first,
         //    then recreate with the chosen role.
-        shell_exec("kubectl --context {$ctx} -n ".escapeshellarg($appNs).' delete rolebinding '.escapeshellarg($this->teammateBindingName($sa)).' --ignore-not-found 2>/dev/null');
+        Process::run("kubectl --context {$ctx} -n ".escapeshellarg($appNs).' delete rolebinding '.escapeshellarg($this->teammateBindingName($sa)).' --ignore-not-found');
         $bindOut = [];
         if (! $this->applyManifest($adminContext, $this->teammateBindingManifest($appNs, $accessNs, $sa, $role), $bindOut)) {
             $this->laraKubeError("Failed to bind access in '{$appNs}':\n  ".implode("\n  ", array_slice($bindOut, -3)));
@@ -88,7 +89,7 @@ class ClusterGrantCommand extends Command
 
         // 3. Token + CA + server → a teammate kubeconfig.
         $token = $this->pollSecretToken($adminContext, $accessNs, $sa.'-token');
-        $server = trim((string) shell_exec($this->clusterServerCommand($adminContext).' 2>/dev/null'));
+        $server = trim(Process::run($this->clusterServerCommand($adminContext))->output());
         $ca = $this->readSecretCaData($adminContext, $accessNs, $sa.'-token');
 
         if ($token === null || $token === '' || $server === '' || $ca === '') {
@@ -171,9 +172,11 @@ class ClusterGrantCommand extends Command
     {
         $file = tempnam(sys_get_temp_dir(), 'lk_grant_');
         file_put_contents($file, $manifest);
-        exec('kubectl --context '.escapeshellarg($adminContext).' apply -f '.escapeshellarg($file).' 2>&1', $output, $code);
+        $result = Process::run('kubectl --context '.escapeshellarg($adminContext).' apply -f '.escapeshellarg($file));
         @unlink($file);
 
-        return $code === 0;
+        $output = explode("\n", trim($result->output().$result->errorOutput()));
+
+        return $result->successful();
     }
 }

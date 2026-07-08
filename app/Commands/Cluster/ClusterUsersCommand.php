@@ -5,6 +5,7 @@ namespace App\Commands\Cluster;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
 
@@ -167,10 +168,10 @@ class ClusterUsersCommand extends Command
     /** A teammate's bindings as a "namespace:role" summary, read live. */
     protected function teammateAccess(string $kubectl, string $sa): string
     {
-        $out = trim((string) shell_exec(
+        $out = trim(Process::run(
             "{$kubectl} get rolebinding -A -l larakube.dev/access-user=".escapeshellarg($sa)
-            .' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.namespace}{":"}{.roleRef.name}{"  "}{end}').' 2>/dev/null',
-        ));
+            .' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.namespace}{":"}{.roleRef.name}{"  "}{end}'),
+        )->output());
 
         return $out !== '' ? $out : '— (no apps)';
     }
@@ -178,7 +179,7 @@ class ClusterUsersCommand extends Command
     /** Show the LIVE Role rules + binding/token state for one namespace's deployer. */
     protected function showScope(string $kubectl, string $namespace): int
     {
-        $role = json_decode((string) shell_exec($kubectl.' get role '.escapeshellarg($this->sa).' -n '.escapeshellarg($namespace).' -o json 2>/dev/null'), true);
+        $role = json_decode(Process::run($kubectl.' get role '.escapeshellarg($this->sa).' -n '.escapeshellarg($namespace).' -o json')->output(), true);
 
         if (! is_array($role) || ($role['kind'] ?? '') !== 'Role') {
             $this->laraKubeError("No '{$this->sa}' Role in namespace '{$namespace}'.");
@@ -202,7 +203,7 @@ class ClusterUsersCommand extends Command
         table(['API group', 'Resources', 'Verbs'], $rows);
 
         // Binding — an SA with no RoleBinding has no scope, so call it out.
-        $rb = json_decode((string) shell_exec($kubectl.' get rolebinding '.escapeshellarg($this->sa).' -n '.escapeshellarg($namespace).' -o json 2>/dev/null'), true);
+        $rb = json_decode(Process::run($kubectl.' get rolebinding '.escapeshellarg($this->sa).' -n '.escapeshellarg($namespace).' -o json')->output(), true);
         $bound = is_array($rb)
             && ($rb['roleRef']['name'] ?? '') === $this->sa
             && collect($rb['subjects'] ?? [])->contains(fn ($s) => ($s['kind'] ?? '') === 'ServiceAccount' && ($s['name'] ?? '') === $this->sa);
@@ -213,7 +214,7 @@ class ClusterUsersCommand extends Command
 
         // CI token state (the long-lived bound-token Secret, if minted).
         $token = $this->tokenStatus($kubectl, $namespace, $this->sa);
-        $minted = trim((string) shell_exec($kubectl.' -n '.escapeshellarg($namespace).' get secret '.escapeshellarg($this->sa.'-token').' -o jsonpath='.escapeshellarg('{.metadata.creationTimestamp}').' 2>/dev/null'));
+        $minted = trim(Process::run($kubectl.' -n '.escapeshellarg($namespace).' get secret '.escapeshellarg($this->sa.'-token').' -o jsonpath='.escapeshellarg('{.metadata.creationTimestamp}'))->output());
         $this->line('  <fg=gray>CI token:</> '.$token.($minted !== '' ? '  <fg=gray>minted:</> '.$minted : ''));
 
         return 0;
@@ -222,7 +223,7 @@ class ClusterUsersCommand extends Command
     /** Decode a kubectl `-o json` list into its items array. */
     protected function kubectlItems(string $command): array
     {
-        $data = json_decode((string) shell_exec($command), true);
+        $data = json_decode(Process::run($command)->output(), true);
 
         return is_array($data) ? ($data['items'] ?? []) : [];
     }
@@ -230,7 +231,7 @@ class ClusterUsersCommand extends Command
     /** Is a long-lived bound-token Secret present + populated for this SA? */
     protected function tokenStatus(string $kubectl, string $namespace, string $sa): string
     {
-        $b64 = trim((string) shell_exec($kubectl.' -n '.escapeshellarg($namespace).' get secret '.escapeshellarg($sa.'-token').' -o jsonpath='.escapeshellarg('{.data.token}').' 2>/dev/null'));
+        $b64 = trim(Process::run($kubectl.' -n '.escapeshellarg($namespace).' get secret '.escapeshellarg($sa.'-token').' -o jsonpath='.escapeshellarg('{.data.token}'))->output());
 
         return $b64 !== '' ? '✅ active' : '—';
     }

@@ -6,6 +6,7 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class StartCommand extends Command
@@ -38,7 +39,7 @@ class StartCommand extends Command
         // We scale all deployments to at least 1 (Default LaraKube state)
         // A more advanced version would read the blueprint to find exact replica counts.
         $this->withSpin('Scaling up application pods...', function () use ($namespace) {
-            exec("kubectl scale deployment --all --replicas=1 -n {$namespace}");
+            Process::run("kubectl scale deployment --all --replicas=1 -n {$namespace}");
 
             return true;
         });

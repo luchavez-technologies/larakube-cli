@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\GlobalConfigData;
 use App\Enums\AiProvider;
+use Illuminate\Support\Facades\Process;
 
 trait InteractsWithGlobalConfig
 {
@@ -24,7 +25,7 @@ trait InteractsWithGlobalConfig
         // command -v uses the non-interactive shell PATH which may miss tools
         // installed by Homebrew or similar. Check common locations as a fallback.
         $candidates = array_filter([
-            trim(shell_exec('command -v gh 2>/dev/null') ?? ''),
+            trim(Process::run('command -v gh')->output()),
             '/usr/local/bin/gh',
             '/opt/homebrew/bin/gh',
             '/home/linuxbrew/.linuxbrew/bin/gh',
@@ -153,9 +154,7 @@ trait InteractsWithGlobalConfig
     protected function checkCaTrust(): bool
     {
         if ($this->isDarwin()) {
-            $output = shell_exec('security find-certificate -c "Server Side Up CA" 2>/dev/null');
-
-            return ! empty($output);
+            return Process::run('security find-certificate -c "Server Side Up CA"')->output() !== '';
         }
 
         if ($this->isLinux()) {

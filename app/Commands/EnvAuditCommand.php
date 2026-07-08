@@ -5,6 +5,7 @@ namespace App\Commands;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
 
@@ -137,10 +138,10 @@ class EnvAuditCommand extends Command
      */
     protected function objectDataKeys(string $kubectl, string $namespace, string $kind, string $name): ?array
     {
-        $json = shell_exec(
-            "{$kubectl} get {$kind} ".escapeshellarg($name).' -n '.escapeshellarg($namespace).' -o json 2>/dev/null',
-        );
-        $decoded = json_decode((string) $json, true);
+        $json = Process::run(
+            "{$kubectl} get {$kind} ".escapeshellarg($name).' -n '.escapeshellarg($namespace).' -o json',
+        )->output();
+        $decoded = json_decode($json, true);
 
         if (! is_array($decoded) || ! isset($decoded['data'])) {
             return null;

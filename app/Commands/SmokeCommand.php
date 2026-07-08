@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class SmokeCommand extends Command
@@ -41,7 +42,7 @@ class SmokeCommand extends Command
 
                 // 🛡 PHASE 1: Standard Domain Check
                 for ($i = 1; $i <= $maxAttempts; $i++) {
-                    $httpCode = trim(shell_exec("curl -k -s -o /dev/null -w \"%{http_code}\" {$url} --connect-timeout 2") ?? '');
+                    $httpCode = trim(Process::run("curl -k -s -o /dev/null -w \"%{http_code}\" {$url} --connect-timeout 2")->output());
 
                     if ($httpCode === '200' || $httpCode === '302' || $httpCode === '301') {
                         $this->laraKubeInfo("SUCCESS! Application reachable via {$protocol} (HTTP {$httpCode}).");
@@ -56,11 +57,12 @@ class SmokeCommand extends Command
 
                 // 🛡 PHASE 2: Cluster IP Bypass (Ensures app is healthy even if hosts are out of sync)
                 $this->line('  <fg=gray>[INFO]</> Retrying via internal cluster bridge...');
-                $externalIp = shell_exec("kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null") ?? '127.0.0.1';
+                $externalIp = Process::run("kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'")->output();
+                $externalIp = $externalIp !== '' ? $externalIp : '127.0.0.1';
 
                 // If it's a k3d setup, localhost (127.0.0.1) is usually the correct bridge for the daemon
                 $bypassUrl = "{$protocol}://127.0.0.1";
-                $httpCode = trim(shell_exec("curl -k -s -o /dev/null -w \"%{http_code}\" -H \"Host: {$host}\" {$bypassUrl} --connect-timeout 2") ?? '');
+                $httpCode = trim(Process::run("curl -k -s -o /dev/null -w \"%{http_code}\" -H \"Host: {$host}\" {$bypassUrl} --connect-timeout 2")->output());
 
                 if ($httpCode === '200' || $httpCode === '302' || $httpCode === '301') {
                     $this->laraKubeInfo("SUCCESS! Application verified via Cluster Bridge (HTTP {$httpCode}).");

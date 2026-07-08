@@ -26,6 +26,7 @@ use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Exceptions\NonInteractiveValidationException;
 use Laravel\Prompts\Prompt;
 
@@ -63,6 +64,16 @@ function configuresCloudEnvironmentRunner(string $gitRemote = ''): object
 
 beforeEach(function () {
     Prompt::interactive(false);
+
+    // ConfiguresCloudEnvironment composes ResolvesEnvironmentContext, whose
+    // pickContext()/availableKubeContexts() run real kubectl via the Process
+    // facade. Process::fake() intercepts at the facade level — no real
+    // kube-contexts, regardless of what's actually configured on the machine
+    // running this — which is what makes "no kube-contexts in this sandbox"
+    // (this file's own stated assumption for the brand-new-environment test
+    // below) actually true rather than incidental.
+    Process::fake(['kubectl *' => '']);
+    Process::preventStrayProcesses();
 
     $this->tempDir = sys_get_temp_dir().'/larakube-cloudconfigure-'.uniqid();
     mkdir($this->tempDir, 0755, true);

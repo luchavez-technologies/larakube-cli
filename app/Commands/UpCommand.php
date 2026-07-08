@@ -25,6 +25,8 @@ use App\Traits\InteractsWithTraefik;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesCompanions;
 use App\Traits\ManagesLocalCa;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\info;
@@ -34,7 +36,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class UpCommand extends Command
 {
-    use DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithKustomize, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa;
+    use DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithKustomize, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -90,7 +92,7 @@ class UpCommand extends Command
         // --- 🛡️ ZERO-CLUSTER GUARD ---
         if (! $this->hasActiveCluster()) {
             $localContext = $this->findLocalClusterContext();
-            $currentContext = trim(shell_exec('kubectl config current-context 2>/dev/null') ?? '');
+            $currentContext = $this->kubectlCurrentContext();
 
             // Scenario A: a local-looking context already exists but isn't
             // selected (e.g. a cloud context is active while OrbStack/k3s/k3d
@@ -216,16 +218,14 @@ class UpCommand extends Command
             $validationResult = ['result' => 0, 'output' => []];
 
             $this->withSpin('Validating Kubernetes manifests...', function () use (&$validationResult, $path) {
-                $output = [];
-                $result = 0;
-                exec($this->kustomizeBuildCommand($path).' 2>&1', $output, $result);
+                $result = Process::run($this->kustomizeBuildCommand($path));
 
                 $validationResult = [
-                    'result' => $result,
-                    'output' => $output,
+                    'result' => $result->exitCode(),
+                    'output' => explode("\n", trim($result->output().$result->errorOutput())),
                 ];
 
-                return $result === 0;
+                return $result->successful();
             });
 
             if ($validationResult['result'] !== 0) {
@@ -289,7 +289,7 @@ class UpCommand extends Command
                 if (file_exists($projectPath.'/.env.example')) {
                     $this->laraKubeInfo('No .env file found. Creating from .env.example...');
                     @copy($projectPath.'/.env.example', $projectPath.'/.env');
-                    passthru('php artisan key:generate --no-interaction');
+                    $this->runStreaming('php artisan key:generate --no-interaction');
                 } else {
                     $this->laraKubeError('No .env or .env.example found! Deployment may fail.');
                 }
@@ -373,7 +373,7 @@ class UpCommand extends Command
 
         // 2. Ensure Namespace exists
         $this->withSpin("Ensuring namespace '$namespace' exists...", function () use ($namespace) {
-            exec("kubectl create namespace $namespace --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run("kubectl create namespace $namespace --dry-run=client -o yaml | kubectl apply -f -");
         });
 
         // 3. Handle .env injection
@@ -438,12 +438,12 @@ class UpCommand extends Command
 
                 // 1. Create Public ConfigMap
                 if (! empty($publicLiterals)) {
-                    exec("kubectl create configmap laravel-config -n $namespace $publicLiterals --dry-run=client -o yaml | kubectl apply -f -");
+                    Process::run("kubectl create configmap laravel-config -n $namespace $publicLiterals --dry-run=client -o yaml | kubectl apply -f -");
                 }
 
                 // 2. Create Sensitive Secret
                 if (! empty($secretLiterals)) {
-                    exec("kubectl create secret generic laravel-secrets -n $namespace $secretLiterals --dry-run=client -o yaml | kubectl apply -f -");
+                    Process::run("kubectl create secret generic laravel-secrets -n $namespace $secretLiterals --dry-run=client -o yaml | kubectl apply -f -");
                 }
 
                 // Persist locally and sync blueprint to cluster for resilience
@@ -468,10 +468,10 @@ class UpCommand extends Command
                 ];
 
                 foreach ($pvNames as $pvName) {
-                    $currentPath = shell_exec("kubectl get pv {$pvName} -o jsonpath='{.spec.hostPath.path}' 2>/dev/null");
-                    if ($currentPath && trim($currentPath) !== $config->getPath()) {
+                    $currentPath = Process::run("kubectl get pv {$pvName} -o jsonpath='{.spec.hostPath.path}'")->output();
+                    if ($currentPath !== '' && trim($currentPath) !== $config->getPath()) {
                         // Path mismatch! Delete the PV (data is safe because it's a hostPath)
-                        exec("kubectl delete pv {$pvName} --grace-period=0 --force 2>/dev/null");
+                        Process::run("kubectl delete pv {$pvName} --grace-period=0 --force");
                     }
                 }
 
@@ -487,14 +487,14 @@ class UpCommand extends Command
                     }
 
                     $pvName = "{$appName}-{$component->value}-pv";
-                    $currentPath = trim((string) shell_exec("kubectl get pv {$pvName} -o jsonpath='{.spec.hostPath.path}' 2>/dev/null"));
+                    $currentPath = trim(Process::run("kubectl get pv {$pvName} -o jsonpath='{.spec.hostPath.path}'")->output());
 
                     if ($currentPath === '') {
                         continue; // no such PV — nothing to check
                     }
 
                     $expectedPath = "{$config->getPath()}/.infrastructure/volume_data/{$component->value}";
-                    $status = trim((string) shell_exec("kubectl get pv {$pvName} -o jsonpath='{.status.phase}' 2>/dev/null"));
+                    $status = trim(Process::run("kubectl get pv {$pvName} -o jsonpath='{.status.phase}'")->output());
 
                     // Released: its old PVC was deleted (e.g. Plex join/leave
                     // tearing the self-hosted service down and back) but Retain
@@ -505,7 +505,7 @@ class UpCommand extends Command
                     // re-applying recreates an Available PV the new PVC binds
                     // to immediately.
                     if ($status === 'Released' || $currentPath !== $expectedPath) {
-                        exec("kubectl delete pv {$pvName} --grace-period=0 --force 2>/dev/null");
+                        Process::run("kubectl delete pv {$pvName} --grace-period=0 --force");
                     }
                 }
 
@@ -515,10 +515,10 @@ class UpCommand extends Command
 
         // Scale down to release file locks (Safe transition)
         $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace) {
-            exec("kubectl scale deployment --all --replicas=0 -n $namespace 2>/dev/null");
+            Process::run("kubectl scale deployment --all --replicas=0 -n $namespace");
         });
 
-        passthru($this->kustomizeApplyCommand($path));
+        $this->runStreaming($this->kustomizeApplyCommand($path));
 
         // 5a. If monitoring is active, deploy service-level exporters into this namespace
         if ($this->isMonitoringActive()) {
@@ -529,7 +529,7 @@ class UpCommand extends Command
 
         // 5. Restart deployments to pick up new ConfigMap/Secret changes
         $this->laraKubeInfo('Restarting deployments to apply potential configuration changes...');
-        passthru("kubectl rollout restart deployment -n $namespace");
+        $this->runStreaming("kubectl rollout restart deployment -n $namespace");
 
         // 6. Proactive HTTPS Trust Check
         if ($environment === 'local' && str_starts_with($config->getAppUrl(), 'https://') && ! $this->isSslTrusted()) {
@@ -741,7 +741,7 @@ class UpCommand extends Command
         // Docker's official repo uses distro-specific URLs — Ubuntu and Debian
         // have separate GPG keys and apt sources.
         $dockerDistro = $distroId === 'debian' ? 'debian' : 'ubuntu';
-        $codename = trim((string) shell_exec('. /etc/os-release && echo "$VERSION_CODENAME" 2>/dev/null'));
+        $codename = trim(Process::run('. /etc/os-release && echo "$VERSION_CODENAME"')->output());
 
         $installScript = <<<BASH
 set -e
@@ -790,7 +790,7 @@ BASH;
         }
 
         // Verify the installation.
-        $dockerVersion = trim((string) shell_exec('docker --version 2>/dev/null'));
+        $dockerVersion = trim(Process::run('docker --version')->output());
         if ($dockerVersion === '') {
             $this->laraKubeWarn('Docker installed but is not on your PATH.');
             $this->laraKubeLine('  👉 Open a new terminal and run `docker --version` to verify.');

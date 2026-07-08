@@ -8,6 +8,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromptsForHosts;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 /**
@@ -34,7 +35,7 @@ class BundleInstallCommand extends Command
         // 0. Pre-flight checks
         $missing = [];
         foreach (['openssl', 'curl', 'tar'] as $tool) {
-            if (shell_exec("which {$tool} 2>/dev/null") === null) {
+            if (Process::run("which {$tool}")->output() === '') {
                 $missing[] = $tool;
             }
         }
@@ -82,12 +83,12 @@ class BundleInstallCommand extends Command
             if (file_exists('/swapfile')) {
                 $this->line('  <fg=gray>/swapfile already exists. Skipping.</>');
             } else {
-                passthru('fallocate -l '.escapeshellarg($swapSize).' /swapfile', $swapCode);
+                $swapCode = $this->runStreaming('fallocate -l '.escapeshellarg($swapSize).' /swapfile');
                 if ($swapCode === 0) {
-                    passthru('chmod 600 /swapfile');
-                    passthru('mkswap /swapfile');
-                    passthru('swapon /swapfile');
-                    passthru("echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab > /dev/null");
+                    $this->runStreaming('chmod 600 /swapfile');
+                    $this->runStreaming('mkswap /swapfile');
+                    $this->runStreaming('swapon /swapfile');
+                    $this->runStreaming("echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab > /dev/null");
                     $this->laraKubeInfo('✅ Swap file activated.');
                 } else {
                     $this->laraKubeError('Failed to allocate swap space (check disk space or permissions).');
@@ -98,20 +99,20 @@ class BundleInstallCommand extends Command
 
         // 2. Detect/install k3s (INSTALL_K3S_SKIP_DOWNLOAD=true)
         $this->laraKubeInfo('Ensuring k3s is installed (offline mode)...');
-        $k3sInstalled = (shell_exec('which k3s') !== null && trim((string) shell_exec('which k3s')) !== '');
+        $k3sInstalled = trim(Process::run('which k3s')->output()) !== '';
 
         if (! $k3sInstalled) {
             $this->line('  <fg=gray>K3s not found. Installing from offline artifacts...</>');
 
             // Put images in containerd directory BEFORE install
-            passthru('mkdir -p /var/lib/rancher/k3s/agent/images/');
-            passthru('cp k3s-airgap-images.tar /var/lib/rancher/k3s/agent/images/');
+            $this->runStreaming('mkdir -p /var/lib/rancher/k3s/agent/images/');
+            $this->runStreaming('cp k3s-airgap-images.tar /var/lib/rancher/k3s/agent/images/');
 
             // Put k3s binary in PATH
-            passthru('cp k3s /usr/local/bin/k3s');
+            $this->runStreaming('cp k3s /usr/local/bin/k3s');
 
             // Run offline installer
-            passthru('INSTALL_K3S_SKIP_DOWNLOAD=true ./k3s-install.sh --disable=traefik --write-kubeconfig-mode 644', $k3sCode);
+            $k3sCode = $this->runStreaming('INSTALL_K3S_SKIP_DOWNLOAD=true ./k3s-install.sh --disable=traefik --write-kubeconfig-mode 644');
             if ($k3sCode !== 0) {
                 $this->laraKubeError('K3s installation failed.');
 
@@ -128,12 +129,12 @@ class BundleInstallCommand extends Command
         // systemctl, /usr/local/bin), so root's home is always /root regardless
         // of $HOME — which varies with the operator's sudoers env_reset config.
         $homeDir = '/root';
-        passthru('mkdir -p '.escapeshellarg("{$homeDir}/.kube").' && cp /etc/rancher/k3s/k3s.yaml '.escapeshellarg("{$homeDir}/.kube/config"));
+        $this->runStreaming('mkdir -p '.escapeshellarg("{$homeDir}/.kube").' && cp /etc/rancher/k3s/k3s.yaml '.escapeshellarg("{$homeDir}/.kube/config"));
 
         if (file_exists('./k9s')) {
             $this->laraKubeInfo('Installing k9s terminal UI...');
-            passthru('cp k9s /usr/local/bin/k9s');
-            passthru('chmod +x /usr/local/bin/k9s');
+            $this->runStreaming('cp k9s /usr/local/bin/k9s');
+            $this->runStreaming('chmod +x /usr/local/bin/k9s');
             $this->laraKubeInfo('✅ k9s installed at /usr/local/bin/k9s');
         }
 
@@ -150,8 +151,7 @@ class BundleInstallCommand extends Command
 
         $this->laraKubeInfo('Waiting for K3s containerd to become ready...');
         for ($i = 0; $i < 30; $i++) {
-            exec('k3s ctr version >/dev/null 2>&1', $output, $code);
-            if ($code === 0) {
+            if (Process::run('k3s ctr version')->successful()) {
                 break;
             }
             sleep(1);
@@ -165,7 +165,7 @@ class BundleInstallCommand extends Command
                 $this->line("  <fg=gray>import</> {$tar}");
                 $success = false;
                 for ($attempt = 1; $attempt <= 10; $attempt++) {
-                    passthru('k3s ctr images import '.escapeshellarg($tar), $importCode);
+                    $importCode = $this->runStreaming('k3s ctr images import '.escapeshellarg($tar));
                     if ($importCode === 0) {
                         $success = true;
                         break;
@@ -175,8 +175,7 @@ class BundleInstallCommand extends Command
 
                     // Actively wait for the containerd socket to come back online
                     for ($wait = 0; $wait < 30; $wait++) {
-                        exec('k3s ctr version >/dev/null 2>&1', $output, $code);
-                        if ($code === 0) {
+                        if (Process::run('k3s ctr version')->successful()) {
                             break;
                         }
                         sleep(1);
@@ -198,9 +197,9 @@ class BundleInstallCommand extends Command
         $ns = escapeshellarg($namespace);
 
         // Extract existing secrets from the cluster (for idempotent updates)
-        $existingSecretsJson = shell_exec("kubectl get secret laravel-secrets -n {$ns} -o json 2>/dev/null");
+        $existingSecretsJson = Process::run("kubectl get secret laravel-secrets -n {$ns} -o json")->output();
         $existingSecrets = [];
-        if ($existingSecretsJson) {
+        if ($existingSecretsJson !== '') {
             $parsed = json_decode($existingSecretsJson, true);
             if (isset($parsed['data']) && is_array($parsed['data'])) {
                 foreach ($parsed['data'] as $k => $v) {
@@ -341,8 +340,8 @@ class BundleInstallCommand extends Command
 
             // Install into the OS trust store so curl, apt, and system tools trust
             // the company's internal services (private registries, LDAP, etc.).
-            passthru('cp '.escapeshellarg($bundledCaCrt).' /usr/local/share/ca-certificates/company-ca.crt');
-            passthru('update-ca-certificates');
+            $this->runStreaming('cp '.escapeshellarg($bundledCaCrt).' /usr/local/share/ca-certificates/company-ca.crt');
+            $this->runStreaming('update-ca-certificates');
 
             // Trust in containerd so k3s can pull from private registries signed by
             // the company CA without TLS errors.
@@ -377,26 +376,25 @@ class BundleInstallCommand extends Command
 
         $this->laraKubeInfo('Waiting for Kubernetes API to be ready...');
         for ($wait = 0; $wait < 60; $wait++) {
-            exec('kubectl get nodes >/dev/null 2>&1', $output, $code);
-            if ($code === 0) {
+            if (Process::run('kubectl get nodes')->successful()) {
                 break;
             }
             sleep(2);
         }
 
         // Ensure namespace exists before we create secrets
-        shell_exec("kubectl create namespace {$ns} --dry-run=client -o yaml | kubectl apply -f -");
+        Process::run("kubectl create namespace {$ns} --dry-run=client -o yaml | kubectl apply -f -");
 
         // Traefik expects the TLSStore in its own namespace for the default certificate
-        shell_exec('kubectl create namespace traefik --dry-run=client -o yaml | kubectl apply -f -');
+        Process::run('kubectl create namespace traefik --dry-run=client -o yaml | kubectl apply -f -');
 
         $tmpCertsYml = sys_get_temp_dir().'/traefik-certs.yml';
         file_put_contents($tmpCertsYml, view('traefik.dev-certs')->render());
-        shell_exec("kubectl create configmap traefik-config -n traefik --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply -f -");
+        Process::run("kubectl create configmap traefik-config -n traefik --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply -f -");
 
         $tmpTlsCrt = escapeshellarg($certs['tls_crt']);
         $tmpTlsKey = escapeshellarg($certs['tls_key']);
-        shell_exec("kubectl create secret generic traefik-certificates -n traefik --from-file=local-dev.pem={$tmpTlsCrt} --from-file=local-dev-key.pem={$tmpTlsKey} --dry-run=client -o yaml | kubectl apply -f -");
+        Process::run("kubectl create secret generic traefik-certificates -n traefik --from-file=local-dev.pem={$tmpTlsCrt} --from-file=local-dev-key.pem={$tmpTlsKey} --dry-run=client -o yaml | kubectl apply -f -");
 
         @unlink($tmpCertsYml);
 
@@ -404,14 +402,14 @@ class BundleInstallCommand extends Command
         $this->laraKubeInfo('Deploying Traefik Ingress Controller...');
         $tmpInstall = sys_get_temp_dir().'/traefik-install.yaml';
         file_put_contents($tmpInstall, view('k8s.traefik-install')->render());
-        passthru("kubectl apply -f {$tmpInstall}");
+        $this->runStreaming("kubectl apply -f {$tmpInstall}");
         @unlink($tmpInstall);
 
         if ($public !== '') {
-            shell_exec("kubectl create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run("kubectl create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
         }
         if ($secret !== '') {
-            shell_exec("kubectl create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run("kubectl create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
         }
 
         // 8. Apply manifests
@@ -460,7 +458,7 @@ class BundleInstallCommand extends Command
         // Use the standalone Kustomize binary bundled with the tarball to bypass older K3s parser bugs
         $applyCmd = getcwd().'/kustomize build '.escapeshellarg($overlayPath).' | kubectl apply -f -';
 
-        passthru($applyCmd, $applyCode);
+        $applyCode = $this->runStreaming($applyCmd);
         if ($applyCode !== 0) {
             $this->laraKubeError('Manifest apply failed.');
 
@@ -469,13 +467,13 @@ class BundleInstallCommand extends Command
 
         // 9. Wait for rollout
         $this->laraKubeInfo('Waiting for rollout...');
-        passthru('kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s');
+        $this->runStreaming('kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s', 190);
 
         // 10. Activate Cloudflare Tunnel (if bundled and token was provided)
         if ($tunnelToken !== null && $tunnelToken !== '') {
             $this->laraKubeInfo('Installing cloudflared as a system service...');
-            passthru('cp cloudflared /usr/local/bin/cloudflared');
-            passthru('chmod +x /usr/local/bin/cloudflared');
+            $this->runStreaming('cp cloudflared /usr/local/bin/cloudflared');
+            $this->runStreaming('chmod +x /usr/local/bin/cloudflared');
 
             $serviceFile = "[Unit]\n"
                 ."Description=Cloudflare Tunnel\n"
@@ -493,9 +491,9 @@ class BundleInstallCommand extends Command
                 ."WantedBy=multi-user.target\n";
 
             file_put_contents('/etc/systemd/system/cloudflared.service', $serviceFile);
-            passthru('chmod 600 /etc/systemd/system/cloudflared.service');
-            passthru('systemctl daemon-reload');
-            passthru('systemctl enable --now cloudflared');
+            $this->runStreaming('chmod 600 /etc/systemd/system/cloudflared.service');
+            $this->runStreaming('systemctl daemon-reload');
+            $this->runStreaming('systemctl enable --now cloudflared');
             $this->laraKubeInfo('✅ Cloudflare Tunnel service enabled and started.');
         } elseif (($bundleManifest['tunnelEnabled'] ?? false)) {
             $this->laraKubeWarn('Cloudflare Tunnel skipped (no token provided). Run manually later:');
@@ -504,8 +502,8 @@ class BundleInstallCommand extends Command
         }
 
         if (file_exists('./reset.sh')) {
-            passthru('cp reset.sh /usr/local/bin/larakube-reset');
-            passthru('chmod +x /usr/local/bin/larakube-reset');
+            $this->runStreaming('cp reset.sh /usr/local/bin/larakube-reset');
+            $this->runStreaming('chmod +x /usr/local/bin/larakube-reset');
         }
 
         $this->newLine();

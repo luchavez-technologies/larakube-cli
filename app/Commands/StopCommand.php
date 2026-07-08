@@ -6,6 +6,7 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class StopCommand extends Command
@@ -35,7 +36,7 @@ class StopCommand extends Command
         $this->laraKubeInfo("Pausing services in '{$environment}'...");
 
         $this->withSpin('Scaling down application pods to zero...', function () use ($namespace) {
-            exec("kubectl scale deployment --all --replicas=0 -n {$namespace}");
+            Process::run("kubectl scale deployment --all --replicas=0 -n {$namespace}");
 
             return true;
         });

@@ -205,7 +205,7 @@ class BundleBuildCommand extends Command
         $this->laraKubeInfo("Building app image for {$platform}…");
         $dotenvPath = $this->createDotenvBuildSecret($config, $env, $reverbAppKey);
         try {
-            passthru($this->buildProductionImageCommand($images['app'], $config->getPath().'/Dockerfile.php', $config->getPath(), $platform, $dotenvPath), $code);
+            $code = $this->runStreaming($this->buildProductionImageCommand($images['app'], $config->getPath().'/Dockerfile.php', $config->getPath(), $platform, $dotenvPath));
         } finally {
             @unlink($dotenvPath);
         }
@@ -220,10 +220,10 @@ class BundleBuildCommand extends Command
             $tar = "$outDir/images/".$this->imageTarName($image);
             if ($index > 0) {
                 $this->line('  <fg=gray>pull</> '.$image.' for '.$platform);
-                passthru('docker pull --platform '.escapeshellarg($platform).' '.escapeshellarg($image));
+                $this->runStreaming('docker pull --platform '.escapeshellarg($platform).' '.escapeshellarg($image));
             }
             $this->line('  <fg=gray>save</> '.$image);
-            passthru('docker save --platform '.escapeshellarg($platform).' '.escapeshellarg($image).' -o '.escapeshellarg($tar), $code);
+            $code = $this->runStreaming('docker save --platform '.escapeshellarg($platform).' '.escapeshellarg($image).' -o '.escapeshellarg($tar));
             if ($code !== 0) {
                 $this->laraKubeError("Failed to save {$image} — is it built/pulled and is Docker running?");
 
@@ -235,22 +235,22 @@ class BundleBuildCommand extends Command
         //    `bundle:install` imports the saved app image under that exact name, IfNotPresent).
         $k8s = $config->getK8sPath();
         if (is_dir($k8s)) {
-            passthru('cp -R '.escapeshellarg($k8s.'/.').' '.escapeshellarg("$outDir/manifests"));
+            $this->runStreaming('cp -R '.escapeshellarg($k8s.'/.').' '.escapeshellarg("$outDir/manifests"));
 
             // Prune overlays for other environments to avoid leaking configs
             foreach (array_keys($config->getEnvironments()) as $otherEnv) {
                 if ($otherEnv !== $env) {
                     $overlayPath = "$outDir/manifests/overlays/{$otherEnv}";
                     if (is_dir($overlayPath)) {
-                        passthru('rm -rf '.escapeshellarg($overlayPath));
+                        $this->runStreaming('rm -rf '.escapeshellarg($overlayPath));
                     }
                 }
             }
 
         }
-        passthru('cp '.escapeshellarg($config->getPath().'/.larakube.json').' '.escapeshellarg("$outDir/.larakube.json"));
+        $this->runStreaming('cp '.escapeshellarg($config->getPath().'/.larakube.json').' '.escapeshellarg("$outDir/.larakube.json"));
         if (file_exists($config->getPath().'/.env.example')) {
-            passthru('cp '.escapeshellarg($config->getPath().'/.env.example').' '.escapeshellarg("$outDir/.env.example"));
+            $this->runStreaming('cp '.escapeshellarg($config->getPath().'/.env.example').' '.escapeshellarg("$outDir/.env.example"));
         }
 
         $isUpdate = $this->option('update');
@@ -260,15 +260,15 @@ class BundleBuildCommand extends Command
 
         $this->laraKubeInfo("Downloading kustomize standalone binary ({$kustomizeVersion})...");
         $kustomizeUrl = "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F{$kustomizeVersion}/kustomize_{$kustomizeVersion}_linux_{$kArch}.tar.gz";
-        passthru('curl -sL '.escapeshellarg($kustomizeUrl).' | tar -xz -C '.escapeshellarg($outDir).' kustomize');
-        passthru('chmod +x '.escapeshellarg("$outDir/kustomize"));
+        $this->runStreaming('curl -sL '.escapeshellarg($kustomizeUrl).' | tar -xz -C '.escapeshellarg($outDir).' kustomize');
+        $this->runStreaming('chmod +x '.escapeshellarg("$outDir/kustomize"));
 
         if ($this->option('k9s')) {
             $k9sVersion = $config->k9sVersion ?? 'v0.32.7';
             $this->laraKubeInfo("Downloading k9s ({$k9sVersion})...");
             $k9sUrl = "https://github.com/derailed/k9s/releases/download/{$k9sVersion}/k9s_Linux_{$kArch}.tar.gz";
-            passthru('curl -sL '.escapeshellarg($k9sUrl).' | tar -xz -C '.escapeshellarg($outDir).' k9s');
-            passthru('chmod +x '.escapeshellarg("$outDir/k9s"));
+            $this->runStreaming('curl -sL '.escapeshellarg($k9sUrl).' | tar -xz -C '.escapeshellarg($outDir).' k9s');
+            $this->runStreaming('chmod +x '.escapeshellarg("$outDir/k9s"));
         }
 
         if (! $isUpdate) {
@@ -280,15 +280,15 @@ class BundleBuildCommand extends Command
             $k3sInstallUrl = 'https://get.k3s.io';
 
             $this->line('  <fg=gray>download</> k3s binary');
-            passthru('curl -sL '.escapeshellarg($k3sBinaryUrl).' -o '.escapeshellarg("$outDir/k3s"));
-            passthru('chmod +x '.escapeshellarg("$outDir/k3s"));
+            $this->runStreaming('curl -sL '.escapeshellarg($k3sBinaryUrl).' -o '.escapeshellarg("$outDir/k3s"));
+            $this->runStreaming('chmod +x '.escapeshellarg("$outDir/k3s"));
 
             $this->line('  <fg=gray>download</> k3s-airgap-images');
-            passthru('curl -sL '.escapeshellarg($k3sImagesUrl).' -o '.escapeshellarg("$outDir/k3s-airgap-images.tar"));
+            $this->runStreaming('curl -sL '.escapeshellarg($k3sImagesUrl).' -o '.escapeshellarg("$outDir/k3s-airgap-images.tar"));
 
             $this->line('  <fg=gray>download</> k3s-install.sh');
-            passthru('curl -sL '.escapeshellarg($k3sInstallUrl).' -o '.escapeshellarg("$outDir/k3s-install.sh"));
-            passthru('chmod +x '.escapeshellarg("$outDir/k3s-install.sh"));
+            $this->runStreaming('curl -sL '.escapeshellarg($k3sInstallUrl).' -o '.escapeshellarg("$outDir/k3s-install.sh"));
+            $this->runStreaming('chmod +x '.escapeshellarg("$outDir/k3s-install.sh"));
         }
 
         $binArch = $arch === 'amd64' ? 'x64' : 'arm';
@@ -296,20 +296,20 @@ class BundleBuildCommand extends Command
 
         $this->line("  <fg=gray>download</> larakube binary (Linux {$binArch})");
         $binaryUrl = "https://github.com/luchavez-technologies/larakube-cli/releases/latest/download/{$binaryName}";
-        passthru('curl -sL '.escapeshellarg($binaryUrl).' -o '.escapeshellarg("$outDir/larakube"));
+        $this->runStreaming('curl -sL '.escapeshellarg($binaryUrl).' -o '.escapeshellarg("$outDir/larakube"));
 
-        passthru('chmod +x '.escapeshellarg("$outDir/larakube"));
+        $this->runStreaming('chmod +x '.escapeshellarg("$outDir/larakube"));
 
         if ($this->option('tunnel')) {
             $this->laraKubeInfo("Downloading cloudflared for Cloudflare Tunnel ({$arch})...");
             $cloudflaredUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-{$arch}";
-            passthru('curl -sL '.escapeshellarg($cloudflaredUrl).' -o '.escapeshellarg("$outDir/cloudflared"));
-            passthru('chmod +x '.escapeshellarg("$outDir/cloudflared"));
+            $this->runStreaming('curl -sL '.escapeshellarg($cloudflaredUrl).' -o '.escapeshellarg("$outDir/cloudflared"));
+            $this->runStreaming('chmod +x '.escapeshellarg("$outDir/cloudflared"));
         }
 
         // Write clean-slate reset script (always included)
         file_put_contents("$outDir/reset.sh", $this->resetScript());
-        passthru('chmod +x '.escapeshellarg("$outDir/reset.sh"));
+        $this->runStreaming('chmod +x '.escapeshellarg("$outDir/reset.sh"));
 
         // 5a. Company CA — copy into ca/ so bundle:install can find it without flags.
         if ($caMode !== null) {
@@ -317,7 +317,7 @@ class BundleBuildCommand extends Command
             copy($caCertPath, "$outDir/ca/company-ca.crt");
             if ($caMode === 'full_sign') {
                 copy($caKeyPath, "$outDir/ca/company-ca.key");
-                passthru('chmod 600 '.escapeshellarg("$outDir/ca/company-ca.key"));
+                $this->runStreaming('chmod 600 '.escapeshellarg("$outDir/ca/company-ca.key"));
             }
         }
 
@@ -347,7 +347,7 @@ class BundleBuildCommand extends Command
             $baseDir = dirname($outDir);
             $folderName = basename($outDir);
 
-            passthru('tar -czf '.escapeshellarg($tarFile).' -C '.escapeshellarg($baseDir).' '.escapeshellarg($folderName), $tarCode);
+            $tarCode = $this->runStreaming('tar -czf '.escapeshellarg($tarFile).' -C '.escapeshellarg($baseDir).' '.escapeshellarg($folderName));
 
             if ($tarCode === 0) {
                 $this->laraKubeInfo('✅ Bundle compressed successfully: '.$tarFile);

@@ -12,6 +12,8 @@ use App\Traits\InteractsWithTraefik;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesLocalCa;
 use App\Traits\PromotesIngressDns;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\text;
@@ -20,7 +22,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class PlexInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithHosts, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithTraefik, LaraKubeOutput, ManagesLocalCa, PromotesIngressDns;
+    use InteractsWithClusterContext, InteractsWithHosts, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithTraefik, LaraKubeOutput, ManagesLocalCa, PromotesIngressDns, StreamsProcessOutput;
 
     protected $signature = 'plex:init
         {--services= : Comma-separated services to provision non-interactively, e.g. postgres,redis,meilisearch (no prompt; nothing assumed)}
@@ -59,7 +61,7 @@ class PlexInitCommand extends Command
             return 1;
         }
 
-        $context = $this->plexContext ?: trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
+        $context = $this->plexContext ?: trim(Process::run('kubectl config current-context')->output());
         $this->line("  <fg=gray>Target context:</> <fg=cyan>{$context}</>");
         $this->newLine();
 
@@ -79,7 +81,7 @@ class PlexInitCommand extends Command
 
         // 2. Namespace (idempotent).
         $kubectl = $this->plexKubectl();
-        $this->withSpin("Ensuring namespace {$ns}...", fn () => shell_exec(
+        $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
@@ -95,7 +97,7 @@ class PlexInitCommand extends Command
         $this->withSpin('Applying Commons manifests...', function () use ($manifest, $ns, $kubectl) {
             $tmp = sys_get_temp_dir().'/larakube-plex-commons.yaml';
             file_put_contents($tmp, $manifest);
-            passthru("{$kubectl} apply -n {$ns} -f {$tmp}");
+            $this->runStreaming("{$kubectl} apply -n {$ns} -f {$tmp}");
             @unlink($tmp);
 
             return true;
@@ -103,14 +105,15 @@ class PlexInitCommand extends Command
 
         // 5. Tenant registry — create once, declaratively (so later `apply`s don't
         //    warn about a missing last-applied-configuration), never overwrite.
-        if (trim((string) shell_exec("{$kubectl} get configmap plex-registry -n {$ns} -o name 2>/dev/null")) === '') {
+        if (trim(Process::run("{$kubectl} get configmap plex-registry -n {$ns} -o name")->output()) === '') {
             $this->saveRegistry([]);
         }
 
         // 6. Wait for each enabled service to roll out.
         foreach ($enabled as $service) {
-            $this->withSpin("Waiting for {$service} to be ready...", fn () => passthru(
+            $this->withSpin("Waiting for {$service} to be ready...", fn () => $this->runStreaming(
                 "{$kubectl} rollout status deploy/{$service} -n {$ns} --timeout=120s",
+                130,
             ));
         }
 
@@ -323,7 +326,7 @@ class PlexInitCommand extends Command
      */
     protected function targetsLocalCluster(): bool
     {
-        $context = $this->plexContext ?: trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
+        $context = $this->plexContext ?: trim(Process::run('kubectl config current-context')->output());
 
         if ($this->isLocalContextName($context)) {
             return true;
@@ -334,7 +337,7 @@ class PlexInitCommand extends Command
         // --context so an explicitly-picked context is checked, not just
         // whatever the ambient kubectl context happens to be.
         $kubectl = $this->plexContext ? 'kubectl --context '.escapeshellarg($this->plexContext) : 'kubectl';
-        $server = trim((string) shell_exec($kubectl.' config view --minify -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}').' 2>/dev/null'));
+        $server = trim(Process::run($kubectl.' config view --minify -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}'))->output());
 
         return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
     }
@@ -354,16 +357,12 @@ class PlexInitCommand extends Command
     {
         $lastExit = 0;
         $exec = function (string $cmd) use ($kubectl, $ns, &$lastExit): string {
-            $output = [];
-            $code = 0;
-            exec(
-                "{$kubectl} exec -n {$ns} deploy/garage -- sh -c ".escapeshellarg($cmd).' 2>&1',
-                $output,
-                $code,
+            $result = Process::run(
+                "{$kubectl} exec -n {$ns} deploy/garage -- sh -c ".escapeshellarg($cmd),
             );
-            $lastExit = $code;
+            $lastExit = $result->exitCode();
 
-            return implode("\n", $output);
+            return trim($result->output().$result->errorOutput());
         };
 
         $exec('/garage bucket list');
@@ -432,9 +431,9 @@ class PlexInitCommand extends Command
         // If MinIO already claimed these fields first, Garage's tenants would
         // get the wrong credentials — enabling more than one credentialed S3
         // backend in the same Commons at once isn't fully supported yet.
-        $existing = trim((string) shell_exec(
-            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.S3_ACCESS_KEY}').' 2>/dev/null',
-        ));
+        $existing = trim(Process::run(
+            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.S3_ACCESS_KEY}'),
+        )->output());
 
         if ($existing !== '') {
             $this->laraKubeWarn('Garage\'s admin key was created, but plex-admin already has S3 credentials from another backend.');
@@ -443,7 +442,7 @@ class PlexInitCommand extends Command
             return;
         }
 
-        shell_exec(
+        Process::run(
             "{$kubectl} patch secret plex-admin -n {$ns} --type merge -p ".
             escapeshellarg((string) json_encode(['data' => [
                 'S3_ACCESS_KEY' => base64_encode($access),
@@ -472,16 +471,16 @@ class PlexInitCommand extends Command
             'S3_SECRET_KEY' => fn () => bin2hex(random_bytes(16)),
         ];
 
-        $exists = trim((string) shell_exec(
-            "{$kubectl} get secret plex-admin -n {$ns} -o name 2>/dev/null",
-        )) !== '';
+        $exists = trim(Process::run(
+            "{$kubectl} get secret plex-admin -n {$ns} -o name",
+        )->output()) !== '';
 
         if (! $exists) {
             $literals = '';
             foreach ($generators as $key => $generate) {
                 $literals .= '--from-literal='.$key.'='.escapeshellarg($generate()).' ';
             }
-            shell_exec(
+            Process::run(
                 "{$kubectl} create secret generic plex-admin -n {$ns} {$literals}".
                 "--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -495,9 +494,9 @@ class PlexInitCommand extends Command
         // set only on first init).
         $patch = [];
         foreach ($generators as $key => $generate) {
-            $present = trim((string) shell_exec(
-                "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.'.$key.'}').' 2>/dev/null',
-            )) !== '';
+            $present = trim(Process::run(
+                "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.'.$key.'}'),
+            )->output()) !== '';
 
             if (! $present) {
                 $patch[$key] = base64_encode($generate());
@@ -505,7 +504,7 @@ class PlexInitCommand extends Command
         }
 
         if (! empty($patch)) {
-            shell_exec(
+            Process::run(
                 "{$kubectl} patch secret plex-admin -n {$ns} --type merge -p ".
                 escapeshellarg((string) json_encode(['data' => $patch])),
             );

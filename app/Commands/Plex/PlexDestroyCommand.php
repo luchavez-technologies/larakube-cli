@@ -6,6 +6,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\StreamsProcessOutput;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
@@ -14,7 +15,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class PlexDestroyCommand extends Command
 {
-    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     protected $signature = 'plex:destroy
         {environment=local : The environment whose Commons to destroy (local, or a cloud environment)}
@@ -102,8 +103,9 @@ class PlexDestroyCommand extends Command
         // PVCs (and their dynamically-provisioned PVs), the spec ConfigMap, the
         // registry, and the admin secret.
         $kubectl = $this->plexKubectl();
-        $this->withSpin("Deleting namespace {$ns}...", fn () => passthru(
+        $this->withSpin("Deleting namespace {$ns}...", fn () => $this->runStreaming(
             "{$kubectl} delete namespace ".escapeshellarg($ns).' --ignore-not-found',
+            120,
         ));
 
         $this->laraKubeNewLine();

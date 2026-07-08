@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\GlobalConfigData;
 use App\Enums\CompanionDriver;
+use Illuminate\Support\Facades\Process;
 
 trait ManagesLocalCa
 {
@@ -81,13 +82,13 @@ trait ManagesLocalCa
 
         @mkdir($this->getLocalCaDir(), 0700, true);
 
-        exec('openssl genrsa -out '.escapeshellarg($this->getLocalCaKeyPath()).' 4096 2>/dev/null');
-        exec(
+        Process::run('openssl genrsa -out '.escapeshellarg($this->getLocalCaKeyPath()).' 4096');
+        Process::run(
             'openssl req -x509 -new -nodes'
             .' -key '.escapeshellarg($this->getLocalCaKeyPath())
             .' -sha256 -days 3650'
             .' -out '.escapeshellarg($this->getLocalCaCertPath())
-            .' -subj "/CN=LaraKube Local CA/O=LaraKube" 2>/dev/null',
+            .' -subj "/CN=LaraKube Local CA/O=LaraKube"',
         );
     }
 
@@ -344,9 +345,9 @@ CNF;
     {
         file_put_contents($cnf, $cnfContent);
 
-        exec('openssl genrsa -out '.escapeshellarg($keyPath).' 2048 2>/dev/null');
-        exec('openssl req -new -key '.escapeshellarg($keyPath).' -out '.escapeshellarg($csr).' -config '.escapeshellarg($cnf).' 2>/dev/null');
-        exec(
+        Process::run('openssl genrsa -out '.escapeshellarg($keyPath).' 2048');
+        Process::run('openssl req -new -key '.escapeshellarg($keyPath).' -out '.escapeshellarg($csr).' -config '.escapeshellarg($cnf));
+        Process::run(
             'openssl x509 -req'
             .' -in '.escapeshellarg($csr)
             .' -CA '.escapeshellarg($this->getLocalCaCertPath())
@@ -354,7 +355,7 @@ CNF;
             .' -CAcreateserial'
             .' -out '.escapeshellarg($crtPath)
             .' -days 825 -sha256'
-            .' -extfile '.escapeshellarg($cnf).' -extensions v3_req 2>/dev/null',
+            .' -extfile '.escapeshellarg($cnf).' -extensions v3_req',
         );
 
         @unlink($cnf);

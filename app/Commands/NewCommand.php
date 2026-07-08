@@ -24,6 +24,7 @@ use App\Traits\InteractsWithDynamicOptions;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
@@ -210,7 +211,7 @@ class NewCommand extends Command
         $image = $config->getPhpImage(true);
 
         $this->laraKubeInfo("Pulling builder image: $image...");
-        passthru("docker pull $image > /dev/null 2>&1");
+        Process::forever()->run("docker pull $image");
 
         // Skip LaraKube-specific flags (Dynamic from Enums)
         $larakubeFlags = array_merge(
@@ -264,7 +265,7 @@ class NewCommand extends Command
         $pkgCommand = $this->getNodeInstallationCommand($image);
         $baseDir = dirname($projectPath);
 
-        $cmd = "docker run --rm -it -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 --user root $image ".
+        $cmd = "docker run --rm -it -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false --user root $image ".
                "sh -c '$pkgCommand && composer config -g bin-dir /usr/local/bin && composer global require laravel/installer && laravel new $appName $extraFlags'";
 
         passthru($cmd);
@@ -274,7 +275,7 @@ class NewCommand extends Command
         // could silently no-op (notably on WSL) and leave a root-owned project you'd need
         // sudo to manage. Uses the host user's real uid/gid (see InteractsWithDocker::hostUid).
         if (is_dir($projectPath)) {
-            passthru("docker run --rm -v $baseDir:/var/www/html --user root $image chown -R $uid:$gid /var/www/html/$appName");
+            $this->runStreaming("docker run --rm -v $baseDir:/var/www/html --user root $image chown -R $uid:$gid /var/www/html/$appName");
         }
     }
 }

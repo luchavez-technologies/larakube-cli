@@ -7,6 +7,8 @@ use App\Enums\SharedClusterService;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMonitoring;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
@@ -15,7 +17,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MonitorInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithMonitoring, LaraKubeOutput;
+    use InteractsWithClusterContext, InteractsWithMonitoring, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'monitor:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Grafana host.}
@@ -45,7 +47,7 @@ class MonitorInitCommand extends Command
         // would come up on grafana.localhost and be unreachable.
         $host = $this->resolveGrafanaHost();
 
-        $this->withSpin("Ensuring namespace {$ns}...", fn () => shell_exec(
+        $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
@@ -59,23 +61,28 @@ class MonitorInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-monitoring.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying monitoring manifests...', fn () => passthru("{$kubectl} apply -f {$tmp}"));
+        $this->withSpin('Applying monitoring manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Prometheus...', fn () => passthru(
+        $this->withSpin('Waiting for Prometheus...', fn () => $this->runStreaming(
             "{$kubectl} rollout status deploy/prometheus -n {$ns} --timeout=120s",
+            130,
         ));
-        $this->withSpin('Waiting for Loki...', fn () => passthru(
+        $this->withSpin('Waiting for Loki...', fn () => $this->runStreaming(
             "{$kubectl} rollout status deploy/loki -n {$ns} --timeout=120s",
+            130,
         ));
-        $this->withSpin('Waiting for kube-state-metrics...', fn () => passthru(
+        $this->withSpin('Waiting for kube-state-metrics...', fn () => $this->runStreaming(
             "{$kubectl} rollout status deploy/kube-state-metrics -n {$ns} --timeout=120s",
+            130,
         ));
-        $this->withSpin('Waiting for Grafana...', fn () => passthru(
+        $this->withSpin('Waiting for Grafana...', fn () => $this->runStreaming(
             "{$kubectl} rollout status deploy/grafana -n {$ns} --timeout=120s",
+            130,
         ));
-        $this->withSpin('Waiting for Promtail...', fn () => passthru(
+        $this->withSpin('Waiting for Promtail...', fn () => $this->runStreaming(
             "{$kubectl} rollout status daemonset/promtail -n {$ns} --timeout=120s",
+            130,
         ));
 
         $this->laraKubeNewLine();
@@ -97,40 +104,40 @@ class MonitorInitCommand extends Command
         $kubectl = $this->monitoringKubectl($this->option('context'));
         $ns = $this->monitoringNamespace();
 
-        $this->withSpin('Removing Prometheus...', fn () => shell_exec(
+        $this->withSpin('Removing Prometheus...', fn () => Process::run(
             "{$kubectl} delete deployment,svc,configmap,pvc,serviceaccount"
             .' prometheus prometheus-config prometheus-storage'
-            ." -n {$ns} --ignore-not-found 2>/dev/null",
+            ." -n {$ns} --ignore-not-found",
         ));
 
-        $this->withSpin('Removing Loki...', fn () => shell_exec(
+        $this->withSpin('Removing Loki...', fn () => Process::run(
             "{$kubectl} delete deployment,svc,configmap,pvc"
             .' loki loki-config loki-storage'
-            ." -n {$ns} --ignore-not-found 2>/dev/null",
+            ." -n {$ns} --ignore-not-found",
         ));
 
-        $this->withSpin('Removing Promtail...', fn () => shell_exec(
+        $this->withSpin('Removing Promtail...', fn () => Process::run(
             "{$kubectl} delete daemonset,configmap,serviceaccount"
             .' promtail promtail-config'
-            ." -n {$ns} --ignore-not-found 2>/dev/null",
+            ." -n {$ns} --ignore-not-found",
         ));
 
-        $this->withSpin('Removing kube-state-metrics...', fn () => shell_exec(
+        $this->withSpin('Removing kube-state-metrics...', fn () => Process::run(
             "{$kubectl} delete deployment,svc,serviceaccount"
             .' kube-state-metrics'
-            ." -n {$ns} --ignore-not-found 2>/dev/null",
+            ." -n {$ns} --ignore-not-found",
         ));
 
-        $this->withSpin('Removing Grafana...', fn () => shell_exec(
+        $this->withSpin('Removing Grafana...', fn () => Process::run(
             "{$kubectl} delete deployment,svc,ingress,secret,configmap"
             .' grafana grafana-admin grafana-datasources'
-            ." -n {$ns} --ignore-not-found 2>/dev/null",
+            ." -n {$ns} --ignore-not-found",
         ));
 
-        $this->withSpin('Removing cluster RBAC...', fn () => shell_exec(
+        $this->withSpin('Removing cluster RBAC...', fn () => Process::run(
             "{$kubectl} delete clusterrole,clusterrolebinding"
             .' larakube-prometheus larakube-promtail larakube-kube-state-metrics'
-            .' --ignore-not-found 2>/dev/null',
+            .' --ignore-not-found',
         ));
 
         $this->laraKubeInfo('Monitoring stack removed from larakube-shared.');

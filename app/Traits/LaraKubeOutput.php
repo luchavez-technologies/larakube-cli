@@ -53,7 +53,7 @@ trait LaraKubeOutput
      */
     protected function renderHeader(): void
     {
-        if ($this->isAiAgent() || State::$headerRendered) {
+        if (State::$headerRendered || app()->runningUnitTests()) {
             return;
         }
 

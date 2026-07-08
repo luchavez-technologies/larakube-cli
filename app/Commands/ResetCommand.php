@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\text;
 
@@ -75,7 +76,7 @@ class ResetCommand extends Command
             }
 
             if (is_dir($projectPath.'/.infrastructure')) {
-                exec('rm -rf '.escapeshellarg($projectPath.'/.infrastructure'));
+                Process::run('rm -rf '.escapeshellarg($projectPath.'/.infrastructure'));
             }
 
             // Remove from internal database

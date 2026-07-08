@@ -8,6 +8,7 @@ use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesCompanions;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
 
@@ -25,7 +26,7 @@ class CompanionAddCommand extends Command
     {
         $this->renderHeader();
 
-        if (! shell_exec('kubectl get namespace larakube-system --no-headers 2>/dev/null')) {
+        if (! Process::run('kubectl get namespace larakube-system --no-headers')->successful()) {
             $this->error('  The larakube-system namespace does not exist yet.');
             $this->line('  Run <fg=yellow>larakube cluster:setup</> or <fg=yellow>larakube up</> first.');
 

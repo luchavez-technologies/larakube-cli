@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 trait PrunesKubeContext
 {
     /**
@@ -33,23 +35,23 @@ trait PrunesKubeContext
         // entries, and where the stale one lives (a shell $KUBECONFIG could point
         // elsewhere). Mirrors mergeK3sKubeconfig().
         $kc = 'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config';
-        $current = trim((string) shell_exec($kc.' current-context 2>/dev/null'));
+        $current = trim(Process::run($kc.' current-context')->output());
 
         foreach ($contexts as $ctx) {
-            exec($kc.' delete-context '.escapeshellarg($ctx).' 2>/dev/null');
-            exec($kc.' delete-cluster '.escapeshellarg($ctx).' 2>/dev/null');
-            exec($kc.' delete-user '.escapeshellarg($ctx).' 2>/dev/null');
+            Process::run($kc.' delete-context '.escapeshellarg($ctx));
+            Process::run($kc.' delete-cluster '.escapeshellarg($ctx));
+            Process::run($kc.' delete-user '.escapeshellarg($ctx));
 
             // k3d stores the user as `admin@k3d-<name>`, not the context name.
             if (str_starts_with($ctx, 'k3d-')) {
-                exec($kc.' delete-user '.escapeshellarg('admin@'.$ctx).' 2>/dev/null');
+                Process::run($kc.' delete-user '.escapeshellarg('admin@'.$ctx));
             }
         }
 
         // A current-context naming a now-removed cluster makes k9s/kubectl fail to
         // connect; clear it so the next setup (or k9s) starts from a clean slate.
         if ($current !== '' && in_array($current, $contexts, true)) {
-            exec($kc.' unset current-context 2>/dev/null');
+            Process::run($kc.' unset current-context');
         }
     }
 }

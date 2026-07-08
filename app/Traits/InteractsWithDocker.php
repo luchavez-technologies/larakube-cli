@@ -3,10 +3,11 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use Illuminate\Support\Facades\Process;
 
 trait InteractsWithDocker
 {
-    use InteractsWithProjectConfig;
+    use InteractsWithProjectConfig, StreamsProcessOutput;
 
     /**
      * Decide where a freshly built image must be sideloaded, from the active
@@ -67,8 +68,8 @@ trait InteractsWithDocker
         $localImage = "$appName:local";
 
         // Check if we have a local image, otherwise fallback to base
-        $imageExists = shell_exec("docker images -q {$localImage} 2>/dev/null");
-        $image = $imageExists ? $localImage : $this->getProjectConfig($path)->getPhpImage(true);
+        $imageExists = Process::run("docker images -q {$localImage}")->output();
+        $image = $imageExists !== '' ? $localImage : $this->getProjectConfig($path)->getPhpImage(true);
 
         $baseEnvs = '-e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_IGNORE_PLATFORM_REQS=1';
 
@@ -77,9 +78,9 @@ trait InteractsWithDocker
 
     protected function imageExists(string $image): bool
     {
-        $id = shell_exec('docker images -q '.escapeshellarg($image).' 2>/dev/null');
+        $id = Process::run('docker images -q '.escapeshellarg($image))->output();
 
-        return ! empty(trim($id ?? ''));
+        return trim($id) !== '';
     }
 
     /**
@@ -133,7 +134,7 @@ trait InteractsWithDocker
             $buildArgs = "--build-arg USER_ID=$uid --build-arg GROUP_ID=$gid";
         }
 
-        passthru("docker build $target $buildArgs -t $imageTag -f $dockerfile $path");
+        $this->runStreaming("docker build $target $buildArgs -t $imageTag -f $dockerfile $path");
 
         // --- 🛡 LOCAL IMAGE BRIDGE ---
         // Images built on the host Docker engine are invisible to a local
@@ -151,7 +152,7 @@ trait InteractsWithDocker
      */
     protected function sideloadToActiveCluster(string $imageTag): void
     {
-        $context = trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
+        $context = trim(Process::run('kubectl config current-context')->output());
         $sideload = $this->resolveSideloadTarget($context);
 
         if ($sideload === null) {
@@ -177,7 +178,7 @@ trait InteractsWithDocker
      */
     protected function imageInActiveCluster(string $imageTag): ?bool
     {
-        $context = trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
+        $context = trim(Process::run('kubectl config current-context')->output());
         $sideload = $this->resolveSideloadTarget($context);
 
         if ($sideload === null) {
@@ -187,24 +188,23 @@ trait InteractsWithDocker
         if ($sideload['engine'] === 'k3d') {
             // k3d nodes run in Docker; query the server node's containerd (no sudo).
             $node = 'k3d-'.$sideload['cluster'].'-server-0';
-            if (trim((string) shell_exec('docker inspect -f "{{.State.Running}}" '.escapeshellarg($node).' 2>/dev/null')) !== 'true') {
+            if (trim(Process::run('docker inspect -f "{{.State.Running}}" '.escapeshellarg($node))->output()) !== 'true') {
                 return null; // Node isn't up — can't tell; don't force a re-import.
             }
-            $images = shell_exec('docker exec '.escapeshellarg($node).' crictl images 2>/dev/null');
+            $images = Process::run('docker exec '.escapeshellarg($node).' crictl images')->output();
 
-            return $this->clusterImageListContains($images ?? '', $imageTag);
+            return $this->clusterImageListContains($images, $imageTag);
         }
 
         // Native k3s: containerd is root-owned, so checking needs sudo. Only look
-        // when sudo is already cached — never trigger a password prompt to check.
-        $code = 0;
-        exec('sudo -n true 2>/dev/null', $out, $code);
-        if ($code !== 0) {
+        // when sudo is already cached — never trigger a password prompt to check
+        // (`-n` fails immediately instead of prompting).
+        if (! Process::run('sudo -n true')->successful()) {
             return null;
         }
-        $images = shell_exec('sudo -n k3s ctr -n k8s.io images ls -q 2>/dev/null');
+        $images = Process::run('sudo -n k3s ctr -n k8s.io images ls -q')->output();
 
-        return $this->clusterImageListContains($images ?? '', $imageTag);
+        return $this->clusterImageListContains($images, $imageTag);
     }
 
     /**
@@ -213,20 +213,19 @@ trait InteractsWithDocker
     protected function sideloadIntoK3d(string $imageTag, string $cluster): void
     {
         // Confirm the cluster exists in k3d (also skips cleanly if k3d isn't installed).
-        if (trim((string) shell_exec('k3d cluster list '.escapeshellarg($cluster).' --no-headers 2>/dev/null')) === '') {
+        if (trim(Process::run('k3d cluster list '.escapeshellarg($cluster).' --no-headers')->output()) === '') {
             return;
         }
 
         $this->laraKubeInfo("Importing '$imageTag' into k3d cluster '$cluster'...");
 
-        $output = [];
-        $code = 0;
-        exec('k3d image import '.escapeshellarg($imageTag).' -c '.escapeshellarg($cluster).' 2>&1', $output, $code);
+        $result = Process::forever()->run('k3d image import '.escapeshellarg($imageTag).' -c '.escapeshellarg($cluster));
 
-        if ($code !== 0) {
+        if (! $result->successful()) {
             $this->laraKubeError("Could not sideload '$imageTag' into k3d cluster '$cluster'.");
             $this->line('  The local image is not visible to the cluster nodes, so pods will');
             $this->line('  likely fail with ImagePullBackOff. Last output from k3d:');
+            $output = explode("\n", trim($result->output().$result->errorOutput()));
             foreach (array_slice($output, -4) as $line) {
                 $this->line('    '.$line);
             }
@@ -236,9 +235,9 @@ trait InteractsWithDocker
 
         // Verify availability on the cluster's server node.
         $this->withSpin('Verifying cluster image availability...', function () use ($imageTag, $cluster) {
-            $images = shell_exec('docker exec k3d-'.$cluster.'-server-0 crictl images 2>/dev/null');
+            $images = Process::run('docker exec k3d-'.$cluster.'-server-0 crictl images')->output();
 
-            return $this->clusterImageListContains($images ?? '', $imageTag);
+            return $this->clusterImageListContains($images, $imageTag);
         });
     }
 
@@ -301,7 +300,7 @@ trait InteractsWithDocker
     protected function runInContainer(string $command, string $path, string $type = 'php', string $envs = ''): void
     {
         $base = $this->getDockerCommand($path, $type, $envs);
-        passthru($base."sh -c '$command'");
+        $this->runStreaming($base."sh -c '$command'");
     }
 
     /**
@@ -313,7 +312,7 @@ trait InteractsWithDocker
      */
     protected function hostUid(): int
     {
-        $uid = trim((string) shell_exec('id -u 2>/dev/null'));
+        $uid = trim(Process::run('id -u')->output());
 
         if ($uid !== '' && ctype_digit($uid)) {
             return (int) $uid;
@@ -324,7 +323,7 @@ trait InteractsWithDocker
 
     protected function hostGid(): int
     {
-        $gid = trim((string) shell_exec('id -g 2>/dev/null'));
+        $gid = trim(Process::run('id -g')->output());
 
         if ($gid !== '' && ctype_digit($gid)) {
             return (int) $gid;
@@ -347,13 +346,13 @@ trait InteractsWithDocker
      */
     protected function dockerGroupNeedsRefresh(): bool
     {
-        $groupEntry = trim((string) shell_exec('getent group docker 2>/dev/null'));
+        $groupEntry = trim(Process::run('getent group docker')->output());
 
         if ($groupEntry === '') {
             return false;
         }
 
-        $user = trim((string) shell_exec('id -un 2>/dev/null'));
+        $user = trim(Process::run('id -un')->output());
 
         if ($user === '') {
             return false;
@@ -362,7 +361,7 @@ trait InteractsWithDocker
         // getent group docker → "docker:x:999:alice,bob" — 4th field is the member list.
         $fields = explode(':', $groupEntry);
         $members = isset($fields[3]) && $fields[3] !== '' ? explode(',', $fields[3]) : [];
-        $primaryGroup = trim((string) shell_exec('id -gn 2>/dev/null'));
+        $primaryGroup = trim(Process::run('id -gn')->output());
 
         $isMember = in_array($user, $members, true) || $primaryGroup === 'docker';
 
@@ -370,7 +369,7 @@ trait InteractsWithDocker
             return false;
         }
 
-        $activeGroups = explode(' ', trim((string) shell_exec('id -Gn 2>/dev/null')));
+        $activeGroups = explode(' ', trim(Process::run('id -Gn')->output()));
 
         return ! in_array('docker', $activeGroups, true);
     }
@@ -387,11 +386,11 @@ trait InteractsWithDocker
         $image = "$appName:local";
 
         // Fallback if image doesn't exist
-        $imageExists = shell_exec("docker images -q {$image} 2>/dev/null");
-        if (! $imageExists) {
+        $imageExists = Process::run("docker images -q {$image}")->output();
+        if (trim($imageExists) === '') {
             $image = $this->getProjectConfig($path)->getPhpImage(true);
         }
 
-        passthru("docker run --rm --init -v $path:/var/www/html -w /var/www/html --user root $image chown -R $uid:$gid .");
+        $this->runStreaming("docker run --rm --init -v $path:/var/www/html -w /var/www/html --user root $image chown -R $uid:$gid .");
     }
 }

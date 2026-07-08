@@ -7,6 +7,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithTeammateRbac;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -60,7 +61,7 @@ class ClusterRevokeCommand extends Command
 
         // Delete each piece by its deterministic name (idempotent).
         foreach (["rolebinding/{$this->sa}", "role/{$this->sa}", "serviceaccount/{$this->sa}", "secret/{$this->sa}-token"] as $resource) {
-            shell_exec("{$kubectl} -n {$ns} delete {$resource} --ignore-not-found 2>/dev/null");
+            Process::run("{$kubectl} -n {$ns} delete {$resource} --ignore-not-found");
         }
 
         $this->laraKubeInfo("✅ Revoked the '{$this->sa}' deploy credential in '{$namespace}'. Any kubeconfig using its token is now dead.");
@@ -102,7 +103,7 @@ class ClusterRevokeCommand extends Command
 
                 return 0;
             }
-            shell_exec("{$kubectl} -n ".escapeshellarg($namespace).' delete rolebinding '.escapeshellarg($this->teammateBindingName($sa)).' --ignore-not-found 2>/dev/null');
+            Process::run("{$kubectl} -n ".escapeshellarg($namespace).' delete rolebinding '.escapeshellarg($this->teammateBindingName($sa)).' --ignore-not-found');
             $this->laraKubeInfo("✅ Removed {$name}'s access to '{$namespace}'.");
 
             return 0;
@@ -125,16 +126,16 @@ class ClusterRevokeCommand extends Command
             return 0;
         }
 
-        $list = shell_exec("{$kubectl} get rolebinding -A -l larakube.dev/access-user=".escapeshellarg($sa).' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}').' 2>/dev/null');
-        foreach (array_filter(array_map('trim', explode("\n", (string) $list))) as $line) {
+        $list = Process::run("{$kubectl} get rolebinding -A -l larakube.dev/access-user=".escapeshellarg($sa).' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}'))->output();
+        foreach (array_filter(array_map('trim', explode("\n", $list))) as $line) {
             [$bns, $bname] = array_pad(explode(' ', $line, 2), 2, '');
             if ($bns !== '' && $bname !== '') {
-                shell_exec("{$kubectl} -n ".escapeshellarg($bns).' delete rolebinding '.escapeshellarg($bname).' --ignore-not-found 2>/dev/null');
+                Process::run("{$kubectl} -n ".escapeshellarg($bns).' delete rolebinding '.escapeshellarg($bname).' --ignore-not-found');
             }
         }
 
         $accessNs = escapeshellarg($this->accessNamespace());
-        shell_exec("{$kubectl} -n {$accessNs} delete serviceaccount ".escapeshellarg($sa).' secret '.escapeshellarg($sa.'-token').' --ignore-not-found 2>/dev/null');
+        Process::run("{$kubectl} -n {$accessNs} delete serviceaccount ".escapeshellarg($sa).' secret '.escapeshellarg($sa.'-token').' --ignore-not-found');
 
         $this->laraKubeInfo("✅ Off-boarded '{$name}'.");
 
@@ -153,15 +154,15 @@ class ClusterRevokeCommand extends Command
         $secret = strtoupper($env).'_KUBECONFIG';
 
         $repoFlag = '';
-        $repo = trim((string) shell_exec('git remote get-url origin 2>/dev/null'));
+        $repo = trim(Process::run('git remote get-url origin')->output());
         if ($repo !== '' && preg_match('/(?:github\.com|github)[:\/](.*?)(?:\.git)?$/', $repo, $m)) {
             $repoFlag = '-R '.escapeshellarg($m[1]);
         }
 
         $gh = $this->getGhCommand();
-        exec("{$gh} secret delete ".escapeshellarg($secret)." {$repoFlag} 2>&1", $out, $code);
+        $success = Process::run("{$gh} secret delete ".escapeshellarg($secret)." {$repoFlag}")->successful();
 
-        if ($code === 0) {
+        if ($success) {
             $this->laraKubeInfo("✅ Deleted GitHub secret {$secret}.");
         } else {
             $this->laraKubeWarn("Could not delete GitHub secret {$secret} — run inside the repo with `gh` authenticated. (It only points at a now-dead token, so it's harmless.)");

@@ -9,6 +9,7 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
 
@@ -131,7 +132,7 @@ class ShellCommand extends Command
         };
 
         // Find the pod name
-        $podName = trim(shell_exec("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null"));
+        $podName = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
 
         if (! $podName) {
             $this->laraKubeError("Could not find a running {$service} pod in namespace '{$namespace}'. Is the environment up?");

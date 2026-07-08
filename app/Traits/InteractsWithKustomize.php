@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use Illuminate\Support\Facades\Process;
 
 /**
  * Local manifest builds (up, kustomize, cloud:deploy) render our overlays — including a
@@ -148,14 +149,14 @@ trait InteractsWithKustomize
             '  - path: patches.yaml',
         ])."\n");
 
-        exec($buildPrefix.' '.escapeshellarg($dir).' 2>/dev/null', $out, $code);
+        $result = Process::run($buildPrefix.' '.escapeshellarg($dir));
 
         @unlink($dir.'/deploy.yaml');
         @unlink($dir.'/patches.yaml');
         @unlink($dir.'/kustomization.yaml');
         @rmdir($dir);
 
-        return $code === 0 && $out !== [];
+        return $result->successful() && trim($result->output()) !== '';
     }
 
     /** Download the pinned kustomize into ~/.larakube/bin (no sudo, no system changes). */
@@ -174,13 +175,13 @@ trait InteractsWithKustomize
         }
 
         $url = "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F{$version}/kustomize_{$version}_{$os}_{$arch}.tar.gz";
-        exec('curl -sL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' kustomize 2>/dev/null');
+        Process::forever()->run('curl -sL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' kustomize');
         @chmod($bin, 0755);
 
         // Confirm it runs the pinned version; otherwise drop it so the build cleanly
         // falls back to `kubectl kustomize` rather than using a broken/partial binary.
         $out = (is_file($bin) && is_executable($bin))
-            ? (string) shell_exec(escapeshellarg($bin).' version 2>/dev/null')
+            ? Process::run(escapeshellarg($bin).' version')->output()
             : '';
 
         if (str_contains($out, $version)) {

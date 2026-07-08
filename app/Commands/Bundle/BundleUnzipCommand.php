@@ -3,6 +3,8 @@
 namespace App\Commands\Bundle;
 
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
 
@@ -10,7 +12,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class BundleUnzipCommand extends Command
 {
-    use LaraKubeOutput;
+    use LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'bundle:unzip 
                             {path? : Path to the .tar.gz bundle to extract}
@@ -68,12 +70,12 @@ class BundleUnzipCommand extends Command
 
         $this->laraKubeInfo('Extracting '.basename($realPath).'...');
 
-        passthru('tar -xzf '.escapeshellarg($realPath).' -C '.escapeshellarg($baseDir), $tarCode);
+        $tarCode = $this->runStreaming('tar -xzf '.escapeshellarg($realPath).' -C '.escapeshellarg($baseDir));
 
         if ($tarCode === 0) {
             $this->laraKubeInfo('✅ Bundle extracted successfully!');
             if ($this->option('delete')) {
-                passthru('rm -f '.escapeshellarg($realPath));
+                Process::run('rm -f '.escapeshellarg($realPath));
                 $this->laraKubeInfo('Deleted archive file.');
             }
         } else {

@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Support\Facades\Process;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -48,10 +49,11 @@ class OrchestrateVerbTool extends Tool
             $command .= " {$args}";
         }
 
-        $output = shell_exec($command.' --no-ansi --no-interaction 2>&1');
+        $result = Process::run($command.' --no-ansi --no-interaction');
+        $output = trim($result->output().$result->errorOutput());
         chdir($originalCwd);
 
-        return Response::text($output ?: 'Command executed successfully (no output).');
+        return Response::text($output !== '' ? $output : 'Command executed successfully (no output).');
     }
 
     /**

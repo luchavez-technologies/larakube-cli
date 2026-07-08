@@ -6,6 +6,7 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
@@ -108,11 +109,11 @@ class PurgeCommand extends Command
             // Delete all discovered environments (Dynamic)
             foreach ($this->getAvailableEnvironments() as $env) {
                 $namespace = "{$appName}-{$env}";
-                exec("kubectl delete namespace {$namespace} 2>/dev/null");
+                Process::run("kubectl delete namespace {$namespace}");
             }
 
             // Delete cluster-scoped volumes
-            exec("kubectl delete pv -l larakube-project={$appName} 2>/dev/null");
+            Process::run("kubectl delete pv -l larakube-project={$appName}");
 
             return true;
         });
@@ -125,7 +126,7 @@ class PurgeCommand extends Command
             foreach ($foundFiles as $file) {
                 $path = $projectPath.'/'.$file;
                 if (is_dir($path)) {
-                    exec('rm -rf '.escapeshellarg($path));
+                    Process::run('rm -rf '.escapeshellarg($path));
                 } else {
                     @unlink($path);
                 }
@@ -136,8 +137,8 @@ class PurgeCommand extends Command
 
         if ($this->option('image')) {
             $this->withSpin('Cleaning up Docker images...', function () use ($appName) {
-                exec("docker rmi -f {$appName}:latest 2>/dev/null");
-                exec("docker rmi -f {$appName}:local 2>/dev/null");
+                Process::run("docker rmi -f {$appName}:latest");
+                Process::run("docker rmi -f {$appName}:local");
 
                 return true;
             });

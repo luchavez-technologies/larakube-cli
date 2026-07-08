@@ -8,6 +8,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\StreamsProcessOutput;
 
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\table;
@@ -17,7 +18,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class PlexResourcesCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     protected $signature = 'plex:resources
         {environment=local : The environment whose Commons to configure (local, or a cloud environment)}
@@ -128,14 +129,15 @@ class PlexResourcesCommand extends Command
         $this->withSpin("Applying updated Commons manifests for '{$service}'...", function () use ($manifest, $ns, $kubectl) {
             $tmp = sys_get_temp_dir().'/larakube-plex-commons.yaml';
             file_put_contents($tmp, $manifest);
-            passthru("{$kubectl} apply -n {$ns} -f {$tmp}");
+            $this->runStreaming("{$kubectl} apply -n {$ns} -f {$tmp}");
             @unlink($tmp);
 
             return true;
         });
 
-        $this->withSpin("Waiting for {$service} to roll out...", fn () => passthru(
+        $this->withSpin("Waiting for {$service} to roll out...", fn () => $this->runStreaming(
             "{$kubectl} rollout status deploy/{$service} -n {$ns} --timeout=120s",
+            130,
         ));
 
         $this->laraKubeInfo("✅ Commons '{$service}' updated successfully.");

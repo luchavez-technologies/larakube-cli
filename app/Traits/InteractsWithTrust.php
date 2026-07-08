@@ -3,12 +3,13 @@
 namespace App\Traits;
 
 use App\Data\GlobalConfigData;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
 trait InteractsWithTrust
 {
-    use DetectsWsl, InteractsWithOs, LaraKubeOutput, ManagesLocalCa;
+    use DetectsWsl, InteractsWithOs, LaraKubeOutput, ManagesLocalCa, StreamsProcessOutput;
 
     protected function installCaToKeychain(string $caPath): int
     {
@@ -31,18 +32,18 @@ trait InteractsWithTrust
 
             // certutil.exe cannot read \\wsl.localhost\ UNC paths, so stage the cert
             // in the Windows %TEMP% directory which is always reachable by Windows processes.
-            $winTempDir = trim((string) shell_exec('cmd.exe /c "echo %TEMP%" 2>/dev/null'));
+            $winTempDir = trim(Process::run('cmd.exe /c "echo %TEMP%"')->output());
             $wslTempDir = $winTempDir !== ''
-                ? trim((string) shell_exec('wslpath '.escapeshellarg($winTempDir).' 2>/dev/null'))
+                ? trim(Process::run('wslpath '.escapeshellarg($winTempDir))->output())
                 : '';
 
             // Permanent Windows-visible path (used in fallback instructions if certutil fails).
-            $permanentWinPath = trim((string) shell_exec('wslpath -w '.escapeshellarg($caFile).' 2>/dev/null'));
+            $permanentWinPath = trim(Process::run('wslpath -w '.escapeshellarg($caFile))->output());
 
             if ($wslTempDir !== '' && is_dir($wslTempDir)) {
                 $stagePath = $wslTempDir.'/larakube-local-ca.crt';
                 copy($caFile, $stagePath);
-                $certutilPath = trim((string) shell_exec('wslpath -w '.escapeshellarg($stagePath).' 2>/dev/null'));
+                $certutilPath = trim(Process::run('wslpath -w '.escapeshellarg($stagePath))->output());
             } else {
                 $stagePath = null;
                 $certutilPath = $permanentWinPath;
@@ -120,7 +121,7 @@ trait InteractsWithTrust
             if (file_exists($caPath)) {
                 $tmpCa = (string) tempnam(sys_get_temp_dir(), 'larakube-untrust');
                 file_put_contents($tmpCa, file_get_contents($caPath));
-                $fingerprint = trim((string) shell_exec("openssl x509 -noout -fingerprint -sha1 -in {$tmpCa} | cut -d'=' -f2 | sed 's/://g'"));
+                $fingerprint = trim(Process::run("openssl x509 -noout -fingerprint -sha1 -in {$tmpCa} | cut -d'=' -f2 | sed 's/://g'")->output());
                 @unlink($tmpCa);
 
                 if ($fingerprint) {
@@ -148,7 +149,7 @@ trait InteractsWithTrust
 
     protected function isDnsmasqInstalled(): bool
     {
-        return trim((string) shell_exec('which dnsmasq 2>/dev/null')) !== '';
+        return trim(Process::run('which dnsmasq')->output()) !== '';
     }
 
     protected function setupDnsmasq(): void
@@ -184,15 +185,14 @@ trait InteractsWithTrust
         $os = PHP_OS_FAMILY;
 
         if ($os === 'Darwin') {
-            $brewBin = trim((string) shell_exec('which brew 2>/dev/null'));
+            $brewBin = trim(Process::run('which brew')->output());
             if ($brewBin === '') {
                 $this->warn('  Homebrew not found. Install it from https://brew.sh then run: brew install dnsmasq');
 
                 return false;
             }
-            passthru('brew install dnsmasq', $code);
 
-            return $code === 0;
+            return $this->runStreaming('brew install dnsmasq') === 0;
         }
 
         if ($os === 'Linux') {
@@ -218,7 +218,7 @@ trait InteractsWithTrust
     protected function getDnsmasqConfPath(): ?string
     {
         if ($this->isDarwin()) {
-            $brewPrefix = trim((string) shell_exec('brew --prefix 2>/dev/null')) ?: '/usr/local';
+            $brewPrefix = trim(Process::run('brew --prefix')->output()) ?: '/usr/local';
 
             return $brewPrefix.'/etc/dnsmasq.d/larakube.conf';
         }
@@ -294,7 +294,7 @@ trait InteractsWithTrust
 
             // Stop any user-level instance first (can't bind port 53 without root).
             // Suppress output — it's fine if there's nothing to stop.
-            shell_exec('brew services stop dnsmasq 2>/dev/null');
+            Process::run('brew services stop dnsmasq');
             // Must run as root so dnsmasq can bind port 53.
             passthru('sudo brew services restart dnsmasq');
         } else {
@@ -328,13 +328,11 @@ trait InteractsWithTrust
     protected function isCaTrusted(): bool
     {
         if ($this->isWsl()) {
-            $output = shell_exec('certutil.exe -user -verifystore Root "LaraKube Local CA" 2>/dev/null');
-
-            return $output !== null && str_contains((string) $output, 'LaraKube Local CA');
+            return str_contains(Process::run('certutil.exe -user -verifystore Root "LaraKube Local CA"')->output(), 'LaraKube Local CA');
         }
 
         if ($this->isDarwin()) {
-            return ! empty(shell_exec('security find-certificate -c "LaraKube Local CA" /Library/Keychains/System.keychain 2>/dev/null'));
+            return Process::run('security find-certificate -c "LaraKube Local CA" /Library/Keychains/System.keychain')->output() !== '';
         }
 
         if ($this->isLinux()) {
@@ -350,7 +348,7 @@ trait InteractsWithTrust
         $tld = GlobalConfigData::load()->getLocalTld();
 
         if ($this->isDarwin()) {
-            $brewPrefix = trim((string) shell_exec('brew --prefix 2>/dev/null')) ?: '/usr/local';
+            $brewPrefix = trim(Process::run('brew --prefix')->output()) ?: '/usr/local';
 
             if (! file_exists($brewPrefix.'/etc/dnsmasq.d/larakube.conf') || ! file_exists('/etc/resolver/'.$tld)) {
                 return false;
@@ -364,16 +362,15 @@ trait InteractsWithTrust
         }
 
         // Files exist — verify dnsmasq is actually running by probing DNS.
-        $result = shell_exec('dscacheutil -q host -a name larakube-probe.'.$tld.' 2>/dev/null');
         if ($this->isDarwin()) {
-            return $result !== null && str_contains((string) $result, '127.0.0.1');
+            $result = Process::run('dscacheutil -q host -a name larakube-probe.'.$tld)->output();
+
+            return str_contains($result, '127.0.0.1');
         }
 
         // Linux: use getent which respects /etc/resolv.conf + nsswitch
-        $result = shell_exec('getent hosts larakube-probe.'.$tld.' 2>/dev/null');
+        $result = Process::run('getent hosts larakube-probe.'.$tld)->output();
 
-        return $result !== null && str_contains((string) $result, '127.0.0.1');
-
-        return false;
+        return str_contains($result, '127.0.0.1');
     }
 }

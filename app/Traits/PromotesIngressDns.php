@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 /**
  * Shared DNS guidance for cluster ingress hosts.
  *
@@ -68,9 +70,9 @@ trait PromotesIngressDns
     protected function traefikLoadBalancerIp(?string $context = null): ?string
     {
         $ctx = $context !== null && $context !== '' ? ' --context '.escapeshellarg($context) : '';
-        $ip = trim((string) shell_exec(
-            'kubectl'.$ctx.' get svc -n traefik traefik -o jsonpath='.escapeshellarg('{.status.loadBalancer.ingress[0].ip}').' 2>/dev/null',
-        ));
+        $ip = trim(Process::run(
+            'kubectl'.$ctx.' get svc -n traefik traefik -o jsonpath='.escapeshellarg('{.status.loadBalancer.ingress[0].ip}'),
+        )->output());
 
         return ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP)) ? $ip : null;
     }

@@ -8,6 +8,7 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\info;
 
@@ -90,7 +91,8 @@ class DoctorCommand extends Command
         }
 
         // 2. Check Cluster Connectivity
-        $check = shell_exec('kubectl cluster-info 2>&1');
+        $result = Process::run('kubectl cluster-info');
+        $check = $result->output().$result->errorOutput();
         if (str_contains($check, 'refused') || str_contains($check, 'error')) {
             $issues[] = [
                 'title' => 'Cluster Unreachable',
@@ -102,8 +104,8 @@ class DoctorCommand extends Command
         }
 
         // 3. Check for failed pods
-        $pods = shell_exec("kubectl get pods -n {$namespace} -o json 2>/dev/null");
-        if ($pods) {
+        $pods = Process::run("kubectl get pods -n {$namespace} -o json")->output();
+        if ($pods !== '') {
             $data = json_decode($pods, true);
             foreach ($data['items'] ?? [] as $pod) {
                 $phase = $pod['status']['phase'];

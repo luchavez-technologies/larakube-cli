@@ -14,9 +14,9 @@ function k3sInstaller(): object
             return $this->k3sVersion($config);
         }
 
-        public function command(string $version, array $flags = [], array $env = []): string
+        public function command(string $version, array $flags = [], array $env = [], bool $sudo = false): string
         {
-            return $this->k3sInstallCommand($version, $flags, $env);
+            return $this->k3sInstallCommand($version, $flags, $env, $sudo);
         }
     };
 }
@@ -53,4 +53,22 @@ test('k3sInstallCommand builds the remote form: install flags via sh -s -', func
         ->toContain('--disable=traefik')
         ->toContain('--write-kubeconfig-mode 644')
         ->toContain('--kubelet-arg=fail-swap-on=false');
+});
+
+test('k3sInstallCommand routes env assignments through `env` when sudo, so sudo\'s env_reset does not strip them', function () {
+    $cmd = k3sInstaller()->command(
+        'v1.30.4+k3s1',
+        ['--disable=traefik', '--write-kubeconfig-mode=644'],
+        ['K3S_KUBECONFIG_MODE' => '644'],
+        sudo: true,
+    );
+
+    // The env assignments must come AFTER `sudo env`, not before `sudo` —
+    // otherwise they'd only set sudo's own environment and never reach `sh`.
+    expect($cmd)->toBe(
+        'curl -sfL https://get.k3s.io | sudo env '
+        .'INSTALL_K3S_VERSION='.escapeshellarg('v1.30.4+k3s1').' '
+        .'K3S_KUBECONFIG_MODE='.escapeshellarg('644').' '
+        .'sh -s - --disable=traefik --write-kubeconfig-mode=644',
+    );
 });

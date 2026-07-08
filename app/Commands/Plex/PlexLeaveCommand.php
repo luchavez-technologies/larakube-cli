@@ -9,6 +9,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
@@ -277,8 +278,8 @@ class PlexLeaveCommand extends Command
         // 5. Flush the tenant's Redis logical DB (best-effort — index is freed
         //    by the registry removal regardless).
         if ($redisIndex !== null) {
-            $this->withSpin("Flushing Redis db {$redisIndex}...", fn () => passthru(
-                $this->plexKubectl().' exec -n '.escapeshellarg($ns)." deploy/redis -- redis-cli -n {$redisIndex} FLUSHDB 2>/dev/null",
+            $this->withSpin("Flushing Redis db {$redisIndex}...", fn () => Process::run(
+                $this->plexKubectl().' exec -n '.escapeshellarg($ns)." deploy/redis -- redis-cli -n {$redisIndex} FLUSHDB",
             ));
         }
 
@@ -287,8 +288,8 @@ class PlexLeaveCommand extends Command
         $s3Driver = StorageDriver::tryFrom($s3Service);
         if ($s3Bucket && $s3Driver !== null) {
             $cmd = $s3Driver->commonsBucketDeleteCommand($s3Bucket);
-            $this->withSpin("Deleting object-storage bucket '{$s3Bucket}'...", fn () => passthru(
-                $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$s3Service.' -- sh -c '.escapeshellarg($cmd).' 2>/dev/null',
+            $this->withSpin("Deleting object-storage bucket '{$s3Bucket}'...", fn () => Process::run(
+                $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$s3Service.' -- sh -c '.escapeshellarg($cmd),
             ));
         }
 
@@ -322,10 +323,10 @@ class PlexLeaveCommand extends Command
     /** Whether a deployment has at least one Ready replica in the namespace. */
     protected function deployReady(string $podName, string $namespace): bool
     {
-        $ready = trim((string) shell_exec(
+        $ready = trim(Process::run(
             $this->plexKubectl().' get deploy '.escapeshellarg($podName).
-            ' -n '.escapeshellarg($namespace)." -o jsonpath='{.status.readyReplicas}' 2>/dev/null",
-        ));
+            ' -n '.escapeshellarg($namespace)." -o jsonpath='{.status.readyReplicas}'",
+        )->output());
 
         return $ready !== '' && (int) $ready >= 1;
     }
@@ -342,13 +343,11 @@ class PlexLeaveCommand extends Command
         $dumpCode = 0;
 
         $this->withSpin("Dumping tenant database '{$db}' from the Commons...", function () use ($ns, $driver, $db, $dumpFile, &$dumpCode) {
-            exec(
+            $dumpCode = Process::run(
                 $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$driver->value.
                 ' -- sh -c '.escapeshellarg($driver->commonsBackupCommand($db)).
-                ' > '.escapeshellarg($dumpFile).' 2>/dev/null',
-                $output,
-                $dumpCode,
-            );
+                ' > '.escapeshellarg($dumpFile),
+            )->exitCode();
 
             return $dumpCode === 0;
         });
@@ -361,13 +360,11 @@ class PlexLeaveCommand extends Command
 
         $restoreCode = 0;
         $this->withSpin("Restoring into the self-hosted {$driver->getLabel()}...", function () use ($namespace, $driver, $dumpFile, &$restoreCode) {
-            exec(
+            $restoreCode = Process::run(
                 $this->plexKubectl().' exec -i -n '.escapeshellarg($namespace).' deploy/'.$driver->value.
                 ' -- sh -c '.escapeshellarg($driver->selfHostedRestoreCommand()).
-                ' < '.escapeshellarg($dumpFile).' 2>/dev/null',
-                $output,
-                $restoreCode,
-            );
+                ' < '.escapeshellarg($dumpFile),
+            )->exitCode();
 
             return $restoreCode === 0;
         });
@@ -407,12 +404,10 @@ class PlexLeaveCommand extends Command
 
         $code = 0;
         $this->withSpin("Mirroring bucket '{$bucket}' back to the self-hosted {$storage->getLabel()}...", function () use ($namespace, $storage, $cmd, &$code) {
-            exec(
+            $code = Process::run(
                 $this->plexKubectl().' exec -n '.escapeshellarg($namespace).' deploy/'.$storage->value.
-                ' -- sh -c '.escapeshellarg($cmd).' 2>&1',
-                $output,
-                $code,
-            );
+                ' -- sh -c '.escapeshellarg($cmd),
+            )->exitCode();
 
             return $code === 0;
         });
@@ -426,9 +421,9 @@ class PlexLeaveCommand extends Command
      */
     protected function appStillDeployed(ConfigData $config, string $env): bool
     {
-        return trim((string) shell_exec(
-            $this->plexKubectl().' get deploy -n '.escapeshellarg($config->getNamespace($env)).' -o name 2>/dev/null',
-        )) !== '';
+        return trim(Process::run(
+            $this->plexKubectl().' get deploy -n '.escapeshellarg($config->getNamespace($env)).' -o name',
+        )->output()) !== '';
     }
 
     /**
@@ -442,12 +437,10 @@ class PlexLeaveCommand extends Command
         $cmd = $driver->commonsBackupCommand($db);
         $code = 0;
         $this->withSpin("Backing up database '{$db}'...", function () use ($ns, $service, $cmd, $path, &$code) {
-            exec(
+            $code = Process::run(
                 $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$service.' -- '.
-                'sh -c '.escapeshellarg($cmd).' > '.escapeshellarg($path).' 2>/dev/null',
-                $o,
-                $code,
-            );
+                'sh -c '.escapeshellarg($cmd).' > '.escapeshellarg($path),
+            )->exitCode();
 
             return $code === 0;
         });
@@ -474,12 +467,12 @@ class PlexLeaveCommand extends Command
         $output = [];
         $code = 0;
         $this->withSpin("Dropping database '{$db}' and login '{$tenant}'...", function () use ($ns, $service, $client, $tmp, &$output, &$code) {
-            exec(
+            $result = Process::run(
                 $this->plexKubectl().' exec -i -n '.escapeshellarg($ns).' deploy/'.$service.' -- '.
-                'sh -c '.escapeshellarg($client).' < '.escapeshellarg($tmp).' 2>&1',
-                $output,
-                $code,
+                'sh -c '.escapeshellarg($client).' < '.escapeshellarg($tmp),
             );
+            $code = $result->exitCode();
+            $output = explode("\n", trim($result->output().$result->errorOutput()));
 
             return $code === 0;
         });

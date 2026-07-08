@@ -1,6 +1,7 @@
 <?php
 
 use App\Traits\InteractsWithScopedRbac;
+use Illuminate\Support\Facades\Process;
 
 function scopedRbac(): object
 {
@@ -97,4 +98,90 @@ test('server and CA extraction read from the minified admin context', function (
 
     expect($rbac->clusterCaDataCommand('admin-ctx'))
         ->toContain('certificate-authority-data');
+});
+
+test('ensureScopedRbac reflects whether the apply succeeded', function () {
+    Process::fake(["kubectl --context 'admin-ctx' apply -f *" => Process::result(exitCode: 0)]);
+    expect(scopedRbac()->ensureScopedRbac('admin-ctx', 'myapp-production', 'myapp', 'production'))->toBeTrue();
+
+    Process::fake(["kubectl --context 'admin-ctx' apply -f *" => Process::result(exitCode: 1)]);
+    expect(scopedRbac()->ensureScopedRbac('admin-ctx', 'myapp-production', 'myapp', 'production'))->toBeFalse();
+});
+
+test('mintScopedKubeconfig assembles a kubeconfig once the bound token appears', function () {
+    Process::fake([
+        "kubectl --context 'admin-ctx' apply -f *" => Process::result(exitCode: 0),
+        "kubectl --context 'admin-ctx' -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.token}'" => base64_encode('tok3n'),
+        "kubectl --context 'admin-ctx' -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.ca\\.crt}'" => base64_encode('CADATA'),
+        "kubectl config view --minify --flatten --context 'admin-ctx' -o jsonpath='{.clusters[0].cluster.server}'" => 'https://1.2.3.4:6443',
+    ]);
+
+    $kubeconfig = scopedRbac()->mintScopedKubeconfig('admin-ctx', 'myapp-production');
+
+    expect($kubeconfig)
+        ->toContain('token: tok3n')
+        ->toContain('certificate-authority-data: '.base64_encode('CADATA'))
+        ->toContain('namespace: myapp-production');
+});
+
+test('mintScopedKubeconfig returns null when the Secret apply fails', function () {
+    Process::fake(["kubectl --context 'admin-ctx' apply -f *" => Process::result(exitCode: 1)]);
+
+    expect(scopedRbac()->mintScopedKubeconfig('admin-ctx', 'myapp-production'))->toBeNull();
+});
+
+test('mintScopedKubeconfig falls back to the admin context CA when the Secret has none', function () {
+    Process::fake([
+        "kubectl --context 'admin-ctx' apply -f *" => Process::result(exitCode: 0),
+        "kubectl --context 'admin-ctx' -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.token}'" => base64_encode('tok3n'),
+        "kubectl --context 'admin-ctx' -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.ca\\.crt}'" => Process::result(output: '', exitCode: 1),
+        "kubectl config view --minify --flatten --context 'admin-ctx' -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'" => base64_encode('FALLBACK-CA'),
+        "kubectl config view --minify --flatten --context 'admin-ctx' -o jsonpath='{.clusters[0].cluster.server}'" => 'https://1.2.3.4:6443',
+    ]);
+
+    $kubeconfig = scopedRbac()->mintScopedKubeconfig('admin-ctx', 'myapp-production');
+
+    expect($kubeconfig)
+        ->toContain('certificate-authority-data: '.base64_encode('FALLBACK-CA'))
+        ->toContain('server: https://1.2.3.4:6443');
+});
+
+test('pollSecretToken decodes the token once it appears, null on timeout', function () {
+    Process::fake([
+        "kubectl --context 'admin-ctx' -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.token}'" => base64_encode('tok3n'),
+    ]);
+    expect(scopedRbac()->pollSecretToken('admin-ctx', 'myapp-production', 'deployer-token'))->toBe('tok3n');
+});
+
+test('readSecretCaData prefers the Secret CA, falling back to the admin context CA', function () {
+    Process::fake([
+        "kubectl --context 'admin-ctx' -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.ca\\.crt}'" => 'SECRETCA==',
+    ]);
+    expect(scopedRbac()->readSecretCaData('admin-ctx', 'myapp-production', 'deployer-token'))->toBe('SECRETCA==');
+
+    Process::fake([
+        "kubectl --context 'admin-ctx' -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.ca\\.crt}'" => Process::result(output: '', exitCode: 1),
+        "kubectl config view --minify --flatten --context 'admin-ctx' -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'" => 'FALLBACKCA==',
+    ]);
+    expect(scopedRbac()->readSecretCaData('admin-ctx', 'myapp-production', 'deployer-token'))->toBe('FALLBACKCA==');
+});
+
+test('kubectlSupportsTokens parses the client minor version from JSON or plain output', function () {
+    Process::fake(['kubectl version --client -o json' => '{"clientVersion":{"major":"1","minor":"28"}}']);
+    expect(scopedRbac()->kubectlSupportsTokens())->toBeTrue();
+
+    Process::fake(['kubectl version --client -o json' => '{"clientVersion":{"major":"1","minor":"20"}}']);
+    expect(scopedRbac()->kubectlSupportsTokens())->toBeFalse();
+
+    Process::fake([
+        'kubectl version --client -o json' => Process::result(output: '', exitCode: 1),
+        'kubectl version --client' => 'Client Version: v1.30.2',
+    ]);
+    expect(scopedRbac()->kubectlSupportsTokens())->toBeTrue();
+
+    Process::fake([
+        'kubectl version --client -o json' => Process::result(output: '', exitCode: 1),
+        'kubectl version --client' => Process::result(output: '', exitCode: 1),
+    ]);
+    expect(scopedRbac()->kubectlSupportsTokens())->toBeTrue(); // can't determine → don't block
 });

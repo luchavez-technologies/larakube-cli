@@ -4,6 +4,7 @@ namespace App\Commands\Github;
 
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class GhaUserCommand extends Command
@@ -35,7 +36,7 @@ class GhaUserCommand extends Command
 
         $gh = $this->getGhCommand();
 
-        $username = trim(shell_exec("{$gh} api user -q .login 2>/dev/null") ?? '');
+        $username = trim(Process::run("{$gh} api user -q .login")->output());
 
         if (! $username) {
             $this->laraKubeError('Not authenticated with GitHub.');

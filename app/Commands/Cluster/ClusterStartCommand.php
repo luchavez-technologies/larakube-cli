@@ -4,11 +4,13 @@ namespace App\Commands\Cluster;
 
 use App\Traits\InteractsWithOs;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class ClusterStartCommand extends Command
 {
-    use InteractsWithOs, LaraKubeOutput;
+    use InteractsWithOs, LaraKubeOutput, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -33,9 +35,9 @@ class ClusterStartCommand extends Command
 
         $this->laraKubeInfo('Starting LaraKube cluster...');
 
-        if (shell_exec('which k3d')) {
-            passthru('k3d cluster start larakube');
-        } elseif (shell_exec('which k3s') && $this->isLinux()) {
+        if (Process::run('which k3d')->successful()) {
+            $this->runStreaming('k3d cluster start larakube');
+        } elseif (Process::run('which k3s')->successful() && $this->isLinux()) {
             $this->info('  Detected native k3s. Using systemctl...');
             passthru('sudo systemctl start k3s');
         } else {

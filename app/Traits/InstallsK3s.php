@@ -26,7 +26,7 @@ trait InstallsK3s
 
     /**
      * The canonical k3s install command:
-     *   curl -sfL https://get.k3s.io | [sudo] <env> INSTALL_K3S_VERSION=<v> sh [-s - <flags>]
+     *   curl -sfL https://get.k3s.io | [sudo env] INSTALL_K3S_VERSION=<v> sh [-s - <flags>]
      * Callers wrap it in their own execution context (local passthru vs remote SSH).
      *
      * @param  array<int, string>  $flags  install args appended after `sh -s -` (e.g. --disable=traefik). Static/controlled — not escaped.
@@ -41,8 +41,15 @@ trait InstallsK3s
         }
 
         $sh = $flags === [] ? 'sh -' : 'sh -s - '.implode(' ', $flags);
+
         if ($sudo) {
-            $sh = 'sudo '.$sh;
+            // Env assignments placed before `sudo` only set sudo's OWN
+            // environment — sudo resets the environment by default before
+            // exec'ing its target, so INSTALL_K3S_VERSION/etc. would never
+            // reach `sh`. Routing them through `env` (as sudo's argument,
+            // not a shell-prefix) makes them land on the process that
+            // actually runs the installer.
+            return 'curl -sfL https://get.k3s.io | sudo env '.$assignments.$sh;
         }
 
         return 'curl -sfL https://get.k3s.io | '.$assignments.$sh;

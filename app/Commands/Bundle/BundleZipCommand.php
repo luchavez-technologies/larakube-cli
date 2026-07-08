@@ -3,6 +3,8 @@
 namespace App\Commands\Bundle;
 
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
 
@@ -10,7 +12,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class BundleZipCommand extends Command
 {
-    use LaraKubeOutput;
+    use LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'bundle:zip 
                             {path? : Path to the bundle directory to compress}
@@ -93,12 +95,12 @@ class BundleZipCommand extends Command
 
         $this->laraKubeInfo("Compressing {$folderName} into a .tar.gz archive...");
 
-        passthru('tar -czf '.escapeshellarg($tarFile).' -C '.escapeshellarg($baseDir).' '.escapeshellarg($folderName), $tarCode);
+        $tarCode = $this->runStreaming('tar -czf '.escapeshellarg($tarFile).' -C '.escapeshellarg($baseDir).' '.escapeshellarg($folderName));
 
         if ($tarCode === 0) {
             $this->laraKubeInfo('✅ Bundle compressed successfully: '.$tarFile);
             if ($this->option('delete')) {
-                passthru('rm -rf '.escapeshellarg($realPath));
+                Process::run('rm -rf '.escapeshellarg($realPath));
                 $this->laraKubeInfo('Deleted uncompressed folder.');
             } else {
                 $this->laraKubeInfo('You can safely delete the uncompressed folder manually or use --delete next time.');

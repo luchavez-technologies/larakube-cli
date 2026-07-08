@@ -27,7 +27,7 @@ class ContextCommand extends Command
     {
         $this->renderHeader();
 
-        $currentContext = trim(shell_exec('kubectl config current-context 2>/dev/null') ?? '');
+        $currentContext = $this->kubectlCurrentContext();
         $targetContext = $this->argument('name');
 
         if (! $targetContext) {

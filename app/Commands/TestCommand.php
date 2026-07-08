@@ -6,11 +6,13 @@ use App\Enums\DatabaseDriver;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class TestCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput;
+    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'test
                             {--db : Provision <app>_testing on the project DB engine instead of in-memory SQLite (auto-saved to .larakube.json on first use)}
@@ -191,15 +193,13 @@ class TestCommand extends Command
         $this->laraKubeInfo("Ensuring testing database '{$testDbName}' exists on {$driver->getLabel()}...");
 
         $exec = sprintf(
-            'kubectl exec -n %s %s -- sh -c %s 2>&1',
+            'kubectl exec -n %s %s -- sh -c %s',
             escapeshellarg($namespace),
             escapeshellarg($dbPodName),
             escapeshellarg($provisionCommand),
         );
 
-        passthru($exec, $exitCode);
-
-        return $exitCode === 0;
+        return $this->runStreaming($exec) === 0;
     }
 
     /**
@@ -260,7 +260,7 @@ class TestCommand extends Command
         }
 
         foreach ($labels as $label) {
-            $podName = trim(shell_exec("kubectl get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null") ?? '');
+            $podName = trim(Process::run("kubectl get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
             if ($podName !== '') {
                 return $podName;
             }

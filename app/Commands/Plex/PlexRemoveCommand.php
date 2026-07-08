@@ -6,6 +6,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\StreamsProcessOutput;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
@@ -14,7 +15,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class PlexRemoveCommand extends Command
 {
-    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     protected $signature = 'plex:remove
         {service? : The Commons service to remove (postgres, redis, meilisearch, seaweedfs)}
@@ -101,12 +102,12 @@ class PlexRemoveCommand extends Command
 
         // 1. Delete the service's workload (+ ingress; + data unless --keep-data).
         //    kubectl apply won't prune, so removal is explicit.
-        $this->withSpin("Deleting {$service} workload...", fn () => passthru(
+        $this->withSpin("Deleting {$service} workload...", fn () => $this->runStreaming(
             "{$kubectl} delete deployment/{$service} service/{$service} ingress/{$service}-s3 -n {$ns} --ignore-not-found",
         ));
 
         if (! $keepData) {
-            $this->withSpin("Deleting {$service} data (PVC)...", fn () => passthru(
+            $this->withSpin("Deleting {$service} data (PVC)...", fn () => $this->runStreaming(
                 "{$kubectl} delete pvc/{$service}-data -n {$ns} --ignore-not-found",
             ));
         }

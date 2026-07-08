@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 trait InteractsWithLaraKubeCli
 {
     /**
@@ -38,7 +40,7 @@ trait InteractsWithLaraKubeCli
     {
         $bin = $this->getLaraKubeBinary();
 
-        return shell_exec("{$bin} list --raw") ?? '';
+        return Process::run("{$bin} list --raw")->output();
     }
 
     /**
@@ -47,8 +49,9 @@ trait InteractsWithLaraKubeCli
     protected function getCliCommandHelp(string $command): string
     {
         $bin = $this->getLaraKubeBinary();
+        $output = Process::run("{$bin} help {$command}")->output();
 
-        return shell_exec("{$bin} help {$command}") ?? "No help found for command: {$command}";
+        return $output !== '' ? $output : "No help found for command: {$command}";
     }
 
     /**
@@ -73,13 +76,17 @@ trait InteractsWithLaraKubeCli
             $finalCommand .= ' --force';
         }
 
-        exec($finalCommand, $output, $resultCode);
+        // No timeout — the wrapped command can be an arbitrary LaraKube
+        // orchestration command (e.g. `up`, `down`) that legitimately runs
+        // long, and this preserves exec()'s previous "wait as long as it
+        // takes" behavior.
+        $result = Process::forever()->run($finalCommand);
 
         return [
             'command' => $finalCommand,
-            'output' => implode("\n", $output),
-            'exit_code' => $resultCode,
-            'success' => $resultCode === 0,
+            'output' => trim($result->output().$result->errorOutput()),
+            'exit_code' => $result->exitCode(),
+            'success' => $result->successful(),
         ];
     }
 

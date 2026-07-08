@@ -7,6 +7,7 @@ use App\Data\GlobalConfigData;
 use App\Enums\CacheDriver;
 use App\Enums\CompanionDriver;
 use App\Enums\DatabaseDriver;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\table;
@@ -30,14 +31,14 @@ trait ManagesCompanions
         ])->render();
         $tmp = sys_get_temp_dir().'/larakube-companion-'.$companion->value.'.yaml';
         file_put_contents($tmp, $manifest);
-        exec('kubectl apply -f '.escapeshellarg($tmp));
+        Process::run('kubectl apply -f '.escapeshellarg($tmp));
         @unlink($tmp);
     }
 
     protected function removeCompanion(CompanionDriver $companion): void
     {
         foreach (['deployment', 'service', 'ingress'] as $kind) {
-            exec("kubectl delete {$kind} ".escapeshellarg($companion->value).' -n larakube-companions --ignore-not-found=true 2>/dev/null');
+            Process::run("kubectl delete {$kind} ".escapeshellarg($companion->value).' -n larakube-companions --ignore-not-found=true');
         }
     }
 
@@ -50,7 +51,7 @@ trait ManagesCompanions
      */
     protected function scaleCompanion(CompanionDriver $companion, int $replicas): void
     {
-        exec('kubectl scale deployment '.escapeshellarg($companion->value)." --replicas={$replicas} -n larakube-companions 2>/dev/null");
+        Process::run('kubectl scale deployment '.escapeshellarg($companion->value)." --replicas={$replicas} -n larakube-companions");
     }
 
     /**
@@ -79,14 +80,14 @@ trait ManagesCompanions
 
     protected function isCompanionInstalled(CompanionDriver $companion): bool
     {
-        $result = shell_exec('kubectl get deployment '.escapeshellarg($companion->value).' -n larakube-companions --no-headers 2>/dev/null');
+        $result = Process::run('kubectl get deployment '.escapeshellarg($companion->value).' -n larakube-companions --no-headers')->output();
 
-        return $result !== null && trim($result) !== '';
+        return trim($result) !== '';
     }
 
     protected function ensureCompanionNamespace(): void
     {
-        exec('kubectl create namespace larakube-companions --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null');
+        Process::run('kubectl create namespace larakube-companions --dry-run=client -o yaml | kubectl apply -f -');
     }
 
     /**
@@ -269,16 +270,16 @@ trait ManagesCompanions
      */
     protected function readClusterEnvVars(string $kind, string $name, string $namespace, bool $base64): array
     {
-        $json = shell_exec(
+        $json = Process::run(
             'kubectl get '.escapeshellarg($kind).' '.escapeshellarg($name)
-            .' -n '.escapeshellarg($namespace).' -o json 2>/dev/null',
-        );
+            .' -n '.escapeshellarg($namespace).' -o json',
+        )->output();
 
-        if ($json === null || trim((string) $json) === '') {
+        if (trim($json) === '') {
             return [];
         }
 
-        $parsed = json_decode((string) $json, true);
+        $parsed = json_decode($json, true);
         $data = is_array($parsed) ? ($parsed['data'] ?? null) : null;
 
         if (! is_array($data)) {
@@ -432,8 +433,7 @@ trait ManagesCompanions
 
         $fqdn = "{$db->getPodName()}.{$appName}.svc.cluster.local";
 
-        $existing = shell_exec("kubectl get configmap phpmyadmin-hosts -n larakube-companions -o jsonpath='{.data.hosts}' 2>/dev/null") ?? '';
-        $existing = trim((string) $existing);
+        $existing = trim(Process::run("kubectl get configmap phpmyadmin-hosts -n larakube-companions -o jsonpath='{.data.hosts}'")->output());
 
         $hosts = $existing !== '' ? explode(',', $existing) : [];
         $hosts = array_values(array_unique(array_filter(array_map('trim', $hosts))));
@@ -456,10 +456,10 @@ trait ManagesCompanions
 
         $tmp = sys_get_temp_dir().'/larakube-pma-hosts.yaml';
         file_put_contents($tmp, $yaml);
-        exec('kubectl apply -f '.escapeshellarg($tmp).' 2>/dev/null');
+        Process::run('kubectl apply -f '.escapeshellarg($tmp));
         @unlink($tmp);
 
-        exec('kubectl set env deployment/phpmyadmin PMA_HOSTS='.escapeshellarg($hostsStr).' -n larakube-companions 2>/dev/null');
-        exec('kubectl rollout restart deployment/phpmyadmin -n larakube-companions 2>/dev/null');
+        Process::run('kubectl set env deployment/phpmyadmin PMA_HOSTS='.escapeshellarg($hostsStr).' -n larakube-companions');
+        Process::run('kubectl rollout restart deployment/phpmyadmin -n larakube-companions');
     }
 }

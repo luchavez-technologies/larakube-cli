@@ -1,15 +1,18 @@
 <?php
 
 /**
- * Pure-logic tests for the multi-node storage guard: when an env counts as
- * multi-node, and which .env state drivers are still on local storage (and so
- * lost on per-pod ephemeral disk). The prompt + kubectl node probe are exercised
- * by a real deploy.
+ * Tests for the multi-node storage guard: when an env counts as multi-node,
+ * which .env state drivers are still on local storage (and so lost on per-pod
+ * ephemeral disk), and whether the NFS StorageClass is installed. The latter
+ * shells out via the Process facade (see app/Traits/GuardsSharedStorage.php),
+ * faked below — no longer needs a real deploy to exercise. The actual
+ * prompt-driven guardSharedStorage() flow still does.
  */
 
 use App\Data\ConfigData;
 use App\Enums\DeploymentStrategy;
 use App\Traits\GuardsSharedStorage;
+use Illuminate\Support\Facades\Process;
 
 function storageGuard(): object
 {
@@ -25,6 +28,11 @@ function storageGuard(): object
         public function risky(ConfigData $c, string $e): array
         {
             return $this->localStateDrivers($c, $e);
+        }
+
+        public function nfsPresent(string $context): bool
+        {
+            return $this->nfsStorageClassPresent($context);
         }
     };
 }
@@ -69,4 +77,12 @@ test('local state drivers are clean when uploads use S3 and session/cache are ex
 
     unlink("$dir/.env.production");
     rmdir($dir);
+});
+
+test('nfsStorageClassPresent reflects whether the larakube-nfs StorageClass exists on the cluster', function () {
+    Process::fake(["kubectl --context 'prod-ctx' get storageclass 'larakube-nfs' -o name" => Process::result(exitCode: 0)]);
+    expect(storageGuard()->nfsPresent('prod-ctx'))->toBeTrue();
+
+    Process::fake(["kubectl --context 'prod-ctx' get storageclass 'larakube-nfs' -o name" => Process::result(exitCode: 1)]);
+    expect(storageGuard()->nfsPresent('prod-ctx'))->toBeFalse();
 });

@@ -6,6 +6,8 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\text;
 
@@ -13,7 +15,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DownCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -96,17 +98,17 @@ class DownCommand extends Command
 
         // 1. Cluster Cleanup
         $this->laraKubeInfo("Removing namespace '$namespace' (this will wipe ConfigMaps and Secrets)...");
-        passthru("{$kubectl} delete namespace $namespace 2>/dev/null");
+        $this->runStreaming("{$kubectl} delete namespace $namespace");
 
         $this->laraKubeInfo('Cleaning up cluster-scoped PersistentVolumes...');
-        passthru("{$kubectl} delete pv -l larakube-project=$appName 2>/dev/null");
+        $this->runStreaming("{$kubectl} delete pv -l larakube-project=$appName");
 
         // 2. Manifest Cleanup (Local)
         if ($this->option('k8s') || $this->option('full')) {
             $this->withSpin('Wiping local generated manifests...', function () use ($projectPath) {
                 $k8sPath = $projectPath.'/.infrastructure/k8s';
                 if (is_dir($k8sPath)) {
-                    exec('rm -rf '.escapeshellarg($k8sPath));
+                    Process::run('rm -rf '.escapeshellarg($k8sPath));
                 }
 
                 return true;
@@ -118,7 +120,7 @@ class DownCommand extends Command
             $this->withSpin('Wiping local volume data...', function () use ($projectPath) {
                 $volumePath = $projectPath.'/.infrastructure/volume_data';
                 if (is_dir($volumePath)) {
-                    exec('rm -rf '.escapeshellarg($volumePath).'/*');
+                    Process::run('rm -rf '.escapeshellarg($volumePath).'/*');
                 }
 
                 return true;

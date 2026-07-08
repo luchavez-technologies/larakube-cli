@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -22,18 +23,18 @@ trait InteractsWithHosts
     protected function resolveIngressIp(): string
     {
         // Prefer the LoadBalancer IP when cloud assigns one.
-        $lbIp = trim((string) shell_exec(
-            "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null",
-        ));
+        $lbIp = trim(Process::run(
+            "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'",
+        )->output());
         if ($lbIp !== '') {
             return $lbIp;
         }
 
         // Fall back to the node's InternalIP — the canonical routable address
         // for WSL2 / bare-metal k3s where no cloud LoadBalancer IP exists.
-        return trim((string) shell_exec(
-            "kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}' 2>/dev/null",
-        )) ?: '127.0.0.1';
+        return trim(Process::run(
+            "kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'",
+        )->output()) ?: '127.0.0.1';
     }
 
     /**
@@ -180,7 +181,7 @@ trait InteractsWithHosts
             }
 
             $probe = $service->presenceProbe();
-            if ($probe !== null && trim((string) shell_exec("kubectl get {$probe} --no-headers 2>/dev/null")) === '') {
+            if ($probe !== null && trim(Process::run("kubectl get {$probe} --no-headers")->output()) === '') {
                 continue;
             }
 
@@ -321,7 +322,7 @@ trait InteractsWithHosts
         $scriptTmp = sys_get_temp_dir().'/larakube_win_hosts_sync.ps1';
         file_put_contents($contentTmp, $updated);
 
-        $winContent = trim((string) shell_exec('wslpath -w '.escapeshellarg($contentTmp).' 2>/dev/null'));
+        $winContent = trim(Process::run('wslpath -w '.escapeshellarg($contentTmp))->output());
         if ($winContent === '') {
             @unlink($contentTmp);
             $this->printWindowsHostsManualHelp($entry);
@@ -333,7 +334,7 @@ trait InteractsWithHosts
             $scriptTmp,
             "Copy-Item -LiteralPath '{$winContent}' -Destination 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Force\n",
         );
-        $winScript = trim((string) shell_exec('wslpath -w '.escapeshellarg($scriptTmp).' 2>/dev/null'));
+        $winScript = trim(Process::run('wslpath -w '.escapeshellarg($scriptTmp))->output());
 
         if ($winScript === '') {
             @unlink($contentTmp);
@@ -418,7 +419,7 @@ trait InteractsWithHosts
         $scriptTmp = sys_get_temp_dir().'/larakube_win_hosts_sync.ps1';
         file_put_contents($contentTmp, $updated);
 
-        $winContent = trim((string) shell_exec('wslpath -w '.escapeshellarg($contentTmp).' 2>/dev/null'));
+        $winContent = trim(Process::run('wslpath -w '.escapeshellarg($contentTmp))->output());
         if ($winContent === '') {
             @unlink($contentTmp);
             $this->printWindowsHostsManualHelp($entry);
@@ -430,7 +431,7 @@ trait InteractsWithHosts
             $scriptTmp,
             "Copy-Item -LiteralPath '{$winContent}' -Destination 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Force\n",
         );
-        $winScript = trim((string) shell_exec('wslpath -w '.escapeshellarg($scriptTmp).' 2>/dev/null'));
+        $winScript = trim(Process::run('wslpath -w '.escapeshellarg($scriptTmp))->output());
 
         if ($winScript === '') {
             @unlink($contentTmp);
@@ -487,17 +488,17 @@ trait InteractsWithHosts
             if (! file_exists('/etc/resolver/'.$tld)) {
                 return false;
             }
-            $result = shell_exec('dscacheutil -q host -a name larakube-probe.'.$tld.' 2>/dev/null');
+            $result = Process::run('dscacheutil -q host -a name larakube-probe.'.$tld)->output();
 
-            return $result !== null && str_contains((string) $result, '127.0.0.1');
+            return str_contains($result, '127.0.0.1');
         }
 
         if (! file_exists('/etc/dnsmasq.d/larakube.conf')) {
             return false;
         }
-        $result = shell_exec('getent hosts larakube-probe.'.$tld.' 2>/dev/null');
+        $result = Process::run('getent hosts larakube-probe.'.$tld)->output();
 
-        return $result !== null && str_contains((string) $result, '127.0.0.1');
+        return str_contains($result, '127.0.0.1');
     }
 
     /**

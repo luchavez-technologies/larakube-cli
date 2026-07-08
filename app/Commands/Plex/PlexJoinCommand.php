@@ -8,6 +8,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -318,9 +319,9 @@ class PlexJoinCommand extends Command
     /** Whether a PVC exists in the given namespace, via the resolved Plex context. */
     protected function pvcExists(string $pvc, string $namespace): bool
     {
-        return trim((string) shell_exec(
-            $this->plexKubectl().' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' -o name 2>/dev/null',
-        )) !== '';
+        return trim(Process::run(
+            $this->plexKubectl().' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' -o name',
+        )->output()) !== '';
     }
 
     /**

@@ -2,13 +2,13 @@
 
 /**
  * dockerGroupNeedsRefresh() shells out to `getent`/`id` rather than the posix
- * extension (not compiled into the standalone binary — see hostUid()). The
- * shared App\Traits\shell_exec mock (declared in ClusterContextTest.php)
- * lets us fake per-command output here via mock_shell_exec_callback, so both
- * branches are testable without touching real group membership.
+ * extension (not compiled into the standalone binary — see hostUid()).
+ * Migrated to the Process facade, so this fakes per-command output via
+ * Process::fake() rather than the shared shell_exec() namespace-override mock.
  */
 
 use App\Traits\InteractsWithDocker;
+use Illuminate\Support\Facades\Process;
 
 function dockerGroupHarness(): object
 {
@@ -24,33 +24,17 @@ function dockerGroupHarness(): object
 }
 
 /**
- * Route each shell_exec call to canned output based on which command it is.
- *
  * @param  array<string, string|null>  $responses  keys: 'getent', 'un', 'gn', 'Gn'
  */
 function mockDockerGroupCommands(array $responses): void
 {
-    $GLOBALS['mock_shell_exec_callback'] = function (string $command) use ($responses) {
-        if (str_starts_with($command, 'getent group docker')) {
-            return $responses['getent'] ?? null;
-        }
-        if (str_starts_with($command, 'id -un')) {
-            return $responses['un'] ?? null;
-        }
-        if (str_starts_with($command, 'id -gn')) {
-            return $responses['gn'] ?? null;
-        }
-        if (str_starts_with($command, 'id -Gn')) {
-            return $responses['Gn'] ?? null;
-        }
-
-        return null;
-    };
+    Process::fake([
+        'getent group docker' => $responses['getent'] ?? Process::result(output: '', exitCode: 1),
+        'id -un' => $responses['un'] ?? Process::result(output: '', exitCode: 1),
+        'id -gn' => $responses['gn'] ?? Process::result(output: '', exitCode: 1),
+        'id -Gn' => $responses['Gn'] ?? Process::result(output: '', exitCode: 1),
+    ]);
 }
-
-afterEach(function () {
-    unset($GLOBALS['mock_shell_exec_callback']);
-});
 
 test('dockerGroupNeedsRefresh is true when the user is a member but docker is missing from the active session', function () {
     mockDockerGroupCommands([

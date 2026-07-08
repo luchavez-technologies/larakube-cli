@@ -10,6 +10,7 @@ use App\Traits\InteractsWithOs;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -40,7 +41,7 @@ class K9sCommand extends Command
     {
         $this->renderHeader();
 
-        if (shell_exec('which k9s') === null && ! is_file(home_path('.larakube/bin/k9s')) && ! $this->setupK9s()) {
+        if (! Process::run('which k9s')->successful() && ! is_file(home_path('.larakube/bin/k9s')) && ! $this->setupK9s()) {
             return 1;
         }
 

@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 use function Laravel\Prompts\confirm;
 
 trait InteractsWithClusterContext
@@ -33,18 +35,12 @@ trait InteractsWithClusterContext
      */
     protected function hasActiveCluster(): bool
     {
-        $context = trim(shell_exec('kubectl config current-context 2>/dev/null') ?? '');
-
-        if (! $context) {
+        if (! $this->kubectlCurrentContext()) {
             return false;
         }
 
-        // We use a short timeout to prevent the CLI from hanging if the cluster is unreachable
-        $output = [];
-        $resultCode = 0;
-        exec('kubectl cluster-info --request-timeout=2s 2>&1', $output, $resultCode);
-
-        return $resultCode === 0;
+        // A short timeout prevents the CLI from hanging if the cluster is unreachable.
+        return Process::run('kubectl cluster-info --request-timeout=2s')->successful();
     }
 
     /**
@@ -61,9 +57,7 @@ trait InteractsWithClusterContext
      */
     protected function findLocalClusterContext(): ?string
     {
-        $contexts = array_filter(explode("\n", trim((string) shell_exec(
-            'kubectl config get-contexts -o name 2>/dev/null',
-        ))));
+        $contexts = $this->kubectlContextNames();
 
         $provisioned = null;
         $any = null;
@@ -96,17 +90,13 @@ trait InteractsWithClusterContext
         $lower = strtolower($context);
 
         if (str_contains($lower, 'k3d')) {
-            exec('k3d cluster start larakube 2>/dev/null', $output, $code);
-
-            return $code === 0;
+            return Process::run('k3d cluster start larakube')->successful();
         }
 
         // A context named this way is only ever created by cluster:setup on a
         // Linux/WSL2 host, so no separate platform check is needed here.
         if (str_contains($lower, 'k3s-larakube')) {
-            exec('sudo systemctl start k3s 2>/dev/null', $output, $code);
-
-            return $code === 0;
+            return Process::run('sudo systemctl start k3s')->successful();
         }
 
         return false;
@@ -121,7 +111,7 @@ trait InteractsWithClusterContext
      */
     protected function isK3dClusterRunning(string $name = 'larakube'): bool
     {
-        $line = (string) shell_exec('k3d cluster list '.escapeshellarg($name).' --no-headers 2>/dev/null');
+        $line = Process::run('k3d cluster list '.escapeshellarg($name).' --no-headers')->output();
 
         return $this->k3dClusterListLineIsRunning($line);
     }
@@ -131,9 +121,7 @@ trait InteractsWithClusterContext
      */
     protected function hasAnyContext(): bool
     {
-        $output = shell_exec('kubectl config get-contexts -o name 2>/dev/null');
-
-        return ! empty(trim($output ?? ''));
+        return ! empty($this->kubectlContextNames());
     }
 
     /**
@@ -141,7 +129,7 @@ trait InteractsWithClusterContext
      */
     protected function isLocalContext(): bool
     {
-        $context = trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
+        $context = $this->kubectlCurrentContext();
 
         if ($context === '') {
             return false;
@@ -153,7 +141,7 @@ trait InteractsWithClusterContext
 
         // Fallback: if the API server is on localhost or 127.0.0.1 it's local
         // regardless of what the context is named (e.g. raw k3s "default").
-        $server = trim((string) shell_exec('kubectl config view --minify -o jsonpath=\'{.clusters[0].cluster.server}\' 2>/dev/null'));
+        $server = trim(Process::run('kubectl config view --minify -o jsonpath=\'{.clusters[0].cluster.server}\'')->output());
 
         return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
     }
@@ -194,14 +182,8 @@ trait InteractsWithClusterContext
      */
     protected function askForClusterContext(): ?string
     {
-        $contextsOutput = shell_exec('kubectl config get-contexts -o name 2>/dev/null');
-        $currentContext = trim(shell_exec('kubectl config current-context 2>/dev/null') ?? '');
-
-        if (! $contextsOutput) {
-            return null;
-        }
-
-        $contexts = array_filter(explode("\n", trim($contextsOutput)));
+        $contexts = $this->kubectlContextNames();
+        $currentContext = $this->kubectlCurrentContext();
 
         if (empty($contexts)) {
             return null;
@@ -231,9 +213,7 @@ trait InteractsWithClusterContext
      */
     protected function switchClusterContext(string $name): bool
     {
-        exec('kubectl config use-context '.escapeshellarg($name), $output, $resultCode);
-
-        return $resultCode === 0;
+        return Process::run('kubectl config use-context '.escapeshellarg($name))->successful();
     }
 
     /**
@@ -242,7 +222,7 @@ trait InteractsWithClusterContext
     protected function validateContextForEnvironment(string $environment): bool
     {
         $isLocal = $this->isLocalContext();
-        $context = trim(shell_exec('kubectl config current-context 2>/dev/null') ?? 'Unknown');
+        $context = $this->kubectlCurrentContext() ?: 'Unknown';
 
         // 1. WARNING: Local code on Remote Cluster
         if ($environment === 'local' && ! $isLocal) {
@@ -288,7 +268,7 @@ trait InteractsWithClusterContext
             return true;
         }
 
-        $context = trim(shell_exec('kubectl config current-context 2>/dev/null') ?? 'Unknown');
+        $context = $this->kubectlCurrentContext() ?: 'Unknown';
 
         $this->laraKubeWarn('🚨 SECURITY ALERT: Current Kubernetes context does not look local!');
         $this->line("   Context: <fg=cyan;options=bold>{$context}</>");
@@ -296,5 +276,30 @@ trait InteractsWithClusterContext
         $this->newLine();
 
         return confirm('Are you ABSOLUTELY sure you want to proceed?', false);
+    }
+
+    /**
+     * The kubeconfig's currently active context, or '' when there isn't one.
+     * Named distinctly from ResolvesEnvironmentContext::currentKubeContext()
+     * (same idea) — several commands (K9sCommand, PlexResourcesCommand,
+     * PlexStatusCommand, CloudProvisionDoksCommand) compose both traits, and
+     * PHP fatals on a trait method name collision.
+     */
+    protected function kubectlCurrentContext(): string
+    {
+        return trim(Process::run('kubectl config current-context')->output());
+    }
+
+    /**
+     * All kube-context names in the local kubeconfig (empty when none /
+     * kubectl not installed). See kubectlCurrentContext() for the naming note.
+     *
+     * @return array<int, string>
+     */
+    protected function kubectlContextNames(): array
+    {
+        $lines = explode("\n", Process::run('kubectl config get-contexts -o name')->output());
+
+        return array_values(array_filter(array_map('trim', $lines)));
     }
 }

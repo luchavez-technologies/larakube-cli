@@ -8,6 +8,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromptsForHosts;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 /**
@@ -32,7 +33,7 @@ class BundleUpdateCommand extends Command
         // 0. Pre-flight checks
         $missing = [];
         foreach (['openssl', 'curl', 'tar'] as $tool) {
-            if (shell_exec("which {$tool} 2>/dev/null") === null) {
+            if (Process::run("which {$tool}")->output() === '') {
                 $missing[] = $tool;
             }
         }
@@ -72,8 +73,7 @@ class BundleUpdateCommand extends Command
 
         $this->laraKubeInfo('Waiting for K3s containerd to become ready...');
         for ($i = 0; $i < 30; $i++) {
-            exec('k3s ctr version >/dev/null 2>&1', $output, $code);
-            if ($code === 0) {
+            if (Process::run('k3s ctr version')->successful()) {
                 break;
             }
             sleep(1);
@@ -84,7 +84,7 @@ class BundleUpdateCommand extends Command
             $this->line("  <fg=gray>import</> {$tar}");
             $success = false;
             for ($attempt = 1; $attempt <= 10; $attempt++) {
-                passthru('k3s ctr images import '.escapeshellarg($tar), $importCode);
+                $importCode = $this->runStreaming('k3s ctr images import '.escapeshellarg($tar));
                 if ($importCode === 0) {
                     $success = true;
                     break;
@@ -94,8 +94,7 @@ class BundleUpdateCommand extends Command
 
                 // Actively wait for the containerd socket to come back online
                 for ($wait = 0; $wait < 30; $wait++) {
-                    exec('k3s ctr version >/dev/null 2>&1', $output, $code);
-                    if ($code === 0) {
+                    if (Process::run('k3s ctr version')->successful()) {
                         break;
                     }
                     sleep(1);
@@ -116,9 +115,9 @@ class BundleUpdateCommand extends Command
         $ns = escapeshellarg($namespace);
 
         // Extract existing secrets from the cluster (for idempotent updates)
-        $existingSecretsJson = shell_exec("kubectl get secret laravel-secrets -n {$ns} -o json 2>/dev/null");
+        $existingSecretsJson = Process::run("kubectl get secret laravel-secrets -n {$ns} -o json")->output();
         $existingSecrets = [];
-        if ($existingSecretsJson) {
+        if ($existingSecretsJson !== '') {
             $parsed = json_decode($existingSecretsJson, true);
             if (isset($parsed['data']) && is_array($parsed['data'])) {
                 foreach ($parsed['data'] as $k => $v) {
@@ -193,18 +192,17 @@ class BundleUpdateCommand extends Command
 
         $this->laraKubeInfo('Waiting for Kubernetes API to be ready...');
         for ($wait = 0; $wait < 60; $wait++) {
-            exec('kubectl get nodes >/dev/null 2>&1', $output, $code);
-            if ($code === 0) {
+            if (Process::run('kubectl get nodes')->successful()) {
                 break;
             }
             sleep(2);
         }
 
         if ($public !== '') {
-            shell_exec("kubectl create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run("kubectl create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
         }
         if ($secret !== '') {
-            shell_exec("kubectl create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run("kubectl create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
         }
 
         // 8. Apply manifests
@@ -220,7 +218,7 @@ class BundleUpdateCommand extends Command
         // Use the standalone Kustomize binary bundled with the tarball to bypass older K3s parser bugs
         $applyCmd = getcwd().'/kustomize build '.escapeshellarg($overlayPath).' | kubectl apply -f -';
 
-        passthru($applyCmd, $applyCode);
+        $applyCode = $this->runStreaming($applyCmd);
         if ($applyCode !== 0) {
             $this->laraKubeError('Manifest apply failed.');
 
@@ -229,11 +227,11 @@ class BundleUpdateCommand extends Command
 
         // Force a rollout restart to use the newly imported image
         $this->laraKubeInfo('Triggering zero-downtime rolling update...');
-        passthru('kubectl rollout restart deployment -l app=laravel -n '.escapeshellarg($namespace));
+        $this->runStreaming('kubectl rollout restart deployment -l app=laravel -n '.escapeshellarg($namespace));
 
         // 9. Wait for rollout
         $this->laraKubeInfo('Waiting for rollout...');
-        passthru('kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s');
+        $this->runStreaming('kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s', 190);
 
         $this->newLine();
         $this->laraKubeInfo('✅ Bundle successfully updated!');

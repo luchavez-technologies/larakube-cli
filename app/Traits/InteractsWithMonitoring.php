@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
+use Illuminate\Support\Facades\Process;
 
 trait InteractsWithMonitoring
 {
@@ -25,17 +26,17 @@ trait InteractsWithMonitoring
     /** Grafana Deployment present? A cheap "is monitoring installed" probe. */
     protected function isMonitoringInstalled(string $kubectl, string $ns): bool
     {
-        $out = shell_exec("{$kubectl} get deployment grafana -n {$ns} --no-headers 2>/dev/null");
+        $out = Process::run("{$kubectl} get deployment grafana -n {$ns} --no-headers")->output();
 
-        return $out !== null && trim($out) !== '';
+        return trim($out) !== '';
     }
 
     /** The existing Grafana admin password, or null when the secret isn't there. */
     protected function readGrafanaPassword(string $kubectl, string $ns): ?string
     {
-        $encoded = trim((string) shell_exec(
-            "{$kubectl} get secret grafana-admin -n {$ns} -o jsonpath='{.data.password}' 2>/dev/null",
-        ));
+        $encoded = trim(Process::run(
+            "{$kubectl} get secret grafana-admin -n {$ns} -o jsonpath='{.data.password}'",
+        )->output());
 
         return $encoded !== '' ? (string) base64_decode($encoded) : null;
     }

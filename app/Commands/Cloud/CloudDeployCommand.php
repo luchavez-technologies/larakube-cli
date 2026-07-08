@@ -14,6 +14,7 @@ use App\Traits\InteractsWithScopedRbac;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -189,13 +190,12 @@ class CloudDeployCommand extends Command
 
         if ($registry->provider === RegistryProvider::GHCR) {
             $gh = $this->getGhCommand();
-            $user = trim((string) shell_exec("{$gh} api user -q .login 2>/dev/null"));
-            $token = trim((string) shell_exec("{$gh} auth token 2>/dev/null"));
+            $user = trim(Process::run("{$gh} api user -q .login")->output());
+            $token = trim(Process::run("{$gh} auth token")->output());
 
             if ($user !== '' && $token !== '') {
                 $this->laraKubeInfo("Logging in to {$host} as {$user} (via GitHub CLI)...");
-                exec($this->dockerLoginCommand($host, $user, $token).' 2>/dev/null', $out, $code);
-                if ($code === 0) {
+                if (Process::run($this->dockerLoginCommand($host, $user, $token))->successful()) {
                     return true;
                 }
                 $this->laraKubeWarn('Logged in, but the token lacks the write:packages scope GHCR push needs.');
@@ -212,8 +212,8 @@ class CloudDeployCommand extends Command
         }
 
         // Docker Hub / others: we can't mint a token — just verify a session exists.
-        exec('docker login '.escapeshellarg($host).' </dev/null 2>/dev/null', $out, $code);
-        if ($code !== 0) {
+        // </dev/null keeps a missing session from hanging on a credential prompt.
+        if (! Process::run('docker login '.escapeshellarg($host).' </dev/null')->successful()) {
             $this->laraKubeError("Not authenticated to {$host}.");
             $this->line("   <fg=gray>Run</> <fg=yellow>docker login {$host}</> <fg=gray>then re-run the deploy.</>");
 

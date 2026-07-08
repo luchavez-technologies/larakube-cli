@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 use function Laravel\Prompts\confirm;
 
 /**
@@ -19,7 +21,7 @@ use function Laravel\Prompts\confirm;
  */
 trait InteractsWithOpenTofu
 {
-    use DetectsWsl, InteractsWithGlobalConfig, InteractsWithOs;
+    use DetectsWsl, InteractsWithGlobalConfig, InteractsWithOs, StreamsProcessOutput;
 
     /**
      * Resolve a native tofu/terraform binary. Prefers OpenTofu; falls back to
@@ -40,7 +42,7 @@ trait InteractsWithOpenTofu
         foreach ($candidates as $c) {
             // PATH lookup first, then common install dirs (non-interactive shells
             // often miss Homebrew/linuxbrew paths — same issue getGhCommand guards).
-            $which = trim((string) shell_exec('command -v '.$c['bin'].' 2>/dev/null'));
+            $which = trim(Process::run('command -v '.$c['bin'])->output());
             if ($which !== '' && @is_executable($which)) {
                 return ['path' => $which, 'isOpenTofu' => $c['isOpenTofu']];
             }
@@ -86,7 +88,7 @@ trait InteractsWithOpenTofu
     protected function offerTofuInstall(): bool
     {
         if ($this->isDarwin()) {
-            $brew = trim((string) shell_exec('command -v brew 2>/dev/null'));
+            $brew = trim(Process::run('command -v brew')->output());
             if ($brew === '') {
                 $this->laraKubeWarn('Homebrew not found — install OpenTofu manually: https://opentofu.org/docs/intro/install/');
 
@@ -95,9 +97,8 @@ trait InteractsWithOpenTofu
             if (! confirm('Install OpenTofu now via Homebrew (brew install opentofu)?', true)) {
                 return false;
             }
-            passthru('brew install opentofu', $code);
 
-            return $code === 0;
+            return $this->runStreaming('brew install opentofu') === 0;
         }
 
         if ($this->isLinux()) {
@@ -109,11 +110,16 @@ trait InteractsWithOpenTofu
             if (! $this->ensureUnzip()) {
                 return false;
             }
+            // A hardcoded /tmp path here would let any local user race it with a
+            // symlink before `sudo` executes it — tempnam() picks an
+            // unpredictable name so there's nothing to pre-place.
+            $scriptPath = (string) tempnam(sys_get_temp_dir(), 'larakube_opentofu_install');
+
             // Official standalone installer — picks deb/rpm/standalone automatically.
-            $script = 'curl -fsSL https://get.opentofu.org/install-opentofu.sh -o /tmp/install-opentofu.sh '
-                .'&& chmod +x /tmp/install-opentofu.sh '
-                .'&& sudo /tmp/install-opentofu.sh --install-method standalone '
-                .'; rm -f /tmp/install-opentofu.sh';
+            $script = 'curl -fsSL https://get.opentofu.org/install-opentofu.sh -o '.escapeshellarg($scriptPath)
+                .' && chmod +x '.escapeshellarg($scriptPath)
+                .' && sudo '.escapeshellarg($scriptPath).' --install-method standalone'
+                .'; rm -f '.escapeshellarg($scriptPath);
             passthru($script, $code);
 
             return $code === 0;
@@ -132,7 +138,7 @@ trait InteractsWithOpenTofu
      */
     protected function ensureUnzip(): bool
     {
-        if (trim((string) shell_exec('command -v unzip 2>/dev/null')) !== '') {
+        if (trim(Process::run('command -v unzip')->output()) !== '') {
             return true;
         }
 
@@ -268,14 +274,12 @@ HCL;
         }
 
         if ($capture) {
-            $out = [];
-            $code = 0;
-            exec($cmd.' 2>/dev/null', $out, $code);
+            $result = Process::run($cmd);
 
-            return ['code' => $code, 'output' => trim(implode("\n", $out))];
+            return ['code' => $result->exitCode(), 'output' => trim($result->output())];
         }
 
-        passthru($cmd, $code);
+        $code = $this->runStreaming($cmd);
 
         return ['code' => $code, 'output' => ''];
     }

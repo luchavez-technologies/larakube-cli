@@ -3,14 +3,15 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use Illuminate\Support\Facades\Process;
 
 trait DeploysMonitoringExporters
 {
     protected function isMonitoringActive(string $kubectl = 'kubectl'): bool
     {
-        return trim((string) shell_exec(
-            "{$kubectl} get deployment prometheus -n larakube-shared --no-headers 2>/dev/null",
-        )) !== '';
+        return trim(Process::run(
+            "{$kubectl} get deployment prometheus -n larakube-shared --no-headers",
+        )->output()) !== '';
     }
 
     protected function ensureMonitoringExporters(
@@ -54,7 +55,7 @@ trait DeploysMonitoringExporters
     {
         $tmp = tempnam(sys_get_temp_dir(), 'larakube-exporter-');
         file_put_contents($tmp, $yaml);
-        shell_exec("{$kubectl} apply -f {$tmp} 2>/dev/null");
+        Process::run("{$kubectl} apply -f {$tmp}");
         @unlink($tmp);
     }
 }

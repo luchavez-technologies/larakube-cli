@@ -18,6 +18,11 @@ use Laravel\Prompts\Prompt;
 use Symfony\Component\Yaml\Yaml;
 use Tests\TestCase;
 
+// Declares App\Traits's exec() override (namespaced functions need their own
+// file — can't live inline here without wrapping this whole file's existing
+// global-namespace code in a matching `namespace { ... }` block).
+require_once __DIR__.'/Support/KubectlExecMock.php';
+
 uses(TestCase::class)->in('Feature', 'Unit');
 
 /**

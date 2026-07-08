@@ -7,6 +7,7 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class ExecCommand extends Command
@@ -78,7 +79,7 @@ class ExecCommand extends Command
 
         $podName = null;
         foreach ($labels as $label) {
-            $podName = trim(shell_exec("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null"));
+            $podName = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
             if ($podName) {
                 break;
             }

@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -44,7 +45,7 @@ class ContextRemoveCommand extends Command
             return 1;
         }
 
-        $current = trim(shell_exec('kubectl config current-context 2>/dev/null') ?? '');
+        $current = $this->kubectlCurrentContext();
 
         $this->laraKubeWarn("Removing context, cluster and user entries named '{$target}' from your kubeconfig.");
         if ($target === $current) {
@@ -58,17 +59,17 @@ class ContextRemoveCommand extends Command
         }
 
         $t = escapeshellarg($target);
-        exec("kubectl config delete-context {$t} 2>&1", $out, $code);
-        if ($code !== 0) {
-            $this->laraKubeError("Failed to remove context '{$target}':\n".implode("\n", $out));
+        $result = Process::run("kubectl config delete-context {$t}");
+        if (! $result->successful()) {
+            $this->laraKubeError("Failed to remove context '{$target}':\n".trim($result->output().$result->errorOutput()));
 
             return 1;
         }
 
         // Best-effort: for larakube-<ip> contexts the cluster + user share the name.
         // For other contexts these simply won't match and are left untouched.
-        exec("kubectl config delete-cluster {$t} 2>/dev/null");
-        exec("kubectl config delete-user {$t} 2>/dev/null");
+        Process::run("kubectl config delete-cluster {$t}");
+        Process::run("kubectl config delete-user {$t}");
 
         $this->laraKubeInfo("✅ Removed context '{$target}' (and its cluster/user entries).");
 

@@ -5,6 +5,8 @@ namespace App\Commands\Cloud;
 use App\Data\ConfigData;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -12,7 +14,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class CloudProvisionNfsCommand extends Command
 {
-    use InteractsWithClusterContext, LaraKubeOutput;
+    use InteractsWithClusterContext, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'cloud:init:nfs
                             {--context= : Target a specific kube-context}
@@ -47,8 +49,8 @@ class CloudProvisionNfsCommand extends Command
         $this->newLine();
 
         // Idempotent: the StorageClass is the marker.
-        exec("kubectl --context {$ctx} get storageclass ".escapeshellarg(ConfigData::NFS_STORAGE_CLASS).' -o name 2>/dev/null', $out, $code);
-        if ($code === 0) {
+        $found = Process::run("kubectl --context {$ctx} get storageclass ".escapeshellarg(ConfigData::NFS_STORAGE_CLASS).' -o name')->successful();
+        if ($found) {
             $this->laraKubeInfo("ℹ️  '".ConfigData::NFS_STORAGE_CLASS."' is already installed — nothing to do.");
 
             return 0;
@@ -73,9 +75,9 @@ class CloudProvisionNfsCommand extends Command
         // A pre-existing nfs-server Service with a ClusterIP can't be patched to
         // headless (clusterIP is immutable) — delete it first so the headless one
         // applies. Only when it's actually non-headless, so re-runs stay clean.
-        $existingClusterIp = trim((string) shell_exec("kubectl --context {$ctx} -n nfs get svc nfs-server -o jsonpath=".escapeshellarg('{.spec.clusterIP}').' 2>/dev/null'));
+        $existingClusterIp = trim(Process::run("kubectl --context {$ctx} -n nfs get svc nfs-server -o jsonpath=".escapeshellarg('{.spec.clusterIP}'))->output());
         if ($existingClusterIp !== '' && $existingClusterIp !== 'None') {
-            shell_exec("kubectl --context {$ctx} -n nfs delete svc nfs-server --ignore-not-found 2>/dev/null");
+            Process::run("kubectl --context {$ctx} -n nfs delete svc nfs-server --ignore-not-found");
         }
 
         $this->laraKubeInfo('1/2 Installing the NFS server...');
@@ -118,7 +120,7 @@ class CloudProvisionNfsCommand extends Command
         $ctx = escapeshellarg($context);
 
         // NFS only earns its keep across multiple nodes — a single node uses RWO directly.
-        $nodes = trim((string) shell_exec("kubectl --context {$ctx} get nodes -o name 2>/dev/null"));
+        $nodes = trim(Process::run("kubectl --context {$ctx} get nodes -o name")->output());
         $nodeCount = $nodes === '' ? 0 : count(explode("\n", $nodes));
         if ($nodeCount <= 1) {
             $this->laraKubeWarn("This cluster has {$nodeCount} node — shared NFS is only needed across multiple nodes. On a single node, RWO block storage already works.");
@@ -130,7 +132,7 @@ class CloudProvisionNfsCommand extends Command
         // The backing PVC needs a block StorageClass. With none given and no cluster
         // default, the PVC would hang Pending forever — catch it up front.
         if (trim((string) $this->option('storage-class')) === '') {
-            $scJson = (string) shell_exec("kubectl --context {$ctx} get storageclass -o json 2>/dev/null");
+            $scJson = Process::run("kubectl --context {$ctx} get storageclass -o json")->output();
             if (! str_contains($scJson, 'is-default-class": "true"') && ! str_contains($scJson, 'is-default-class":"true"')) {
                 $this->laraKubeError('No default block StorageClass for the NFS server\'s backing volume. Pass --storage-class=<name> (e.g. do-block-storage).');
 
@@ -164,7 +166,7 @@ class CloudProvisionNfsCommand extends Command
     {
         $tmp = sys_get_temp_dir().'/larakube-'.str_replace('.', '-', $view).'.yaml';
         file_put_contents($tmp, view($view, $data)->render());
-        passthru('kubectl --context '.escapeshellarg($context).' apply -f '.escapeshellarg($tmp).' --request-timeout=60s', $code);
+        $code = $this->runStreaming('kubectl --context '.escapeshellarg($context).' apply -f '.escapeshellarg($tmp).' --request-timeout=60s');
         @unlink($tmp);
 
         if ($code !== 0) {
@@ -180,7 +182,7 @@ class CloudProvisionNfsCommand extends Command
     protected function waitForRollout(string $context, string $deploy, int $timeout, string $selector): bool
     {
         $ctx = escapeshellarg($context);
-        passthru("kubectl --context {$ctx} rollout status deploy/{$deploy} -n nfs --timeout={$timeout}s", $code);
+        $code = $this->runStreaming("kubectl --context {$ctx} rollout status deploy/{$deploy} -n nfs --timeout={$timeout}s", $timeout + 10);
 
         if ($code !== 0) {
             $this->laraKubeError("'{$deploy}' did not become ready. Recent events:");
@@ -216,12 +218,12 @@ spec:
 YAML;
         $tmp = sys_get_temp_dir().'/larakube-nfs-smoke.yaml';
         file_put_contents($tmp, $pvc);
-        shell_exec("kubectl --context {$ctx} apply -f ".escapeshellarg($tmp).' 2>/dev/null');
+        Process::run("kubectl --context {$ctx} apply -f ".escapeshellarg($tmp));
         @unlink($tmp);
 
         $bound = false;
         for ($i = 0; $i < 30; $i++) {
-            $phase = trim((string) shell_exec("kubectl --context {$ctx} -n nfs get pvc nfs-smoke-test -o jsonpath=".escapeshellarg('{.status.phase}').' 2>/dev/null'));
+            $phase = trim(Process::run("kubectl --context {$ctx} -n nfs get pvc nfs-smoke-test -o jsonpath=".escapeshellarg('{.status.phase}'))->output());
             if ($phase === 'Bound') {
                 $bound = true;
                 break;
@@ -230,7 +232,7 @@ YAML;
         }
 
         // Clean up the test PVC either way.
-        shell_exec("kubectl --context {$ctx} -n nfs delete pvc nfs-smoke-test --ignore-not-found 2>/dev/null");
+        Process::run("kubectl --context {$ctx} -n nfs delete pvc nfs-smoke-test --ignore-not-found");
 
         if (! $bound) {
             $this->laraKubeError('The test PVC never bound — the StorageClass is installed but not provisioning. Provisioner events:');
@@ -248,7 +250,7 @@ YAML;
     protected function printEvents(string $context, string $selector): void
     {
         $ctx = escapeshellarg($context);
-        $describe = (string) shell_exec("kubectl --context {$ctx} -n nfs describe pod -l ".escapeshellarg($selector).' 2>/dev/null');
+        $describe = Process::run("kubectl --context {$ctx} -n nfs describe pod -l ".escapeshellarg($selector))->output();
         $pos = strpos($describe, 'Events:');
         $this->line($pos !== false ? '  '.str_replace("\n", "\n  ", trim(substr($describe, $pos))) : '  (no events found)');
     }

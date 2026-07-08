@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Enums\DeploymentStrategy;
 use App\Enums\ManagedProvider;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
@@ -88,9 +89,7 @@ trait ResolvesEnvironmentContext
     /** Is the env's context present + reachable, without touching the global one? */
     protected function environmentContextReachable(?string $context): bool
     {
-        exec($this->contextKubectl($context).' cluster-info --request-timeout=5s 2>&1', $out, $code);
-
-        return $code === 0;
+        return Process::run($this->contextKubectl($context).' cluster-info --request-timeout=5s')->successful();
     }
 
     /**
@@ -277,7 +276,7 @@ trait ResolvesEnvironmentContext
             return $contexts[0];
         }
 
-        $current = trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
+        $current = $this->currentKubeContext();
 
         return select(
             label: 'Which cluster (kube-context)?',
@@ -311,7 +310,7 @@ trait ResolvesEnvironmentContext
 
             $context = ($explicitContext !== null && $explicitContext !== '')
                 ? $explicitContext
-                : ($this->environmentContextOrCurrent($config, $env) ?? trim((string) shell_exec('kubectl config current-context 2>/dev/null')));
+                : ($this->environmentContextOrCurrent($config, $env) ?? $this->currentKubeContext());
 
             return [$config->getNamespace($env), $context !== '' ? $context : null];
         }
@@ -349,7 +348,7 @@ trait ResolvesEnvironmentContext
             $env = $this->pickEnvironment($config);
             if ($env !== null) {
                 $context = $this->environmentContextOrCurrent($config, $env)
-                    ?? trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
+                    ?? $this->currentKubeContext();
 
                 return $context !== '' ? $context : null;
             }
@@ -361,9 +360,9 @@ trait ResolvesEnvironmentContext
     /** Node count for a kube-context (0 when unreachable / unknown). */
     protected function clusterNodeCount(string $context): int
     {
-        $out = trim((string) shell_exec(
-            'kubectl --context '.escapeshellarg($context).' get nodes -o jsonpath='.escapeshellarg('{.items[*].metadata.name}').' 2>/dev/null',
-        ));
+        $out = trim(Process::run(
+            'kubectl --context '.escapeshellarg($context).' get nodes -o jsonpath='.escapeshellarg('{.items[*].metadata.name}'),
+        )->output());
 
         return $out === '' ? 0 : count(preg_split('/\s+/', $out) ?: []);
     }
@@ -376,8 +375,14 @@ trait ResolvesEnvironmentContext
      */
     protected function availableKubeContexts(): array
     {
-        exec('kubectl config get-contexts -o name 2>/dev/null', $out);
+        $lines = explode("\n", Process::run('kubectl config get-contexts -o name')->output());
 
-        return array_values(array_filter(array_map('trim', $out)));
+        return array_values(array_filter(array_map('trim', $lines)));
+    }
+
+    /** The kubeconfig's currently active context, or '' when there isn't one. */
+    protected function currentKubeContext(): string
+    {
+        return trim(Process::run('kubectl config current-context')->output());
     }
 }

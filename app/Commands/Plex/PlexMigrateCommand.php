@@ -7,6 +7,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -125,10 +126,10 @@ class PlexMigrateCommand extends Command
             : 'kubectl --context '.escapeshellarg((string) $context);
 
         foreach (array_filter([$skipDbCopy ? null : $driver?->value, $skipStorageCopy ? null : $storage?->value]) as $podName) {
-            $exists = trim((string) shell_exec(
+            $exists = trim(Process::run(
                 $selfHostedKubectl.' get deploy '.escapeshellarg($podName).
-                ' -n '.escapeshellarg($namespace).' -o name 2>/dev/null',
-            )) !== '';
+                ' -n '.escapeshellarg($namespace).' -o name',
+            )->output()) !== '';
 
             if (! $exists) {
                 $this->laraKubeError("No '{$podName}' deployment found in '{$namespace}'.");
@@ -138,15 +139,15 @@ class PlexMigrateCommand extends Command
             }
         }
 
-        $dbPvcExists = $dbPvc !== null && trim((string) shell_exec(
+        $dbPvcExists = $dbPvc !== null && trim(Process::run(
             $selfHostedKubectl.' get pvc '.escapeshellarg($dbPvc).
-            ' -n '.escapeshellarg($namespace).' -o name 2>/dev/null',
-        )) !== '';
+            ' -n '.escapeshellarg($namespace).' -o name',
+        )->output()) !== '';
 
-        $storagePvcExists = $storagePvc !== null && trim((string) shell_exec(
+        $storagePvcExists = $storagePvc !== null && trim(Process::run(
             $selfHostedKubectl.' get pvc '.escapeshellarg($storagePvc).
-            ' -n '.escapeshellarg($namespace).' -o name 2>/dev/null',
-        )) !== '';
+            ' -n '.escapeshellarg($namespace).' -o name',
+        )->output()) !== '';
 
         if (! $needsCopy && ! $dbPvcExists && ! $storagePvcExists) {
             $this->laraKubeInfo("Already migrated, and no leftover PVCs — nothing left to do for '{$env}'.");
@@ -251,16 +252,13 @@ class PlexMigrateCommand extends Command
             try {
                 if ($driver !== null && ! $skipDbCopy) {
                     $dumpFile = tempnam(sys_get_temp_dir(), 'larakube_plex_dump');
-                    $dumpOutput = [];
 
-                    $this->withSpin('Dumping data from self-hosted database...', function () use ($selfHostedKubectl, $namespace, $driver, $dumpFile, &$dumpOutput, &$dumpCode) {
-                        exec(
+                    $this->withSpin('Dumping data from self-hosted database...', function () use ($selfHostedKubectl, $namespace, $driver, $dumpFile, &$dumpCode) {
+                        $dumpCode = Process::run(
                             $selfHostedKubectl.' exec -n '.escapeshellarg($namespace).' deploy/'.escapeshellarg($driver->value).
                             ' -- sh -c '.escapeshellarg($driver->selfHostedDumpCommand()).
-                            ' > '.escapeshellarg($dumpFile).' 2>/dev/null',
-                            $dumpOutput,
-                            $dumpCode,
-                        );
+                            ' > '.escapeshellarg($dumpFile),
+                        )->exitCode();
 
                         return $dumpCode === 0;
                     });
@@ -268,12 +266,12 @@ class PlexMigrateCommand extends Command
 
                 if ($storage !== null && ! $skipStorageCopy) {
                     $this->withSpin("Mirroring files into Commons bucket '{$bucket}'...", function () use ($selfHostedKubectl, $namespace, $storage, $mirrorCmd, &$mirrorOutput, &$mirrorCode) {
-                        exec(
+                        $result = Process::run(
                             $selfHostedKubectl.' exec -n '.escapeshellarg($namespace).' deploy/'.escapeshellarg($storage->value).
-                            ' -- sh -c '.escapeshellarg($mirrorCmd).' 2>&1',
-                            $mirrorOutput,
-                            $mirrorCode,
+                            ' -- sh -c '.escapeshellarg($mirrorCmd),
                         );
+                        $mirrorCode = $result->exitCode();
+                        $mirrorOutput = explode("\n", trim($result->output().$result->errorOutput()));
 
                         return $mirrorCode === 0;
                     });
@@ -326,13 +324,13 @@ class PlexMigrateCommand extends Command
                 $ns = $this->plexNamespace();
 
                 $this->withSpin("Restoring data into Commons tenant '{$tenant}'...", function () use ($ns, $driver, $tenant, $tempDbPassword, $dumpFile, &$restoreOutput, &$restoreCode) {
-                    exec(
+                    $result = Process::run(
                         $this->plexKubectl().' exec -i -n '.escapeshellarg($ns).' deploy/'.$driver->value.
                         ' -- sh -c '.escapeshellarg($driver->commonsRestoreCommand($tenant, $tempDbPassword)).
-                        ' < '.escapeshellarg($dumpFile).' 2>&1',
-                        $restoreOutput,
-                        $restoreCode,
+                        ' < '.escapeshellarg($dumpFile),
                     );
+                    $restoreCode = $result->exitCode();
+                    $restoreOutput = explode("\n", trim($result->output().$result->errorOutput()));
 
                     return $restoreCode === 0;
                 });
@@ -426,11 +424,11 @@ class PlexMigrateCommand extends Command
                 // managed), this would hang the CLI indefinitely with zero
                 // feedback. Issue the delete without waiting, then report
                 // what's actually true instead of assuming it finished.
-                shell_exec($selfHostedKubectl.' delete pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' --wait=false 2>/dev/null');
+                Process::run($selfHostedKubectl.' delete pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' --wait=false');
 
-                $stillThere = trim((string) shell_exec(
-                    $selfHostedKubectl.' get pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' -o name 2>/dev/null',
-                )) !== '';
+                $stillThere = trim(Process::run(
+                    $selfHostedKubectl.' get pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' -o name',
+                )->output()) !== '';
 
                 if ($stillThere) {
                     // Its own pod is still mounting it. Scale JUST that one
@@ -442,12 +440,12 @@ class PlexMigrateCommand extends Command
                     // approved for deletion, and gets dropped from the local
                     // overlay entirely on the next heal+up anyway.
                     $this->withSpin("Releasing '{$target['pvc']}' (scaling {$target['deployment']} to 0)...", function () use ($selfHostedKubectl, $target, $namespace, &$stillThere) {
-                        shell_exec($selfHostedKubectl.' scale deployment/'.escapeshellarg($target['deployment']).' --replicas=0 -n '.escapeshellarg($namespace).' 2>/dev/null');
+                        Process::run($selfHostedKubectl.' scale deployment/'.escapeshellarg($target['deployment']).' --replicas=0 -n '.escapeshellarg($namespace));
 
                         for ($i = 0; $i < 10; $i++) {
-                            $stillThere = trim((string) shell_exec(
-                                $selfHostedKubectl.' get pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' -o name 2>/dev/null',
-                            )) !== '';
+                            $stillThere = trim(Process::run(
+                                $selfHostedKubectl.' get pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' -o name',
+                            )->output()) !== '';
 
                             if (! $stillThere) {
                                 break;
@@ -521,9 +519,9 @@ class PlexMigrateCommand extends Command
      */
     protected function quiesceAppDeployments(string $kubectl, string $namespace, array $excludeDeployments): array
     {
-        $decoded = json_decode((string) shell_exec(
-            "{$kubectl} get deployments -n ".escapeshellarg($namespace).' -o json 2>/dev/null',
-        ), true);
+        $decoded = json_decode(Process::run(
+            "{$kubectl} get deployments -n ".escapeshellarg($namespace).' -o json',
+        )->output(), true);
 
         $original = [];
         foreach ($decoded['items'] ?? [] as $item) {
@@ -543,7 +541,7 @@ class PlexMigrateCommand extends Command
 
         $this->withSpin('Pausing app writes ('.implode(', ', array_keys($original)).')...', function () use ($kubectl, $namespace, $original) {
             foreach (array_keys($original) as $name) {
-                shell_exec("{$kubectl} scale deployment/{$name} --replicas=0 -n ".escapeshellarg($namespace).' 2>/dev/null');
+                Process::run("{$kubectl} scale deployment/{$name} --replicas=0 -n ".escapeshellarg($namespace));
             }
 
             return true;
@@ -567,7 +565,7 @@ class PlexMigrateCommand extends Command
 
         $this->withSpin('Resuming app...', function () use ($kubectl, $namespace, $original) {
             foreach ($original as $name => $replicas) {
-                shell_exec("{$kubectl} scale deployment/{$name} --replicas={$replicas} -n ".escapeshellarg($namespace).' 2>/dev/null');
+                Process::run("{$kubectl} scale deployment/{$name} --replicas={$replicas} -n ".escapeshellarg($namespace));
             }
 
             return true;

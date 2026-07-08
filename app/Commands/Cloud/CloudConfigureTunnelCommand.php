@@ -9,6 +9,7 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\select;
@@ -83,12 +84,12 @@ class CloudConfigureTunnelCommand extends Command
 
         // 1. Idempotent K8s Secret
         $this->withSpin('Storing tunnel token as K8s Secret...', function () use ($kubectl, $namespace, $token) {
-            exec(
+            Process::run(
                 $kubectl.' create secret generic larakube-tunnel-secret'
                 .' -n '.escapeshellarg($namespace)
                 .' --from-literal=TOKEN='.escapeshellarg($token)
                 .' --dry-run=client -o yaml'
-                .' | '.$kubectl.' apply -f - 2>/dev/null',
+                .' | '.$kubectl.' apply -f -',
             );
 
             return true;
@@ -103,7 +104,7 @@ class CloudConfigureTunnelCommand extends Command
 
             $tmp = sys_get_temp_dir().'/larakube-tunnel.yaml';
             file_put_contents($tmp, $manifest);
-            exec($kubectl.' apply -f '.escapeshellarg($tmp).' 2>/dev/null');
+            Process::run($kubectl.' apply -f '.escapeshellarg($tmp));
             @unlink($tmp);
 
             return true;
@@ -171,8 +172,8 @@ class CloudConfigureTunnelCommand extends Command
         $this->laraKubeWarn("Removing tunnel from '{$namespace}'...");
 
         $this->withSpin('Deleting tunnel Deployment and Secret...', function () use ($kubectl, $namespace) {
-            exec($kubectl.' -n '.escapeshellarg($namespace).' delete deployment larakube-tunnel --ignore-not-found 2>/dev/null');
-            exec($kubectl.' -n '.escapeshellarg($namespace).' delete secret larakube-tunnel-secret --ignore-not-found 2>/dev/null');
+            Process::run($kubectl.' -n '.escapeshellarg($namespace).' delete deployment larakube-tunnel --ignore-not-found');
+            Process::run($kubectl.' -n '.escapeshellarg($namespace).' delete secret larakube-tunnel-secret --ignore-not-found');
 
             return true;
         });

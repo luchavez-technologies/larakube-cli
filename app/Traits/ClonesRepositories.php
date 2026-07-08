@@ -2,10 +2,13 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
 use RuntimeException;
 
 trait ClonesRepositories
 {
+    use StreamsProcessOutput;
+
     /**
      * Resolve a raw repo argument to a full git-clonable URL.
      *
@@ -60,9 +63,7 @@ trait ClonesRepositories
 
         $cmd .= ' '.escapeshellarg($directory);
 
-        passthru($cmd, $code);
-
-        return (int) $code;
+        return $this->runStreaming($cmd);
     }
 
     /**
@@ -72,15 +73,14 @@ trait ClonesRepositories
     protected function runComposerInstall(string $workDir): int
     {
         $composer = $this->resolveComposerCommand($workDir);
-        passthru("{$composer} install --no-interaction 2>&1", $code);
 
-        return (int) $code;
+        return $this->runStreaming("{$composer} install --no-interaction");
     }
 
     protected function resolveComposerCommand(string $workDir): string
     {
         $candidates = array_filter([
-            trim(shell_exec('command -v composer 2>/dev/null') ?? ''),
+            trim(Process::run('command -v composer')->output()),
             '/usr/local/bin/composer',
             '/opt/homebrew/bin/composer',
         ]);
@@ -120,7 +120,7 @@ trait ClonesRepositories
 
         // Generate app key (if artisan exists)
         if (file_exists($workDir.'/artisan')) {
-            shell_exec('php '.escapeshellarg($workDir.'/artisan').' key:generate --ansi 2>/dev/null');
+            Process::run('php '.escapeshellarg($workDir.'/artisan').' key:generate --ansi');
         }
 
         return 'copied';

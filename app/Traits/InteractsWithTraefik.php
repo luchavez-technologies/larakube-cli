@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
+use Illuminate\Support\Facades\Process;
 
 trait InteractsWithTraefik
 {
@@ -27,13 +28,13 @@ trait InteractsWithTraefik
         file_put_contents($tmpInstall, view('k8s.traefik-install')->render());
 
         $this->withSpin('Applying Traefik manifests...', function () use ($tmpInstall) {
-            exec("kubectl apply -f {$tmpInstall}");
+            Process::run("kubectl apply -f {$tmpInstall}");
 
             return true;
         });
 
         $this->withSpin('Waiting for Traefik to be ready...', function () {
-            exec('kubectl wait --for=condition=ready pod -l app=traefik -n traefik --timeout=60s');
+            Process::timeout(65)->run('kubectl wait --for=condition=ready pod -l app=traefik -n traefik --timeout=60s');
 
             return true;
         });
@@ -66,7 +67,7 @@ trait InteractsWithTraefik
     protected function createTraefikInfrastructure(): void
     {
         $namespace = 'traefik';
-        shell_exec("kubectl create namespace {$namespace} --dry-run=client -o yaml | kubectl apply -f -");
+        Process::run("kubectl create namespace {$namespace} --dry-run=client -o yaml | kubectl apply -f -");
 
         $this->ensureSystemCertExists();
         $this->applyTraefikCertResources($namespace);
@@ -154,17 +155,17 @@ trait InteractsWithTraefik
     protected function applySharedService(SharedClusterService $service, string $host): void
     {
         $probe = $service->presenceProbe();
-        if ($probe !== null && trim((string) shell_exec("kubectl get {$probe} --no-headers 2>/dev/null")) === '') {
+        if ($probe !== null && trim(Process::run("kubectl get {$probe} --no-headers")->output()) === '') {
             return;
         }
 
         if ($service->namespace() !== null) {
-            exec('kubectl create namespace '.escapeshellarg($service->namespace()).' --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null');
+            Process::run('kubectl create namespace '.escapeshellarg($service->namespace()).' --dry-run=client -o yaml | kubectl apply -f -');
         }
 
         $tmp = sys_get_temp_dir()."/larakube-shared-{$service->value}.yaml";
         file_put_contents($tmp, view($service->template(), ['host' => $host])->render());
-        shell_exec("kubectl apply -f {$tmp} 2>/dev/null");
+        Process::run("kubectl apply -f {$tmp}");
         @unlink($tmp);
 
         $this->syncSharedServiceDeploymentEnv($service, $host);
@@ -188,7 +189,7 @@ trait InteractsWithTraefik
         $deployment = escapeshellarg($sync['deployment']);
         $namespace = escapeshellarg($sync['namespace']);
 
-        $exists = trim((string) shell_exec("kubectl get deployment {$deployment} -n {$namespace} --no-headers 2>/dev/null"));
+        $exists = trim(Process::run("kubectl get deployment {$deployment} -n {$namespace} --no-headers")->output());
         if ($exists === '') {
             return;
         }
@@ -198,7 +199,7 @@ trait InteractsWithTraefik
             $pairs .= ' '.escapeshellarg("{$key}={$value}");
         }
 
-        shell_exec("kubectl set env deployment {$deployment} -n {$namespace}{$pairs} 2>/dev/null");
+        Process::run("kubectl set env deployment {$deployment} -n {$namespace}{$pairs}");
     }
 
     /**
@@ -212,7 +213,7 @@ trait InteractsWithTraefik
         file_put_contents($tmpCertsYml, $this->buildTraefikCertsYml());
         // Server-side apply avoids storing base64 cert blobs in the
         // last-applied-configuration annotation (256 KB limit overflows with multiple certs).
-        shell_exec("kubectl create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply --server-side --field-manager=larakube --force-conflicts -f -");
+        Process::run("kubectl create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply --server-side --field-manager=larakube --force-conflicts -f -");
         @unlink($tmpCertsYml);
 
         // 2. Secret — all cert files from ~/.larakube/certificates/
@@ -224,12 +225,12 @@ trait InteractsWithTraefik
             $fromFiles .= ' --from-file='.escapeshellarg("{$appName}-dev-key.pem={$paths['key']}");
         }
 
-        shell_exec("kubectl create secret generic traefik-certificates -n {$namespace}{$fromFiles} --dry-run=client -o yaml | kubectl apply --server-side --field-manager=larakube --force-conflicts -f -");
+        Process::run("kubectl create secret generic traefik-certificates -n {$namespace}{$fromFiles} --dry-run=client -o yaml | kubectl apply --server-side --field-manager=larakube --force-conflicts -f -");
 
         // 3. Restart Traefik to pick up changes (only if it exists)
-        $exists = shell_exec("kubectl get deployment traefik -n {$namespace} 2>/dev/null");
-        if ($exists) {
-            shell_exec("kubectl rollout restart deployment traefik -n {$namespace}");
+        $exists = Process::run("kubectl get deployment traefik -n {$namespace}")->output();
+        if ($exists !== '') {
+            Process::run("kubectl rollout restart deployment traefik -n {$namespace}");
         }
     }
 
@@ -248,29 +249,29 @@ trait InteractsWithTraefik
         // 1. Label-based: standard ingress-controller labels.
         // Note: kubectl does not support combining -l (label) and --field-selector
         // in the same call, so we use -l alone and trust the label accuracy.
-        $output = trim((string) shell_exec(
-            'kubectl get svc -A -l app.kubernetes.io/name=traefik,app.kubernetes.io/component=ingress-controller -o name 2>/dev/null',
-        ));
+        $output = trim(Process::run(
+            'kubectl get svc -A -l app.kubernetes.io/name=traefik,app.kubernetes.io/component=ingress-controller -o name',
+        )->output());
 
         // 1b. Label-based: nginx-ingress variants
         if ($output === '') {
-            $output = trim((string) shell_exec(
-                'kubectl get svc -A -l app=ingress-nginx,app.kubernetes.io/name=ingress-nginx -o name 2>/dev/null',
-            ));
+            $output = trim(Process::run(
+                'kubectl get svc -A -l app=ingress-nginx,app.kubernetes.io/name=ingress-nginx -o name',
+            )->output());
         }
 
         // 2. Name-based: a LoadBalancer named "traefik" anywhere (hand-rolled installs)
         if ($output === '') {
-            $output = trim((string) shell_exec(
-                'kubectl get svc -A --field-selector metadata.name=traefik,spec.type=LoadBalancer -o name 2>/dev/null',
-            ));
+            $output = trim(Process::run(
+                'kubectl get svc -A --field-selector metadata.name=traefik,spec.type=LoadBalancer -o name',
+            )->output());
         }
 
         // 3. Last resort: any LoadBalancer in kube-system
         if ($output === '') {
-            $output = trim((string) shell_exec(
-                'kubectl get svc -n kube-system --field-selector spec.type=LoadBalancer -o name 2>/dev/null',
-            ));
+            $output = trim(Process::run(
+                'kubectl get svc -n kube-system --field-selector spec.type=LoadBalancer -o name',
+            )->output());
         }
 
         return $output !== '';
@@ -284,14 +285,14 @@ trait InteractsWithTraefik
         $this->laraKubeInfo('Destroying Traefik Ingress Controller...');
 
         $this->withSpin('Removing Traefik namespace and internal resources...', function () {
-            exec('kubectl delete namespace traefik --wait=true 2>/dev/null');
+            Process::timeout(120)->run('kubectl delete namespace traefik --wait=true');
 
             return true;
         });
 
         $this->withSpin('Cleaning up cluster-scoped RBAC permissions...', function () {
-            exec('kubectl delete clusterrole traefik-ingress-controller 2>/dev/null');
-            exec('kubectl delete clusterrolebinding traefik-ingress-controller 2>/dev/null');
+            Process::run('kubectl delete clusterrole traefik-ingress-controller');
+            Process::run('kubectl delete clusterrolebinding traefik-ingress-controller');
 
             return true;
         });

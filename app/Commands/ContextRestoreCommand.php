@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
@@ -69,7 +70,7 @@ class ContextRestoreCommand extends Command
         @chmod($config, 0600);
 
         $this->laraKubeInfo('✅ Restored '.basename($choice).' → ~/.kube/config');
-        $current = trim((string) shell_exec('kubectl config current-context 2>/dev/null'));
+        $current = trim(Process::run('kubectl config current-context')->output());
         if ($current !== '') {
             $this->line('  <fg=gray>Current context:</> <fg=cyan>'.$current.'</>');
         }

@@ -6,6 +6,7 @@ use App\Enums\DatabaseDriver;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\multiselect;
 
@@ -113,8 +114,8 @@ class TunnelCommand extends Command
     protected function getAvailableServices(string $namespace): array
     {
         $services = [];
-        $output = shell_exec("kubectl get svc -n {$namespace} -o json");
-        if (! $output) {
+        $output = Process::run("kubectl get svc -n {$namespace} -o json")->output();
+        if ($output === '') {
             return [];
         }
 

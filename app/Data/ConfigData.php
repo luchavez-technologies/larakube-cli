@@ -24,6 +24,7 @@ use App\Enums\StorageDriver;
 use App\Traits\InteractsWithJsonFile;
 use App\Traits\LaraKubeOutput;
 use BackedEnum;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Spatie\LaravelData\Data;
@@ -1672,20 +1673,20 @@ class ConfigData extends Data
         file_put_contents($tmpFile, $json);
         $appName = $this->getName();
         $command = "kubectl create secret generic larakube-blueprint -n {$namespace} --from-file=.larakube.json={$tmpFile} --dry-run=client -o yaml | kubectl label -f - --local larakube.io/project={$appName} larakube.io/config=blueprint -o yaml | kubectl apply -f -";
-        exec($command, $output, $result);
+        $result = Process::run($command)->successful();
         @unlink($tmpFile);
 
-        return $result === 0;
+        return $result;
     }
 
     public static function restoreFromCluster(?string $namespace = null, ?string $appName = null): ?self
     {
         $command = $namespace
-            ? "kubectl get secret larakube-blueprint -n {$namespace} -o jsonpath='{.data.\\.larakube\\.json}' 2>/dev/null"
-            : "kubectl get secrets -A -l larakube.io/project={$appName},larakube.io/config=blueprint -o jsonpath='{.items[0].data.\\.larakube\\.json}' 2>/dev/null";
+            ? "kubectl get secret larakube-blueprint -n {$namespace} -o jsonpath='{.data.\\.larakube\\.json}'"
+            : "kubectl get secrets -A -l larakube.io/project={$appName},larakube.io/config=blueprint -o jsonpath='{.items[0].data.\\.larakube\\.json}'";
 
-        $encoded = shell_exec($command);
-        if (! $encoded) {
+        $encoded = Process::run($command)->output();
+        if ($encoded === '') {
             return null;
         }
 

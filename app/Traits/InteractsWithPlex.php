@@ -8,6 +8,7 @@ use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\ScoutDriver;
 use App\Enums\StorageDriver;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -431,7 +432,9 @@ trait InteractsWithPlex
         $kubectl = $this->plexKubectl();
         $tmp = sys_get_temp_dir().'/larakube-plex-commons.yaml';
         file_put_contents($tmp, $manifest);
-        passthru("{$kubectl} apply -n {$ns} -f ".escapeshellarg($tmp));
+        Process::run("{$kubectl} apply -n {$ns} -f ".escapeshellarg($tmp), function (string $type, string $output) {
+            echo $output;
+        });
         @unlink($tmp);
     }
 
@@ -502,23 +505,21 @@ trait InteractsWithPlex
 
         $service = $driver->value;
         $client = $driver->commonsAdminClient();
-        $output = [];
-        $code = 0;
-        $this->withSpin("Allocating database '{$tenant}' in the Commons...", function () use ($ns, $service, $client, $tmp, &$output, &$code) {
-            exec(
+        $result = null;
+        $this->withSpin("Allocating database '{$tenant}' in the Commons...", function () use ($ns, $service, $client, $tmp, &$result) {
+            $result = Process::run(
                 $this->plexKubectl().' exec -i -n '.escapeshellarg($ns).' deploy/'.$service.' -- '.
-                'sh -c '.escapeshellarg($client).' < '.escapeshellarg($tmp).' 2>&1',
-                $output,
-                $code,
+                'sh -c '.escapeshellarg($client).' < '.escapeshellarg($tmp),
             );
 
-            return $code === 0;
+            return $result->successful();
         });
 
         @unlink($tmp);
 
-        if ($code !== 0) {
+        if (! $result->successful()) {
             $this->laraKubeError("Could not allocate the tenant database in the Commons {$driver->getLabel()}.");
+            $output = explode("\n", trim($result->output().$result->errorOutput()));
             foreach (array_slice($output, -4) as $line) {
                 $this->laraKubeLine('    '.$line);
             }
@@ -564,9 +565,9 @@ trait InteractsWithPlex
     protected function readCommonsS3Credentials(): ?array
     {
         $ns = $this->plexNamespace();
-        $read = fn (string $key): string => trim((string) shell_exec(
-            $this->plexKubectl()." get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.'.$key.'}').' 2>/dev/null',
-        ));
+        $read = fn (string $key): string => trim(Process::run(
+            $this->plexKubectl()." get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.'.$key.'}'),
+        )->output());
 
         $access = $read('S3_ACCESS_KEY');
         $secret = $read('S3_SECRET_KEY');
@@ -589,20 +590,18 @@ trait InteractsWithPlex
         $service = $driver->value;
         $cmd = $driver->commonsBucketCreateCommand($bucket);
 
-        $output = [];
-        $code = 0;
-        $this->withSpin("Creating object-storage bucket '{$bucket}' in the Commons...", function () use ($ns, $service, $cmd, &$output, &$code) {
-            exec(
-                $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$service.' -- sh -c '.escapeshellarg($cmd).' 2>&1',
-                $output,
-                $code,
+        $result = null;
+        $this->withSpin("Creating object-storage bucket '{$bucket}' in the Commons...", function () use ($ns, $service, $cmd, &$result) {
+            $result = Process::run(
+                $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$service.' -- sh -c '.escapeshellarg($cmd),
             );
 
-            return $code === 0;
+            return $result->successful();
         });
 
-        if ($code !== 0) {
+        if (! $result->successful()) {
             $this->laraKubeError("Could not create the Commons S3 bucket '{$bucket}'.");
+            $output = explode("\n", trim($result->output().$result->errorOutput()));
             foreach (array_slice($output, -4) as $line) {
                 $this->laraKubeLine('    '.$line);
             }
@@ -627,11 +626,7 @@ trait InteractsWithPlex
         // `cluster-info` is the reliable connectivity probe (matches the proven
         // hasActiveCluster check). A short timeout keeps us from hanging on a
         // down/unreachable cluster. (/readyz proved unreliable as a gate.)
-        $out = [];
-        $code = 0;
-        exec($this->plexKubectl().' cluster-info --request-timeout=8s 2>/dev/null', $out, $code);
-
-        return $code === 0;
+        return Process::run($this->plexKubectl().' cluster-info --request-timeout=8s')->successful();
     }
 
     /**
@@ -649,9 +644,9 @@ trait InteractsWithPlex
     protected function getCommonsSpec(): ?array
     {
         $ns = $this->plexNamespace();
-        $json = trim((string) shell_exec(
-            $this->plexKubectl()." get configmap plex-commons -n {$ns} -o jsonpath='{.data.commons\\.json}' 2>/dev/null",
-        ));
+        $json = trim(Process::run(
+            $this->plexKubectl()." get configmap plex-commons -n {$ns} -o jsonpath='{.data.commons\\.json}'",
+        )->output());
 
         if ($json === '') {
             return null;
@@ -668,9 +663,9 @@ trait InteractsWithPlex
     protected function getRegistry(): array
     {
         $ns = $this->plexNamespace();
-        $json = trim((string) shell_exec(
-            $this->plexKubectl()." get configmap plex-registry -n {$ns} -o jsonpath='{.data.registry\\.json}' 2>/dev/null",
-        ));
+        $json = trim(Process::run(
+            $this->plexKubectl()." get configmap plex-registry -n {$ns} -o jsonpath='{.data.registry\\.json}'",
+        )->output());
 
         $registry = $json === '' ? [] : json_decode($json, true);
 
@@ -688,7 +683,7 @@ trait InteractsWithPlex
         file_put_contents($tmp, (string) json_encode($registry, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         $kubectl = $this->plexKubectl();
-        shell_exec(
+        Process::run(
             "{$kubectl} create configmap plex-registry -n {$ns} ".
             '--from-file=registry.json='.escapeshellarg($tmp).
             " --dry-run=client -o yaml | {$kubectl} apply -f -",

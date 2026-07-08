@@ -12,6 +12,8 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
@@ -20,7 +22,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class CloudProvisionDoksCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext;
+    use InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     protected $signature = 'cloud:init:doks {--context= : Target a specific kube-context}';
 
@@ -188,9 +190,7 @@ class CloudProvisionDoksCommand extends Command
     /** Is Traefik already installed on this cluster? Keeps provision reruns safe. */
     private function traefikInstalled(string $context): bool
     {
-        exec('kubectl --context '.escapeshellarg($context).' get deployment -n traefik traefik 2>/dev/null', $out, $code);
-
-        return $code === 0;
+        return Process::run('kubectl --context '.escapeshellarg($context).' get deployment -n traefik traefik')->successful();
     }
 
     /**
@@ -217,9 +217,8 @@ class CloudProvisionDoksCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-traefik-managed.yaml';
         file_put_contents($tmp, $manifest);
 
-        passthru(
+        $code = $this->runStreaming(
             'kubectl --context '.escapeshellarg($context).' apply -f '.escapeshellarg($tmp).' --request-timeout=60s',
-            $code,
         );
         @unlink($tmp);
 
@@ -232,13 +231,10 @@ class CloudProvisionDoksCommand extends Command
         $attempt = 0;
 
         while ($attempt < $maxAttempts) {
-            exec(
+            $ip = trim(Process::run(
                 'kubectl --context '.escapeshellarg($context)
-                .' get svc -n traefik traefik -o jsonpath=\'{.status.loadBalancer.ingress[0].ip}\' 2>/dev/null',
-                $out,
-            );
-
-            $ip = trim($out[0] ?? '');
+                .' get svc -n traefik traefik -o jsonpath=\'{.status.loadBalancer.ingress[0].ip}\'',
+            )->output());
             if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP)) {
                 return $ip;
             }

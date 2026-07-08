@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 trait InstallsK9s
 {
     /**
@@ -9,7 +11,7 @@ trait InstallsK9s
      */
     protected function resolveK9sBin(): ?string
     {
-        $which = trim((string) shell_exec('command -v k9s 2>/dev/null'));
+        $which = trim(Process::run('command -v k9s')->output());
         if ($which !== '' && @is_executable($which)) {
             return $which;
         }
@@ -32,7 +34,7 @@ trait InstallsK9s
         $version = 'v0.32.5';
 
         if ($this->isDarwin()) {
-            $brew = trim((string) shell_exec('command -v brew 2>/dev/null'));
+            $brew = trim(Process::run('command -v brew')->output());
             if ($brew === '') {
                 $this->warn('  Homebrew not found. Install it from https://brew.sh then run: brew install k9s');
 
@@ -40,7 +42,9 @@ trait InstallsK9s
             }
 
             $this->laraKubeInfo('Installing k9s via Homebrew...');
-            passthru('brew install k9s', $code);
+            $code = Process::forever()->run('brew install k9s', function (string $type, string $output) {
+                echo $output;
+            })->exitCode();
 
             return $code === 0;
         }
@@ -56,7 +60,7 @@ trait InstallsK9s
             $this->laraKubeInfo("Installing k9s {$version} for {$where}...");
 
             $url = "https://github.com/derailed/k9s/releases/download/{$version}/k9s_linux_{$arch}.tar.gz";
-            exec('curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' k9s 2>/dev/null', $_, $code);
+            $code = Process::forever()->run('curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' k9s')->exitCode();
 
             if ($code !== 0 || ! is_file($bin) || ! is_executable($bin)) {
                 $this->laraKubeWarn("Failed to download k9s {$version}.");
@@ -67,7 +71,7 @@ trait InstallsK9s
 
             @chmod($bin, 0755);
 
-            $verOut = (string) shell_exec(escapeshellarg($bin).' version --short 2>/dev/null');
+            $verOut = Process::run(escapeshellarg($bin).' version --short')->output();
             if (str_contains(strtolower($verOut), strtolower(str_replace('v', '', $version)))) {
                 $this->laraKubeInfo("✅ k9s ready at {$bin}");
 

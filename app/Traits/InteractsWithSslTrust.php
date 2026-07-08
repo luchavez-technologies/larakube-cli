@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Process;
+
 trait InteractsWithSslTrust
 {
     use DetectsWsl, InteractsWithOs;
@@ -16,15 +18,14 @@ trait InteractsWithSslTrust
         }
 
         if ($this->isWsl()) {
-            $output = shell_exec('certutil.exe -verifystore Root "LaraKube Local CA" 2>&1');
+            $result = Process::run('certutil.exe -verifystore Root "LaraKube Local CA"');
+            $output = $result->output().$result->errorOutput();
 
-            return str_contains((string) $output, 'Certificate is valid') || str_contains((string) $output, 'CertUtil: -verifystore command completed successfully');
+            return str_contains($output, 'Certificate is valid') || str_contains($output, 'CertUtil: -verifystore command completed successfully');
         }
 
         if ($this->isDarwin()) {
-            $output = shell_exec('security find-certificate -c "LaraKube Local CA" 2>/dev/null');
-
-            return ! empty($output);
+            return Process::run('security find-certificate -c "LaraKube Local CA"')->output() !== '';
         }
 
         if ($this->isLinux()) {

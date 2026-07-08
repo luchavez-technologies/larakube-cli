@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 use App\Enums\DeploymentStrategy;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -153,9 +154,9 @@ trait GuardsSharedStorage
     /** Is the larakube-nfs StorageClass (cloud:init:nfs) installed on this cluster? */
     protected function nfsStorageClassPresent(string $context): bool
     {
-        exec('kubectl --context '.escapeshellarg($context).' get storageclass '.escapeshellarg(ConfigData::NFS_STORAGE_CLASS).' -o name 2>/dev/null', $out, $code);
-
-        return $code === 0;
+        return Process::run(
+            'kubectl --context '.escapeshellarg($context).' get storageclass '.escapeshellarg(ConfigData::NFS_STORAGE_CLASS).' -o name',
+        )->successful();
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Traits\InteractsWithKustomize;
 use App\Traits\InteractsWithOs;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PrunesKubeContext;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class ClusterSetupCommand extends Command
@@ -126,6 +127,11 @@ class ClusterSetupCommand extends Command
         // re-applies on every future k3s start too — see method doc for why.
         $this->installContextRenameHook();
 
+        // Let the developer's own image-sideload path (`larakube up` building a
+        // local image, then importing it into k3s's containerd) skip the sudo
+        // password prompt — see method doc for why this is scoped, not blanket.
+        $this->installK3sCtrSudoersRule();
+
         // k3s writes its kubeconfig to /etc/rancher/k3s/k3s.yaml (root-owned) and
         // never touches ~/.kube/config — so kubectl and `larakube context` can't
         // see it until we merge it in. Prune any stale k3s-larakube entry first so
@@ -154,7 +160,7 @@ class ClusterSetupCommand extends Command
             return;
         }
 
-        $mounted = str_contains((string) shell_exec('grep -q " /Docker/host " /proc/mounts && echo yes 2>/dev/null'), 'yes');
+        $mounted = str_contains(Process::run('grep -q " /Docker/host " /proc/mounts && echo yes')->output(), 'yes');
 
         if (! $mounted) {
             return;
@@ -226,6 +232,47 @@ class ClusterSetupCommand extends Command
     }
 
     /**
+     * Grant the current user passwordless sudo for `k3s ctr` — the command
+     * InteractsWithDocker's sideloadIntoK3s() runs to import a locally-built
+     * image into k3s's (root-owned) containerd store, since k3s ships no
+     * unprivileged group for that socket the way Docker has the `docker`
+     * group. Scoped to the k3s binary specifically, NOT a blanket
+     * NOPASSWD:ALL like cloud:init grants its own "larakube" user on a
+     * REMOTE droplet — this is the developer's own account on their own
+     * machine, so the rule stays as narrow as the one command that needs it.
+     *
+     * Best-effort: any failure here just means image sideload keeps prompting
+     * for a sudo password like it always has, so it never blocks setup.
+     */
+    protected function installK3sCtrSudoersRule(): void
+    {
+        $user = trim(Process::run('id -un')->output());
+        if ($user === '') {
+            return;
+        }
+
+        $rule = "{$user} ALL=(root) NOPASSWD: /usr/local/bin/k3s ctr *\n";
+        $tmp = tempnam(sys_get_temp_dir(), 'larakube_sudoers');
+        file_put_contents($tmp, $rule);
+        chmod($tmp, 0440);
+
+        // visudo -c -f validates syntax against a COPY before it's ever installed
+        // as a real sudoers file — a malformed /etc/sudoers.d entry can break sudo
+        // entirely, so this check is not optional.
+        if (! Process::run('visudo -c -f '.escapeshellarg($tmp))->successful()) {
+            @unlink($tmp);
+
+            return;
+        }
+
+        passthru('sudo cp '.escapeshellarg($tmp).' /etc/sudoers.d/larakube-k3s-ctr');
+        passthru('sudo chmod 440 /etc/sudoers.d/larakube-k3s-ctr');
+        @unlink($tmp);
+
+        $this->laraKubeInfo('Granted passwordless sudo for `k3s ctr` (image sideload) to the current user.');
+    }
+
+    /**
      * Merge the k3s kubeconfig into the user's ~/.kube/config so kubectl and
      * `larakube context` can see and select it. installContextRenameHook()
      * already renames the source file's "default" entries to "k3s-larakube",
@@ -273,11 +320,11 @@ class ClusterSetupCommand extends Command
         // List the existing config first so its other contexts survive the merge;
         // --flatten inlines the cert data into a single self-contained file.
         $kubeconfigEnv = file_exists($kubeConfig) ? $kubeConfig.':'.$tmp : $tmp;
-        $merged = shell_exec('KUBECONFIG='.escapeshellarg($kubeconfigEnv).' kubectl config view --flatten 2>/dev/null');
+        $merged = Process::run('KUBECONFIG='.escapeshellarg($kubeconfigEnv).' kubectl config view --flatten')->output();
 
         @unlink($tmp);
 
-        if (empty($merged)) {
+        if ($merged === '') {
             $this->laraKubeWarn('Failed to merge the k3s kubeconfig automatically.');
 
             return;
@@ -288,12 +335,12 @@ class ClusterSetupCommand extends Command
 
         // Target ~/.kube/config explicitly — a bare `kubectl` would use $KUBECONFIG
         // (often k3s's own file), where this context doesn't exist.
-        exec('KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config use-context '.escapeshellarg($contextName).' 2>/dev/null');
+        Process::run('KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config use-context '.escapeshellarg($contextName));
 
         // Verify the context actually landed — the flatten/merge can silently no-op.
-        $contexts = array_filter(explode("\n", trim((string) shell_exec(
-            'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config get-contexts -o name 2>/dev/null',
-        ))));
+        $contexts = array_filter(explode("\n", trim(Process::run(
+            'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config get-contexts -o name',
+        )->output())));
         if (! in_array($contextName, $contexts, true)) {
             $this->laraKubeWarn("Merge did not produce the '{$contextName}' context in ~/.kube/config.");
             $this->laraKubeLine('  👉 Ensure /etc/rancher/k3s/k3s.yaml is readable, then re-run `larakube cluster:setup`.');

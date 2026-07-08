@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\CloudData;
 use App\Data\ConfigData;
 use App\Enums\RegistryProvider;
+use Illuminate\Support\Facades\Process;
 
 /**
  * Deploy a project to a remote VPS WITHOUT a container registry: build the image
@@ -18,7 +19,7 @@ use App\Enums\RegistryProvider;
  */
 trait InteractsWithRemoteDeploy
 {
-    use DeploysMonitoringExporters, InteractsWithKustomize;
+    use DeploysMonitoringExporters, InteractsWithKustomize, StreamsProcessOutput;
 
     /** The kube-context cloud:init creates for a host. Pure. */
     public function remoteContextName(string $ip): string
@@ -67,7 +68,7 @@ trait InteractsWithRemoteDeploy
         // 1. Composer install
         $this->line('  <fg=gray>📦 composer install</>');
         $composerCmd = "$bin composer install --optimize-autoloader --no-interaction --no-progress";
-        passthru($composerCmd, $code);
+        $code = $this->runStreaming($composerCmd);
         if ($code !== 0) {
             $this->laraKubeError('Composer install failed. Is your local dev cluster running (`larakube up`)?');
 
@@ -78,7 +79,7 @@ trait InteractsWithRemoteDeploy
         $this->line("  <fg=gray>🛠  {$pm} install</>");
         $installCmd = $config->getPackageManager()->installCommand();
         $installCmdStr = preg_replace('/^([a-z]+)\b/', "$bin $1", $installCmd);
-        passthru($installCmdStr, $code);
+        $code = $this->runStreaming($installCmdStr);
         if ($code !== 0) {
             $this->laraKubeError('Node dependencies install failed.');
 
@@ -89,7 +90,7 @@ trait InteractsWithRemoteDeploy
         //    npm run build. Must run on the host (requires PHP + artisan).
         if ($config->usesWayfinder()) {
             $this->line('  <fg=gray>🏎  wayfinder:generate</>');
-            passthru("$bin php artisan wayfinder:generate --with-form", $code);
+            $code = $this->runStreaming("$bin php artisan wayfinder:generate --with-form");
             if ($code !== 0) {
                 $this->laraKubeError('Wayfinder generation failed.');
 
@@ -324,7 +325,7 @@ trait InteractsWithRemoteDeploy
     /** Resolve the rollout-triggering image tag for a project. */
     protected function resolveImageTag(string $path): string
     {
-        $sha = trim((string) shell_exec('git -C '.escapeshellarg($path).' rev-parse --short HEAD 2>/dev/null'));
+        $sha = trim(Process::run('git -C '.escapeshellarg($path).' rev-parse --short HEAD')->output());
 
         return $this->formatImageTag($sha !== '' ? $sha : null, time());
     }
@@ -332,9 +333,7 @@ trait InteractsWithRemoteDeploy
     /** Is the env's context present and reachable (without touching the global one)? */
     protected function remoteContextReachable(string $context): bool
     {
-        exec('kubectl --context '.escapeshellarg($context).' cluster-info --request-timeout=5s 2>&1', $out, $code);
-
-        return $code === 0;
+        return Process::run('kubectl --context '.escapeshellarg($context).' cluster-info --request-timeout=5s')->successful();
     }
 
     /**
@@ -344,7 +343,7 @@ trait InteractsWithRemoteDeploy
      */
     protected function detectNodePlatformOverSsh(string $sshBase): ?string
     {
-        $raw = trim((string) shell_exec($sshBase.' '.escapeshellarg('uname -m').' 2>/dev/null'));
+        $raw = trim(Process::run($sshBase.' '.escapeshellarg('uname -m'))->output());
 
         return $this->normalizeArch($raw);
     }
@@ -358,11 +357,10 @@ trait InteractsWithRemoteDeploy
      */
     protected function detectNodePlatformViaKubectl(string $context): ?string
     {
-        $raw = trim((string) shell_exec(
+        $raw = trim(Process::run(
             'kubectl --context '.escapeshellarg($context)
-            .' get nodes -o '.escapeshellarg('jsonpath={.items[*].status.nodeInfo.architecture}')
-            .' 2>/dev/null',
-        ));
+            .' get nodes -o '.escapeshellarg('jsonpath={.items[*].status.nodeInfo.architecture}'),
+        )->output());
         if ($raw === '') {
             return null;
         }
@@ -453,7 +451,7 @@ trait InteractsWithRemoteDeploy
         $dotenvPath = $this->createDotenvBuildSecret($config, $environment);
         $this->laraKubeInfo("Building production image '{$image}' ({$platform})...");
         try {
-            passthru($this->buildProductionImageCommand($image, $dockerfile, $path, $platform, $dotenvPath), $code);
+            $code = $this->runStreaming($this->buildProductionImageCommand($image, $dockerfile, $path, $platform, $dotenvPath));
         } finally {
             @unlink($dotenvPath);
         }
@@ -465,7 +463,7 @@ trait InteractsWithRemoteDeploy
 
         // 2. SSH-sideload it into the remote node's k3s containerd (no registry).
         $this->laraKubeInfo('Sideloading the image into the remote cluster...');
-        passthru($this->sideloadOverSshCommand($image, $ssh), $code);
+        $code = $this->runStreaming($this->sideloadOverSshCommand($image, $ssh));
         if ($code !== 0) {
             $this->laraKubeError('Image sideload failed — check SSH access and passwordless sudo for `k3s` on the host.');
 
@@ -475,7 +473,7 @@ trait InteractsWithRemoteDeploy
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
         $ctx = escapeshellarg($context);
         $ns = escapeshellarg($namespace);
-        shell_exec("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
+        Process::run("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
 
         // 4-5. env-sync + apply + rollout THROUGH a namespace-scoped credential.
         $result = $this->applyScopedDeploy($config, $environment, $context, $namespace, "{$name}:{$environment}-latest", $image);
@@ -541,7 +539,7 @@ trait InteractsWithRemoteDeploy
         $dotenvPath = $this->createDotenvBuildSecret($config, $environment);
         $this->laraKubeInfo("Building and pushing image to {$registry->getRegistryHost()} ({$platform})...");
         try {
-            passthru($this->buildAndPushImageCommand($registryImage, $dockerfile, $path, $platform, $dotenvPath), $code);
+            $code = $this->runStreaming($this->buildAndPushImageCommand($registryImage, $dockerfile, $path, $platform, $dotenvPath));
         } finally {
             @unlink($dotenvPath);
         }
@@ -565,7 +563,7 @@ trait InteractsWithRemoteDeploy
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
         $ctx = escapeshellarg($context);
         $ns = escapeshellarg($namespace);
-        shell_exec("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
+        Process::run("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
 
         // GHCR packages are private in LaraKube, so the cluster always needs a pull
         // secret — create it here (admin context) so manual deploys work without a
@@ -585,10 +583,10 @@ trait InteractsWithRemoteDeploy
      */
     protected function resolvePushedDigest(string $registryImage): ?string
     {
-        $digest = trim((string) shell_exec(
+        $digest = trim(Process::run(
             'docker buildx imagetools inspect '.escapeshellarg($registryImage)
-            .' --format '.escapeshellarg('{{.Manifest.Digest}}').' 2>/dev/null',
-        ));
+            .' --format '.escapeshellarg('{{.Manifest.Digest}}'),
+        )->output());
 
         return preg_match('/^sha256:[0-9a-f]{64}$/', $digest) === 1 ? $digest : null;
     }
@@ -602,8 +600,8 @@ trait InteractsWithRemoteDeploy
     protected function ensureGhcrPullSecret(string $context, string $namespace): void
     {
         $gh = $this->getGhCommand();
-        $user = trim((string) shell_exec("{$gh} api user -q .login 2>/dev/null"));
-        $token = trim((string) shell_exec("{$gh} auth token 2>/dev/null"));
+        $user = trim(Process::run("{$gh} api user -q .login")->output());
+        $token = trim(Process::run("{$gh} auth token")->output());
 
         if ($user === '' || $token === '') {
             $this->laraKubeWarn('Skipped the GHCR pull secret — run `larakube gha:login` (private images will fail to pull until then).');
@@ -613,7 +611,7 @@ trait InteractsWithRemoteDeploy
 
         $ctx = escapeshellarg($context);
         $ns = escapeshellarg($namespace);
-        shell_exec(
+        Process::run(
             "kubectl --context {$ctx} create secret docker-registry ghcr-login -n {$ns}"
             .' --docker-server=https://ghcr.io'
             .' --docker-username='.escapeshellarg($user)
@@ -649,10 +647,10 @@ trait InteractsWithRemoteDeploy
         $ns = escapeshellarg($namespace);
 
         if ($public !== '') {
-            shell_exec("{$kube} create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | {$kube} apply -f -");
+            Process::run("{$kube} create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | {$kube} apply -f -");
         }
         if ($secret !== '') {
-            shell_exec("{$kube} create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | {$kube} apply -f -");
+            Process::run("{$kube} create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | {$kube} apply -f -");
         }
     }
 
@@ -686,7 +684,7 @@ trait InteractsWithRemoteDeploy
         }
 
         // 2. Mint a short-lived token (admin) for the dogfooded apply.
-        $token = trim((string) shell_exec($this->createTokenCommand($adminContext, $namespace, null, 1800).' 2>/dev/null'));
+        $token = trim(Process::run($this->createTokenCommand($adminContext, $namespace, null, 1800))->output());
         if ($token === '') {
             $this->laraKubeError('Failed to mint a scoped token — needs kubectl >= 1.24 on a cluster >= 1.24.');
 
@@ -694,8 +692,8 @@ trait InteractsWithRemoteDeploy
         }
 
         // 3. Read server + CA from the admin context to assemble a standalone kubeconfig.
-        $server = trim((string) shell_exec($this->clusterServerCommand($adminContext).' 2>/dev/null'));
-        $caData = trim((string) shell_exec($this->clusterCaDataCommand($adminContext).' 2>/dev/null'));
+        $server = trim(Process::run($this->clusterServerCommand($adminContext))->output());
+        $caData = trim(Process::run($this->clusterCaDataCommand($adminContext))->output());
         if ($server === '' || $caData === '') {
             $this->laraKubeError('Could not read cluster server/CA from the admin context.');
 
@@ -723,12 +721,10 @@ trait InteractsWithRemoteDeploy
             $applyCmd = $this->applyWithImageRewriteUsingKubeconfig($kubeconfigPath, $overlay, $fromImage, $toImage);
             $this->laraKubeInfo('Applying Kubernetes manifests...');
 
-            $code = 1;
-            $applyOut = [];
+            $result = null;
             for ($attempt = 1; $attempt <= 3; $attempt++) {
-                $applyOut = [];
-                exec($applyCmd.' 2>&1', $applyOut, $code);
-                if ($code === 0) {
+                $result = Process::run($applyCmd);
+                if ($result->successful()) {
                     break;
                 }
                 if ($attempt < 3) {
@@ -736,14 +732,15 @@ trait InteractsWithRemoteDeploy
                     sleep(2);
                 }
             }
-            if ($code !== 0) {
-                $this->laraKubeError("kubectl apply failed under the scoped credential:\n".implode("\n", $applyOut));
+            if (! $result->successful()) {
+                $this->laraKubeError("kubectl apply failed under the scoped credential:\n".trim($result->output().$result->errorOutput()));
 
                 return 1;
             }
 
-            // 7. Wait for the web rollout (scoped).
-            passthru('KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s');
+            // 7. Wait for the web rollout (scoped). Bounded a bit past the command's
+            // own --timeout=180s so kubectl's own timeout fires first.
+            $this->runStreaming('KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s', 190);
         } finally {
             @unlink($kubeconfigPath);
         }
