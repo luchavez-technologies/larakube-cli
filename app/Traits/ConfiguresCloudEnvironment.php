@@ -34,7 +34,6 @@ trait ConfiguresCloudEnvironment
     // (§ below) is indistinguishable from one created via `env`. EnsuresRealHosts
     // is the same local/placeholder-host guard `cloud:deploy` uses.
     use EnsuresRealHosts, GathersEnvironmentData, ResolvesEnvironmentContext;
-
     use StreamsProcessOutput;
 
     /**
