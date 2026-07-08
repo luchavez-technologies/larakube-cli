@@ -3,11 +3,13 @@ name: CI
 on:
   push:
     branches:
+      - develop
       - main
     tags:
       - 'v*'
   pull_request:
     branches:
+      - develop
       - main
 
 jobs:
@@ -40,7 +42,10 @@ jobs:
   publish:
     name: Build and Publish
     needs: test
-    if: github.event_name != 'pull_request'
+    # Only tag pushes (stable) and pushes to develop (canary) publish a
+    # release — main is a staging branch that only exists to be promoted to a
+    # tag, so a plain push there just runs the test job above and stops.
+    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref_name == 'develop')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -76,7 +81,7 @@ jobs:
         with:
           files: artifacts/*
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'canary' }}
-          name: ${{ github.ref_type == 'tag' && github.ref_name || 'Canary (Main Branch)' }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || 'Canary (Develop Branch)' }}
           body: |
             LaraKube Standalone Binaries
             Build Date: ${{ github.event.head_commit.timestamp }}
@@ -134,4 +139,44 @@ jobs:
           git add Formula/larakube.rb
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore: update LaraKube CLI to ${{ github.ref_name }}"
+          git push
+
+  tap-canary:
+    name: Update Homebrew Tap (Canary)
+    needs: publish
+    if: github.ref_type == 'branch' && github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout CLI repo
+        uses: actions/checkout@v4
+        with:
+          path: cli
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: luchavez-technologies/homebrew-larakube
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+
+      # No checksum stamping here (the canary formula uses sha256 :no_check —
+      # its binaries are overwritten in place on every push, so a pinned hash
+      # would go stale immediately). Only the version string is refreshed,
+      # which is what makes `brew reinstall larakube-canary` actually re-fetch
+      # instead of Homebrew serving a stale cached download for an unchanged
+      # version string.
+      - name: Stamp canary formula with a fresh version marker
+        run: |
+          SHORT_SHA="${{ github.sha }}"
+          cp cli/homebrew-tap/Formula/larakube-canary.rb tap/Formula/larakube-canary.rb
+          sed -i "s/CANARY_VERSION/canary-${SHORT_SHA:0:7}/g" tap/Formula/larakube-canary.rb
+
+      - name: Commit and push updated canary formula
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/larakube-canary.rb
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: update canary formula to ${{ github.sha }}"
           git push

@@ -11,7 +11,7 @@ class UpdateCommand extends Command
 {
     use LaraKubeOutput;
 
-    protected $signature = 'update';
+    protected $signature = 'update {--canary : Update to the latest canary (bleeding-edge, unstable) build from main}';
 
     protected $description = 'Update the LaraKube CLI to the latest version';
 
@@ -19,6 +19,39 @@ class UpdateCommand extends Command
     {
         $this->renderHeader();
 
+        if ($this->isHomebrewInstall()) {
+            return $this->deferToHomebrew();
+        }
+
+        return $this->option('canary')
+            ? $this->updateToCanary()
+            : $this->updateToLatestRelease();
+    }
+
+    /**
+     * Homebrew-managed installs (stable or canary formula) must be updated via
+     * `brew`, not by self-replacing the binary — Homebrew tracks the Cellar
+     * keg/version itself, and a self-swap would silently drift out of sync
+     * with what it thinks is installed (a later `brew upgrade` could then
+     * overwrite the swap back). Detected by the running binary living under a
+     * Homebrew Cellar, true for every prefix Homebrew uses (/usr/local on
+     * Intel, /opt/homebrew on Apple Silicon, /home/linuxbrew/.linuxbrew on
+     * Linuxbrew) — checking the prefix itself would miss some of those.
+     */
+    protected function deferToHomebrew(): int
+    {
+        $this->laraKubeInfo('This is a Homebrew-managed install — update via Homebrew instead:');
+        $this->newLine();
+        $this->line('  <fg=yellow>brew upgrade larakube</>          <fg=gray>latest stable release</>');
+        $this->line('  <fg=yellow>brew reinstall larakube-canary</> <fg=gray>latest canary (bleeding-edge) build</>');
+        $this->newLine();
+        $this->line('  <fg=gray>(Install the canary formula once with: brew install luchavez-technologies/larakube/larakube-canary)</>');
+
+        return 0;
+    }
+
+    protected function updateToLatestRelease(): int
+    {
         $currentVersion = config('app.version');
         $this->laraKubeInfo("Current version: <fg=yellow>$currentVersion</>");
 
@@ -47,6 +80,37 @@ class UpdateCommand extends Command
             return 0;
         }
 
+        return $this->downloadAndInstall($latestVersion);
+    }
+
+    /**
+     * Canary builds are the tip of main, republished under the same GitHub
+     * Release tag ("canary") on every push to main — there's no version to
+     * diff against, so this always re-downloads and re-installs on
+     * confirmation rather than checking whether anything changed first.
+     */
+    protected function updateToCanary(): int
+    {
+        $this->laraKubeWarn('⚠ Canary builds are unstable, bleeding-edge builds from the tip of main — they may be broken.');
+
+        if (! $this->confirm('Update to the latest canary build now?', false)) {
+            return 0;
+        }
+
+        $response = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])
+            ->get('https://api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary');
+
+        if ($response->failed()) {
+            $this->laraKubeError('Failed to fetch the canary release from GitHub.');
+
+            return 1;
+        }
+
+        return $this->downloadAndInstall('canary');
+    }
+
+    protected function downloadAndInstall(string $version): int
+    {
         // 1. Detect OS and Architecture
         $os = strtolower(PHP_OS_FAMILY) === 'darwin' ? 'mac' : 'linux';
         $machine = php_uname('m');
@@ -64,11 +128,14 @@ class UpdateCommand extends Command
         }
 
         $binaryName = "larakube-$os-$arch";
-        $downloadUrl = "https://github.com/luchavez-technologies/larakube-cli/releases/download/$latestVersion/$binaryName";
+        $downloadUrl = "https://github.com/luchavez-technologies/larakube-cli/releases/download/$version/$binaryName";
 
         $this->laraKubeInfo("Downloading $binaryName for $os ($arch)...");
 
-        $tempPath = '/tmp/larakube';
+        // A hardcoded /tmp path would let any local user race it with a
+        // symlink before `sudo mv` moves it into place — tempnam() picks an
+        // unpredictable name so there's nothing to pre-place.
+        $tempPath = (string) tempnam(sys_get_temp_dir(), 'larakube_update');
 
         try {
             $binaryContent = file_get_contents($downloadUrl);
@@ -82,10 +149,10 @@ class UpdateCommand extends Command
             return 1;
         }
 
-        $this->laraKubeInfo('🚚 Installing latest version to /usr/local/bin/larakube (requires sudo)...');
+        $this->laraKubeInfo('🚚 Installing to /usr/local/bin/larakube (requires sudo)...');
 
         // Atomic swap via sudo
-        $installCmd = "sudo mv $tempPath /usr/local/bin/larakube && sudo chmod +x /usr/local/bin/larakube";
+        $installCmd = 'sudo mv '.escapeshellarg($tempPath).' /usr/local/bin/larakube && sudo chmod +x /usr/local/bin/larakube';
         passthru($installCmd, $exitCode);
 
         if ($exitCode !== 0) {
@@ -94,8 +161,20 @@ class UpdateCommand extends Command
             return 1;
         }
 
-        $this->laraKubeInfo("✅ LaraKube updated successfully to $latestVersion!");
+        $this->laraKubeInfo("✅ LaraKube updated successfully to $version!");
 
         return 0;
+    }
+
+    protected function isHomebrewInstall(): bool
+    {
+        $binaryPath = $_SERVER['argv'][0] ?? '';
+        if ($binaryPath === '') {
+            return false;
+        }
+
+        $real = realpath($binaryPath) ?: $binaryPath;
+
+        return str_contains($real, '/Cellar/');
     }
 }
