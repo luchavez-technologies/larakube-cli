@@ -82,6 +82,31 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         };
     }
 
+    public function getDownloadSize(?ConfigData $config = null): ?int
+    {
+        return match ($this) {
+            self::MINIO => 59,
+            self::SEAWEEDFS => 55,
+            self::GARAGE => 25,
+        };
+    }
+
+    public function getOnDiskSize(?ConfigData $config = null): ?int
+    {
+        return match ($this) {
+            self::MINIO => 280,
+            self::SEAWEEDFS => 180,
+            self::GARAGE => 80,
+        };
+    }
+
+    public function getAllocatedStorage(?ConfigData $config = null): ?string
+    {
+        return match ($this) {
+            self::MINIO, self::SEAWEEDFS, self::GARAGE => '5Gi',
+        };
+    }
+
     public function updateK8s(ConfigData $config): void
     {
         $k8sPath = $config->getK8sPath();

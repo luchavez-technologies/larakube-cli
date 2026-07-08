@@ -250,6 +250,37 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
         };
     }
 
+    public function getDownloadSize(?ConfigData $config = null): ?int
+    {
+        return match ($this) {
+            self::MYSQL => 162,
+            self::MARIADB => 170,
+            self::POSTGRESQL => 160,
+            self::MONGODB => 250,
+            self::SQLITE => null,
+        };
+    }
+
+    public function getOnDiskSize(?ConfigData $config = null): ?int
+    {
+        return match ($this) {
+            self::MYSQL => 600,
+            self::MARIADB => 650,
+            self::POSTGRESQL => 440,
+            self::MONGODB => 800,
+            self::SQLITE => null,
+        };
+    }
+
+    public function getAllocatedStorage(?ConfigData $config = null): ?string
+    {
+        return match ($this) {
+            self::MYSQL, self::MARIADB, self::POSTGRESQL => '1Gi',
+            self::MONGODB => '5Gi',
+            self::SQLITE => null,
+        };
+    }
+
     public function getEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
         return array_merge(

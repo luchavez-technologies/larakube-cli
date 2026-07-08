@@ -29,6 +29,7 @@ use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\info;
+use function Laravel\Prompts\table;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
@@ -95,6 +96,8 @@ class NewCommand extends Command
         $config = $this->buildConfigFromFlags();
         $config->setIsScaffolding(true);
         $config = $this->gatherConfig($config);
+
+        $this->showResourceEstimates($config);
 
         // Architectural Guard: FrankenPHP + SQLite
         if ($config->getServerVariation() === ServerVariation::FRANKENPHP && in_array(DatabaseDriver::SQLITE, $config->getDatabases())) {
@@ -190,6 +193,70 @@ class NewCommand extends Command
     public function schedule(Schedule $schedule): void
     {
         // $schedule->command(static::class)->everyMinute();
+    }
+
+    /**
+     * Display a resource usage summary after the wizard completes.
+     */
+    protected function showResourceEstimates(ConfigData $config): void
+    {
+        $rows = [];
+        $totalDownload = 0;
+        $totalDisk = 0;
+
+        $os = $config->getOs() ?? OperatingSystem::ALPINE;
+        $download = $os === OperatingSystem::ALPINE ? 45 : 200;
+        $disk = $os === OperatingSystem::ALPINE ? 180 : 500;
+        $totalDownload += $download;
+        $totalDisk += $disk;
+        $rows[] = [
+            sprintf('PHP %s (%s)', $config->getPhpVersion()->value, $config->getServerVariation()->value),
+            "{$download} MB",
+            "{$disk} MB",
+            '—',
+        ];
+
+        $db = $config->getDatabase();
+        if ($db && ($download = $db->getDownloadSize()) !== null) {
+            $totalDownload += $download;
+            $totalDisk += $db->getOnDiskSize() ?? 0;
+            $rows[] = [$db->getLabel(), "{$download} MB", "{$db->getOnDiskSize()} MB", $db->getAllocatedStorage() ?? '—'];
+        }
+
+        $cache = $config->getCacheDriver();
+        if ($cache && ($download = $cache->getDownloadSize()) !== null) {
+            $totalDownload += $download;
+            $totalDisk += $cache->getOnDiskSize() ?? 0;
+            $rows[] = [$cache->getLabel(), "{$download} MB", "{$cache->getOnDiskSize()} MB", $cache->getAllocatedStorage() ?? '—'];
+        }
+
+        if ($config->hasFeature(LaravelFeature::SCOUT)) {
+            $scout = $config->getScoutDriver();
+            if ($scout && ($download = $scout->getDownloadSize()) !== null) {
+                $totalDownload += $download;
+                $totalDisk += $scout->getOnDiskSize() ?? 0;
+                $rows[] = [$scout->getLabel(), "{$download} MB", "{$scout->getOnDiskSize()} MB", $scout->getAllocatedStorage() ?? '—'];
+            }
+        }
+
+        $storage = $config->getObjectStorage();
+        if ($storage && ($download = $storage->getDownloadSize()) !== null) {
+            $totalDownload += $download;
+            $totalDisk += $storage->getOnDiskSize() ?? 0;
+            $rows[] = [$storage->getLabel(), "{$download} MB", "{$storage->getOnDiskSize()} MB", $storage->getAllocatedStorage() ?? '—'];
+        }
+
+        $rows[] = ['—', '—', '—', '—'];
+        $rows[] = ['<fg=yellow>Total</>', "<fg=yellow>{$totalDownload} MB</>", "<fg=yellow>{$totalDisk} MB</>", '<fg=yellow>varies</>'];
+
+        $this->newLine();
+        $this->laraKubeInfo('Estimated resource usage for this project:');
+        table(
+            ['Service', 'Download', 'On-Disk', 'Allocated Vol'],
+            $rows,
+        );
+        $this->line('  <fg=gray>Download: compressed pull size · On-Disk: expanded image · Allocated: PVC storage reserved</>');
+        $this->newLine();
     }
 
     /**
