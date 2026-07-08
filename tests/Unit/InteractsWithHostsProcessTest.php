@@ -2,11 +2,12 @@
 
 /**
  * Tests for InteractsWithHosts' Process-backed read-only queries
- * (resolveIngressIp, dnsmasqCoversKube). The privileged/interactive paths
- * (sudo cp /etc/hosts, PowerShell RunAs elevation for the Windows hosts
- * file) are left as raw exec()/passthru() — a different migration shape,
- * same as ConfiguresCloudEnvironment's SSH passthru() — and belong in a
- * real-machine smoke test, not here.
+ * (resolveIngressIp, dnsmasqCoversKube) and writeToEtcHosts() (the sudo cp
+ * /etc/hosts step, now Process-backed too). The PowerShell RunAs elevation
+ * path for the Windows hosts file (syncWindowsHostsFile()) still calls real
+ * Command output methods (printWindowsHostsManualHelp()'s $this->line())
+ * that a bare class here can't provide, and belongs in a real-machine smoke
+ * test regardless.
  */
 
 use App\Traits\InteractsWithHosts;
@@ -26,6 +27,11 @@ function hostsProcessHelper(): object
         public function dnsmasqCovers(?string $tld = null): bool
         {
             return $this->dnsmasqCoversKube($tld);
+        }
+
+        public function writeHosts(string $content): bool
+        {
+            return $this->writeToEtcHosts($content);
         }
     };
 }
@@ -62,4 +68,28 @@ test('dnsmasqCoversKube is false when the platform-specific dnsmasq marker file 
     // real positive-path assertion needs the actual marker file/dnsmasq
     // config present, which is a real-machine smoke-test concern.
     expect(hostsProcessHelper()->dnsmasqCovers('kube'))->toBeFalse();
+});
+
+test('writeToEtcHosts stages content in a random tempnam path, not a hardcoded predictable one', function () {
+    Process::fake([
+        'sudo cp *' => Process::result(exitCode: 0),
+    ]);
+
+    expect(hostsProcessHelper()->writeHosts("127.0.0.1 test.kube\n"))->toBeTrue();
+
+    Process::assertRan(function ($process) {
+        // Must target /etc/hosts, and must NOT be the old fixed filename —
+        // a predictable /tmp path is exactly the symlink-race this fixed.
+        return str_starts_with($process->command, 'sudo cp ')
+            && str_ends_with($process->command, ' /etc/hosts')
+            && ! str_contains($process->command, "'".sys_get_temp_dir().'/larakube_hosts'."'");
+    });
+});
+
+test('writeToEtcHosts returns false when sudo cp fails', function () {
+    Process::fake([
+        'sudo cp *' => Process::result(exitCode: 1),
+    ]);
+
+    expect(hostsProcessHelper()->writeHosts("127.0.0.1 test.kube\n"))->toBeFalse();
 });
