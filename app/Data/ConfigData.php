@@ -898,7 +898,7 @@ class ConfigData extends Data
         return $this;
     }
 
-    public function setCacheDriver(CacheDriver $driver): self
+    public function setCacheDriver(?CacheDriver $driver): self
     {
         $this->cacheDriver = $driver;
 

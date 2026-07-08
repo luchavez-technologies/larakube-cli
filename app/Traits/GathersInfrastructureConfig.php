@@ -76,7 +76,7 @@ trait GathersInfrastructureConfig
     /**
      * Gather all configuration needed for infrastructure generation.
      */
-    protected function gatherConfig(ConfigData $config): ConfigData
+    protected function gatherConfig(ConfigData $config, bool $forcePrompts = false): ConfigData
     {
         // 1. Specialized Blueprints
         $availableBlueprints = collect(Blueprint::cases())
@@ -125,7 +125,15 @@ trait GathersInfrastructureConfig
                 },
             );
 
-            $config->addFeature(...Arr::map($features, fn (string $feature) => LaravelFeature::from($feature)));
+            $config->setFeatures(Arr::map($features, fn (string $feature) => LaravelFeature::from($feature)));
+
+            // Scout's driver is only meaningful while the feature is active — if
+            // it was just unchecked, drop any driver left over from before so a
+            // re-init doesn't silently keep search infrastructure provisioned.
+            if (! $config->hasFeature(LaravelFeature::SCOUT) && $config->getScoutDriver()) {
+                $config->setScoutDriver(null);
+                $config->setScoutDrivers([]);
+            }
         }
 
         // 4. Frontend Stack
@@ -149,21 +157,21 @@ trait GathersInfrastructureConfig
         }
 
         // 5. PHP & OS Baseline
-        if (! $config->hasPhpVersion()) {
+        if ($forcePrompts || ! $config->hasPhpVersion()) {
             $version = select(
                 label: 'What PHP version would you like to use?',
                 options: PhpVersion::getSelectOptions($config),
-                default: PhpVersion::PHP_8_5->value,
+                default: $config->getPhpVersion()->value,
             );
 
             $config->setPhpVersion(PhpVersion::from($version));
         }
 
-        if (! $config->hasOs()) {
+        if ($forcePrompts || ! $config->hasOs()) {
             $os = select(
                 label: 'What operating system would you like to use?',
                 options: OperatingSystem::getSelectOptions($config),
-                default: OperatingSystem::ALPINE->value,
+                default: $config->getOs()->value,
             );
 
             $config->setOs(OperatingSystem::from($os));
@@ -222,6 +230,8 @@ trait GathersInfrastructureConfig
 
         if ($driver = StorageDriver::tryFrom($storage)) {
             $config->setObjectStorage($driver);
+        } elseif ($config->objectStorage !== null) {
+            $config->setObjectStorage(null);
         }
 
         // 11. Database
@@ -253,18 +263,20 @@ trait GathersInfrastructureConfig
 
             if ($driver = CacheDriver::tryFrom($cache)) {
                 $config->setCacheDriver($driver);
+            } elseif ($config->cacheDriver !== null) {
+                $config->setCacheDriver(null);
             }
         }
 
         // 13. Deployment Strategy
-        if (! $config->hasStrategy()) {
+        if ($forcePrompts || ! $config->hasStrategy()) {
             if ($config->isScaffolding()) {
                 $config->setStrategy(DeploymentStrategy::SINGLE_NODE);
             } else {
                 $strategy = select(
                     label: 'What is your primary deployment strategy?',
                     options: DeploymentStrategy::getSelectOptions($config),
-                    default: DeploymentStrategy::SINGLE_NODE->value,
+                    default: $config->hasStrategy() ? $config->getStrategy()->value : DeploymentStrategy::SINGLE_NODE->value,
                 );
 
                 $config->setStrategy(DeploymentStrategy::from($strategy));
@@ -277,8 +289,8 @@ trait GathersInfrastructureConfig
         // `larakube env` or `cloud:configure` (see GathersEnvironmentData), the
         // first time that environment is actually needed.
 
-        if (! $config->hasGithubActions()) {
-            $config->setGithubActions(confirm(label: 'Would you like to use GitHub Actions?'));
+        if ($forcePrompts || ! $config->hasGithubActions()) {
+            $config->setGithubActions(confirm(label: 'Would you like to use GitHub Actions?', default: $config->getGithubActions()));
         }
 
         // Companion data-tooling UIs (phpMyAdmin, RedisInsight, …) are no longer

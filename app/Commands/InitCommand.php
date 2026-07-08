@@ -5,6 +5,7 @@ namespace App\Commands;
 use App\Contracts\HasArtisanCommands;
 use App\Contracts\HasLifecycleHooks;
 use App\Traits\CheckPrerequisites;
+use App\Traits\DiffsProjectConfig;
 use App\Traits\GathersInfrastructureConfig;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
@@ -23,7 +24,7 @@ use Random\RandomException;
 
 class InitCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, DiffsProjectConfig, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
@@ -49,8 +50,11 @@ class InitCommand extends Command
     {
         $this->renderHeader();
 
+        $isReinit = $this->isLaraKubeProject(false);
+        $existingConfig = null;
+
         // 1. Nesting Protection & Reset Suggestion
-        if ($this->isLaraKubeProject(false)) {
+        if ($isReinit) {
             $this->newLine();
             $this->warn(' ⚠ ALREADY INITIALIZED: This directory is already a LaraKube CLI project.');
             $this->line('   Running "init" again may conflict with your existing configuration.');
@@ -65,15 +69,25 @@ class InitCommand extends Command
             }
 
             $this->logActivity('Project re-initialization confirmed', ['action' => 'init'], getcwd());
+
+            // Load the project's current DNA so the wizard below is pre-filled
+            // with what's actually configured, instead of resetting to blank
+            // defaults — and so we have a "before" snapshot to diff against.
+            $existingConfig = $this->getProjectConfig(getcwd());
+            if ($existingConfig === null) {
+                return 1;
+            }
         }
 
         if (! $this->checkPrerequisites()) {
             return 1;
         }
 
-        $config = $this->buildConfigFromFlags();
+        $before = $existingConfig ? clone $existingConfig : null;
+
+        $config = $isReinit ? $this->buildConfigFromFlags($existingConfig) : $this->buildConfigFromFlags();
         $config->setIsScaffolding(false);
-        $config = $this->gatherConfig($config);
+        $config = $this->gatherConfig($config, forcePrompts: $isReinit);
         $config->setPath(getcwd());
 
         $name = Str::slug(basename($config->getPath()));
@@ -85,10 +99,17 @@ class InitCommand extends Command
         }
 
         $config->setName($name);
-        // Environments are opt-in: a fresh project starts with `local` only.
-        // Cloud environments (production, staging, …) are created on demand
-        // via `larakube env` or `cloud:configure`.
-        $config->setEnvironments(['local']);
+
+        if ($isReinit) {
+            // Idempotent: preserves any previously-configured cloud environments
+            // (production, staging, …), only ensures `local` exists.
+            $config->addEnvironment('local');
+        } else {
+            // Environments are opt-in: a fresh project starts with `local` only.
+            // Cloud environments (production, staging, …) are created on demand
+            // via `larakube env` or `cloud:configure`.
+            $config->setEnvironments(['local']);
+        }
 
         $this->laraKubeInfo("Initializing LaraKube for project: {$config->getName()}...");
 
@@ -98,23 +119,53 @@ class InitCommand extends Command
             $installFeatures = confirm('Would you like to install the selected Laravel features now?');
         }
 
-        // 1. Show Preview
-        $this->orchestrateProjectScaffolding($config, $installFeatures, dryRun: true);
+        if ($isReinit) {
+            $diff = $this->diffConfigs($before, $config);
+            $lines = $this->describeDiff($diff);
 
-        if ($this->option('dry-run')) {
-            return 0;
-        }
-
-        // 2. Confirm (Skip if --fast or --no-interaction)
-        if (! $this->option('fast') && ! $this->option('no-interaction')) {
-            if (! confirm('Would you like to initialize LaraKube with these settings?')) {
-                $this->laraKubeInfo('Initialization cancelled.');
+            if (empty($lines)) {
+                $this->laraKubeInfo('No changes detected — your project already matches these settings.');
 
                 return 0;
             }
-        }
 
-        $this->orchestrateProjectScaffolding($config, $installFeatures);
+            $this->laraKubeInfo('Architectural Preview: Changes to Apply');
+            foreach ($lines as $line) {
+                $this->line("  $line");
+            }
+
+            if ($this->option('dry-run')) {
+                return 0;
+            }
+
+            if (! $this->option('fast') && ! $this->option('no-interaction')) {
+                if (! confirm('Would you like to initialize LaraKube with these settings?')) {
+                    $this->laraKubeInfo('Initialization cancelled.');
+
+                    return 0;
+                }
+            }
+
+            $this->replayDiff($diff, $config, $installFeatures);
+        } else {
+            // 1. Show Preview
+            $this->orchestrateProjectScaffolding($config, $installFeatures, dryRun: true);
+
+            if ($this->option('dry-run')) {
+                return 0;
+            }
+
+            // 2. Confirm (Skip if --fast or --no-interaction)
+            if (! $this->option('fast') && ! $this->option('no-interaction')) {
+                if (! confirm('Would you like to initialize LaraKube with these settings?')) {
+                    $this->laraKubeInfo('Initialization cancelled.');
+
+                    return 0;
+                }
+            }
+
+            $this->orchestrateProjectScaffolding($config, $installFeatures);
+        }
 
         $this->laraKubeInfo("LaraKube initialized successfully for {$config->getName()}!");
 
@@ -157,11 +208,76 @@ class InitCommand extends Command
     }
 
     /**
+     * Render a diff produced by diffConfigs() as human-readable [ADD]/[REMOVE]/
+     * [SWAP] lines, RemoveCommand-style, for the re-init dry-run/confirm preview.
+     *
+     * @return array<int, string>
+     */
+    protected function describeDiff(array $diff): array
+    {
+        $lines = [];
+
+        foreach ($diff['blueprints']['remove'] as $blueprint) {
+            $lines[] = "<fg=red>[REMOVE]</> blueprint: {$blueprint->value}";
+        }
+        foreach ($diff['blueprints']['add'] as $blueprint) {
+            $lines[] = "<fg=green>[ADD]</> blueprint: {$blueprint->value}";
+        }
+
+        foreach ($diff['features']['remove'] as $feature) {
+            $lines[] = "<fg=red>[REMOVE]</> feature: {$feature->value}";
+        }
+        foreach ($diff['features']['add'] as $feature) {
+            $lines[] = "<fg=green>[ADD]</> feature: {$feature->value}";
+        }
+
+        foreach (['database' => 'database', 'cache' => 'cache', 'storage' => 'storage', 'scout' => 'scout driver'] as $key => $label) {
+            $lines = array_merge($lines, $this->describeScalarDiff($diff[$key], $label));
+        }
+
+        foreach (['phpVersion' => 'PHP version', 'os' => 'operating system', 'serverVariation' => 'server variation'] as $key => $label) {
+            if (! $diff[$key]['changed']) {
+                continue;
+            }
+
+            $new = $diff[$key]['new']->getLabel();
+            $old = $diff[$key]['old']?->getLabel();
+
+            $lines[] = $old
+                ? "<fg=yellow>[SWAP]</> {$label}: {$old} → {$new}"
+                : "<fg=green>[ADD]</> {$label}: {$new}";
+        }
+
+        return $lines;
+    }
+
+    /**
      * Configure the command to ignore validation errors so we can forward arbitrary flags.
      */
     protected function configure(): void
     {
         $this->ignoreValidationErrors();
         $this->addArchitecturalOptions();
+    }
+
+    /**
+     * @param  array{old: mixed, new: mixed, changed: bool}  $fieldDiff
+     * @return array<int, string>
+     */
+    private function describeScalarDiff(array $fieldDiff, string $label): array
+    {
+        if (! $fieldDiff['changed']) {
+            return [];
+        }
+
+        if ($fieldDiff['old'] === null) {
+            return ["<fg=green>[ADD]</> {$label}: {$fieldDiff['new']->value}"];
+        }
+
+        if ($fieldDiff['new'] === null) {
+            return ["<fg=red>[REMOVE]</> {$label}: {$fieldDiff['old']->value}"];
+        }
+
+        return ["<fg=yellow>[SWAP]</> {$label}: {$fieldDiff['old']->value} → {$fieldDiff['new']->value}"];
     }
 }

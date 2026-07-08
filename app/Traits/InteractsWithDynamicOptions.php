@@ -73,9 +73,9 @@ trait InteractsWithDynamicOptions
     /**
      * Build the configuration array from CLI flags.
      */
-    protected function buildConfigFromFlags(): ConfigData
+    protected function buildConfigFromFlags(?ConfigData $base = null): ConfigData
     {
-        $config = new ConfigData;
+        $config = $base ?? new ConfigData;
 
         // Blueprints
         foreach (Blueprint::cases() as $case) {
@@ -84,20 +84,18 @@ trait InteractsWithDynamicOptions
             }
         }
 
-        // Laravel Features
-        $features = [];
-
+        // Laravel Features. Additive, not a blanket replace — a $base config may
+        // already carry features from disk (re-init), and CLI flags here only
+        // ever mean "also enable this one", never "reset to just these".
         foreach (LaravelFeature::cases() as $case) {
             if ($case instanceof HasHiddenComponents && $case->isHidden($config)) {
                 continue;
             }
 
-            if ($this->option($case->value)) {
-                $features[] = $case;
+            if ($this->option($case->value) && ! $config->hasFeature($case)) {
+                $config->addFeature($case);
             }
         }
-
-        $config->setFeatures($features);
 
         if ($config->hasFeature(LaravelFeature::HORIZON)) {
             $config->setCacheDriver(CacheDriver::REDIS);

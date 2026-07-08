@@ -3,7 +3,6 @@
 namespace App\Commands;
 
 use App\Contracts\HasHiddenComponents;
-use App\Data\ConfigData;
 use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
@@ -16,6 +15,7 @@ use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithDynamicOptions;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesArchitecturalComponents;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -25,7 +25,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class RemoveCommand extends Command
 {
-    use GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
+    use GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput, ManagesArchitecturalComponents;
 
     /**
      * The name and signature of the console command.
@@ -237,79 +237,5 @@ class RemoveCommand extends Command
     {
         $this->ignoreValidationErrors();
         $this->addArchitecturalOptions();
-    }
-
-    protected function removeDatabase(DatabaseDriver $engine, ConfigData $config): void
-    {
-        $config->removeDatabase($engine);
-
-        // If we just removed the primary, promote the first secondary or fallback to SQLite
-        if (is_null($config->getDatabase())) {
-            $next = collect($config->getDatabases())->first();
-
-            if ($next) {
-                $this->laraKubeInfo("Promoting '{$next->value}' to primary database.");
-                $config->setDatabase($next);
-            } else {
-                $this->warn(' ⚠ No secondary databases found. Falling back to SQLite to ensure application stability.');
-                $config->setDatabase(DatabaseDriver::SQLITE);
-                $next = DatabaseDriver::SQLITE;
-            }
-
-            $this->syncEnvFile($config->getPath(), $next->getEnvironmentVariables($config));
-        }
-    }
-
-    protected function removeCache(CacheDriver $driver, ConfigData $config): void
-    {
-        $config->removeCacheDriver($driver);
-
-        // Promote next primary if needed, or fallback to 'database'
-        if (is_null($config->getCacheDriver())) {
-            $next = collect($config->getCacheDrivers())->first();
-
-            if ($next) {
-                $this->laraKubeInfo("Promoting '{$next->value}' to primary cache driver.");
-            } else {
-                $this->warn(" ⚠ No cache drivers left. Falling back to 'database' driver.");
-                $next = CacheDriver::DATABASE;
-            }
-
-            $config->setCacheDriver($next);
-            $this->syncEnvFile($config->getPath(), $next->getEnvironmentVariables($config));
-        }
-    }
-
-    protected function removeStorage(StorageDriver $storage, ConfigData $config): void
-    {
-        $config->removeObjectStorage($storage);
-
-        if (is_null($config->getObjectStorage())) {
-            $next = collect($config->getObjectStorages())->first();
-            if ($next) {
-                $this->laraKubeInfo("Promoting '{$next->value}' to primary storage.");
-                $config->setObjectStorage($next);
-                $this->syncEnvFile($config->getPath(), $next->getEnvironmentVariables($config));
-            }
-        }
-    }
-
-    protected function removeFeature(LaravelFeature $feature, ConfigData $config): void
-    {
-        if ($feature === LaravelFeature::SCOUT && $config->getScoutDriver()) {
-            $this->warn(" ⚠ Removing Scout will also disable your search driver ({$config->getScoutDriver()->value}).");
-            if (! confirm('Proceed with disabling search?', true)) {
-                return;
-            }
-            $config->setScoutDriver(null);
-            $config->setScoutDrivers([]);
-        }
-
-        $config->removeFeature($feature);
-    }
-
-    protected function removeBlueprint(Blueprint $blueprint, ConfigData $config): void
-    {
-        $config->removeBlueprint($blueprint);
     }
 }
