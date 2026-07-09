@@ -347,7 +347,7 @@ trait ConfiguresCloudEnvironment
         $config = $this->getProjectConfigObject(getcwd());
         $this->laraKubeInfo('Step 3: Generating Cloud Pilot workflow...');
 
-        $branch = text(
+        $branch = $this->flag('branch') ?: text(
             label: "Which git branch should trigger the {$environment} deployment?",
             default: 'main',
             required: true,
@@ -786,9 +786,10 @@ trait ConfiguresCloudEnvironment
             return 1;
         }
 
-        // Ask for deploy branch per environment
+        // Ask for deploy branch per environment. A --branch flag applies to
+        // every env in this run — headless callers configure one env at a time.
         foreach ($cloudEnvs as $envName => &$meta) {
-            $branch = text(
+            $branch = $this->flag('branch') ?: text(
                 label: "Which branch triggers the {$envName} deployment?",
                 default: $envName === 'production' ? 'main' : $envName,
                 required: true,

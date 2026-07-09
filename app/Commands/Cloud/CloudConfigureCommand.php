@@ -9,6 +9,7 @@ use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithScopedRbac;
 use App\Traits\LaraKubeOutput;
+use InvalidArgumentException;
 use LaravelZero\Framework\Commands\Command;
 
 class CloudConfigureCommand extends Command
@@ -27,7 +28,13 @@ class CloudConfigureCommand extends Command
     protected $signature = 'cloud:configure
         {environment? : The environment to configure}
         {--only= : Re-run just one step instead of the full guided flow: registry|ci|hosts}
-        {--rotate : Revoke the current deploy token/secrets and mint fresh ones (use after a leak) — only with --only=ci}';
+        {--rotate : Revoke the current deploy token/secrets and mint fresh ones (use after a leak) — only with --only=ci}
+        {--ingress= : Ingress controller slug for the environment (skips the prompt)}
+        {--managed= : Comma-separated externally-managed services; pass an empty value for none (skips the prompt)}
+        {--web-hosts= : Comma-separated additional web hostnames; pass an empty value to clear (skips the prompt)}
+        {--registry-provider= : Container registry provider: ghcr|dockerhub (skips the prompt)}
+        {--image= : Registry image repository path, owner/repo (skips the prompt)}
+        {--branch= : Git branch that triggers the CI deployment (skips the prompt)}';
 
     /**
      * The console command description.
@@ -48,13 +55,22 @@ class CloudConfigureCommand extends Command
         $environment = $this->argument('environment');
         $only = $this->option('only');
 
-        return match ($only) {
-            null => $this->configureAll($environment),
-            'registry' => $this->configureRegistry($environment),
-            'ci' => $this->configureCi($environment, (bool) $this->option('rotate')),
-            'hosts' => $this->configureHosts($environment),
-            default => $this->unsupportedOnlyValue($only),
-        };
+        try {
+            return match ($only) {
+                null => $this->configureAll($environment),
+                'registry' => $this->configureRegistry($environment),
+                'ci' => $this->configureCi($environment, (bool) $this->option('rotate')),
+                'hosts' => $this->configureHosts($environment),
+                default => $this->unsupportedOnlyValue($only),
+            };
+        } catch (InvalidArgumentException $e) {
+            // Invalid or missing non-interactive flag values surface here
+            // (see GathersEnvironmentData) — one boundary instead of exit
+            // codes threaded through every value-returning trait method.
+            $this->laraKubeError($e->getMessage());
+
+            return 1;
+        }
     }
 
     private function unsupportedOnlyValue(string $only): int

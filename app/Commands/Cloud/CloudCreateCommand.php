@@ -5,11 +5,15 @@ namespace App\Commands\Cloud;
 use App\Data\ConfigData;
 use App\Data\StackData;
 use App\Enums\ManagedProvider;
+use App\State;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesSshKeys;
 use App\Traits\ProvisionsK3sNode;
+use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
 
@@ -28,7 +32,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class CloudCreateCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ProvisionsK3sNode, ResolvesEnvironmentContext;
+    use EmitsJsonOutput, InteractsWithEnvironments, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
 
     /** Available providers we can provision (add AWS/GCP later as template dirs appear). */
     private const PROVIDERS = [
@@ -41,6 +45,16 @@ class CloudCreateCommand extends Command
         {--provider= : Cloud provider slug (do, aws, …). Default or prompted.}
         {--vps : Create a VPS / droplet (SSH + k3s, single-node)}
         {--managed : Create a managed Kubernetes cluster}
+        {--stack-name= : Stack name (skips the prompt; slugified)}
+        {--region= : Provider region slug (e.g. nyc1)}
+        {--size= : Droplet/node size slug}
+        {--key= : Path to the SSH private key (VPS)}
+        {--admin-cidr= : Restrict SSH + the k3s API to this CIDR (VPS); omit = open}
+        {--node-count= : Managed cluster node count (min 1)}
+        {--k8s-version-prefix= : Managed Kubernetes minor version prefix (e.g. "1.31.")}
+        {--do-token= : DigitalOcean API token for this run only (never persisted)}
+        {--email= : Let\'s Encrypt email, forwarded to cloud:init:doks (managed)}
+        {--json : Emit one machine-readable JSON result on stdout}
         {environment? : Inside a project, the environment to bind to this stack. Outside one, used as the stack name.}';
 
     protected $description = 'Provision infrastructure with OpenTofu — provider, then VPS or managed k8s';
@@ -52,60 +66,31 @@ class CloudCreateCommand extends Command
      */
     protected $aliases = ['cloud:new'];
 
+    /**
+     * Fields for the --json result, filled in as the flow learns them
+     * (stackName/kind early, ip/context at the success tail) so the JSON
+     * wrapper in handle() can report them without threading a value through
+     * every return path.
+     *
+     * @var array<string, mixed>
+     */
+    private array $result = [];
+
     public function handle(): int
     {
-        $this->renderHeader();
-        $this->laraKubeInfo('LaraKube Cloud Pilot: OpenTofu Provisioner');
-        $this->newLine();
-
-        // 1. Resolve provider (prompt → default → flag).
-        $provider = $this->resolveProvider();
-        if (! $provider) {
-            return 1;
+        if ($this->flag('json') || $this->isAiAgent()) {
+            $this->enableJsonMode();
         }
 
-        // 2. Resolve target kind (vps vs managed).
-        $targetKind = $this->resolveTargetKind();
-        if (! $targetKind) {
-            return 1;
+        $exit = $this->create();
+
+        if (State::$jsonMode) {
+            $this->jsonOutput($exit === 0
+                ? array_merge(['success' => true, 'stackName' => null, 'kind' => null, 'ip' => null, 'context' => null], $this->result, ['error' => null])
+                : ['success' => false, 'stackName' => $this->result['stackName'] ?? null, 'error' => State::$lastError ?? 'Provisioning did not complete.']);
         }
 
-        // 3. Tooling prerequisites: token + tofu/terraform binary.
-        if (! $this->ensureProviderToken($provider)) {
-            return 1;
-        }
-        $bin = $this->ensureTofu();
-        if (! $bin) {
-            return 1;
-        }
-        $this->line('  <fg=gray>Using:</> <fg=cyan>'.$bin['path'].'</> '.($bin['isOpenTofu'] ? '(OpenTofu — encrypted state)' : '(Terraform — plaintext state)'));
-        $this->newLine();
-
-        [$config, $projectPath, $environment, $standaloneName] = $this->resolveEnvironment($this->argument('environment'));
-        $nameBase = $config?->getName() ?? $standaloneName;
-
-        // Attach to an existing compatible stack, or create a new one? Defaults
-        // to "attach" when this project/name already has a stack of this exact
-        // kind — a stack is meant to be reused across every environment of a
-        // project (see StackData's docblock), so that's virtually always what's
-        // wanted once one already exists. Still a real confirm either way, never
-        // auto-skipped.
-        $existing = $this->stacksOfKind($targetKind);
-        if (! empty($existing)) {
-            $expectedStack = $this->findExpectedStack($nameBase, $targetKind);
-
-            $prompt = $expectedStack
-                ? "Attach this environment to your existing '{$expectedStack->name}' {$targetKind} stack instead of creating a new one?"
-                : "Attach to an existing {$targetKind} stack instead of creating a new one?";
-
-            if (confirm($prompt, default: $expectedStack !== null)) {
-                return $this->attachToExisting($existing, $targetKind, $provider, $config, $projectPath, $environment, $expectedStack);
-            }
-        }
-
-        return $targetKind === 'vps'
-            ? $this->createVps($bin, $provider, $config, $projectPath, $environment, $nameBase)
-            : $this->createManaged($bin, $provider, $config, $projectPath, $environment, $nameBase);
+        return $exit;
     }
 
     /**
@@ -196,10 +181,137 @@ class CloudCreateCommand extends Command
      */
     protected function promptStackName(?string $nameBase, string $kind): string
     {
+        if ($flag = $this->flag('stack-name')) {
+            return $this->slug($flag);
+        }
+
         $base = ($nameBase !== null && $nameBase !== '' ? $nameBase : 'standalone').'-'.$kind;
         $default = $this->slug($base);
 
         return $this->slug(text(label: 'Stack name', default: $default, hint: 'Also the Tofu workdir name under ~/.larakube/tofu/'));
+    }
+
+    /** Prompt for + persist the DO API token if we don't have one yet. */
+    protected function ensureDoToken(): bool
+    {
+        // A token supplied for this run (headless job container) stays
+        // in-memory only — getDoToken() consults it ahead of the global
+        // config, so it reaches TF_VAR_do_token without touching disk.
+        if ($token = ($this->flag('do-token') ?: getenv('TF_VAR_do_token'))) {
+            State::$transientDoToken = trim($token);
+            $this->registerSecret(State::$transientDoToken);
+
+            return true;
+        }
+
+        if ($this->getDoToken()) {
+            return true;
+        }
+
+        if ($this->flag('no-interaction')) {
+            $this->laraKubeError('No DigitalOcean API token. Pass --do-token= or set TF_VAR_do_token when running non-interactively.');
+
+            return false;
+        }
+
+        $this->laraKubeWarn('No DigitalOcean API token found.');
+        $this->line('  <fg=gray>Create one at</> https://cloud.digitalocean.com/account/api/tokens <fg=gray>(read + write).</>');
+        $token = text(
+            label: 'Paste your DigitalOcean API token',
+            required: true,
+            hint: 'Stored in ~/.larakube and passed to OpenTofu via TF_VAR_do_token (never written into HCL).',
+        );
+        $this->setDoToken($token);
+        $this->laraKubeInfo('Saved DO token to your global LaraKube config.');
+
+        return true;
+    }
+
+    /**
+     * The admin CIDR to restrict SSH + the k3s API to: a CIDR string, null
+     * for open (matches the confirm's "no" default), or false when an
+     * invalid --admin-cidr was passed and the caller should abort.
+     */
+    protected function promptAdminCidr(): string|false|null
+    {
+        if ($flag = $this->flag('admin-cidr')) {
+            [$ip] = explode('/', $flag, 2);
+            if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                $this->laraKubeError("Invalid --admin-cidr '{$flag}' — expected an IPv4 address or CIDR.");
+
+                return false;
+            }
+
+            return str_contains($flag, '/') ? $flag : $flag.'/32';
+        }
+
+        // No flag headlessly = open, same as declining the confirm below.
+        if ($this->flag('no-interaction')) {
+            return null;
+        }
+
+        if (! confirm('Restrict SSH + the k3s API (6443) to a single admin IP? (recommended)', false)) {
+            return null;
+        }
+        $ip = text(label: 'Admin IPv4 (your current public IP)', required: true, hint: 'A /32 is appended automatically.');
+
+        return rtrim($ip).'/32';
+    }
+
+    private function create(): int
+    {
+        $this->renderHeader();
+        $this->laraKubeInfo('LaraKube Cloud Pilot: OpenTofu Provisioner');
+        $this->newLine();
+
+        // 1. Resolve provider (prompt → default → flag).
+        $provider = $this->resolveProvider();
+        if (! $provider) {
+            return 1;
+        }
+
+        // 2. Resolve target kind (vps vs managed).
+        $targetKind = $this->resolveTargetKind();
+        if (! $targetKind) {
+            return 1;
+        }
+
+        // 3. Tooling prerequisites: token + tofu/terraform binary.
+        if (! $this->ensureProviderToken($provider)) {
+            return 1;
+        }
+        $bin = $this->ensureTofu();
+        if (! $bin) {
+            return 1;
+        }
+        $this->line('  <fg=gray>Using:</> <fg=cyan>'.$bin['path'].'</> '.($bin['isOpenTofu'] ? '(OpenTofu — encrypted state)' : '(Terraform — plaintext state)'));
+        $this->newLine();
+
+        [$config, $projectPath, $environment, $standaloneName] = $this->resolveEnvironment($this->argument('environment'));
+        $nameBase = $config?->getName() ?? $standaloneName;
+
+        // Attach to an existing compatible stack, or create a new one? Defaults
+        // to "attach" when this project/name already has a stack of this exact
+        // kind — a stack is meant to be reused across every environment of a
+        // project (see StackData's docblock), so that's virtually always what's
+        // wanted once one already exists. Still a real confirm either way, never
+        // auto-skipped.
+        $existing = $this->stacksOfKind($targetKind);
+        if (! empty($existing)) {
+            $expectedStack = $this->findExpectedStack($nameBase, $targetKind);
+
+            $prompt = $expectedStack
+                ? "Attach this environment to your existing '{$expectedStack->name}' {$targetKind} stack instead of creating a new one?"
+                : "Attach to an existing {$targetKind} stack instead of creating a new one?";
+
+            if (confirm($prompt, default: $expectedStack !== null)) {
+                return $this->attachToExisting($existing, $targetKind, $provider, $config, $projectPath, $environment, $expectedStack);
+            }
+        }
+
+        return $targetKind === 'vps'
+            ? $this->createVps($bin, $provider, $config, $projectPath, $environment, $nameBase)
+            : $this->createManaged($bin, $provider, $config, $projectPath, $environment, $nameBase);
     }
 
     /** Resolve which provider to provision for. */
@@ -213,6 +325,13 @@ class CloudCreateCommand extends Command
         }
         if ($flag) {
             return $flag;
+        }
+
+        // Kind-defining input: never silently default headlessly — fail clearly.
+        if ($this->flag('no-interaction')) {
+            $this->laraKubeError('No provider selected — pass --provider= (e.g. --provider=do) when running non-interactively.');
+
+            return null;
         }
 
         // Prompt unless a default is set globally.
@@ -242,6 +361,13 @@ class CloudCreateCommand extends Command
             return 'managed';
         }
 
+        // Kind-defining input: never silently default headlessly — fail clearly.
+        if ($this->flag('no-interaction')) {
+            $this->laraKubeError('No infrastructure kind selected — pass --vps or --managed when running non-interactively.');
+
+            return null;
+        }
+
         return select(
             label: 'What kind of infrastructure?',
             options: [
@@ -258,26 +384,6 @@ class CloudCreateCommand extends Command
             'do' => $this->ensureDoToken(),
             default => true, // future providers implement their own ensure method
         };
-    }
-
-    /** Prompt for + persist the DO API token if we don't have one yet. */
-    private function ensureDoToken(): bool
-    {
-        if ($this->getDoToken()) {
-            return true;
-        }
-
-        $this->laraKubeWarn('No DigitalOcean API token found.');
-        $this->line('  <fg=gray>Create one at</> https://cloud.digitalocean.com/account/api/tokens <fg=gray>(read + write).</>');
-        $token = text(
-            label: 'Paste your DigitalOcean API token',
-            required: true,
-            hint: 'Stored in ~/.larakube and passed to OpenTofu via TF_VAR_do_token (never written into HCL).',
-        );
-        $this->setDoToken($token);
-        $this->laraKubeInfo('Saved DO token to your global LaraKube config.');
-
-        return true;
     }
 
     /** Map a provider slug to its ManagedProvider enum (DOKS, EKS, …). */
@@ -307,6 +413,7 @@ class CloudCreateCommand extends Command
         }
         $name = select(label: 'Attach to which stack?', options: $options, default: $preferred?->name);
         $stack = $existing[$name];
+        $this->result = ['stackName' => $stack->name, 'kind' => $stack->kind, 'ip' => $stack->ip, 'context' => $stack->context];
 
         if (! $config || ! $environment) {
             $this->laraKubeWarn('No project/environment to bind — nothing to do. (Run inside a project to attach an env.)');
@@ -353,9 +460,13 @@ class CloudCreateCommand extends Command
         }
 
         $stackName = $this->promptStackName($nameBase, 'vps');
+        $this->result = ['stackName' => $stackName, 'kind' => 'vps'];
         $region = $this->promptRegion();
-        $size = text(label: 'Droplet size slug', default: 's-1vcpu-1gb', hint: 'e.g. s-1vcpu-1gb, s-2vcpu-2gb');
+        $size = $this->flag('size') ?: text(label: 'Droplet size slug', default: 's-1vcpu-1gb', hint: 'e.g. s-1vcpu-1gb, s-2vcpu-2gb');
         $adminCidr = $this->promptAdminCidr();
+        if ($adminCidr === false) {
+            return 1;
+        }
 
         // Restrict SSH + the k3s API to the admin CIDR when given; else open.
         $sources = $adminCidr ? '"'.$adminCidr.'"' : '"0.0.0.0/0", "::/0"';
@@ -405,6 +516,11 @@ class CloudCreateCommand extends Command
             $this->tagBinding($stackName, $config->getName(), $environment);
         }
 
+        // `ssh <stack-name>` just works from here on.
+        $this->upsertSshConfigHost($stackName, $ip, 'larakube', '22', $keyPath);
+
+        $this->result += ['ip' => $ip, 'context' => $context];
+
         $this->newLine();
         $this->laraKubeInfo('✅ VPS provisioning complete!');
         $this->printVpsNextSteps($context, $environment);
@@ -416,10 +532,18 @@ class CloudCreateCommand extends Command
     private function createManaged(array $bin, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment, ?string $nameBase): int
     {
         $stackName = $this->promptStackName($nameBase, 'managed');
+        $this->result = ['stackName' => $stackName, 'kind' => 'managed'];
         $region = $this->promptRegion();
-        $size = text(label: 'Node size slug', default: 's-2vcpu-4gb', hint: 'e.g. s-2vcpu-4gb');
-        $nodeCount = (int) text(label: 'Node count', default: '2', validate: fn ($v) => ((int) $v) >= 1 ? null : 'At least 1 node.');
-        $versionPrefix = text(label: 'Kubernetes minor version prefix', default: '', hint: 'e.g. "1.31." — blank = latest available');
+        $size = $this->flag('size') ?: text(label: 'Node size slug', default: 's-2vcpu-4gb', hint: 'e.g. s-2vcpu-4gb');
+        $nodeCount = (int) ($this->flag('node-count') ?? text(label: 'Node count', default: '2', validate: fn ($v) => ((int) $v) >= 1 ? null : 'At least 1 node.'));
+        if ($nodeCount < 1) {
+            // The flag path bypasses the prompt's validator — re-check here.
+            $this->laraKubeError('--node-count must be at least 1.');
+
+            return 1;
+        }
+        // `??` not `?:` — an explicit empty --k8s-version-prefix means "latest".
+        $versionPrefix = $this->flag('k8s-version-prefix') ?? text(label: 'Kubernetes minor version prefix', default: '', hint: 'e.g. "1.31." — blank = latest available');
 
         $hcl = view("tofu.{$provider}.managed", [
             'region' => $region,
@@ -447,15 +571,22 @@ class CloudCreateCommand extends Command
         $this->registerStack($stackName, 'managed', $region, null, $context, $config, $environment);
 
         // Traefik + Let's Encrypt via the existing managed flow (idempotent).
+        // --no-interaction propagates to the child automatically; --email doesn't.
         $this->newLine();
         $this->laraKubeInfo('Installing Traefik + Let\'s Encrypt via cloud:init:doks...');
-        $this->call('cloud:init:doks', ['--context' => $context]);
+        $doksArgs = ['--context' => $context];
+        if ($email = $this->flag('email')) {
+            $doksArgs['--email'] = $email;
+        }
+        $this->call('cloud:init:doks', $doksArgs);
 
         if ($config && $environment) {
             $managedProvider = $this->resolveManagedProvider($provider);
             $this->recordManagedTarget($config, $environment, $projectPath, $context, $managedProvider);
             $this->tagBinding($stackName, $config->getName(), $environment);
         }
+
+        $this->result += ['ip' => null, 'context' => $context];
 
         $this->newLine();
         $this->laraKubeInfo('✅ Managed k8s provisioning complete!');
@@ -554,13 +685,43 @@ class CloudCreateCommand extends Command
 
     private function promptKeyPath(): ?string
     {
-        $keyPath = text(label: 'Path to your SSH Private Key', default: home_path('.ssh/id_rsa'));
+        // An explicit --key pointing at a missing file is more likely a typo
+        // than a request to mint one there — error instead of generating.
+        if ($flag = $this->flag('key')) {
+            $keyPath = str_replace('~', home_path(), $flag);
+
+            if (! file_exists($keyPath)) {
+                $this->laraKubeError("SSH key not found at: {$keyPath}");
+
+                return null;
+            }
+
+            return $keyPath;
+        }
+
+        // The key is optional: default to an existing ~/.ssh/id_rsa, else a
+        // dedicated LaraKube key we can generate on the spot.
+        $default = file_exists(home_path('.ssh/id_rsa'))
+            ? home_path('.ssh/id_rsa')
+            : home_path('.ssh/larakube_ed25519');
+
+        $keyPath = text(
+            label: 'Path to your SSH Private Key',
+            default: $default,
+            hint: "Doesn't exist yet? LaraKube CLI can generate it for you.",
+        );
         $keyPath = str_replace('~', home_path(), $keyPath);
 
         if (! file_exists($keyPath)) {
-            $this->laraKubeError("SSH key not found at: {$keyPath}");
+            if (! confirm("No key at {$keyPath} — generate a new ED25519 key there now?", true)) {
+                $this->laraKubeError("SSH key not found at: {$keyPath}");
 
-            return null;
+                return null;
+            }
+
+            if (! $this->generateSshKey($keyPath)) {
+                return null;
+            }
         }
 
         return $keyPath;
@@ -601,21 +762,11 @@ class CloudCreateCommand extends Command
 
     private function promptRegion(): string
     {
-        return text(
+        return $this->flag('region') ?: text(
             label: 'DigitalOcean region slug',
             default: 'nyc1',
             hint: 'e.g. nyc1, sfo3, ams3, sgp1, lon1, fra1, blr1, syd1',
         );
-    }
-
-    private function promptAdminCidr(): ?string
-    {
-        if (! confirm('Restrict SSH + the k3s API (6443) to a single admin IP? (recommended)', false)) {
-            return null;
-        }
-        $ip = text(label: 'Admin IPv4 (your current public IP)', required: true, hint: 'A /32 is appended automatically.');
-
-        return rtrim($ip).'/32';
     }
 
     private function slug(string $value): string

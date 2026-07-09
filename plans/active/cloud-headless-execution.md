@@ -4,6 +4,32 @@
 > context.** If you want the full product story this serves, read `plans/active/larakube-cloud.md` §6 in
 > the repo root (not this dir) — but you don't need to for the work below; everything required is here.
 
+## STATUS: Implemented 2026-07-08 (Tasks 1, 1b, 2, 3 all done) — awaiting one manual verification
+
+Everything below is landed, including Task 1b (`cloud:configure` flags) which this plan originally
+scoped separately. What a LaraKube Cloud job container codes against:
+
+- **Flags** — `cloud:create`: `--stack-name/--region/--size/--key/--admin-cidr/--node-count/
+  --k8s-version-prefix/--do-token/--email/--json`; `cloud:init:doks`: `--email`; `cloud:configure`:
+  `--ingress/--managed/--web-hosts/--registry-provider/--image/--branch`. Kind-defining inputs fail
+  with a clear "pass --X=" error under `--no-interaction`; everything else falls back to its prompt
+  default. `--do-token` (or `TF_VAR_do_token`) is run-only — never persisted to `~/.larakube`.
+- **`--json`** — stdout carries exactly one object
+  `{"success", "stackName", "kind", "ip", "context", "error"}`; all human/streamed output goes to
+  stderr (`LaraKubeOutput::enableJsonMode()` + `runStreaming()`).
+- **Remote state (opt-in)** — env vars `LARAKUBE_TOFU_STATE_BUCKET` / `_ENDPOINT` / `_REGION` write a
+  `backend.tf` (S3-compatible, per-stack key, `use_lockfile`); bucket creds via
+  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (inherited — `Process::env()` merges over parent env).
+- **Two corrections to this doc's original claims**:
+  1. Native S3 locking (`use_lockfile`) is OpenTofu **1.10+**, not 1.7+ — pin the job image accordingly.
+  2. The "tenant isolation is free via fresh `HOME`" note (Task 3) missed that the PBKDF2 state-encryption
+     passphrase also lives in that HOME — job 2 couldn't decrypt job 1's remote state. Fixed:
+     `LARAKUBE_TOFU_PASSPHRASE` (16+ chars, never persisted) lets the orchestrator supply a stable
+     per-stack passphrase. Job containers using remote state MUST set it.
+
+**Still pending (owner, manual):** the single paid DO Spaces `tofu init/apply` verification and
+`./build`. Move this file to `plans/completed/` once those pass.
+
 ## Why this exists
 
 LaraKube Cloud (a separate, not-yet-built hosted dashboard product) needs to run `cloud:create` and

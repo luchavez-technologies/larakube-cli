@@ -7,6 +7,7 @@
  * destroy/init calls are left to a real droplet smoke test.
  */
 
+use App\State;
 use App\Traits\InteractsWithOpenTofu;
 use Illuminate\Support\Facades\Process;
 
@@ -24,6 +25,26 @@ function tofuHelper(): object
         public function output(array $bin, string $stack, string $key): ?string
         {
             return $this->tofuOutput($bin, $stack, $key);
+        }
+
+        public function env(string $stack, bool $isOpenTofu, array $extra = []): array
+        {
+            return $this->tofuEnv($stack, $isOpenTofu, $extra);
+        }
+
+        public function encryption(string $stack, bool $isOpenTofu): string
+        {
+            return $this->tofuEncryptionEnv($stack, $isOpenTofu);
+        }
+
+        public function remoteState(): ?array
+        {
+            return $this->remoteStateConfig();
+        }
+
+        public function writeFiles(string $stack, array $files): string
+        {
+            return $this->writeTofuFiles($stack, $files);
         }
     };
 }
@@ -86,4 +107,98 @@ test('tofuOutput returns the trimmed raw output value, or null on failure/empty'
 
     Process::fake(["*{$dir}* output -raw *" => Process::result(output: '', exitCode: 1)]);
     expect(tofuHelper()->output($bin, 'mystack', 'ip'))->toBeNull();
+});
+
+test('tofu env vars travel via Process::env(), not the command string', function () {
+    $bin = ['path' => '/usr/local/bin/terraform', 'isOpenTofu' => false];
+    $dir = home_path('.larakube/tofu/mystack');
+    State::$transientDoToken = 'dop_v1_transient-token-abc';
+
+    Process::fake(["*{$dir}* output -raw *" => "203.0.113.10\n"]);
+    tofuHelper()->output($bin, 'mystack', 'ip');
+
+    Process::assertRan(function ($process) {
+        return ($process->environment['TF_IN_AUTOMATION'] ?? null) === '1'
+            && ($process->environment['TF_VAR_do_token'] ?? null) === 'dop_v1_transient-token-abc'
+            && ! str_contains($process->command, 'TF_IN_AUTOMATION');
+    });
+});
+
+test('tofuEnv skips the DO token when none is configured and merges extras', function () {
+    $env = tofuHelper()->env('mystack', false, ['EXTRA_VAR' => 'yes']);
+
+    expect($env)->not->toHaveKey('TF_VAR_do_token')
+        ->and($env)->not->toHaveKey('TF_ENCRYPTION') // isOpenTofu: false
+        ->and($env['EXTRA_VAR'])->toBe('yes')
+        ->and($env['TF_IN_AUTOMATION'])->toBe('1');
+});
+
+test('LARAKUBE_TOFU_PASSPHRASE overrides the global-config passphrase and is never persisted', function () {
+    putenv('LARAKUBE_TOFU_PASSPHRASE=orchestrator-supplied-passphrase');
+
+    try {
+        $hcl = tofuHelper()->encryption('mystack', true);
+
+        expect($hcl)->toContain('passphrase = "orchestrator-supplied-passphrase"')
+            // Nothing minted into the (test-HOME) global config.
+            ->and(App\Data\GlobalConfigData::load()->getTofuPassphrase('mystack'))->toBeNull();
+    } finally {
+        putenv('LARAKUBE_TOFU_PASSPHRASE');
+    }
+});
+
+test('a too-short LARAKUBE_TOFU_PASSPHRASE throws instead of weakly encrypting state', function () {
+    putenv('LARAKUBE_TOFU_PASSPHRASE=short');
+
+    try {
+        expect(fn () => tofuHelper()->encryption('mystack', true))->toThrow(RuntimeException::class);
+    } finally {
+        putenv('LARAKUBE_TOFU_PASSPHRASE');
+    }
+});
+
+test('remoteStateConfig requires both bucket and endpoint', function () {
+    try {
+        expect(tofuHelper()->remoteState())->toBeNull();
+
+        putenv('LARAKUBE_TOFU_STATE_BUCKET=my-bucket');
+        expect(tofuHelper()->remoteState())->toBeNull();
+
+        putenv('LARAKUBE_TOFU_STATE_ENDPOINT=https://nyc3.digitaloceanspaces.com');
+        expect(tofuHelper()->remoteState())->toBe([
+            'bucket' => 'my-bucket',
+            'endpoint' => 'https://nyc3.digitaloceanspaces.com',
+            'region' => 'us-east-1',
+        ]);
+
+        putenv('LARAKUBE_TOFU_STATE_REGION=nyc3');
+        expect(tofuHelper()->remoteState()['region'])->toBe('nyc3');
+    } finally {
+        putenv('LARAKUBE_TOFU_STATE_BUCKET');
+        putenv('LARAKUBE_TOFU_STATE_ENDPOINT');
+        putenv('LARAKUBE_TOFU_STATE_REGION');
+    }
+});
+
+test('writeTofuFiles writes backend.tf when remote state is configured and removes it when not', function () {
+    try {
+        putenv('LARAKUBE_TOFU_STATE_BUCKET=my-bucket');
+        putenv('LARAKUBE_TOFU_STATE_ENDPOINT=https://nyc3.digitaloceanspaces.com');
+
+        $dir = tofuHelper()->writeFiles('backend-test-stack', ['main.tf' => '# hcl']);
+
+        expect(file_get_contents($dir.'/backend.tf'))
+            ->toContain('bucket = "my-bucket"')
+            ->toContain('key    = "tofu-state/backend-test-stack/terraform.tfstate"')
+            ->toContain('use_lockfile = true');
+
+        putenv('LARAKUBE_TOFU_STATE_BUCKET');
+        putenv('LARAKUBE_TOFU_STATE_ENDPOINT');
+
+        tofuHelper()->writeFiles('backend-test-stack', ['main.tf' => '# hcl']);
+        expect(file_exists($dir.'/backend.tf'))->toBeFalse();
+    } finally {
+        putenv('LARAKUBE_TOFU_STATE_BUCKET');
+        putenv('LARAKUBE_TOFU_STATE_ENDPOINT');
+    }
 });

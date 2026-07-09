@@ -53,7 +53,7 @@ trait LaraKubeOutput
      */
     protected function renderHeader(): void
     {
-        if (State::$headerRendered || app()->runningUnitTests()) {
+        if (State::$headerRendered || State::$jsonMode || app()->runningUnitTests()) {
             return;
         }
 
@@ -98,7 +98,7 @@ trait LaraKubeOutput
      */
     protected function laraKubeInfo(string $message): void
     {
-        if ($this->isAiAgent()) {
+        if ($this->isAiAgent() && ! State::$jsonMode) {
             return;
         }
 
@@ -170,9 +170,9 @@ trait LaraKubeOutput
      */
     protected function laraKubeNewLine(int $count = 1): void
     {
-        for ($i = 0; $i < $count; $i++) {
-            echo "\n";
-        }
+        $lines = str_repeat("\n", $count);
+
+        State::$jsonMode ? fwrite(STDERR, $lines) : print $lines;
     }
 
     /**
@@ -180,7 +180,9 @@ trait LaraKubeOutput
      */
     protected function laraKubeLine(string $message): void
     {
-        echo '  '.$this->stripConsoleTags($this->maskSecrets($message))."\n";
+        $line = '  '.$this->stripConsoleTags($this->maskSecrets($message))."\n";
+
+        State::$jsonMode ? fwrite(STDERR, $line) : print $line;
     }
 
     /**
@@ -213,16 +215,6 @@ trait LaraKubeOutput
     }
 
     /**
-     * Render a JSON response for AI agents.
-     */
-    protected function renderJson(array $data): int
-    {
-        echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n";
-
-        return 0;
-    }
-
-    /**
      * Render a polite GitHub star prompt once a week.
      */
     protected function renderStarPrompt(): void
@@ -251,7 +243,7 @@ trait LaraKubeOutput
      */
     protected function laraKubeError(string $message): void
     {
-        $message = $this->maskSecrets($message);
+        State::$lastError = $message = $this->maskSecrets($message);
         render(<<<HTML
             <div class="flex mx-2 mt-1">
                 <span class="px-1 bg-red-500 text-white font-bold uppercase">LaraKube</span>

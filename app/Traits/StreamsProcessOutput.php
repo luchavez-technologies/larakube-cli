@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\State;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -23,14 +24,22 @@ trait StreamsProcessOutput
      * default — these can legitimately run for minutes, and passthru()
      * never had one either. $timeoutSeconds bounds it for commands with
      * their own built-in timeout flag (e.g. `kubectl rollout status
-     * --timeout=180s`), where 0 (unbounded) would otherwise race it.
+     * --timeout=180s`), where 0 (unbounded) would otherwise race it. $env is
+     * merged over the inherited environment via Process::env(). Under JSON
+     * mode the stream goes to stderr — stdout is reserved for the JSON result.
+     *
+     * @param  array<string, string>  $env
      */
-    protected function runStreaming(string $command, int $timeoutSeconds = 0): int
+    protected function runStreaming(string $command, int $timeoutSeconds = 0, array $env = []): int
     {
         $process = $timeoutSeconds > 0 ? Process::timeout($timeoutSeconds) : Process::forever();
 
+        if ($env !== []) {
+            $process = $process->env($env);
+        }
+
         return $process->run($command, function (string $type, string $output) {
-            echo $output;
+            State::$jsonMode ? fwrite(STDERR, $output) : print $output;
         })->exitCode();
     }
 }

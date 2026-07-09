@@ -58,3 +58,21 @@ test('do/managed template renders cluster, node pool and a sensitive kubeconfig 
         ->and($hcl)->toContain('sensitive = true')
         ->not->toContain('&gt;');
 });
+
+test('backend-s3 template renders an S3-compatible backend with per-stack key and native locking', function () {
+    $hcl = view('tofu.backend-s3', [
+        'bucket' => 'larakube-state',
+        'endpoint' => 'https://nyc3.digitaloceanspaces.com',
+        'region' => 'nyc3',
+        'stack' => 'myapp-vps',
+    ])->render();
+
+    expect($hcl)->toContain('backend "s3"')
+        ->and($hcl)->toContain('bucket = "larakube-state"')
+        ->and($hcl)->toContain('key    = "tofu-state/myapp-vps/terraform.tfstate"')
+        ->and($hcl)->toContain('s3 = "https://nyc3.digitaloceanspaces.com"')
+        ->and($hcl)->toContain('use_lockfile = true')
+        ->and($hcl)->toContain('skip_s3_checksum            = true')
+        ->not->toContain('&quot;')
+        ->not->toContain('&gt;');
+});

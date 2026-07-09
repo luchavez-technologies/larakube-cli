@@ -24,7 +24,9 @@ class CloudProvisionDoksCommand extends Command
 {
     use InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext, StreamsProcessOutput;
 
-    protected $signature = 'cloud:init:doks {--context= : Target a specific kube-context}';
+    protected $signature = 'cloud:init:doks
+        {--context= : Target a specific kube-context}
+        {--email= : Email for Let\'s Encrypt certificate notices}';
 
     /**
      * Backward-compatible alias for the pre-rename command name.
@@ -70,7 +72,22 @@ class CloudProvisionDoksCommand extends Command
         $projectEmail = $projectConfig?->email;
         $globalEmail = $this->getEmail();
 
-        $email = text(
+        $email = $this->option('email');
+        if ($email !== null && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->laraKubeError("Invalid --email '{$email}' — please pass a valid email address.");
+
+            return 1;
+        }
+        if ($email === null && $this->option('no-interaction')) {
+            // Headless without the flag: fall back to a stored email, never prompt.
+            $email = $projectEmail ?: $globalEmail;
+            if (! $email) {
+                $this->laraKubeError('No email available for Let\'s Encrypt — pass --email= when running non-interactively.');
+
+                return 1;
+            }
+        }
+        $email ??= text(
             label: 'Email for Let\'s Encrypt certificate notices',
             placeholder: 'you@example.com',
             default: $projectEmail ?: ($globalEmail ?? ''),
@@ -125,7 +142,10 @@ class CloudProvisionDoksCommand extends Command
         $this->laraKubeInfo("✅ LoadBalancer IP: <fg=cyan>{$ip}</>");
         $this->newLine();
 
-        if ($projectConfig && confirm('Configure an environment in this project to use this cluster now?', true)) {
+        // The project-wiring branch stays interactive-only: headless it would
+        // auto-confirm (default true) straight into required prompts with no
+        // flag equivalents and throw instead of finishing.
+        if ($projectConfig && ! $this->option('no-interaction') && confirm('Configure an environment in this project to use this cluster now?', true)) {
             $this->configureProjectEnvForCluster($projectConfig, $context, $ip);
         } else {
             $this->displayNextSteps($ip);
