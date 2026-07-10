@@ -151,8 +151,14 @@ class ShellCommand extends Command
         // Determine the correct container name
         $container = in_array($service, ['web', 'horizon', 'reverb', 'scheduler']) ? 'php' : $service;
 
-        // Execute the interactive shell. We try /bin/bash first, fallback to /bin/sh.
-        passthru("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- /bin/bash 2>/dev/null || {$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- /bin/sh");
+        // Probe for bash before opening the interactive session. Minimal images
+        // (e.g. FrankenPHP) ship only /bin/sh, and a doomed `exec ... /bin/bash`
+        // leaks its "OCI runtime exec failed" error to stdout — which no stderr
+        // redirect can suppress — so pick the shell up front and exec once.
+        $hasBash = Process::run("{$kubectl} exec -n {$namespace} -c {$container} {$podName} -- test -x /bin/bash")->successful();
+        $shell = $hasBash ? '/bin/bash' : '/bin/sh';
+
+        passthru("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- {$shell}");
 
         return 0;
     }
