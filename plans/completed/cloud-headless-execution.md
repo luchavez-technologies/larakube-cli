@@ -4,7 +4,7 @@
 > context.** If you want the full product story this serves, read `plans/active/larakube-cloud.md` §6 in
 > the repo root (not this dir) — but you don't need to for the work below; everything required is here.
 
-## STATUS: Implemented 2026-07-08 (Tasks 1, 1b, 2, 3 all done) — awaiting one manual verification
+## STATUS: Implemented + completed 2026-07-10 (Tasks 1, 1b, 2, 3 all done) — ⚠️ NOT manually verified
 
 Everything below is landed, including Task 1b (`cloud:configure` flags) which this plan originally
 scoped separately. What a LaraKube Cloud job container codes against:
@@ -27,8 +27,15 @@ scoped separately. What a LaraKube Cloud job container codes against:
      `LARAKUBE_TOFU_PASSPHRASE` (16+ chars, never persisted) lets the orchestrator supply a stable
      per-stack passphrase. Job containers using remote state MUST set it.
 
-**Still pending (owner, manual):** the single paid DO Spaces `tofu init/apply` verification and
-`./build`. Move this file to `plans/completed/` once those pass.
+**Deliberately closed WITHOUT the manual verification pass** (owner's call, 2026-07-10). The automated
+suite covers flag parsing, JSON output, and the remote-state file handling, but nobody has yet run:
+`./build`; the host-side `--json` no-hang smoke (`cloud:create … --do-token=fake --no-interaction
+--json </dev/null` → exactly one JSON line on stdout); or the one paid end-to-end check of remote
+state against a real DO Spaces bucket (`tofu init/apply` with `LARAKUBE_TOFU_STATE_*` + AWS creds +
+`LARAKUBE_TOFU_PASSPHRASE`, confirming the backend block renders valid HCL and `.tflock` locking
+actually works). Any breakage in those paths is expected to surface — and get fixed — during the
+LaraKube Cloud build, which drives all of this for real. If a Cloud job behaves strangely around
+state, encryption, or JSON output, suspect these untested seams first.
 
 ## Why this exists
 
