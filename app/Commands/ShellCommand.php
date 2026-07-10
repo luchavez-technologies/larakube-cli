@@ -122,17 +122,23 @@ class ShellCommand extends Command
             );
         }
 
-        $label = match ($service) {
-            'node' => 'app=laravel-node',
-            'web' => 'app=laravel-web',
-            'horizon' => 'app=laravel-horizon',
-            'reverb' => 'app=laravel-reverb',
-            'scheduler' => 'app=laravel-schedule',
-            default => "app={$service}",
-        };
+        // Resilient label matching (mirrors ExecCommand):
+        // 1. Try the clean standard label (e.g., app=web)
+        // 2. Fall back to the legacy label (e.g., app=laravel-web)
+        $labels = ["app={$service}"];
+
+        if (! str_starts_with($service, 'laravel-')) {
+            $labels[] = "app=laravel-{$service}";
+        }
 
         // Find the pod name
-        $podName = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
+        $podName = null;
+        foreach ($labels as $label) {
+            $podName = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
+            if ($podName) {
+                break;
+            }
+        }
 
         if (! $podName) {
             $this->laraKubeError("Could not find a running {$service} pod in namespace '{$namespace}'. Is the environment up?");
