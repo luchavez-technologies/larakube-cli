@@ -684,6 +684,11 @@ class ConfigData extends Data
         return $this->serverVariation;
     }
 
+    public function hasServerVariation(): bool
+    {
+        return ! is_null($this->serverVariation);
+    }
+
     public function getOs(): OperatingSystem
     {
         return $this->os ?? OperatingSystem::ALPINE;
@@ -732,6 +737,11 @@ class ConfigData extends Data
     public function getPackageManager(): PackageManager
     {
         return $this->packageManager ?? PackageManager::NPM;
+    }
+
+    public function hasPackageManager(): bool
+    {
+        return ! is_null($this->packageManager);
     }
 
     /**
