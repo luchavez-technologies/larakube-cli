@@ -184,6 +184,30 @@ class EnvironmentData extends Data
          */
         public array $resources = [],
         /**
+         * Per-component replica-count overrides (hybrid): an optional "default"
+         * block plus optional per-pod overrides, e.g. {"default": 2, "reverb": 1}.
+         * Merged over the strategy-derived default (1 single-node / 2 multi-node-ha,
+         * always 1 for local) by ConfigData::getReplicas(); a component override
+         * wins over "default". Not meaningful for the scheduler (a CronJob — spawns
+         * one-off Jobs on schedule, no persistent replica count). Edit via
+         * `larakube replicas` — not by hand.
+         *
+         * @var array<string, int>
+         */
+        public array $replicas = [],
+        /**
+         * Per-component HorizontalPodAutoscaler settings, e.g.
+         *   {"web": {"min": 2, "max": 6, "cpu": 70}}
+         * A component present here gets an HPA instead of a fixed replica
+         * count (getReplicas() is ignored for it — the HPA owns .spec.replicas).
+         * Missing/absent = fixed replicas from getReplicas(), as before. Cloud
+         * environments only (metrics-server isn't meaningfully useful against
+         * local dev traffic). Edit via `larakube autoscale` — not by hand.
+         *
+         * @var array<string, array{min: int, max: int, cpu: int}>
+         */
+        public array $autoscale = [],
+        /**
          * Mark this environment for offline / air-gapped distribution.
          * When true, `bundle:build` will auto-select this env and the CLI
          * ships a standalone Kustomize binary inside the tarball so the

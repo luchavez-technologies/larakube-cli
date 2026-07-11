@@ -6,6 +6,7 @@ use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
 use App\State;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
 use function Termwind\render;
@@ -117,6 +118,12 @@ trait LaraKubeOutput
      * other caller) surface vanity URLs inline so users don't have to run a
      * second command. Returns false (rendering nothing) when the environment
      * has no hosts, so callers can supply their own empty-state message.
+     *
+     * Local envs also get a live "Traefik" column (routed / no route), cross-
+     * checked against Traefik's own router API — a host can have a perfectly
+     * valid Ingress object while Traefik itself never actually routes it
+     * (wrong service port, stale reload, ...), which otherwise only surfaces
+     * as "the URL just doesn't work" once you click through in a browser.
      */
     protected function showServiceLinks(ConfigData $config, string $environment): bool
     {
@@ -128,14 +135,57 @@ trait LaraKubeOutput
 
         $this->laraKubeInfo('Active Service Links');
 
+        $routedHosts = $environment === 'local' ? $this->getTraefikRoutedHosts() : null;
+
         $rows = [];
         foreach ($hosts as $host => $label) {
-            $rows[] = [$label, "<fg=blue>https://{$host}</>"];
+            $row = [$label, "<fg=blue>https://{$host}</>"];
+            if ($routedHosts !== null) {
+                $row[] = in_array($host, $routedHosts, true) ? '<fg=green>✓ routed</>' : '<fg=red>✗ no route</>';
+            }
+            $rows[] = $row;
         }
 
-        table(['Service', 'URL'], $rows);
+        table($routedHosts !== null ? ['Service', 'URL', 'Traefik'] : ['Service', 'URL'], $rows);
 
         return true;
+    }
+
+    /**
+     * Every host Traefik currently has an ENABLED router for, queried live
+     * from Traefik's own API — not the cluster's Ingress objects, which can
+     * exist (and look fine with `kubectl get ingress`) while Traefik's actual
+     * route is missing or broken (wrong port, no matching IngressClass, a
+     * reload that hasn't happened yet, ...). Null (not empty array) when
+     * Traefik can't be queried at all (not installed, still starting, etc.)
+     * so callers can tell "unknown" apart from "genuinely nothing routed".
+     *
+     * @return array<int, string>|null
+     */
+    protected function getTraefikRoutedHosts(): ?array
+    {
+        $result = Process::run('kubectl exec -n traefik deployment/traefik -- wget -qO- http://localhost:8080/api/http/routers');
+
+        if (! $result->successful()) {
+            return null;
+        }
+
+        $routers = json_decode($result->output(), true);
+        if (! is_array($routers)) {
+            return null;
+        }
+
+        $hosts = [];
+        foreach ($routers as $router) {
+            if (($router['status'] ?? null) !== 'enabled') {
+                continue;
+            }
+            if (preg_match_all('/Host\(`([^`]+)`\)/', $router['rule'] ?? '', $matches)) {
+                $hosts = array_merge($hosts, $matches[1]);
+            }
+        }
+
+        return array_values(array_unique($hosts));
     }
 
     /**

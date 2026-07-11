@@ -71,7 +71,7 @@ trait InteractsWithDocker
         $imageExists = Process::run("docker images -q {$localImage}")->output();
         $image = $imageExists !== '' ? $localImage : $this->getProjectConfig($path)->getPhpImage(true);
 
-        $baseEnvs = '-e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_IGNORE_PLATFORM_REQS=1';
+        $baseEnvs = '-e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_IGNORE_PLATFORM_REQS=1 -e SHOW_WELCOME_MESSAGE=false';
 
         return "docker run --rm --init -v $path:/var/www/html -w /var/www/html --user root $baseEnvs $envs {$image} ";
     }
@@ -391,6 +391,6 @@ trait InteractsWithDocker
             $image = $this->getProjectConfig($path)->getPhpImage(true);
         }
 
-        $this->runStreaming("docker run --rm --init -v $path:/var/www/html -w /var/www/html --user root $image chown -R $uid:$gid .");
+        $this->runStreaming("docker run --rm --init -v $path:/var/www/html -w /var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R $uid:$gid .");
     }
 }

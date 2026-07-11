@@ -447,7 +447,7 @@ spec:
               service:
                 name: seaweedfs
                 port:
-                  number: 9333
+                  number: 8888
   tls:
     - hosts:
         - s3.seaweed-test.kube
@@ -521,6 +521,7 @@ kind: Deployment
 metadata:
   name: web
 spec:
+  
   replicas: 1
   template:
     spec:

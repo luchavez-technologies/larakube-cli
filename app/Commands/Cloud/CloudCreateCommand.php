@@ -784,5 +784,13 @@ class CloudCreateCommand extends Command
             $this->line("    <fg=yellow>larakube cloud:deploy {$environment}</>");
         }
         $this->newLine();
+        // A single droplet is a fully production-grade target here — same hardening,
+        // TLS, backups, and overlay pipeline as managed k8s, just without a second
+        // node. Worth saying so explicitly the moment it's provisioned, not just
+        // buried in docs — "single-node" reads as "not real production" otherwise.
+        $this->line('  <fg=gray>This droplet is production-ready as-is — run `larakube cloud:harden` to lock it down,</>');
+        $this->line('  <fg=gray>and `larakube autoscale` to scale pod replicas under load. The one real gap vs.</>');
+        $this->line('  <fg=gray>a managed multi-node cluster is surviving a full server failure — everything else</>');
+        $this->line('  <fg=gray>(hardening, TLS, backups, autoscaling) is identical.</>');
     }
 }

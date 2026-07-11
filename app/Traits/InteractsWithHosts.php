@@ -375,9 +375,15 @@ trait InteractsWithHosts
 
         // Editing the Windows hosts file needs admin, and UAC auto-elevation across
         // the WSL→Windows boundary is unreliable (it can just flash a window and
-        // fail). So the manual steps above are the recommended path, and the
-        // auto-sync is strictly opt-in — we no longer rely on the elevation.
-        if (! confirm('Or have LaraKube try to sync it now via a Windows admin prompt?', false)) {
+        // fail) — so the manual steps above are printed regardless. But defaulting
+        // this confirm to "No" made it too easy to blow past mid-`up` (e.g. right
+        // after adding a new component like object storage), silently leaving the
+        // NEW host(s) out of a block that still contains the old ones — so only
+        // the newly-added host quietly stops resolving in the Windows browser
+        // while everything else keeps working, which is a confusing bug to
+        // diagnose. Defaulting to Yes means the common case (elevation works)
+        // just works; declining still falls back to the manual instructions above.
+        if (! confirm('Or have LaraKube try to sync it now via a Windows admin prompt?', true)) {
             return;
         }
 
