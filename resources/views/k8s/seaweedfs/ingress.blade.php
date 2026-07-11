@@ -26,7 +26,7 @@ spec:
               service:
                 name: seaweedfs
                 port:
-                  number: 9333
+                  number: 8888
   tls:
     - hosts:
         - s3.{{ $config->getName() }}.{{ $config->getLocalTld() }}

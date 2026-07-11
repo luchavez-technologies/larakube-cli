@@ -129,6 +129,7 @@ class DoctorCommand extends Command
 
             if ($config) {
                 $issues = array_merge($issues, $this->diagnoseLocalReachability($config));
+                $issues = array_merge($issues, $this->diagnoseTraefikRouting($config, $namespace));
             }
         }
 
@@ -206,6 +207,39 @@ class DoctorCommand extends Command
                 'title' => 'Traefik Reporting Errors',
                 'description' => "Found {$errorCount} recent {$noun} in the Traefik logs.",
                 'fix' => 'Run: larakube traefik:logs to inspect',
+            ];
+        }
+
+        return $issues;
+    }
+
+    /**
+     * Cross-check EVERY project host (not just the primary app URL — see
+     * diagnoseLocalReachability()) against Traefik's live router table. A
+     * host can have a perfectly valid Ingress object (`kubectl get ingress`
+     * looks fine) while Traefik itself never actually routes it — wrong
+     * service port (the exact SeaweedFS s3-admin bug this check exists
+     * because of), no matching IngressClass, or a reload that hasn't
+     * happened yet. Skipped when Traefik's router API can't be queried at
+     * all (already covered by diagnoseTraefik()'s own health check).
+     */
+    protected function diagnoseTraefikRouting(ConfigData $config, string $namespace): array
+    {
+        $routedHosts = $this->getTraefikRoutedHosts();
+        if ($routedHosts === null) {
+            return [];
+        }
+
+        $issues = [];
+        foreach (array_keys($config->getAllHosts('local')) as $host) {
+            if (in_array($host, $routedHosts, true)) {
+                continue;
+            }
+
+            $issues[] = [
+                'title' => "No Traefik Route: {$host}",
+                'description' => "Traefik has no enabled router for {$host} — the Ingress may be missing, misconfigured, or pointing at the wrong service port.",
+                'fix' => "Run: larakube up, then check: kubectl get ingress -n {$namespace}",
             ];
         }
 
