@@ -4,9 +4,11 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Data\GlobalConfigData;
 use App\Data\RegistryData;
 use App\Enums\IngressController;
 use App\Enums\RegistryProvider;
+use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 use InvalidArgumentException;
 
@@ -134,7 +136,7 @@ trait GathersEnvironmentData
             );
 
             if ($configureRegistry) {
-                $envData->registry = $this->promptRegistry($config, $envName, required: false);
+                $envData->registry = $this->promptRegistry($config, $envName, required: false, envData: $envData);
             }
         }
 
@@ -181,16 +183,33 @@ trait GathersEnvironmentData
      * (registry setup you explicitly asked for) or optional (one optional
      * step among many in a new-env wizard).
      */
-    protected function promptRegistry(ConfigData $config, string $envName, bool $required): RegistryData
+    protected function promptRegistry(ConfigData $config, string $envName, bool $required, ?EnvironmentData $envData = null): RegistryData
     {
         $currentRegistry = $config->getEnvironment($envName)?->registry;
 
         $providerOptions = [
             RegistryProvider::GHCR->value => RegistryProvider::GHCR->label(),
             RegistryProvider::DOCKERHUB->value => RegistryProvider::DOCKERHUB->label(),
+            RegistryProvider::GITLAB->value => RegistryProvider::GITLAB->label(),
+            RegistryProvider::GITEA->value => RegistryProvider::GITEA->label(),
         ];
 
-        if ($flag = $this->flag('registry-provider')) {
+        // Auto-detect CI platform to pre-select native registry
+        $detectedPlatform = 'github';
+        $remoteUrl = trim(Process::run('git remote get-url origin')->output());
+        if (str_contains($remoteUrl, 'gitlab.com')) {
+            $detectedPlatform = 'gitlab';
+        } elseif (str_contains($remoteUrl, 'gitea') || str_contains($remoteUrl, 'git.')) {
+            $detectedPlatform = 'gitea';
+        }
+
+        $defaultRegistry = match ($detectedPlatform) {
+            'gitlab' => RegistryProvider::GITLAB->value,
+            'gitea' => RegistryProvider::GITEA->value,
+            default => RegistryProvider::GHCR->value,
+        };
+
+        if ($flag = $this->flag('registry') ?: $this->flag('registry-provider')) {
             if (! isset($providerOptions[$flag])) {
                 throw new InvalidArgumentException("Invalid --registry-provider '{$flag}'. Use one of: ".implode(', ', array_keys($providerOptions)).'.');
             }
@@ -199,10 +218,23 @@ trait GathersEnvironmentData
             $provider = select(
                 label: "Which container registry for {$envName}?",
                 options: $providerOptions,
-                default: $currentRegistry?->provider->value ?? RegistryProvider::GHCR->value,
+                default: $currentRegistry?->provider->value ?? $defaultRegistry,
             );
         }
         $registryProvider = RegistryProvider::from($provider);
+
+        // Docker Hub public check
+        if ($registryProvider === RegistryProvider::DOCKERHUB) {
+            $isPublic = confirm(
+                label: 'Is this a public Docker Hub repository? (Allows anyone to pull, bypasses credentials on Kubernetes)',
+                default: false,
+                hint: 'If public, we skip creating Kubernetes pull secrets and prompting for login credentials.',
+            );
+            $env = $envData ?? $config->getEnvironment($envName);
+            if ($env) {
+                $env->omitImagePullSecret = $isPublic;
+            }
+        }
 
         // The image path MUST include the owner (ghcr.io/<owner>/<repo>,
         // docker.io/<owner>/<repo>) — a bare name pushes to a namespace you
@@ -211,8 +243,6 @@ trait GathersEnvironmentData
         // from the git remote; fall back to the gh-detected owner + app name.
         $default = '';
         if ($this->flag('image') === null) {
-            // Only worth deriving (git remote + gh API calls) when the prompt
-            // will actually run.
             $default = $currentRegistry?->image ?? $this->guessImageFromGitRemote(getcwd());
             if ($default === '' && $registryProvider === RegistryProvider::GHCR) {
                 $owner = trim(Process::run($this->getGhCommand().' api user -q .login')->output());
@@ -228,8 +258,6 @@ trait GathersEnvironmentData
                 throw new InvalidArgumentException("Invalid --image '{$image}' — include the owner: owner/repo (e.g. your-username/".$config->getName().').');
             }
         } elseif ($required && $default === '' && $this->flag('no-interaction')) {
-            // The required prompt below would throw an opaque
-            // NonInteractiveValidationException — fail with the fix instead.
             throw new InvalidArgumentException('No image path could be derived — pass --image=owner/repo when running non-interactively.');
         } else {
             $image = text(
@@ -244,9 +272,23 @@ trait GathersEnvironmentData
             );
         }
 
+        $giteaHost = null;
+        if ($registryProvider === RegistryProvider::GITEA) {
+            $envObj = $envData ?? $config->getEnvironment($envName);
+            $giteaHost = $envObj?->hosts[SharedClusterService::GITEA->value] ?? null;
+            if (! $giteaHost) {
+                if ($envName === 'local') {
+                    $giteaHost = SharedClusterService::GITEA->hostFor(GlobalConfigData::load()->getLocalTld());
+                } else {
+                    $giteaHost = $config->getSharedServiceHost(SharedClusterService::GITEA, $envName);
+                }
+            }
+        }
+
         return new RegistryData(
             provider: $registryProvider,
             image: trim($image) !== '' ? trim($image) : null,
+            host: $giteaHost,
         );
     }
 

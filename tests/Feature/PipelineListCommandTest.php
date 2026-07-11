@@ -1,0 +1,62 @@
+<?php
+
+test('pipeline:list prints warning when no workflows exist', function () {
+    $tempDir = sys_get_temp_dir().'/larakube-pipe-list-'.uniqid();
+    mkdir($tempDir, 0755, true);
+    $tempDir = realpath($tempDir) ?: $tempDir;
+
+    $originalDir = getcwd();
+    chdir($tempDir);
+
+    try {
+        $this->artisan('pipeline:list')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('No LaraKube workflows/pipelines found in this project.');
+    } finally {
+        chdir($originalDir);
+        exec('rm -rf '.escapeshellarg($tempDir));
+    }
+});
+
+test('pipeline:list lists discovered workflows in a table', function () {
+    $tempDir = sys_get_temp_dir().'/larakube-pipe-list-'.uniqid();
+    mkdir($tempDir, 0755, true);
+    $tempDir = realpath($tempDir) ?: $tempDir;
+
+    // Create github workflow directory
+    mkdir($tempDir.'/.github/workflows', 0755, true);
+    file_put_contents($tempDir.'/.github/workflows/larakube-deploy-production.yml', "on:\n  push:\n    branches: [ main ]\n");
+
+    // Create gitea workflow directory
+    mkdir($tempDir.'/.gitea/workflows', 0755, true);
+    file_put_contents($tempDir.'/.gitea/workflows/larakube-deploy-staging.yml', "on: push\n");
+
+    // Create gitlab CI file
+    file_put_contents($tempDir.'/.gitlab-ci.yml', "stages:\n  - deploy\n");
+
+    $originalDir = getcwd();
+    chdir($tempDir);
+
+    try {
+        $exitCode = Illuminate\Support\Facades\Artisan::call('pipeline:list');
+        expect($exitCode)->toBe(0);
+
+        $output = Illuminate\Support\Facades\Artisan::output();
+        expect($output)->toContain('GitHub Actions')
+            ->and($output)->toContain('.github/workflows')
+            ->and($output)->toContain('production')
+            ->and($output)->toContain('push (main)')
+
+            ->and($output)->toContain('Gitea Actions')
+            ->and($output)->toContain('.gitea/workflows')
+            ->and($output)->toContain('staging')
+            ->and($output)->toContain('push')
+
+            ->and($output)->toContain('GitLab CI/CD')
+            ->and($output)->toContain('.gitlab-ci.yml')
+            ->and($output)->toContain('all');
+    } finally {
+        chdir($originalDir);
+        exec('rm -rf '.escapeshellarg($tempDir));
+    }
+});

@@ -3,12 +3,13 @@
 namespace App\Commands;
 
 use App\Traits\CapturesPassthroughArgs;
+use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class NodeCommand extends Command
 {
-    use CapturesPassthroughArgs, LaraKubeOutput;
+    use CapturesPassthroughArgs, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
@@ -38,9 +39,15 @@ class NodeCommand extends Command
     {
         ['command' => $nodeCommand, 'options' => $opts] = $this->capturePassthroughArgs('node');
 
+        $service = 'node';
+        $config = $this->getProjectConfig(getcwd());
+        if ($config && (! $config->getFrontend() || ! $config->getFrontend()->requiresNodePod())) {
+            $service = 'web';
+        }
+
         return $this->call('exec', [
             'commands' => [$nodeCommand],
-            '--service' => 'node',
+            '--service' => $service,
             '--environment' => $opts['environment'],
         ]);
     }

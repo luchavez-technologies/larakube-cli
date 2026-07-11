@@ -53,28 +53,42 @@ first, real-cloud-cost steps (💰) last.
 - [ ] For the same project, run `cloud:create` again and pick "managed" this time → confirm the default name is `{projectname}-managed` (a *different* stack from the vps one — no collision) and that a later re-run offers to attach to `{projectname}-managed` specifically, not the vps stack.
 - [ ] Destroy anything provisioned in this phase (`larakube cloud:destroy`) once verified, to stop the billing.
 
-## 🆕 v0.24.0 — `env:audit` Manual Test Guide (2026-07-04 session batch)
+## 🆕 v0.24.0 — `dotenv:audit` Manual Test Guide (2026-07-04 session batch)
 
-Covers commit `40241cc` (tag `v0.24.0`): `env:audit`, the checklist command for
+Covers commit `40241cc` (tag `v0.24.0`): `dotenv:audit` (renamed from `env:audit`
+to sit apart from the `env` create command), the checklist command for
 "a teammate with edit/admin access is leaving — what do I even rotate?" (see
-`app/Commands/EnvAuditCommand.php`). The automated suite fakes every kubectl
-call (`tests/Feature/EnvAuditCommandTest.php`, `tests/Unit/Commands/
-EnvAuditCommandTest.php`) — it has never actually round-tripped through a
+`app/Commands/DotenvAuditCommand.php`). The automated suite fakes every kubectl
+call (`tests/Feature/DotenvAuditCommandTest.php`, `tests/Unit/Commands/
+DotenvAuditCommandTest.php`) — it has never actually round-tripped through a
 real `laravel-secrets`/`laravel-config` object. This is that walkthrough.
 Free, local — no cloud cost.
 
-### Phase G — `env:audit` against a real deploy
+### Phase G — `dotenv:audit` against a real deploy
 - [ ] Prereq: a project that has deployed at least once to some environment (`larakube up` for local, or `cloud:deploy` for a real env) — `laravel-secrets` + `laravel-config` must actually exist in that namespace.
 - [ ] Add one throwaway custom key to `.env.{environment}` that would never come from LaraKube itself, e.g. `AIRTABLE_API_KEY=key_live_test123`, and redeploy (`larakube up`, or `cloud:deploy` for a cloud env) so it lands in `laravel-secrets`.
-- [ ] `larakube env:audit {environment}` (or bare `env:audit` inside a project with one env — should auto-pick it) — confirm it prints the env/namespace/context line, then a **Secrets** table listing every key in `laravel-secrets`, and a **Config** table for `laravel-config`.
+- [ ] `larakube dotenv:audit {environment}` (or bare `dotenv:audit` inside a project with one env — should auto-pick it) — confirm it prints the env/namespace/context line, then a **Secrets** table listing every key in `laravel-secrets`, and a **Config** table for `laravel-config`.
 - [ ] In the Secrets table, confirm `AIRTABLE_API_KEY` (or whatever you added) is classified **custom**, and a LaraKube-generated key (`DB_PASSWORD` for a non-sqlite DB, or `APP_KEY`) is classified **LaraKube-managed**.
 - [ ] **Safety check (the actual point of the command):** confirm the literal value `key_live_test123` never appears anywhere in the output — only the key name `AIRTABLE_API_KEY`. Same for every other secret's value (DB password, etc.).
 - [ ] Remove the throwaway key from `.env.{environment}` and redeploy, so it doesn't linger in a real cluster.
 
 ### Phase H — Edge cases (free, local)
-- [ ] Run `env:audit {environment}` on an environment that's never been deployed (no `laravel-secrets`/`laravel-config` yet) — confirm it prints "No 'laravel-secrets' or 'laravel-config' found ... nothing deployed yet?" and exits 0, not an error.
-- [ ] Run bare `env:audit` **outside any project directory** with no arguments — confirm it errors "Provide a namespace, or run inside a project to pick an environment." and exits 1.
-- [ ] Standalone form: `env:audit <namespace> --context <kube-context>` outside a project — confirm it runs against that literal namespace/context and every key in the Secrets table is classified **unknown (no project context)** rather than managed/custom (there's no `.larakube.json` to diff against).
+- [ ] Run `dotenv:audit {environment}` on an environment that's never been deployed (no `laravel-secrets`/`laravel-config` yet) — confirm it prints "No 'laravel-secrets' or 'laravel-config' found ... nothing deployed yet?" and exits 0, not an error.
+- [ ] Run bare `dotenv:audit` **outside any project directory** with no arguments — confirm it errors "Provide a namespace, or run inside a project to pick an environment." and exits 1.
+- [ ] Standalone form: `dotenv:audit <namespace> --context <kube-context>` outside a project — confirm it runs against that literal namespace/context and every key in the Secrets table is classified **unknown (no project context)** rather than managed/custom (there's no `.larakube.json` to diff against).
+
+### Phase I — `dotenv` (value compare + drift)
+`dotenv <environment>` goes further than the audit: it compares the local
+`.env.<environment>` against the values actually deployed (`laravel-config` +
+`laravel-secrets`) and shows per-key drift. Secret values are masked by default;
+`--reveal` prints them but is gated by `kubectl auth can-i get secrets`. See
+`app/Commands/DotenvCommand.php`. Requires being inside a project (it diffs a
+local file). Free, local — no cloud cost.
+- [ ] In a deployed project, `larakube dotenv {environment}` → confirm a table of Key / Status / Local / Cluster, with statuses `in-sync`, `drift`, `only local`, `only cluster`. Edit one value in `.env.{environment}` (don't redeploy) and re-run → that key flips to **drift**.
+- [ ] **Masking:** with a custom secret like `AIRTABLE_API_KEY=key_live_test123` present, run `dotenv {environment}` (no flag) → its value shows as `••••••`, and the footer notes secrets are masked. Confirm `key_live_test123` appears nowhere.
+- [ ] **Reveal (authorized):** on an admin/owner context, `dotenv {environment} --reveal` → plaintext secret values now print. Confirm `key_live_test123` is shown.
+- [ ] **Reveal (unauthorized):** using a `view`-scoped teammate kubeconfig (`cluster:grant --read`, then `--context` that kubeconfig's context), run `dotenv {environment} --reveal` → confirm it does **not** print secret values, the config keys still compare, secret keys show `secret (hidden)` / `no access`, and the footer points to `cluster:grant --edit`. Exit 0.
+- [ ] Missing file: `dotenv {environment}` with no `.env.{environment}` on disk → prints "nothing to compare against" and exits 0. Outside any project → errors "inside a LaraKube project" and exits 1.
 
 ## 🆕 v0.25.0 + v0.26.0 — Plex Migrate/Join/Leave Manual Test Guide (2026-07-05 session batch)
 

@@ -1,0 +1,185 @@
+<?php
+
+namespace App\Commands\Vpn;
+
+use App\Data\ConfigData;
+use App\Enums\SharedClusterService;
+use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithVpn;
+use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
+
+use function Laravel\Prompts\select;
+use function Laravel\Prompts\text;
+
+use LaravelZero\Framework\Commands\Command;
+
+class VpnInitCommand extends Command
+{
+    use InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, StreamsProcessOutput;
+
+    protected $signature = 'vpn:init
+        {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the NetBird VPN host.}
+        {--context=  : Target a specific kube-context (defaults to current context)}
+        {--env=      : Legacy alias for the environment argument}
+        {--domain=   : Raw override for the NetBird VPN cluster domain (e.g. example.com → vpn.example.com); skips the prompt}
+        {--remove    : Tear down the NetBird VPN stack from larakube-vpn}';
+
+    protected $description = 'Deploy the cluster-wide NetBird VPN stack into larakube-vpn';
+
+    public function handle(): int
+    {
+        $this->renderHeader();
+
+        return $this->option('remove')
+            ? $this->removeVpn()
+            : $this->deployVpn();
+    }
+
+    protected function deployVpn(): int
+    {
+        $kubectl = $this->vpnKubectl($this->option('context'));
+        $ns = $this->vpnNamespace();
+
+        $host = $this->resolveVpnHost();
+
+        $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
+            "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
+        ));
+
+        $manifest = view('k8s.vpn.shared', [
+            'host' => $host,
+        ])->render();
+
+        $tmp = sys_get_temp_dir().'/larakube-vpn.yaml';
+        file_put_contents($tmp, $manifest);
+
+        $this->withSpin('Applying NetBird VPN manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        @unlink($tmp);
+
+        $this->withSpin('Waiting for NetBird Management...', fn () => $this->runStreaming(
+            "{$kubectl} rollout status deploy/netbird-management -n {$ns} --timeout=120s",
+            130,
+        ));
+        $this->withSpin('Waiting for NetBird Signal...', fn () => $this->runStreaming(
+            "{$kubectl} rollout status deploy/netbird-signal -n {$ns} --timeout=120s",
+            130,
+        ));
+        $this->withSpin('Waiting for NetBird Relay...', fn () => $this->runStreaming(
+            "{$kubectl} rollout status deploy/netbird-relay -n {$ns} --timeout=120s",
+            130,
+        ));
+        $this->withSpin('Waiting for NetBird Client...', fn () => $this->runStreaming(
+            "{$kubectl} rollout status deploy/netbird-client -n {$ns} --timeout=120s",
+            130,
+        ));
+
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo('✅ NetBird VPN stack is live.');
+        $this->newLine();
+        $this->line("  <fg=gray>NetBird Admin URL:</>            <fg=blue>https://{$host}</>");
+        $this->newLine();
+
+        return 0;
+    }
+
+    protected function removeVpn(): int
+    {
+        $kubectl = $this->vpnKubectl($this->option('context'));
+        $ns = $this->vpnNamespace();
+
+        $this->withSpin('Removing NetBird VPN namespace...', fn () => Process::run(
+            "{$kubectl} delete namespace {$ns} --ignore-not-found",
+        ));
+
+        $this->laraKubeInfo('NetBird VPN removed from larakube-vpn.');
+
+        return 0;
+    }
+
+    /**
+     * Resolve the NetBird VPN ingress host for this install.
+     */
+    protected function resolveVpnHost(): string
+    {
+        $service = SharedClusterService::VPN;
+
+        $domain = (string) ($this->option('domain') ?? '');
+        if ($domain !== '') {
+            return $service->hostFor($domain);
+        }
+
+        $env = $this->resolveEnvironment();
+
+        if ($env === 'local') {
+            return (string) $this->resolveVpnHostReadOnly('local', null);
+        }
+
+        return $this->promptForCloudVpnHost($service, $env);
+    }
+
+    /**
+     * Decide which environment this install targets.
+     */
+    protected function resolveEnvironment(): string
+    {
+        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
+        if ($explicit !== '') {
+            return $explicit;
+        }
+
+        if ($this->option('no-interaction') || $this->option('domain')) {
+            return 'local';
+        }
+
+        $projectPath = getcwd();
+        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
+            ? ConfigData::loadFromFile($projectPath)
+            : null;
+
+        $envs = $config ? array_merge(['local'], $config->getCloudEnvironments()) : ['local'];
+
+        return select(
+            label: 'Which environment is this NetBird VPN install for?',
+            options: array_combine($envs, $envs),
+            default: 'local',
+            hint: 'Local uses your dev TLD; a cloud env asks for + persists the NetBird VPN host.',
+        );
+    }
+
+    /**
+     * Prompt for (and persist) a non-local NetBird VPN host.
+     */
+    protected function promptForCloudVpnHost(SharedClusterService $service, string $env): string
+    {
+        $projectPath = getcwd();
+        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
+            ? ConfigData::loadFromFile($projectPath)
+            : null;
+
+        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
+        if ($existing) {
+            return $existing;
+        }
+
+        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
+        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
+
+        $host = text(
+            label: "What host should {$service->label()} use in '{$env}'?",
+            placeholder: $default !== '' ? $default : 'e.g. vpn.example.com',
+            default: $default,
+            required: true,
+            hint: 'Point this DNS at the cluster and add TLS like any other ingress host.',
+        );
+
+        if ($config) {
+            $config->setHost($env, $service->value, $host);
+            $config->saveToFile($projectPath);
+            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
+        }
+
+        return $host;
+    }
+}

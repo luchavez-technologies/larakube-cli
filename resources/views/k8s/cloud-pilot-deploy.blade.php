@@ -55,11 +55,12 @@ jobs:
           registry: ghcr.io
           username: {!! $gha['actor'] !!}
           password: {!! $gha['token'] !!}
-@elseif($gha['registry_provider'] === 'dockerhub')
+@else
         uses: docker/login-action@v4
         with:
-          username: {!! $gha['dockerhub_user'] !!}
-          password: {!! $gha['dockerhub_token'] !!}
+          registry: {{ $gha['registry_host'] }}
+          username: {!! $gha['registry_user'] !!}
+          password: {!! $gha['registry_password'] !!}
 @endif
 
       - name: 🐘 Setup PHP

@@ -32,7 +32,9 @@ class CloudConfigureCommand extends Command
         {--ingress= : Ingress controller slug for the environment (skips the prompt)}
         {--managed= : Comma-separated externally-managed services; pass an empty value for none (skips the prompt)}
         {--web-hosts= : Comma-separated additional web hostnames; pass an empty value to clear (skips the prompt)}
-        {--registry-provider= : Container registry provider: ghcr|dockerhub (skips the prompt)}
+        {--registry-provider= : Legacy alias for the --registry option}
+        {--registry= : Container registry provider: ghcr|dockerhub|gitlab|gitea (skips the prompt)}
+        {--platform= : CI/CD platform: github|gitlab (skips the prompt)}
         {--image= : Registry image repository path, owner/repo (skips the prompt)}
         {--branch= : Git branch that triggers the CI deployment (skips the prompt)}';
 

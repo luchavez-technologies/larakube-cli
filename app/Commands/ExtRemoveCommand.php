@@ -6,6 +6,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 
 use function Laravel\Prompts\info;
+use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
 
@@ -16,7 +17,7 @@ class ExtRemoveCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'ext:remove {extension : The name of the PHP extension to remove}';
+    protected $signature = 'ext:remove {extension? : The name of the PHP extension to remove}';
 
     /**
      * The console command description.
@@ -34,9 +35,26 @@ class ExtRemoveCommand extends Command
             return 1;
         }
 
-        $extension = strtolower($this->argument('extension'));
         $projectPath = getcwd();
         $config = $this->getProjectConfig($projectPath);
+
+        $extension = $this->argument('extension');
+        if (! $extension) {
+            $extensions = $config->getAdditionalExtensions();
+            if (empty($extensions)) {
+                $this->laraKubeInfo('No custom PHP extensions are currently added to this project.');
+
+                return 0;
+            }
+
+            $extension = select(
+                label: 'Which PHP extension would you like to remove?',
+                options: array_combine($extensions, $extensions),
+                default: reset($extensions),
+            );
+        }
+
+        $extension = strtolower($extension);
         $dockerfilePath = $projectPath.'/Dockerfile.php';
 
         // 1. Update config

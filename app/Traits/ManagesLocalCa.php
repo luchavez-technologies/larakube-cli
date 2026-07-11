@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\GlobalConfigData;
 use App\Enums\CompanionDriver;
+use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait ManagesLocalCa
@@ -148,10 +149,13 @@ trait ManagesLocalCa
 
         $crt = $this->getSystemCertPath();
         $key = $this->getSystemKeyPath();
+        $tld = GlobalConfigData::load()->getLocalTld();
+
+        $sharedHosts = array_map(fn ($s) => $s->host($tld), SharedClusterService::cases());
 
         if (file_exists($crt) && file_exists($key)
             && $this->certIsValid($crt)
-            && $this->certCoversHost($crt, 'console.'.GlobalConfigData::load()->getLocalTld())
+            && collect($sharedHosts)->every(fn (string $host) => $this->certCoversHost($crt, $host))
             && collect($additionalHosts)->every(fn (string $host) => $this->certCoversHost($crt, $host))) {
             return;
         }
@@ -210,12 +214,9 @@ CNF;
 
         $tld = GlobalConfigData::load()->getLocalTld();
         $companionHosts = array_map(fn ($c) => "{$c->value}.{$tld}", CompanionDriver::cases());
-        // mailpit.{tld} (shared catch-all SMTP UI) and grafana.{tld} (shared
-        // monitoring dashboard) are global hosts in larakube-shared, like
-        // console/traefik, so the default cert must cover them. $additionalHosts
-        // covers other global-namespace hosts this trait doesn't know about
-        // itself — e.g. a Plex Commons' current public hosts.
-        $systemHosts = array_unique(["console.{$tld}", "traefik.{$tld}", "mailpit.{$tld}", "grafana.{$tld}", ...$companionHosts, ...$additionalHosts]);
+        $sharedHosts = array_map(fn ($s) => $s->host($tld), SharedClusterService::cases());
+
+        $systemHosts = array_unique([...$sharedHosts, ...$companionHosts, ...$additionalHosts]);
         $sans = implode(',', array_map(fn ($h) => "DNS:{$h}", $systemHosts));
 
         $cnfContent = <<<CNF

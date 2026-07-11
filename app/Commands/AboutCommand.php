@@ -4,8 +4,14 @@ namespace App\Commands;
 
 use App\Data\ConfigData;
 use App\Traits\InteractsWithEnvironments;
+use App\Traits\InteractsWithErrors;
+use App\Traits\InteractsWithGitForge;
 use App\Traits\InteractsWithMonitoring;
 use App\Traits\InteractsWithProjectConfig;
+use App\Traits\InteractsWithSecrets;
+use App\Traits\InteractsWithUptime;
+use App\Traits\InteractsWithVault;
+use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesCompanions;
 use App\Traits\ReadsPlexCredentials;
@@ -17,7 +23,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class AboutCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithMonitoring, InteractsWithProjectConfig, LaraKubeOutput, ManagesCompanions, ReadsPlexCredentials;
+    use InteractsWithEnvironments, InteractsWithErrors, InteractsWithGitForge, InteractsWithMonitoring, InteractsWithProjectConfig, InteractsWithSecrets, InteractsWithUptime, InteractsWithVault, InteractsWithVpn, LaraKubeOutput, ManagesCompanions, ReadsPlexCredentials;
 
     /**
      * The name and signature of the console command.
@@ -165,6 +171,24 @@ class AboutCommand extends Command
         // installed, so projects without monitoring don't see an empty section.
         $this->showMonitoringAccess($environment, $config);
 
+        // 6b. Uptime Kuma (cluster-wide, larakube-shared) — shown only when installed.
+        $this->showUptimeAccess($environment, $config);
+
+        // 6c. Vaultwarden (cluster-wide, larakube-vault) — shown only when installed.
+        $this->showVaultAccess($environment, $config);
+
+        // 6d. NetBird VPN (cluster-wide, larakube-vpn) — shown only when installed.
+        $this->showVpnAccess($environment, $config);
+
+        // 6e. GlitchTip (cluster-wide, larakube-shared) — shown only when installed.
+        $this->showErrorsAccess($environment, $config);
+
+        // 6f. Infisical (cluster-wide, larakube-secrets) — shown only when installed.
+        $this->showSecretsAccess($environment, $config);
+
+        // 6g. Gitea (cluster-wide, larakube-shared) — shown only when installed.
+        $this->showGitAccess($environment, $config);
+
         // 7. Plex Commons credentials this project joined (read from the env's
         // .env file). Only shown when the project is a tenant for this env.
         $this->showPlexCredentials($config, $environment);
@@ -200,6 +224,138 @@ class AboutCommand extends Command
             ['Grafana login', $login],
             ['Prometheus', $access['prometheus'].' <fg=gray>(in-cluster)</>'],
             ['Loki', $access['loki'].' <fg=gray>(in-cluster)</>'],
+        ]);
+    }
+
+    /**
+     * Render the cluster-wide Uptime Kuma stack's URL when installed.
+     */
+    protected function showUptimeAccess(string $environment, ConfigData $config): void
+    {
+        $access = $this->uptimeAccess($environment, $config);
+
+        if ($access === null) {
+            return;
+        }
+
+        $this->newLine();
+        $this->laraKubeInfo('Uptime Monitoring');
+
+        $uptimeUrl = $access['host'] ? "<fg=blue>https://{$access['host']}</>" : '<fg=gray>host not configured</>';
+
+        table(['Component', 'Access'], [
+            ['Uptime Kuma', $uptimeUrl],
+        ]);
+    }
+
+    /**
+     * Render the cluster-wide Vaultwarden stack's URL and admin token when installed.
+     */
+    protected function showVaultAccess(string $environment, ConfigData $config): void
+    {
+        $access = $this->vaultAccess($environment, $config);
+
+        if ($access === null) {
+            return;
+        }
+
+        $this->newLine();
+        $this->laraKubeInfo('Vaultwarden (Password Manager)');
+
+        $vaultUrl = $access['host'] ? "<fg=blue>https://{$access['host']}</>" : '<fg=gray>host not configured</>';
+        $token = $access['token'] !== null ? $access['token'] : '<fg=gray>unknown</>';
+
+        table(['Component', 'Access'], [
+            ['Vaultwarden', $vaultUrl],
+            ['Admin Token', $token],
+            ['Admin Panel', "{$vaultUrl}/admin"],
+        ]);
+    }
+
+    /**
+     * Render the cluster-wide NetBird VPN stack's URL when installed.
+     */
+    protected function showVpnAccess(string $environment, ConfigData $config): void
+    {
+        $access = $this->vpnAccess($environment, $config);
+
+        if ($access === null) {
+            return;
+        }
+
+        $this->newLine();
+        $this->laraKubeInfo('NetBird VPN');
+
+        $vpnUrl = $access['host'] ? "<fg=blue>https://{$access['host']}</>" : '<fg=gray>host not configured</>';
+
+        table(['Component', 'Access'], [
+            ['NetBird Admin', $vpnUrl],
+        ]);
+    }
+
+    /**
+     * Render the cluster-wide GlitchTip stack's URL and admin credentials when installed.
+     */
+    protected function showErrorsAccess(string $environment, ConfigData $config): void
+    {
+        $access = $this->errorsAccess($environment, $config);
+
+        if ($access === null) {
+            return;
+        }
+
+        $this->newLine();
+        $this->laraKubeInfo('GlitchTip (Exception Tracker)');
+
+        $errorsUrl = $access['host'] ? "<fg=blue>https://{$access['host']}</>" : '<fg=gray>host not configured</>';
+        $password = $access['password'] !== null ? $access['password'] : '<fg=gray>unknown</>';
+
+        table(['Component', 'Access'], [
+            ['GlitchTip URL', $errorsUrl],
+            ['Admin Email', 'admin@larakube.local'],
+            ['Admin Password', $password],
+        ]);
+    }
+
+    /**
+     * Render the cluster-wide Infisical stack's URL when installed.
+     */
+    protected function showSecretsAccess(string $environment, ConfigData $config): void
+    {
+        $access = $this->secretsAccess($environment, $config);
+
+        if ($access === null) {
+            return;
+        }
+
+        $this->newLine();
+        $this->laraKubeInfo('Infisical (Secrets Manager)');
+
+        $secretsUrl = $access['host'] ? "<fg=blue>https://{$access['host']}</>" : '<fg=gray>host not configured</>';
+
+        table(['Component', 'Access'], [
+            ['Infisical Admin', $secretsUrl],
+        ]);
+    }
+
+    /**
+     * Render the cluster-wide Gitea stack's URL when installed.
+     */
+    protected function showGitAccess(string $environment, ConfigData $config): void
+    {
+        $access = $this->gitAccess($environment, $config);
+
+        if ($access === null) {
+            return;
+        }
+
+        $this->newLine();
+        $this->laraKubeInfo('Gitea (Forge & Registry)');
+
+        $gitUrl = $access['host'] ? "<fg=blue>https://{$access['host']}</>" : '<fg=gray>host not configured</>';
+
+        table(['Component', 'Access'], [
+            ['Gitea Web', $gitUrl],
         ]);
     }
 

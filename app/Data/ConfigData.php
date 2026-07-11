@@ -605,7 +605,21 @@ class ConfigData extends Data
             return null;
         }
 
-        return $env?->imagePullSecret ?? 'ghcr-login';
+        if ($env?->imagePullSecret) {
+            return $env->imagePullSecret;
+        }
+
+        $registry = $this->getRegistry($environment);
+        if ($registry) {
+            return match ($registry->provider) {
+                \App\Enums\RegistryProvider::GITEA => 'gitea-login',
+                \App\Enums\RegistryProvider::DOCKERHUB => 'dockerhub-login',
+                \App\Enums\RegistryProvider::GITLAB => 'gitlab-login',
+                default => 'ghcr-login',
+            };
+        }
+
+        return 'ghcr-login';
     }
 
     /**

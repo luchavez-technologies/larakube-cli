@@ -47,8 +47,8 @@ test('kustomize command is registered', function () {
         ->expectsOutputToContain('kustomize');
 });
 
-test('env:audit command is registered', function () {
+test('dotenv:audit command is registered', function () {
     $this->artisan('list')
         ->assertExitCode(0)
-        ->expectsOutputToContain('env:audit');
+        ->expectsOutputToContain('dotenv:audit');
 });

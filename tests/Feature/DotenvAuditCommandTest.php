@@ -1,11 +1,11 @@
 <?php
 
 /**
- * `env:audit` shells out to kubectl to list Secret/ConfigMap key names — never
+ * `dotenv:audit` shells out to kubectl to list Secret/ConfigMap key names — never
  * values. Migrated to the Process facade, so every kubectl call is faked via
  * Process::fake() rather than the old namespace-override shell_exec() mock.
  *
- * EnvAuditCommand also composes ResolvesEnvironmentContext, whose Process
+ * DotenvAuditCommand also composes ResolvesEnvironmentContext, whose Process
  * calls (pickContext(), availableKubeContexts(), …) are covered by the same
  * fakes below (wildcarded, since we don't care about their exact output here) —
  * Prompt::interactive(false) is a second line of defense in case a prompt is
@@ -18,7 +18,7 @@
  * the second reports "not found" even though the text is really there. Verified
  * empirically while writing this file. So each test below asserts exactly ONE
  * substring per artisan() call; classifySource()'s own unit test (see
- * tests/Unit/Commands/EnvAuditCommandTest.php) is what actually proves the
+ * tests/Unit/Commands/DotenvAuditCommandTest.php) is what actually proves the
  * managed-vs-custom pairing, since it needs no console output at all.
  */
 
@@ -75,63 +75,63 @@ function mockKubectlSecretsAndConfig(): void
     ]);
 }
 
-test('env:audit resolves the environment and targets its saved cluster context', function () {
+test('dotenv:audit resolves the environment and targets its saved cluster context', function () {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
-    $this->artisan('env:audit', ['environment' => 'production'])
+    $this->artisan('dotenv:audit', ['environment' => 'production'])
         ->assertExitCode(0)
         ->expectsOutputToContain('fake-ctx');
 });
 
-test('env:audit lists a key from laravel-secrets', function () {
+test('dotenv:audit lists a key from laravel-secrets', function () {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
-    $this->artisan('env:audit', ['environment' => 'production'])
+    $this->artisan('dotenv:audit', ['environment' => 'production'])
         ->assertExitCode(0)
         ->expectsOutputToContain('AIRTABLE_API_KEY');
 });
 
-test('env:audit lists a key from laravel-config', function () {
+test('dotenv:audit lists a key from laravel-config', function () {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
-    $this->artisan('env:audit', ['environment' => 'production'])
+    $this->artisan('dotenv:audit', ['environment' => 'production'])
         ->assertExitCode(0)
         ->expectsOutputToContain('APP_URL');
 });
 
-test('env:audit flags a LaraKube-generated key as managed', function () {
+test('dotenv:audit flags a LaraKube-generated key as managed', function () {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
-    $this->artisan('env:audit', ['environment' => 'production'])
+    $this->artisan('dotenv:audit', ['environment' => 'production'])
         ->assertExitCode(0)
         ->expectsOutputToContain('LaraKube-managed');
 });
 
-test('env:audit flags a human-typed key as custom, never a value', function () {
+test('dotenv:audit flags a human-typed key as custom, never a value', function () {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
-    $this->artisan('env:audit', ['environment' => 'production'])
+    $this->artisan('dotenv:audit', ['environment' => 'production'])
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('key_live_123');
 });
 
-test('env:audit reports nothing deployed yet when both objects are missing', function () {
+test('dotenv:audit reports nothing deployed yet when both objects are missing', function () {
     saveEnvAuditConfig($this->tempDir);
     Process::fake(['*' => '']);
 
-    $this->artisan('env:audit', ['environment' => 'production'])
+    $this->artisan('dotenv:audit', ['environment' => 'production'])
         ->assertExitCode(0)
         ->expectsOutputToContain("No 'laravel-secrets' or 'laravel-config' found");
 });
 
-test('env:audit requires a namespace outside a project', function () {
+test('dotenv:audit requires a namespace outside a project', function () {
     // No .larakube.json in this tempDir — getProjectConfig() returns null.
-    $this->artisan('env:audit')
+    $this->artisan('dotenv:audit')
         ->assertExitCode(1)
         ->expectsOutputToContain('Provide a namespace, or run inside a project to pick an environment.');
 });

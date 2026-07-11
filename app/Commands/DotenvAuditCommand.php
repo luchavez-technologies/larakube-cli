@@ -11,15 +11,15 @@ use function Laravel\Prompts\table;
 
 use LaravelZero\Framework\Commands\Command;
 
-class EnvAuditCommand extends Command
+class DotenvAuditCommand extends Command
 {
     use InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
 
-    protected $signature = 'env:audit
+    protected $signature = 'dotenv:audit
         {environment? : An environment (in-project) or a literal namespace (standalone) to audit — omit to pick from the project\'s envs}
         {--context= : Standalone: target a kube-context directly (when not in a project)}';
 
-    protected $description = 'List every env var KEY deployed to an environment — names only, never values — the checklist for what to rotate when someone leaves';
+    protected $description = 'List every env var KEY deployed to an environment — names only, never values — the checklist for what to rotate when someone leaves (use `dotenv` to compare values)';
 
     public function handle(): int
     {

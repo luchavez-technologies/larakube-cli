@@ -35,7 +35,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getLabel(): string
     {
         return match ($this) {
-            self::MINIO => 'MinIO (Classic)',
+            self::MINIO => 'MinIO (Legacy / AGPL)',
             self::SEAWEEDFS => 'SeaweedFS (High Performance)',
             self::GARAGE => 'Garage (Modern/Rust)',
         };
@@ -512,7 +512,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
             'mc '.$mc;
     }
 
-    case MINIO = 'minio';
     case SEAWEEDFS = 'seaweedfs';
+    case MINIO = 'minio';
     case GARAGE = 'garage';
 }

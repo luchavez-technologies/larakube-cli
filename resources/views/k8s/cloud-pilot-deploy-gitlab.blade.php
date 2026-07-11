@@ -31,12 +31,8 @@ build:{{ $envName }}:
   before_script:
 @if($envMeta['registry'] === 'gitlab')
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
-@elseif($envMeta['registry'] === 'ghcr')
-    - echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-@elseif($envMeta['registry'] === 'dockerhub')
-    - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 @else
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
+    - echo "${{ '{' }}{{ $envMeta['upperName'] }}_REGISTRY_PASSWORD}" | docker login {{ $envMeta['registry_host'] }} -u "${{ '{' }}{{ $envMeta['upperName'] }}_REGISTRY_USERNAME}" --password-stdin
 @endif
   script:
     - |

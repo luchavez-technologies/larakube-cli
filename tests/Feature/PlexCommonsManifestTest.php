@@ -39,7 +39,7 @@ test('the default Commons manifest has Postgres + Redis, embeds the spec, and om
         ->toContain('image: postgres:17.9')
         ->toContain('claimName: postgres-data')
         ->toContain('name: redis')
-        ->toContain('image: redis:7.4')
+        ->toContain('image: valkey/valkey:8.0-alpine')
         ->not->toContain('name: meilisearch');
 });
 
