@@ -18,7 +18,7 @@ class SetupCommand extends Command
 
     protected $signature = 'setup';
 
-    protected $description = 'First-time setup: install Docker Engine, k3s cluster, and optional tools';
+    protected $description = 'First-time setup: install Docker Engine, k3s cluster, Traefik, and k9s';
 
     /**
      * Critical one-time follow-up actions (e.g. "run newgrp docker") collected as
@@ -61,8 +61,17 @@ class SetupCommand extends Command
 
         $this->newLine();
 
-        // Step 3 — k9s (optional terminal UI for browsing the cluster)
-        $this->offerK9s();
+        // Step 3 — Traefik ingress controller (delegates entirely to traefik:setup)
+        $result = $this->call('traefik:setup');
+
+        if ($result !== 0) {
+            return $result;
+        }
+
+        $this->newLine();
+
+        // Step 4 — k9s (terminal UI for browsing the cluster)
+        $this->ensureK9sInstalled();
 
         $this->renderReminders();
 
@@ -162,11 +171,16 @@ class SetupCommand extends Command
             return true;
         }
 
+        $this->updateSystemPackages();
+
         $this->laraKubeInfo('Installing Docker Engine...');
-        // The get.docker.com script warns about an existing docker CLI (Docker Desktop)
-        // and about running inside WSL — both warnings are expected here and safe to
-        // ignore. Each warning pauses for 20s before continuing automatically.
-        $this->line('  <fg=gray>The installer may warn about Docker Desktop or WSL — this is expected. It will continue automatically.</>');
+        // The official installer runs its own built-in "press Ctrl+C to abort"
+        // safety pause (~20s, sometimes twice — once for an existing docker CLI,
+        // once for WSL2) before it continues. It even prints a raw shell trace
+        // line like `+ sleep 20` while doing so, which can look like a hang —
+        // it isn't; it always resumes on its own.
+        $this->line('  <fg=gray>Docker\'s official installer pauses for a built-in ~20s safety check (maybe twice)</>');
+        $this->line('  <fg=gray>before continuing — a line like `+ sleep 20` sitting there is expected, not a hang.</>');
         $this->newLine();
         passthru('curl -fsSL https://get.docker.com | sh', $installCode);
 
@@ -176,34 +190,83 @@ class SetupCommand extends Command
             return false;
         }
 
-        $user = getenv('USER') ?: get_current_user();
-        if ($user) {
-            shell_exec('sudo usermod -aG docker '.escapeshellarg((string) $user).' 2>/dev/null');
-        }
-
         shell_exec('sudo systemctl enable --now docker 2>/dev/null');
 
         $this->laraKubeInfo('✅ Docker Engine installed.');
-        $this->line('  You\'ve been added to the <fg=cyan>docker</> group, but your current shell session');
-        $this->line('  won\'t pick it up until you run: <fg=cyan>newgrp docker</> (or open a new terminal).');
 
-        $this->reminders[] = 'Run <fg=cyan>newgrp docker</> (or open a new terminal) — your shell hasn\'t picked up the docker group yet. Skipping this will make `docker`/`larakube up --build` fail with a permission error.';
+        $user = getenv('USER') ?: get_current_user();
+        if ($user) {
+            $this->ensureUserInDockerGroup((string) $user);
+        }
 
         return true;
     }
 
-    protected function offerK9s(): void
+    /**
+     * Refresh and upgrade system packages before installing Docker — a fresh
+     * WSL2 distro's apt cache (and kernel-adjacent tooling) can be stale enough
+     * to make the Docker installer misbehave. Best-effort: a failed/interrupted
+     * upgrade only gets a warning, since Docker's own installer runs its own
+     * `apt-get update` regardless.
+     */
+    protected function updateSystemPackages(): void
     {
-        if ($this->resolveK9sBin() !== null) {
-            $this->laraKubeInfo('k9s already installed.');
+        if (! confirm('Update system packages before installing Docker Engine? (recommended on a fresh system)', default: true)) {
+            return;
+        }
+
+        $this->laraKubeInfo('Updating system packages...');
+        passthru('sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y', $code);
+
+        if ($code !== 0) {
+            $this->laraKubeWarn('System package upgrade failed or was interrupted — continuing with Docker installation anyway.');
+        }
+
+        $this->newLine();
+    }
+
+    /**
+     * Add $user to the docker group and confirm it actually took, instead of
+     * firing the sudo usermod call and hoping — a silently-swallowed sudo prompt
+     * (or running before the docker group existed) used to leave the user with
+     * no group membership and no indication anything had gone wrong.
+     */
+    protected function ensureUserInDockerGroup(string $user): void
+    {
+        if ($this->userInDockerGroup($user)) {
+            return;
+        }
+
+        // passthru (not shell_exec) so a sudo password prompt is actually visible
+        // instead of being captured silently into the output buffer.
+        passthru('sudo usermod -aG docker '.escapeshellarg($user), $code);
+
+        if ($code !== 0 || ! $this->userInDockerGroup($user)) {
+            $this->laraKubeWarn('Could not confirm you were added to the docker group.');
+            $this->line("  Run manually: <fg=cyan>sudo usermod -aG docker {$user}</>");
+
+            $this->reminders[] = "Run <fg=cyan>sudo usermod -aG docker {$user}</> — automatic setup could not confirm the docker group was granted.";
 
             return;
         }
 
-        $this->line('  <fg=yellow>💡 Optional:</> <fg=cyan>k9s</> is a terminal UI for browsing your cluster.');
+        $this->line('  You\'ve been added to the <fg=cyan>docker</> group, but your current shell session');
+        $this->line('  won\'t pick it up until you run: <fg=cyan>newgrp docker</> (or open a new terminal).');
 
-        if (! confirm('Install k9s now?', default: true)) {
-            $this->line('  <fg=gray>Skipped — install it later with: larakube k9s</>');
+        $this->reminders[] = 'Run <fg=cyan>newgrp docker</> (or open a new terminal) — your shell hasn\'t picked up the docker group yet. Skipping this will make `docker`/`larakube up --build` fail with a permission error.';
+    }
+
+    protected function userInDockerGroup(string $user): bool
+    {
+        $groups = preg_split('/\s+/', trim(Process::run('id -nG '.escapeshellarg($user))->output()));
+
+        return in_array('docker', $groups, true);
+    }
+
+    protected function ensureK9sInstalled(): void
+    {
+        if ($this->resolveK9sBin() !== null) {
+            $this->laraKubeInfo('k9s already installed.');
 
             return;
         }

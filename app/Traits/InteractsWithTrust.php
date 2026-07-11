@@ -373,4 +373,108 @@ trait InteractsWithTrust
 
         return str_contains($result, '127.0.0.1');
     }
+
+    /**
+     * Structured pass/fail results for the local HTTPS trust chain (CA,
+     * keychain, DNS, system + app certs) — the single source of truth so
+     * `trust:check`'s detailed per-line report and `doctor`'s summarized
+     * issue list can't drift out of sync with each other.
+     *
+     * @return array<int, array{ok: bool, section: string, label: string, fix: ?string}>
+     */
+    protected function diagnoseTrustChain(): array
+    {
+        $items = [];
+        $tld = GlobalConfigData::load()->getLocalTld();
+
+        // Local CA
+        $caExists = $this->localCaExists();
+        $items[] = [
+            'ok' => $caExists,
+            'section' => 'Local CA',
+            'label' => 'CA files present at ~/.larakube/certificates/',
+            'fix' => $caExists ? null : 'larakube trust',
+        ];
+
+        if ($caExists) {
+            $trusted = $this->isCaTrusted();
+            $items[] = [
+                'ok' => $trusted,
+                'section' => 'Local CA',
+                'label' => 'Trusted in system keychain',
+                'fix' => $trusted ? null : 'larakube trust',
+            ];
+        }
+
+        // DNS
+        $dnsSection = "DNS (*.{$tld} → 127.0.0.1)";
+        if ($this->isDnsmasqConfigured()) {
+            $items[] = ['ok' => true, 'section' => $dnsSection, 'label' => 'dnsmasq configured', 'fix' => null];
+        } else {
+            $hostsHasKube = str_contains((string) file_get_contents('/etc/hosts'), '# LaraKube:');
+            $items[] = [
+                'ok' => $hostsHasKube,
+                'section' => $dnsSection,
+                'label' => '/etc/hosts fallback active (run larakube up to add entries)',
+                'fix' => $hostsHasKube ? null : 'larakube trust  (to set up dnsmasq) or  larakube up  (to add /etc/hosts entries)',
+            ];
+        }
+
+        // System cert
+        $sysSection = "System cert (console.{$tld}, traefik.{$tld}, …)";
+        $sysCrt = $this->getSystemCertPath();
+        $sysKey = $this->getSystemKeyPath();
+
+        if (! file_exists($sysCrt) || ! file_exists($sysKey)) {
+            $items[] = ['ok' => false, 'section' => $sysSection, 'label' => 'System cert not found', 'fix' => 'larakube traefik:setup'];
+        } elseif (! $this->certIsValid($sysCrt)) {
+            $items[] = ['ok' => false, 'section' => $sysSection, 'label' => 'System cert expired or expiring within 30 days', 'fix' => 'larakube trust:reset'];
+        } elseif (! $this->certCoversHost($sysCrt, "console.{$tld}")) {
+            $items[] = ['ok' => false, 'section' => $sysSection, 'label' => 'System cert covers wrong TLD (needs regeneration)', 'fix' => 'larakube trust:reset'];
+        } else {
+            $items[] = ['ok' => true, 'section' => $sysSection, 'label' => "Valid until {$this->certExpiryDate($sysCrt)}", 'fix' => null];
+        }
+
+        // App certs
+        foreach ($this->getAllLocalAppCerts() as $appName => $paths) {
+            $crt = $paths['crt'];
+            // Each app's own pinned TLD (sidecar written alongside its cert), not
+            // the global $tld — a project with a `config:tld --project` override
+            // legitimately uses a different TLD than this machine's default.
+            $appTld = $this->getAppCertTld($appName);
+
+            if (! $this->certIsValid($crt)) {
+                $items[] = [
+                    'ok' => false,
+                    'section' => 'App certs',
+                    'label' => sprintf('  %-18s expired or expiring — run: larakube up', $appName),
+                    'fix' => 'larakube up',
+                ];
+            } elseif (! $this->certCoversHost($crt, "{$appName}.{$appTld}")) {
+                $items[] = [
+                    'ok' => false,
+                    'section' => 'App certs',
+                    'label' => sprintf('  %-18s wrong TLD — run: larakube up (in that project)', $appName),
+                    'fix' => 'larakube up (in that project)',
+                ];
+            } else {
+                $items[] = [
+                    'ok' => true,
+                    'section' => 'App certs',
+                    'label' => sprintf('  %-18s valid until %s (.%s)', $appName, $this->certExpiryDate($crt), $appTld),
+                    'fix' => null,
+                ];
+            }
+        }
+
+        return $items;
+    }
+
+    /** Cert expiry as a Y-m-d date, or 'unknown' if the cert can't be read/parsed. */
+    protected function certExpiryDate(string $crtPath): string
+    {
+        $ts = $this->getCertExpiry($crtPath);
+
+        return $ts ? date('Y-m-d', $ts) : 'unknown';
+    }
 }

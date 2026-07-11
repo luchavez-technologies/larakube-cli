@@ -35,6 +35,14 @@ function wslDetector(): object
         {
             return $this->hasDockerDesktopOnWsl();
         }
+
+        // Tests only ever simulate "is WSL" via WSL_DISTRO_NAME (see forceWsl()
+        // below); stub out the /proc/version fallback so "not WSL" cases don't
+        // depend on whether the machine running this suite is itself WSL2.
+        protected function wslKernelSignaturePresent(): bool
+        {
+            return false;
+        }
     };
 }
 
