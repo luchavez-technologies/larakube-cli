@@ -46,7 +46,7 @@ resource "digitalocean_droplet" "larakube" {
   name     = "{{ $dropletName }}"
   region   = "{{ $region }}"
   size     = "{{ $size }}"
-  image    = "{{ $image ?? 'ubuntu-22-04-x64' }}"
+  image    = "{{ $image ?? 'ubuntu-24-04-x64' }}"
   ssh_keys = [local.ssh_fingerprint]
   tags     = ["larakube"]
 }
