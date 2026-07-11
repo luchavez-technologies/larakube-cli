@@ -12,7 +12,11 @@ env:
 
 jobs:
   build:
+@if(! $audit['skip'])
+    name: 🔨 Audit, Build & Push
+@else
     name: 🔨 Build & Push
+@endif
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,6 +25,10 @@ jobs:
     steps:
       - name: 🛰 Checkout repository
         uses: actions/checkout@v6
+@if(! $audit['skip'])
+        with:
+          fetch-depth: 0
+@endif
 
       - name: 🔍 Resolve & Verify Secrets
         id: secrets
@@ -47,6 +55,156 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
           echo "✅ All secrets resolved successfully."
+@if(! $audit['skip'])
+
+      # ── Phase 1: Security Audit (gates the build) ──────────────────────
+      - name: 🔑 Gitleaks (secret gate)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: {!! $gha['token'] !!}
+
+      - name: 🐘 Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '{{ $config->getPhpVersion()->value }}'
+          extensions: {{ implode(', ', array_unique(array_merge(['ctype', 'dom', 'fileinfo', 'filter', 'hash', 'mbstring', 'openssl', 'pcre', 'pdo', 'session', 'tokenizer', 'xml', 'zip'], $config->getAllPhpExtensions()))) }}
+          tools: composer:v2
+
+      - name: 📋 Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: vendor
+          key: {!! $gha['composer_cache_key'] !!}
+          restore-keys: composer-
+
+      - name: 📦 Install Composer dependencies
+        run: composer install --optimize-autoloader --no-interaction --no-progress --ignore-platform-reqs
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: '{{ $config->getPackageManager()->value }}'
+
+      - name: 🛠 Install Node dependencies
+        run: {!! $config->getPackageManager()->installCommand() !!}
+
+      - name: 🧪 Dependency audit (Composer & NPM)
+        run: |
+          composer audit
+          npm audit --audit-level={{ $audit['auditLevel'] }}
+
+      - name: 🛡 Semgrep (SAST, ERROR-only gate)
+        run: |
+          pip install semgrep
+          semgrep scan --config=auto --severity=ERROR --error
+
+      - name: 🗂 Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: {!! $gha['trivy_cache_key'] !!}
+          restore-keys: {!! $gha['trivy_restore_key'] !!}
+
+      - name: 📁 Trivy filesystem scan (non-blocking)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+@if($audit['withTests'])
+
+      - name: 🛡 Create .env file
+        run: |
+          echo "$E_DATA" | base64 -d > .env
+
+      - name: 🧪 Application tests
+        run: php artisan test
+@endif
+@if($config->usesWayfinder())
+
+      - name: 🏎 Generate Wayfinder files
+        run: php artisan wayfinder:generate --with-form
+@endif
+@if(! $audit['withTests'])
+
+      - name: 🛡 Create .env file
+        run: |
+          echo "$E_DATA" | base64 -d > .env
+@endif
+
+      - name: 💎 Inject VITE vars for asset baking
+        run: |
+          echo "VITE_APP_URL=https://{{ $config->getWebHost($environment) }}" >> .env
+          echo "VITE_ASSET_URL=https://{{ $config->getWebHost($environment) }}" >> .env
+@if($reverbHost = $config->getHost($environment, 'reverb'))
+@if($config->hasFeature(\App\Enums\LaravelFeature::REVERB))
+          echo "VITE_REVERB_HOST={{ $reverbHost }}" >> .env
+          echo "VITE_REVERB_PORT=443" >> .env
+          echo "VITE_REVERB_SCHEME=https" >> .env
+          REVERB_APP_KEY=$(grep -E '^REVERB_APP_KEY=' .env | head -1 | cut -d= -f2-)
+          echo "VITE_REVERB_APP_KEY=$REVERB_APP_KEY" >> .env
+@endif
+@endif
+
+      # ── Phase 2: Build locally (no push yet) ───────────────────────────
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 🔐 Log in to Container Registry
+@if($gha['registry_provider'] === 'ghcr')
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: {!! $gha['actor'] !!}
+          password: {!! $gha['token'] !!}
+@else
+        uses: docker/login-action@v4
+        with:
+          registry: {{ $gha['registry_host'] }}
+          username: {!! $gha['registry_user'] !!}
+          password: {!! $gha['registry_password'] !!}
+@endif
+
+      - name: 🐳 Build application image (load, do not push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.php
+          load: true
+          push: false
+          tags: {!! $gha['image_sha'] !!}
+          target: deploy
+          secret-files: |
+            dotenv=.env
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Phase 3: Artifact security gate ────────────────────────────────
+      - name: 🚦 Trivy image scan ({{ $audit['failOn'] }} gate)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: {!! $gha['image_sha'] !!}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: '{{ $audit['failOn'] }}'
+
+      # ── Phase 4: Ship (only if every gate cleared) ─────────────────────
+      - name: 🚀 Push verified image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.php
+          push: true
+          tags: {!! $gha['image_latest'] !!},{!! $gha['image_sha'] !!}
+          target: deploy
+          secret-files: |
+            dotenv=.env
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+@else
 
       - name: 🔐 Log in to Container Registry
 @if($gha['registry_provider'] === 'ghcr')
@@ -127,6 +285,7 @@ jobs:
             dotenv=.env
           cache-from: type=gha
           cache-to: type=gha,mode=max
+@endif
 
   deploy:
     name: 🚀 Deploy

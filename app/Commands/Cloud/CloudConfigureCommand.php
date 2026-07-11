@@ -36,7 +36,10 @@ class CloudConfigureCommand extends Command
         {--registry= : Container registry provider: ghcr|dockerhub|gitlab|gitea (skips the prompt)}
         {--platform= : CI/CD platform: github|gitlab (skips the prompt)}
         {--image= : Registry image repository path, owner/repo (skips the prompt)}
-        {--branch= : Git branch that triggers the CI deployment (skips the prompt)}';
+        {--branch= : Git branch that triggers the CI deployment (skips the prompt)}
+        {--strict : Also fail security gates on HIGH severity (not just CRITICAL)}
+        {--skip-audit : Generate the lean pipeline without security audit steps}
+        {--with-tests : Include the PHPUnit/Pest suite in the audit phase}';
 
     /**
      * The console command description.

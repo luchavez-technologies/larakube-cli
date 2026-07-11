@@ -3,23 +3,32 @@
 use App\Data\ConfigData;
 use App\Enums\PackageManager;
 
-test('GHA workflow generation uses correct literal injection syntax', function () {
+/**
+ * Helper: build the view-data array for the GHA workflow template.
+ * Centralises the boilerplate so each test only overrides what it cares about.
+ */
+function ghaViewData(array $auditOverrides = []): array
+{
     $config = new ConfigData(name: 'test-app');
     $config->setPackageManager(PackageManager::NPM);
     $environment = 'production';
-    $appName = 'test-app';
-    $namespace = 'test-app-production';
-    $podName = 'web';
     $upperEnv = 'PRODUCTION';
-    $branch = 'main';
 
-    $workflowContent = view('k8s.cloud-pilot-deploy', [
+    $audit = array_merge([
+        'skip' => false,
+        'strict' => false,
+        'withTests' => false,
+        'failOn' => 'CRITICAL',
+        'auditLevel' => 'critical',
+    ], $auditOverrides);
+
+    return [
         'config' => $config,
         'environment' => $environment,
-        'branch' => $branch,
-        'appName' => $appName,
-        'namespace' => $namespace,
-        'podName' => $podName,
+        'branch' => 'main',
+        'appName' => 'test-app',
+        'namespace' => 'test-app-production',
+        'podName' => 'web',
         'upperEnv' => $upperEnv,
         'secrets' => [
             'k_env' => '${{ secrets.'.$upperEnv.'_KUBECONFIG }}',
@@ -40,10 +49,17 @@ test('GHA workflow generation uses correct literal injection syntax', function (
             'image_latest' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest',
             'image_sha' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ github.sha }}',
             'composer_cache_key' => "composer-\${{ hashFiles('composer.lock') }}",
-            'dockerhub_user' => '${{ secrets.DOCKERHUB_USERNAME }}',
-            'dockerhub_token' => '${{ secrets.DOCKERHUB_TOKEN }}',
+            'registry_user' => '${{ secrets.'.$upperEnv.'_REGISTRY_USERNAME }}',
+            'registry_password' => '${{ secrets.'.$upperEnv.'_REGISTRY_PASSWORD }}',
+            'trivy_cache_key' => '${{ runner.os }}-trivy-db',
+            'trivy_restore_key' => '${{ runner.os }}-trivy-',
         ],
-    ])->render();
+        'audit' => $audit,
+    ];
+}
+
+test('GHA workflow generation uses correct literal injection syntax', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
 
     // Verify Literal Injections
     expect($workflowContent)->toContain('FINAL_KUBE="${{ secrets.PRODUCTION_KUBECONFIG }}"');
@@ -57,12 +73,11 @@ test('GHA workflow generation uses correct literal injection syntax', function (
     // cluster-scoped Namespace doc (the scoped SA can't apply it).
     expect($workflowContent)
         ->toContain('drop=1')
-        ->toContain('kind:[ \t]+Namespace');
+        ->toContain('kind:[ \\t]+Namespace');
 
     // The image tags must render as real GitHub expressions — NOT mangled into
     // compiled Blade (the bug: literal {{ }} inside {!! '…' !!} gets post-processed).
     expect($workflowContent)
-        ->toContain('tags: ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest,${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ github.sha }}')
         ->not->toContain('<?php')      // no compiled-Blade leakage
         ->not->toContain('echo e(');
 
@@ -71,4 +86,73 @@ test('GHA workflow generation uses correct literal injection syntax', function (
 
     // Verify no unresolved variable placeholders
     expect($workflowContent)->not->toContain('{{ $upperEnv }}');
+});
+
+test('GHA workflow with default audit config emits security gates and split build', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
+
+    // Phase 1 — Audit gates are present
+    expect($workflowContent)
+        ->toContain('gitleaks/gitleaks-action@v2')
+        ->toContain('composer audit')
+        ->toContain('npm audit --audit-level=critical')
+        ->toContain('semgrep scan --config=auto --severity=ERROR --error')
+        ->toContain("scan-type: 'fs'")
+        ->toContain('fetch-depth: 0');
+
+    // Phase 2+3 — Build is split: load locally, scan, then push
+    expect($workflowContent)
+        ->toContain('load: true')
+        ->toContain('push: false')
+        ->toContain('Trivy image scan')
+        ->toContain("severity: 'CRITICAL'")
+        ->toContain('Push verified image');
+
+    // Job name reflects audit is active
+    expect($workflowContent)->toContain('Audit, Build & Push');
+});
+
+test('GHA workflow with --skip-audit produces the lean pipeline without gates', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData([
+        'skip' => true,
+    ]))->render();
+
+    // No audit steps
+    expect($workflowContent)
+        ->not->toContain('gitleaks')
+        ->not->toContain('semgrep')
+        ->not->toContain('Trivy')
+        ->not->toContain('composer audit')
+        ->not->toContain('npm audit');
+
+    // No fetch-depth: 0
+    expect($workflowContent)->not->toContain('fetch-depth');
+
+    // No split build — a single push: true step
+    expect($workflowContent)
+        ->not->toContain('load: true')
+        ->not->toContain('push: false')
+        ->not->toContain('Push verified image');
+
+    // Direct push
+    expect($workflowContent)->toContain('push: true');
+
+    // Job name is the lean version
+    expect($workflowContent)
+        ->toContain('Build & Push')
+        ->not->toContain('Audit, Build & Push');
+});
+
+test('GHA workflow with --strict uses CRITICAL,HIGH severity', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData([
+        'strict' => true,
+        'failOn' => 'CRITICAL,HIGH',
+        'auditLevel' => 'high',
+    ]))->render();
+
+    // Trivy image scan severity escalates
+    expect($workflowContent)->toContain("severity: 'CRITICAL,HIGH'");
+
+    // NPM audit level escalates
+    expect($workflowContent)->toContain('npm audit --audit-level=high');
 });

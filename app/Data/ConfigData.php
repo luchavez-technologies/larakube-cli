@@ -637,6 +637,16 @@ class ConfigData extends Data
         return $this->getEnvironment($environment)?->registry;
     }
 
+    /**
+     * Resolve the security audit policy for an environment. Returns the
+     * persisted config or sensible defaults (audit ON, strict OFF, tests OFF).
+     */
+    public function getSecurityAudit(string $environment): SecurityAuditData
+    {
+        return $this->getEnvironment($environment)?->securityAudit
+            ?? new SecurityAuditData;
+    }
+
     public function getScoutDriver(): ?ScoutDriver
     {
         return $this->scoutDriver;

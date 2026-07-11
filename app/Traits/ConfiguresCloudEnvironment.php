@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\password;
+use function Laravel\Prompts\table;
 use function Laravel\Prompts\text;
 
 /**
@@ -383,6 +384,37 @@ trait ConfiguresCloudEnvironment
         $registryHost = $registry ? $registry->getRegistryHost() : 'ghcr.io';
         $imageName = $registry ? ($registry->image ?? '${{ github.repository }}') : '${{ github.repository }}';
 
+        // Resolve security audit configuration — CLI flags override persisted
+        // config when explicitly passed. Persist back so heal / re-runs stay
+        // consistent.
+        $auditConfig = $config->getSecurityAudit($environment);
+
+        if ($this->flag('skip-audit')) {
+            $auditConfig->skip = true;
+        }
+        if ($this->flag('strict')) {
+            $auditConfig->strict = true;
+        }
+        if ($this->flag('with-tests')) {
+            $auditConfig->withTests = true;
+        }
+
+        $config->environments[$environment]->securityAudit = $auditConfig;
+        $this->saveProjectConfig($projectPath, $config);
+
+        table(
+            headers: ['Security Gate', 'Status'],
+            rows: [
+                ['Gitleaks (secret scan)', $auditConfig->skip ? '⏭ Skipped' : '✅ Enabled'],
+                ['Semgrep (SAST)', $auditConfig->skip ? '⏭ Skipped' : '✅ ERROR-only'],
+                ['Composer / NPM audit', $auditConfig->skip ? '⏭ Skipped' : '✅ '.$auditConfig->auditLevel()],
+                ['Trivy filesystem scan', $auditConfig->skip ? '⏭ Skipped' : '📊 Report-only'],
+                ['Trivy image scan', $auditConfig->skip ? '⏭ Skipped' : '🚦 '.$auditConfig->failOnSeverity()],
+                ['Application tests', $auditConfig->withTests ? '✅ Enabled' : '⏭ Skipped'],
+                ['Severity policy', $auditConfig->strict ? '🔒 Strict (HIGH+CRITICAL)' : '🛡 Default (CRITICAL)'],
+            ],
+        );
+
         $workflowContent = view('k8s.cloud-pilot-deploy', [
             'config' => $config,
             'environment' => $environment,
@@ -414,6 +446,15 @@ trait ConfiguresCloudEnvironment
                 'composer_cache_key' => "composer-\${{ hashFiles('composer.lock') }}",
                 'registry_user' => '${{ secrets.'.$upperEnv.'_REGISTRY_USERNAME }}',
                 'registry_password' => '${{ secrets.'.$upperEnv.'_REGISTRY_PASSWORD }}',
+                'trivy_cache_key' => '${{ runner.os }}-trivy-db',
+                'trivy_restore_key' => '${{ runner.os }}-trivy-',
+            ],
+            'audit' => [
+                'skip' => $auditConfig->skip,
+                'strict' => $auditConfig->strict,
+                'withTests' => $auditConfig->withTests,
+                'failOn' => $auditConfig->failOnSeverity(),
+                'auditLevel' => $auditConfig->auditLevel(),
             ],
         ])->render();
 

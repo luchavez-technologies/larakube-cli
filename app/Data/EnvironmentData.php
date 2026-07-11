@@ -196,5 +196,11 @@ class EnvironmentData extends Data
          * Configure with `larakube cloud:configure:tunnel <env>`.
          */
         public ?TunnelData $tunnel = null,
+        /**
+         * Security audit configuration for CI/CD pipelines. Null = defaults
+         * (audit ON, strict OFF, tests OFF). Persisted by `cloud:configure`
+         * so `heal` / re-runs stay consistent.
+         */
+        public ?SecurityAuditData $securityAudit = null,
     ) {}
 }
