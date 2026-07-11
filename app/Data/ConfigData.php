@@ -605,7 +605,21 @@ class ConfigData extends Data
             return null;
         }
 
-        return $env?->imagePullSecret ?? 'ghcr-login';
+        if ($env?->imagePullSecret) {
+            return $env->imagePullSecret;
+        }
+
+        $registry = $this->getRegistry($environment);
+        if ($registry) {
+            return match ($registry->provider) {
+                \App\Enums\RegistryProvider::GITEA => 'gitea-login',
+                \App\Enums\RegistryProvider::DOCKERHUB => 'dockerhub-login',
+                \App\Enums\RegistryProvider::GITLAB => 'gitlab-login',
+                default => 'ghcr-login',
+            };
+        }
+
+        return 'ghcr-login';
     }
 
     /**
@@ -684,6 +698,11 @@ class ConfigData extends Data
         return $this->serverVariation;
     }
 
+    public function hasServerVariation(): bool
+    {
+        return ! is_null($this->serverVariation);
+    }
+
     public function getOs(): OperatingSystem
     {
         return $this->os ?? OperatingSystem::ALPINE;
@@ -732,6 +751,11 @@ class ConfigData extends Data
     public function getPackageManager(): PackageManager
     {
         return $this->packageManager ?? PackageManager::NPM;
+    }
+
+    public function hasPackageManager(): bool
+    {
+        return ! is_null($this->packageManager);
     }
 
     /**

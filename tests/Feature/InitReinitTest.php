@@ -222,14 +222,14 @@ function runReinitWizard(ConfigData $config): ConfigData
 }
 
 test('picking "None" for storage in the wizard clears a previously-configured driver', function () {
-    // Options are ['' => None, 'minio', 'seaweedfs', 'garage'] (StorageDriver::cases()
-    // order) with default 'minio' pre-highlighted at index 1 — one UP reaches "None".
+    // Options are ['' => None, 'seaweedfs', 'minio', 'garage'] (StorageDriver::cases()
+    // order) with default 'minio' pre-highlighted at index 2 — two UPs reach "None".
     Prompt::fake([
         Key::ENTER,          // blueprints multiselect — leave unchanged
         Key::ENTER,          // server variation — leave unchanged
         Key::ENTER,          // features multiselect — leave unchanged
         Key::ENTER,          // package manager — leave unchanged
-        Key::UP, Key::ENTER, // storage — move off "minio" onto "None" and submit
+        Key::UP, Key::UP, Key::ENTER, // storage — move off "minio" onto "None" and submit
         Key::ENTER,          // database — leave unchanged
         Key::ENTER,          // cache — leave unchanged (stays redis)
     ]);

@@ -29,6 +29,12 @@ enum SharedClusterService: string
             self::TRAEFIK_DASHBOARD => 'k8s.traefik-dashboard',
             self::CONSOLE => 'k8s.console-ingress',
             self::GRAFANA => 'k8s.monitoring.grafana-ingress',
+            self::UPTIME_KUMA => 'k8s.uptime.ingress',
+            self::VAULT => 'k8s.vault.ingress',
+            self::VPN => 'k8s.vpn.ingress',
+            self::ERRORS => 'k8s.errors.ingress',
+            self::SECRETS => 'k8s.secrets.ingress',
+            self::GITEA => 'k8s.gitea.shared',
         };
     }
 
@@ -43,6 +49,8 @@ enum SharedClusterService: string
     {
         return match ($this) {
             self::TRAEFIK_DASHBOARD => 'traefik',
+            self::UPTIME_KUMA => 'status',
+            self::GITEA => 'git',
             default => $this->value,
         };
     }
@@ -71,7 +79,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA => false,
             default => true,
         };
     }
@@ -90,6 +98,12 @@ enum SharedClusterService: string
             self::TRAEFIK_DASHBOARD => 'Traefik dashboard',
             self::CONSOLE => 'LaraKube Console',
             self::GRAFANA => 'Grafana',
+            self::UPTIME_KUMA => 'Uptime Kuma',
+            self::VAULT => 'Vaultwarden',
+            self::VPN => 'NetBird VPN',
+            self::ERRORS => 'GlitchTip',
+            self::SECRETS => 'Infisical',
+            self::GITEA => 'Gitea',
         };
     }
 
@@ -106,6 +120,12 @@ enum SharedClusterService: string
             self::TRAEFIK_DASHBOARD => 'svc traefik -n traefik',
             self::CONSOLE => 'namespace larakube-system',
             self::GRAFANA => 'deployment prometheus -n larakube-shared',
+            self::UPTIME_KUMA => 'deployment uptime-kuma -n larakube-shared',
+            self::VAULT => 'deployment vaultwarden -n larakube-vault',
+            self::VPN => 'deployment netbird-management -n larakube-vpn',
+            self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
+            self::SECRETS => 'deployment infisical-backend -n larakube-secrets',
+            self::GITEA => 'deployment gitea -n larakube-shared',
         };
     }
 
@@ -153,6 +173,12 @@ enum SharedClusterService: string
             self::TRAEFIK_DASHBOARD => 'Refreshing Traefik dashboard ingress...',
             self::CONSOLE => 'Refreshing LaraKube Console ingress...',
             self::GRAFANA => 'Refreshing Grafana ingress...',
+            self::UPTIME_KUMA => 'Refreshing Uptime Kuma ingress...',
+            self::VAULT => 'Refreshing Vaultwarden ingress...',
+            self::VPN => 'Refreshing NetBird VPN ingress...',
+            self::ERRORS => 'Refreshing GlitchTip ingress...',
+            self::SECRETS => 'Refreshing Infisical ingress...',
+            self::GITEA => 'Refreshing Gitea ingress...',
         };
     }
 
@@ -168,4 +194,10 @@ enum SharedClusterService: string
     case TRAEFIK_DASHBOARD = 'traefik-dashboard';
     case CONSOLE = 'console';
     case GRAFANA = 'grafana';
+    case UPTIME_KUMA = 'uptime';
+    case VAULT = 'vault';
+    case VPN = 'vpn';
+    case ERRORS = 'errors';
+    case SECRETS = 'secrets';
+    case GITEA = 'gitea';
 }

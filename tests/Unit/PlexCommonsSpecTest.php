@@ -79,7 +79,7 @@ test('normalize fills defaults for a partial spec and respects an explicit disab
 
     expect($p->enabledCommonsServices($spec))->toBe(['redis'])
         ->and($spec['services']['postgres']['enabled'])->toBeFalse()
-        ->and($spec['services']['redis']['image'])->toBe('redis:7.4')   // default filled
+        ->and($spec['services']['redis']['image'])->toBe('valkey/valkey:8.0-alpine')   // default filled
         ->and($spec['services']['redis']['port'])->toBe(6379);
 });
 

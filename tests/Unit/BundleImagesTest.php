@@ -24,7 +24,7 @@ test('bundleImages derives the app image + every declared dependency, enum-drive
     expect($images['app'])->toBe('shop:latest')
         ->and($images['dependencies'])->toContain('traefik:v3.1')
         ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'postgres')))->toBeTrue()
-        ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'redis')))->toBeTrue()
+        ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'valkey') || str_contains($i, 'redis')))->toBeTrue()
         ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'minio')))->toBeTrue();
 });
 

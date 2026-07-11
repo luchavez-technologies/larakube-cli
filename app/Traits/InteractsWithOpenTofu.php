@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
+use RuntimeException;
+
 /**
  * Drives OpenTofu (or a Terraform fallback) for the `cloud:create` / `cloud:destroy`
  * flows. OpenTofu is treated as a NATIVE host binary (like kubectl), not a
@@ -181,12 +183,51 @@ trait InteractsWithOpenTofu
             file_put_contents($dir.'/'.$name, $contents);
         }
 
+        if ($remote = $this->remoteStateConfig()) {
+            file_put_contents($dir.'/backend.tf', view('tofu.backend-s3', $remote + ['stack' => $stack])->render());
+        } elseif (file_exists($dir.'/backend.tf')) {
+            // Env removed since the last run — don't leave a stale backend behind.
+            @unlink($dir.'/backend.tf');
+        }
+
         return $dir;
+    }
+
+    /**
+     * Opt-in S3-compatible remote state, read from the environment (a job
+     * container sets these; laptop use keeps local state). Both bucket and
+     * endpoint are required for the backend to activate. Backend credentials
+     * come from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, inherited by the
+     * tofu process — nothing to inject here.
+     *
+     * @return array{bucket: string, endpoint: string, region: string}|null
+     */
+    protected function remoteStateConfig(): ?array
+    {
+        $bucket = getenv('LARAKUBE_TOFU_STATE_BUCKET') ?: null;
+        $endpoint = getenv('LARAKUBE_TOFU_STATE_ENDPOINT') ?: null;
+
+        if (! $bucket || ! $endpoint) {
+            return null;
+        }
+
+        return [
+            'bucket' => $bucket,
+            'endpoint' => $endpoint,
+            'region' => getenv('LARAKUBE_TOFU_STATE_REGION') ?: 'us-east-1',
+        ];
     }
 
     /** True once a stack has real state (i.e. it has been applied at least once). */
     protected function tofuStateExists(string $stack): bool
     {
+        // With a remote backend the local workdir has no tfstate even after an
+        // apply — let `tofu destroy` consult the real (remote) state instead of
+        // callers concluding there's nothing to tear down.
+        if ($this->remoteStateConfig() !== null) {
+            return true;
+        }
+
         $state = $this->tofuWorkdir($stack).'/terraform.tfstate';
 
         return file_exists($state) && filesize($state) > 0;
@@ -202,12 +243,22 @@ trait InteractsWithOpenTofu
             return '';
         }
 
-        // Load ONCE, mint-if-missing, persist, and use that same value — getGlobalConfig()
-        // reloads from disk each call, so reusing one instance avoids minting two
-        // different random passphrases (returning one while saving another).
-        $config = $this->getGlobalConfig();
-        $passphrase = $config->ensureTofuPassphrase($stack);
-        $config->save();
+        // A headless job container gets a fresh HOME per job — a passphrase
+        // minted there would make remote state written by one job unreadable
+        // by the next. LARAKUBE_TOFU_PASSPHRASE lets the orchestrator supply
+        // a stable per-stack passphrase instead; never persisted here.
+        if ($passphrase = getenv('LARAKUBE_TOFU_PASSPHRASE')) {
+            if (strlen($passphrase) < 16) {
+                throw new RuntimeException('LARAKUBE_TOFU_PASSPHRASE must be at least 16 characters (PBKDF2).');
+            }
+        } else {
+            // Load ONCE, mint-if-missing, persist, and use that same value — getGlobalConfig()
+            // reloads from disk each call, so reusing one instance avoids minting two
+            // different random passphrases (returning one while saving another).
+            $config = $this->getGlobalConfig();
+            $passphrase = $config->ensureTofuPassphrase($stack);
+            $config->save();
+        }
 
         return <<<HCL
 key_provider "pbkdf2" "larakube" {
@@ -226,12 +277,16 @@ HCL;
     }
 
     /**
-     * Build the `KEY='val' …` env prefix for a Tofu invocation: the DO token plus
-     * (OpenTofu only) the encryption config. Extra per-call vars merge in.
+     * The env vars for a Tofu invocation: the DO token plus (OpenTofu only)
+     * the encryption config. Extra per-call vars merge in. Passed via
+     * Process::env(), which MERGES over the inherited environment — so e.g.
+     * AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY for a remote state backend
+     * pass through from the parent process untouched.
      *
      * @param  array<string, string>  $extra
+     * @return array<string, string>
      */
-    protected function tofuEnvPrefix(string $stack, bool $isOpenTofu, array $extra = []): string
+    protected function tofuEnv(string $stack, bool $isOpenTofu, array $extra = []): array
     {
         $env = [];
 
@@ -249,12 +304,7 @@ HCL;
         // Non-interactive provider installs; never prompt for input mid-run.
         $env['TF_IN_AUTOMATION'] = '1';
 
-        $prefix = '';
-        foreach ($env as $k => $v) {
-            $prefix .= $k.'='.escapeshellarg($v).' ';
-        }
-
-        return $prefix;
+        return $env;
     }
 
     /**
@@ -267,19 +317,19 @@ HCL;
     protected function runTofu(array $bin, string $stack, string $subcommand, array $args = [], array $env = [], bool $capture = false): array
     {
         $dir = $this->tofuWorkdir($stack);
-        $prefix = $this->tofuEnvPrefix($stack, $bin['isOpenTofu'], $env);
-        $cmd = $prefix.escapeshellarg($bin['path']).' -chdir='.escapeshellarg($dir).' '.$subcommand;
+        $envVars = $this->tofuEnv($stack, $bin['isOpenTofu'], $env);
+        $cmd = escapeshellarg($bin['path']).' -chdir='.escapeshellarg($dir).' '.$subcommand;
         foreach ($args as $a) {
             $cmd .= ' '.$a;
         }
 
         if ($capture) {
-            $result = Process::run($cmd);
+            $result = Process::env($envVars)->run($cmd);
 
             return ['code' => $result->exitCode(), 'output' => trim($result->output())];
         }
 
-        $code = $this->runStreaming($cmd);
+        $code = $this->runStreaming($cmd, env: $envVars);
 
         return ['code' => $code, 'output' => ''];
     }
@@ -287,7 +337,16 @@ HCL;
     /** `tofu init` — downloads the provider plugins into the stack workdir. */
     protected function tofuInit(array $bin, string $stack): bool
     {
-        return $this->runTofu($bin, $stack, 'init', ['-input=false'])['code'] === 0;
+        $args = ['-input=false'];
+
+        // A workdir initialized with local state would otherwise hit the
+        // interactive backend-migration prompt when a remote backend appears;
+        // -reconfigure is a no-op on a fresh workdir.
+        if ($this->remoteStateConfig() !== null) {
+            $args[] = '-reconfigure';
+        }
+
+        return $this->runTofu($bin, $stack, 'init', $args)['code'] === 0;
     }
 
     /** `tofu apply` — creates/updates infra. Auto-approve by default (we confirm in the command). */

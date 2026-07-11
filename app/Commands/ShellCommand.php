@@ -122,17 +122,23 @@ class ShellCommand extends Command
             );
         }
 
-        $label = match ($service) {
-            'node' => 'app=laravel-node',
-            'web' => 'app=laravel-web',
-            'horizon' => 'app=laravel-horizon',
-            'reverb' => 'app=laravel-reverb',
-            'scheduler' => 'app=laravel-schedule',
-            default => "app={$service}",
-        };
+        // Resilient label matching (mirrors ExecCommand):
+        // 1. Try the clean standard label (e.g., app=web)
+        // 2. Fall back to the legacy label (e.g., app=laravel-web)
+        $labels = ["app={$service}"];
+
+        if (! str_starts_with($service, 'laravel-')) {
+            $labels[] = "app=laravel-{$service}";
+        }
 
         // Find the pod name
-        $podName = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
+        $podName = null;
+        foreach ($labels as $label) {
+            $podName = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
+            if ($podName) {
+                break;
+            }
+        }
 
         if (! $podName) {
             $this->laraKubeError("Could not find a running {$service} pod in namespace '{$namespace}'. Is the environment up?");
@@ -145,8 +151,14 @@ class ShellCommand extends Command
         // Determine the correct container name
         $container = in_array($service, ['web', 'horizon', 'reverb', 'scheduler']) ? 'php' : $service;
 
-        // Execute the interactive shell. We try /bin/bash first, fallback to /bin/sh.
-        passthru("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- /bin/bash 2>/dev/null || {$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- /bin/sh");
+        // Probe for bash before opening the interactive session. Minimal images
+        // (e.g. FrankenPHP) ship only /bin/sh, and a doomed `exec ... /bin/bash`
+        // leaks its "OCI runtime exec failed" error to stdout — which no stderr
+        // redirect can suppress — so pick the shell up front and exec once.
+        $hasBash = Process::run("{$kubectl} exec -n {$namespace} -c {$container} {$podName} -- test -x /bin/bash")->successful();
+        $shell = $hasBash ? '/bin/bash' : '/bin/sh';
+
+        passthru("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- {$shell}");
 
         return 0;
     }

@@ -137,19 +137,17 @@ trait InteractsWithHosts
             $this->line('  <fg=gray>LaraKube requires sudo privileges to update /etc/hosts</>');
             passthru('sudo -v');
 
-            $this->withSpin('Syncing /etc/hosts...', function () use ($currentHosts, $blockIdentifier, $newEntry) {
+            $success = $this->withSpin('Syncing /etc/hosts...', function () use ($currentHosts, $blockIdentifier, $newEntry) {
                 $newHosts = $this->applyHostsBlock($currentHosts, $blockIdentifier, $newEntry);
 
-                $tmpPath = sys_get_temp_dir().'/larakube_hosts';
-                file_put_contents($tmpPath, $newHosts);
-
-                exec("sudo cp $tmpPath /etc/hosts");
-                @unlink($tmpPath);
-
-                return true;
+                return $this->writeToEtcHosts($newHosts);
             });
 
-            $this->laraKubeInfo('Hosts synchronized successfully!');
+            if ($success) {
+                $this->laraKubeInfo('Hosts synchronized successfully!');
+            } else {
+                $this->laraKubeError('Failed to update /etc/hosts. Check your sudo permissions and try again.');
+            }
         }
     }
 
@@ -243,10 +241,9 @@ trait InteractsWithHosts
         $this->line("  <fg=gray>Updating /etc/hosts for {$appName} (requires sudo)...</>");
         passthru('sudo -v');
 
-        $tmpPath = sys_get_temp_dir().'/larakube_hosts';
-        file_put_contents($tmpPath, $updated);
-        exec("sudo cp $tmpPath /etc/hosts");
-        @unlink($tmpPath);
+        if (! $this->writeToEtcHosts($updated)) {
+            $this->laraKubeWarn("Failed to update /etc/hosts for {$appName}. Check your sudo permissions.");
+        }
     }
 
     /**
@@ -277,10 +274,26 @@ trait InteractsWithHosts
         $this->line("  <fg=gray>Removing stale /etc/hosts entry for {$appName} (dnsmasq already covers this TLD)...</>");
         passthru('sudo -v');
 
-        $tmpPath = sys_get_temp_dir().'/larakube_hosts';
-        file_put_contents($tmpPath, $stripped);
-        exec("sudo cp $tmpPath /etc/hosts");
+        if (! $this->writeToEtcHosts($stripped)) {
+            $this->laraKubeWarn("Failed to update /etc/hosts for {$appName}. Check your sudo permissions.");
+        }
+    }
+
+    /**
+     * Write $content to /etc/hosts via sudo, returning whether it succeeded.
+     * Stages the content in a randomly-named temp file first — a hardcoded
+     * /tmp path would let any local user race it with a symlink before the
+     * `sudo cp` follows it into /etc/hosts.
+     */
+    protected function writeToEtcHosts(string $content): bool
+    {
+        $tmpPath = (string) tempnam(sys_get_temp_dir(), 'larakube_hosts');
+        file_put_contents($tmpPath, $content);
+
+        $ok = Process::run('sudo cp '.escapeshellarg($tmpPath).' /etc/hosts')->successful();
         @unlink($tmpPath);
+
+        return $ok;
     }
 
     /**
@@ -318,45 +331,8 @@ trait InteractsWithHosts
             return;
         }
 
-        $contentTmp = sys_get_temp_dir().'/larakube_win_hosts';
-        $scriptTmp = sys_get_temp_dir().'/larakube_win_hosts_sync.ps1';
-        file_put_contents($contentTmp, $updated);
-
-        $winContent = trim(Process::run('wslpath -w '.escapeshellarg($contentTmp))->output());
-        if ($winContent === '') {
-            @unlink($contentTmp);
-            $this->printWindowsHostsManualHelp($entry);
-
-            return;
-        }
-
-        file_put_contents(
-            $scriptTmp,
-            "Copy-Item -LiteralPath '{$winContent}' -Destination 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Force\n",
-        );
-        $winScript = trim(Process::run('wslpath -w '.escapeshellarg($scriptTmp))->output());
-
-        if ($winScript === '') {
-            @unlink($contentTmp);
-            @unlink($scriptTmp);
-            $this->printWindowsHostsManualHelp($entry);
-
-            return;
-        }
-
-        $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
-            ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$winScript}'";
-
-        $output = [];
-        $code = 0;
-        exec('powershell.exe -NoProfile -Command '.escapeshellarg($startProcess).' 2>/dev/null', $output, $code);
-
-        @unlink($contentTmp);
-        @unlink($scriptTmp);
-
-        if ($code !== 0) {
+        if (! $this->syncWindowsHostsFile($updated, $entry)) {
             $this->laraKubeWarn("Could not sync the Windows hosts file automatically for {$appName}.");
-            $this->printWindowsHostsManualHelp($entry);
         }
     }
 
@@ -412,19 +388,37 @@ trait InteractsWithHosts
             return;
         }
 
-        // Write the full new content to a temp file, then copy it into place via
-        // an elevated PowerShell running a generated .ps1 (literal paths only —
-        // no fragile inline quoting).
-        $contentTmp = sys_get_temp_dir().'/larakube_win_hosts';
-        $scriptTmp = sys_get_temp_dir().'/larakube_win_hosts_sync.ps1';
-        file_put_contents($contentTmp, $updated);
+        if (! $this->syncWindowsHostsFile($updated, $entry)) {
+            $this->laraKubeWarn('Could not sync the Windows hosts file automatically.');
+
+            return;
+        }
+
+        $this->laraKubeInfo('Windows hosts file synchronized!');
+    }
+
+    /**
+     * Copy $content into the Windows hosts file via an elevated PowerShell
+     * (the standard UAC prompt), returning whether it succeeded. Stages the
+     * content and the generated .ps1 driving the copy in randomly-named temp
+     * files — hardcoded names in shared /tmp would let a local process race
+     * them before the elevated PowerShell reads them (same class of issue as
+     * writeToEtcHosts()). Prints the manual fallback itself on any failure,
+     * so callers only need to report *why* it failed.
+     */
+    protected function syncWindowsHostsFile(string $content, string $entry): bool
+    {
+        $contentTmp = (string) tempnam(sys_get_temp_dir(), 'larakube_win_hosts');
+        $scriptTmp = (string) tempnam(sys_get_temp_dir(), 'larakube_win_hosts_sync');
+        file_put_contents($contentTmp, $content);
 
         $winContent = trim(Process::run('wslpath -w '.escapeshellarg($contentTmp))->output());
         if ($winContent === '') {
             @unlink($contentTmp);
+            @unlink($scriptTmp);
             $this->printWindowsHostsManualHelp($entry);
 
-            return;
+            return false;
         }
 
         file_put_contents(
@@ -438,27 +432,22 @@ trait InteractsWithHosts
             @unlink($scriptTmp);
             $this->printWindowsHostsManualHelp($entry);
 
-            return;
+            return false;
         }
 
         $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
             ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$winScript}'";
 
-        $output = [];
-        $code = 0;
-        exec('powershell.exe -NoProfile -Command '.escapeshellarg($startProcess).' 2>/dev/null', $output, $code);
+        $ok = Process::run('powershell.exe -NoProfile -Command '.escapeshellarg($startProcess))->successful();
 
         @unlink($contentTmp);
         @unlink($scriptTmp);
 
-        if ($code !== 0) {
-            $this->laraKubeWarn('Could not sync the Windows hosts file automatically.');
+        if (! $ok) {
             $this->printWindowsHostsManualHelp($entry);
-
-            return;
         }
 
-        $this->laraKubeInfo('Windows hosts file synchronized!');
+        return $ok;
     }
 
     /**

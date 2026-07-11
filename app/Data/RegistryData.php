@@ -23,10 +23,18 @@ class RegistryData extends Data
          *   Docker Hub: "owner/repo" (resolves to docker.io/owner/repo)
          */
         public ?string $image = null,
+        /**
+         * The registry host, e.g. for custom Gitea registries.
+         */
+        public ?string $host = null,
     ) {}
 
     public function getRegistryHost(): string
     {
+        if ($this->provider === RegistryProvider::GITEA && $this->host) {
+            return $this->host;
+        }
+
         return $this->provider->registryHost();
     }
 

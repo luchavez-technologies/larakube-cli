@@ -248,7 +248,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7.4
+          image: valkey/valkey:8.0-alpine
           ports:
             - containerPort: 6379
           readinessProbe:

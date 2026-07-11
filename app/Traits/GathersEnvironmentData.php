@@ -4,10 +4,13 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Data\GlobalConfigData;
 use App\Data\RegistryData;
 use App\Enums\IngressController;
 use App\Enums\RegistryProvider;
+use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
+use InvalidArgumentException;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -25,16 +28,29 @@ use function Laravel\Prompts\text;
  */
 trait GathersEnvironmentData
 {
+    use ReadsCommandOptions;
+
     /**
      * Prompt for (or re-confirm) an env's ingress controller. Defaults to
      * whatever the env already has (Traefik for a brand-new one), so this
-     * doubles as both the "create" and "update" prompt.
+     * doubles as both the "create" and "update" prompt. `--ingress=` skips
+     * the prompt; an unknown slug throws (caught at the command boundary).
      */
     protected function gatherEnvironmentIngress(ConfigData $config, string $envName): IngressController
     {
+        $options = IngressController::getSelectOptions($config);
+
+        if ($flag = $this->flag('ingress')) {
+            if (! isset($options[$flag])) {
+                throw new InvalidArgumentException("Invalid --ingress '{$flag}'. Use one of: ".implode(', ', array_keys($options)).'.');
+            }
+
+            return IngressController::from($flag);
+        }
+
         $selected = select(
             label: "Which Ingress Controller will {$envName} use?",
-            options: IngressController::getSelectOptions($config),
+            options: $options,
             default: $config->getIngress($envName)->value,
         );
 
@@ -51,6 +67,21 @@ trait GathersEnvironmentData
     protected function gatherEnvironmentManaged(ConfigData $config, string $envName): array
     {
         $managedOptions = $config->getManageableServices();
+
+        // `--managed=a,b` skips the prompt; `--managed=` (empty) means none.
+        if (($flag = $this->flag('managed')) !== null) {
+            $chosen = array_values(array_unique(array_filter(array_map('trim', explode(',', $flag)))));
+            $invalid = array_diff($chosen, array_keys($managedOptions));
+            if ($invalid !== []) {
+                throw new InvalidArgumentException(
+                    "Invalid --managed service(s): '".implode("', '", $invalid)."'."
+                    .(empty($managedOptions) ? ' This project has no manageable services.' : ' Use any of: '.implode(', ', array_keys($managedOptions)).'.'),
+                );
+            }
+
+            return $chosen;
+        }
+
         if (empty($managedOptions)) {
             return [];
         }
@@ -105,7 +136,7 @@ trait GathersEnvironmentData
             );
 
             if ($configureRegistry) {
-                $envData->registry = $this->promptRegistry($config, $envName, required: false);
+                $envData->registry = $this->promptRegistry($config, $envName, required: false, envData: $envData);
             }
         }
 
@@ -129,7 +160,8 @@ trait GathersEnvironmentData
     {
         $current = $config->getEnvironment($envName)?->additionalWebHosts ?? [];
 
-        $input = text(
+        // `--web-hosts=a,b` skips the prompt; `--web-hosts=` (empty) clears.
+        $input = $this->flag('web-hosts') ?? text(
             label: "Any additional hostnames for {$envName}'s web pod? (optional, comma-separated)",
             placeholder: 'admin.example.com, api.example.com',
             default: implode(', ', $current),
@@ -151,47 +183,112 @@ trait GathersEnvironmentData
      * (registry setup you explicitly asked for) or optional (one optional
      * step among many in a new-env wizard).
      */
-    protected function promptRegistry(ConfigData $config, string $envName, bool $required): RegistryData
+    protected function promptRegistry(ConfigData $config, string $envName, bool $required, ?EnvironmentData $envData = null): RegistryData
     {
         $currentRegistry = $config->getEnvironment($envName)?->registry;
 
-        $provider = select(
-            label: "Which container registry for {$envName}?",
-            options: [
-                RegistryProvider::GHCR->value => RegistryProvider::GHCR->label(),
-                RegistryProvider::DOCKERHUB->value => RegistryProvider::DOCKERHUB->label(),
-            ],
-            default: $currentRegistry?->provider->value ?? RegistryProvider::GHCR->value,
-        );
+        $providerOptions = [
+            RegistryProvider::GHCR->value => RegistryProvider::GHCR->label(),
+            RegistryProvider::DOCKERHUB->value => RegistryProvider::DOCKERHUB->label(),
+            RegistryProvider::GITLAB->value => RegistryProvider::GITLAB->label(),
+            RegistryProvider::GITEA->value => RegistryProvider::GITEA->label(),
+        ];
+
+        // Auto-detect CI platform to pre-select native registry
+        $detectedPlatform = 'github';
+        $remoteUrl = trim(Process::run('git remote get-url origin')->output());
+        if (str_contains($remoteUrl, 'gitlab.com')) {
+            $detectedPlatform = 'gitlab';
+        } elseif (str_contains($remoteUrl, 'gitea') || str_contains($remoteUrl, 'git.')) {
+            $detectedPlatform = 'gitea';
+        }
+
+        $defaultRegistry = match ($detectedPlatform) {
+            'gitlab' => RegistryProvider::GITLAB->value,
+            'gitea' => RegistryProvider::GITEA->value,
+            default => RegistryProvider::GHCR->value,
+        };
+
+        if ($flag = $this->flag('registry') ?: $this->flag('registry-provider')) {
+            if (! isset($providerOptions[$flag])) {
+                throw new InvalidArgumentException("Invalid --registry-provider '{$flag}'. Use one of: ".implode(', ', array_keys($providerOptions)).'.');
+            }
+            $provider = $flag;
+        } else {
+            $provider = select(
+                label: "Which container registry for {$envName}?",
+                options: $providerOptions,
+                default: $currentRegistry?->provider->value ?? $defaultRegistry,
+            );
+        }
         $registryProvider = RegistryProvider::from($provider);
+
+        // Docker Hub public check
+        if ($registryProvider === RegistryProvider::DOCKERHUB) {
+            $isPublic = confirm(
+                label: 'Is this a public Docker Hub repository? (Allows anyone to pull, bypasses credentials on Kubernetes)',
+                default: false,
+                hint: 'If public, we skip creating Kubernetes pull secrets and prompting for login credentials.',
+            );
+            $env = $envData ?? $config->getEnvironment($envName);
+            if ($env) {
+                $env->omitImagePullSecret = $isPublic;
+            }
+        }
 
         // The image path MUST include the owner (ghcr.io/<owner>/<repo>,
         // docker.io/<owner>/<repo>) — a bare name pushes to a namespace you
         // can't write to ("denied"). Best default: whatever's already
         // configured; otherwise the GitHub repo (owner/repo) parsed straight
         // from the git remote; fall back to the gh-detected owner + app name.
-        $default = $currentRegistry?->image ?? $this->guessImageFromGitRemote(getcwd());
-        if ($default === '' && $registryProvider === RegistryProvider::GHCR) {
-            $owner = trim(Process::run($this->getGhCommand().' api user -q .login')->output());
-            if ($owner !== '') {
-                $default = $owner.'/'.$config->getName();
+        $default = '';
+        if ($this->flag('image') === null) {
+            $default = $currentRegistry?->image ?? $this->guessImageFromGitRemote(getcwd());
+            if ($default === '' && $registryProvider === RegistryProvider::GHCR) {
+                $owner = trim(Process::run($this->getGhCommand().' api user -q .login')->output());
+                if ($owner !== '') {
+                    $default = $owner.'/'.$config->getName();
+                }
             }
         }
 
-        $image = text(
-            label: $required ? 'Image repository path (owner/repo)' : 'Image repository path (optional, e.g. owner/repo)',
-            placeholder: $default !== '' ? $default : 'your-username/'.$config->getName(),
-            default: $default,
-            required: $required,
-            hint: $required ? 'Must include the owner — e.g. '.($default !== '' ? $default : 'acme/'.$config->getName()) : '',
-            validate: $required
-                ? fn (string $v) => str_contains(trim($v), '/') ? null : 'Include the owner: owner/repo (e.g. your-username/'.$config->getName().').'
-                : null,
-        );
+        if (($image = $this->flag('image')) !== null) {
+            $image = trim($image);
+            if ($required && ! str_contains($image, '/')) {
+                throw new InvalidArgumentException("Invalid --image '{$image}' — include the owner: owner/repo (e.g. your-username/".$config->getName().').');
+            }
+        } elseif ($required && $default === '' && $this->flag('no-interaction')) {
+            throw new InvalidArgumentException('No image path could be derived — pass --image=owner/repo when running non-interactively.');
+        } else {
+            $image = text(
+                label: $required ? 'Image repository path (owner/repo)' : 'Image repository path (optional, e.g. owner/repo)',
+                placeholder: $default !== '' ? $default : 'your-username/'.$config->getName(),
+                default: $default,
+                required: $required,
+                hint: $required ? 'Must include the owner — e.g. '.($default !== '' ? $default : 'acme/'.$config->getName()) : '',
+                validate: $required
+                    ? fn (string $v) => str_contains(trim($v), '/') ? null : 'Include the owner: owner/repo (e.g. your-username/'.$config->getName().').'
+                    : null,
+            );
+        }
+
+        $giteaHost = null;
+        if ($registryProvider === RegistryProvider::GITEA) {
+            $envObj = $envData ?? $config->getEnvironment($envName);
+            $giteaHost = $envObj?->hosts[SharedClusterService::GITEA->value] ?? null;
+            if (! $giteaHost) {
+                if ($envName === 'local') {
+                    $giteaHost = SharedClusterService::GITEA->hostFor(GlobalConfigData::load()->getLocalTld());
+                } else {
+                    $giteaHost = $config->getSharedServiceHost(SharedClusterService::GITEA, $envName);
+                }
+            }
+        }
 
         return new RegistryData(
             provider: $registryProvider,
             image: trim($image) !== '' ? trim($image) : null,
+            host: $giteaHost,
         );
     }
 

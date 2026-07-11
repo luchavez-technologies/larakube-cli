@@ -13,7 +13,22 @@ test('every shared service maps to an existing blade template', function () {
 test('every shared service renders its manifest with the resolved host', function () {
     foreach (SharedClusterService::cases() as $service) {
         $host = $service->hostFor('example.test');
-        $yaml = View::make($service->template(), ['host' => $host])->render();
+        $params = ['host' => $host];
+        if ($service === SharedClusterService::GITEA) {
+            $params = array_merge($params, [
+                'adminPassword' => 'secret',
+                'registryToken' => 'pending',
+                'runnerToken' => 'pending',
+                'secretKey' => 'key',
+                'internalToken' => 'token',
+                'jwtSecret' => 'jwt',
+                'noPlex' => true,
+                's3Endpoint' => '',
+                's3AccessKey' => '',
+                's3SecretKey' => '',
+            ]);
+        }
+        $yaml = View::make($service->template(), $params)->render();
 
         expect($yaml)->toContain($host);
     }
@@ -23,13 +38,19 @@ test('hostFor combines the host prefix with the given cluster domain', function 
     expect(SharedClusterService::MAILPIT->hostFor('localhost'))->toBe('mailpit.localhost')
         ->and(SharedClusterService::CONSOLE->hostFor('kube'))->toBe('console.kube')
         ->and(SharedClusterService::GRAFANA->hostFor('example.com'))->toBe('grafana.example.com')
+        ->and(SharedClusterService::UPTIME_KUMA->hostFor('example.com'))->toBe('status.example.com')
+        ->and(SharedClusterService::VAULT->hostFor('example.com'))->toBe('vault.example.com')
+        ->and(SharedClusterService::VPN->hostFor('example.com'))->toBe('vpn.example.com')
+        ->and(SharedClusterService::ERRORS->hostFor('example.com'))->toBe('errors.example.com')
+        ->and(SharedClusterService::SECRETS->hostFor('example.com'))->toBe('secrets.example.com')
+        ->and(SharedClusterService::GITEA->hostFor('example.com'))->toBe('git.example.com')
         // TRAEFIK_DASHBOARD's value is the manifest name, its host label is "traefik".
         ->and(SharedClusterService::TRAEFIK_DASHBOARD->hostFor('localhost'))->toBe('traefik.localhost');
 });
 
-test('only Grafana targets non-local environments; the rest are local-only', function () {
+test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, Infisical, and Gitea target non-local environments; the rest are local-only', function () {
     foreach (SharedClusterService::cases() as $service) {
-        $localOnly = $service !== SharedClusterService::GRAFANA;
+        $localOnly = ! in_array($service, [SharedClusterService::GRAFANA, SharedClusterService::UPTIME_KUMA, SharedClusterService::VAULT, SharedClusterService::VPN, SharedClusterService::ERRORS, SharedClusterService::SECRETS, SharedClusterService::GITEA]);
 
         expect($service->isLocalOnly())->toBe($localOnly)
             ->and($service->targetsEnvironment('local'))->toBeTrue()

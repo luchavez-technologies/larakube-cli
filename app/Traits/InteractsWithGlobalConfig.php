@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\GlobalConfigData;
 use App\Enums\AiProvider;
+use App\State;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithGlobalConfig
@@ -99,7 +100,9 @@ trait InteractsWithGlobalConfig
 
     protected function getDoToken(): ?string
     {
-        return $this->getGlobalConfig()->getDoToken();
+        // A run-only token (--do-token / TF_VAR_do_token on cloud:create)
+        // wins over the persisted one and never touches disk.
+        return State::$transientDoToken ?? $this->getGlobalConfig()->getDoToken();
     }
 
     protected function setDoToken(?string $token): void

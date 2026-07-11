@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Process;
  */
 trait InteractsWithRemoteDeploy
 {
-    use DeploysMonitoringExporters, InteractsWithKustomize, StreamsProcessOutput;
+    use DeploysMonitoringExporters, InteractsWithGitForge, InteractsWithKustomize, StreamsProcessOutput;
 
     /** The kube-context cloud:init creates for a host. Pure. */
     public function remoteContextName(string $ip): string
@@ -570,6 +570,8 @@ trait InteractsWithRemoteDeploy
         // separate `cloud:configure --only=ci` run or a public package.
         if ($registry->provider === RegistryProvider::GHCR) {
             $this->ensureGhcrPullSecret($context, $namespace);
+        } elseif ($registry->provider === RegistryProvider::GITEA) {
+            $this->ensureGiteaPullSecret($context, $namespace);
         }
 
         // 4-5. env-sync + apply + rollout THROUGH a namespace-scoped credential.

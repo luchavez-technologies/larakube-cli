@@ -10,6 +10,7 @@ enum RegistryProvider: string
             self::GHCR => 'GitHub Container Registry (GHCR)',
             self::DOCKERHUB => 'Docker Hub',
             self::GITLAB => 'GitLab Container Registry',
+            self::GITEA => 'Gitea Container Registry',
         };
     }
 
@@ -19,6 +20,7 @@ enum RegistryProvider: string
             self::GHCR => 'ghcr.io',
             self::DOCKERHUB => 'docker.io',
             self::GITLAB => 'registry.gitlab.com',
+            self::GITEA => 'git.dev.test',
         };
     }
 
@@ -28,6 +30,7 @@ enum RegistryProvider: string
             self::GHCR => $githubRepo,
             self::DOCKERHUB => $githubRepo,
             self::GITLAB => $githubRepo,
+            self::GITEA => $githubRepo,
         };
     }
 
@@ -39,4 +42,5 @@ enum RegistryProvider: string
     case GHCR = 'ghcr';
     case DOCKERHUB = 'dockerhub';
     case GITLAB = 'gitlab';
+    case GITEA = 'gitea';
 }

@@ -183,7 +183,21 @@ trait ConfiguresCloudEnvironment
      */
     protected function detectCiPlatform(): string
     {
-        return str_contains($this->gitRemoteUrl(), 'gitlab.com') ? 'gitlab' : 'github';
+        $platform = $this->flag('platform');
+        if ($platform) {
+            return $platform;
+        }
+
+        $remote = $this->gitRemoteUrl();
+        if (str_contains($remote, 'gitlab.com')) {
+            return 'gitlab';
+        }
+
+        if (str_contains($remote, 'gitea') || str_contains($remote, 'git.')) {
+            return 'gitea';
+        }
+
+        return 'github';
     }
 
     /**
@@ -338,16 +352,16 @@ trait ConfiguresCloudEnvironment
             return 1;
         }
 
-        // 2. Pull secret for a private GHCR registry — created via the cluster
-        //    API (works on VPS and managed clusters; self-skips for non-GHCR).
+        // 2. Pull secret for a private registry — created via the cluster
+        //    API (works on VPS and managed clusters; self-skips for public registries).
         $this->laraKubeInfo('Step 2: Ensuring private-registry pull access...');
-        $this->setupGhcrSecret($environment);
+        $this->setupRegistrySecret($environment);
 
         // 3. Generate Workflow
         $config = $this->getProjectConfigObject(getcwd());
         $this->laraKubeInfo('Step 3: Generating Cloud Pilot workflow...');
 
-        $branch = text(
+        $branch = $this->flag('branch') ?: text(
             label: "Which git branch should trigger the {$environment} deployment?",
             default: 'main',
             required: true,
@@ -398,8 +412,8 @@ trait ConfiguresCloudEnvironment
                 'image_latest' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest',
                 'image_sha' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ github.sha }}',
                 'composer_cache_key' => "composer-\${{ hashFiles('composer.lock') }}",
-                'dockerhub_user' => '${{ secrets.DOCKERHUB_USERNAME }}',
-                'dockerhub_token' => '${{ secrets.DOCKERHUB_TOKEN }}',
+                'registry_user' => '${{ secrets.'.$upperEnv.'_REGISTRY_USERNAME }}',
+                'registry_password' => '${{ secrets.'.$upperEnv.'_REGISTRY_PASSWORD }}',
             ],
         ])->render();
 
@@ -412,43 +426,69 @@ trait ConfiguresCloudEnvironment
         return 0;
     }
 
-    protected function setupGhcrSecret(string $environment): void
+    protected function setupRegistrySecret(string $environment): void
     {
         $config = $this->getProjectConfigObject(getcwd());
 
-        // Only GHCR needs a K8s pull secret. Docker Hub (or any explicitly
-        // non-GHCR registry) skips this step.
-        // When no registry is explicitly configured the workflow defaults to
-        // ghcr.io/${{ github.repository }}, so we still need the pull secret.
-        $registry = $config->getRegistry($environment);
-        if ($registry !== null && $registry->provider !== RegistryProvider::GHCR) {
+        $envObj = $config->getEnvironment($environment);
+        if ($envObj?->omitImagePullSecret) {
             return;
         }
 
-        // Create it through the env's cluster CONTEXT (VPS larakube-<ip> OR a
-        // managed context) via the API — no SSH, so it works on DOKS/EKS/… too.
+        $registry = $config->getRegistry($environment);
+        $provider = $registry ? $registry->provider : RegistryProvider::GHCR;
+
+        // Create it through the env's cluster CONTEXT
         $cloud = $config->getCloud($environment);
         $context = $cloud?->context ?? ($cloud?->ip ? 'larakube-'.$cloud->ip : '');
         if ($context === '') {
-            $this->laraKubeWarn("No cluster context for '{$environment}' — skipping GHCR pull-secret setup.");
+            $this->laraKubeWarn("No cluster context for '{$environment}' — skipping image pull-secret setup.");
 
             return;
         }
 
-        $gh = $this->getGhCommand();
-        $username = trim(Process::run("{$gh} api user -q .login")->output());
-        $token = trim(Process::run("{$gh} auth token")->output());
+        $username = null;
+        $token = null;
+        $server = null;
+        $secretName = null;
 
-        if (! $username) {
-            $username = text(label: 'GitHub Username', required: true);
-        } else {
-            $this->info("  👤 Using detected GitHub user: {$username}");
+        if ($provider === RegistryProvider::GHCR) {
+            $gh = $this->getGhCommand();
+            $username = trim(Process::run("{$gh} api user -q .login")->output());
+            $token = trim(Process::run("{$gh} auth token")->output());
+
+            if (! $username) {
+                $username = text(label: 'GitHub Username', required: true);
+            } else {
+                $this->info("  👤 Using detected GitHub user: {$username}");
+            }
+
+            if (! $token) {
+                $token = password(label: 'GitHub Personal Access Token (PAT) with read:packages scope', required: true);
+            } else {
+                $this->info('  🔑 Using existing GitHub authentication token.');
+            }
+            $server = 'https://ghcr.io';
+            $secretName = 'ghcr-login';
+        } elseif ($provider === RegistryProvider::DOCKERHUB) {
+            $username = text(label: 'Docker Hub Username', required: true);
+            $token = password(label: 'Docker Hub Personal Access Token (or password)', required: true);
+            $server = 'https://index.docker.io/v1/';
+            $secretName = 'dockerhub-login';
+        } elseif ($provider === RegistryProvider::GITLAB) {
+            $username = text(label: 'GitLab Username (or deploy token name)', required: true);
+            $token = password(label: 'GitLab Password (or deploy token)', required: true);
+            $server = 'https://registry.gitlab.com';
+            $secretName = 'gitlab-login';
+        } elseif ($provider === RegistryProvider::GITEA) {
+            $username = text(label: 'Gitea Username', required: true);
+            $token = password(label: 'Gitea Password (or Personal Access Token)', required: true);
+            $server = 'https://'.($registry->host ?? 'git.dev.test');
+            $secretName = 'gitea-login';
         }
 
-        if (! $token) {
-            $token = password(label: 'GitHub Personal Access Token (PAT) with read:packages scope', required: true);
-        } else {
-            $this->info('  🔑 Using existing GitHub authentication token.');
+        if (! $username || ! $token || ! $server || ! $secretName) {
+            return;
         }
 
         $namespace = $config->getName().'-'.$environment;
@@ -457,14 +497,14 @@ trait ConfiguresCloudEnvironment
 
         Process::run("kubectl {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl {$ctx} apply -f -");
         Process::run(
-            "kubectl {$ctx} create secret docker-registry ghcr-login -n {$ns}"
-            .' --docker-server=https://ghcr.io'
+            "kubectl {$ctx} create secret docker-registry ".escapeshellarg($secretName)." -n {$ns}"
+            .' --docker-server='.escapeshellarg($server)
             .' --docker-username='.escapeshellarg($username)
             .' --docker-password='.escapeshellarg($token)
             ." --dry-run=client -o yaml | kubectl {$ctx} apply -f -",
         );
 
-        $this->laraKubeInfo("✅ GHCR pull secret created in '{$namespace}' (context: {$context}).");
+        $this->laraKubeInfo("✅ Image pull secret '{$secretName}' created in '{$namespace}' (context: {$context}).");
     }
 
     /**
@@ -502,6 +542,16 @@ trait ConfiguresCloudEnvironment
         $base64Env = base64_encode($envContent);
         $this->info('  📦 Env size: '.strlen($base64Env).' bytes (base64)');
         $this->setGithubSecret($gh, "{$upperEnv}_ENV_FILE_BASE64", $base64Env, $repoFlag);
+
+        $config = $this->getProjectConfigObject($projectPath);
+        $registry = $config->getRegistry($environment);
+        if ($registry && $registry->provider !== RegistryProvider::GHCR) {
+            $regUser = text(label: 'Registry Username for '.$registry->provider->label(), required: true);
+            $regPass = password(label: 'Registry Password/Token for '.$registry->provider->label(), required: true);
+
+            $this->setGithubSecret($gh, "{$upperEnv}_REGISTRY_USERNAME", $regUser, $repoFlag);
+            $this->setGithubSecret($gh, "{$upperEnv}_REGISTRY_PASSWORD", $regPass, $repoFlag);
+        }
 
         // Mint + upload a namespace-scoped kubeconfig.
         $this->laraKubeInfo("Minting a namespace-scoped KUBECONFIG for {$environment}...");
@@ -683,6 +733,10 @@ trait ConfiguresCloudEnvironment
         $this->laraKubeInfo("Step 1: Uploading CI/CD variables for '{$environment}'...");
         $this->uploadGitlabVariables($projectPath, $environment, $projectGitlabPath, $rotate);
 
+        // Ensured private-registry pull access
+        $this->laraKubeInfo('Ensuring private-registry pull access in the cluster...');
+        $this->setupRegistrySecret($environment);
+
         // Regenerate .gitlab-ci.yml covering ALL cloud environments
         $this->laraKubeInfo('Step 2: Generating GitLab CI pipeline...');
         $code = $this->generateGitlabPipeline($projectPath, $config);
@@ -744,6 +798,22 @@ trait ConfiguresCloudEnvironment
         } else {
             $this->laraKubeWarn("{$envFile} not found — create it before uploading.");
         }
+
+        // Upload registry secrets if using a non-native (non-GitLab) private registry
+        $registry = $config->getRegistry($environment);
+        if ($registry && $registry->provider !== RegistryProvider::GITLAB) {
+            $regUser = text(label: 'Registry Username for '.$registry->provider->label(), required: true);
+            $regPass = password(label: 'Registry Password/Token for '.$registry->provider->label(), required: true);
+
+            if ($glabPath) {
+                Process::run("{$glabPath} variable set {$upperEnv}_REGISTRY_USERNAME ".escapeshellarg($regUser).' --masked --protected');
+                Process::run("{$glabPath} variable set {$upperEnv}_REGISTRY_PASSWORD ".escapeshellarg($regPass).' --masked --protected');
+                $this->line("  <fg=gray>Uploaded</> {$upperEnv}_REGISTRY_USERNAME & {$upperEnv}_REGISTRY_PASSWORD");
+            } else {
+                $this->line("  <fg=yellow>{$upperEnv}_REGISTRY_USERNAME</> = {$regUser}");
+                $this->line("  <fg=yellow>{$upperEnv}_REGISTRY_PASSWORD</> = (password)");
+            }
+        }
     }
 
     protected function generateGitlabPipeline(string $projectPath, \App\Data\ConfigData $config): int
@@ -770,6 +840,7 @@ trait ConfiguresCloudEnvironment
                 'upperName' => strtoupper($envName),
                 'namespace' => $appName.'-'.$envName,
                 'registry' => $registryProvider,
+                'registry_host' => $registryHost,
                 'imageLatest' => $registryProvider === 'gitlab'
                     ? '$CI_REGISTRY/$CI_PROJECT_PATH:latest'
                     : "{$registryHost}/{$imagePath}:latest",
@@ -786,9 +857,10 @@ trait ConfiguresCloudEnvironment
             return 1;
         }
 
-        // Ask for deploy branch per environment
+        // Ask for deploy branch per environment. A --branch flag applies to
+        // every env in this run — headless callers configure one env at a time.
         foreach ($cloudEnvs as $envName => &$meta) {
-            $branch = text(
+            $branch = $this->flag('branch') ?: text(
                 label: "Which branch triggers the {$envName} deployment?",
                 default: $envName === 'production' ? 'main' : $envName,
                 required: true,

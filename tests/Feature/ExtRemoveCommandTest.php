@@ -77,3 +77,36 @@ test('ext:remove fails cleanly outside a LaraKube project', function () {
         exec('rm -rf '.escapeshellarg($dir));
     }
 });
+
+test('ext:remove exits cleanly when no extension is passed and no additional extensions are configured', function () {
+    $config = ['additionalExtensions' => []];
+    extRemoveInProject($config, null, function (string $dir) {
+        $this->artisan('ext:remove')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('No custom PHP extensions are currently added to this project.');
+    });
+});
+
+test('ext:remove prompts with select dropdown when no extension is passed and additional extensions exist', function () {
+    $config = ['additionalExtensions' => ['gd', 'imagick']];
+    extRemoveInProject($config, "FROM php:8.5\nRUN install-php-extensions gd imagick\n", function (string $dir) {
+        Laravel\Prompts\Prompt::fake([
+            Laravel\Prompts\Key::ENTER, // pick the first option (gd) from the list
+        ]);
+
+        $command = app(App\Commands\ExtRemoveCommand::class);
+        $input = new Symfony\Component\Console\Input\ArrayInput([]);
+        $input->bind($command->getDefinition());
+        $input->setInteractive(true);
+        $output = new Symfony\Component\Console\Output\BufferedOutput;
+
+        $command->setInput($input);
+        $command->setOutput(new Illuminate\Console\OutputStyle($input, $output));
+
+        $code = $command->handle();
+        expect($code)->toBe(0);
+
+        $saved = ConfigData::loadFromFile($dir);
+        expect($saved->getAdditionalExtensions())->toBe(['imagick']);
+    });
+});

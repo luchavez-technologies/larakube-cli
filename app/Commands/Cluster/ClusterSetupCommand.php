@@ -265,11 +265,17 @@ class ClusterSetupCommand extends Command
             return;
         }
 
-        passthru('sudo cp '.escapeshellarg($tmp).' /etc/sudoers.d/larakube-k3s-ctr');
-        passthru('sudo chmod 440 /etc/sudoers.d/larakube-k3s-ctr');
+        $installed = Process::run('sudo cp '.escapeshellarg($tmp).' /etc/sudoers.d/larakube-k3s-ctr')->successful()
+            && Process::run('sudo chmod 440 /etc/sudoers.d/larakube-k3s-ctr')->successful();
         @unlink($tmp);
 
-        $this->laraKubeInfo('Granted passwordless sudo for `k3s ctr` (image sideload) to the current user.');
+        // Best-effort per the docblock above — silent on failure rather than
+        // an error, since sideload just falls back to prompting for a sudo
+        // password like it always has. It must NOT claim success it didn't
+        // actually achieve, though.
+        if ($installed) {
+            $this->laraKubeInfo('Granted passwordless sudo for `k3s ctr` (image sideload) to the current user.');
+        }
     }
 
     /**

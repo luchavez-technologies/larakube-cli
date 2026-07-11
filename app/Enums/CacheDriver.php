@@ -176,7 +176,7 @@ enum CacheDriver: string implements AsDependency, HasArtisanCommands, HasCommand
     public function getDockerImage(?ConfigData $config = null): string
     {
         return match ($this) {
-            self::REDIS => 'redis:7.4',
+            self::REDIS => 'valkey/valkey:8.0-alpine',
             self::MEMCACHED => 'memcached:1.6-alpine',
             default => '',
         };

@@ -33,10 +33,57 @@ use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 use Random\RandomException;
+use Symfony\Component\Console\Input\InputOption;
 
 class NewCommand extends Command
 {
     use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
+
+    /**
+     * Native `laravel new` options (installer v5.x), declared here so Symfony
+     * can BIND them. ignoreValidationErrors() alone is not enough: binding
+     * aborts at the first unknown option, so `larakube new --teams myapp`
+     * would silently lose `myapp` (and any later flag like --fast) and fall
+     * into the name prompt — a hard NonInteractiveValidationException under
+     * --no-interaction. Options the architectural enums already register
+     * (--react, --vue, --npm, …) are skipped at add time; value-taking
+     * options are marked so their values are consumed correctly.
+     *
+     * Deliberately absent: `--database`. That name already belongs to
+     * LaraKube CLI semantics (CacheDriver/ScoutDriver's boolean "use the
+     * database as this driver" flag), and database selection for the app
+     * itself goes through the per-driver flags (--mysql, --pgsql, …) —
+     * runLaravelNew() always scaffolds with --database=sqlite and
+     * reconfigures afterwards.
+     *
+     * @var array<string, int>
+     */
+    private const LARAVEL_NEW_OPTIONS = [
+        'dev' => InputOption::VALUE_NONE,
+        'git' => InputOption::VALUE_NONE,
+        'branch' => InputOption::VALUE_REQUIRED,
+        'github' => InputOption::VALUE_OPTIONAL,
+        'organization' => InputOption::VALUE_REQUIRED,
+        'react' => InputOption::VALUE_NONE,
+        'svelte' => InputOption::VALUE_NONE,
+        'vue' => InputOption::VALUE_NONE,
+        'livewire' => InputOption::VALUE_NONE,
+        'livewire-class-components' => InputOption::VALUE_NONE,
+        'workos' => InputOption::VALUE_NONE,
+        'teams' => InputOption::VALUE_NONE,
+        'no-authentication' => InputOption::VALUE_NONE,
+        'pest' => InputOption::VALUE_NONE,
+        'phpunit' => InputOption::VALUE_NONE,
+        'npm' => InputOption::VALUE_NONE,
+        'pnpm' => InputOption::VALUE_NONE,
+        'bun' => InputOption::VALUE_NONE,
+        'yarn' => InputOption::VALUE_NONE,
+        'no-node' => InputOption::VALUE_NONE,
+        'boost' => InputOption::VALUE_NONE,
+        'no-boost' => InputOption::VALUE_NONE,
+        'using' => InputOption::VALUE_OPTIONAL,
+        'force' => InputOption::VALUE_NONE,
+    ];
 
     /**
      * The name and signature of the console command.
@@ -193,12 +240,21 @@ class NewCommand extends Command
     }
 
     /**
-     * Configure the command to ignore validation errors so we can forward arbitrary flags.
+     * Declare every flag `laravel new` understands (so binding completes and
+     * the name argument + later flags parse), and still ignore validation
+     * errors as a forward-compatibility net for installer flags added after
+     * this list was written.
      */
     protected function configure(): void
     {
         $this->ignoreValidationErrors();
         $this->addArchitecturalOptions();
+
+        foreach (self::LARAVEL_NEW_OPTIONS as $name => $mode) {
+            if (! $this->getDefinition()->hasOption($name)) {
+                $this->addOption(name: $name, mode: $mode, description: "Forwarded to 'laravel new'");
+            }
+        }
     }
 
     protected function runLaravelNew($inputName, ConfigData $config): void
