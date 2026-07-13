@@ -27,7 +27,7 @@ trait ProvisionsK3sNode
      */
     protected function installK3s($user, $ip, $port, $keyPath, $config): bool
     {
-        $this->laraKubeInfo('Hardening OS and Installing K3s on remote server...');
+        $this->laraKubeInfo('Installing K3s on remote server...');
 
         $installK3s = $this->k3sInstallCommand($this->k3sVersion($config), [
             '--disable=traefik',
@@ -320,14 +320,18 @@ BASH;
 
     /**
      * Deploy Traefik to the remote cluster. Skips when Traefik is already present
-     * (e.g. a second env sharing the same single-node VPS).
+     * (e.g. a second env sharing the same single-node VPS). Returns whether it's
+     * actually running afterward — every step here used to be fire-and-forget
+     * (Process::run() results never checked), so a failed `kubectl apply` (a
+     * transient API blip, a timeout on a loaded droplet, …) still printed
+     * "Traefik deployed and configured" even though nothing was actually there.
      */
-    protected function deployTraefik($contextName): void
+    protected function deployTraefik($contextName): bool
     {
         if ($this->traefikInstalledOnContext($contextName)) {
             $this->laraKubeInfo('ℹ️  Traefik is already installed on this cluster — skipping deploy.');
 
-            return;
+            return true;
         }
 
         $this->laraKubeInfo('Deploying Traefik (Single-Node Hero) to remote cluster...');
@@ -335,12 +339,22 @@ BASH;
         $kubectl = 'kubectl --context '.escapeshellarg($contextName);
         $namespace = 'traefik';
 
-        Process::run("{$kubectl} create namespace {$namespace} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        if (! Process::run("{$kubectl} create namespace {$namespace} --dry-run=client -o yaml | {$kubectl} apply -f -")->successful()) {
+            $this->laraKubeError("Could not create/apply the '{$namespace}' namespace — see the output above.");
+
+            return false;
+        }
 
         // 1. Create ConfigMap for Traefik dynamic configuration
         $tmpCertsYml = sys_get_temp_dir().'/traefik-certs.yml';
         file_put_contents($tmpCertsYml, view('traefik.dev-certs')->render());
-        Process::run("{$kubectl} create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        $configMapOk = Process::run("{$kubectl} create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | {$kubectl} apply -f -")->successful();
+        @unlink($tmpCertsYml);
+        if (! $configMapOk) {
+            $this->laraKubeError('Could not apply the Traefik dynamic-config ConfigMap — see the output above.');
+
+            return false;
+        }
 
         // 2. Create Secret for SSL certificates
         $certDir = base_path('resources/views/traefik/certificates');
@@ -354,7 +368,14 @@ BASH;
         if ($devPemContent && $devKeyPemContent) {
             file_put_contents($tmpDevPem, $devPemContent);
             file_put_contents($tmpDevKeyPem, $devKeyPemContent);
-            Process::run("{$kubectl} create secret generic traefik-certificates -n {$namespace} --from-file=local-dev.pem={$tmpDevPem} --from-file=local-dev-key.pem={$tmpDevKeyPem} --dry-run=client -o yaml | {$kubectl} apply -f -");
+            $certsOk = Process::run("{$kubectl} create secret generic traefik-certificates -n {$namespace} --from-file=local-dev.pem={$tmpDevPem} --from-file=local-dev-key.pem={$tmpDevKeyPem} --dry-run=client -o yaml | {$kubectl} apply -f -")->successful();
+            @unlink($tmpDevPem);
+            @unlink($tmpDevKeyPem);
+            if (! $certsOk) {
+                $this->laraKubeError('Could not apply the Traefik dev-certificates Secret — see the output above.');
+
+                return false;
+            }
         } else {
             $this->laraKubeWarn('Could not find local dev certificates. Skipping SSL secret creation.');
         }
@@ -362,14 +383,25 @@ BASH;
         // 3. Apply Traefik Cloud manifest
         $tmpInstall = sys_get_temp_dir().'/traefik-cloud.yaml';
         file_put_contents($tmpInstall, view('k8s.traefik-cloud', ['email' => $this->getEmail()])->render());
-        Process::run("{$kubectl} apply -f {$tmpInstall} --request-timeout=60s --validate=false");
+        $applyOk = Process::run("{$kubectl} apply -f {$tmpInstall} --request-timeout=60s --validate=false")->successful();
+        @unlink($tmpInstall);
+        if (! $applyOk) {
+            $this->laraKubeError('Could not apply the Traefik Deployment manifest — see the output above.');
+
+            return false;
+        }
+
+        // A successful `apply` only means the API server accepted the manifest —
+        // wait for the Deployment to actually roll out before declaring victory.
+        if (! Process::run("{$kubectl} rollout status deployment/traefik -n {$namespace} --timeout=120s")->successful()) {
+            $this->laraKubeError('Traefik manifest applied, but the Deployment never became Ready — check `kubectl get pods -n traefik`.');
+
+            return false;
+        }
 
         $this->laraKubeInfo('Traefik deployed and configured with HostPort and ACME (Let\'sEncrypt).');
 
-        @unlink($tmpCertsYml);
-        @unlink($tmpDevPem);
-        @unlink($tmpDevKeyPem);
-        @unlink($tmpInstall);
+        return true;
     }
 
     /**
@@ -433,7 +465,9 @@ BASH;
             $this->laraKubeWarn("Skipping Traefik deploy — kubectl can't reach '{$contextName}' until the kubeconfig sync above is fixed.");
             $this->line('  👉 Fix the kubeconfig issue above, then re-run this command to pick up from here.');
         } elseif (! $interactive || confirm('Deploy Traefik (Single-Node Hero)?', true)) {
-            $this->deployTraefik($contextName);
+            if (! $this->deployTraefik($contextName)) {
+                $this->line('  👉 Traefik deploy failed — re-run this command to retry just that step (everything else here is idempotent).');
+            }
         }
 
         return $contextName;
