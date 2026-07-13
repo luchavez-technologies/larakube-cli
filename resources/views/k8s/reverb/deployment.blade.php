@@ -3,7 +3,8 @@ kind: Deployment
 metadata:
   name: {{ $feature->getPodName($config) }}
 spec:
-  replicas: 1
+  {{-- >1 replica needs REVERB_SCALING_ENABLED + Redis, or clients on different replicas miss each other's broadcasts. --}}
+  replicas: {{ $config->getReplicas($environment ?? 'local', 'reverb') }}
   selector:
     matchLabels:
       app: {{ $feature->getPodName($config) }}

@@ -97,7 +97,6 @@ class ExecCommand extends Command
         $cleanService = str_replace('laravel-', '', $service);
         $container = match ($cleanService) {
             'web', 'horizon', 'reverb', 'scheduler', 'queues', 'queue' => 'php',
-            'seaweedfs' => 'master',
             default => $cleanService,
         };
 

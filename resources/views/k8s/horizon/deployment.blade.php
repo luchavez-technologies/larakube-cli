@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: {{ $feature->getPodName($config) }}
 spec:
-  replicas: 1
+  replicas: {{ $config->getReplicas($environment ?? 'local', 'horizon') }}
   selector:
     matchLabels:
       app: {{ $feature->getPodName($config) }}

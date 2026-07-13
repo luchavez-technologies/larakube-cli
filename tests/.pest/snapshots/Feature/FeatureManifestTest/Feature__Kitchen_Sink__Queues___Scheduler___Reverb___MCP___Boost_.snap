@@ -243,6 +243,7 @@ kind: Deployment
 metadata:
   name: reverb
 spec:
+  
   replicas: 1
   selector:
     matchLabels:
@@ -909,6 +910,7 @@ kind: Deployment
 metadata:
   name: web
 spec:
+  
   replicas: 1
   template:
     spec:
@@ -936,6 +938,7 @@ kind: Deployment
 metadata:
   name: queues
 spec:
+  
   replicas: 1
   template:
     spec:
@@ -963,6 +966,7 @@ kind: Deployment
 metadata:
   name: reverb
 spec:
+  
   replicas: 1
   template:
     spec:

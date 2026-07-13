@@ -131,12 +131,37 @@ trait InteractsWithTraefik
                 continue;
             }
 
+            // Check presence BEFORE showing anything — applySharedService() already
+            // no-ops for an install-gated service that isn't present, but silently:
+            // the spinner+label below would still show "Refreshing GlitchTip
+            // ingress... ✔" even when GlitchTip was never installed, which reads as
+            // `up` reaching out and touching a dozen unrelated services on every
+            // single project. Skipping the spinner entirely for anything not
+            // actually installed keeps the output honest about what really happened.
+            if (! $this->isSharedServicePresent($service)) {
+                continue;
+            }
+
             $this->withSpin($service->reconcileLabel(), function () use ($service, $config) {
                 $this->applySharedService($service, $config->getSharedServiceHost($service, 'local'));
 
                 return true;
             });
         }
+    }
+
+    /**
+     * Whether $service is actually installed — always-on services (no probe)
+     * are always "present"; install-gated ones are only present when their
+     * probe resource exists. See applySharedService()'s own (still-kept)
+     * internal check for why this can't just be inlined there: this needs to
+     * run BEFORE the reconcile spinner is shown, not just before the apply.
+     */
+    protected function isSharedServicePresent(SharedClusterService $service): bool
+    {
+        $probe = $service->presenceProbe();
+
+        return $probe === null || trim(Process::run("kubectl get {$probe} --no-headers")->output()) !== '';
     }
 
     /**

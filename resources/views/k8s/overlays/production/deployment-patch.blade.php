@@ -8,9 +8,26 @@ kind: Deployment
 metadata:
   name: {{ $name }}
 spec:
-  replicas: {{ $config->getStrategy($environment) === \App\Enums\DeploymentStrategy::MULTI_NODE_HA ? 2 : 1 }}
+@if(!$config->getAutoscale($environment, $name))
+  {{-- Omitted entirely (not just left at a fixed value) once an HPA owns this
+       component below — kubectl re-asserting a static replicas count on every
+       deploy would otherwise fight the HPA's own adjustments until its next
+       ~15s reconcile. --}}
+  replicas: {{ $config->getReplicas($environment, $name) }}
+@endif
   template:
     spec:
+@if($config->getStrategy($environment) === \App\Enums\DeploymentStrategy::MULTI_NODE_HA)
+      {{-- Soft preference only (ScheduleAnyway) — spreads replicas across nodes for
+           real fault tolerance, but never blocks scheduling if capacity is tight. --}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: {{ $name }}
+@endif
 @if($serviceAccount = $config->getServiceAccount($environment))
       serviceAccountName: {{ $serviceAccount }}
 @endif
@@ -53,6 +70,27 @@ spec:
                   : $config->buildWaitForCommand($feature->getDependencies($config, $environment), waitForWeb: true)
               ) ?: 'true', JSON_UNESCAPED_SLASHES
           ) !!}]
+@if($autoscale = $config->getAutoscale($environment, $name))
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $name }}
+  minReplicas: {{ $autoscale['min'] }}
+  maxReplicas: {{ $autoscale['max'] }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $autoscale['cpu'] }}
+@endif
 @endif
 @endforeach
 @if($config->hasFeature(\App\Enums\LaravelFeature::TASK_SCHEDULING))

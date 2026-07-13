@@ -3,7 +3,6 @@
 namespace App\Commands\Traefik;
 
 use App\Data\GlobalConfigData;
-use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithSslTrust;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
@@ -14,7 +13,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DashboardCommand extends Command
 {
-    use InteractsWithHosts, InteractsWithSslTrust, LaraKubeOutput;
+    use InteractsWithSslTrust, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
@@ -39,10 +38,11 @@ class DashboardCommand extends Command
 
         $this->laraKubeInfo('Opening Traefik Network Dashboard...');
 
-        // 🛡 Automated Host Mapping & SSL Trust
+        // Host + Ingress are already kept in sync by every `larakube up`
+        // (the dashboard is an always-on shared service — see
+        // InteractsWithTraefik::reconcileSharedCluster()); nothing to do here
+        // but resolve the URL and open it.
         $tld = GlobalConfigData::load()->getLocalTld();
-        $this->ensureHostsAreSet(['traefik.'.$tld], 'larakube-system');
-
         $url = 'https://traefik.'.$tld.'/dashboard/';
 
         if (! $this->isSslTrusted()) {

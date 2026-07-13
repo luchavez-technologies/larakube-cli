@@ -78,6 +78,7 @@ class AboutCommand extends Command
         $this->laraKubeInfo('Environments');
 
         $envRows = [];
+        $hasVps = false;
         foreach ($config->getEnvironments() as $env) {
             $envData = $config->getEnvironment($env);
             $cloud = $envData?->cloud;
@@ -89,6 +90,7 @@ class AboutCommand extends Command
                 $type = $cloud->context ? "{$provider} ({$cloud->context})" : $provider;
             } elseif ($cloud?->ip) {
                 $type = "VPS ({$cloud->ip})";
+                $hasVps = true;
             } else {
                 $type = '<fg=gray>—</>';
             }
@@ -125,6 +127,17 @@ class AboutCommand extends Command
         }
 
         table(['Env', 'Type', 'Strategy', 'Ingress', 'Registry', 'Hosts'], $envRows);
+
+        // A single-node VPS gets the exact same hardening, TLS, backups, and now
+        // autoscaling (larakube autoscale) as managed k8s through this identical
+        // overlay pipeline — worth saying explicitly so "single-node" doesn't
+        // read as "not production-grade". The one real gap (surviving a whole
+        // server dying) is named, not hidden.
+        if ($hasVps) {
+            $this->line('  <fg=gray>💡 Single-node VPS is production-ready here — hardening, TLS, backups, and</>');
+            $this->line('  <fg=gray>   autoscaling (larakube autoscale) all apply the same as managed k8s. The one</>');
+            $this->line('  <fg=gray>   gap vs. multi-node is surviving a full server failure.</>');
+        }
 
         // 3. Live Cluster Status
         $this->newLine();

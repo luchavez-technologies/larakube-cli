@@ -514,6 +514,96 @@ class ConfigData extends Data
     }
 
     /**
+     * Effective replica count for a pod component in an env, merging in
+     * precedence: strategy-derived default ← env "default" override ← per-
+     * component override. Mirrors getResources()'s precedence pattern, except
+     * the "code default" is dynamic — 2 for multi-node-ha, else 1 (local is
+     * always 1 regardless of strategy; that field only shapes cloud topology).
+     * Not meaningful for the scheduler (a CronJob has no replica count).
+     */
+    public function getReplicas(string $environment, string $component): int
+    {
+        $effective = ($environment !== 'local' && $this->getStrategy($environment) === DeploymentStrategy::MULTI_NODE_HA) ? 2 : 1;
+        $configured = $this->getEnvironment($environment)?->replicas ?? [];
+
+        foreach (['default', $component] as $key) {
+            $value = $configured[$key] ?? null;
+            if (is_int($value) && $value >= 1) {
+                $effective = $value;
+            }
+        }
+
+        return $effective;
+    }
+
+    public function setReplicas(string $environment, string $component, ?int $replicas): self
+    {
+        $this->addEnvironment($environment);
+
+        if ($replicas === null) {
+            unset($this->environments[$environment]->replicas[$component]);
+
+            return $this;
+        }
+
+        // Prune a redundant override that perfectly matches the inherited default.
+        if ($component !== 'default' && $replicas === $this->getReplicas($environment, 'default')) {
+            unset($this->environments[$environment]->replicas[$component]);
+
+            return $this;
+        }
+
+        $this->environments[$environment]->replicas[$component] = $replicas;
+
+        return $this;
+    }
+
+    /**
+     * HorizontalPodAutoscaler settings for a component, or null when it isn't
+     * autoscaled (a fixed replica count from getReplicas() applies instead).
+     * Metrics-server ships as a default k3s addon and is never disabled by
+     * this CLI, so this works identically on local-cluster-backed VPS and
+     * managed k8s alike — deliberately NOT gated by DeploymentStrategy, unlike
+     * topologySpreadConstraints, since pod-count elasticity doesn't need a
+     * second node to matter.
+     *
+     * @return array{min: int, max: int, cpu: int}|null
+     */
+    public function getAutoscale(string $environment, string $component): ?array
+    {
+        $configured = $this->getEnvironment($environment)?->autoscale[$component] ?? null;
+
+        if (! is_array($configured) || ! isset($configured['min'], $configured['max'])) {
+            return null;
+        }
+
+        return [
+            'min' => (int) $configured['min'],
+            'max' => (int) $configured['max'],
+            'cpu' => (int) ($configured['cpu'] ?? 70),
+        ];
+    }
+
+    public function setAutoscale(string $environment, string $component, ?array $autoscale): self
+    {
+        $this->addEnvironment($environment);
+
+        if ($autoscale === null) {
+            unset($this->environments[$environment]->autoscale[$component]);
+
+            return $this;
+        }
+
+        $this->environments[$environment]->autoscale[$component] = [
+            'min' => (int) $autoscale['min'],
+            'max' => (int) $autoscale['max'],
+            'cpu' => (int) ($autoscale['cpu'] ?? 70),
+        ];
+
+        return $this;
+    }
+
+    /**
      * Backing services this project runs that could instead be supplied by an
      * external managed provider (RDS, ElastiCache, Meilisearch Cloud, an
      * S3-compatible object store, …). These are the candidates the wizards

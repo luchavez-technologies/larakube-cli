@@ -116,8 +116,11 @@ enum SharedClusterService: string
     public function presenceProbe(): ?string
     {
         return match ($this) {
-            self::MAILPIT => null,
-            self::TRAEFIK_DASHBOARD => 'svc traefik -n traefik',
+            // Traefik is core infra, not an opt-in install — `up` always installs
+            // it BEFORE reconciling shared services, so a probe on its Service
+            // never actually gates anything here; treat the dashboard as always-on
+            // (like Mailpit) instead of vestigial install-gated indirection.
+            self::MAILPIT, self::TRAEFIK_DASHBOARD => null,
             self::CONSOLE => 'namespace larakube-system',
             self::GRAFANA => 'deployment prometheus -n larakube-shared',
             self::UPTIME_KUMA => 'deployment uptime-kuma -n larakube-shared',
@@ -134,6 +137,11 @@ enum SharedClusterService: string
     {
         return match ($this) {
             self::MAILPIT => 'larakube-shared',
+            // Not strictly needed — setupTraefik() always creates the 'traefik'
+            // namespace first in the normal flow — but declaring it keeps this
+            // always-on service consistent/self-contained like every other one,
+            // and the create is idempotent if the namespace already exists.
+            self::TRAEFIK_DASHBOARD => 'traefik',
             default => null,
         };
     }

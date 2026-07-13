@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Data\GlobalConfigData;
+use App\Enums\LaravelFeature;
 use App\Enums\StorageDriver;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGlobalConfig;
@@ -66,7 +67,7 @@ class ShareCommand extends Command
         $globalConfig = $this->getGlobalConfig();
 
         if ($this->option('reset')) {
-            $globalConfig->setShareUrls($appName, ['web' => null, 'hmr' => null, 'storage' => null]);
+            $globalConfig->setShareUrls($appName, ['web' => null, 'hmr' => null, 'reverb' => null, 'storage' => null, 'storage-console' => null]);
             $globalConfig->save();
         }
 
@@ -118,12 +119,27 @@ class ShareCommand extends Command
             );
         }
 
+        // Reverb URL (only if project uses Laravel Reverb for broadcasting)
+        if ($config->hasFeature(LaravelFeature::REVERB, 'local')) {
+            $urls['reverb'] = $stored['reverb'] ?? (string) text(
+                label: 'Public URL for Reverb WebSocket (hostname that routes to the reverb service on port 8080)',
+                placeholder: 'https://reverb.myapp.example.com',
+                hint: 'Leave blank to skip — real-time broadcasting will only work on your local browser',
+            );
+        }
+
         // Storage URL (only if project has object storage)
         if ($config->getObjectStorage() !== null) {
             $urls['storage'] = $stored['storage'] ?? (string) text(
                 label: 'Public URL for object storage (routes to the S3 API port)',
                 placeholder: 'https://s3.myapp.example.com',
                 hint: 'Leave blank to skip — stored file URLs will only resolve locally',
+            );
+
+            $urls['storage-console'] = $stored['storage-console'] ?? (string) text(
+                label: 'Public URL for the storage admin console (routes to the console/UI port)',
+                placeholder: 'https://s3-console.myapp.example.com',
+                hint: 'Leave blank to skip — the admin console will only be reachable locally',
             );
         }
 
@@ -188,7 +204,7 @@ class ShareCommand extends Command
 
     /**
      * Build the map of pod-name → [targetUrl, urlKey] for the services we need to expose.
-     * urlKey matches the key used in $urls ('web', 'hmr', 'storage').
+     * urlKey matches the key used in $urls ('web', 'hmr', 'reverb', 'storage', 'storage-console').
      */
     private function buildServiceMap(mixed $config, string $appName, string $namespace): array
     {
@@ -200,11 +216,19 @@ class ShareCommand extends Command
             $map['larakube-share-hmr'] = ['targetUrl' => 'http://node:5173', 'urlKey' => 'hmr'];
         }
 
+        if ($config->hasFeature(LaravelFeature::REVERB, 'local')) {
+            $map['larakube-share-reverb'] = ['targetUrl' => 'http://reverb:8080', 'urlKey' => 'reverb'];
+        }
+
         $storage = $config->getObjectStorage();
         if ($storage instanceof StorageDriver) {
             $map['larakube-share-storage'] = [
                 'targetUrl' => "http://{$storage->getPodName()}:{$storage->port()}",
                 'urlKey' => 'storage',
+            ];
+            $map['larakube-share-storage-console'] = [
+                'targetUrl' => "http://{$storage->getPodName()}:{$storage->consolePort()}",
+                'urlKey' => 'storage-console',
             ];
         }
 
@@ -266,6 +290,17 @@ class ShareCommand extends Command
             $restartNeeded[] = 'node';
         }
 
+        // Reverb: inject VITE_REVERB_HOST/PORT/SCHEME so Laravel Echo in the
+        // browser connects via the public tunnel URL instead of the internal
+        // cluster host. The server-side REVERB_HOST/PORT (Laravel → Reverb,
+        // pod-to-pod) stay untouched — only the browser-facing VITE_REVERB_*
+        // vars need to change, same split as HMR's VITE_HMR_* above.
+        if (isset($urls['reverb'])) {
+            $reverbHost = preg_replace('#^https?://#', '', rtrim($urls['reverb'], '/'));
+            Process::run('kubectl set env deployment/node VITE_REVERB_HOST='.escapeshellarg($reverbHost)." VITE_REVERB_PORT=443 VITE_REVERB_SCHEME=https -n {$namespace}");
+            $restartNeeded[] = 'node';
+        }
+
         if (! empty($restartNeeded)) {
             $targets = implode(' ', array_map(fn ($d) => "deployment/{$d}", array_unique($restartNeeded)));
             Process::run("kubectl rollout restart {$targets} -n {$namespace}");
@@ -288,8 +323,14 @@ class ShareCommand extends Command
         if (isset($urls['hmr'])) {
             $this->line('  <fg=gray>Vite HMR :</> <fg=cyan>'.$urls['hmr'].'</>');
         }
+        if (isset($urls['reverb'])) {
+            $this->line('  <fg=gray>Reverb   :</> <fg=cyan>'.$urls['reverb'].'</>');
+        }
         if (isset($urls['storage'])) {
             $this->line('  <fg=gray>Storage  :</> <fg=cyan>'.$urls['storage'].'</>');
+        }
+        if (isset($urls['storage-console'])) {
+            $this->line('  <fg=gray>S3 Console:</> <fg=cyan>'.$urls['storage-console'].'</>');
         }
 
         $this->laraKubeNewLine();
@@ -325,7 +366,7 @@ class ShareCommand extends Command
 
             // Remove deployment-level env overrides (no-op if they were never set)
             Process::run("kubectl set env deployment/web AWS_URL- -n {$namespace}");
-            Process::run("kubectl set env deployment/node VITE_HMR_HOST- VITE_HMR_CLIENT_PORT- VITE_HMR_PROTOCOL- -n {$namespace}");
+            Process::run("kubectl set env deployment/node VITE_HMR_HOST- VITE_HMR_CLIENT_PORT- VITE_HMR_PROTOCOL- VITE_REVERB_HOST- VITE_REVERB_PORT- VITE_REVERB_SCHEME- -n {$namespace}");
 
             // Restart to pick up original ConfigMap values
             Process::run("kubectl rollout restart deployment/web -n {$namespace}");

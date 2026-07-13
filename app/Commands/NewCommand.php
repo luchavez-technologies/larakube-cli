@@ -331,7 +331,7 @@ class NewCommand extends Command
         // could silently no-op (notably on WSL) and leave a root-owned project you'd need
         // sudo to manage. Uses the host user's real uid/gid (see InteractsWithDocker::hostUid).
         if (is_dir($projectPath)) {
-            $this->runStreaming("docker run --rm -v $baseDir:/var/www/html --user root $image chown -R $uid:$gid /var/www/html/$appName");
+            $this->runStreaming("docker run --rm -v $baseDir:/var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R $uid:$gid /var/www/html/$appName");
         }
     }
 }

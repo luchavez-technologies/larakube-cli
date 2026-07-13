@@ -17,7 +17,9 @@ kind: Deployment
 metadata:
   name: {{ $feature->getPodName($config) }}
 spec:
-  replicas: {{ $config->getStrategy($environment) === \App\Enums\DeploymentStrategy::MULTI_NODE_HA ? 2 : 1 }}
+@if(!$config->getAutoscale($environment ?? 'local', 'ssr'))
+  replicas: {{ $config->getReplicas($environment ?? 'local', 'ssr') }}
+@endif
   strategy:
     type: Recreate
   selector:
@@ -28,6 +30,17 @@ spec:
       labels:
         app: {{ $feature->getPodName($config) }}
     spec:
+@if($config->getStrategy($environment ?? 'local') === \App\Enums\DeploymentStrategy::MULTI_NODE_HA)
+      {{-- Soft preference only (ScheduleAnyway) — spreads replicas across nodes for
+           real fault tolerance, but never blocks scheduling if capacity is tight. --}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: {{ $feature->getPodName($config) }}
+@endif
       containers:
         - name: {{ $feature->getPodName($config) }}
           image: {{ $config->getName() }}:latest
@@ -84,3 +97,24 @@ spec:
       port: 13714
       targetPort: 13714
   type: ClusterIP
+@if($autoscale = $config->getAutoscale($environment ?? 'local', 'ssr'))
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $feature->getPodName($config) }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $feature->getPodName($config) }}
+  minReplicas: {{ $autoscale['min'] }}
+  maxReplicas: {{ $autoscale['max'] }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $autoscale['cpu'] }}
+@endif

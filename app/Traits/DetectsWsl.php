@@ -23,6 +23,17 @@ trait DetectsWsl
             return true;
         }
 
+        return $this->wslKernelSignaturePresent();
+    }
+
+    /**
+     * Whether /proc/version reports a Microsoft-patched kernel — the WSL
+     * signature independent of WSL_DISTRO_NAME. Split out so tests can force
+     * "not WSL" deterministically, since the suite may itself be running on a
+     * real WSL2 host (where this would otherwise always be true).
+     */
+    protected function wslKernelSignaturePresent(): bool
+    {
         return is_file('/proc/version')
             && str_contains(strtolower((string) @file_get_contents('/proc/version')), 'microsoft');
     }

@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: {{ $config->getServerVariation()->getPodName($config) }}
 spec:
-  replicas: 1
+  replicas: {{ $config->getReplicas($environment ?? 'local', 'web') }}
   strategy:
     type: Recreate
   selector:
