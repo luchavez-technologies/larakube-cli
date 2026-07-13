@@ -11,6 +11,27 @@ spec:
     - host: {{ $host }}
       http:
         paths:
+          - path: /signalexchange.SignalExchange/
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-signal
+                port:
+                  number: 80
+          - path: /relay
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-relay
+                port:
+                  number: 33080
+          - path: /ws-proxy/
+            pathType: Prefix
+            backend:
+              service:
+                name: netbird-relay
+                port:
+                  number: 33080
           - path: /
             pathType: Prefix
             backend:

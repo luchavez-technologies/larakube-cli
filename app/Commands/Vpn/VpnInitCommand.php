@@ -49,6 +49,12 @@ class VpnInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
+        // Must exist BEFORE the Deployments below apply — management mounts
+        // management.json and relay reads NB_AUTH_SECRET from it, so without
+        // this first, both would sit in CreateContainerConfigError and the
+        // rollout waits below would time out.
+        $this->ensureVpnConfig($kubectl, $ns, $host);
+
         $manifest = view('k8s.vpn.shared', [
             'host' => $host,
         ])->render();
@@ -99,6 +105,42 @@ class VpnInitCommand extends Command
         $this->laraKubeInfo('NetBird VPN removed from larakube-vpn.');
 
         return 0;
+    }
+
+    /**
+     * The relay's shared auth secret + management.json (Signal/Relay wired to
+     * this install's EXTERNAL host, since peers dial them directly over the
+     * public Ingress, not the in-cluster DNS names the other env vars in
+     * shared.blade.php use) — both hold a real secret, so this is a k8s
+     * Secret, not a ConfigMap. Idempotent: skipped once it exists, since
+     * rotating it would just orphan already-joined peers.
+     */
+    protected function ensureVpnConfig(string $kubectl, string $ns, string $host): void
+    {
+        if (Process::run("{$kubectl} get secret netbird-relay-secret -n {$ns}")->successful()) {
+            return;
+        }
+
+        $this->withSpin('Preparing NetBird relay config...', function () use ($kubectl, $ns, $host) {
+            $relaySecret = bin2hex(random_bytes(16));
+            $this->registerSecret($relaySecret);
+
+            $managementConfig = view('k8s.vpn.management-config', [
+                'host' => $host,
+                'relaySecret' => $relaySecret,
+            ])->render();
+
+            $tmp = sys_get_temp_dir().'/larakube-vpn-management.json';
+            file_put_contents($tmp, $managementConfig);
+
+            Process::run(
+                "{$kubectl} create secret generic netbird-relay-secret -n {$ns} "
+                .'--from-literal=relay-secret='.escapeshellarg($relaySecret).' '
+                .'--from-file=management.json='.escapeshellarg($tmp).' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+            @unlink($tmp);
+        });
     }
 
     /**
