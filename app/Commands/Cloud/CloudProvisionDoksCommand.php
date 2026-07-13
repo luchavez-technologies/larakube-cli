@@ -12,7 +12,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
 use App\Traits\ResolvesEnvironmentContext;
-use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -22,7 +22,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class CloudProvisionDoksCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext, StreamsProcessOutput;
+    use InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext, VerifiesKubernetesRollout;
 
     protected $signature = 'cloud:init:doks
         {--context= : Target a specific kube-context}
@@ -210,7 +210,7 @@ class CloudProvisionDoksCommand extends Command
     /** Is Traefik already installed on this cluster? Keeps provision reruns safe. */
     private function traefikInstalled(string $context): bool
     {
-        return Process::run('kubectl --context '.escapeshellarg($context).' get deployment -n traefik traefik')->successful();
+        return Process::run($this->kubectl().' --context '.escapeshellarg($context).' get deployment -n traefik traefik')->successful();
     }
 
     /**
@@ -237,12 +237,11 @@ class CloudProvisionDoksCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-traefik-managed.yaml';
         file_put_contents($tmp, $manifest);
 
-        $code = $this->runStreaming(
-            'kubectl --context '.escapeshellarg($context).' apply -f '.escapeshellarg($tmp).' --request-timeout=60s',
-        );
+        $kubectl = $this->kubectl().' --context '.escapeshellarg($context);
+        $ok = $this->applyAndVerifyRollout($kubectl, $tmp, 'traefik', 'traefik');
         @unlink($tmp);
 
-        return $code === 0 ? 0 : 1;
+        return $ok ? 0 : 1;
     }
 
     private function waitForLoadBalancerIp(string $context): ?string

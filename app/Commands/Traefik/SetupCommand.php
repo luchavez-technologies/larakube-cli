@@ -34,7 +34,12 @@ class SetupCommand extends Command
             return 0;
         }
 
-        $this->setupTraefik();
+        if (! $this->setupTraefik()) {
+            $this->laraKubeError('Traefik setup failed — see the output above.');
+
+            return 1;
+        }
+
         $this->laraKubeInfo('✅ Traefik setup complete.');
 
         return 0;

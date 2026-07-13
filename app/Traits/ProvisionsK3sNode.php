@@ -20,7 +20,7 @@ use function Laravel\Prompts\confirm;
  */
 trait ProvisionsK3sNode
 {
-    use InstallsK3s, InteractsWithRemoteSsh, InteractsWithServerHardening;
+    use InstallsK3s, InteractsWithRemoteSsh, InteractsWithServerHardening, VerifiesKubernetesRollout;
 
     /**
      * Install K3s on the remote server.
@@ -398,19 +398,9 @@ BASH;
         // 3. Apply Traefik Cloud manifest
         $tmpInstall = sys_get_temp_dir().'/traefik-cloud.yaml';
         file_put_contents($tmpInstall, view('k8s.traefik-cloud', ['email' => $this->getEmail()])->render());
-        $applyOk = Process::run("{$kubectl} apply -f {$tmpInstall} --request-timeout=60s --validate=false")->successful();
+        $ok = $this->applyAndVerifyRollout($kubectl, $tmpInstall, $namespace, 'traefik', extraApplyFlags: '--validate=false');
         @unlink($tmpInstall);
-        if (! $applyOk) {
-            $this->laraKubeError('Could not apply the Traefik Deployment manifest — see the output above.');
-
-            return false;
-        }
-
-        // A successful `apply` only means the API server accepted the manifest —
-        // wait for the Deployment to actually roll out before declaring victory.
-        if (! Process::run("{$kubectl} rollout status deployment/traefik -n {$namespace} --timeout=120s")->successful()) {
-            $this->laraKubeError('Traefik manifest applied, but the Deployment never became Ready — check `kubectl get pods -n traefik`.');
-
+        if (! $ok) {
             return false;
         }
 

@@ -9,12 +9,18 @@ use Illuminate\Support\Facades\Process;
 
 trait InteractsWithTraefik
 {
-    use LaraKubeOutput, ManagesLocalCa;
+    use LaraKubeOutput, ManagesLocalCa, VerifiesKubernetesRollout;
 
     /**
      * Ensure Traefik and its dependencies are installed and configured.
+     * Returns whether Traefik itself actually came up — the apply+wait used
+     * to be fire-and-forget (wrapped in a spinner closure that always
+     * returned true regardless of the real kubectl result), so this could
+     * report success even when the Deployment never became Ready. The
+     * Mailpit/dashboard bring-up below still runs even on failure — they're
+     * independent of whether Traefik's own rollout succeeded.
      */
-    protected function setupTraefik(bool $force = false): void
+    protected function setupTraefik(bool $force = false): bool
     {
         $this->laraKubeInfo('Synchronizing Traefik Ingress Controller...');
 
@@ -26,18 +32,8 @@ trait InteractsWithTraefik
 
         $tmpInstall = sys_get_temp_dir().'/traefik-install.yaml';
         file_put_contents($tmpInstall, view('k8s.traefik-install')->render());
-
-        $this->withSpin('Applying Traefik manifests...', function () use ($tmpInstall) {
-            Process::run("kubectl apply -f {$tmpInstall}");
-
-            return true;
-        });
-
-        $this->withSpin('Waiting for Traefik to be ready...', function () {
-            Process::timeout(65)->run('kubectl wait --for=condition=ready pod -l app=traefik -n traefik --timeout=60s');
-
-            return true;
-        });
+        $ok = $this->applyAndVerifyRollout('kubectl', $tmpInstall, 'traefik', 'traefik');
+        @unlink($tmpInstall);
 
         // Bring up the shared services Traefik fronts (Mailpit + the dashboard
         // ingress) so a standalone `traefik:setup` lands them too. The same
@@ -57,7 +53,7 @@ trait InteractsWithTraefik
             return true;
         });
 
-        @unlink($tmpInstall);
+        return $ok;
     }
 
     /**

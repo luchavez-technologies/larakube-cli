@@ -342,7 +342,9 @@ class UpCommand extends Command
             if (! $this->isTraefikInstalled()) {
                 $this->laraKubeInfo('No Ingress Controller detected in your local cluster.');
                 if (confirm('LaraKube works best with Traefik. Would you like us to install it for you?', true)) {
-                    $this->setupTraefik();
+                    if (! $this->setupTraefik()) {
+                        $this->laraKubeWarn('Traefik install failed — re-run `larakube traefik:setup` to retry.');
+                    }
                 }
             }
 
