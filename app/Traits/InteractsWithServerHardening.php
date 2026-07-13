@@ -96,6 +96,9 @@ BASH;
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
+echo "Waiting for cloud-init's own boot-time apt activity to finish..."
+command -v cloud-init >/dev/null 2>&1 && cloud-init status --wait || true
+
 echo "Updating system packages..."
 apt-get update -y
 apt-get upgrade -y
@@ -185,7 +188,7 @@ BASH;
      * updates it on the OS firewall any time after — e.g. once a VPN is
      * finally set up), so the same prompt/validation can't drift between them.
      */
-    protected function promptAdminCidr(): string|false|null
+    protected function promptAdminCidr(bool $viaCreate = false): string|false|null
     {
         if ($flag = $this->flag('admin-cidr')) {
             [$ip] = explode('/', $flag, 2);
@@ -203,7 +206,15 @@ BASH;
             return null;
         }
 
-        if (! confirm('Restrict SSH + the k3s API (6443) to a single admin IP? (recommended)', false)) {
+        // Only relevant from cloud:create: that's the one caller where this
+        // CIDR also gets baked into the cloud provider's firewall (Terraform),
+        // not just UFW — reversing it later means a Tofu re-apply, not just
+        // SSHing in and editing UFW like a later cloud:harden run.
+        $hint = $viaCreate
+            ? 'Also bakes into the cloud firewall, not just UFW — if your IP isn\'t stable, consider declining and restricting later via cloud:harden once your NetBird VPN is set up.'
+            : '';
+
+        if (! confirm('Restrict SSH + the k3s API (6443) to a single admin IP? (recommended)', false, hint: $hint)) {
             return null;
         }
         $ip = text(label: 'Admin IPv4 (your current public IP)', required: true, hint: 'A /32 is appended automatically.');

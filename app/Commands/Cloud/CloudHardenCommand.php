@@ -105,7 +105,12 @@ class CloudHardenCommand extends Command
         }
 
         $this->laraKubeInfo('Hardening server...');
-        $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->hardenServerScript((int) $port, adminCidr: $adminCidr, vpnCidr: $vpnCidr));
+        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->hardenServerScript((int) $port, adminCidr: $adminCidr, vpnCidr: $vpnCidr))) {
+            $this->laraKubeError('Hardening failed partway through — see the remote output above. The firewall may NOT be enabled.');
+            $this->line('  👉 Re-run once the box is stable: larakube cloud:harden'.($adminCidr ? " --admin-cidr={$adminCidr}" : ''));
+
+            return 1;
+        }
 
         $this->rebootIfRequired($user, $ip, $port, $keyPath);
 
@@ -124,8 +129,11 @@ class CloudHardenCommand extends Command
         if ($user !== 'root') {
             $this->newLine();
             if (confirm('Also disable remote root SSH login? (you are connected as a working sudo user)', false)) {
-                $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->disableRootLoginScript());
-                $this->laraKubeInfo('✅ Remote root login disabled.');
+                if ($this->runRemoteCommand($user, $ip, $port, $keyPath, $this->disableRootLoginScript())) {
+                    $this->laraKubeInfo('✅ Remote root login disabled.');
+                } else {
+                    $this->laraKubeError('Disabling root login failed — see the remote output above. Root login is still ENABLED.');
+                }
             }
         } else {
             $this->newLine();
@@ -156,7 +164,11 @@ class CloudHardenCommand extends Command
         $this->registerSecret($setupKey);
 
         $this->laraKubeInfo('Joining NetBird VPN...');
-        $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->joinNetBirdScript($setupKey, $host));
+        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->joinNetBirdScript($setupKey, $host))) {
+            $this->laraKubeWarn('NetBird join failed — see the remote output above. Skipping the VPN allow-rule.');
+
+            return null;
+        }
 
         return self::VPN_CIDR;
     }

@@ -432,7 +432,7 @@ class CloudCreateCommand extends Command
         $this->result = ['stackName' => $stackName, 'kind' => 'vps'];
         $region = $this->promptRegion();
         $size = $this->flag('size') ?: text(label: 'Droplet size slug', default: 's-1vcpu-1gb', hint: 'e.g. s-1vcpu-1gb, s-2vcpu-2gb');
-        $adminCidr = $this->promptAdminCidr();
+        $adminCidr = $this->promptAdminCidr(viaCreate: true);
         if ($adminCidr === false) {
             return 1;
         }

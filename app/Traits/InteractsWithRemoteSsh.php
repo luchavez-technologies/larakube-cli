@@ -104,15 +104,23 @@ trait InteractsWithRemoteSsh
      * the Process facade, so remote provisioning stays fakeable in tests. No
      * timeout — a remote install/hardening script can legitimately run for
      * minutes, and passthru() never had one either.
+     *
+     * Returns whether the remote script actually succeeded — callers MUST
+     * check this rather than assume it, and MUST NOT print a success message
+     * unconditionally afterward. Scripts built by this codebase start with
+     * `set -e`, so a failed step aborts the rest silently from the caller's
+     * point of view unless this return value is checked.
      */
-    protected function runRemoteCommand($user, $ip, $port, $keyPath, $remoteCommand): void
+    protected function runRemoteCommand($user, $ip, $port, $keyPath, $remoteCommand): bool
     {
         $sudo = $user !== 'root' ? 'sudo ' : '';
         $fullCommand = $sudo.'bash -c '.escapeshellarg($remoteCommand);
         $sshCommand = "ssh -i {$keyPath} -p {$port} {$user}@{$ip} ".escapeshellarg($fullCommand);
 
-        Process::forever()->run($sshCommand, function (string $type, string $output) {
+        $result = Process::forever()->run($sshCommand, function (string $type, string $output) {
             echo $output;
         });
+
+        return $result->successful();
     }
 }

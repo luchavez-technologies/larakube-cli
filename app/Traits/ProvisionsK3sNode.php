@@ -25,7 +25,7 @@ trait ProvisionsK3sNode
     /**
      * Install K3s on the remote server.
      */
-    protected function installK3s($user, $ip, $port, $keyPath, $config): void
+    protected function installK3s($user, $ip, $port, $keyPath, $config): bool
     {
         $this->laraKubeInfo('Hardening OS and Installing K3s on remote server...');
 
@@ -61,9 +61,15 @@ trait ProvisionsK3sNode
     {$installK3s}
     BASH;
 
-        $this->runRemoteCommand($user, $ip, $port, $keyPath, $remoteCommand);
+        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $remoteCommand)) {
+            $this->laraKubeError('K3s install failed — see the remote output above.');
 
-        $this->laraKubeInfo('K3s installed and OS hardened.');
+            return false;
+        }
+
+        $this->laraKubeInfo('K3s installed.');
+
+        return true;
     }
 
     /**
@@ -105,7 +111,7 @@ trait ProvisionsK3sNode
     /**
      * Create a dedicated LaraKube user with sudo access.
      */
-    protected function createLaraKubeUser($user, $ip, $port, $keyPath): void
+    protected function createLaraKubeUser($user, $ip, $port, $keyPath): bool
     {
         $this->laraKubeInfo('Creating "larakube" user...');
 
@@ -113,7 +119,7 @@ trait ProvisionsK3sNode
         if (! file_exists($pubKeyPath)) {
             $this->laraKubeWarn("Public key not found at {$pubKeyPath}. Skipping user creation.");
 
-            return;
+            return false;
         }
 
         $pubKey = trim(file_get_contents($pubKeyPath));
@@ -131,8 +137,15 @@ if ! id "larakube" &>/dev/null; then
 fi
 BASH;
 
-        $this->runRemoteCommand($user, $ip, $port, $keyPath, $remoteCommand);
+        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $remoteCommand)) {
+            $this->laraKubeError('Creating the "larakube" user failed — see the remote output above.');
+
+            return false;
+        }
+
         $this->laraKubeInfo('User "larakube" created and configured.');
+
+        return true;
     }
 
     /**
@@ -141,12 +154,17 @@ BASH;
      * InteractsWithServerHardening) allows the SSH port before enabling UFW, so
      * this never strands the in-flight connection.
      */
-    protected function hardenServer($user, $ip, int $port, $keyPath, ?string $adminCidr = null): void
+    protected function hardenServer($user, $ip, int $port, $keyPath, ?string $adminCidr = null): bool
     {
         $this->laraKubeInfo('Updating packages and hardening server (firewall, fail2ban, SSH)...');
         $this->line('  <fg=gray>This includes a full system upgrade before k3s is installed — can take a few minutes on a fresh droplet.</>');
 
-        $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->hardenServerScript($port, adminCidr: $adminCidr));
+        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->hardenServerScript($port, adminCidr: $adminCidr))) {
+            $this->laraKubeError('Hardening failed partway through — see the remote output above. The firewall may NOT be enabled.');
+            $this->line('  👉 Re-run once the box is stable: larakube cloud:harden'.($adminCidr ? " --admin-cidr={$adminCidr}" : ''));
+
+            return false;
+        }
 
         $this->rebootIfRequired($user, $ip, $port, $keyPath);
 
@@ -154,6 +172,8 @@ BASH;
         if (! $adminCidr) {
             $this->info('   Note: k3s API (6443) is open to the internet — restricting it to your IP is a recommended follow-up (larakube cloud:harden --admin-cidr=).');
         }
+
+        return true;
     }
 
     /**
@@ -179,7 +199,11 @@ BASH;
         }
 
         // Safe: we're still connected as root here, so this only affects FUTURE logins.
-        $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->disableRootLoginScript());
+        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->disableRootLoginScript())) {
+            $this->laraKubeError('Disabling root login failed — see the remote output above. Root login is still ENABLED.');
+
+            return false;
+        }
 
         $this->laraKubeInfo('✅ Remote root login disabled. Using the "larakube" user from now on.');
 
