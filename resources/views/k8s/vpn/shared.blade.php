@@ -28,7 +28,10 @@ spec:
     spec:
       containers:
         - name: management
-          image: netbirdio/management:latest
+          image: netbirdio/management:0.74.4
+          env:
+            - name: NB_SETUP_PAT_ENABLED
+              value: "true"
           ports:
             - containerPort: 80
               name: http
@@ -83,7 +86,7 @@ spec:
     spec:
       containers:
         - name: signal
-          image: netbirdio/signal:latest
+          image: netbirdio/signal:0.74.4
           ports:
             - containerPort: 80
               name: grpc
@@ -170,7 +173,7 @@ spec:
     spec:
       containers:
         - name: client
-          image: netbirdio/client:latest
+          image: netbirdio/netbird:0.74.4
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]

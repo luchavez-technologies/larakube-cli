@@ -32,6 +32,27 @@ trait InteractsWithVpn
     }
 
     /**
+     * Read the reusable setup key `vpn:init` bootstrapped, from the k8s Secret
+     * it wrote (`kubectl create secret ... netbird-admin`). One bootstrap,
+     * shared by every teammate with kubectl access — used by both `vpn:join`
+     * (this developer's own machine) and `cloud:harden` (the VPS host itself).
+     */
+    protected function fetchVpnSetupKey(string $kubectl, string $ns): ?string
+    {
+        $encoded = trim(Process::run(
+            "{$kubectl} get secret netbird-admin -n {$ns} -o jsonpath='{.data.setup-key}'",
+        )->output());
+
+        if ($encoded === '') {
+            return null;
+        }
+
+        $key = base64_decode($encoded, true);
+
+        return $key !== false && $key !== '' ? $key : null;
+    }
+
+    /**
      * Read-only NetBird host for an env: local → vpn.{dev tld}; a cloud env →
      * the host persisted in .larakube.json (null when not configured yet). Never
      * prompts or persists.

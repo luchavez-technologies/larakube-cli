@@ -227,37 +227,6 @@ class CloudCreateCommand extends Command
         return true;
     }
 
-    /**
-     * The admin CIDR to restrict SSH + the k3s API to: a CIDR string, null
-     * for open (matches the confirm's "no" default), or false when an
-     * invalid --admin-cidr was passed and the caller should abort.
-     */
-    protected function promptAdminCidr(): string|false|null
-    {
-        if ($flag = $this->flag('admin-cidr')) {
-            [$ip] = explode('/', $flag, 2);
-            if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                $this->laraKubeError("Invalid --admin-cidr '{$flag}' — expected an IPv4 address or CIDR.");
-
-                return false;
-            }
-
-            return str_contains($flag, '/') ? $flag : $flag.'/32';
-        }
-
-        // No flag headlessly = open, same as declining the confirm below.
-        if ($this->flag('no-interaction')) {
-            return null;
-        }
-
-        if (! confirm('Restrict SSH + the k3s API (6443) to a single admin IP? (recommended)', false)) {
-            return null;
-        }
-        $ip = text(label: 'Admin IPv4 (your current public IP)', required: true, hint: 'A /32 is appended automatically.');
-
-        return rtrim($ip).'/32';
-    }
-
     private function create(): int
     {
         $this->renderHeader();
@@ -507,7 +476,7 @@ class CloudCreateCommand extends Command
         }
 
         $pipelineConfig = $config ?? $this->getProjectConfigObject(getcwd());
-        $context = $this->provisionK3sNode('root', $ip, '22', $keyPath, $pipelineConfig);
+        $context = $this->provisionK3sNode('root', $ip, '22', $keyPath, $pipelineConfig, adminCidr: $adminCidr);
 
         // Record the resolved context on the stack + bind the env.
         $this->updateStackContext($stackName, $context);
@@ -788,9 +757,14 @@ class CloudCreateCommand extends Command
         // TLS, backups, and overlay pipeline as managed k8s, just without a second
         // node. Worth saying so explicitly the moment it's provisioned, not just
         // buried in docs — "single-node" reads as "not real production" otherwise.
-        $this->line('  <fg=gray>This droplet is production-ready as-is — run `larakube cloud:harden` to lock it down,</>');
-        $this->line('  <fg=gray>and `larakube autoscale` to scale pod replicas under load. The one real gap vs.</>');
-        $this->line('  <fg=gray>a managed multi-node cluster is surviving a full server failure — everything else</>');
-        $this->line('  <fg=gray>(hardening, TLS, backups, autoscaling) is identical.</>');
+        // Hardening already ran automatically as part of provisionK3sNode() above
+        // (not a suggested follow-up anymore) — `cloud:harden` re-applies it later
+        // if config drifts, it isn't needed right now.
+        $this->line('  <fg=gray>This droplet is already hardened (firewall, fail2ban, key-only SSH, encrypted</>');
+        $this->line('  <fg=gray>Secrets, auto security updates) and production-ready as-is. `larakube autoscale`</>');
+        $this->line('  <fg=gray>scales pod replicas under load. The one real gap vs. a managed multi-node</>');
+        $this->line('  <fg=gray>cluster is surviving a full server failure — everything else is identical.</>');
+        $this->line('  <fg=gray>Recommended follow-up: add default-deny NetworkPolicies, and restrict the k3s</>');
+        $this->line('  <fg=gray>API (6443) to your IP if you skipped --admin-cidr.</>');
     }
 }

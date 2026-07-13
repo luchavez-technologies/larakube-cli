@@ -8,6 +8,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
@@ -75,6 +76,8 @@ class VpnInitCommand extends Command
             130,
         ));
 
+        $this->bootstrapVpnAuth($kubectl, $ns, $host);
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ NetBird VPN stack is live.');
         $this->newLine();
@@ -96,6 +99,70 @@ class VpnInitCommand extends Command
         $this->laraKubeInfo('NetBird VPN removed from larakube-vpn.');
 
         return 0;
+    }
+
+    /**
+     * Bootstrap NetBird auth with zero browser/dashboard interaction: create the
+     * first owner user + a Personal Access Token via NB_SETUP_PAT_ENABLED's
+     * POST /api/setup, then mint one reusable setup key from it. Both are stored
+     * as a k8s Secret (same create|apply pattern as ConfigData::backupToCluster())
+     * so any teammate with kubectl access to this cluster can fetch the setup key
+     * for `vpn:join` / `cloud:harden` — no separate secret-sharing channel needed.
+     * Idempotent: skipped entirely once the Secret exists, since re-POSTing
+     * /api/setup against an already-bootstrapped instance would just fail.
+     */
+    protected function bootstrapVpnAuth(string $kubectl, string $ns, string $host): void
+    {
+        if (Process::run("{$kubectl} get secret netbird-admin -n {$ns}")->successful()) {
+            return;
+        }
+
+        $this->withSpin('Bootstrapping NetBird auth (no dashboard login needed)...', function () use ($kubectl, $ns, $host) {
+            $password = bin2hex(random_bytes(16));
+            $email = $this->getEmail() ?: "admin@{$host}";
+
+            $setup = Http::timeout(15)->post("https://{$host}/api/setup", [
+                'email' => $email,
+                'name' => 'larakube',
+                'password' => $password,
+                'create_pat' => true,
+                'pat_expire_in' => 365,
+            ]);
+
+            $pat = $setup->json('personal_access_token');
+            if ($setup->failed() || ! $pat) {
+                $this->laraKubeWarn('Could not bootstrap NetBird auth automatically — log into the dashboard once to finish setup.');
+
+                return;
+            }
+            $this->registerSecret($pat);
+
+            // 1 year — matches the PAT's own 365-day cap above, so both need
+            // renewing around the same time (a known follow-up, not handled here).
+            $setupKey = Http::timeout(15)
+                ->withHeaders(['Authorization' => "Token {$pat}"])
+                ->post("https://{$host}/api/setup-keys", [
+                    'name' => 'larakube',
+                    'type' => 'reusable',
+                    'expires_in' => 31536000,
+                    'usage_limit' => 0,
+                ]);
+
+            $key = $setupKey->json('key');
+            if ($setupKey->failed() || ! $key) {
+                $this->laraKubeWarn('NetBird owner created, but minting a setup key failed — create one manually in the dashboard for `vpn:join`.');
+
+                return;
+            }
+            $this->registerSecret($key);
+
+            Process::run(
+                "{$kubectl} create secret generic netbird-admin -n {$ns} "
+                .'--from-literal=pat='.escapeshellarg($pat).' '
+                .'--from-literal=setup-key='.escapeshellarg($key).' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+        });
     }
 
     /**

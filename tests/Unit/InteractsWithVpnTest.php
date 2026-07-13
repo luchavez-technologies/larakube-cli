@@ -29,6 +29,11 @@ function vpnReader(): object
         {
             return $this->vpnAccess($env, $config, $context);
         }
+
+        public function setupKey(string $kubectl, string $ns): ?string
+        {
+            return $this->fetchVpnSetupKey($kubectl, $ns);
+        }
     };
 }
 
@@ -77,4 +82,17 @@ test('vpnAccess is null when vpn is not installed, populated when it is', functi
 
     expect($access['host'])->toStartWith('vpn.')
         ->and($access['label'])->toBe('NetBird VPN');
+});
+
+test('fetchVpnSetupKey decodes the key from the Secret, null when missing', function () {
+    $encoded = base64_encode('nb_setup_key_test');
+    Process::fake([
+        "kubectl get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.setup-key}'" => $encoded,
+    ]);
+    expect(vpnReader()->setupKey('kubectl', 'larakube-vpn'))->toBe('nb_setup_key_test');
+
+    Process::fake([
+        "kubectl get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
+    ]);
+    expect(vpnReader()->setupKey('kubectl', 'larakube-vpn'))->toBeNull();
 });

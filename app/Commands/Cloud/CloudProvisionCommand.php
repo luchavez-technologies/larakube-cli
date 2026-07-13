@@ -127,7 +127,8 @@ class CloudProvisionCommand extends Command
         $this->provisionK3sNode($user, $ip, $port, $keyPath, $config);
 
         $this->laraKubeInfo('✅ Provisioning complete!');
-        $this->info('Your VPS is now a LaraKube-hardened K3s node.');
+        $this->info('Your VPS is now a LaraKube-hardened K3s node (firewall, fail2ban, key-only SSH, encrypted Secrets, auto security updates).');
+        $this->line('  <fg=gray>Recommended follow-up: add default-deny NetworkPolicies, and restrict the k3s API (6443) to your IP.</>');
 
         return 0;
     }

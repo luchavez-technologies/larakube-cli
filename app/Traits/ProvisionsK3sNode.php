@@ -23,35 +23,6 @@ trait ProvisionsK3sNode
     use InstallsK3s, InteractsWithRemoteSsh, InteractsWithServerHardening;
 
     /**
-     * Poll the SSH endpoint until it answers (or we give up). A freshly created
-     * droplet needs ~30–60s before sshd accepts connections, so the OpenTofu
-     * flow calls this between `tofu apply` and the provisioning steps. The
-     * bring-your-own-IP flow doesn't need it (the box is already up) but may use
-     * it defensively.
-     *
-     * @param  int  $maxAttempts  attempts at $delay-second intervals (default ~2.5min)
-     */
-    protected function waitForSsh($user, $ip, $port, $keyPath, int $maxAttempts = 30, int $delay = 5): bool
-    {
-        $this->laraKubeInfo("Waiting for SSH on {$user}@{$ip}:{$port}...");
-
-        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-            if ($this->testSsh($user, $ip, $port, $keyPath)) {
-                $this->laraKubeInfo('SSH is up.');
-
-                return true;
-            }
-
-            if ($attempt % 3 === 0) {
-                $this->line('  ⏳ Still waiting for sshd... ('.($attempt * $delay).'s)');
-            }
-            sleep($delay);
-        }
-
-        return false;
-    }
-
-    /**
      * Install K3s on the remote server.
      */
     protected function installK3s($user, $ip, $port, $keyPath, $config): void
@@ -62,6 +33,11 @@ trait ProvisionsK3sNode
             '--disable=traefik',
             '--write-kubeconfig-mode 644',
             '--kubelet-arg=fail-swap-on=false',
+            // Encrypts Secret data at rest in k3s's datastore (AES-CBC) — otherwise
+            // it's only base64, not actually encrypted. Transparent to every
+            // client here: the API server decrypts on the fly for any `kubectl get
+            // secret`, so dotenv/dotenv:audit (and everything else) need no changes.
+            '--secrets-encryption',
         ]);
 
         // 1. Create Swap (Crucial for 512MB droplets)
@@ -88,6 +64,42 @@ trait ProvisionsK3sNode
         $this->runRemoteCommand($user, $ip, $port, $keyPath, $remoteCommand);
 
         $this->laraKubeInfo('K3s installed and OS hardened.');
+    }
+
+    /**
+     * Poll until the remote k3s kubeconfig is actually written and the node is
+     * Ready. installK3s()'s SSH command returns as soon as the k3s SYSTEMD
+     * SERVICE is active — but /etc/rancher/k3s/k3s.yaml (and node readiness)
+     * can lag several seconds behind that, especially on the 1GB-RAM droplets
+     * this flow explicitly targets (see the RAM warning in cloud:create).
+     * Without this wait, syncKubeconfig() (called after 3 more SSH round-trips
+     * for user creation/hardening/root lockdown — often, but not reliably,
+     * enough buffer on its own) can SCP a still-empty or partially-written
+     * file, producing a sync that looks like a random one-off failure rather
+     * than the timing race it actually is.
+     */
+    protected function waitForK3sReady($user, $ip, $port, $keyPath, int $maxAttempts = 24, int $delay = 5): bool
+    {
+        $this->laraKubeInfo('Waiting for k3s to report ready...');
+
+        $sudo = $user !== 'root' ? 'sudo ' : '';
+        $check = "{$sudo}test -s /etc/rancher/k3s/k3s.yaml && {$sudo}k3s kubectl get nodes 2>/dev/null | grep -q ' Ready'";
+        $command = "ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no -i {$keyPath} -p {$port} {$user}@{$ip} ".escapeshellarg($check);
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            if (Process::run($command)->successful()) {
+                $this->laraKubeInfo('k3s is ready.');
+
+                return true;
+            }
+
+            if ($attempt % 3 === 0) {
+                $this->line('  ⏳ Still waiting for k3s... ('.($attempt * $delay).'s)');
+            }
+            sleep($delay);
+        }
+
+        return false;
     }
 
     /**
@@ -129,14 +141,19 @@ BASH;
      * InteractsWithServerHardening) allows the SSH port before enabling UFW, so
      * this never strands the in-flight connection.
      */
-    protected function hardenServer($user, $ip, int $port, $keyPath): void
+    protected function hardenServer($user, $ip, int $port, $keyPath, ?string $adminCidr = null): void
     {
-        $this->laraKubeInfo('Hardening server (firewall, fail2ban, SSH)...');
+        $this->laraKubeInfo('Updating packages and hardening server (firewall, fail2ban, SSH)...');
+        $this->line('  <fg=gray>This includes a full system upgrade before k3s is installed — can take a few minutes on a fresh droplet.</>');
 
-        $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->hardenServerScript($port));
+        $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->hardenServerScript($port, adminCidr: $adminCidr));
 
-        $this->laraKubeInfo('✅ Hardened: UFW (SSH/80/443/6443 + pod & service CIDRs), fail2ban, auto-updates, key-only SSH.');
-        $this->info('   Note: k3s API (6443) is open to the internet — restricting it to your IP is a recommended follow-up.');
+        $this->rebootIfRequired($user, $ip, $port, $keyPath);
+
+        $this->laraKubeInfo('✅ Hardened: system packages updated, UFW (SSH/80/443'.($adminCidr ? "/6443 restricted to {$adminCidr}" : '/6443').' + pod & service CIDRs), fail2ban, auto-updates, key-only SSH.');
+        if (! $adminCidr) {
+            $this->info('   Note: k3s API (6443) is open to the internet — restricting it to your IP is a recommended follow-up (larakube cloud:harden --admin-cidr=).');
+        }
     }
 
     /**
@@ -172,7 +189,15 @@ BASH;
     /**
      * Sync remote Kubeconfig to local machine.
      */
-    protected function syncKubeconfig($user, $ip, $port, $keyPath, $contextName): void
+    /**
+     * Fetch, merge, and write the remote node's kubeconfig — returning whether
+     * it actually worked. Every step is verified rather than trusted: a
+     * silently-failed write or an incomplete merge used to leave the caller
+     * printing "synced!" while the local kubeconfig never actually gained the
+     * new context, which is exactly what "syncing consistently fails" turned
+     * out to mean in practice.
+     */
+    protected function syncKubeconfig($user, $ip, $port, $keyPath, $contextName): bool
     {
         $this->laraKubeInfo('Syncing Kubeconfig...');
 
@@ -182,10 +207,8 @@ BASH;
         if (file_exists($localKubeConfig)) {
             copy($localKubeConfig, $backupPath);
             $this->info("  🛡 Local kubeconfig backed up to {$backupPath}");
-        } else {
-            if (! is_dir(home_path('.kube'))) {
-                mkdir(home_path('.kube'), 0700, true);
-            }
+        } elseif (! is_dir(home_path('.kube'))) {
+            mkdir(home_path('.kube'), 0700, true);
         }
 
         // Fetch remote config
@@ -193,9 +216,10 @@ BASH;
         Process::run("scp -i {$keyPath} -P {$port} {$user}@{$ip}:/etc/rancher/k3s/k3s.yaml {$tmpRemoteConfig}");
 
         if (! file_exists($tmpRemoteConfig) || filesize($tmpRemoteConfig) === 0) {
-            $this->laraKubeError('Failed to fetch remote kubeconfig.');
+            $this->laraKubeError('Failed to fetch remote kubeconfig — k3s may not be fully ready yet. Re-run once it is.');
+            @unlink($tmpRemoteConfig);
 
-            return;
+            return false;
         }
 
         $configContent = file_get_contents($tmpRemoteConfig);
@@ -214,19 +238,50 @@ BASH;
             $mergeCmd = "KUBECONFIG={$localKubeConfig}:{$tmpRemoteConfig} kubectl config view --flatten";
             $mergedContent = Process::run($mergeCmd)->output();
 
-            if ($mergedContent !== '') {
-                file_put_contents($localKubeConfig, $mergedContent);
-            } else {
-                $this->laraKubeError('Failed to merge Kubeconfig. Manual intervention required.');
+            // A bare "not empty" check isn't enough — kubectl can still emit a
+            // valid-looking (but incomplete) flatten from a truncated remote
+            // file. Confirm the new context name actually made it in.
+            if ($mergedContent === '' || ! str_contains($mergedContent, $contextName)) {
+                $this->laraKubeError("Failed to merge kubeconfig — '{$contextName}' is missing from the merged result. Manual intervention required.");
+                unlink($tmpRemoteConfig);
+
+                return false;
             }
-        } else {
-            copy($tmpRemoteConfig, $localKubeConfig);
+
+            // Atomic write: stage in the same directory, then rename — a plain
+            // overwrite that gets interrupted (Ctrl+C, a dropped SSH session,
+            // disk full) partway through would otherwise corrupt the ENTIRE
+            // kubeconfig, not just the new entry.
+            $staged = $localKubeConfig.'.tmp.'.getmypid();
+            if (file_put_contents($staged, $mergedContent) === false || ! rename($staged, $localKubeConfig)) {
+                $this->laraKubeError("Failed to write the merged kubeconfig to {$localKubeConfig} — check file permissions/ownership.");
+                @unlink($staged);
+                unlink($tmpRemoteConfig);
+
+                return false;
+            }
+        } elseif (! copy($tmpRemoteConfig, $localKubeConfig)) {
+            $this->laraKubeError("Failed to write {$localKubeConfig} — check that ~/.kube is writable.");
+            unlink($tmpRemoteConfig);
+
+            return false;
         }
 
         unlink($tmpRemoteConfig);
 
+        // Final read-back: confirm the context that's supposed to be there
+        // actually is, catching any write-succeeded-but-wrong-content case the
+        // checks above missed.
+        if (! str_contains((string) @file_get_contents($localKubeConfig), $contextName)) {
+            $this->laraKubeError("Kubeconfig write completed, but '{$contextName}' isn't in the final file. Manual intervention required.");
+
+            return false;
+        }
+
         $this->laraKubeInfo("Kubeconfig synced and merged. Context: {$contextName}");
         $this->info("You can now run: kubectl config use-context {$contextName}");
+
+        return true;
     }
 
     /**
@@ -298,11 +353,23 @@ BASH;
      * Shared by `cloud:init` and `cloud:create` (post-droplet). Returns the kube
      * context name. `$user` may be promoted to `larakube` when root login is closed.
      */
-    protected function provisionK3sNode(string $user, string $ip, string $port, string $keyPath, $config, bool $interactive = true): string
+    protected function provisionK3sNode(string $user, string $ip, string $port, string $keyPath, $config, bool $interactive = true, ?string $adminCidr = null): string
     {
-        // 1. Install K3s
-        if (! $interactive || confirm('Install K3s on the remote server?', true)) {
-            $this->installK3s($user, $ip, $port, $keyPath, $config);
+        // 1. Harden the server FIRST (system update + firewall + fail2ban +
+        // auto-updates + key-only SSH) — deliberately before k3s exists. UFW's
+        // `--force enable` sets a default-DROP forward policy (Ubuntu's stock
+        // /etc/default/ufw), and k3s's CNI (flannel) relies on FORWARD traffic
+        // for pod-to-pod/pod-to-apiserver routing. Enabling UFW AFTER k3s is
+        // already running can sever that already-established networking out
+        // from under it — a well-known UFW+Kubernetes footgun, and the most
+        // likely real cause behind kubeconfig syncing "randomly" failing: k3s
+        // wasn't actually stable/reachable anymore by the time step 5 ran.
+        // Doing the full system upgrade here too, instead of leaving it to a
+        // separate step, means k3s installs onto an already-current, settled
+        // base rather than racing a background apt/cloud-init process from
+        // the droplet's own first boot.
+        if (! $interactive || confirm('Harden the server now (system update, UFW firewall, fail2ban, auto-updates, key-only SSH)?', true)) {
+            $this->hardenServer($user, $ip, (int) $port, $keyPath, $adminCidr);
         }
 
         // 2. Create larakube user if it's root
@@ -310,9 +377,13 @@ BASH;
             $this->createLaraKubeUser($user, $ip, $port, $keyPath);
         }
 
-        // 3. Harden the server (firewall + fail2ban + auto-updates + key-only SSH)
-        if (! $interactive || confirm('Harden the server now (UFW firewall, fail2ban, auto-updates, key-only SSH)?', true)) {
-            $this->hardenServer($user, $ip, (int) $port, $keyPath);
+        // 3. Install K3s — now onto an already-hardened, already-updated base.
+        if (! $interactive || confirm('Install K3s on the remote server?', true)) {
+            $this->installK3s($user, $ip, $port, $keyPath, $config);
+
+            if (! $this->waitForK3sReady($user, $ip, $port, $keyPath)) {
+                $this->laraKubeWarn('k3s did not report ready in time — continuing anyway, but the kubeconfig sync in step 5 may need a retry.');
+            }
         }
 
         // 4. Optionally close remote root login (only once "larakube" is a working
@@ -325,12 +396,19 @@ BASH;
 
         // 5. Sync Kubeconfig (as $user — now "larakube" if root login was closed)
         $contextName = "larakube-{$ip}";
+        $kubeconfigSynced = true;
         if (! $interactive || confirm('Sync remote Kubeconfig to your local machine?', true)) {
-            $this->syncKubeconfig($user, $ip, $port, $keyPath, $contextName);
+            $kubeconfigSynced = $this->syncKubeconfig($user, $ip, $port, $keyPath, $contextName);
         }
 
-        // 6. Deploy Traefik
-        if (! $interactive || confirm('Deploy Traefik (Single-Node Hero)?', true)) {
+        // 6. Deploy Traefik — skipped when the sync above failed: `kubectl
+        // --context $contextName` would just fail deep inside deployTraefik()
+        // with a generic, confusing error, when the real cause is the missing
+        // context from step 5. Surfacing that here instead of masking it.
+        if (! $kubeconfigSynced) {
+            $this->laraKubeWarn("Skipping Traefik deploy — kubectl can't reach '{$contextName}' until the kubeconfig sync above is fixed.");
+            $this->line('  👉 Fix the kubeconfig issue above, then re-run this command to pick up from here.');
+        } elseif (! $interactive || confirm('Deploy Traefik (Single-Node Hero)?', true)) {
             $this->deployTraefik($contextName);
         }
 

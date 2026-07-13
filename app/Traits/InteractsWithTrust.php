@@ -5,8 +5,6 @@ namespace App\Traits;
 use App\Data\GlobalConfigData;
 use Illuminate\Support\Facades\Process;
 
-use function Laravel\Prompts\confirm;
-
 trait InteractsWithTrust
 {
     use DetectsWsl, InteractsWithOs, LaraKubeOutput, ManagesLocalCa, StreamsProcessOutput;
@@ -152,27 +150,28 @@ trait InteractsWithTrust
         return trim(Process::run('which dnsmasq')->output()) !== '';
     }
 
+    /**
+     * dnsmasq is required (not opt-in) on macOS and Linux — wildcard *.{tld}
+     * resolution is what makes every host "just work" without per-hostname
+     * /etc/hosts entries, and every platform benefits equally from it.
+     *
+     * WSL2 is the one exception: dnsmasq runs inside the WSL2 VM, invisible
+     * to the Windows browser that actually renders pages, so it would do
+     * nothing useful there — WSL2's host resolution problem is entirely on
+     * the Windows side (see ensureWindowsHostsAreSet()), not this method.
+     */
     protected function setupDnsmasq(): void
     {
-        // dnsmasq runs inside the WSL2 VM — Windows browsers never see it.
-        // Hosts are managed via the Windows hosts file instead.
         if ($this->isWsl()) {
             return;
         }
 
         if (! $this->isDnsmasqInstalled()) {
-            $this->newLine();
-            $this->line('  <fg=yellow>💡 Optional:</> Install <fg=cyan>dnsmasq</> for automatic wildcard DNS resolution.');
-            $this->line('  <fg=gray>Without it, larakube up manages /etc/hosts entries for each hostname.</>');
-            $this->newLine();
-
-            if (! confirm('Install dnsmasq now?', false)) {
-                $this->line('  <fg=gray>Skipped — larakube up will manage /etc/hosts for you.</>');
-
-                return;
-            }
+            $this->laraKubeInfo('Installing dnsmasq for automatic wildcard DNS resolution...');
 
             if (! $this->installDnsmasq()) {
+                $this->laraKubeWarn('Could not install dnsmasq — larakube up will fall back to managing /etc/hosts entries per-hostname instead.');
+
                 return;
             }
         }
