@@ -315,7 +315,22 @@ BASH;
      */
     protected function traefikInstalledOnContext(string $contextName): bool
     {
-        return Process::run('kubectl --context '.escapeshellarg($contextName).' get deployment -n traefik traefik')->successful();
+        return Process::run($this->kubectlPinned($contextName).' get deployment -n traefik traefik')->successful();
+    }
+
+    /**
+     * `kubectl --context X` on its own follows the shell's own $KUBECONFIG when
+     * one is set (e.g. k3s's own setup docs suggest exporting
+     * /etc/rancher/k3s/k3s.yaml) — but syncKubeconfig() only ever merges
+     * contexts into ~/.kube/config, so a bare call here would look for
+     * "larakube-<ip>" in a file that never has it, and fail as if the context
+     * didn't exist. Same fix as InteractsWithClusterContext::kubectl() /
+     * ContextRemoveCommand / PrunesKubeContext, applied locally since this
+     * trait doesn't compose that one.
+     */
+    protected function kubectlPinned(string $contextName): string
+    {
+        return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl --context '.escapeshellarg($contextName);
     }
 
     /**
@@ -336,7 +351,7 @@ BASH;
 
         $this->laraKubeInfo('Deploying Traefik (Single-Node Hero) to remote cluster...');
 
-        $kubectl = 'kubectl --context '.escapeshellarg($contextName);
+        $kubectl = $this->kubectlPinned($contextName);
         $namespace = 'traefik';
 
         if (! Process::run("{$kubectl} create namespace {$namespace} --dry-run=client -o yaml | {$kubectl} apply -f -")->successful()) {

@@ -25,9 +25,13 @@ function k3sNodeHelper(): object
 }
 
 test('traefikInstalledOnContext reflects whether the traefik Deployment exists on that context', function () {
-    Process::fake(["kubectl --context 'larakube-1.2.3.4' get deployment -n traefik traefik" => Process::result(exitCode: 0)]);
+    // Pinned to ~/.kube/config explicitly (see kubectlPinned()) so this never
+    // silently follows a shell $KUBECONFIG pointed elsewhere.
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'larakube-1.2.3.4'";
+
+    Process::fake(["{$kubectl} get deployment -n traefik traefik" => Process::result(exitCode: 0)]);
     expect(k3sNodeHelper()->traefikInstalled('larakube-1.2.3.4'))->toBeTrue();
 
-    Process::fake(["kubectl --context 'larakube-1.2.3.4' get deployment -n traefik traefik" => Process::result(exitCode: 1)]);
+    Process::fake(["{$kubectl} get deployment -n traefik traefik" => Process::result(exitCode: 1)]);
     expect(k3sNodeHelper()->traefikInstalled('larakube-1.2.3.4'))->toBeFalse();
 });
