@@ -155,7 +155,7 @@ trait GuardsSharedStorage
     protected function nfsStorageClassPresent(string $context): bool
     {
         return Process::run(
-            'kubectl --context '.escapeshellarg($context).' get storageclass '.escapeshellarg(ConfigData::NFS_STORAGE_CLASS).' -o name',
+            $this->contextKubectl($context).' get storageclass '.escapeshellarg(ConfigData::NFS_STORAGE_CLASS).' -o name',
         )->successful();
     }
 

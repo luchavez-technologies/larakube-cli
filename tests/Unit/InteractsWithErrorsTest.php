@@ -57,10 +57,11 @@ test('cloud Errors host is null when none is configured for the env', function (
 
 test('errorsKubectl scopes to a context only when one is given', function () {
     $reader = errorsReader();
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    expect($reader->kubectlFor('do-sfo3'))->toBe('kubectl --context=do-sfo3')
-        ->and($reader->kubectlFor(''))->toBe('kubectl')
-        ->and($reader->kubectlFor(null))->toBe('kubectl');
+    expect($reader->kubectlFor('do-sfo3'))->toBe("{$kubectl} --context=do-sfo3")
+        ->and($reader->kubectlFor(''))->toBe($kubectl)
+        ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
 test('isErrorsInstalled reflects whether the glitchtip-web Deployment exists', function () {
@@ -84,12 +85,14 @@ test('readErrorsAdminPassword decodes the admin secret, null when absent', funct
 });
 
 test('errorsAccess is null when glitchtip is not installed, populated when it is', function () {
-    Process::fake(['kubectl get deployment glitchtip-web -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 1)]);
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
+    Process::fake(["{$kubectl} get deployment glitchtip-web -n larakube-shared --no-headers" => Process::result(output: '', exitCode: 1)]);
     expect(errorsReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        'kubectl get deployment glitchtip-web -n larakube-shared --no-headers' => 'glitchtip-web   1/1   1   1   5d',
-        "kubectl get secret glitchtip-admin -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t-adm1n'),
+        "{$kubectl} get deployment glitchtip-web -n larakube-shared --no-headers" => 'glitchtip-web   1/1   1   1   5d',
+        "{$kubectl} get secret glitchtip-admin -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t-adm1n'),
     ]);
     $access = errorsReader()->access('local', null);
 

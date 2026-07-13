@@ -52,10 +52,11 @@ test('cloud Uptime host is null when none is configured for the env', function (
 
 test('uptimeKubectl scopes to a context only when one is given', function () {
     $reader = uptimeReader();
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    expect($reader->kubectlFor('do-sfo3'))->toBe('kubectl --context=do-sfo3')
-        ->and($reader->kubectlFor(''))->toBe('kubectl')
-        ->and($reader->kubectlFor(null))->toBe('kubectl');
+    expect($reader->kubectlFor('do-sfo3'))->toBe("{$kubectl} --context=do-sfo3")
+        ->and($reader->kubectlFor(''))->toBe($kubectl)
+        ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
 test('isUptimeInstalled reflects whether the uptime-kuma Deployment exists', function () {
@@ -67,11 +68,13 @@ test('isUptimeInstalled reflects whether the uptime-kuma Deployment exists', fun
 });
 
 test('uptimeAccess is null when uptime is not installed, populated when it is', function () {
-    Process::fake(['kubectl get deployment uptime-kuma -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 1)]);
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
+    Process::fake(["{$kubectl} get deployment uptime-kuma -n larakube-shared --no-headers" => Process::result(output: '', exitCode: 1)]);
     expect(uptimeReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        'kubectl get deployment uptime-kuma -n larakube-shared --no-headers' => 'uptime-kuma   1/1   1   1   5d',
+        "{$kubectl} get deployment uptime-kuma -n larakube-shared --no-headers" => 'uptime-kuma   1/1   1   1   5d',
     ]);
     $access = uptimeReader()->access('local', null);
 

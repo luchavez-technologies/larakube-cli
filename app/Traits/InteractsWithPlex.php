@@ -615,9 +615,11 @@ trait InteractsWithPlex
     /** A `kubectl` prefix scoped to the resolved plex context (current when null). */
     protected function plexKubectl(): string
     {
+        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
         return $this->plexContext !== null && $this->plexContext !== ''
-            ? 'kubectl --context '.escapeshellarg($this->plexContext)
-            : 'kubectl';
+            ? $kubectl.' --context '.escapeshellarg($this->plexContext)
+            : $kubectl;
     }
 
     /** Whether the resolved plex context's API server is reachable. */

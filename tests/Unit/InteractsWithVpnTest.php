@@ -57,10 +57,11 @@ test('cloud VPN host is null when none is configured for the env', function () {
 
 test('vpnKubectl scopes to a context only when one is given', function () {
     $reader = vpnReader();
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    expect($reader->kubectlFor('do-sfo3'))->toBe('kubectl --context=do-sfo3')
-        ->and($reader->kubectlFor(''))->toBe('kubectl')
-        ->and($reader->kubectlFor(null))->toBe('kubectl');
+    expect($reader->kubectlFor('do-sfo3'))->toBe("{$kubectl} --context=do-sfo3")
+        ->and($reader->kubectlFor(''))->toBe($kubectl)
+        ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
 test('isVpnInstalled reflects whether the netbird-management Deployment exists', function () {
@@ -72,11 +73,13 @@ test('isVpnInstalled reflects whether the netbird-management Deployment exists',
 });
 
 test('vpnAccess is null when vpn is not installed, populated when it is', function () {
-    Process::fake(['kubectl get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1)]);
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
+    Process::fake(["{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => Process::result(output: '', exitCode: 1)]);
     expect(vpnReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        'kubectl get deployment netbird-management -n larakube-vpn --no-headers' => 'netbird-management   1/1   1   1   5d',
+        "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
     ]);
     $access = vpnReader()->access('local', null);
 

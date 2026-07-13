@@ -61,7 +61,7 @@ class PlexInitCommand extends Command
             return 1;
         }
 
-        $context = $this->plexContext ?: trim(Process::run('kubectl config current-context')->output());
+        $context = $this->plexContext ?: trim(Process::run($this->kubectl().' config current-context')->output());
         $this->line("  <fg=gray>Target context:</> <fg=cyan>{$context}</>");
         $this->newLine();
 
@@ -326,7 +326,7 @@ class PlexInitCommand extends Command
      */
     protected function targetsLocalCluster(): bool
     {
-        $context = $this->plexContext ?: trim(Process::run('kubectl config current-context')->output());
+        $context = $this->plexContext ?: trim(Process::run($this->kubectl().' config current-context')->output());
 
         if ($this->isLocalContextName($context)) {
             return true;
@@ -336,8 +336,7 @@ class PlexInitCommand extends Command
         // regardless of what it's named — scoped to the resolved context via
         // --context so an explicitly-picked context is checked, not just
         // whatever the ambient kubectl context happens to be.
-        $kubectl = $this->plexContext ? 'kubectl --context '.escapeshellarg($this->plexContext) : 'kubectl';
-        $server = trim(Process::run($kubectl.' config view --minify -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}'))->output());
+        $server = trim(Process::run($this->plexKubectl().' config view --minify -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}'))->output());
 
         return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
     }

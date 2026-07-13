@@ -21,7 +21,7 @@ function uptimeInProject(array $config, callable $fn): void
 
 test('uptime:show warns and exits 1 if uptime kuma is not installed', function () {
     Process::fake([
-        'kubectl get deployment uptime-kuma -n larakube-shared*' => Process::result(output: '', exitCode: 1),
+        'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl get deployment uptime-kuma -n larakube-shared*' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('uptime:show local')
@@ -31,7 +31,7 @@ test('uptime:show warns and exits 1 if uptime kuma is not installed', function (
 
 test('uptime:show displays the recommended monitors guide when installed', function () {
     Process::fake([
-        'kubectl get deployment uptime-kuma -n larakube-shared*' => 'uptime-kuma   1/1   1   1   5d',
+        'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl get deployment uptime-kuma -n larakube-shared*' => 'uptime-kuma   1/1   1   1   5d',
     ]);
 
     $config = [

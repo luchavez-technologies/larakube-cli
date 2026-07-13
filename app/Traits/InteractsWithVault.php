@@ -15,12 +15,13 @@ trait InteractsWithVault
         return 'larakube-vault';
     }
 
-    /** Build the kubectl command, optionally scoped to a specific context. */
+    /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
     protected function vaultKubectl(?string $context = null): string
     {
         $context = (string) ($context ?? '');
+        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-        return $context !== '' ? "kubectl --context={$context}" : 'kubectl';
+        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /** Vaultwarden Deployment present? A cheap "is Vaultwarden installed" probe. */

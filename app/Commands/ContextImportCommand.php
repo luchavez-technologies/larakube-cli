@@ -68,7 +68,7 @@ class ContextImportCommand extends Command
         $this->cleanupTemp($source, $file);
 
         if ($incoming !== '') {
-            Process::run('kubectl config use-context '.escapeshellarg($incoming));
+            Process::run('KUBECONFIG='.escapeshellarg($local).' kubectl config use-context '.escapeshellarg($incoming));
             $this->laraKubeInfo("✅ Imported — you're now on context '{$incoming}'.");
         } else {
             $this->laraKubeInfo('✅ Kubeconfig imported.');

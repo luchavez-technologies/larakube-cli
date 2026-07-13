@@ -492,16 +492,16 @@ trait ConfiguresCloudEnvironment
         }
 
         $namespace = $config->getName().'-'.$environment;
-        $ctx = '--context '.escapeshellarg($context);
+        $kubectl = $this->contextKubectl($context);
         $ns = escapeshellarg($namespace);
 
-        Process::run("kubectl {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl {$ctx} apply -f -");
+        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
         Process::run(
-            "kubectl {$ctx} create secret docker-registry ".escapeshellarg($secretName)." -n {$ns}"
+            "{$kubectl} create secret docker-registry ".escapeshellarg($secretName)." -n {$ns}"
             .' --docker-server='.escapeshellarg($server)
             .' --docker-username='.escapeshellarg($username)
             .' --docker-password='.escapeshellarg($token)
-            ." --dry-run=client -o yaml | kubectl {$ctx} apply -f -",
+            ." --dry-run=client -o yaml | {$kubectl} apply -f -",
         );
 
         $this->laraKubeInfo("✅ Image pull secret '{$secretName}' created in '{$namespace}' (context: {$context}).");
@@ -572,10 +572,10 @@ trait ConfiguresCloudEnvironment
         }
 
         $namespace = $config->getName().'-'.$environment;
-        $ctx = escapeshellarg($adminContext);
+        $kubectl = $this->contextKubectl($adminContext);
         $ns = escapeshellarg($namespace);
 
-        Process::run("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
+        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
         if (! $this->ensureScopedRbac($adminContext, $namespace, $config->getName(), $environment)) {
             $this->laraKubeError('Failed to create the namespace-scoped ServiceAccount/Role in the cluster.');
@@ -585,7 +585,7 @@ trait ConfiguresCloudEnvironment
 
         if ($rotate) {
             $this->laraKubeInfo('Rotating: revoking the current deploy token before minting a fresh one...');
-            Process::run("kubectl --context {$ctx} -n {$ns} delete secret ".escapeshellarg($this->deployerName().'-token').' --ignore-not-found');
+            Process::run("{$kubectl} -n {$ns} delete secret ".escapeshellarg($this->deployerName().'-token').' --ignore-not-found');
         }
 
         $kubeConfigContent = $this->mintScopedKubeconfig($adminContext, $namespace);
@@ -770,7 +770,7 @@ trait ConfiguresCloudEnvironment
 
         if ($context !== '') {
             $kubeconfig = trim(Process::run(
-                'kubectl config view --context '.escapeshellarg($context).' --minify --raw',
+                $this->contextKubectl($context).' config view --minify --raw',
             )->output());
             $kubeconfigB64 = base64_encode($kubeconfig);
 

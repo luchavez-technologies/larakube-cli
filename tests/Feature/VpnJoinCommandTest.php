@@ -32,8 +32,10 @@ function vpnJoinRunner(): array
 }
 
 test('vpn:join errors when the VPN is not installed for the environment', function () {
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
     Process::fake([
-        'kubectl get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
+        "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => Process::result(output: '', exitCode: 1),
     ]);
 
     [$command, $output] = vpnJoinRunner();
@@ -43,9 +45,11 @@ test('vpn:join errors when the VPN is not installed for the environment', functi
 });
 
 test('vpn:join errors when no setup key has been bootstrapped yet', function () {
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
     Process::fake([
-        'kubectl get deployment netbird-management -n larakube-vpn --no-headers' => 'netbird-management   1/1   1   1   5d',
-        "kubectl get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
+        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
     ]);
 
     [$command, $output] = vpnJoinRunner();
