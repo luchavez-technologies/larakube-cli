@@ -46,6 +46,11 @@ function tofuHelper(): object
         {
             return $this->writeTofuFiles($stack, $files);
         }
+
+        public function removeWorkdir(string $stack): void
+        {
+            $this->removeTofuWorkdir($stack);
+        }
     };
 }
 
@@ -201,4 +206,28 @@ test('writeTofuFiles writes backend.tf when remote state is configured and remov
         putenv('LARAKUBE_TOFU_STATE_BUCKET');
         putenv('LARAKUBE_TOFU_STATE_ENDPOINT');
     }
+});
+
+test('removeTofuWorkdir deletes the stack dir entirely, including a nested .terraform/ cache and stale state', function () {
+    // Defensive: a prior interrupted run of this exact test could have left the
+    // fixture dir behind (this is real filesystem I/O against the test HOME).
+    tofuHelper()->removeWorkdir('destroy-then-recreate');
+
+    $dir = tofuHelper()->writeFiles('destroy-then-recreate', ['main.tf' => '# hcl']);
+    mkdir($dir.'/.terraform/providers', 0755, true);
+    file_put_contents($dir.'/.terraform/providers/plugin.bin', 'fake-provider-binary');
+    file_put_contents($dir.'/.terraform.lock.hcl', '# lockfile');
+    file_put_contents($dir.'/terraform.tfstate', 'encrypted-state-under-a-passphrase-about-to-be-forgotten');
+
+    expect(is_dir($dir))->toBeTrue();
+
+    tofuHelper()->removeWorkdir('destroy-then-recreate');
+
+    expect(is_dir($dir))->toBeFalse();
+});
+
+test('removeTofuWorkdir is a no-op when the stack was never provisioned', function () {
+    // No exception, no warning — just nothing to do.
+    tofuHelper()->removeWorkdir('never-existed-stack');
+    expect(true)->toBeTrue();
 });

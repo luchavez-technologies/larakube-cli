@@ -106,5 +106,12 @@ class CloudDestroyCommand extends Command
         $config = $this->getGlobalConfig();
         $config->removeStack($name);
         $config->save();
+
+        // removeStack() just cleared this stack's encryption passphrase — leaving
+        // its (now permanently undecryptable) local state file behind would break
+        // `cloud:create` under the same stack name later with a "cipher: message
+        // authentication failed" error, since a fresh passphrase can't decrypt
+        // ciphertext it never encrypted.
+        $this->removeTofuWorkdir($name);
     }
 }
