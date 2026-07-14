@@ -22,6 +22,7 @@ class VpnGrantCommand extends Command
         {--name= : The teammate this key is for (labels it so vpn:users/vpn:revoke can find it)}
         {--context= : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
         {--reusable : Allow multiple devices to join with this same key (default: single-use, one device)}
+        {--ephemeral : Auto-remove the peer once it goes stale/disconnects (for a CI runner, not a person\'s device)}
         {--expires=365 : Days until the key expires}
         {--json : Emit one machine-readable JSON result on stdout}';
 
@@ -88,9 +89,10 @@ class VpnGrantCommand extends Command
         }
 
         $reusable = (bool) $this->option('reusable');
+        $ephemeral = (bool) $this->option('ephemeral');
         $days = max(1, (int) $this->option('expires'));
 
-        $minted = $this->mintVpnSetupKey($host, $pat, $name, $reusable, $days);
+        $minted = $this->mintVpnSetupKey($host, $pat, $name, $reusable, $days, $ephemeral);
         if ($minted === null) {
             $this->laraKubeError('Could not mint the setup key — see the NetBird server output above.');
 

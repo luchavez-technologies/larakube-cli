@@ -111,13 +111,16 @@ trait InteractsWithVpn
     }
 
     /**
-     * Mint a NetBird setup key via the REST API — vpn:grant. Returns the
-     * decoded response (its `key` field is plaintext, only ever returned on
-     * create — every later GET redacts it), or null on any HTTP failure.
+     * Mint a NetBird setup key via the REST API — vpn:grant. $ephemeral marks
+     * any peer that joins through this key for auto-removal once it goes
+     * stale/disconnects — for a CI runner's throwaway peer identity, not a
+     * person's device. Returns the decoded response (its `key` field is
+     * plaintext, only ever returned on create — every later GET redacts it),
+     * or null on any HTTP failure.
      *
      * @return array<string, mixed>|null
      */
-    protected function mintVpnSetupKey(string $host, string $pat, string $name, bool $reusable, int $days): ?array
+    protected function mintVpnSetupKey(string $host, string $pat, string $name, bool $reusable, int $days, bool $ephemeral = false): ?array
     {
         $response = Http::timeout(15)
             ->withHeaders(['Authorization' => "Token {$pat}"])
@@ -126,6 +129,7 @@ trait InteractsWithVpn
                 'type' => 'reusable',
                 'expires_in' => $days * 86400,
                 'usage_limit' => $reusable ? 0 : 1,
+                'ephemeral' => $ephemeral,
             ]);
 
         if ($response->failed()) {

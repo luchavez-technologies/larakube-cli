@@ -72,3 +72,60 @@ test('GHA workflow generation uses correct literal injection syntax', function (
     // Verify no unresolved variable placeholders
     expect($workflowContent)->not->toContain('{{ $upperEnv }}');
 });
+
+function ghaWorkflowArgs(array $overrides = []): array
+{
+    $config = new ConfigData(name: 'test-app');
+    $config->setPackageManager(PackageManager::NPM);
+
+    return array_merge([
+        'config' => $config,
+        'environment' => 'production',
+        'branch' => 'main',
+        'appName' => 'test-app',
+        'namespace' => 'test-app-production',
+        'podName' => 'web',
+        'upperEnv' => 'PRODUCTION',
+        'secrets' => [
+            'k_env' => '${{ secrets.PRODUCTION_KUBECONFIG }}',
+            'k_base' => '${{ secrets.KUBECONFIG }}',
+            'e_env' => '${{ secrets.PRODUCTION_ENV_FILE_BASE64 }}',
+            'e_base' => '${{ secrets.ENV_FILE_BASE64 }}',
+            'vpn_key' => '${{ secrets.PRODUCTION_NETBIRD_SETUP_KEY }}',
+        ],
+        'gha' => [
+            'repository' => '${{ github.repository }}',
+            'actor' => '${{ github.actor }}',
+            'token' => '${{ secrets.GITHUB_TOKEN }}',
+            'sha' => '${{ github.sha }}',
+            'registry_provider' => 'ghcr',
+            'registry_host' => 'ghcr.io',
+            'image_name' => '${{ github.repository }}',
+            'k_data' => '${{ env.K_DATA }}',
+            'e_data' => '${{ env.E_DATA }}',
+            'image_latest' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest',
+            'image_sha' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ github.sha }}',
+            'composer_cache_key' => "composer-\${{ hashFiles('composer.lock') }}",
+        ],
+    ], $overrides);
+}
+
+test('the workflow connects to NetBird VPN before touching kubectl when the cluster has one', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaWorkflowArgs(['vpnHost' => 'vpn.example.com']))->render();
+
+    expect($workflowContent)
+        ->toContain('Connect to NetBird VPN')
+        ->toContain('sudo netbird up --management-url https://vpn.example.com --setup-key ${{ secrets.PRODUCTION_NETBIRD_SETUP_KEY }}');
+
+    $vpnPos = strpos($workflowContent, 'Connect to NetBird VPN');
+    $contextPos = strpos($workflowContent, 'Set Kubernetes context');
+    expect($vpnPos)->not->toBeFalse()->and($contextPos)->not->toBeFalse()
+        ->and($vpnPos)->toBeLessThan($contextPos);
+});
+
+test('the workflow has no VPN step at all when the environment has no VPN', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaWorkflowArgs(['vpnHost' => null]))->render();
+
+    expect($workflowContent)->not->toContain('Connect to NetBird VPN')
+        ->not->toContain('netbird up');
+});
