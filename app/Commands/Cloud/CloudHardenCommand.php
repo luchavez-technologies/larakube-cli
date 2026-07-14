@@ -7,6 +7,7 @@ use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\InteractsWithServerHardening;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
@@ -170,7 +171,67 @@ class CloudHardenCommand extends Command
             return null;
         }
 
+        // This join is what leads hardenServerScript() (below, via the returned
+        // VPN_CIDR) to restrict 6443 to the VPN overlay — but the kube-context's
+        // server URL (and everything minted from it: teammate grants, CI
+        // secrets) still points at the PUBLIC ip:6443. Traffic to a peer's
+        // public IP never routes through the NetBird tunnel — only traffic to
+        // its OWN overlay IP does — so that public-IP server URL is about to
+        // become permanently unreachable, even from a machine that's on the
+        // VPN. Repoint it at the VPS's own overlay IP now, before that happens.
+        $hostname = trim(Process::run("ssh -o BatchMode=yes -o StrictHostKeyChecking=no -i {$keyPath} -p {$port} {$user}@{$ip} hostname")->output());
+        $overlayIp = $hostname !== '' ? $this->pollVpnPeerIp($vpnKubectl, $vpnNamespace, $host, $hostname) : null;
+
+        if ($overlayIp) {
+            $this->rewriteClusterServer("larakube-{$ip}", $overlayIp, 6443);
+            $this->laraKubeInfo("Repointed kube-context 'larakube-{$ip}' to the VPN overlay IP ({$overlayIp}) — the public IP is about to stop accepting 6443 connections.");
+        } else {
+            $this->laraKubeWarn("Could not determine the VPS's own NetBird overlay IP — its kube-context still points at the public IP, which will stop accepting connections once 6443 is VPN-restricted below.");
+            $this->line("  Fix it once you find the IP (`larakube vpn:users {$environment}`): <fg=yellow>kubectl config set-cluster larakube-{$ip} --server=https://<overlay-ip>:6443</>");
+        }
+
         return self::VPN_CIDR;
+    }
+
+    /**
+     * Poll the NetBird peer list for the just-joined host's own overlay IP,
+     * matched by hostname (NetBird registers peers under the system hostname
+     * by default). `netbird up` can return before the peer is fully
+     * registered/visible via the API, so this retries briefly rather than
+     * checking once.
+     */
+    protected function pollVpnPeerIp(string $vpnKubectl, string $vpnNamespace, string $vpnHost, string $hostname): ?string
+    {
+        $pat = $this->fetchVpnPat($vpnKubectl, $vpnNamespace);
+        if ($pat === null) {
+            return null;
+        }
+
+        for ($i = 0; $i < 10; $i++) {
+            $peers = $this->listVpnPeers($vpnHost, $pat) ?? [];
+            foreach ($peers as $peer) {
+                if (($peer['hostname'] ?? '') === $hostname) {
+                    return $peer['ip'] ?? null;
+                }
+            }
+            $this->pollDelay();
+        }
+
+        return null;
+    }
+
+    /** Overridable so tests don't burn 20s waiting out the real retry loop. */
+    protected function pollDelay(): void
+    {
+        sleep(2);
+    }
+
+    /** Update a kube-context's cluster server URL — the official kubectl-native way to edit it. */
+    protected function rewriteClusterServer(string $clusterName, string $newIp, int $port): bool
+    {
+        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
+        return Process::run("{$kubectl} config set-cluster ".escapeshellarg($clusterName).' --server='.escapeshellarg("https://{$newIp}:{$port}"))->successful();
     }
 
     /**
