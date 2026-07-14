@@ -54,6 +54,17 @@ class CloudData extends Data
          * is the "scoped CI is set up" marker; lets us warn when a token is stale.
          */
         public ?string $rbacGrantedAt = null,
+        /**
+         * This VPS's own NetBird overlay IP, once cloud:harden has joined it to
+         * the project's VPN — SSH-consuming commands prefer this over $ip once
+         * set. Deliberately separate from $ip (never overwritten): $ip stays the
+         * public address the `larakube-{ip}` kube-context is derived from, and
+         * cloud:harden's VPN-CIDR restriction makes that public address
+         * unreachable for SSH/6443 going forward regardless of who's asking —
+         * traffic to a peer's public IP never routes through the NetBird
+         * tunnel, only traffic to its own overlay IP does.
+         */
+        public ?string $vpnIp = null,
     ) {
         $this->key = $key ?? ($_SERVER['HOME'] ?? '').'/.ssh/id_rsa';
     }

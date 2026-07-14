@@ -2,6 +2,7 @@
 
 namespace App\Commands\Cloud;
 
+use App\Data\CloudData;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\InteractsWithServerHardening;
@@ -48,8 +49,19 @@ class CloudHardenCommand extends Command
             return 1;
         }
 
-        $this->laraKubeInfo("Testing SSH connection to {$user}@{$ip}...");
-        if (! $this->testSsh($user, $ip, $port, $keyPath)) {
+        // $ip stays the box's stable, PUBLIC identity throughout this command
+        // (the kube-context is deterministically "larakube-{$ip}" — it must
+        // never drift). $sshIp is what actually gets dialed: once a prior
+        // cloud:harden run joined this box to the VPN, its public IP is
+        // VPN-restricted and unreachable for SSH regardless of who's asking,
+        // so every real SSH call below prefers its recorded overlay IP.
+        $sshIp = $this->preferredSshIp($environment, $ip);
+        if ($sshIp !== $ip) {
+            $this->line("  <fg=gray>Connecting via its VPN overlay IP:</> <fg=cyan>{$sshIp}</>");
+        }
+
+        $this->laraKubeInfo("Testing SSH connection to {$user}@{$sshIp}...");
+        if (! $this->testSsh($user, $sshIp, $port, $keyPath)) {
             $this->laraKubeError('Could not connect via SSH. Check the IP, user, port and key.');
 
             return 1;
@@ -102,18 +114,18 @@ class CloudHardenCommand extends Command
 
         $vpnCidr = null;
         if ($joinVpn) {
-            $vpnCidr = $this->joinVpn($user, $ip, $port, $keyPath, $vpnKubectl, $vpnNamespace, $environment);
+            $vpnCidr = $this->joinVpn($user, $ip, $sshIp, $port, $keyPath, $vpnKubectl, $vpnNamespace, $environment);
         }
 
         $this->laraKubeInfo('Hardening server...');
-        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->hardenServerScript((int) $port, adminCidr: $adminCidr, vpnCidr: $vpnCidr))) {
+        if (! $this->runRemoteCommand($user, $sshIp, $port, $keyPath, $this->hardenServerScript((int) $port, adminCidr: $adminCidr, vpnCidr: $vpnCidr))) {
             $this->laraKubeError('Hardening failed partway through — see the remote output above. The firewall may NOT be enabled.');
             $this->line('  👉 Re-run once the box is stable: larakube cloud:harden'.($adminCidr ? " --admin-cidr={$adminCidr}" : ''));
 
             return 1;
         }
 
-        $this->rebootIfRequired($user, $ip, $port, $keyPath);
+        $this->rebootIfRequired($user, $sshIp, $port, $keyPath);
 
         $accessNote = collect([
             $adminCidr ? "restricted to {$adminCidr}" : null,
@@ -130,7 +142,7 @@ class CloudHardenCommand extends Command
         if ($user !== 'root') {
             $this->newLine();
             if (confirm('Also disable remote root SSH login? (you are connected as a working sudo user)', false)) {
-                if ($this->runRemoteCommand($user, $ip, $port, $keyPath, $this->disableRootLoginScript())) {
+                if ($this->runRemoteCommand($user, $sshIp, $port, $keyPath, $this->disableRootLoginScript())) {
                     $this->laraKubeInfo('✅ Remote root login disabled.');
                 } else {
                     $this->laraKubeError('Disabling root login failed — see the remote output above. Root login is still ENABLED.');
@@ -150,8 +162,11 @@ class CloudHardenCommand extends Command
      * NetBird overlay CIDR to allowlist on success, null on any failure (the
      * caller falls back to whatever $adminCidr already covers — a failed VPN
      * join never blocks hardening, it only means the VPN allow-rule is skipped).
+     * $ip is the box's stable PUBLIC identity (the kube-context is
+     * deterministically "larakube-{$ip}"); $sshIp is what's actually dialed —
+     * they differ once a prior run already repointed this env at the overlay IP.
      */
-    protected function joinVpn($user, $ip, $port, $keyPath, string $vpnKubectl, string $vpnNamespace, string $environment): ?string
+    protected function joinVpn($user, $ip, $sshIp, $port, $keyPath, string $vpnKubectl, string $vpnNamespace, string $environment): ?string
     {
         $config = $this->isLaraKubeProject(false) ? $this->getProjectConfigObject(getcwd()) : null;
         $host = $this->resolveVpnHostReadOnly($environment, $config);
@@ -165,7 +180,7 @@ class CloudHardenCommand extends Command
         $this->registerSecret($setupKey);
 
         $this->laraKubeInfo('Joining NetBird VPN...');
-        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->joinNetBirdScript($setupKey, $host))) {
+        if (! $this->runRemoteCommand($user, $sshIp, $port, $keyPath, $this->joinNetBirdScript($setupKey, $host))) {
             $this->laraKubeWarn('NetBird join failed — see the remote output above. Skipping the VPN allow-rule.');
 
             return null;
@@ -179,11 +194,14 @@ class CloudHardenCommand extends Command
         // its OWN overlay IP does — so that public-IP server URL is about to
         // become permanently unreachable, even from a machine that's on the
         // VPN. Repoint it at the VPS's own overlay IP now, before that happens.
-        $hostname = trim(Process::run("ssh -o BatchMode=yes -o StrictHostKeyChecking=no -i {$keyPath} -p {$port} {$user}@{$ip} hostname")->output());
+        // Already-joined (a re-run): the peer's IP never changes, so this is a
+        // harmless no-op re-detect + re-apply.
+        $hostname = trim(Process::run("ssh -o BatchMode=yes -o StrictHostKeyChecking=no -i {$keyPath} -p {$port} {$user}@{$sshIp} hostname")->output());
         $overlayIp = $hostname !== '' ? $this->pollVpnPeerIp($vpnKubectl, $vpnNamespace, $host, $hostname) : null;
 
         if ($overlayIp) {
             $this->rewriteClusterServer("larakube-{$ip}", $overlayIp, 6443);
+            $this->persistVpnIp($environment, $overlayIp);
             $this->laraKubeInfo("Repointed kube-context 'larakube-{$ip}' to the VPN overlay IP ({$overlayIp}) — the public IP is about to stop accepting 6443 connections.");
         } else {
             $this->laraKubeWarn("Could not determine the VPS's own NetBird overlay IP — its kube-context still points at the public IP, which will stop accepting connections once 6443 is VPN-restricted below.");
@@ -191,6 +209,41 @@ class CloudHardenCommand extends Command
         }
 
         return self::VPN_CIDR;
+    }
+
+    /**
+     * Record the VPS's own overlay IP on its environment's cloud config —
+     * $ip itself stays untouched (the kube-context name is derived from it,
+     * and it survives as the identity for a box that ISN'T VPN-restricted).
+     * SSH-consuming code (resolveConnection() below) prefers $vpnIp once set.
+     * A no-op outside a project or for an environment with no recorded cloud
+     * target — nothing to update.
+     */
+    protected function persistVpnIp(string $environment, string $overlayIp): void
+    {
+        if (! $this->isLaraKubeProject(false)) {
+            return;
+        }
+
+        $projectPath = getcwd();
+        $config = $this->getProjectConfigObject($projectPath);
+        $cloud = $config->getCloud($environment);
+        if ($cloud === null) {
+            return;
+        }
+
+        $config->setCloud($environment, new CloudData(
+            ip: $cloud->ip,
+            user: $cloud->user,
+            port: $cloud->port,
+            key: $cloud->key,
+            context: $cloud->context,
+            provider: $cloud->provider,
+            arch: $cloud->arch,
+            rbacGrantedAt: $cloud->rbacGrantedAt,
+            vpnIp: $overlayIp,
+        ));
+        $config->saveToFile($projectPath);
     }
 
     /**
@@ -232,6 +285,24 @@ class CloudHardenCommand extends Command
         $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
         return Process::run("{$kubectl} config set-cluster ".escapeshellarg($clusterName).' --server='.escapeshellarg("https://{$newIp}:{$port}"))->successful();
+    }
+
+    /**
+     * The IP to actually dial for SSH — $cloud->vpnIp when a prior
+     * cloud:harden run recorded one for this environment (its public IP is
+     * then VPN-restricted and unreachable regardless of who's asking), else
+     * $ip unchanged. Standalone (no environment/project) always uses $ip —
+     * nowhere to have recorded a vpnIp in the first place.
+     */
+    protected function preferredSshIp(string $environment, string $ip): string
+    {
+        if ($environment === '' || ! $this->isLaraKubeProject(false)) {
+            return $ip;
+        }
+
+        $cloud = $this->getProjectConfigObject(getcwd())->getCloud($environment);
+
+        return $cloud?->vpnIp ?: $ip;
     }
 
     /**
