@@ -42,14 +42,12 @@ spec:
               mountPath: /etc/netbird/management.json
               subPath: management.json
           readinessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 80
             initialDelaySeconds: 10
             periodSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 80
             initialDelaySeconds: 15
             periodSeconds: 10
@@ -66,6 +64,8 @@ kind: Service
 metadata:
   name: netbird-management
   namespace: larakube-vpn
+  annotations:
+    traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
     app: netbird-management
@@ -170,30 +170,5 @@ spec:
       port: 33080
       targetPort: 33080
   type: ClusterIP
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: netbird-client
-  namespace: larakube-vpn
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: netbird-client
-  template:
-    metadata:
-      labels:
-        app: netbird-client
-    spec:
-      containers:
-        - name: client
-          image: netbirdio/netbird:0.74.4
-          securityContext:
-            capabilities:
-              add: ["NET_ADMIN"]
-          env:
-            - name: NB_MANAGEMENT_URL
-              value: "http://netbird-management:80"
 ---
 @include('k8s.vpn.ingress')

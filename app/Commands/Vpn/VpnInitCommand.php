@@ -5,6 +5,7 @@ namespace App\Commands\Vpn;
 use App\Data\ConfigData;
 use App\Enums\SharedClusterService;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
@@ -18,7 +19,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class VpnInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, StreamsProcessOutput;
+    use InteractsWithClusterContext, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'vpn:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the NetBird VPN host.}
@@ -40,10 +41,12 @@ class VpnInitCommand extends Command
 
     protected function deployVpn(): int
     {
-        $kubectl = $this->vpnKubectl($this->option('context'));
         $ns = $this->vpnNamespace();
+        $config = $this->getProjectConfig();
+        $env = $this->resolveEnvironment($config);
+        $kubectl = $this->vpnKubectl($this->resolveVpnContext($env, $config));
 
-        $host = $this->resolveVpnHost();
+        $host = $this->resolveVpnHost($env, $config);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -57,6 +60,7 @@ class VpnInitCommand extends Command
 
         $manifest = view('k8s.vpn.shared', [
             'host' => $host,
+            'isLocal' => $env === 'local',
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-vpn.yaml';
@@ -77,12 +81,23 @@ class VpnInitCommand extends Command
             "{$kubectl} rollout status deploy/netbird-relay -n {$ns} --timeout=120s",
             130,
         ));
+
+        // The client Deployment authenticates with NB_SETUP_KEY, so it can only
+        // be applied AFTER bootstrapVpnAuth() mints one — applying it earlier
+        // would leave it permanently unable to log in (no key to reference yet).
+        $this->bootstrapVpnAuth($kubectl, $ns, $host);
+
+        $clientManifest = view('k8s.vpn.client')->render();
+        $clientTmp = sys_get_temp_dir().'/larakube-vpn-client.yaml';
+        file_put_contents($clientTmp, $clientManifest);
+
+        $this->withSpin('Deploying NetBird Client...', fn () => $this->runStreaming("{$kubectl} apply -f {$clientTmp}"));
+        @unlink($clientTmp);
+
         $this->withSpin('Waiting for NetBird Client...', fn () => $this->runStreaming(
             "{$kubectl} rollout status deploy/netbird-client -n {$ns} --timeout=120s",
             130,
         ));
-
-        $this->bootstrapVpnAuth($kubectl, $ns, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ NetBird VPN stack is live.');
@@ -95,8 +110,10 @@ class VpnInitCommand extends Command
 
     protected function removeVpn(): int
     {
-        $kubectl = $this->vpnKubectl($this->option('context'));
         $ns = $this->vpnNamespace();
+        $config = $this->getProjectConfig();
+        $env = $this->resolveEnvironment($config);
+        $kubectl = $this->vpnKubectl($this->resolveVpnContext($env, $config));
 
         $this->withSpin('Removing NetBird VPN namespace...', fn () => Process::run(
             "{$kubectl} delete namespace {$ns} --ignore-not-found",
@@ -125,9 +142,21 @@ class VpnInitCommand extends Command
             $relaySecret = bin2hex(random_bytes(16));
             $this->registerSecret($relaySecret);
 
+            // management.json is mounted from a Secret via subPath, which k8s
+            // always mounts read-only — so this key must be baked in up front.
+            // Without it, netbird-management tries to generate + write one back
+            // to the file on first boot and crashloops on "read-only file system".
+            // Also doubles as EmbeddedIdP's EncryptionKey (below) — without that
+            // block (undocumented in NetBird's own automated-setup guide; found
+            // by trial and error), POST /api/setup fails with "embedded IDP is
+            // not enabled".
+            $dataStoreEncryptionKey = base64_encode(random_bytes(32));
+            $this->registerSecret($dataStoreEncryptionKey);
+
             $managementConfig = view('k8s.vpn.management-config', [
                 'host' => $host,
                 'relaySecret' => $relaySecret,
+                'dataStoreEncryptionKey' => $dataStoreEncryptionKey,
             ])->render();
 
             $tmp = sys_get_temp_dir().'/larakube-vpn-management.json';
@@ -210,7 +239,7 @@ class VpnInitCommand extends Command
     /**
      * Resolve the NetBird VPN ingress host for this install.
      */
-    protected function resolveVpnHost(): string
+    protected function resolveVpnHost(string $env, ?ConfigData $config): string
     {
         $service = SharedClusterService::VPN;
 
@@ -219,19 +248,17 @@ class VpnInitCommand extends Command
             return $service->hostFor($domain);
         }
 
-        $env = $this->resolveEnvironment();
-
         if ($env === 'local') {
             return (string) $this->resolveVpnHostReadOnly('local', null);
         }
 
-        return $this->promptForCloudVpnHost($service, $env);
+        return $this->promptForCloudVpnHost($service, $env, $config);
     }
 
     /**
      * Decide which environment this install targets.
      */
-    protected function resolveEnvironment(): string
+    protected function resolveEnvironment(?ConfigData $config): string
     {
         $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
         if ($explicit !== '') {
@@ -241,11 +268,6 @@ class VpnInitCommand extends Command
         if ($this->option('no-interaction') || $this->option('domain')) {
             return 'local';
         }
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
 
         $envs = $config ? array_merge(['local'], $config->getCloudEnvironments()) : ['local'];
 
@@ -260,13 +282,8 @@ class VpnInitCommand extends Command
     /**
      * Prompt for (and persist) a non-local NetBird VPN host.
      */
-    protected function promptForCloudVpnHost(SharedClusterService $service, string $env): string
+    protected function promptForCloudVpnHost(SharedClusterService $service, string $env, ?ConfigData $config): string
     {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
         $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
         if ($existing) {
             return $existing;
@@ -285,7 +302,7 @@ class VpnInitCommand extends Command
 
         if ($config) {
             $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
+            $config->saveToFile(getcwd());
             $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
         }
 

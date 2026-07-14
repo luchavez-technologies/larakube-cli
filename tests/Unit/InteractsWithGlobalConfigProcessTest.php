@@ -25,6 +25,24 @@ function globalConfigHelper(): object
     };
 }
 
+function globalConfigEmailHelper(): object
+{
+    return new class
+    {
+        use InteractsWithGlobalConfig, InteractsWithOs;
+
+        public function error(string $email): ?string
+        {
+            return $this->acmeEmailError($email);
+        }
+
+        public function stored(?string $email): ?string
+        {
+            return $this->validStoredEmail($email);
+        }
+    };
+}
+
 function globalConfigHelperOnDarwin(): object
 {
     return new class
@@ -65,6 +83,30 @@ test('getGhCommand falls back to the dockerized gh when nothing resolves to a re
     }
 
     expect(globalConfigHelper()->gh())->toContain('docker run');
+});
+
+test('acmeEmailError rejects syntactically invalid input without touching the network', function () {
+    expect(globalConfigEmailHelper()->error('not-an-email'))->not->toBeNull();
+});
+
+test('acmeEmailError rejects example.com/.net/.org — Let\'s Encrypt refuses their published Null MX record', function () {
+    $helper = globalConfigEmailHelper();
+
+    expect($helper->error('admin@example.com'))->not->toBeNull()
+        ->and($helper->error('admin@example.net'))->not->toBeNull()
+        ->and($helper->error('admin@example.org'))->not->toBeNull();
+});
+
+test('acmeEmailError accepts a real, deliverable address', function () {
+    expect(globalConfigEmailHelper()->error('admin@gmail.com'))->toBeNull();
+});
+
+test('validStoredEmail discards a stored-but-undeliverable email, forcing a fresh prompt', function () {
+    $helper = globalConfigEmailHelper();
+
+    expect($helper->stored('admin@example.com'))->toBeNull()
+        ->and($helper->stored(null))->toBeNull()
+        ->and($helper->stored('admin@gmail.com'))->toBe('admin@gmail.com');
 });
 
 test('checkCaTrust on macOS reflects whether the CA is in the keychain', function () {

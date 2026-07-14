@@ -1,5 +1,7 @@
 <?php
 
+use App\Data\CloudData;
+use App\Data\ConfigData;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
@@ -34,6 +36,46 @@ test('vpn:init deploys netbird vpn to larakube-vpn', function () {
         ->expectsOutputToContain('NetBird VPN stack is live.');
 
     Http::assertNothingSent();
+});
+
+test('vpn:init targets the CHOSEN environment\'s own saved context, never the ambient current context', function () {
+    $dir = sys_get_temp_dir().'/vpn-init-'.uniqid();
+    mkdir($dir, 0755, true);
+    $original = getcwd();
+    chdir($dir);
+
+    $config = ConfigData::from([
+        'name' => 'demo',
+        'database' => 'sqlite',
+        'environments' => ['local' => [], 'production' => []],
+    ]);
+    $config->setCloud('production', new CloudData(ip: '203.0.113.10', user: 'deploy'));
+    $config->saveToFile($dir);
+
+    $kubectl = vpnInitKubectl().' --context=larakube-203.0.113.10';
+
+    try {
+        Process::fake([
+            "{$kubectl} create namespace larakube-vpn*" => Process::result(output: 'namespace/larakube-vpn created'),
+            "{$kubectl} apply -f *" => Process::result(output: 'applied'),
+            "{$kubectl} rollout status deploy/netbird-management -n larakube-vpn*" => Process::result(output: 'rollout success'),
+            "{$kubectl} rollout status deploy/netbird-signal -n larakube-vpn*" => Process::result(output: 'rollout success'),
+            "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
+            "{$kubectl} rollout status deploy/netbird-client -n larakube-vpn*" => Process::result(output: 'rollout success'),
+            "{$kubectl} get secret netbird-admin -n larakube-vpn*" => Process::result(output: 'netbird-admin', exitCode: 0),
+            "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
+        ]);
+        Process::preventStrayProcesses();
+
+        $this->artisan('vpn:init production --domain=example.com')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('NetBird VPN stack is live.');
+
+        Http::assertNothingSent();
+    } finally {
+        chdir($original);
+        exec('rm -rf '.escapeshellarg($dir));
+    }
 });
 
 test('vpn:init removes netbird vpn namespace when --remove is passed', function () {
@@ -94,6 +136,37 @@ test('vpn:init warns but does not fail when NetBird auth bootstrap fails', funct
     $this->artisan('vpn:init local')
         ->assertExitCode(0)
         ->expectsOutputToContain('Could not bootstrap NetBird auth automatically');
+});
+
+test('vpn:init --remove also targets the CHOSEN environment\'s own saved context', function () {
+    $dir = sys_get_temp_dir().'/vpn-init-remove-'.uniqid();
+    mkdir($dir, 0755, true);
+    $original = getcwd();
+    chdir($dir);
+
+    $config = ConfigData::from([
+        'name' => 'demo',
+        'database' => 'sqlite',
+        'environments' => ['local' => [], 'production' => []],
+    ]);
+    $config->setCloud('production', new CloudData(ip: '203.0.113.10', user: 'deploy'));
+    $config->saveToFile($dir);
+
+    $kubectl = vpnInitKubectl().' --context=larakube-203.0.113.10';
+
+    try {
+        Process::fake([
+            "{$kubectl} delete namespace larakube-vpn*" => Process::result(output: 'deleted'),
+        ]);
+        Process::preventStrayProcesses();
+
+        $this->artisan('vpn:init production --remove')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('NetBird VPN removed from larakube-vpn.');
+    } finally {
+        chdir($original);
+        exec('rm -rf '.escapeshellarg($dir));
+    }
 });
 
 test('vpn:init generates the relay secret + management.json on first run', function () {

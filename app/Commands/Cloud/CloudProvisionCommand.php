@@ -99,13 +99,13 @@ class CloudProvisionCommand extends Command
         }
 
         // --- 🛡 GLOBAL SECURITY CONTEXT ---
-        $email = $this->getEmail();
+        $email = $this->validStoredEmail($this->getEmail());
         if (! $email) {
             $email = text(
                 label: 'What is your email address? (used for SSL/Let\'sEncrypt)',
-                placeholder: 'admin@example.com',
+                placeholder: 'you@yourdomain.com',
                 required: true,
-                validate: fn (string $value) => filter_var($value, FILTER_VALIDATE_EMAIL) ? null : 'Please enter a valid email address.',
+                validate: fn (string $value) => $this->acmeEmailError($value),
             );
             $this->setEmail($email);
         }

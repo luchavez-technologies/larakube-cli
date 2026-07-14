@@ -2,17 +2,17 @@
 
 namespace App\Commands\Vpn;
 
-use App\Data\ConfigData;
 use App\Traits\DetectsWsl;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithOs;
+use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class VpnJoinCommand extends Command
 {
-    use DetectsWsl, InteractsWithClusterContext, InteractsWithOs, InteractsWithVpn, LaraKubeOutput;
+    use DetectsWsl, InteractsWithClusterContext, InteractsWithOs, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput;
 
     protected $signature = 'vpn:join
         {environment=local : Environment whose NetBird VPN to join}
@@ -41,7 +41,8 @@ class VpnJoinCommand extends Command
         }
 
         $env = (string) $this->argument('environment');
-        $kubectl = $this->vpnKubectl($this->option('context'));
+        $config = $this->getProjectConfig();
+        $kubectl = $this->vpnKubectl($this->resolveVpnContext($env, $config));
         $ns = $this->vpnNamespace();
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {
@@ -51,10 +52,6 @@ class VpnJoinCommand extends Command
             return 1;
         }
 
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
         $host = $this->resolveVpnHostReadOnly($env, $config);
 
         if (! $host) {

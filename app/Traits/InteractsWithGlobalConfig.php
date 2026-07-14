@@ -6,6 +6,8 @@ use App\Data\GlobalConfigData;
 use App\Enums\AiProvider;
 use App\State;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 trait InteractsWithGlobalConfig
 {
@@ -84,6 +86,29 @@ trait InteractsWithGlobalConfig
         $config = $this->getGlobalConfig();
         $config->setEmail($email);
         $config->save();
+    }
+
+    /**
+     * RFC-compliant + a live MX check — rejects domains that explicitly
+     * refuse mail (RFC 7505 "Null MX", which example.com/.net/.org publish),
+     * which plain FILTER_VALIDATE_EMAIL lets through since they're
+     * syntactically valid. Used as the ACME contact for Let's Encrypt, which
+     * rejects those same domains outright.
+     */
+    protected function acmeEmailError(string $value): ?string
+    {
+        $validator = Validator::make(
+            ['email' => $value],
+            ['email' => ['required', Rule::email()->rfcCompliant()->validateMxRecord()]],
+        );
+
+        return $validator->fails() ? $validator->errors()->first('email') : null;
+    }
+
+    /** A stored email, but only if it'd actually pass ACME validation — else null, forcing a fresh prompt. */
+    protected function validStoredEmail(?string $email): ?string
+    {
+        return $email && ! $this->acmeEmailError($email) ? $email : null;
     }
 
     protected function getDefaultCloudProvider(): string

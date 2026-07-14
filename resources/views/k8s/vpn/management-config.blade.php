@@ -15,8 +15,12 @@
     "CredentialsTTL": "24h",
     "Secret": "{{ $relaySecret }}"
   },
-  "HttpConfig": {
-    "Address": "0.0.0.0:80"
+  "DataDir": "/var/lib/netbird",
+  "DataStoreEncryptionKey": "{{ $dataStoreEncryptionKey }}",
+  "EmbeddedIdP": {
+    "Enabled": true,
+    "DataDir": "/var/lib/netbird/idp",
+    "Issuer": "https://{{ $host }}"
   },
-  "DataDir": "/var/lib/netbird"
+  "EncryptionKey": "{{ $dataStoreEncryptionKey }}"
 }

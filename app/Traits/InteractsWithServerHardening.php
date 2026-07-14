@@ -49,7 +49,17 @@ trait InteractsWithServerHardening
         $trustedCidrs = array_filter([$adminCidr, $vpnCidr], fn (?string $cidr) => $cidr !== null);
 
         if ($trustedCidrs !== []) {
-            $allows = '';
+            // A prior open run (or cloud:init's own default) may have already
+            // added a blanket "allow from anywhere" rule for these ports — UFW
+            // allows a connection if ANY rule permits it, so the CIDR-scoped
+            // rule below would have no effect unless that one is removed first.
+            // --force skips its interactive "proceed?" prompt; the || true
+            // guard (combined with `set -e` below) makes this a no-op on a
+            // fresh/already-restricted box where the open rule never existed.
+            $allows = "ufw --force delete allow {$sshPort}/tcp 2>/dev/null || true\n";
+            foreach ($restrictedPorts as $port) {
+                $allows .= "ufw --force delete allow {$port}/tcp 2>/dev/null || true\n";
+            }
             foreach ($trustedCidrs as $cidr) {
                 $allows .= "ufw allow from {$cidr} to any port {$sshPort} proto tcp\n";
                 foreach ($restrictedPorts as $port) {
