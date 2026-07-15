@@ -17,5 +17,21 @@
     "compactors": [
         "KevinGH\\Box\\Compactor\\Php",
         "KevinGH\\Box\\Compactor\\Json"
+    ],
+    "blacklist": [
+        "resources/ai",
+        "plans",
+        "tests",
+        "builds",
+        ".github",
+        "ARCHITECTURE.md",
+        "CONTRIBUTING.md",
+        "GEMINI.md",
+        "README.md",
+        "phpstan.neon",
+        "phpunit.xml.dist",
+        "tests.xml",
+        "pint.json",
+        ".agents"
     ]
 }
