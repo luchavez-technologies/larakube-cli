@@ -31,12 +31,14 @@ trait ResolvesEnvironmentContext
         return 'larakube-'.$ip;
     }
 
-    /** A `kubectl` prefix scoped to a context (or plain kubectl when null). Pure. */
+    /** A `kubectl` prefix scoped to a context (or plain kubectl when null), pinned to ~/.kube/config. */
     public function contextKubectl(?string $context): string
     {
+        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
         return $context !== null && $context !== ''
-            ? 'kubectl --context '.escapeshellarg($context)
-            : 'kubectl';
+            ? $kubectl.' --context '.escapeshellarg($context)
+            : $kubectl;
     }
 
     /**
@@ -361,7 +363,7 @@ trait ResolvesEnvironmentContext
     protected function clusterNodeCount(string $context): int
     {
         $out = trim(Process::run(
-            'kubectl --context '.escapeshellarg($context).' get nodes -o jsonpath='.escapeshellarg('{.items[*].metadata.name}'),
+            $this->contextKubectl($context).' get nodes -o jsonpath='.escapeshellarg('{.items[*].metadata.name}'),
         )->output());
 
         return $out === '' ? 0 : count(preg_split('/\s+/', $out) ?: []);
@@ -375,7 +377,7 @@ trait ResolvesEnvironmentContext
      */
     protected function availableKubeContexts(): array
     {
-        $lines = explode("\n", Process::run('kubectl config get-contexts -o name')->output());
+        $lines = explode("\n", Process::run($this->contextKubectl(null).' config get-contexts -o name')->output());
 
         return array_values(array_filter(array_map('trim', $lines)));
     }
@@ -383,6 +385,6 @@ trait ResolvesEnvironmentContext
     /** The kubeconfig's currently active context, or '' when there isn't one. */
     protected function currentKubeContext(): string
     {
-        return trim(Process::run('kubectl config current-context')->output());
+        return trim(Process::run($this->contextKubectl(null).' config current-context')->output());
     }
 }

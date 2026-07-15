@@ -15,12 +15,13 @@ trait InteractsWithErrors
         return 'larakube-shared';
     }
 
-    /** Build the kubectl command, optionally scoped to a specific context. */
+    /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
     protected function errorsKubectl(?string $context = null): string
     {
         $context = (string) ($context ?? '');
+        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-        return $context !== '' ? "kubectl --context={$context}" : 'kubectl';
+        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /** GlitchTip web Deployment present? A cheap "is GlitchTip installed" probe. */

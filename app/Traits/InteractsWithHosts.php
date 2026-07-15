@@ -44,8 +44,12 @@ trait InteractsWithHosts
      *
      * @param  array  $customHosts  Optional specific hosts to map. If empty, uses the current project's hosts.
      * @param  string|null  $customAppName  Optional app name to group the block. Defaults to the current directory name.
+     * @return string|null A one-line summary if the Windows hosts file (WSL2 only) needed syncing but
+     *                     wasn't fully synced — null otherwise. Every other outcome here already prints
+     *                     inline; this return value exists solely so a long-running caller (UpCommand)
+     *                     can re-surface it as an end-of-run reminder instead of it scrolling away.
      */
-    protected function ensureHostsAreSet(array $customHosts = [], ?string $customAppName = null): void
+    protected function ensureHostsAreSet(array $customHosts = [], ?string $customAppName = null): ?string
     {
         $projectPath = getcwd();
         $appName = $customAppName ?? basename($projectPath);
@@ -58,7 +62,7 @@ trait InteractsWithHosts
             // pre-step; skip it rather than crash (getProjectConfig already
             // surfaced the reason if the file exists but is invalid).
             if (! $config) {
-                return;
+                return null;
             }
 
             $requiredHosts = array_keys($config->getAllHosts('local'));
@@ -67,7 +71,7 @@ trait InteractsWithHosts
         }
 
         if (empty($requiredHosts)) {
-            return;
+            return null;
         }
 
         // If dnsmasq is already wildcarding this project's TLD (its own pinned
@@ -78,7 +82,7 @@ trait InteractsWithHosts
         $tld = $config?->getLocalTld() ?? GlobalConfigData::load()->getLocalTld();
 
         if (! $this->isWsl() && $this->dnsmasqCoversKube($tld)) {
-            return;
+            return null;
         }
 
         // dnsmasq is set up but doesn't know about this TLD yet — offer to extend it.
@@ -89,13 +93,14 @@ trait InteractsWithHosts
         ) {
             $this->configureDnsmasq($tld);
 
-            return;
+            return null;
         }
 
         // 🪟 WSL: the Windows browser can't see WSL's /etc/hosts, so also sync
         // the Windows hosts file. Done first/independently of the Linux sync.
+        $windowsWarning = null;
         if ($this->isWsl()) {
-            $this->ensureWindowsHostsAreSet($requiredHosts, $appName);
+            $windowsWarning = $this->ensureWindowsHostsAreSet($requiredHosts, $appName);
         }
 
         $externalIp = $this->resolveIngressIp();
@@ -106,7 +111,7 @@ trait InteractsWithHosts
 
         // 1. Check if update is actually needed
         if (! file_exists('/etc/hosts')) {
-            return;
+            return $windowsWarning;
         }
 
         // If running inside a container, we usually can't update the host's /etc/hosts
@@ -117,13 +122,13 @@ trait InteractsWithHosts
             $this->line("     $newEntry");
             $this->line('');
 
-            return;
+            return $windowsWarning;
         }
 
         $currentHosts = file_get_contents('/etc/hosts');
 
         if (str_contains($currentHosts, $fullBlock)) {
-            return;
+            return $windowsWarning;
         }
 
         $this->laraKubeInfo('Local domain mapping update required.');
@@ -149,6 +154,8 @@ trait InteractsWithHosts
                 $this->laraKubeError('Failed to update /etc/hosts. Check your sudo permissions and try again.');
             }
         }
+
+        return $windowsWarning;
     }
 
     /**
@@ -304,7 +311,7 @@ trait InteractsWithHosts
      */
     protected function syncWindowsHosts(array $hosts, string $appName): void
     {
-        $winHosts = '/mnt/c/Windows/System32/drivers/etc/hosts';
+        $winHosts = $this->windowsHostsPath();
         if (! file_exists($winHosts)) {
             return;
         }
@@ -350,12 +357,12 @@ trait InteractsWithHosts
      *
      * @param  array<int, string>  $requiredHosts
      */
-    protected function ensureWindowsHostsAreSet(array $requiredHosts, string $appName): void
+    protected function ensureWindowsHostsAreSet(array $requiredHosts, string $appName): ?string
     {
-        $winHosts = '/mnt/c/Windows/System32/drivers/etc/hosts';
+        $winHosts = $this->windowsHostsPath();
 
         if (! file_exists($winHosts)) {
-            return; // Non-standard WSL mount; nothing we can safely do.
+            return null; // Non-standard WSL mount; nothing we can safely do.
         }
 
         $blockIdentifier = "# LaraKube: $appName";
@@ -367,7 +374,7 @@ trait InteractsWithHosts
 
         // Already in sync (ignoring trailing-whitespace differences).
         if (rtrim($updated) === rtrim($current)) {
-            return;
+            return null;
         }
 
         $this->laraKubeInfo('Windows hosts file needs updating (so your Windows browser resolves these).');
@@ -383,24 +390,33 @@ trait InteractsWithHosts
         // while everything else keeps working, which is a confusing bug to
         // diagnose. Defaulting to Yes means the common case (elevation works)
         // just works; declining still falls back to the manual instructions above.
+        //
+        // Every non-success path below ALSO returns a one-line summary, not just
+        // void — a warning printed once here is easy to lose under the 100+ lines
+        // `up` prints afterward (namespace creation, env injection, kustomize
+        // apply, restarts, ...). Callers that care (UpCommand) collect these and
+        // re-print them as a reminder at the very end of the run, where they're
+        // actually still visible.
         if (! confirm('Or have LaraKube try to sync it now via a Windows admin prompt?', true)) {
-            return;
+            return "Windows hosts file for {$appName} wasn't synced — add manually: {$entry}";
         }
 
         if (! $this->hasWslInterop()) {
             $this->warnWslInteropDown();
             $this->printWindowsHostsManualHelp($entry);
 
-            return;
+            return "WSL interop is down, so the Windows hosts file for {$appName} wasn't synced — run 'wsl --shutdown' from PowerShell, reopen your terminal, then re-run.";
         }
 
         if (! $this->syncWindowsHostsFile($updated, $entry)) {
             $this->laraKubeWarn('Could not sync the Windows hosts file automatically.');
 
-            return;
+            return "Windows hosts file sync failed for {$appName} — add manually: {$entry}";
         }
 
         $this->laraKubeInfo('Windows hosts file synchronized!');
+
+        return null;
     }
 
     /**
@@ -444,16 +460,36 @@ trait InteractsWithHosts
         $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
             ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$winScript}'";
 
+        // -Wait blocks until the UAC dialog resolves. On multi-monitor setups (or
+        // Windows Terminal in general) that dialog can render off the active
+        // window/monitor — without this line it just looks like `up` hung.
+        $this->line('  <fg=gray>Look for a Windows security prompt (it may be behind this window or on another monitor)...</>');
+
         $ok = Process::run('powershell.exe -NoProfile -Command '.escapeshellarg($startProcess))->successful();
 
         @unlink($contentTmp);
         @unlink($scriptTmp);
+
+        // Trust, but verify: Copy-Item reporting success doesn't guarantee the
+        // file actually changed — a declined/dismissed UAC prompt or security
+        // software that reverts unauthorized hosts-file edits both leave this
+        // exit code looking fine while nothing really happened.
+        if ($ok) {
+            $verify = str_replace("\r\n", "\n", (string) @file_get_contents($this->windowsHostsPath()));
+            $ok = str_contains($verify, trim($entry));
+        }
 
         if (! $ok) {
             $this->printWindowsHostsManualHelp($entry);
         }
 
         return $ok;
+    }
+
+    /** Path to the Windows hosts file, as seen from inside WSL2. */
+    protected function windowsHostsPath(): string
+    {
+        return '/mnt/c/Windows/System32/drivers/etc/hosts';
     }
 
     /**
@@ -464,7 +500,16 @@ trait InteractsWithHosts
     protected function applyHostsBlock(string $current, string $blockIdentifier, string $entryLine): string
     {
         // Remove a previous block: the identifier line + its single entry line.
-        $pattern = '/\n?'.preg_quote($blockIdentifier, '/')."\n[^\n]*\n?/";
+        // \r?\n (not bare \n) — the WINDOWS hosts file can get re-saved with
+        // CRLF by a native editor (Notepad, exactly what printWindowsHostsManualHelp()
+        // tells users to use) between syncs. A bare-\n pattern silently fails to
+        // match a CRLF block, so the stale block never gets removed and a second,
+        // LF-only block gets appended instead — both this method's "needs update"
+        // check AND the caller's success message look fine, but Windows resolves
+        // hosts top-down, so the untouched stale (now-duplicate) entry keeps
+        // winning. This was a real, invisible cause of "we synced it but the old
+        // IP/hosts are still what resolves".
+        $pattern = '/\r?\n?'.preg_quote($blockIdentifier, '/')."\r?\n[^\r\n]*\r?\n?/";
         $stripped = preg_replace($pattern, "\n", $current);
         $stripped = $stripped ?? $current;
 

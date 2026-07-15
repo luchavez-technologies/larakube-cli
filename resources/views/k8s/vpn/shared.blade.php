@@ -28,22 +28,26 @@ spec:
     spec:
       containers:
         - name: management
-          image: netbirdio/management:latest
+          image: netbirdio/management:0.74.4
+          env:
+            - name: NB_SETUP_PAT_ENABLED
+              value: "true"
           ports:
             - containerPort: 80
               name: http
           volumeMounts:
             - name: storage
               mountPath: /var/lib/netbird
+            - name: config
+              mountPath: /etc/netbird/management.json
+              subPath: management.json
           readinessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 80
             initialDelaySeconds: 10
             periodSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 80
             initialDelaySeconds: 15
             periodSeconds: 10
@@ -51,12 +55,17 @@ spec:
         - name: storage
           persistentVolumeClaim:
             claimName: netbird-management-storage
+        - name: config
+          secret:
+            secretName: netbird-relay-secret
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: netbird-management
   namespace: larakube-vpn
+  annotations:
+    traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
     app: netbird-management
@@ -83,7 +92,7 @@ spec:
     spec:
       containers:
         - name: signal
-          image: netbirdio/signal:latest
+          image: netbirdio/signal:0.74.4
           ports:
             - containerPort: 80
               name: grpc
@@ -98,6 +107,8 @@ kind: Service
 metadata:
   name: netbird-signal
   namespace: larakube-vpn
+  annotations:
+    traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
     app: netbird-signal
@@ -124,13 +135,25 @@ spec:
     spec:
       containers:
         - name: relay
-          image: netbirdio/coturn:latest
+          image: netbirdio/relay:0.74.4
+          env:
+            - name: NB_LOG_LEVEL
+              value: "info"
+            - name: NB_LISTEN_ADDRESS
+              value: ":33080"
+            - name: NB_EXPOSED_ADDRESS
+              value: "rels://{{ $host }}:443/relay"
+            - name: NB_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: netbird-relay-secret
+                  key: relay-secret
           ports:
-            - containerPort: 3478
-              name: turn
+            - containerPort: 33080
+              name: http
           readinessProbe:
             tcpSocket:
-              port: 3478
+              port: 33080
             initialDelaySeconds: 5
             periodSeconds: 5
 ---
@@ -143,39 +166,9 @@ spec:
   selector:
     app: netbird-relay
   ports:
-    - protocol: UDP
-      port: 3478
-      targetPort: 3478
-      name: turn-udp
     - protocol: TCP
-      port: 3478
-      targetPort: 3478
-      name: turn-tcp
+      port: 33080
+      targetPort: 33080
   type: ClusterIP
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: netbird-client
-  namespace: larakube-vpn
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: netbird-client
-  template:
-    metadata:
-      labels:
-        app: netbird-client
-    spec:
-      containers:
-        - name: client
-          image: netbirdio/client:latest
-          securityContext:
-            capabilities:
-              add: ["NET_ADMIN"]
-          env:
-            - name: NB_MANAGEMENT_URL
-              value: "http://netbird-management:80"
 ---
 @include('k8s.vpn.ingress')

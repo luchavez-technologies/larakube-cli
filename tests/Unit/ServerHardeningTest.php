@@ -68,3 +68,63 @@ test('the root-login script closes SSH root login without deleting the account',
         ->not->toContain('userdel')
         ->not->toContain('deluser');
 });
+
+test('adminCidr restricts SSH + k3s API to that CIDR, but never 80/443', function () {
+    $script = hardening()->hardenServerScript(22, adminCidr: '1.2.3.4/32');
+
+    expect($script)
+        ->toContain('ufw allow from 1.2.3.4/32 to any port 22 proto tcp')
+        ->toContain('ufw allow from 1.2.3.4/32 to any port 6443 proto tcp')
+        ->not->toContain('ufw allow 22/tcp')
+        ->not->toContain('ufw allow 6443/tcp')
+        ->toContain('ufw allow 80/tcp')
+        ->toContain('ufw allow 443/tcp');
+});
+
+test('vpnCidr restricts SSH + k3s API the same way adminCidr does, and both can combine', function () {
+    $vpnOnly = hardening()->hardenServerScript(22, vpnCidr: '100.64.0.0/10');
+
+    expect($vpnOnly)
+        ->toContain('ufw allow from 100.64.0.0/10 to any port 22 proto tcp')
+        ->toContain('ufw allow from 100.64.0.0/10 to any port 6443 proto tcp')
+        ->not->toContain('ufw allow 22/tcp');
+
+    $both = hardening()->hardenServerScript(22, adminCidr: '1.2.3.4/32', vpnCidr: '100.64.0.0/10');
+
+    expect($both)
+        ->toContain('ufw allow from 1.2.3.4/32 to any port 22 proto tcp')
+        ->toContain('ufw allow from 100.64.0.0/10 to any port 22 proto tcp')
+        ->toContain('ufw allow from 1.2.3.4/32 to any port 6443 proto tcp')
+        ->toContain('ufw allow from 100.64.0.0/10 to any port 6443 proto tcp');
+});
+
+test('restricting SSH/k3s-API removes a prior open-to-anyone rule, not just adds the narrower one', function () {
+    // A re-run scenario: cloud:init (or an earlier open cloud:harden) already
+    // left `ufw allow 22/tcp` on the box — UFW allows a connection if ANY
+    // rule permits it, so the CIDR-scoped rule alone wouldn't restrict
+    // anything unless the old open rule is explicitly removed first.
+    $script = hardening()->hardenServerScript(22, vpnCidr: '100.64.0.0/10');
+
+    expect($script)
+        ->toContain('ufw --force delete allow 22/tcp')
+        ->toContain('ufw --force delete allow 6443/tcp');
+
+    $deletePos = strpos($script, 'ufw --force delete allow 22/tcp');
+    $addPos = strpos($script, 'ufw allow from 100.64.0.0/10 to any port 22 proto tcp');
+    expect($deletePos)->not->toBeFalse()->and($addPos)->not->toBeFalse()
+        ->and($deletePos)->toBeLessThan($addPos);
+
+    // The delete must be non-fatal under `set -e` when the rule never
+    // existed (a fresh box, or a second cloud:harden run after the first
+    // one already removed it) — else hardening would abort here.
+    expect($script)->toContain("ufw --force delete allow 22/tcp 2>/dev/null || true\n");
+});
+
+test('joinNetBirdScript installs NetBird only if missing and joins with the given setup key', function () {
+    $script = hardening()->joinNetBirdScript('nb_setup_key_test', 'vpn.example.com');
+
+    expect($script)
+        ->toContain('if ! command -v netbird')
+        ->toContain('curl -fsSL https://pkgs.netbird.io/install.sh | sh')
+        ->toContain("netbird up --setup-key 'nb_setup_key_test' --management-url 'https://vpn.example.com'");
+});

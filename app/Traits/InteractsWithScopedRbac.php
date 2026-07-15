@@ -119,7 +119,7 @@ YAML;
     public function createTokenCommand(string $context, string $namespace, ?string $sa = null, ?int $durationSeconds = null): string
     {
         $sa ??= $this->deployerName();
-        $cmd = 'kubectl --context '.escapeshellarg($context)
+        $cmd = $this->rbacKubectl($context)
             .' -n '.escapeshellarg($namespace)
             .' create token '.escapeshellarg($sa);
 
@@ -156,14 +156,14 @@ YAML;
     /** Read the cluster API server URL from the admin context (CA inlined). Pure. */
     public function clusterServerCommand(string $context): string
     {
-        return 'kubectl config view --minify --flatten --context '.escapeshellarg($context)
+        return $this->rbacKubectl($context).' config view --minify --flatten'
             .' -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}');
     }
 
     /** Read the cluster CA (base64) from the admin context. Pure. */
     public function clusterCaDataCommand(string $context): string
     {
-        return 'kubectl config view --minify --flatten --context '.escapeshellarg($context)
+        return $this->rbacKubectl($context).' config view --minify --flatten'
             .' -o jsonpath='.escapeshellarg('{.clusters[0].cluster.certificate-authority-data}');
     }
 
@@ -215,7 +215,7 @@ YAML;
     {
         $file = tempnam(sys_get_temp_dir(), 'lk_rbac_');
         file_put_contents($file, $this->scopedRbacManifest($namespace, $app, $env));
-        $result = Process::run('kubectl --context '.escapeshellarg($adminContext).' apply -f '.escapeshellarg($file));
+        $result = Process::run($this->rbacKubectl($adminContext).' apply -f '.escapeshellarg($file));
         @unlink($file);
 
         return $result->successful();
@@ -232,14 +232,14 @@ YAML;
     {
         $sa ??= $this->deployerName();
         $secretName = $sa.'-token';
-        $ctx = '--context '.escapeshellarg($adminContext);
+        $ctx = $this->rbacKubectl($adminContext);
         $ns = escapeshellarg($namespace);
         $secret = escapeshellarg($secretName);
 
         // 1. Apply the bound-token Secret (admin).
         $file = tempnam(sys_get_temp_dir(), 'lk_tok_');
         file_put_contents($file, $this->tokenSecretManifest($namespace, $sa, $secretName));
-        $applied = Process::run('kubectl '.$ctx.' apply -f '.escapeshellarg($file));
+        $applied = Process::run($ctx.' apply -f '.escapeshellarg($file));
         @unlink($file);
         if (! $applied->successful()) {
             return null;
@@ -248,7 +248,7 @@ YAML;
         // 2. Poll until k8s populates .data.token (controller fills it in async).
         $token = '';
         for ($i = 0; $i < 15; $i++) {
-            $b64 = trim(Process::run('kubectl '.$ctx.' -n '.$ns.' get secret '.$secret.' -o jsonpath='.escapeshellarg('{.data.token}'))->output());
+            $b64 = trim(Process::run($ctx.' -n '.$ns.' get secret '.$secret.' -o jsonpath='.escapeshellarg('{.data.token}'))->output());
             if ($b64 !== '') {
                 $token = (string) base64_decode($b64);
                 break;
@@ -261,7 +261,7 @@ YAML;
 
         // 3. CA — prefer the Secret's own ca.crt (already base64) for a
         //    self-contained config; fall back to the admin context's CA.
-        $caData = trim(Process::run('kubectl '.$ctx.' -n '.$ns.' get secret '.$secret.' -o jsonpath='.escapeshellarg('{.data.ca\.crt}'))->output());
+        $caData = trim(Process::run($ctx.' -n '.$ns.' get secret '.$secret.' -o jsonpath='.escapeshellarg('{.data.ca\.crt}'))->output());
         if ($caData === '') {
             $caData = trim(Process::run($this->clusterCaDataCommand($adminContext))->output());
         }
@@ -282,7 +282,7 @@ YAML;
      */
     public function pollSecretToken(string $adminContext, string $namespace, string $secretName): ?string
     {
-        $base = 'kubectl --context '.escapeshellarg($adminContext).' -n '.escapeshellarg($namespace)
+        $base = $this->rbacKubectl($adminContext).' -n '.escapeshellarg($namespace)
             .' get secret '.escapeshellarg($secretName).' -o jsonpath=';
 
         for ($i = 0; $i < 15; $i++) {
@@ -300,7 +300,7 @@ YAML;
     public function readSecretCaData(string $adminContext, string $namespace, string $secretName): string
     {
         $ca = trim(Process::run(
-            'kubectl --context '.escapeshellarg($adminContext).' -n '.escapeshellarg($namespace)
+            $this->rbacKubectl($adminContext).' -n '.escapeshellarg($namespace)
             .' get secret '.escapeshellarg($secretName).' -o jsonpath='.escapeshellarg('{.data.ca\.crt}'),
         )->output());
 
@@ -321,5 +321,16 @@ YAML;
         }
 
         return true; // can't determine → don't block.
+    }
+
+    /**
+     * `kubectl --context X`, pinned to ~/.kube/config — that's where LaraKube
+     * always merges contexts, but a bare `kubectl` follows the shell's own
+     * $KUBECONFIG when one is set. This trait composes no other trait, so it
+     * builds its own pinned prefix rather than depending on one.
+     */
+    protected function rbacKubectl(string $context): string
+    {
+        return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl --context '.escapeshellarg($context);
     }
 }

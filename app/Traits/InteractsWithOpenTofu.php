@@ -218,6 +218,21 @@ trait InteractsWithOpenTofu
         ];
     }
 
+    /**
+     * Delete a stack's local Tofu workdir entirely — including its (now stale)
+     * encrypted state file. Called once `cloud:destroy` forgets a stack, so its
+     * per-stack passphrase (GlobalConfigData::removeStack() clears it) is never
+     * left orphaned alongside ciphertext it can no longer decrypt. Without this,
+     * re-running `cloud:create` under the SAME stack name mints a fresh
+     * passphrase but `tofu init` still finds the old encrypted terraform.tfstate
+     * on disk — decryption fails outright ("cipher: message authentication
+     * failed"), since the new key was never used to encrypt it.
+     */
+    protected function removeTofuWorkdir(string $stack): void
+    {
+        $this->deleteDirectoryRecursive(home_path('.larakube/tofu/'.$stack));
+    }
+
     /** True once a stack has real state (i.e. it has been applied at least once). */
     protected function tofuStateExists(string $stack): bool
     {
@@ -377,5 +392,25 @@ HCL;
         $res = $this->runTofu($bin, $stack, 'output', ['-raw', escapeshellarg($key)], [], capture: true);
 
         return ($res['code'] === 0 && $res['output'] !== '') ? $res['output'] : null;
+    }
+
+    /** Recursive delete — the workdir includes a nested .terraform/ provider cache. */
+    private function deleteDirectoryRecursive(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+
+        foreach ((array) glob("{$dir}/*", GLOB_NOSORT) as $item) {
+            is_dir((string) $item) ? $this->deleteDirectoryRecursive((string) $item) : @unlink((string) $item);
+        }
+        // Dotfiles/dotdirs (.terraform/, .terraform.lock.hcl) aren't matched above.
+        foreach ((array) glob("{$dir}/.*", GLOB_NOSORT) as $item) {
+            if (in_array(basename((string) $item), ['.', '..'], true)) {
+                continue;
+            }
+            is_dir((string) $item) ? $this->deleteDirectoryRecursive((string) $item) : @unlink((string) $item);
+        }
+        @rmdir($dir);
     }
 }

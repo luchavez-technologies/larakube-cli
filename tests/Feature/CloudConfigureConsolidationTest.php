@@ -66,7 +66,7 @@ beforeEach(function () {
     Prompt::interactive(false);
 
     Process::fake([
-        'kubectl *' => '',
+        '*kubectl *' => '',
         'git *' => 'git@github.com:acme/consoltest.git',
     ]);
     Process::preventStrayProcesses();

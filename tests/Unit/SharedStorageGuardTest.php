@@ -12,13 +12,16 @@
 use App\Data\ConfigData;
 use App\Enums\DeploymentStrategy;
 use App\Traits\GuardsSharedStorage;
+use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
 
 function storageGuard(): object
 {
     return new class
     {
-        use GuardsSharedStorage;
+        // GuardsSharedStorage's own docblock documents this as a required
+        // companion (nfsStorageClassPresent() calls contextKubectl()).
+        use GuardsSharedStorage, ResolvesEnvironmentContext;
 
         public function multi(ConfigData $c, string $e, ?string $ctx): bool
         {
@@ -80,9 +83,11 @@ test('local state drivers are clean when uploads use S3 and session/cache are ex
 });
 
 test('nfsStorageClassPresent reflects whether the larakube-nfs StorageClass exists on the cluster', function () {
-    Process::fake(["kubectl --context 'prod-ctx' get storageclass 'larakube-nfs' -o name" => Process::result(exitCode: 0)]);
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'prod-ctx'";
+
+    Process::fake(["{$kubectl} get storageclass 'larakube-nfs' -o name" => Process::result(exitCode: 0)]);
     expect(storageGuard()->nfsPresent('prod-ctx'))->toBeTrue();
 
-    Process::fake(["kubectl --context 'prod-ctx' get storageclass 'larakube-nfs' -o name" => Process::result(exitCode: 1)]);
+    Process::fake(["{$kubectl} get storageclass 'larakube-nfs' -o name" => Process::result(exitCode: 1)]);
     expect(storageGuard()->nfsPresent('prod-ctx'))->toBeFalse();
 });

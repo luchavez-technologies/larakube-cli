@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Contracts\PlexProvisionable;
+use App\Data\ConfigData;
 use App\Data\EnvironmentData;
 use App\Data\GlobalConfigData;
 use App\Enums\RegistryProvider;
@@ -34,7 +35,7 @@ trait ConfiguresCloudEnvironment
     // wizard `larakube env` uses, so an environment created on demand here
     // (§ below) is indistinguishable from one created via `env`. EnsuresRealHosts
     // is the same local/placeholder-host guard `cloud:deploy` uses.
-    use EnsuresRealHosts, GathersEnvironmentData, ResolvesEnvironmentContext;
+    use EnsuresRealHosts, GathersEnvironmentData, InteractsWithVpn, ResolvesEnvironmentContext;
     use StreamsProcessOutput;
 
     /**
@@ -358,6 +359,16 @@ trait ConfiguresCloudEnvironment
         $this->laraKubeInfo('Step 2: Ensuring private-registry pull access...');
         $this->setupRegistrySecret($environment);
 
+        // 2.5. Offer to connect CI to the environment's NetBird VPN — a no-op
+        //      unless one is actually installed (self-skips silently).
+        $gh = $this->getGhCommand();
+        $vpnHost = $this->ensureCiVpnSecret(
+            $this->getProjectConfigObject($projectPath),
+            $environment,
+            $projectPath,
+            fn (string $name, string $value) => $this->setGithubSecret($gh, $name, $value, $repoFlag),
+        );
+
         // 3. Generate Workflow
         $config = $this->getProjectConfigObject(getcwd());
         $this->laraKubeInfo('Step 3: Generating Cloud Pilot workflow...');
@@ -423,11 +434,13 @@ trait ConfiguresCloudEnvironment
             'namespace' => $namespace,
             'podName' => $podName,
             'upperEnv' => $upperEnv,
+            'vpnHost' => $vpnHost,
             'secrets' => [
                 'k_env' => '${{ secrets.'.$upperEnv.'_KUBECONFIG }}',
                 'k_base' => '${{ secrets.KUBECONFIG }}',
                 'e_env' => '${{ secrets.'.$upperEnv.'_ENV_FILE_BASE64 }}',
                 'e_base' => '${{ secrets.ENV_FILE_BASE64 }}',
+                'vpn_key' => '${{ secrets.'.$upperEnv.'_NETBIRD_SETUP_KEY }}',
             ],
             'gha' => [
                 'repository' => '${{ github.repository }}',
@@ -465,6 +478,80 @@ trait ConfiguresCloudEnvironment
         $this->line("Push to '{$branch}' to trigger your Cloud Pilot deployment.");
 
         return 0;
+    }
+
+    /**
+     * Offer to connect CI to this environment's NetBird VPN, when one is
+     * installed — for a cloud:harden'd server whose k3s API (6443) is
+     * VPN-only, a GitHub-hosted runner can't reach it at all otherwise.
+     * Mints an ephemeral+reusable setup key (one CI runner "identity" that
+     * every job reuses; NetBird auto-removes each throwaway peer once its
+     * ephemeral runner is destroyed) and hands it to $uploadSecret to store
+     * however the calling forge does (gh secret set / glab variable set).
+     *
+     * Non-interactive/declined/no-VPN-installed all return null, meaning
+     * "the workflow should dial the cluster directly" — the existing,
+     * unaffected default. Once accepted, ciVpn is persisted on the
+     * environment so a later re-run doesn't re-prompt.
+     *
+     * @param  callable(string, string): void  $uploadSecret
+     */
+    protected function ensureCiVpnSecret(ConfigData $config, string $environment, string $projectPath, callable $uploadSecret): ?string
+    {
+        $context = $this->environmentContextOrCurrent($config, $environment);
+        if (! $context) {
+            return null;
+        }
+
+        $vpnKubectl = $this->contextKubectl($context);
+        $vpnNamespace = $this->vpnNamespace();
+        if (! $this->isVpnInstalled($vpnKubectl, $vpnNamespace)) {
+            return null;
+        }
+
+        $host = $this->resolveVpnHostReadOnly($environment, $config);
+        if (! $host) {
+            return null;
+        }
+
+        $alreadyEnabled = $config->getEnvironment($environment)?->ciVpn ?? false;
+        if (! $alreadyEnabled) {
+            if ($this->flag('no-interaction')) {
+                return null;
+            }
+            if (! confirm(
+                "This environment's cluster has a NetBird VPN — connect CI to it before deploying? (needed if cloud:harden restricted the k3s API to the VPN)",
+                true,
+            )) {
+                return null;
+            }
+        }
+
+        $pat = $this->fetchVpnPat($vpnKubectl, $vpnNamespace);
+        if ($pat === null) {
+            $this->laraKubeWarn('Could not fetch the NetBird admin token — skipping CI VPN setup.');
+
+            return null;
+        }
+
+        $minted = $this->mintVpnSetupKey($host, $pat, "ci-{$environment}", reusable: true, days: 365, ephemeral: true);
+        if ($minted === null) {
+            $this->laraKubeWarn('Could not mint a NetBird setup key for CI — skipping.');
+
+            return null;
+        }
+
+        $key = (string) $minted['key'];
+        $this->registerSecret($key);
+        $uploadSecret(strtoupper($environment).'_NETBIRD_SETUP_KEY', $key);
+
+        if (! $alreadyEnabled) {
+            $data = $config->toArray();
+            $data['environments'][$environment]['ciVpn'] = true;
+            ConfigData::from($data)->saveToFile($projectPath);
+        }
+
+        return $host;
     }
 
     protected function setupRegistrySecret(string $environment): void
@@ -533,16 +620,16 @@ trait ConfiguresCloudEnvironment
         }
 
         $namespace = $config->getName().'-'.$environment;
-        $ctx = '--context '.escapeshellarg($context);
+        $kubectl = $this->contextKubectl($context);
         $ns = escapeshellarg($namespace);
 
-        Process::run("kubectl {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl {$ctx} apply -f -");
+        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
         Process::run(
-            "kubectl {$ctx} create secret docker-registry ".escapeshellarg($secretName)." -n {$ns}"
+            "{$kubectl} create secret docker-registry ".escapeshellarg($secretName)." -n {$ns}"
             .' --docker-server='.escapeshellarg($server)
             .' --docker-username='.escapeshellarg($username)
             .' --docker-password='.escapeshellarg($token)
-            ." --dry-run=client -o yaml | kubectl {$ctx} apply -f -",
+            ." --dry-run=client -o yaml | {$kubectl} apply -f -",
         );
 
         $this->laraKubeInfo("✅ Image pull secret '{$secretName}' created in '{$namespace}' (context: {$context}).");
@@ -613,10 +700,10 @@ trait ConfiguresCloudEnvironment
         }
 
         $namespace = $config->getName().'-'.$environment;
-        $ctx = escapeshellarg($adminContext);
+        $kubectl = $this->contextKubectl($adminContext);
         $ns = escapeshellarg($namespace);
 
-        Process::run("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
+        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
         if (! $this->ensureScopedRbac($adminContext, $namespace, $config->getName(), $environment)) {
             $this->laraKubeError('Failed to create the namespace-scoped ServiceAccount/Role in the cluster.');
@@ -626,7 +713,7 @@ trait ConfiguresCloudEnvironment
 
         if ($rotate) {
             $this->laraKubeInfo('Rotating: revoking the current deploy token before minting a fresh one...');
-            Process::run("kubectl --context {$ctx} -n {$ns} delete secret ".escapeshellarg($this->deployerName().'-token').' --ignore-not-found');
+            Process::run("{$kubectl} -n {$ns} delete secret ".escapeshellarg($this->deployerName().'-token').' --ignore-not-found');
         }
 
         $kubeConfigContent = $this->mintScopedKubeconfig($adminContext, $namespace);
@@ -647,7 +734,7 @@ trait ConfiguresCloudEnvironment
         // Stamp when the scoped CI credential was minted.
         $data = $config->toArray();
         $data['environments'][$environment]['cloud']['rbacGrantedAt'] = gmdate('c');
-        \App\Data\ConfigData::from($data)->saveToFile($projectPath);
+        ConfigData::from($data)->saveToFile($projectPath);
 
         $this->laraKubeInfo("GitHub Secrets configured successfully for '{$environment}' (namespace-scoped).");
 
@@ -811,7 +898,7 @@ trait ConfiguresCloudEnvironment
 
         if ($context !== '') {
             $kubeconfig = trim(Process::run(
-                'kubectl config view --context '.escapeshellarg($context).' --minify --raw',
+                $this->contextKubectl($context).' config view --minify --raw',
             )->output());
             $kubeconfigB64 = base64_encode($kubeconfig);
 
@@ -857,7 +944,7 @@ trait ConfiguresCloudEnvironment
         }
     }
 
-    protected function generateGitlabPipeline(string $projectPath, \App\Data\ConfigData $config): int
+    protected function generateGitlabPipeline(string $projectPath, ConfigData $config): int
     {
         $appName = $config->getName();
         $podName = $config->getServerVariation()->getPodName($config);

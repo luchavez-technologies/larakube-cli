@@ -58,8 +58,16 @@ class ContextRemoveCommand extends Command
             return 0;
         }
 
+        // Target ~/.kube/config explicitly — that's where LaraKube always merges
+        // cloud/local contexts (syncKubeconfig(), mergeKubeconfig(), …), but a bare
+        // `kubectl config` follows the shell's own $KUBECONFIG if one is set (e.g.
+        // k3s's own setup docs suggest exporting /etc/rancher/k3s/k3s.yaml) — which
+        // would silently operate on a completely different file. Same fix already
+        // applied in PrunesKubeContext for the local-cluster teardown path.
+        $kc = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl config';
+
         $t = escapeshellarg($target);
-        $result = Process::run("kubectl config delete-context {$t}");
+        $result = Process::run("{$kc} delete-context {$t}");
         if (! $result->successful()) {
             $this->laraKubeError("Failed to remove context '{$target}':\n".trim($result->output().$result->errorOutput()));
 
@@ -68,8 +76,8 @@ class ContextRemoveCommand extends Command
 
         // Best-effort: for larakube-<ip> contexts the cluster + user share the name.
         // For other contexts these simply won't match and are left untouched.
-        Process::run("kubectl config delete-cluster {$t}");
-        Process::run("kubectl config delete-user {$t}");
+        Process::run("{$kc} delete-cluster {$t}");
+        Process::run("{$kc} delete-user {$t}");
 
         $this->laraKubeInfo("✅ Removed context '{$target}' (and its cluster/user entries).");
 

@@ -117,13 +117,7 @@ class PlexMigrateCommand extends Command
 
         // ── Verify source pod(s) running ──────────────────────────────────────
 
-        $kubectl = $this->plexContext !== null
-            ? 'kubectl --context '.escapeshellarg($this->plexContext)
-            : 'kubectl';
-
-        $selfHostedKubectl = ($env === 'local')
-            ? 'kubectl'
-            : 'kubectl --context '.escapeshellarg((string) $context);
+        $selfHostedKubectl = $this->plexKubectl();
 
         foreach (array_filter([$skipDbCopy ? null : $driver?->value, $skipStorageCopy ? null : $storage?->value]) as $podName) {
             $exists = trim(Process::run(

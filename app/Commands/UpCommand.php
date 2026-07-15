@@ -8,6 +8,7 @@ use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\ScoutDriver;
 use App\Enums\StorageDriver;
+use App\Traits\CollectsReminders;
 use App\Traits\DeploysMonitoringExporters;
 use App\Traits\DetectsWsl;
 use App\Traits\EnsuresHostDependencies;
@@ -36,7 +37,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class UpCommand extends Command
 {
-    use DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithKustomize, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
+    use CollectsReminders, DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithKustomize, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -244,7 +245,16 @@ class UpCommand extends Command
             return 0;
         }
 
-        $this->ensureHostsAreSet();
+        // Local-only: cloud environments use real domains, not this .kube-style
+        // hosts-file plumbing. Previously called unconditionally regardless of
+        // $environment — ensureHostsAreSet() always operates on the LOCAL host
+        // list internally, so a `larakube up production` run was redundantly
+        // (and confusingly) re-checking/re-prompting about local dev hosts.
+        if ($environment === 'local') {
+            if ($hostsWarning = $this->ensureHostsAreSet()) {
+                $this->reminders[] = $hostsWarning;
+            }
+        }
 
         $projectPath = getcwd();
         $config = $this->getProjectConfig($projectPath);
@@ -332,7 +342,9 @@ class UpCommand extends Command
             if (! $this->isTraefikInstalled()) {
                 $this->laraKubeInfo('No Ingress Controller detected in your local cluster.');
                 if (confirm('LaraKube works best with Traefik. Would you like us to install it for you?', true)) {
-                    $this->setupTraefik();
+                    if (! $this->setupTraefik()) {
+                        $this->laraKubeWarn('Traefik install failed — re-run `larakube traefik:setup` to retry.');
+                    }
                 }
             }
 
@@ -559,6 +571,8 @@ class UpCommand extends Command
         $this->showCompanionAccess($config, $appName, $environment);
 
         $this->showArchitecturalInstructions($config);
+
+        $this->renderReminders();
 
         $this->renderStarPrompt();
 

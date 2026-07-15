@@ -335,6 +335,18 @@ jobs:
             exit 1
           fi
 
+@if($vpnHost ?? null)
+      - name: 🔌 Connect to NetBird VPN
+        run: |
+          curl -fsSL https://pkgs.netbird.io/install.sh | sh
+          sudo netbird up --management-url https://{{ $vpnHost }} --setup-key {!! $secrets['vpn_key'] !!}
+          for i in $(seq 1 30); do
+            sudo netbird status | grep -q "Management: Connected" && break
+            sleep 2
+          done
+          sudo netbird status | grep -q "Management: Connected" || { echo "::error::Failed to connect to NetBird VPN — the k3s API is VPN-only and unreachable without it."; exit 1; }
+@endif
+
       - name: 🔑 Set Kubernetes context
         uses: azure/k8s-set-context@v4
         with:

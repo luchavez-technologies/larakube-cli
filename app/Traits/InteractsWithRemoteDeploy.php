@@ -27,6 +27,16 @@ trait InteractsWithRemoteDeploy
         return 'larakube-'.$ip;
     }
 
+    /**
+     * `kubectl --context X`, pinned to ~/.kube/config — that's where LaraKube
+     * always merges contexts, but a bare `kubectl` follows the shell's own
+     * $KUBECONFIG when one is set.
+     */
+    public function remoteKubectl(string $context): string
+    {
+        return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl --context '.escapeshellarg($context);
+    }
+
     /** SSH base command for a host (no remote command appended yet). Pure. */
     public function sshBaseCommand(string $user, string $ip, int $port, string $key): string
     {
@@ -162,11 +172,9 @@ trait InteractsWithRemoteDeploy
      */
     public function applyWithImageRewriteCommand(string $context, string $overlayPath, string $fromImage, string $toImage): string
     {
-        $ctx = escapeshellarg($context);
-
         return $this->kustomizeBuildCommand($overlayPath)
             .' | sed '.escapeshellarg('s|image: '.$fromImage.'|image: '.$toImage.'|g')
-            .' | kubectl --context '.$ctx.' apply -f -';
+            .' | '.$this->remoteKubectl($context).' apply -f -';
     }
 
     /**
@@ -333,7 +341,7 @@ trait InteractsWithRemoteDeploy
     /** Is the env's context present and reachable (without touching the global one)? */
     protected function remoteContextReachable(string $context): bool
     {
-        return Process::run('kubectl --context '.escapeshellarg($context).' cluster-info --request-timeout=5s')->successful();
+        return Process::run($this->remoteKubectl($context).' cluster-info --request-timeout=5s')->successful();
     }
 
     /**
@@ -358,7 +366,7 @@ trait InteractsWithRemoteDeploy
     protected function detectNodePlatformViaKubectl(string $context): ?string
     {
         $raw = trim(Process::run(
-            'kubectl --context '.escapeshellarg($context)
+            $this->remoteKubectl($context)
             .' get nodes -o '.escapeshellarg('jsonpath={.items[*].status.nodeInfo.architecture}'),
         )->output());
         if ($raw === '') {
@@ -471,15 +479,15 @@ trait InteractsWithRemoteDeploy
         }
 
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
-        $ctx = escapeshellarg($context);
+        $kubectl = $this->remoteKubectl($context);
         $ns = escapeshellarg($namespace);
-        Process::run("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
+        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
         // 4-5. env-sync + apply + rollout THROUGH a namespace-scoped credential.
         $result = $this->applyScopedDeploy($config, $environment, $context, $namespace, "{$name}:{$environment}-latest", $image);
 
         if ($result === 0) {
-            $this->ensureMonitoringExporters($config, $namespace, 'kubectl --context '.escapeshellarg($context));
+            $this->ensureMonitoringExporters($config, $namespace, $kubectl);
         }
 
         return $result;
@@ -561,9 +569,9 @@ trait InteractsWithRemoteDeploy
         }
 
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
-        $ctx = escapeshellarg($context);
+        $kubectl = $this->remoteKubectl($context);
         $ns = escapeshellarg($namespace);
-        Process::run("kubectl --context {$ctx} create namespace {$ns} --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -");
+        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
         // GHCR packages are private in LaraKube, so the cluster always needs a pull
         // secret — create it here (admin context) so manual deploys work without a
@@ -611,14 +619,14 @@ trait InteractsWithRemoteDeploy
             return;
         }
 
-        $ctx = escapeshellarg($context);
+        $kubectl = $this->remoteKubectl($context);
         $ns = escapeshellarg($namespace);
         Process::run(
-            "kubectl --context {$ctx} create secret docker-registry ghcr-login -n {$ns}"
+            "{$kubectl} create secret docker-registry ghcr-login -n {$ns}"
             .' --docker-server=https://ghcr.io'
             .' --docker-username='.escapeshellarg($user)
             .' --docker-password='.escapeshellarg($token)
-            ." --dry-run=client -o yaml | kubectl --context {$ctx} apply -f -",
+            ." --dry-run=client -o yaml | {$kubectl} apply -f -",
         );
         $this->laraKubeInfo("Ensured GHCR pull secret (ghcr-login) in '{$namespace}'.");
     }
@@ -645,7 +653,7 @@ trait InteractsWithRemoteDeploy
         // fallback, a named admin context.
         $kube = $kubeconfigPath !== null
             ? 'KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl'
-            : 'kubectl --context '.escapeshellarg((string) $context);
+            : $this->remoteKubectl((string) $context);
         $ns = escapeshellarg($namespace);
 
         if ($public !== '') {
@@ -748,7 +756,7 @@ trait InteractsWithRemoteDeploy
         }
 
         // Deploy monitoring exporters if monitoring is active on this cluster.
-        $this->ensureMonitoringExporters($config, $namespace, 'kubectl --context '.escapeshellarg($adminContext));
+        $this->ensureMonitoringExporters($config, $namespace, $this->remoteKubectl($adminContext));
 
         $this->laraKubeInfo("✅ Deployed '{$name}' to '{$environment}' (namespace-scoped, ns: {$namespace}).");
 

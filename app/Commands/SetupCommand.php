@@ -2,9 +2,11 @@
 
 namespace App\Commands;
 
+use App\Traits\CollectsReminders;
 use App\Traits\DetectsWsl;
 use App\Traits\InstallsK9s;
 use App\Traits\InteractsWithOs;
+use App\Traits\InteractsWithTrust;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
 
@@ -14,52 +16,49 @@ use LaravelZero\Framework\Commands\Command;
 
 class SetupCommand extends Command
 {
-    use DetectsWsl, InstallsK9s, InteractsWithOs, LaraKubeOutput;
+    use CollectsReminders, DetectsWsl, InstallsK9s, InteractsWithOs, InteractsWithTrust, LaraKubeOutput;
 
     protected $signature = 'setup';
 
-    protected $description = 'First-time setup: install Docker Engine, k3s cluster, Traefik, and k9s';
-
-    /**
-     * Critical one-time follow-up actions (e.g. "run newgrp docker") collected as
-     * setup runs. Printed inline where they happen AND again as a final summary —
-     * cluster:setup and k9s installation can both print a lot of scrolling output
-     * afterward, so a note shown only once near the top of a long run is easy to
-     * miss and easy to forget by the time setup finishes.
-     *
-     * @var string[]
-     */
-    protected array $reminders = [];
+    protected $description = 'First-time setup: Docker Engine, k3s cluster, Traefik, dnsmasq, and k9s';
 
     public function handle(): int
     {
         $this->renderHeader();
         $this->laraKubeInfo('LaraKube Environment Setup');
 
-        if (! $this->isLinux()) {
-            $this->laraKubeError('larakube setup only runs on Linux and WSL2.');
+        if (! $this->isLinux() && ! $this->isDarwin()) {
+            $this->laraKubeError('larakube setup only runs on Linux, WSL2, and macOS.');
             $this->newLine();
-            $this->line('  <fg=gray>On macOS, use OrbStack or Docker Desktop\'s built-in Kubernetes.</>');
-            $this->line('  <fg=gray>On Windows, open your WSL2 terminal and run this command there.</>');
+            $this->line('  <fg=gray>On Windows outside WSL2, open a WSL2 terminal and run this command there.</>');
 
             return 1;
         }
 
-        // Step 1 — Docker Engine
-        if (! $this->ensureDockerInstalled()) {
-            return 1;
+        if ($this->isDarwin()) {
+            // macOS doesn't get a Docker/k3s install of its own — OrbStack or
+            // Docker Desktop already provides both, and reinstalling either
+            // here would just conflict with whichever the user has running.
+            $this->laraKubeInfo('macOS detected — Docker and the Kubernetes cluster come from OrbStack or Docker Desktop, not larakube.');
+            $this->line('  <fg=gray>Make sure one of them is running (with Kubernetes enabled) before continuing.</>');
+            $this->newLine();
+        } else {
+            // Step 1 — Docker Engine (Linux/WSL2 only)
+            if (! $this->ensureDockerInstalled()) {
+                return 1;
+            }
+
+            $this->newLine();
+
+            // Step 2 — k3s cluster (Linux/WSL2 only; delegates entirely to cluster:setup)
+            $result = $this->call('cluster:setup');
+
+            if ($result !== 0) {
+                return $result;
+            }
+
+            $this->newLine();
         }
-
-        $this->newLine();
-
-        // Step 2 — k3s cluster (delegates entirely to cluster:setup)
-        $result = $this->call('cluster:setup');
-
-        if ($result !== 0) {
-            return $result;
-        }
-
-        $this->newLine();
 
         // Step 3 — Traefik ingress controller (delegates entirely to traefik:setup)
         $result = $this->call('traefik:setup');
@@ -70,31 +69,21 @@ class SetupCommand extends Command
 
         $this->newLine();
 
-        // Step 4 — k9s (terminal UI for browsing the cluster)
+        // Step 4 — dnsmasq (wildcard *.{tld} DNS) — required on macOS/Linux so
+        // every host resolves with no per-project /etc/hosts entries. WSL2's
+        // dnsmasq is inside the VM (invisible to the Windows browser) so this
+        // is a no-op there — WSL2's real DNS problem is the Windows-side hosts
+        // file instead, which `larakube up`/`larakube hosts` handles.
+        $this->setupDnsmasq();
+
+        $this->newLine();
+
+        // Step 5 — k9s (terminal UI for browsing the cluster)
         $this->ensureK9sInstalled();
 
         $this->renderReminders();
 
         return 0;
-    }
-
-    /**
-     * Re-print every reminder collected during this run as the very last thing on
-     * screen, so a critical one-time step (like refreshing the docker group)
-     * doesn't get lost above cluster:setup's or k9s's own output. No-op when
-     * nothing was collected (e.g. Docker was already installed and running).
-     */
-    protected function renderReminders(): void
-    {
-        if ($this->reminders === []) {
-            return;
-        }
-
-        $this->newLine();
-        $this->laraKubeWarn('Before you continue — one-time action(s) needed:');
-        foreach ($this->reminders as $reminder) {
-            $this->line("  {$reminder}");
-        }
     }
 
     protected function ensureDockerInstalled(): bool

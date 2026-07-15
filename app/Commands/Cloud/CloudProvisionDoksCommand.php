@@ -12,7 +12,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
 use App\Traits\ResolvesEnvironmentContext;
-use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -22,7 +22,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class CloudProvisionDoksCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext, StreamsProcessOutput;
+    use InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext, VerifiesKubernetesRollout;
 
     protected $signature = 'cloud:init:doks
         {--context= : Target a specific kube-context}
@@ -69,12 +69,12 @@ class CloudProvisionDoksCommand extends Command
         // Collected up front — the ACME resolver is configured at install time.
         // Prefill from the project's .larakube.json email, else the global config
         // email, so the common case is just Enter.
-        $projectEmail = $projectConfig?->email;
-        $globalEmail = $this->getEmail();
+        $projectEmail = $this->validStoredEmail($projectConfig?->email);
+        $globalEmail = $this->validStoredEmail($this->getEmail());
 
         $email = $this->option('email');
-        if ($email !== null && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $this->laraKubeError("Invalid --email '{$email}' — please pass a valid email address.");
+        if ($email !== null && ($emailError = $this->acmeEmailError($email))) {
+            $this->laraKubeError("Invalid --email '{$email}' — {$emailError}");
 
             return 1;
         }
@@ -82,17 +82,17 @@ class CloudProvisionDoksCommand extends Command
             // Headless without the flag: fall back to a stored email, never prompt.
             $email = $projectEmail ?: $globalEmail;
             if (! $email) {
-                $this->laraKubeError('No email available for Let\'s Encrypt — pass --email= when running non-interactively.');
+                $this->laraKubeError('No valid email available for Let\'s Encrypt — pass --email= when running non-interactively.');
 
                 return 1;
             }
         }
         $email ??= text(
             label: 'Email for Let\'s Encrypt certificate notices',
-            placeholder: 'you@example.com',
+            placeholder: 'you@yourdomain.com',
             default: $projectEmail ?: ($globalEmail ?? ''),
             required: true,
-            validate: fn (string $v) => filter_var($v, FILTER_VALIDATE_EMAIL) ? null : 'Please enter a valid email address.',
+            validate: fn (string $v) => $this->acmeEmailError($v),
         );
 
         // Remember the email wherever it wasn't set yet, so future runs prefill it
@@ -210,7 +210,7 @@ class CloudProvisionDoksCommand extends Command
     /** Is Traefik already installed on this cluster? Keeps provision reruns safe. */
     private function traefikInstalled(string $context): bool
     {
-        return Process::run('kubectl --context '.escapeshellarg($context).' get deployment -n traefik traefik')->successful();
+        return Process::run($this->kubectl().' --context '.escapeshellarg($context).' get deployment -n traefik traefik')->successful();
     }
 
     /**
@@ -237,12 +237,11 @@ class CloudProvisionDoksCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-traefik-managed.yaml';
         file_put_contents($tmp, $manifest);
 
-        $code = $this->runStreaming(
-            'kubectl --context '.escapeshellarg($context).' apply -f '.escapeshellarg($tmp).' --request-timeout=60s',
-        );
+        $kubectl = $this->kubectl().' --context '.escapeshellarg($context);
+        $ok = $this->applyAndVerifyRollout($kubectl, $tmp, 'traefik', 'traefik');
         @unlink($tmp);
 
-        return $code === 0 ? 0 : 1;
+        return $ok ? 0 : 1;
     }
 
     private function waitForLoadBalancerIp(string $context): ?string

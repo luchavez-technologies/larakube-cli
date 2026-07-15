@@ -15,12 +15,13 @@ trait InteractsWithGitForge
         return 'larakube-shared';
     }
 
-    /** Build the kubectl command, optionally scoped to a specific context. */
+    /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
     protected function gitKubectl(?string $context = null): string
     {
         $context = (string) ($context ?? '');
+        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-        return $context !== '' ? "kubectl --context={$context}" : 'kubectl';
+        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /** Gitea Deployment present? A cheap "is Gitea installed" probe. */

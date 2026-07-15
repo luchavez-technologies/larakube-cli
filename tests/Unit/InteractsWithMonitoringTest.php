@@ -57,10 +57,11 @@ test('cloud Grafana host is null when none is configured for the env', function 
 
 test('monitoringKubectl scopes to a context only when one is given', function () {
     $reader = monitoringReader();
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    expect($reader->kubectlFor('do-sfo3'))->toBe('kubectl --context=do-sfo3')
-        ->and($reader->kubectlFor(''))->toBe('kubectl')
-        ->and($reader->kubectlFor(null))->toBe('kubectl');
+    expect($reader->kubectlFor('do-sfo3'))->toBe("{$kubectl} --context=do-sfo3")
+        ->and($reader->kubectlFor(''))->toBe($kubectl)
+        ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
 test('isMonitoringInstalled reflects whether the grafana Deployment exists', function () {
@@ -84,12 +85,14 @@ test('readGrafanaPassword decodes the admin secret, null when absent', function 
 });
 
 test('monitoringAccess is null when monitoring is not installed, populated when it is', function () {
-    Process::fake(['kubectl get deployment grafana -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 1)]);
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
+    Process::fake(["{$kubectl} get deployment grafana -n larakube-shared --no-headers" => Process::result(output: '', exitCode: 1)]);
     expect(monitoringReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        'kubectl get deployment grafana -n larakube-shared --no-headers' => 'grafana   1/1   1   1   5d',
-        "kubectl get secret grafana-admin -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t'),
+        "{$kubectl} get deployment grafana -n larakube-shared --no-headers" => 'grafana   1/1   1   1   5d',
+        "{$kubectl} get secret grafana-admin -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t'),
     ]);
     $access = monitoringReader()->access('local', null);
 

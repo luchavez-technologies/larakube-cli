@@ -7,12 +7,17 @@ use App\Enums\PackageManager;
  * Helper: build the view-data array for the GHA workflow template.
  * Centralises the boilerplate so each test only overrides what it cares about.
  */
-function ghaViewData(array $auditOverrides = []): array
+function ghaViewData(array $overrides = []): array
 {
     $config = new ConfigData(name: 'test-app');
     $config->setPackageManager(PackageManager::NPM);
     $environment = 'production';
     $upperEnv = 'PRODUCTION';
+
+    // Extract values that maps to separate top-level fields in the view
+    $vpnHost = array_key_exists('vpnHost', $overrides) ? $overrides['vpnHost'] : null;
+    $auditOverrides = array_key_exists('audit', $overrides) ? $overrides['audit'] : [];
+    unset($overrides['vpnHost'], $overrides['audit']);
 
     $audit = array_merge([
         'skip' => false,
@@ -22,7 +27,36 @@ function ghaViewData(array $auditOverrides = []): array
         'auditLevel' => 'critical',
     ], $auditOverrides);
 
-    return [
+    $secrets = array_merge([
+        'k_env' => '${{ secrets.'.$upperEnv.'_KUBECONFIG }}',
+        'k_base' => '${{ secrets.KUBECONFIG }}',
+        'e_env' => '${{ secrets.'.$upperEnv.'_ENV_FILE_BASE64 }}',
+        'e_base' => '${{ secrets.ENV_FILE_BASE64 }}',
+        'vpn_key' => '${{ secrets.PRODUCTION_NETBIRD_SETUP_KEY }}',
+    ], $overrides['secrets'] ?? []);
+    unset($overrides['secrets']);
+
+    $gha = array_merge([
+        'repository' => '${{ github.repository }}',
+        'actor' => '${{ github.actor }}',
+        'token' => '${{ secrets.GITHUB_TOKEN }}',
+        'sha' => '${{ github.sha }}',
+        'registry_provider' => 'ghcr',
+        'registry_host' => 'ghcr.io',
+        'image_name' => '${{ github.repository }}',
+        'k_data' => '${{ env.K_DATA }}',
+        'e_data' => '${{ env.E_DATA }}',
+        'image_latest' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest',
+        'image_sha' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ github.sha }}',
+        'composer_cache_key' => "composer-\${{ hashFiles('composer.lock') }}",
+        'registry_user' => '${{ secrets.'.$upperEnv.'_REGISTRY_USERNAME }}',
+        'registry_password' => '${{ secrets.'.$upperEnv.'_REGISTRY_PASSWORD }}',
+        'trivy_cache_key' => '${{ runner.os }}-trivy-db',
+        'trivy_restore_key' => '${{ runner.os }}-trivy-',
+    ], $overrides['gha'] ?? []);
+    unset($overrides['gha']);
+
+    return array_merge([
         'config' => $config,
         'environment' => $environment,
         'branch' => 'main',
@@ -30,32 +64,11 @@ function ghaViewData(array $auditOverrides = []): array
         'namespace' => 'test-app-production',
         'podName' => 'web',
         'upperEnv' => $upperEnv,
-        'secrets' => [
-            'k_env' => '${{ secrets.'.$upperEnv.'_KUBECONFIG }}',
-            'k_base' => '${{ secrets.KUBECONFIG }}',
-            'e_env' => '${{ secrets.'.$upperEnv.'_ENV_FILE_BASE64 }}',
-            'e_base' => '${{ secrets.ENV_FILE_BASE64 }}',
-        ],
-        'gha' => [
-            'repository' => '${{ github.repository }}',
-            'actor' => '${{ github.actor }}',
-            'token' => '${{ secrets.GITHUB_TOKEN }}',
-            'sha' => '${{ github.sha }}',
-            'registry_provider' => 'ghcr',
-            'registry_host' => 'ghcr.io',
-            'image_name' => '${{ github.repository }}',
-            'k_data' => '${{ env.K_DATA }}',
-            'e_data' => '${{ env.E_DATA }}',
-            'image_latest' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest',
-            'image_sha' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ github.sha }}',
-            'composer_cache_key' => "composer-\${{ hashFiles('composer.lock') }}",
-            'registry_user' => '${{ secrets.'.$upperEnv.'_REGISTRY_USERNAME }}',
-            'registry_password' => '${{ secrets.'.$upperEnv.'_REGISTRY_PASSWORD }}',
-            'trivy_cache_key' => '${{ runner.os }}-trivy-db',
-            'trivy_restore_key' => '${{ runner.os }}-trivy-',
-        ],
+        'vpnHost' => $vpnHost,
+        'secrets' => $secrets,
+        'gha' => $gha,
         'audit' => $audit,
-    ];
+    ], $overrides);
 }
 
 test('GHA workflow generation uses correct literal injection syntax', function () {
@@ -76,7 +89,7 @@ test('GHA workflow generation uses correct literal injection syntax', function (
         ->toContain('kind:[ \\t]+Namespace');
 
     // The image tags must render as real GitHub expressions — NOT mangled into
-    // compiled Blade (the bug: literal {{ }} inside {!! '…' !!} gets post-processed).
+    // compiled Blade (the bug: literal {{ }} inside {!! '…' !!} gets post-processed)
     expect($workflowContent)
         ->not->toContain('<?php')      // no compiled-Blade leakage
         ->not->toContain('echo e(');
@@ -114,7 +127,7 @@ test('GHA workflow with default audit config emits security gates and split buil
 
 test('GHA workflow with --skip-audit produces the lean pipeline without gates', function () {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData([
-        'skip' => true,
+        'audit' => ['skip' => true],
     ]))->render();
 
     // No audit steps
@@ -145,9 +158,11 @@ test('GHA workflow with --skip-audit produces the lean pipeline without gates', 
 
 test('GHA workflow with --strict uses CRITICAL,HIGH severity', function () {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData([
-        'strict' => true,
-        'failOn' => 'CRITICAL,HIGH',
-        'auditLevel' => 'high',
+        'audit' => [
+            'strict' => true,
+            'failOn' => 'CRITICAL,HIGH',
+            'auditLevel' => 'high',
+        ],
     ]))->render();
 
     // Trivy image scan severity escalates
@@ -155,4 +170,24 @@ test('GHA workflow with --strict uses CRITICAL,HIGH severity', function () {
 
     // NPM audit level escalates
     expect($workflowContent)->toContain('npm audit --audit-level=high');
+});
+
+test('the workflow connects to NetBird VPN before touching kubectl when the cluster has one', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData(['vpnHost' => 'vpn.example.com']))->render();
+
+    expect($workflowContent)
+        ->toContain('Connect to NetBird VPN')
+        ->toContain('sudo netbird up --management-url https://vpn.example.com --setup-key ${{ secrets.PRODUCTION_NETBIRD_SETUP_KEY }}');
+
+    $vpnPos = strpos($workflowContent, 'Connect to NetBird VPN');
+    $contextPos = strpos($workflowContent, 'Set Kubernetes context');
+    expect($vpnPos)->not->toBeFalse()->and($contextPos)->not->toBeFalse()
+        ->and($vpnPos)->toBeLessThan($contextPos);
+});
+
+test('the workflow has no VPN step at all when the environment has no VPN', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData(['vpnHost' => null]))->render();
+
+    expect($workflowContent)->not->toContain('Connect to NetBird VPN')
+        ->not->toContain('netbird up');
 });

@@ -15,12 +15,13 @@ trait InteractsWithSecrets
         return 'larakube-secrets';
     }
 
-    /** Build the kubectl command, optionally scoped to a specific context. */
+    /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
     protected function secretsKubectl(?string $context = null): string
     {
         $context = (string) ($context ?? '');
+        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-        return $context !== '' ? "kubectl --context={$context}" : 'kubectl';
+        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /** Infisical backend Deployment present? A cheap "is Infisical installed" probe. */

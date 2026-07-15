@@ -45,10 +45,12 @@ function remoteDeployProcessHelper(): object
 }
 
 test('remoteContextReachable reflects cluster-info exit code', function () {
-    Process::fake(["kubectl --context 'larakube-1.2.3.4' cluster-info --request-timeout=5s" => Process::result(exitCode: 0)]);
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'larakube-1.2.3.4'";
+
+    Process::fake(["{$kubectl} cluster-info --request-timeout=5s" => Process::result(exitCode: 0)]);
     expect(remoteDeployProcessHelper()->reachable('larakube-1.2.3.4'))->toBeTrue();
 
-    Process::fake(["kubectl --context 'larakube-1.2.3.4' cluster-info --request-timeout=5s" => Process::result(exitCode: 1)]);
+    Process::fake(["{$kubectl} cluster-info --request-timeout=5s" => Process::result(exitCode: 1)]);
     expect(remoteDeployProcessHelper()->reachable('larakube-1.2.3.4'))->toBeFalse();
 });
 
@@ -60,10 +62,12 @@ test('detectNodePlatformOverSsh maps the remote uname -m to a docker platform', 
 });
 
 test('detectNodePlatformViaKubectl only resolves when every node agrees on architecture', function () {
-    Process::fake(['kubectl --context \'ctx\' get nodes -o \'jsonpath={.items[*].status.nodeInfo.architecture}\'' => "amd64 amd64\n"]);
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'ctx'";
+
+    Process::fake(["{$kubectl} get nodes -o 'jsonpath={.items[*].status.nodeInfo.architecture}'" => "amd64 amd64\n"]);
     expect(remoteDeployProcessHelper()->kubectlPlatform('ctx'))->toBe('linux/amd64');
 
-    Process::fake(['kubectl --context \'ctx\' get nodes -o \'jsonpath={.items[*].status.nodeInfo.architecture}\'' => "amd64 arm64\n"]);
+    Process::fake(["{$kubectl} get nodes -o 'jsonpath={.items[*].status.nodeInfo.architecture}'" => "amd64 arm64\n"]);
     expect(remoteDeployProcessHelper()->kubectlPlatform('ctx'))->toBeNull();
 });
 

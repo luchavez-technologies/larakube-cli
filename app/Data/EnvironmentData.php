@@ -226,5 +226,13 @@ class EnvironmentData extends Data
          * so `heal` / re-runs stay consistent.
          */
         public ?SecurityAuditData $securityAudit = null,
+        /**
+         * This env's k3s API is VPN-only (cloud:harden restricted 6443 to the
+         * NetBird overlay) — `cloud:configure --only=ci` wires a "join the VPN"
+         * step into the generated GitHub Actions workflow instead of dialing
+         * the public IP directly. Set once the CI setup key is minted +
+         * uploaded, so re-generating the workflow later doesn't re-prompt.
+         */
+        public bool $ciVpn = false,
     ) {}
 }

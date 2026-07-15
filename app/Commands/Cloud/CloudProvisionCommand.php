@@ -99,13 +99,13 @@ class CloudProvisionCommand extends Command
         }
 
         // --- 🛡 GLOBAL SECURITY CONTEXT ---
-        $email = $this->getEmail();
+        $email = $this->validStoredEmail($this->getEmail());
         if (! $email) {
             $email = text(
                 label: 'What is your email address? (used for SSL/Let\'sEncrypt)',
-                placeholder: 'admin@example.com',
+                placeholder: 'you@yourdomain.com',
                 required: true,
-                validate: fn (string $value) => filter_var($value, FILTER_VALIDATE_EMAIL) ? null : 'Please enter a valid email address.',
+                validate: fn (string $value) => $this->acmeEmailError($value),
             );
             $this->setEmail($email);
         }
@@ -127,7 +127,8 @@ class CloudProvisionCommand extends Command
         $this->provisionK3sNode($user, $ip, $port, $keyPath, $config);
 
         $this->laraKubeInfo('✅ Provisioning complete!');
-        $this->info('Your VPS is now a LaraKube-hardened K3s node.');
+        $this->info('Your VPS is now a LaraKube-hardened K3s node (firewall, fail2ban, key-only SSH, encrypted Secrets, auto security updates).');
+        $this->line('  <fg=gray>Recommended follow-up: add default-deny NetworkPolicies, and restrict the k3s API (6443) to your IP.</>');
 
         return 0;
     }
