@@ -24,6 +24,7 @@ class MonitorInitCommand extends Command
         {--context=  : Target a specific kube-context (defaults to current context)}
         {--env=      : Legacy alias for the environment argument}
         {--domain=   : Raw override for the Grafana cluster domain (e.g. example.com → grafana.example.com); skips the prompt}
+        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--remove    : Tear down the monitoring stack (Prometheus, Loki, Grafana) from larakube-shared}';
 
     protected $description = 'Deploy the cluster-wide monitoring stack (Prometheus, Loki, Grafana) into larakube-shared';
@@ -53,9 +54,18 @@ class MonitorInitCommand extends Command
 
         $password = $this->resolveGrafanaPassword($kubectl, $ns);
 
+        $env = $this->option('env') ?: $this->argument('environment');
+        if (!$env && !$this->option('domain')) {
+            $env = 'local';
+        }
+
+        $vpnOnly = (bool) $this->option('vpn-only');
+
         $manifest = view('k8s.monitoring.shared', [
             'host' => $host,
             'grafanaPassword' => $password,
+            'isLocal' => $env === 'local',
+            'vpnOnly' => $vpnOnly,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-monitoring.yaml';

@@ -25,6 +25,7 @@ class UptimeInitCommand extends Command
         {--context=  : Target a specific kube-context (defaults to current context)}
         {--env=      : Legacy alias for the environment argument}
         {--domain=   : Raw override for the Uptime Kuma cluster domain (e.g. example.com → status.example.com); skips the prompt}
+        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--remove    : Tear down the Uptime Kuma stack from larakube-shared}';
 
     protected $description = 'Deploy the cluster-wide Uptime Kuma status page stack into larakube-shared';
@@ -62,8 +63,12 @@ class UptimeInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
+        $vpnOnly = (bool) $this->option('vpn-only');
+
         $manifest = view('k8s.uptime.shared', [
             'host' => $host,
+            'isLocal' => $env === 'local',
+            'vpnOnly' => $vpnOnly,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-uptime.yaml';

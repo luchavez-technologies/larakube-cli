@@ -2,6 +2,10 @@ includes:
     - vendor/larastan/larastan/extension.neon
 
 parameters:
+    # Disable parallel processing to avoid Phar extraction locks in Docker on macOS
+    parallel:
+        maximumNumberOfProcesses: 1
+
     # Level 0 = the high-impact, fast, deterministic checks. The bug that crashed
     # init was an undefined CLASS (App\Traits\IngressController); undefined
     # functions (text()) are the same family — both still fail the gate below.

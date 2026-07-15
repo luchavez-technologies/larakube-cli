@@ -27,6 +27,7 @@ class SecretsInitCommand extends Command
         {--env=      : Legacy alias for the environment argument}
         {--domain=   : Raw override for the Infisical cluster domain (e.g. example.com → secrets.example.com); skips the prompt}
         {--no-plex   : Bypass Plex Commons and deploy dedicated database/cache pods instead}
+        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--remove    : Tear down the Infisical stack and namespace}';
 
     protected $description = 'Deploy the cluster-wide Infisical secrets management stack';
@@ -86,6 +87,13 @@ class SecretsInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
+        $env = $this->option('env') ?: $this->argument('environment');
+        if (!$env && !$this->option('domain')) {
+            $env = 'local';
+        }
+
+        $vpnOnly = (bool) $this->option('vpn-only');
+
         $manifest = view('k8s.secrets.shared', [
             'host' => $host,
             'encryptionKey' => $encryptionKey,
@@ -93,6 +101,8 @@ class SecretsInitCommand extends Command
             'dbPassword' => $dbPassword,
             'plexNamespace' => $this->plexNamespace(),
             'noPlex' => $noPlex,
+            'isLocal' => $env === 'local',
+            'vpnOnly' => $vpnOnly,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-secrets.yaml';

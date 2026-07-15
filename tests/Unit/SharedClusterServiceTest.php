@@ -28,6 +28,14 @@ test('every shared service renders its manifest with the resolved host', functio
                 's3SecretKey' => '',
             ]);
         }
+        if (in_array($service, [SharedClusterService::FLOW, SharedClusterService::SHEET])) {
+            $params = array_merge($params, [
+                'noPlex' => true,
+                'plexNamespace' => 'larakube-system',
+                'vpnOnly' => false,
+                'dbPassword' => 'secret',
+            ]);
+        }
         $yaml = View::make($service->template(), $params)->render();
 
         expect($yaml)->toContain($host);
@@ -44,13 +52,25 @@ test('hostFor combines the host prefix with the given cluster domain', function 
         ->and(SharedClusterService::ERRORS->hostFor('example.com'))->toBe('errors.example.com')
         ->and(SharedClusterService::SECRETS->hostFor('example.com'))->toBe('secrets.example.com')
         ->and(SharedClusterService::GITEA->hostFor('example.com'))->toBe('git.example.com')
+        ->and(SharedClusterService::FLOW->hostFor('example.com'))->toBe('flow.example.com')
+        ->and(SharedClusterService::SHEET->hostFor('example.com'))->toBe('sheet.example.com')
         // TRAEFIK_DASHBOARD's value is the manifest name, its host label is "traefik".
         ->and(SharedClusterService::TRAEFIK_DASHBOARD->hostFor('localhost'))->toBe('traefik.localhost');
 });
 
-test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, Infisical, and Gitea target non-local environments; the rest are local-only', function () {
+test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, Infisical, Gitea, Flow, and Sheet target non-local environments; the rest are local-only', function () {
     foreach (SharedClusterService::cases() as $service) {
-        $localOnly = ! in_array($service, [SharedClusterService::GRAFANA, SharedClusterService::UPTIME_KUMA, SharedClusterService::VAULT, SharedClusterService::VPN, SharedClusterService::ERRORS, SharedClusterService::SECRETS, SharedClusterService::GITEA]);
+        $localOnly = ! in_array($service, [
+            SharedClusterService::GRAFANA,
+            SharedClusterService::UPTIME_KUMA,
+            SharedClusterService::VAULT,
+            SharedClusterService::VPN,
+            SharedClusterService::ERRORS,
+            SharedClusterService::SECRETS,
+            SharedClusterService::GITEA,
+            SharedClusterService::FLOW,
+            SharedClusterService::SHEET,
+        ]);
 
         expect($service->isLocalOnly())->toBe($localOnly)
             ->and($service->targetsEnvironment('local'))->toBeTrue()

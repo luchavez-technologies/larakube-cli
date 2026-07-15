@@ -54,7 +54,7 @@ trait LaraKubeOutput
      */
     protected function renderHeader(): void
     {
-        if (State::$headerRendered || State::$jsonMode || app()->runningUnitTests()) {
+        if (State::$headerRendered || State::$jsonMode || State::$isTesting) {
             return;
         }
 

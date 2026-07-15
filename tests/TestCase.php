@@ -26,6 +26,7 @@ abstract class TestCase extends BaseTestCase
         // unlike forcing AI_AGENT=true it triggers no agent-mode logic branches.
         Termwind::renderUsing(new NullOutput);
         State::$headerRendered = true;
+        State::$isTesting = true;
 
         // Process-wide statics from JSON mode / transient-token handling must
         // not leak between tests.

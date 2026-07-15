@@ -51,6 +51,7 @@ class CloudCreateCommand extends Command
         {--key= : Path to the SSH private key (VPS)}
         {--admin-cidr= : Restrict SSH + the k3s API to this CIDR (VPS); omit = open}
         {--node-count= : Managed cluster node count (min 1)}
+        {--ha : Enable HA (High-Availability) control plane (+$40/mo, irreversible)}
         {--k8s-version-prefix= : Managed Kubernetes minor version prefix (e.g. "1.31.")}
         {--do-token= : DigitalOcean API token for this run only (never persisted)}
         {--email= : Let\'s Encrypt email, forwarded to cloud:init:doks (managed)}
@@ -431,7 +432,18 @@ class CloudCreateCommand extends Command
         $stackName = $this->promptStackName($nameBase, 'vps');
         $this->result = ['stackName' => $stackName, 'kind' => 'vps'];
         $region = $this->promptRegion();
-        $size = $this->flag('size') ?: text(label: 'Droplet size slug', default: 's-1vcpu-1gb', hint: 'e.g. s-1vcpu-1gb, s-2vcpu-2gb');
+        $size = $this->flag('size') ?: select(
+            label: 'Droplet size',
+            options: [
+                's-1vcpu-1gb' => 's-1vcpu-1gb   —  1 vCPU,  1 GB RAM  (~$6/mo)',
+                's-1vcpu-2gb' => 's-1vcpu-2gb   —  1 vCPU,  2 GB RAM  (~$12/mo)',
+                's-2vcpu-2gb' => 's-2vcpu-2gb   —  2 vCPU,  2 GB RAM  (~$18/mo)',
+                's-2vcpu-4gb' => 's-2vcpu-4gb   —  2 vCPU,  4 GB RAM  (~$24/mo)',
+                's-4vcpu-8gb' => 's-4vcpu-8gb   —  4 vCPU,  8 GB RAM  (~$48/mo)',
+            ],
+            default: 's-1vcpu-1gb',
+            hint: 'Need a different size? Re-run with --size=<slug> (e.g. c-2, m-2vcpu-16gb).',
+        );
         $adminCidr = $this->promptAdminCidr(viaCreate: true);
         if ($adminCidr === false) {
             return 1;
@@ -503,7 +515,18 @@ class CloudCreateCommand extends Command
         $stackName = $this->promptStackName($nameBase, 'managed');
         $this->result = ['stackName' => $stackName, 'kind' => 'managed'];
         $region = $this->promptRegion();
-        $size = $this->flag('size') ?: text(label: 'Node size slug', default: 's-2vcpu-4gb', hint: 'e.g. s-2vcpu-4gb');
+        $size = $this->flag('size') ?: select(
+            label: 'Node size',
+            options: [
+                's-1vcpu-2gb' => 's-1vcpu-2gb   —  1 vCPU,  2 GB RAM  (~$12/mo per node)',
+                's-2vcpu-2gb' => 's-2vcpu-2gb   —  2 vCPU,  2 GB RAM  (~$18/mo per node)',
+                's-2vcpu-4gb' => 's-2vcpu-4gb   —  2 vCPU,  4 GB RAM  (~$24/mo per node)',
+                's-4vcpu-8gb' => 's-4vcpu-8gb   —  4 vCPU,  8 GB RAM  (~$48/mo per node)',
+                's-8vcpu-16gb' => 's-8vcpu-16gb  —  8 vCPU, 16 GB RAM  (~$96/mo per node)',
+            ],
+            default: 's-1vcpu-2gb',
+            hint: 'Need a different size? Re-run with --size=<slug> (e.g. c-2, m-2vcpu-16gb).',
+        );
         $nodeCount = (int) ($this->flag('node-count') ?? text(label: 'Node count', default: '2', validate: fn ($v) => ((int) $v) >= 1 ? null : 'At least 1 node.'));
         if ($nodeCount < 1) {
             // The flag path bypasses the prompt's validator — re-check here.
@@ -513,6 +536,8 @@ class CloudCreateCommand extends Command
         }
         // `??` not `?:` — an explicit empty --k8s-version-prefix means "latest".
         $versionPrefix = $this->flag('k8s-version-prefix') ?? text(label: 'Kubernetes minor version prefix', default: '', hint: 'e.g. "1.31." — blank = latest available');
+        $managedProvider = $this->resolveManagedProvider($provider);
+        $ha = $this->promptHaControlPlane($managedProvider);
 
         $hcl = view("tofu.{$provider}.managed", [
             'region' => $region,
@@ -520,6 +545,7 @@ class CloudCreateCommand extends Command
             'size' => $size,
             'nodeCount' => $nodeCount,
             'versionPrefix' => $versionPrefix,
+            'ha' => $ha,
         ])->render();
         $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
@@ -550,7 +576,6 @@ class CloudCreateCommand extends Command
         $this->call('cloud:init:doks', $doksArgs);
 
         if ($config && $environment) {
-            $managedProvider = $this->resolveManagedProvider($provider);
             $this->recordManagedTarget($config, $environment, $projectPath, $context, $managedProvider);
             $this->tagBinding($stackName, $config->getName(), $environment);
         }
@@ -638,7 +663,7 @@ class CloudCreateCommand extends Command
         file_put_contents($tmp, $rawYaml);
 
         if (file_exists($local) && filesize($local) > 0) {
-            $merged = Process::run('KUBECONFIG='.escapeshellarg($local).':'.escapeshellarg($tmp).' kubectl config view --flatten')->output();
+            $merged = Process::run('KUBECONFIG='.escapeshellarg($tmp).':'.escapeshellarg($local).' kubectl config view --flatten')->output();
             if ($merged !== '') {
                 file_put_contents($local, $merged);
             } else {
@@ -731,16 +756,80 @@ class CloudCreateCommand extends Command
 
     private function promptRegion(): string
     {
-        return $this->flag('region') ?: text(
-            label: 'DigitalOcean region slug',
+        return $this->flag('region') ?: select(
+            label: 'DigitalOcean region',
+            options: [
+                'nyc1' => 'nyc1  —  New York 1',
+                'nyc2' => 'nyc2  —  New York 2',
+                'nyc3' => 'nyc3  —  New York 3',
+                'sfo2' => 'sfo2  —  San Francisco 2',
+                'sfo3' => 'sfo3  —  San Francisco 3',
+                'atl1' => 'atl1  —  Atlanta 1',
+                'ric1' => 'ric1  —  Richmond 1',
+                'tor1' => 'tor1  —  Toronto 1',
+                'ams3' => 'ams3  —  Amsterdam 3',
+                'lon1' => 'lon1  —  London 1',
+                'fra1' => 'fra1  —  Frankfurt 1',
+                'sgp1' => 'sgp1  —  Singapore 1',
+                'blr1' => 'blr1  —  Bangalore 1',
+                'syd1' => 'syd1  —  Sydney 1',
+            ],
             default: 'nyc1',
-            hint: 'e.g. nyc1, sfo3, ams3, sgp1, lon1, fra1, blr1, syd1',
+            hint: 'Need a different region? Re-run with --region=<slug>.',
         );
     }
 
     private function slug(string $value): string
     {
         return trim((string) preg_replace('/[^a-z0-9-]+/', '-', strtolower($value)), '-');
+    }
+
+    /**
+     * Prompt whether to enable the HA (High-Availability) control plane.
+     * Consults the provider's enum to determine whether HA is a user choice,
+     * always-on, or tier-based — and adapts the prompt accordingly.
+     */
+    private function promptHaControlPlane(ManagedProvider $provider): bool
+    {
+        $option = $provider->haOption();
+
+        // Providers where HA is always on or unknown — no prompt.
+        if (in_array($option, ['always', 'unknown'], true)) {
+            return false;
+        }
+
+        // Explicit --ha flag (headless / CI).
+        if ($this->option('ha')) {
+            return true;
+        }
+
+        // Non-interactive — default to off (cheapest).
+        if ($this->flag('no-interaction')) {
+            return false;
+        }
+
+        // Tier-based providers (AKS) will need a select() in the future;
+        // for now, skip gracefully.
+        if ($option === 'tier') {
+            return false;
+        }
+
+        // Boolean opt-in (DOKS, LKE).
+        $cost = $provider->haCost();
+        $irreversible = $provider->haIrreversible();
+
+        $this->newLine();
+        $this->laraKubeWarn('HA Control Plane: +'.$cost.' (prorated hourly).'
+            .($irreversible ? ' Once enabled, it CANNOT be disabled.' : ''));
+        $this->line('  <fg=gray>The standard (free) control plane is sufficient for most workloads.</>');
+        $this->line('  <fg=gray>HA replicates the API server across multiple nodes for higher uptime.</>');
+
+        return confirm(
+            label: 'Enable the HA (High-Availability) control plane?',
+            default: false,
+            hint: 'Adds '.$cost.' to your cluster cost.'
+                .($irreversible ? ' This is irreversible.' : ''),
+        );
     }
 
     private function printVpsNextSteps(string $context, ?string $environment): void

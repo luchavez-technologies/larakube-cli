@@ -51,15 +51,21 @@ test('vpn management and signal Services both request h2c backend proxying — b
     }
 });
 
-test('vpn client manifest renders as valid YAML wired to the bootstrapped setup key', function () {
+test('vpn client manifest renders as valid multi-document YAML wired to the bootstrapped setup key', function () {
     $rendered = view('k8s.vpn.client')->render();
 
-    $parsed = Yaml::parse($rendered);
+    $documents = array_values(array_filter(
+        array_map('trim', preg_split('/^---$/m', $rendered)),
+        fn (string $doc) => $doc !== '',
+    ));
 
-    expect($parsed['kind'])->toBe('Deployment')
-        ->and($parsed['metadata']['name'])->toBe('netbird-client');
+    $deployment = collect($documents)
+        ->map(fn (string $doc) => Yaml::parse($doc))
+        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment');
 
-    $env = $parsed['spec']['template']['spec']['containers'][0]['env'];
+    expect($deployment['metadata']['name'])->toBe('netbird-client');
+
+    $env = $deployment['spec']['template']['spec']['containers'][0]['env'];
     $setupKeyEnv = collect($env)->firstWhere('name', 'NB_SETUP_KEY');
 
     expect($setupKeyEnv['valueFrom']['secretKeyRef'])->toBe([

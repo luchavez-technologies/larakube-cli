@@ -1,8 +1,8 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: infisical
-  namespace: larakube-secrets
+  name: flow-n8n
+  namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -10,7 +10,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-secrets-infisical-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-flow-vpn-only@kubernetescrd
 @endif
 spec:
   rules:
@@ -21,9 +21,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: infisical-backend
+                name: flow-n8n
                 port:
-                  number: 8080
+                  number: 5678
   tls:
     - hosts:
         - {{ $host }}

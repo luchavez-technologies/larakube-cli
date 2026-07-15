@@ -85,6 +85,7 @@ class VpnInitCommand extends Command
         // The client Deployment authenticates with NB_SETUP_KEY, so it can only
         // be applied AFTER bootstrapVpnAuth() mints one — applying it earlier
         // would leave it permanently unable to log in (no key to reference yet).
+        $this->waitForTls($host);
         $this->bootstrapVpnAuth($kubectl, $ns, $host);
 
         $clientManifest = view('k8s.vpn.client')->render();
@@ -192,16 +193,33 @@ class VpnInitCommand extends Command
             $password = bin2hex(random_bytes(16));
             $email = $this->getEmail() ?: "admin@{$host}";
 
-            $setup = Http::timeout(15)->post("https://{$host}/api/setup", [
-                'email' => $email,
-                'name' => 'larakube',
-                'password' => $password,
-                'create_pat' => true,
-                'pat_expire_in' => 365,
-            ]);
+            // Retry the /api/setup POST — the TLS wait above confirms the cert
+            // is valid, but the management pod may still need a moment to
+            // accept connections through the Ingress.
+            $setup = null;
+            $maxAttempts = (int) 6;
+            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                try {
+                    $setup = Http::timeout(15)->post("https://{$host}/api/setup", [
+                        'email' => $email,
+                        'name' => 'larakube',
+                        'password' => $password,
+                        'create_pat' => true,
+                        'pat_expire_in' => 365,
+                    ]);
+                    break;
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    if ($attempt === $maxAttempts || \App\State::$isTesting) {
+                        $this->laraKubeWarn('Could not reach NetBird management after multiple attempts — run `larakube vpn:init` again once the endpoint is reachable.');
 
-            $pat = $setup->json('personal_access_token');
-            if ($setup->failed() || ! $pat) {
+                        return;
+                    }
+                    sleep(5);
+                }
+            }
+
+            $pat = $setup?->json('personal_access_token');
+            if (! $setup || $setup->failed() || ! $pat) {
                 $this->laraKubeWarn('Could not bootstrap NetBird auth automatically — log into the dashboard once to finish setup.');
 
                 return;
@@ -233,6 +251,36 @@ class VpnInitCommand extends Command
                 .'--from-literal=setup-key='.escapeshellarg($key).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
+        });
+    }
+
+    /**
+     * Wait for TLS to become valid on the VPN host — Traefik's ACME resolver
+     * needs a few seconds after the Ingress is created to complete the Let's
+     * Encrypt challenge. Without this gate, bootstrapVpnAuth() would fire an
+     * HTTPS call against a self-signed/missing cert and crash with cURL error 60.
+     */
+    protected function waitForTls(string $host): void
+    {
+        if (\App\State::$isTesting) {
+            return;
+        }
+
+        $this->withSpin('Waiting for TLS certificate (Let\'s Encrypt)...', function () use ($host) {
+            $maxWait = 90;
+            $start = time();
+
+            while (time() - $start < $maxWait) {
+                // Check if we can connect and verify TLS. curl exits with 0 on success.
+                $result = Process::run('curl -sSf -o /dev/null '.escapeshellarg("https://{$host}"));
+                if ($result->successful()) {
+                    return;
+                }
+
+                sleep(5);
+            }
+
+            $this->laraKubeWarn("TLS not ready after {$maxWait}s — proceeding anyway (auth bootstrap may fail; re-run `vpn:init` if it does).");
         });
     }
 

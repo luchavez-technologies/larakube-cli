@@ -32,7 +32,7 @@ trait InteractsWithTraefik
 
         $tmpInstall = sys_get_temp_dir().'/traefik-install.yaml';
         file_put_contents($tmpInstall, view('k8s.traefik-install')->render());
-        $ok = $this->applyAndVerifyRollout('kubectl', $tmpInstall, 'traefik', 'traefik');
+        $ok = $this->applyAndVerifyRollout('kubectl', $tmpInstall, 'traefik', 'traefik', 120, '--validate=false');
         @unlink($tmpInstall);
 
         // Bring up the shared services Traefik fronts (Mailpit + the dashboard
@@ -185,7 +185,10 @@ trait InteractsWithTraefik
         }
 
         $tmp = sys_get_temp_dir()."/larakube-shared-{$service->value}.yaml";
-        file_put_contents($tmp, view($service->template(), ['host' => $host])->render());
+        file_put_contents($tmp, view($service->template(), [
+            'host' => $host,
+            'isLocal' => true,
+        ])->render());
         Process::run("kubectl apply -f {$tmp}");
         @unlink($tmp);
 

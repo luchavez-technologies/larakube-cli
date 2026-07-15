@@ -35,6 +35,46 @@ enum ManagedProvider: string
             self::CUSTOM => null,
         };
     }
+
+    /**
+     * Whether this provider offers HA as an opt-in choice, is always-on, or tier-based.
+     *
+     * - 'boolean'  → simple on/off toggle (DOKS, LKE)
+     * - 'tier'     → tiered pricing model (AKS: Free/Standard/Premium)
+     * - 'always'   → HA is the default, no choice needed (EKS, GKE, Civo)
+     * - 'unknown'  → custom provider, skip the prompt
+     */
+    public function haOption(): string
+    {
+        return match ($this) {
+            self::DOKS => 'boolean',
+            self::LKE => 'boolean',
+            self::AKS => 'tier',
+            self::EKS, self::GKE, self::CIVO => 'always',
+            self::CUSTOM => 'unknown',
+        };
+    }
+
+    /** Monthly cost of enabling HA (null = included / free / N/A). */
+    public function haCost(): ?string
+    {
+        return match ($this) {
+            self::DOKS => '$40/month',
+            self::LKE => '$60/month',
+            self::AKS => '$73/month (Standard) or $438/month (Premium)',
+            default => null,
+        };
+    }
+
+    /** Whether enabling HA is irreversible on this provider. */
+    public function haIrreversible(): bool
+    {
+        return match ($this) {
+            self::DOKS, self::LKE => true,
+            default => false,
+        };
+    }
+
     case DOKS = 'doks';
     case EKS = 'eks';
     case GKE = 'gke';

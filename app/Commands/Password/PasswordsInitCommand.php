@@ -15,15 +15,16 @@ use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
-class PasswordInitCommand extends Command
+class PasswordsInitCommand extends Command
 {
     use InteractsWithClusterContext, InteractsWithVault, LaraKubeOutput, StreamsProcessOutput;
 
-    protected $signature = 'password:init
+    protected $signature = 'passwords:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Vaultwarden host.}
         {--context=  : Target a specific kube-context (defaults to current context)}
         {--env=      : Legacy alias for the environment argument}
         {--domain=   : Raw override for the Vaultwarden cluster domain (e.g. example.com → vault.example.com); skips the prompt}
+        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--remove    : Tear down the Vaultwarden stack from larakube-vault}';
 
     protected $description = 'Deploy the cluster-wide Vaultwarden team password manager into larakube-vault';
@@ -39,10 +40,21 @@ class PasswordInitCommand extends Command
 
     protected function deployVault(): int
     {
-        $kubectl = $this->vaultKubectl($this->option('context'));
-        $ns = $this->vaultNamespace();
+        $env = $this->resolveEnvironment();
+        $host = $this->resolveVaultHost($env);
 
-        $host = $this->resolveVaultHost();
+        $projectPath = getcwd();
+        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
+            ? ConfigData::loadFromFile($projectPath)
+            : null;
+
+        $context = (string) $this->option('context') ?: null;
+        if (! $context && $config && $env !== 'local') {
+            $context = $this->environmentContextOrCurrent($config, $env);
+        }
+
+        $kubectl = $this->vaultKubectl($context);
+        $ns = $this->vaultNamespace();
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -50,9 +62,13 @@ class PasswordInitCommand extends Command
 
         $adminToken = $this->readVaultAdminToken($kubectl, $ns) ?? bin2hex(random_bytes(16));
 
+        $vpnOnly = (bool) $this->option('vpn-only');
+
         $manifest = view('k8s.vault.shared', [
             'host' => $host,
             'adminToken' => $adminToken,
+            'isLocal' => $env === 'local',
+            'vpnOnly' => $vpnOnly,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-vault.yaml';
@@ -94,7 +110,7 @@ class PasswordInitCommand extends Command
     /**
      * Resolve the Vaultwarden ingress host for this install.
      */
-    protected function resolveVaultHost(): string
+    protected function resolveVaultHost(string $env): string
     {
         $service = SharedClusterService::VAULT;
 
@@ -102,8 +118,6 @@ class PasswordInitCommand extends Command
         if ($domain !== '') {
             return $service->hostFor($domain);
         }
-
-        $env = $this->resolveEnvironment();
 
         if ($env === 'local') {
             return (string) $this->resolveVaultHostReadOnly('local', null);

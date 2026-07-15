@@ -1,3 +1,16 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbird-client-data
+  namespace: larakube-vpn
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 128Mi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,6 +18,8 @@ metadata:
   namespace: larakube-vpn
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: netbird-client
@@ -27,3 +42,20 @@ spec:
                 secretKeyRef:
                   name: netbird-admin
                   key: setup-key
+          volumeMounts:
+            - name: data
+              mountPath: /etc/netbird
+        - name: ingress-proxy
+          image: alpine/socat
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              HOST="traefik.traefik.svc.cluster.local"
+              nslookup $HOST > /dev/null 2>&1 || HOST="traefik.kube-system.svc.cluster.local"
+              socat TCP-LISTEN:80,fork,reuseaddr TCP:$HOST:80 &
+              socat TCP-LISTEN:443,fork,reuseaddr TCP:$HOST:443 &
+              wait
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: netbird-client-data

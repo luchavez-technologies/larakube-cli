@@ -35,6 +35,8 @@ enum SharedClusterService: string
             self::ERRORS => 'k8s.errors.ingress',
             self::SECRETS => 'k8s.secrets.ingress',
             self::GITEA => 'k8s.gitea.shared',
+            self::FLOW => 'k8s.flow.ingress',
+            self::SHEET => 'k8s.sheet.ingress',
         };
     }
 
@@ -51,6 +53,8 @@ enum SharedClusterService: string
             self::TRAEFIK_DASHBOARD => 'traefik',
             self::UPTIME_KUMA => 'status',
             self::GITEA => 'git',
+            self::FLOW => 'flow',
+            self::SHEET => 'sheet',
             default => $this->value,
         };
     }
@@ -79,7 +83,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET => false,
             default => true,
         };
     }
@@ -104,6 +108,8 @@ enum SharedClusterService: string
             self::ERRORS => 'GlitchTip',
             self::SECRETS => 'Infisical',
             self::GITEA => 'Gitea',
+            self::FLOW => 'n8n',
+            self::SHEET => 'NocoDB',
         };
     }
 
@@ -129,6 +135,8 @@ enum SharedClusterService: string
             self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
             self::SECRETS => 'deployment infisical-backend -n larakube-secrets',
             self::GITEA => 'deployment gitea -n larakube-shared',
+            self::FLOW => 'deployment flow-n8n -n larakube-shared',
+            self::SHEET => 'deployment sheet-nocodb -n larakube-shared',
         };
     }
 
@@ -187,6 +195,8 @@ enum SharedClusterService: string
             self::ERRORS => 'Refreshing GlitchTip ingress...',
             self::SECRETS => 'Refreshing Infisical ingress...',
             self::GITEA => 'Refreshing Gitea ingress...',
+            self::FLOW => 'Refreshing Flow (n8n) ingress...',
+            self::SHEET => 'Refreshing Sheet (NocoDB) ingress...',
         };
     }
 
@@ -208,4 +218,6 @@ enum SharedClusterService: string
     case ERRORS = 'errors';
     case SECRETS = 'secrets';
     case GITEA = 'gitea';
+    case FLOW = 'flow';
+    case SHEET = 'sheet';
 }

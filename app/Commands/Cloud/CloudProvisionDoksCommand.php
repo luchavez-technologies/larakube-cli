@@ -238,7 +238,8 @@ class CloudProvisionDoksCommand extends Command
         file_put_contents($tmp, $manifest);
 
         $kubectl = $this->kubectl().' --context '.escapeshellarg($context);
-        $ok = $this->applyAndVerifyRollout($kubectl, $tmp, 'traefik', 'traefik');
+        $ok = $this->applyAndVerifyRollout($kubectl, $tmp, 'traefik', 'traefik', extraApplyFlags: '--validate=false');
+
         @unlink($tmp);
 
         return $ok ? 0 : 1;

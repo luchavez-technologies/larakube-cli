@@ -28,6 +28,7 @@ class GitInitCommand extends Command
         {--env=      : Legacy alias for the environment argument}
         {--domain=   : Raw override for the Gitea cluster domain (e.g. example.com → git.example.com); skips the prompt}
         {--no-plex   : Bypass Plex Commons and use local PVC storage instead}
+        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--remove    : Tear down the Gitea stack from larakube-shared}';
 
     protected $description = 'Deploy the cluster-wide Gitea forge, CI/CD runner, and package registry';
@@ -116,6 +117,13 @@ class GitInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
+        $env = $this->option('env') ?: $this->argument('environment');
+        if (!$env && !$this->option('domain')) {
+            $env = 'local';
+        }
+
+        $vpnOnly = (bool) $this->option('vpn-only');
+
         // 1. Initial deployment with Gitea Core only (runner token placeholder)
         $manifest = view('k8s.gitea.shared', [
             'host' => $host,
@@ -129,6 +137,8 @@ class GitInitCommand extends Command
             's3Endpoint' => $s3Endpoint,
             's3AccessKey' => $s3AccessKey,
             's3SecretKey' => $s3SecretKey,
+            'isLocal' => $env === 'local',
+            'vpnOnly' => $vpnOnly,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-gitea.yaml';
@@ -202,6 +212,8 @@ class GitInitCommand extends Command
             's3Endpoint' => $s3Endpoint,
             's3AccessKey' => $s3AccessKey,
             's3SecretKey' => $s3SecretKey,
+            'isLocal' => $env === 'local',
+            'vpnOnly' => $vpnOnly,
         ])->render();
 
         $tmpFinal = sys_get_temp_dir().'/larakube-gitea-final.yaml';

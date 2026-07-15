@@ -6,6 +6,8 @@ class State
 {
     public static bool $headerRendered = false;
 
+    public static bool $isTesting = false;
+
     /**
      * Sensitive values registered for redaction in CLI output (keyed by value).
      * Lives here, not on the LaraKubeOutput trait, because that trait is also
