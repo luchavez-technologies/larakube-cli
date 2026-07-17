@@ -137,6 +137,18 @@ trait InteractsWithGlobalConfig
         $config->save();
     }
 
+    protected function getCloudflareToken(): ?string
+    {
+        return State::$transientCloudflareToken ?? $this->getGlobalConfig()->getCloudflareToken();
+    }
+
+    protected function setCloudflareToken(?string $token): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->setCloudflareToken($token);
+        $config->save();
+    }
+
     protected function getLocalTld(): string
     {
         return $this->getGlobalConfig()->getLocalTld();

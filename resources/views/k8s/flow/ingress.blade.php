@@ -1,7 +1,11 @@
+@php
+    $svcName = ($engine ?? 'n8n') === 'windmill' ? 'flow-windmill' : 'flow-n8n';
+    $svcPort = ($engine ?? 'n8n') === 'windmill' ? 8000 : 5678;
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: flow-n8n
+  name: {{ $svcName }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -21,9 +25,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: flow-n8n
+                name: {{ $svcName }}
                 port:
-                  number: 5678
+                  number: {{ $svcPort }}
   tls:
     - hosts:
         - {{ $host }}

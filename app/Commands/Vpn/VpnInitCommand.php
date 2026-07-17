@@ -4,6 +4,7 @@ namespace App\Commands\Vpn;
 
 use App\Data\ConfigData;
 use App\Enums\SharedClusterService;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
@@ -19,7 +20,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class VpnInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'vpn:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the NetBird VPN host.}
@@ -116,9 +117,11 @@ class VpnInitCommand extends Command
         $env = $this->resolveEnvironment($config);
         $kubectl = $this->vpnKubectl($this->resolveVpnContext($env, $config));
 
-        $this->withSpin('Removing NetBird VPN namespace...', fn () => Process::run(
-            "{$kubectl} delete namespace {$ns} --ignore-not-found",
-        ));
+        if (! $this->removeResources('Removing NetBird VPN namespace...', "{$kubectl} delete namespace {$ns} --ignore-not-found")) {
+            $this->laraKubeError('Failed to remove the NetBird VPN namespace — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         $this->laraKubeInfo('NetBird VPN removed from larakube-vpn.');
 

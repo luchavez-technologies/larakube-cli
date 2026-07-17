@@ -30,6 +30,11 @@ class State
     public static ?string $transientDoToken = null;
 
     /**
+     * A Cloudflare API token supplied for this run only, never persisted.
+     */
+    public static ?string $transientCloudflareToken = null;
+
+    /**
      * The last laraKubeError() message (already secret-masked), so a JSON-mode
      * wrapper can report the failure without threading it through every
      * `return 1` site.

@@ -4,6 +4,7 @@ namespace App\Commands\Errors;
 
 use App\Data\ConfigData;
 use App\Enums\SharedClusterService;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithErrors;
 use App\Traits\InteractsWithPlex;
@@ -19,7 +20,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class ErrorsInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithErrors, InteractsWithPlex, LaraKubeOutput, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithPlex, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'errors:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the GlitchTip host.}
@@ -36,9 +37,6 @@ class ErrorsInitCommand extends Command
     {
         $this->renderHeader();
 
-        // Scope the Plex trait context to match the passed option
-        $this->plexContext = $this->option('context');
-
         return $this->option('remove')
             ? $this->removeErrors()
             : $this->deployErrors();
@@ -46,7 +44,10 @@ class ErrorsInitCommand extends Command
 
     protected function deployErrors(): int
     {
-        $kubectl = $this->errorsKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $this->plexContext = $context;
+        $kubectl = $this->errorsKubectl($context);
         $ns = $this->errorsNamespace();
 
         $noPlex = (bool) $this->option('no-plex');
@@ -57,7 +58,7 @@ class ErrorsInitCommand extends Command
             }
         }
 
-        $host = $this->resolveErrorsHost();
+        $host = $this->resolveErrorsHost($env);
 
         // Read or generate database credentials
         $dbPassword = $this->readExistingDbPassword($kubectl, $ns);
@@ -85,11 +86,6 @@ class ErrorsInitCommand extends Command
 
         // Delete any existing migrations job first because Job specs are immutable
         Process::run("{$kubectl} delete job glitchtip-db-migrations -n {$ns} --ignore-not-found");
-
-        $env = $this->option('env') ?: $this->argument('environment');
-        if (!$env && !$this->option('domain')) {
-            $env = 'local';
-        }
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -148,10 +144,14 @@ class ErrorsInitCommand extends Command
 
     protected function removeErrors(): int
     {
-        $kubectl = $this->errorsKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $this->plexContext = $context;
+        $kubectl = $this->errorsKubectl($context);
         $ns = $this->errorsNamespace();
         $plexNs = $this->plexNamespace();
 
+        $ok = true;
         $isStandalone = $this->isErrorsDatabaseLocal($kubectl, $ns);
 
         if (! $isStandalone) {
@@ -161,18 +161,24 @@ class ErrorsInitCommand extends Command
             file_put_contents($tmp, $sql);
             $client = \App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminClient();
 
-            $this->withSpin("Dropping database 'glitchtip' from the Commons...", function () use ($plexNs, $client, $tmp, $kubectl) {
-                return Process::run(
-                    "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
-                )->successful();
-            });
+            $ok = $this->removeResources(
+                "Dropping database 'glitchtip' from the Commons...",
+                "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
+            );
             @unlink($tmp);
         }
 
         // Deleting K8s resources surgically
-        $this->withSpin('Removing GlitchTip resources...', fn () => Process::run(
+        $ok = $this->removeResources(
+            'Removing GlitchTip resources...',
             "{$kubectl} delete deploy/glitchtip-web deploy/glitchtip-worker deploy/glitchtip-db deploy/glitchtip-cache pvc/glitchtip-db-storage svc/glitchtip-web svc/glitchtip-db svc/glitchtip-cache ingress/glitchtip secret/glitchtip-admin job/glitchtip-db-migrations -n {$ns} --ignore-not-found",
-        ));
+        ) && $ok;
+
+        if (! $ok) {
+            $this->laraKubeError('One or more GlitchTip resources failed to remove — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         $this->laraKubeInfo('GlitchTip removed from larakube-shared.');
 
@@ -219,7 +225,7 @@ class ErrorsInitCommand extends Command
     /**
      * Resolve the GlitchTip ingress host for this install.
      */
-    protected function resolveErrorsHost(): string
+    protected function resolveErrorsHost(string $env): string
     {
         $service = SharedClusterService::ERRORS;
 
@@ -227,8 +233,6 @@ class ErrorsInitCommand extends Command
         if ($domain !== '') {
             return $service->hostFor($domain);
         }
-
-        $env = $this->resolveEnvironment();
 
         if ($env === 'local') {
             return (string) $this->resolveErrorsHostReadOnly('local', null);

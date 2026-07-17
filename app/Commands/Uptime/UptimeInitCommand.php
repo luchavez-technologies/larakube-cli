@@ -4,6 +4,7 @@ namespace App\Commands\Uptime;
 
 use App\Data\ConfigData;
 use App\Enums\SharedClusterService;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithTraefik;
 use App\Traits\InteractsWithUptime;
@@ -18,7 +19,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class UptimeInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'uptime:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Uptime Kuma host.}
@@ -41,17 +42,15 @@ class UptimeInitCommand extends Command
 
     protected function deployUptime(): int
     {
-        $kubectl = $this->uptimeKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $kubectl = $this->uptimeKubectl($context);
         $ns = $this->uptimeNamespace();
 
-        $host = $this->resolveUptimeHost();
-        $env = $this->resolveEnvironment();
+        $host = $this->resolveUptimeHost($env);
 
         if ($env === 'local') {
-            $projectPath = getcwd();
-            $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-                ? ConfigData::loadFromFile($projectPath)
-                : null;
+            $config = $this->getProjectConfig(getcwd());
             if ($config) {
                 $this->withSpin('Syncing local TLS certificates...', function () use ($config) {
                     $this->refreshTraefikCerts($config->getName(), $config->getLocalTld());
@@ -88,26 +87,26 @@ class UptimeInitCommand extends Command
         $this->line("  <fg=gray>Uptime Kuma URL:</>            <fg=blue>https://{$host}</>");
         $this->newLine();
 
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $this->showUptimeGuide($env, $config);
+        $this->showUptimeGuide($env, $this->getProjectConfig(getcwd()));
 
         return 0;
     }
 
     protected function removeUptime(): int
     {
-        $kubectl = $this->uptimeKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $kubectl = $this->uptimeKubectl($context);
         $ns = $this->uptimeNamespace();
 
-        $this->withSpin('Removing Uptime Kuma...', fn () => Process::run(
+        if (! $this->removeResources('Removing Uptime Kuma...',
             "{$kubectl} delete deployment,svc,ingress,pvc"
             .' uptime-kuma uptime-kuma-storage'
-            ." -n {$ns} --ignore-not-found",
-        ));
+            ." -n {$ns} --ignore-not-found")) {
+            $this->laraKubeError('Failed to remove Uptime Kuma resources — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         $this->laraKubeInfo('Uptime Kuma removed from larakube-shared.');
 
@@ -117,7 +116,7 @@ class UptimeInitCommand extends Command
     /**
      * Resolve the Uptime Kuma ingress host for this install.
      */
-    protected function resolveUptimeHost(): string
+    protected function resolveUptimeHost(string $env): string
     {
         $service = SharedClusterService::UPTIME_KUMA;
 
@@ -125,8 +124,6 @@ class UptimeInitCommand extends Command
         if ($domain !== '') {
             return $service->hostFor($domain);
         }
-
-        $env = $this->resolveEnvironment();
 
         if ($env === 'local') {
             return (string) $this->resolveUptimeHostReadOnly('local', null);

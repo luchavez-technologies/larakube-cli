@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: sheet-nocodb
+  name: sheet
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -21,9 +21,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: sheet-nocodb
+                name: sheet
                 port:
-                  number: 8080
+                  number: 80
   tls:
     - hosts:
         - {{ $host }}

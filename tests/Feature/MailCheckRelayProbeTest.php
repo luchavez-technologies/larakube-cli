@@ -1,0 +1,75 @@
+<?php
+
+use App\Commands\Mail\MailCheckCommand;
+use Illuminate\Support\Facades\Process;
+
+/**
+ * mail:check no longer trusts the mere presence of the mail-relay secret — it
+ * reaches through the Stalwart pod and actually SMTP-AUTHs against the relay.
+ * These exercise probeRelay() directly (the network calls are all faked) so the
+ * exact class of failure we hit on prod — blocked port, wrong Brevo key — is
+ * caught by a green/red check instead of silently swallowing outbound mail.
+ */
+function invokeProbeRelay(): array
+{
+    $command = app(MailCheckCommand::class);
+    $ref = new ReflectionMethod($command, 'probeRelay');
+    $ref->setAccessible(true);
+
+    return $ref->invoke($command, 'kubectl', 'larakube-shared');
+}
+
+/** Shared fakes: relay secret + admin auth + pod name + a wired brevo route. */
+function fakeRelayEnv(string $opensslOutput, ?string $routeList = null): void
+{
+    $routeList ??= '[{"name":"brevo","address":"smtp-relay.brevo.com","port":2525,"implicitTls":false,"id":"rt1"}]';
+
+    Process::fake([
+        '*mail-relay*provider*' => Process::result(output: base64_encode('brevo')),
+        '*mail-relay*username*' => Process::result(output: base64_encode('b262c1001@smtp-brevo.com')),
+        '*mail-relay*password*' => Process::result(output: base64_encode('xsmtpsib-fullkey')),
+        '*mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*localhost:8080/jmap*' => Process::result(output: '{"methodResponses":[["x:MtaRoute/query",{"ids":["rt1"]},"c0"],["x:MtaRoute/get",{"list":'.$routeList.',"notFound":[]},"c1"]],"sessionState":"x"}'),
+        '*openssl s_client*' => Process::result(output: $opensslOutput),
+    ]);
+}
+
+test('probeRelay reports ok when the relay accepts AUTH (235)', function () {
+    fakeRelayEnv("250-hello\r\n334 VXNlcm5hbWU6\r\n235 2.7.0 Authentication successful\r\n221 bye\r\n");
+
+    [$status, $where, $hint] = invokeProbeRelay();
+
+    expect($status)->toBe('ok');
+    expect($where)->toContain('smtp-relay.brevo.com:2525');
+    expect($where)->toContain('authenticating');
+});
+
+test('probeRelay reports fail when the relay rejects the credentials (535)', function () {
+    fakeRelayEnv("250-hello\r\n334 VXNlcm5hbWU6\r\n535 5.7.8 Authentication failed\r\n");
+
+    [$status, $where, $hint] = invokeProbeRelay();
+
+    expect($status)->toBe('fail');
+    expect($where)->toContain('535');
+    expect($hint)->toContain('xsmtpsib-');
+});
+
+test('probeRelay reports fail when the submission port is unreachable (no banner)', function () {
+    fakeRelayEnv(''); // openssl timed out / no connection → empty output
+
+    [$status, $where, $hint] = invokeProbeRelay();
+
+    expect($status)->toBe('fail');
+    expect($where)->toContain('unreachable');
+    expect($hint)->toContain('2525');
+});
+
+test('probeRelay warns when the secret exists but Stalwart has no route', function () {
+    fakeRelayEnv('235 ok', routeList: '[]'); // route query returns no matching route
+
+    [$status, $where, $hint] = invokeProbeRelay();
+
+    expect($status)->toBe('warn');
+    expect($where)->toContain('no Stalwart route');
+});

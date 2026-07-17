@@ -39,13 +39,13 @@ spec:
             - name: NC_DB
               value: sqlite:////usr/app/data/noco.db
 @else
-            - name: NC_DB
-              value: pg://postgres.{{ $plexNamespace }}.svc.cluster.local:5432?u=nocodb&d=nocodb&p=$(DB_PASSWORD)
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sheet-secrets
                   key: db-password
+            - name: NC_DB
+              value: pg://postgres.{{ $plexNamespace }}.svc.cluster.local:5432?u=nocodb&d=nocodb&p=$(DB_PASSWORD)
 @endif
           ports:
             - containerPort: 8080
@@ -72,17 +72,19 @@ spec:
           emptyDir: {}
 @endif
 ---
+# Stable Service name `sheet` fronts whichever engine (Baserow/NocoDB) is
+# deployed, so the ingress and up-reconcile stay engine-agnostic.
 apiVersion: v1
 kind: Service
 metadata:
-  name: sheet-nocodb
+  name: sheet
   namespace: larakube-shared
 spec:
   selector:
     app: sheet-nocodb
   ports:
     - protocol: TCP
-      port: 8080
+      port: 80
       targetPort: 8080
   type: ClusterIP
 ---

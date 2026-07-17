@@ -25,6 +25,7 @@ class CloudProvisionDoksCommand extends Command
     use InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext, VerifiesKubernetesRollout;
 
     protected $signature = 'cloud:init:doks
+        {environment? : Inside a project, the environment to bind to this cluster.}
         {--context= : Target a specific kube-context}
         {--email= : Email for Let\'s Encrypt certificate notices}';
 
@@ -56,6 +57,7 @@ class CloudProvisionDoksCommand extends Command
         // Load the project config once (null when run outside a project) — drives
         // both the email prefill and the optional auto-configure offer below.
         $projectConfig = $this->getProjectConfig(getcwd());
+        $environment = $this->argument('environment');
 
         // Idempotent rerun: if Traefik is already installed, don't re-prompt for an
         // email or reinstall — just re-surface the IP (and still offer to wire up
@@ -63,7 +65,7 @@ class CloudProvisionDoksCommand extends Command
         if ($this->traefikInstalled($context)) {
             $this->laraKubeInfo('ℹ️  Traefik is already installed on this cluster — skipping install.');
 
-            return $this->reportIpAndOffer($context, $this->waitForLoadBalancerIp($context), $projectConfig);
+            return $this->reportIpAndOffer($context, $this->waitForLoadBalancerIp($context), $projectConfig, $environment);
         }
 
         // Collected up front — the ACME resolver is configured at install time.
@@ -123,7 +125,7 @@ class CloudProvisionDoksCommand extends Command
 
         $this->laraKubeInfo('Waiting for the LoadBalancer IP...');
 
-        return $this->reportIpAndOffer($context, $this->waitForLoadBalancerIp($context), $projectConfig);
+        return $this->reportIpAndOffer($context, $this->waitForLoadBalancerIp($context), $projectConfig, $environment);
     }
 
     /**
@@ -131,7 +133,7 @@ class CloudProvisionDoksCommand extends Command
      * environment to this cluster (managed target + web host) — no hand-editing.
      * Otherwise print the manual next steps.
      */
-    private function reportIpAndOffer(string $context, ?string $ip, ?ConfigData $projectConfig): int
+    private function reportIpAndOffer(string $context, ?string $ip, ?ConfigData $projectConfig, ?string $environment = null): int
     {
         if (! $ip) {
             $this->laraKubeWarn('No LoadBalancer IP assigned yet — DigitalOcean may still be provisioning it. Re-run this command in a minute (or check the `traefik` service in the `traefik` namespace).');
@@ -142,13 +144,20 @@ class CloudProvisionDoksCommand extends Command
         $this->laraKubeInfo("✅ LoadBalancer IP: <fg=cyan>{$ip}</>");
         $this->newLine();
 
-        // The project-wiring branch stays interactive-only: headless it would
-        // auto-confirm (default true) straight into required prompts with no
-        // flag equivalents and throw instead of finishing.
-        if ($projectConfig && ! $this->option('no-interaction') && confirm('Configure an environment in this project to use this cluster now?', true)) {
-            $this->configureProjectEnvForCluster($projectConfig, $context, $ip);
+        if ($projectConfig) {
+            if ($environment) {
+                $this->configureProjectEnvForCluster($projectConfig, $context, $ip, $environment);
+            } elseif (! $this->option('no-interaction') && confirm('Configure an environment in this project to use this cluster now?', true)) {
+                $this->configureProjectEnvForCluster($projectConfig, $context, $ip);
+            } else {
+                $this->displayNextSteps($ip);
+            }
         } else {
             $this->displayNextSteps($ip);
+        }
+
+        if (! $this->option('no-interaction') && confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
+            $this->call('dns:init', ['environment' => $environment ?: 'production', '--context' => $context]);
         }
 
         return 0;
@@ -159,10 +168,10 @@ class CloudProvisionDoksCommand extends Command
      * cluster — managed target (context + DOKS provider) + default storageClass +
      * web host — reusing the shared recorder so there's one source of truth.
      */
-    private function configureProjectEnvForCluster(ConfigData $config, string $context, string $ip): void
+    private function configureProjectEnvForCluster(ConfigData $config, string $context, string $ip, ?string $environment = null): void
     {
         $projectPath = getcwd();
-        $environment = $this->askForCloudEnvironment(label: 'Which environment runs on this DOKS cluster?');
+        $environment ??= $this->askForCloudEnvironment(label: 'Which environment runs on this DOKS cluster?');
 
         // Managed target + storageClass — no provider prompt, we know it's DOKS.
         $config = $this->recordManagedTarget($config, $environment, $projectPath, $context, ManagedProvider::DOKS);

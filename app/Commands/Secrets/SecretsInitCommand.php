@@ -4,6 +4,7 @@ namespace App\Commands\Secrets;
 
 use App\Data\ConfigData;
 use App\Enums\SharedClusterService;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSecrets;
@@ -19,7 +20,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SecretsInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithPlex, InteractsWithSecrets, LaraKubeOutput, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSecrets, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'secrets:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Infisical host.}
@@ -36,9 +37,6 @@ class SecretsInitCommand extends Command
     {
         $this->renderHeader();
 
-        // Scope the Plex trait context to match the passed option
-        $this->plexContext = $this->option('context');
-
         return $this->option('remove')
             ? $this->removeSecrets()
             : $this->deploySecrets();
@@ -46,7 +44,10 @@ class SecretsInitCommand extends Command
 
     protected function deploySecrets(): int
     {
-        $kubectl = $this->secretsKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $this->plexContext = $context;
+        $kubectl = $this->secretsKubectl($context);
         $ns = $this->secretsNamespace();
         $noPlex = (bool) $this->option('no-plex');
 
@@ -56,7 +57,7 @@ class SecretsInitCommand extends Command
             }
         }
 
-        $host = $this->resolveSecretsHost();
+        $host = $this->resolveSecretsHost($env);
 
         // Read or generate database password
         $dbPassword = $this->readExistingDbPassword($kubectl, $ns);
@@ -86,11 +87,6 @@ class SecretsInitCommand extends Command
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
-
-        $env = $this->option('env') ?: $this->argument('environment');
-        if (!$env && !$this->option('domain')) {
-            $env = 'local';
-        }
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -138,9 +134,14 @@ class SecretsInitCommand extends Command
 
     protected function removeSecrets(): int
     {
-        $kubectl = $this->secretsKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $this->plexContext = $context;
+        $kubectl = $this->secretsKubectl($context);
         $ns = $this->secretsNamespace();
         $plexNs = $this->plexNamespace();
+
+        $ok = true;
 
         // Dropping DB/user from Plex PostgreSQL if it was allocated
         $dbPassword = $this->readExistingDbPassword($kubectl, $ns);
@@ -152,18 +153,21 @@ class SecretsInitCommand extends Command
             file_put_contents($tmp, $sql);
             $client = \App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminClient();
 
-            $this->withSpin("Dropping database 'infisical' from the Commons...", function () use ($plexNs, $client, $tmp, $kubectl) {
-                return Process::run(
-                    "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
-                )->successful();
-            });
+            $ok = $this->removeResources(
+                "Dropping database 'infisical' from the Commons...",
+                "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
+            );
             @unlink($tmp);
         }
 
         // Deleting entire namespace
-        $this->withSpin('Removing Infisical namespace...', fn () => Process::run(
-            "{$kubectl} delete namespace {$ns} --ignore-not-found",
-        ));
+        $ok = $this->removeResources('Removing Infisical namespace...', "{$kubectl} delete namespace {$ns} --ignore-not-found") && $ok;
+
+        if (! $ok) {
+            $this->laraKubeError('One or more Infisical resources failed to remove — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         $this->laraKubeInfo('Infisical stack removed.');
 
@@ -216,7 +220,7 @@ class SecretsInitCommand extends Command
     }
 
     /** Resolve the Infisical ingress host for this install */
-    protected function resolveSecretsHost(): string
+    protected function resolveSecretsHost(string $env): string
     {
         $service = SharedClusterService::SECRETS;
 
@@ -224,8 +228,6 @@ class SecretsInitCommand extends Command
         if ($domain !== '') {
             return $service->hostFor($domain);
         }
-
-        $env = $this->resolveEnvironment();
 
         if ($env === 'local') {
             return (string) $this->resolveSecretsHostReadOnly('local', null);

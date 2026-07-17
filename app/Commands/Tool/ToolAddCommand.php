@@ -2,13 +2,17 @@
 
 namespace App\Commands\Tool;
 
+use App\Traits\InteractsWithMail;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesClusterTool;
+
+use function Laravel\Prompts\confirm;
+
 use LaravelZero\Framework\Commands\Command;
 
 class ToolAddCommand extends Command
 {
-    use LaraKubeOutput, ResolvesClusterTool;
+    use InteractsWithMail, LaraKubeOutput, ResolvesClusterTool;
 
     protected $signature = 'tool:add {tool? : The tool to add to the cluster}';
 
@@ -18,7 +22,7 @@ class ToolAddCommand extends Command
     {
         $this->renderHeader();
 
-        $tool = $this->resolveTool('install');
+        $tool = $this->resolveTool();
 
         if ($tool === null) {
             return 0;
@@ -27,6 +31,36 @@ class ToolAddCommand extends Command
         $this->line("Proxying to {$tool->value}:init...");
         $this->newLine();
 
-        return $this->call("{$tool->value}:init");
+        $result = $this->call("{$tool->value}:init");
+
+        if ($result === 0) {
+            $this->offerMailWiring($tool);
+        }
+
+        return $result;
+    }
+
+    /**
+     * If the freshly-installed tool sends email and Stalwart is present, offer
+     * to wire it up right away. Any tool that declares smtpEnv() gets this for
+     * free — no per-tool code here.
+     */
+    protected function offerMailWiring(\App\Enums\ClusterTool $tool): void
+    {
+        if ($tool->smtpEnv() === null) {
+            return;
+        }
+
+        $kubectl = $this->mailKubectl();
+        $ns = $this->mailNamespace();
+
+        if (! $this->isMailInstalled($kubectl, $ns)) {
+            return;
+        }
+
+        $this->newLine();
+        if (confirm("Wire {$tool->getLabel()} to your Stalwart mail server now?", true)) {
+            $this->call('mail:wire', ['tool' => $tool->value]);
+        }
     }
 }

@@ -5,6 +5,7 @@ namespace App\Commands\Git;
 use App\Data\ConfigData;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithGitForge;
 use App\Traits\InteractsWithPlex;
@@ -20,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class GitInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithGitForge, InteractsWithPlex, LaraKubeOutput, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithPlex, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'git:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Gitea host.}
@@ -37,9 +38,6 @@ class GitInitCommand extends Command
     {
         $this->renderHeader();
 
-        // Scope the Plex trait context to match the passed option
-        $this->plexContext = $this->option('context');
-
         return $this->option('remove')
             ? $this->removeGit()
             : $this->deployGit();
@@ -47,7 +45,10 @@ class GitInitCommand extends Command
 
     protected function deployGit(): int
     {
-        $kubectl = $this->gitKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $this->plexContext = $context;
+        $kubectl = $this->gitKubectl($context);
         $ns = $this->gitNamespace();
         $noPlex = (bool) $this->option('no-plex');
 
@@ -100,12 +101,23 @@ class GitInitCommand extends Command
             }
         }
 
-        $host = $this->resolveGitHost();
+        $host = $this->resolveGitHost($env);
 
         // Read or generate password & secrets
         $adminPassword = $this->readExistingAdminPassword($kubectl, $ns);
         if ($adminPassword === null) {
             $adminPassword = Str::random(16);
+        }
+
+        $dbPassword = $this->readExistingAdminPassword($kubectl, $ns) ?? Str::random(24); // Re-use read method or just generate
+
+        if (! $noPlex) {
+            if (! $this->ensureCommons(['postgres'])) {
+                return 1;
+            }
+            if (! $this->allocateDatabase(\App\Enums\DatabaseDriver::POSTGRESQL, 'gitea', $dbPassword)) {
+                return 1;
+            }
         }
 
         $secretKey = Str::random(16);
@@ -117,17 +129,13 @@ class GitInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $env = $this->option('env') ?: $this->argument('environment');
-        if (!$env && !$this->option('domain')) {
-            $env = 'local';
-        }
-
         $vpnOnly = (bool) $this->option('vpn-only');
 
         // 1. Initial deployment with Gitea Core only (runner token placeholder)
         $manifest = view('k8s.gitea.shared', [
             'host' => $host,
             'adminPassword' => $adminPassword,
+            'dbPassword' => $dbPassword,
             'registryToken' => 'pending',
             'runnerToken' => 'pending',
             'secretKey' => $secretKey,
@@ -137,6 +145,7 @@ class GitInitCommand extends Command
             's3Endpoint' => $s3Endpoint,
             's3AccessKey' => $s3AccessKey,
             's3SecretKey' => $s3SecretKey,
+            'plexNamespace' => $this->plexNamespace(),
             'isLocal' => $env === 'local',
             'vpnOnly' => $vpnOnly,
         ])->render();
@@ -203,6 +212,7 @@ class GitInitCommand extends Command
         $manifestFinal = view('k8s.gitea.shared', [
             'host' => $host,
             'adminPassword' => $adminPassword,
+            'dbPassword' => $dbPassword,
             'registryToken' => $registryToken ?? 'pending',
             'runnerToken' => $runnerToken ?? 'pending',
             'secretKey' => $secretKey,
@@ -212,6 +222,7 @@ class GitInitCommand extends Command
             's3Endpoint' => $s3Endpoint,
             's3AccessKey' => $s3AccessKey,
             's3SecretKey' => $s3SecretKey,
+            'plexNamespace' => $this->plexNamespace(),
             'isLocal' => $env === 'local',
             'vpnOnly' => $vpnOnly,
         ])->render();
@@ -243,14 +254,45 @@ class GitInitCommand extends Command
 
     protected function removeGit(): int
     {
-        $kubectl = $this->gitKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $this->plexContext = $context;
+        $kubectl = $this->gitKubectl($context);
         $ns = $this->gitNamespace();
 
-        $this->withSpin('Removing Gitea resources...', fn () => Process::run(
-            "{$kubectl} delete deploy/gitea deploy/gitea-runner svc/gitea-http svc/gitea-ssh ingress/gitea secret/gitea-admin pvc/gitea-data -n {$ns} --ignore-not-found",
-        ));
+        $ok = true;
+        $isLocal = trim(Process::run("{$kubectl} get secret gitea-admin -n {$ns}")->output()) === '';
 
-        $this->laraKubeInfo('Gitea removed from larakube-shared.');
+        if (! $isLocal) {
+            $plexNs = $this->plexNamespace();
+            $sql = $this->buildDropTenantSql('gitea', 'gitea');
+            $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop_gitea');
+            file_put_contents($tmp, $sql);
+            $client = \App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminClient();
+
+            $ok = $this->removeResources(
+                "Dropping database 'gitea' from Plex Commons...",
+                "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
+            );
+            @unlink($tmp);
+        }
+
+        $ok = $this->removeResources(
+            'Removing Gitea resources...',
+            "{$kubectl} delete deployment/gitea deployment/gitea-runner service/gitea-http service/gitea-ssh ingress/gitea-http pvc/gitea-data secret/gitea-admin -n {$ns} --ignore-not-found",
+        ) && $ok;
+
+        // Best-effort: the vpn-only middleware only exists when --vpn-only was
+        // used, so its absence isn't a failure worth aborting on.
+        Process::run("{$kubectl} delete middleware/gitea-vpn-only -n {$ns} --ignore-not-found 2>/dev/null");
+
+        if (! $ok) {
+            $this->laraKubeError('One or more Gitea resources failed to remove — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
+
+        $this->laraKubeInfo('Gitea stack removed from larakube-shared.');
 
         return 0;
     }
@@ -266,7 +308,7 @@ class GitInitCommand extends Command
     }
 
     /** Resolve the Gitea host for this environment */
-    protected function resolveGitHost(): string
+    protected function resolveGitHost(string $env): string
     {
         $service = SharedClusterService::GITEA;
 
@@ -274,8 +316,6 @@ class GitInitCommand extends Command
         if ($domain !== '') {
             return $service->hostFor($domain);
         }
-
-        $env = $this->resolveEnvironment();
 
         if ($env === 'local') {
             return (string) $this->resolveGitHostReadOnly('local', null);

@@ -675,6 +675,50 @@ trait InteractsWithPlex
     }
 
     /**
+     * Allocate (idempotently) a dedicated Commons Redis logical-DB index for a
+     * shared-tool tenant and persist it to the registry. Re-runs return the same
+     * index; returns null only when all 16 indexes are taken. This lets a shared
+     * tool (e.g. Baserow) reuse the Commons Valkey instead of bundling its own —
+     * the dedicated index isolates its keys and FLUSHDB from other tenants.
+     */
+    protected function allocateCommonsRedisIndex(string $tenant): ?int
+    {
+        $registry = $this->getRegistry();
+        $existing = $registry['tenants'][$tenant]['redis_index'] ?? null;
+        if (is_int($existing)) {
+            return $existing;
+        }
+
+        $index = $this->allocateRedisDbIndex($this->registryUsedRedisIndexes($registry));
+        if ($index === null) {
+            return null;
+        }
+
+        $registry['tenants'][$tenant]['redis_index'] = $index;
+        $this->saveRegistry($registry);
+
+        return $index;
+    }
+
+    /**
+     * Release a shared-tool tenant's Commons Redis index so it can be reused.
+     * No-op when the tenant/index isn't recorded.
+     */
+    protected function releaseCommonsRedisIndex(string $tenant): void
+    {
+        $registry = $this->getRegistry();
+        if (! isset($registry['tenants'][$tenant]['redis_index'])) {
+            return;
+        }
+
+        unset($registry['tenants'][$tenant]['redis_index']);
+        if (($registry['tenants'][$tenant] ?? []) === []) {
+            unset($registry['tenants'][$tenant]);
+        }
+        $this->saveRegistry($registry);
+    }
+
+    /**
      * Persist the tenant registry back to the cluster (idempotent apply of the
      * single registry.json key).
      */

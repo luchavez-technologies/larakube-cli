@@ -17,11 +17,14 @@ LaraKube is designed for the age of AI agents:
 ## 🛠 Technical Standards
 
 ### 🔄 Development Workflow
-Whenever you modify the LaraKube CLI codebase, you **must** run the following commands from the `laravel-k8s-cli/` directory to ensure code consistency and update the global binary:
+Whenever you modify the LaraKube CLI codebase, you **must** proactively run tests and linters to ensure code consistency.
 
 ```bash
-./php vendor/bin/pint && ./build
+./php vendor/bin/pint
+./php vendor/bin/phpstan
 ```
+
+**CRITICAL RULE FOR AI AGENTS**: You are STRICTLY FORBIDDEN from running the `./build` command. When a build is required to update the global binary, you must tell the user to run `./build` and wait for them to do it.
 
 ### 🌐 Networking & Ingress
 -   **Local Domains**: Standardized on **`.dev.test`**.

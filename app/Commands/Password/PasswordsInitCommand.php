@@ -4,6 +4,7 @@ namespace App\Commands\Password;
 
 use App\Data\ConfigData;
 use App\Enums\SharedClusterService;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVault;
 use App\Traits\LaraKubeOutput;
@@ -17,7 +18,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class PasswordsInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithVault, LaraKubeOutput, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVault, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'passwords:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Vaultwarden host.}
@@ -95,14 +96,28 @@ class PasswordsInitCommand extends Command
 
     protected function removeVault(): int
     {
-        $kubectl = $this->vaultKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+
+        $projectPath = getcwd();
+        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
+            ? ConfigData::loadFromFile($projectPath)
+            : null;
+
+        $context = (string) $this->option('context') ?: null;
+        if (! $context && $config && $env !== 'local') {
+            $context = $this->environmentContextOrCurrent($config, $env);
+        }
+
+        $kubectl = $this->vaultKubectl($context);
         $ns = $this->vaultNamespace();
 
-        $this->withSpin('Removing Vaultwarden namespace...', fn () => Process::run(
-            "{$kubectl} delete namespace {$ns} --ignore-not-found",
-        ));
+        if (! $this->removeResources('Removing Vaultwarden namespace...', "{$kubectl} delete namespace {$ns} --ignore-not-found")) {
+            $this->laraKubeError('Failed to remove the Vaultwarden namespace — check kubectl access to the cluster above and re-run.');
 
-        $this->laraKubeInfo('Vaultwarden removed from larakube-vault.');
+            return 1;
+        }
+
+        $this->laraKubeInfo("Vaultwarden removed from larakube-vault ({$env}).");
 
         return 0;
     }

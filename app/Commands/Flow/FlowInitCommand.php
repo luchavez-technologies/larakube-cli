@@ -4,6 +4,7 @@ namespace App\Commands\Flow;
 
 use App\Data\ConfigData;
 use App\Enums\SharedClusterService;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithFlow;
 use App\Traits\InteractsWithPlex;
@@ -19,7 +20,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class FlowInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithFlow, InteractsWithPlex, LaraKubeOutput, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithPlex, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'flow:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -28,9 +29,10 @@ class FlowInitCommand extends Command
         {--domain=   : Raw override for the Flow cluster domain}
         {--no-plex   : Bypass Plex Commons and use local SQLite storage}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
+        {--engine=   : The automation engine to deploy ("n8n" or "windmill")}
         {--remove    : Tear down the Flow stack}';
 
-    protected $description = 'Deploy the workflow automation stack (n8n) into larakube-shared';
+    protected $description = 'Deploy a workflow automation stack (n8n or Windmill) into larakube-shared';
 
     public function handle(): int
     {
@@ -43,6 +45,7 @@ class FlowInitCommand extends Command
 
     protected function deployFlow(): int
     {
+        $engine = $this->resolveEngine();
         $env = $this->resolveEnvironment();
         $host = $this->resolveFlowHost($env);
 
@@ -72,8 +75,28 @@ class FlowInitCommand extends Command
         $encryptionKey = $this->readFlowEncryptionKey($kubectl, $ns) ?? Str::random(32);
 
         if (! $noPlex) {
-            if (! $this->allocateDatabase(\App\Enums\DatabaseDriver::POSTGRESQL, 'n8n', $dbPassword)) {
+            $driver = \App\Enums\DatabaseDriver::POSTGRESQL;
+
+            if (! $this->allocateDatabase($driver, $engine, $dbPassword)) {
                 return 1;
+            }
+
+            if ($engine === 'windmill') {
+                $this->withSpin('Creating Windmill DB roles (windmill_user, windmill_admin) in the Commons...', function () use ($driver, $kubectl) {
+                    $sql = implode("\n", [
+                        "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'windmill_admin') THEN CREATE ROLE windmill_admin; END IF; END \$\$;",
+                        "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'windmill_user') THEN CREATE ROLE windmill_user; END IF; END \$\$;",
+                        'GRANT windmill_user TO windmill;',
+                        'GRANT windmill_admin TO windmill;',
+                    ]);
+                    $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_windmill_roles');
+                    file_put_contents($tmp, $sql);
+                    Process::run(
+                        $kubectl.' exec -i -n '.escapeshellarg($this->plexNamespace()).' deploy/'.$driver->value.' -- '
+                        .'sh -c '.escapeshellarg($driver->commonsAdminClient()).' < '.escapeshellarg($tmp),
+                    );
+                    @unlink($tmp);
+                });
             }
         }
 
@@ -90,7 +113,8 @@ class FlowInitCommand extends Command
             );
         });
 
-        $manifest = view('k8s.flow.shared', [
+        $manifest = view("k8s.flow.{$engine}", [
+            'engine' => $engine,
             'host' => $host,
             'dbPassword' => $dbPassword,
             'plexNamespace' => $this->plexNamespace(),
@@ -102,16 +126,19 @@ class FlowInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-flow.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Flow (n8n) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $engineName = $engine === 'windmill' ? 'Windmill' : 'n8n';
+        $deployName = $engine === 'windmill' ? 'deploy/flow-windmill' : 'deploy/flow-n8n';
+
+        $this->withSpin("Applying Flow ({$engineName}) manifests...", fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Flow (n8n)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/flow-n8n -n {$ns} --timeout=120s",
+        $this->withSpin("Waiting for Flow ({$engineName})...", fn () => $this->runStreaming(
+            "{$kubectl} rollout status {$deployName} -n {$ns} --timeout=120s",
             130,
         ));
 
         $this->laraKubeNewLine();
-        $this->laraKubeInfo('✅ Flow (n8n) stack is live.');
+        $this->laraKubeInfo("✅ Flow ({$engineName}) stack is live.");
         $this->newLine();
         $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
 
@@ -122,31 +149,58 @@ class FlowInitCommand extends Command
 
     protected function removeFlow(): int
     {
-        $kubectl = $this->flowKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
         $ns = $this->flowNamespace();
         $plexNs = $this->plexNamespace();
 
+        $projectPath = getcwd();
+        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
+            ? ConfigData::loadFromFile($projectPath)
+            : null;
+
+        $context = (string) $this->option('context') ?: null;
+        if (! $context && $config && $env !== 'local') {
+            $context = $this->environmentContextOrCurrent($config, $env);
+        }
+
+        $kubectl = $this->flowKubectl($context);
+
+        $ok = true;
         $isLocal = trim(Process::run("{$kubectl} get secret flow-secrets -n {$ns}")->output()) === '';
 
         if (! $isLocal) {
-            $sql = $this->buildDropTenantSql('n8n', 'n8n');
-            $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop_n8n');
-            file_put_contents($tmp, $sql);
             $client = \App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminClient();
 
-            $this->withSpin("Dropping database 'n8n' from Plex Commons...", function () use ($plexNs, $client, $tmp, $kubectl) {
-                return Process::run(
+            // Drop both potential engines to ensure clean slate
+            foreach (['n8n', 'windmill'] as $engine) {
+                $sql = $this->buildDropTenantSql($engine, $engine);
+                $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop_flow');
+                file_put_contents($tmp, $sql);
+
+                $ok = $this->removeResources(
+                    "Dropping database '{$engine}' from Plex Commons (if exists)...",
                     "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
-                )->successful();
-            });
-            @unlink($tmp);
+                ) && $ok;
+                @unlink($tmp);
+            }
         }
 
-        $this->withSpin('Removing Flow (n8n) resources...', fn () => Process::run(
-            "{$kubectl} delete deployment/flow-n8n service/flow-n8n ingress/flow-n8n pvc/flow-storage secret/flow-secrets middleware/flow-vpn-only -n {$ns} --ignore-not-found",
-        ));
+        $ok = $this->removeResources(
+            'Removing Flow resources...',
+            "{$kubectl} delete deployment/flow-n8n deployment/flow-windmill service/flow-n8n service/flow-windmill ingress/flow-n8n ingress/flow-windmill pvc/flow-storage pvc/flow-windmill-storage secret/flow-secrets -n {$ns} --ignore-not-found",
+        ) && $ok;
 
-        $this->laraKubeInfo('Flow (n8n) removed from larakube-shared.');
+        // Best-effort: the vpn-only middleware only exists when --vpn-only was
+        // used, so its absence isn't a failure worth aborting on.
+        Process::run("{$kubectl} delete middleware/flow-vpn-only -n {$ns} --ignore-not-found 2>/dev/null");
+
+        if (! $ok) {
+            $this->laraKubeError('One or more Flow resources failed to remove — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
+
+        $this->laraKubeInfo('Flow stack removed from larakube-shared.');
 
         return 0;
     }
@@ -221,5 +275,22 @@ class FlowInitCommand extends Command
         }
 
         return $host;
+    }
+
+    protected function resolveEngine(): string
+    {
+        $explicit = strtolower((string) $this->option('engine'));
+        if (in_array($explicit, ['n8n', 'windmill'], true)) {
+            return $explicit;
+        }
+
+        return select(
+            label: 'Which automation engine do you want to deploy?',
+            options: [
+                'n8n' => 'n8n (Visual, Node.js-based, Zapier-like)',
+                'windmill' => 'Windmill (Code-first, Rust/Python/Go, Performant)',
+            ],
+            default: 'n8n',
+        );
     }
 }

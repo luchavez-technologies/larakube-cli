@@ -6,6 +6,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
@@ -19,6 +20,7 @@ class CloudProvisionCommand extends Command
      * The name and signature of the console command.
      */
     protected $signature = 'cloud:init
+        {environment? : Inside a project, the environment to bind to this VPS.}
         {target? : What to provision — "vps" (default) or "doks". Omit to be asked.}
         {--context= : (DOKS only) target a specific kube-context}';
 
@@ -41,8 +43,17 @@ class CloudProvisionCommand extends Command
     {
         $this->renderHeader();
 
+        $environment = $this->argument('environment');
+        $target = $this->argument('target');
+
+        // Backwards compatibility for `cloud:init vps` or `cloud:init doks`
+        if (in_array($environment, ['vps', 'doks'], true) && ! $target) {
+            $target = $environment;
+            $environment = null;
+        }
+
         // Which target? Explicit arg ("vps"/"doks") wins; otherwise ask.
-        $target = $this->argument('target') ?: select(
+        $target = $target ?: select(
             label: 'What are you provisioning?',
             options: [
                 'vps' => 'VPS / bare server (SSH + k3s, single-node)',
@@ -54,6 +65,7 @@ class CloudProvisionCommand extends Command
         // DOKS is a separate flow — delegate to its dedicated command.
         if ($target === 'doks') {
             return (int) $this->call('cloud:init:doks', array_filter([
+                'environment' => $environment,
                 '--context' => $this->option('context'),
             ]));
         }
@@ -129,6 +141,11 @@ class CloudProvisionCommand extends Command
         $this->laraKubeInfo('✅ Provisioning complete!');
         $this->info('Your VPS is now a LaraKube-hardened K3s node (firewall, fail2ban, key-only SSH, encrypted Secrets, auto security updates).');
         $this->line('  <fg=gray>Recommended follow-up: add default-deny NetworkPolicies, and restrict the k3s API (6443) to your IP.</>');
+
+        $this->newLine();
+        if (confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
+            $this->call('dns:init', ['environment' => $environment ?: 'production']);
+        }
 
         return 0;
     }

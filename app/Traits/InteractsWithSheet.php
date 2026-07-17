@@ -26,19 +26,39 @@ trait InteractsWithSheet
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    /** Sheet (nocodb) Deployment present? */
+    /** Sheet Deployment (either engine) present? */
     protected function isSheetInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment sheet-nocodb -n {$ns} --no-headers")->output();
+        return $this->deployedSheetEngine($kubectl, $ns) !== null;
+    }
 
-        return trim($out) !== '';
+    /**
+     * Which Sheet engine is deployed — 'baserow', 'nocodb', or null if neither.
+     * Baserow wins if both somehow exist (it's the default).
+     */
+    protected function deployedSheetEngine(string $kubectl, string $ns): ?string
+    {
+        foreach (['baserow', 'nocodb'] as $engine) {
+            $out = Process::run("{$kubectl} get deployment sheet-{$engine} -n {$ns} --no-headers --ignore-not-found")->output();
+            if (trim($out) !== '') {
+                return $engine;
+            }
+        }
+
+        return null;
     }
 
     /** Read database password. */
     protected function readSheetDbPassword(string $kubectl, string $ns): ?string
     {
+        return $this->readSheetSecret($kubectl, $ns, 'db-password');
+    }
+
+    /** Read a key from the sheet-secrets secret (base64-decoded), or null. */
+    protected function readSheetSecret(string $kubectl, string $ns, string $key): ?string
+    {
         $out = trim(Process::run(
-            "{$kubectl} get secret sheet-secrets -n {$ns} -o jsonpath='{.data.db-password}'",
+            "{$kubectl} get secret sheet-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
         )->output());
 
         return $out !== '' ? (string) base64_decode($out) : null;
@@ -66,9 +86,11 @@ trait InteractsWithSheet
             return null;
         }
 
+        $engine = $this->deployedSheetEngine($kubectl, $ns);
+
         return [
             'host' => $this->resolveSheetHostReadOnly($env, $config),
-            'label' => 'NocoDB',
+            'label' => $engine === 'nocodb' ? 'NocoDB' : 'Baserow',
         ];
     }
 }

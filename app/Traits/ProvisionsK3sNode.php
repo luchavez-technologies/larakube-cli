@@ -40,17 +40,28 @@ trait ProvisionsK3sNode
             '--secrets-encryption',
         ]);
 
-        // 1. Create Swap (Crucial for 512MB droplets)
+        // 1. Create Swap (Dynamic size based on RAM)
         // 2. Enable IP Forwarding
         // 3. Install K3s (optimized for single-node)
         $remoteCommand = <<<BASH
     if [ ! -f /swapfile ]; then
-    echo "Creating 1GB Swap file for stability..."
-    fallocate -l 1G /swapfile
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
+        echo "Calculating optimal swap size..."
+        RAM_MB=\$(free -m | awk '/^Mem:/{print \$2}')
+        if [ "\$RAM_MB" -le 2048 ]; then
+            SWAP_MB=\$((\$RAM_MB * 2))
+        else
+            SWAP_MB=\$RAM_MB
+        fi
+        # Cap swap at 4GB
+        if [ "\$SWAP_MB" -gt 4096 ]; then
+            SWAP_MB=4096
+        fi
+        echo "Creating \${SWAP_MB}MB Swap file for stability..."
+        fallocate -l \${SWAP_MB}M /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=\$SWAP_MB status=none
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
     fi
 
     echo "Enabling IP Forwarding..."
@@ -341,7 +352,7 @@ BASH;
      * transient API blip, a timeout on a loaded droplet, …) still printed
      * "Traefik deployed and configured" even though nothing was actually there.
      */
-    protected function deployTraefik($contextName): bool
+    protected function deployTraefik(string $contextName, string $ip): bool
     {
         if ($this->traefikInstalledOnContext($contextName)) {
             $this->laraKubeInfo('ℹ️  Traefik is already installed on this cluster — skipping deploy.');
@@ -397,7 +408,10 @@ BASH;
 
         // 3. Apply Traefik Cloud manifest
         $tmpInstall = sys_get_temp_dir().'/traefik-cloud.yaml';
-        file_put_contents($tmpInstall, view('k8s.traefik-cloud', ['email' => $this->getEmail()])->render());
+        file_put_contents($tmpInstall, view('k8s.traefik-cloud', [
+            'email' => $this->getEmail(),
+            'ip' => $ip,
+        ])->render());
         $ok = $this->applyAndVerifyRollout($kubectl, $tmpInstall, $namespace, 'traefik', extraApplyFlags: '--validate=false');
         @unlink($tmpInstall);
         if (! $ok) {
@@ -470,7 +484,7 @@ BASH;
             $this->laraKubeWarn("Skipping Traefik deploy — kubectl can't reach '{$contextName}' until the kubeconfig sync above is fixed.");
             $this->line('  👉 Fix the kubeconfig issue above, then re-run this command to pick up from here.');
         } elseif (! $interactive || confirm('Deploy Traefik (Single-Node Hero)?', true)) {
-            if (! $this->deployTraefik($contextName)) {
+            if (! $this->deployTraefik($contextName, $ip)) {
                 $this->line('  👉 Traefik deploy failed — re-run this command to retry just that step (everything else here is idempotent).');
             }
         }

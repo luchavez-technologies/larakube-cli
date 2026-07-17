@@ -40,6 +40,16 @@ spec:
                 secretKeyRef:
                   name: flow-secrets
                   key: encryption-key
+            # Public URL, so generated webhook/chat/editor links use the real
+            # host behind Traefik instead of localhost:5678.
+            - name: N8N_HOST
+              value: {{ $host }}
+            - name: N8N_PROTOCOL
+              value: https
+            - name: WEBHOOK_URL
+              value: https://{{ $host }}/
+            - name: N8N_EDITOR_BASE_URL
+              value: https://{{ $host }}/
 @if($noPlex)
             - name: DB_TYPE
               value: sqlite

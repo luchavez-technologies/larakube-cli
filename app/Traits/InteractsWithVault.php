@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Process;
 
 trait InteractsWithVault
 {
+    use ResolvesEnvironmentContext;
+
     /** The dedicated namespace the Vaultwarden stack lives in. */
     protected function vaultNamespace(): string
     {

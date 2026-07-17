@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
 use App\State;
+use Exception;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Process;
 
@@ -83,10 +84,42 @@ trait LaraKubeOutput
             echo "  \e[38;5;{$color}m{$line}\e[0m\n";
         }
 
-        render(<<<'HTML'
+        $config = $this->getGlobalConfig();
+        $currentVersion = config('app.version');
+
+        $latestVersion = $config->latestVersion;
+        $checkedAt = $config->latestVersionCheckedAt ? Carbon::parse($config->latestVersionCheckedAt) : null;
+
+        if (! $checkedAt || $checkedAt->diffInHours(now()) > 24) {
+            try {
+                $response = \Illuminate\Support\Facades\Http::timeout(1)->get('https://api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest');
+                if ($response->successful()) {
+                    $latestVersion = $response->json('tag_name');
+                    $config->latestVersion = $latestVersion;
+                }
+            } catch (Exception $e) {
+                // ignore
+            }
+            $config->latestVersionCheckedAt = now()->toString();
+            $config->save();
+        }
+
+        $versionStr = $currentVersion;
+        if ($latestVersion && $latestVersion !== $currentVersion && $currentVersion !== 'unreleased') {
+            $versionStr .= " (Update: {$latestVersion})";
+        }
+
+        $osStr = PHP_OS_FAMILY.' / '.php_uname('m');
+        $phpStr = 'PHP '.PHP_VERSION;
+
+        render(<<<HTML
             <div class="mx-2 mt-2">
-                <div class="px-2 py-0.5 bg-blue-900 text-blue-200 font-bold uppercase w-66 justify-center">
+                <div class="px-2 py-0.5 bg-blue-900 text-blue-200 font-bold uppercase w-66 justify-center text-center">
                     The Professional Kubernetes Orchestrator for Laravel
+                </div>
+                <div class="flex justify-between w-66 px-2 mt-1 mb-1">
+                    <span class="text-gray-400">{$osStr} • {$phpStr}</span>
+                    <span class="text-blue-400 font-bold">{$versionStr}</span>
                 </div>
             </div>
         HTML);

@@ -56,6 +56,10 @@ class GlobalConfigData extends Data
          * Drives which Tofu templates get rendered.
          */
         public ?string $defaultCloudProvider = 'do',
+        public ?string $latestVersion = null,
+        public ?string $latestVersionCheckedAt = null,
+        /** Cloudflare API token for ExternalDNS and tunnel configuration (optional). */
+        public ?string $cloudflareToken = null,
     ) {}
 
     public function getEmail(): ?string
@@ -159,6 +163,16 @@ class GlobalConfigData extends Data
     public function setDoToken(?string $token): void
     {
         $this->doToken = $token ? trim($token) : null;
+    }
+
+    public function getCloudflareToken(): ?string
+    {
+        return $this->cloudflareToken;
+    }
+
+    public function setCloudflareToken(?string $token): void
+    {
+        $this->cloudflareToken = $token ? trim($token) : null;
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Enums\ClusterTool;
+
 use function Laravel\Prompts\select;
 
 trait ResolvesClusterTool
@@ -26,10 +27,13 @@ trait ResolvesClusterTool
             return $tool;
         }
 
+        $options = ClusterTool::options();
+
         $choice = select(
             label: "Which tool would you like to {$actionHint}?",
-            options: ClusterTool::options(),
-            hint: "Select a shared tool to {$actionHint}."
+            options: $options,
+            scroll: count($options),
+            hint: "Select a shared tool to {$actionHint}.",
         );
 
         return ClusterTool::from($choice);

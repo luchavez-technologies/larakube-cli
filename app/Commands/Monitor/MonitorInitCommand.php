@@ -4,6 +4,7 @@ namespace App\Commands\Monitor;
 
 use App\Data\ConfigData;
 use App\Enums\SharedClusterService;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMonitoring;
 use App\Traits\LaraKubeOutput;
@@ -17,7 +18,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MonitorInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithMonitoring, LaraKubeOutput, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithMonitoring, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'monitor:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Grafana host.}
@@ -40,24 +41,21 @@ class MonitorInitCommand extends Command
 
     protected function deployMonitoring(): int
     {
-        $kubectl = $this->monitoringKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $kubectl = $this->monitoringKubectl($context);
         $ns = $this->monitoringNamespace();
 
         // Resolve the Grafana ingress host (local dev TLD, or a prompted +
         // persisted host for a non-local --env). Without this, a prod install
         // would come up on grafana.localhost and be unreachable.
-        $host = $this->resolveGrafanaHost();
+        $host = $this->resolveGrafanaHost($env);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
         $password = $this->resolveGrafanaPassword($kubectl, $ns);
-
-        $env = $this->option('env') ?: $this->argument('environment');
-        if (!$env && !$this->option('domain')) {
-            $env = 'local';
-        }
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -111,44 +109,46 @@ class MonitorInitCommand extends Command
 
     protected function removeMonitoring(): int
     {
-        $kubectl = $this->monitoringKubectl($this->option('context'));
+        $env = $this->resolveEnvironment();
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $kubectl = $this->monitoringKubectl($context);
         $ns = $this->monitoringNamespace();
 
-        $this->withSpin('Removing Prometheus...', fn () => Process::run(
+        $ok = $this->removeResources('Removing Prometheus...',
             "{$kubectl} delete deployment,svc,configmap,pvc,serviceaccount"
             .' prometheus prometheus-config prometheus-storage'
-            ." -n {$ns} --ignore-not-found",
-        ));
+            ." -n {$ns} --ignore-not-found");
 
-        $this->withSpin('Removing Loki...', fn () => Process::run(
+        $ok = $this->removeResources('Removing Loki...',
             "{$kubectl} delete deployment,svc,configmap,pvc"
             .' loki loki-config loki-storage'
-            ." -n {$ns} --ignore-not-found",
-        ));
+            ." -n {$ns} --ignore-not-found") && $ok;
 
-        $this->withSpin('Removing Promtail...', fn () => Process::run(
+        $ok = $this->removeResources('Removing Promtail...',
             "{$kubectl} delete daemonset,configmap,serviceaccount"
             .' promtail promtail-config'
-            ." -n {$ns} --ignore-not-found",
-        ));
+            ." -n {$ns} --ignore-not-found") && $ok;
 
-        $this->withSpin('Removing kube-state-metrics...', fn () => Process::run(
+        $ok = $this->removeResources('Removing kube-state-metrics...',
             "{$kubectl} delete deployment,svc,serviceaccount"
             .' kube-state-metrics'
-            ." -n {$ns} --ignore-not-found",
-        ));
+            ." -n {$ns} --ignore-not-found") && $ok;
 
-        $this->withSpin('Removing Grafana...', fn () => Process::run(
+        $ok = $this->removeResources('Removing Grafana...',
             "{$kubectl} delete deployment,svc,ingress,secret,configmap"
             .' grafana grafana-admin grafana-datasources'
-            ." -n {$ns} --ignore-not-found",
-        ));
+            ." -n {$ns} --ignore-not-found") && $ok;
 
-        $this->withSpin('Removing cluster RBAC...', fn () => Process::run(
+        $ok = $this->removeResources('Removing cluster RBAC...',
             "{$kubectl} delete clusterrole,clusterrolebinding"
             .' larakube-prometheus larakube-promtail larakube-kube-state-metrics'
-            .' --ignore-not-found',
-        ));
+            .' --ignore-not-found') && $ok;
+
+        if (! $ok) {
+            $this->laraKubeError('One or more monitoring resources failed to remove — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         $this->laraKubeInfo('Monitoring stack removed from larakube-shared.');
 
@@ -168,7 +168,7 @@ class MonitorInitCommand extends Command
      *      guard. Already-configured hosts in .larakube.json are reused (no
      *      re-prompt); a fresh answer is persisted back to the same hosts map.
      */
-    protected function resolveGrafanaHost(): string
+    protected function resolveGrafanaHost(string $env): string
     {
         $service = SharedClusterService::GRAFANA;
 
@@ -176,8 +176,6 @@ class MonitorInitCommand extends Command
         if ($domain !== '') {
             return $service->hostFor($domain);
         }
-
-        $env = $this->resolveEnvironment();
 
         if ($env === 'local') {
             return (string) $this->resolveGrafanaHostReadOnly('local', null);

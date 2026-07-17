@@ -37,6 +37,19 @@ enum SharedClusterService: string
             self::GITEA => 'k8s.gitea.shared',
             self::FLOW => 'k8s.flow.ingress',
             self::SHEET => 'k8s.sheet.ingress',
+            self::INSIGHTS => 'k8s.insights.ingress',
+            self::MAIL => 'k8s.mail.ingress',
+            self::DESK => 'k8s.desk.ingress',
+        };
+    }
+
+    public function templatePayload(): array
+    {
+        return match ($this) {
+            self::FLOW => [
+                'engine' => trim(\Illuminate\Support\Facades\Process::run('kubectl get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
+            ],
+            default => [],
         };
     }
 
@@ -55,6 +68,7 @@ enum SharedClusterService: string
             self::GITEA => 'git',
             self::FLOW => 'flow',
             self::SHEET => 'sheet',
+            self::INSIGHTS => 'insights',
             default => $this->value,
         };
     }
@@ -83,7 +97,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::INSIGHTS, self::MAIL, self::DESK => false,
             default => true,
         };
     }
@@ -109,7 +123,10 @@ enum SharedClusterService: string
             self::SECRETS => 'Infisical',
             self::GITEA => 'Gitea',
             self::FLOW => 'n8n',
-            self::SHEET => 'NocoDB',
+            self::SHEET => 'Sheet',
+            self::INSIGHTS => 'Metabase',
+            self::MAIL => 'Stalwart',
+            self::DESK => 'FreeScout',
         };
     }
 
@@ -135,8 +152,28 @@ enum SharedClusterService: string
             self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
             self::SECRETS => 'deployment infisical-backend -n larakube-secrets',
             self::GITEA => 'deployment gitea -n larakube-shared',
-            self::FLOW => 'deployment flow-n8n -n larakube-shared',
-            self::SHEET => 'deployment sheet-nocodb -n larakube-shared',
+            self::FLOW => 'deployment -l "app in (flow-n8n, flow-windmill)" -n larakube-shared',
+            self::SHEET => 'deployment -l "app in (sheet-nocodb, sheet-baserow)" -n larakube-shared',
+            self::INSIGHTS => 'deployment insights-metabase -n larakube-shared',
+            self::MAIL => 'statefulset stalwart -n larakube-shared',
+            self::DESK => 'deployment desk-freescout -n larakube-shared',
+        };
+    }
+
+    /**
+     * L4 TCP ports this service needs opened at the cloud edge + host firewall
+     * on a single-node VPS (klipper binds them via hostPort, but the DO cloud
+     * firewall and UFW default-deny them). Empty = HTTP-only, rides Traefik on
+     * 443 and needs nothing. Managed clusters (DOKS) expose L4 via a real cloud
+     * LoadBalancer, so this only matters for the VPS/klipper path.
+     *
+     * @return array<int, int>
+     */
+    public function firewallPorts(): array
+    {
+        return match ($this) {
+            self::MAIL => [25, 465, 587, 993, 4190],
+            default => [],
         };
     }
 
@@ -196,7 +233,10 @@ enum SharedClusterService: string
             self::SECRETS => 'Refreshing Infisical ingress...',
             self::GITEA => 'Refreshing Gitea ingress...',
             self::FLOW => 'Refreshing Flow (n8n) ingress...',
-            self::SHEET => 'Refreshing Sheet (NocoDB) ingress...',
+            self::SHEET => 'Refreshing Sheet ingress...',
+            self::INSIGHTS => 'Refreshing Insights (Metabase) ingress...',
+            self::MAIL => 'Refreshing Stalwart (Mail) ingress...',
+            self::DESK => 'Refreshing FreeScout (Help Desk) ingress...',
         };
     }
 
@@ -220,4 +260,7 @@ enum SharedClusterService: string
     case GITEA = 'gitea';
     case FLOW = 'flow';
     case SHEET = 'sheet';
+    case INSIGHTS = 'insights';
+    case MAIL = 'mail';
+    case DESK = 'desk';
 }

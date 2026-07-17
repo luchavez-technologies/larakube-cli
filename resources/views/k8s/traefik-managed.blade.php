@@ -139,6 +139,7 @@ spec:
             - --entrypoints.websecure.Address=:443
             - --entrypoints.websecure.http.tls=true
             - --providers.kubernetesingress
+            - --providers.kubernetesingress.ingressendpoint.publishedservice=traefik/traefik
             - --certificatesresolvers.letsencrypt.acme.email={{ $email }}
             - --certificatesresolvers.letsencrypt.acme.storage=/data/acme.json
             - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web

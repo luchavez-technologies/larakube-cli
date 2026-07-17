@@ -52,5 +52,5 @@ test('git:init removes gitea stack and deletes resources', function () {
     $this->artisan('git:init local --remove')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Gitea resources...')
-        ->expectsOutputToContain('Gitea removed from larakube-shared.');
+        ->expectsOutputToContain('Gitea stack removed from larakube-shared.');
 });

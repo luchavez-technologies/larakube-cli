@@ -506,6 +506,10 @@ class CloudCreateCommand extends Command
         $this->laraKubeInfo('✅ VPS provisioning complete!');
         $this->printVpsNextSteps($context, $environment);
 
+        if (! $this->flag('no-interaction') && confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
+            $this->call('dns:init', ['environment' => $environment ?: 'production', '--context' => $context]);
+        }
+
         return 0;
     }
 

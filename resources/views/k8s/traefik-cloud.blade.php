@@ -112,6 +112,9 @@ spec:
             - --entrypoints.websecure.Address=:443
             - --entrypoints.websecure.http.tls=true
             - --providers.kubernetesingress
+@if(isset($ip))
+            - --providers.kubernetesingress.ingressendpoint.ip={{ $ip }}
+@endif
             - --providers.file.directory=/config
             - --providers.file.watch=true
             - --serverstransport.insecureSkipVerify=true

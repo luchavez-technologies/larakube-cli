@@ -18,6 +18,7 @@ type: Opaque
 data:
   username: {{ base64_encode('larakube') }}
   password: {{ base64_encode($adminPassword) }}
+  db-password: {{ base64_encode($dbPassword ?? '') }}
   registry-token: {{ base64_encode($registryToken) }}
   runner-token: {{ base64_encode($runnerToken) }}
 ---
@@ -47,10 +48,26 @@ spec:
             - containerPort: 22
               name: ssh
           env:
+@if ($noPlex)
             - name: GITEA__database__DB_TYPE
               value: sqlite3
             - name: GITEA__database__PATH
               value: /data/gitea/gitea.db
+@else
+            - name: GITEA__database__DB_TYPE
+              value: postgres
+            - name: GITEA__database__HOST
+              value: postgres.{{ $plexNamespace }}.svc.cluster.local:5432
+            - name: GITEA__database__NAME
+              value: gitea
+            - name: GITEA__database__USER
+              value: gitea
+            - name: GITEA__database__PASSWD
+              valueFrom:
+                secretKeyRef:
+                  name: gitea-admin
+                  key: db-password
+@endif
             - name: GITEA__security__INSTALL_LOCK
               value: "true"
             - name: GITEA__server__ROOT_URL

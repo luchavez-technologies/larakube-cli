@@ -1,3 +1,11 @@
+## Running PHP/Composer
+
+All PHP and Composer commands in this directory MUST go through the local wrapper scripts, not the host `php`/`composer` binaries — they run inside a persistent Docker daemon that has the right PHP version and extensions.
+
+- `./php vendor/bin/pest` (tests), `./php vendor/bin/pint` (formatting, per repo-wide hard rule), `./php vendor/bin/phpstan` (static analysis)
+- `./composer <args>` for dependency management
+- Never run `./build` yourself — tell the user to run it and wait.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

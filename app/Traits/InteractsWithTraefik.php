@@ -185,10 +185,12 @@ trait InteractsWithTraefik
         }
 
         $tmp = sys_get_temp_dir()."/larakube-shared-{$service->value}.yaml";
-        file_put_contents($tmp, view($service->template(), [
+        $payload = array_merge([
             'host' => $host,
             'isLocal' => true,
-        ])->render());
+        ], method_exists($service, 'templatePayload') ? $service->templatePayload() : []);
+
+        file_put_contents($tmp, view($service->template(), $payload)->render());
         Process::run("kubectl apply -f {$tmp}");
         @unlink($tmp);
 
