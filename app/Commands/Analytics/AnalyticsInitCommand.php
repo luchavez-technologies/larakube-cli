@@ -1,0 +1,165 @@
+<?php
+
+namespace App\Commands\Analytics;
+
+use App\Data\ConfigData;
+use App\Enums\ClusterTool;
+use App\Enums\DatabaseDriver;
+use App\Enums\SharedClusterService;
+use App\Traits\ConfirmsDestructiveAction;
+use App\Traits\DeploysClusterTool;
+use App\Traits\InteractsWithAnalytics;
+use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithPlex;
+use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolEnvironment;
+use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
+
+use function Laravel\Prompts\text;
+
+use LaravelZero\Framework\Commands\Command;
+
+class AnalyticsInitCommand extends Command
+{
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithAnalytics, InteractsWithClusterContext, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+
+    protected $signature = 'analytics:init
+        {environment? : Environment this install targets — "local" (default) or cloud.}
+        {--context=  : Target a specific kube-context}
+        {--domain=   : Base domain OR full host for Umami (example.com → prefix.example.com)}
+        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
+        {--force     : Skip the confirmation prompt}';
+
+    protected $description = 'Deploy the Umami web analytics stack into larakube-shared';
+
+    public function handle(): int
+    {
+        $this->renderHeader();
+
+        return $this->deployAnalytics();
+    }
+
+    protected function deployAnalytics(): int
+    {
+        $env = $this->resolveEnvironment();
+        $host = $this->resolveAnalyticsHost($env);
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $this->plexContext = $context;
+        $kubectl = $this->analyticsKubectl($context);
+        $ns = $this->analyticsNamespace();
+        $vpnOnly = (bool) $this->option('vpn-only');
+
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::ANALYTICS, $kubectl)) {
+            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
+
+        // Umami requires Postgres from Plex Commons.
+        if (! $this->ensureCommons(['postgres'])) {
+            return 1;
+        }
+
+        // Stable secrets across re-runs.
+        $dbPassword = $this->readAnalyticsSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
+        $appSecret = $this->readAnalyticsSecret($kubectl, $ns, 'app-secret') ?? bin2hex(random_bytes(32));
+
+        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'umami', $dbPassword)) {
+            return 1;
+        }
+
+        $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
+            "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
+        ));
+
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $appSecret) {
+            Process::run(
+                "{$kubectl} create secret generic analytics-secrets -n {$ns} "
+                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
+                .'--from-literal=app-secret='.escapeshellarg($appSecret).' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+        });
+
+        $manifest = view('k8s.analytics.shared', [
+            'host' => $host,
+            'plexNamespace' => $this->plexNamespace(),
+            'vpnOnly' => $vpnOnly,
+            'isLocal' => $env === 'local',
+        ])->render();
+
+        $tmp = sys_get_temp_dir().'/larakube-analytics.yaml';
+        file_put_contents($tmp, $manifest);
+
+        $this->withSpin('Applying Umami analytics manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        @unlink($tmp);
+
+        $this->withSpin('Waiting for Umami...', fn () => $this->runStreaming(
+            "{$kubectl} rollout status deploy/analytics-umami -n {$ns} --timeout=180s",
+            190,
+        ));
+
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo('✅ Umami analytics stack is live.');
+        $this->newLine();
+        $this->line("  <fg=gray>Access URL:</>  <fg=blue>https://{$host}</>");
+        $this->line('  <fg=gray>Database:</>    <fg=blue>Commons Postgres</> · DB <fg=blue>umami</>');
+        $this->newLine();
+
+        return 0;
+    }
+
+    protected function resolveAnalyticsHost(string $env): string
+    {
+        $service = SharedClusterService::ANALYTICS;
+
+        $domain = (string) ($this->option('domain') ?? '');
+        if ($domain !== '') {
+            return $service->hostFor($domain);
+        }
+
+        if ($env === 'local') {
+            return (string) $this->resolveAnalyticsHostReadOnly('local', null);
+        }
+
+        return $this->promptForCloudAnalyticsHost($service, $env);
+    }
+
+    protected function resolveEnvironment(): string
+    {
+        return $this->resolveToolEnvironment(ClusterTool::ANALYTICS);
+    }
+
+    protected function promptForCloudAnalyticsHost(SharedClusterService $service, string $env): string
+    {
+        $projectPath = getcwd();
+        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
+            ? ConfigData::loadFromFile($projectPath)
+            : null;
+
+        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
+        if ($existing) {
+            return $existing;
+        }
+
+        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
+        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
+
+        $host = text(
+            label: "What host should {$service->label()} use in '{$env}'?",
+            placeholder: $default !== '' ? $default : 'e.g. analytics.example.com',
+            default: $default,
+            required: true,
+        );
+
+        if ($config) {
+            $config->setHost($env, $service->value, $host);
+            $config->saveToFile($projectPath);
+            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
+        }
+
+        return $host;
+    }
+}

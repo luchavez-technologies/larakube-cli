@@ -486,6 +486,26 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         };
     }
 
+    public function commonsBucketListCommand(): string
+    {
+        return match ($this) {
+            self::SEAWEEDFS => "echo 's3.bucket.list' | weed shell",
+            self::MINIO => $this->minioMcCommand('ls local/'),
+            self::GARAGE => '/garage bucket list',
+        };
+    }
+
+    public function commonsObjectListCommand(string $bucket, ?string $path = null): string
+    {
+        $sub = $path !== null && $path !== '' ? '/'.ltrim($path, '/') : '';
+
+        return match ($this) {
+            self::SEAWEEDFS => "echo 'fs.ls /buckets/'.$bucket.$sub | weed shell",
+            self::MINIO => $this->minioMcCommand('ls local/'.$bucket.$sub),
+            self::GARAGE => "/garage bucket info {$bucket}",
+        };
+    }
+
     public function commonsServiceName(): ?string
     {
         // Each S3 backend is its own Commons service (keyed by value), so several
