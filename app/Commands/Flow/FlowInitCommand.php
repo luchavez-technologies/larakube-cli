@@ -3,12 +3,15 @@
 namespace App\Commands\Flow;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithFlow;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -20,17 +23,16 @@ use LaravelZero\Framework\Commands\Command;
 
 class FlowInitCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithPlex, LaraKubeOutput, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'flow:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
-        {--env=      : Legacy alias for the environment}
-        {--domain=   : Raw override for the Flow cluster domain}
+        {--domain=   : Base domain OR full host for Flow (example.com → prefix.example.com)}
         {--no-plex   : Bypass Plex Commons and use local SQLite storage}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--engine=   : The automation engine to deploy ("n8n" or "windmill")}
-        {--remove    : Tear down the Flow stack}';
+        {--force     : Skip the confirmation prompt}';
 
     protected $description = 'Deploy a workflow automation stack (n8n or Windmill) into larakube-shared';
 
@@ -38,9 +40,7 @@ class FlowInitCommand extends Command
     {
         $this->renderHeader();
 
-        return $this->option('remove')
-            ? $this->removeFlow()
-            : $this->deployFlow();
+        return $this->deployFlow();
     }
 
     protected function deployFlow(): int
@@ -64,6 +64,12 @@ class FlowInitCommand extends Command
         $ns = $this->flowNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
+
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::FLOW, $kubectl)) {
+            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         if (! $noPlex) {
             if (! $this->ensureCommons(['postgres'])) {
@@ -147,64 +153,6 @@ class FlowInitCommand extends Command
         return 0;
     }
 
-    protected function removeFlow(): int
-    {
-        $env = $this->resolveEnvironment();
-        $ns = $this->flowNamespace();
-        $plexNs = $this->plexNamespace();
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $context = (string) $this->option('context') ?: null;
-        if (! $context && $config && $env !== 'local') {
-            $context = $this->environmentContextOrCurrent($config, $env);
-        }
-
-        $kubectl = $this->flowKubectl($context);
-
-        $ok = true;
-        $isLocal = trim(Process::run("{$kubectl} get secret flow-secrets -n {$ns}")->output()) === '';
-
-        if (! $isLocal) {
-            $client = \App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminClient();
-
-            // Drop both potential engines to ensure clean slate
-            foreach (['n8n', 'windmill'] as $engine) {
-                $sql = $this->buildDropTenantSql($engine, $engine);
-                $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop_flow');
-                file_put_contents($tmp, $sql);
-
-                $ok = $this->removeResources(
-                    "Dropping database '{$engine}' from Plex Commons (if exists)...",
-                    "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
-                ) && $ok;
-                @unlink($tmp);
-            }
-        }
-
-        $ok = $this->removeResources(
-            'Removing Flow resources...',
-            "{$kubectl} delete deployment/flow-n8n deployment/flow-windmill service/flow-n8n service/flow-windmill ingress/flow-n8n ingress/flow-windmill pvc/flow-storage pvc/flow-windmill-storage secret/flow-secrets -n {$ns} --ignore-not-found",
-        ) && $ok;
-
-        // Best-effort: the vpn-only middleware only exists when --vpn-only was
-        // used, so its absence isn't a failure worth aborting on.
-        Process::run("{$kubectl} delete middleware/flow-vpn-only -n {$ns} --ignore-not-found 2>/dev/null");
-
-        if (! $ok) {
-            $this->laraKubeError('One or more Flow resources failed to remove — check kubectl access to the cluster above and re-run.');
-
-            return 1;
-        }
-
-        $this->laraKubeInfo('Flow stack removed from larakube-shared.');
-
-        return 0;
-    }
-
     protected function resolveFlowHost(string $env): string
     {
         $service = SharedClusterService::FLOW;
@@ -223,27 +171,7 @@ class FlowInitCommand extends Command
 
     protected function resolveEnvironment(): string
     {
-        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
-        if ($this->option('no-interaction') || $this->option('domain')) {
-            return 'local';
-        }
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $envs = $config ? array_merge(['local'], $config->getCloudEnvironments()) : ['local'];
-
-        return select(
-            label: 'Which environment is this Flow install for?',
-            options: array_combine($envs, $envs),
-            default: 'local',
-        );
+        return $this->resolveToolEnvironment(ClusterTool::FLOW);
     }
 
     protected function promptForCloudFlowHost(SharedClusterService $service, string $env): string

@@ -3,33 +3,34 @@
 namespace App\Commands\Insights;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithInsights;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class InsightsInitCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'insights:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
-        {--env=      : Legacy alias for the environment}
-        {--domain=   : Raw override for the Insights cluster domain}
+        {--domain=   : Base domain OR full host for Insights (example.com → prefix.example.com)}
         {--no-plex   : Bypass Plex Commons and deploy a dedicated database}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--remove    : Tear down the Insights stack}';
+        {--force     : Skip the confirmation prompt}';
 
     protected $description = 'Deploy the Metabase BI stack into larakube-shared';
 
@@ -37,9 +38,7 @@ class InsightsInitCommand extends Command
     {
         $this->renderHeader();
 
-        return $this->option('remove')
-            ? $this->removeInsights()
-            : $this->deployInsights();
+        return $this->deployInsights();
     }
 
     protected function deployInsights(): int
@@ -62,6 +61,12 @@ class InsightsInitCommand extends Command
         $ns = $this->insightsNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
+
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::INSIGHTS, $kubectl)) {
+            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         if (! $noPlex) {
             if (! $this->ensureCommons(['postgres'])) {
@@ -120,47 +125,6 @@ class InsightsInitCommand extends Command
         return 0;
     }
 
-    protected function removeInsights(): int
-    {
-        $env = $this->resolveEnvironment();
-        $context = $this->resolveToolContext($env, $this->option('context'));
-        $this->plexContext = $context;
-        $kubectl = $this->insightsKubectl($context);
-        $ns = $this->insightsNamespace();
-        $plexNs = $this->plexNamespace();
-
-        $ok = true;
-        $isLocal = trim(Process::run("{$kubectl} get secret insights-secrets -n {$ns}")->output()) === '';
-
-        if (! $isLocal) {
-            $sql = $this->buildDropTenantSql('metabase', 'metabase');
-            $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop_metabase');
-            file_put_contents($tmp, $sql);
-            $client = \App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminClient();
-
-            $ok = $this->removeResources(
-                "Dropping database 'metabase' from Plex Commons...",
-                "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
-            );
-            @unlink($tmp);
-        }
-
-        $ok = $this->removeResources(
-            'Removing Insights (Metabase) resources...',
-            "{$kubectl} delete deployment/insights-metabase service/insights-metabase ingress/insights-metabase secret/insights-secrets pvc/insights-storage -n {$ns} --ignore-not-found",
-        ) && $ok;
-
-        if (! $ok) {
-            $this->laraKubeError('One or more Insights resources failed to remove — check kubectl access to the cluster above and re-run.');
-
-            return 1;
-        }
-
-        $this->laraKubeInfo('Insights (Metabase) removed from larakube-shared.');
-
-        return 0;
-    }
-
     protected function resolveInsightsHost(string $env): string
     {
         $service = SharedClusterService::INSIGHTS;
@@ -179,27 +143,7 @@ class InsightsInitCommand extends Command
 
     protected function resolveEnvironment(): string
     {
-        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
-        if ($this->option('no-interaction') || $this->option('domain')) {
-            return 'local';
-        }
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $envs = $config ? array_merge(['local'], $config->getCloudEnvironments()) : ['local'];
-
-        return select(
-            label: 'Which environment is this Insights install for?',
-            options: array_combine($envs, $envs),
-            default: 'local',
-        );
+        return $this->resolveToolEnvironment(ClusterTool::INSIGHTS);
     }
 
     protected function promptForCloudInsightsHost(SharedClusterService $service, string $env): string

@@ -3,6 +3,7 @@
 namespace App\Commands\Errors;
 
 use App\Data\ConfigData;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithErrors;
 use App\Traits\LaraKubeOutput;
 
@@ -12,7 +13,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class ErrorsShowCommand extends Command
 {
-    use InteractsWithErrors, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithErrors, LaraKubeOutput;
 
     protected $signature = 'errors:show
         {environment=local : Environment to show GlitchTip access for (resolves the GlitchTip host)}
@@ -30,7 +31,13 @@ class ErrorsShowCommand extends Command
             ? ConfigData::loadFromFile($projectPath)
             : null;
 
-        $access = $this->errorsAccess($env, $config, (string) ($this->option('context') ?? ''));
+        // The {environment} argument must decide WHICH CLUSTER we inspect, not just
+        // which host string to print. Without this these commands read whatever
+        // kubectl currently points at, so `…:show production` could report
+        // "not installed" about a perfectly healthy production install.
+        $resolvedContext = (string) ($this->resolveToolContext($env, (string) $this->option('context') ?: null) ?? '');
+
+        $access = $this->errorsAccess($env, $config, $resolvedContext);
 
         if ($access === null) {
             $this->warn('  GlitchTip is not installed in '.$this->errorsNamespace().'.');

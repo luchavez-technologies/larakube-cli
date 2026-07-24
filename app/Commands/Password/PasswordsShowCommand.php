@@ -3,6 +3,7 @@
 namespace App\Commands\Password;
 
 use App\Data\ConfigData;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithVault;
 use App\Traits\LaraKubeOutput;
 
@@ -10,11 +11,11 @@ use function Laravel\Prompts\table;
 
 use LaravelZero\Framework\Commands\Command;
 
-class PasswordShowCommand extends Command
+class PasswordsShowCommand extends Command
 {
-    use InteractsWithVault, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithVault, LaraKubeOutput;
 
-    protected $signature = 'password:show
+    protected $signature = 'passwords:show
         {environment=local : Environment to show Vaultwarden access for (resolves the Vaultwarden host)}
         {--context= : Target a specific kube-context (defaults to current context)}';
 
@@ -30,11 +31,17 @@ class PasswordShowCommand extends Command
             ? ConfigData::loadFromFile($projectPath)
             : null;
 
-        $access = $this->vaultAccess($env, $config, (string) ($this->option('context') ?? ''));
+        // The {environment} argument must decide WHICH CLUSTER we inspect, not just
+        // which host string to print. Without this these commands read whatever
+        // kubectl currently points at, so `…:show production` could report
+        // "not installed" about a perfectly healthy production install.
+        $resolvedContext = (string) ($this->resolveToolContext($env, (string) $this->option('context') ?: null) ?? '');
+
+        $access = $this->vaultAccess($env, $config, $resolvedContext);
 
         if ($access === null) {
             $this->warn('  Vaultwarden is not installed in '.$this->vaultNamespace().'.');
-            $this->line('  Run <fg=yellow>larakube password:init</> to deploy it.');
+            $this->line('  Run <fg=yellow>larakube passwords:init</> to deploy it.');
 
             return 1;
         }

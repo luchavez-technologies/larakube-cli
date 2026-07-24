@@ -46,14 +46,14 @@ test('flow:init deploys windmill using plex commons postgres', function () {
         ->expectsOutputToContain('Flow (Windmill) stack is live.');
 });
 
-test('flow:init removes flow stack and deletes resources', function () {
+test('flow:remove removes flow stack and deletes resources', function () {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
         '*get secret flow-secrets*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('flow:init local --remove')
+    $this->artisan('flow:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Flow resources...')
-        ->expectsOutputToContain('Flow stack removed from larakube-shared.');
+        ->expectsOutputToContain('removed from larakube-shared');
 });

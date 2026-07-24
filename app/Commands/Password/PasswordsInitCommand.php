@@ -3,30 +3,34 @@
 namespace App\Commands\Password;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithVault;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\SyncsInfisicalSecrets;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class PasswordsInitCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVault, LaraKubeOutput, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithVault, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsInfisicalSecrets;
 
     protected $signature = 'passwords:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Vaultwarden host.}
         {--context=  : Target a specific kube-context (defaults to current context)}
-        {--env=      : Legacy alias for the environment argument}
-        {--domain=   : Raw override for the Vaultwarden cluster domain (e.g. example.com → vault.example.com); skips the prompt}
+        {--domain=   : Base domain OR full host for Vaultwarden (example.com → vault.example.com; vault.example.com used as-is)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--remove    : Tear down the Vaultwarden stack from larakube-vault}';
+        {--force     : Skip the confirmation prompt}';
 
     protected $description = 'Deploy the cluster-wide Vaultwarden team password manager into larakube-vault';
 
@@ -34,9 +38,7 @@ class PasswordsInitCommand extends Command
     {
         $this->renderHeader();
 
-        return $this->option('remove')
-            ? $this->removeVault()
-            : $this->deployVault();
+        return $this->deployVault();
     }
 
     protected function deployVault(): int
@@ -54,6 +56,7 @@ class PasswordsInitCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
+        $this->plexContext = $context;
         $kubectl = $this->vaultKubectl($context);
         $ns = $this->vaultNamespace();
 
@@ -62,12 +65,47 @@ class PasswordsInitCommand extends Command
         ));
 
         $adminToken = $this->readVaultAdminToken($kubectl, $ns) ?? bin2hex(random_bytes(16));
+        $hashedAdminToken = defined('PASSWORD_ARGON2ID')
+            ? password_hash($adminToken, PASSWORD_ARGON2ID)
+            : password_hash($adminToken, PASSWORD_DEFAULT);
+
+        // Allocate Vaultwarden database in Plex Commons Postgres if available
+        $dbPassword = Str::random(24);
+        $databaseUrl = null;
+        $plexNs = $this->plexNamespace();
+
+        if ($this->ensureCommons(['postgres'])) {
+            $driver = \App\Enums\DatabaseDriver::POSTGRESQL;
+            if ($this->allocateDatabase($driver, 'vaultwarden', $dbPassword)) {
+                $databaseUrl = "postgresql://vaultwarden:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/vaultwarden";
+            }
+        }
+
+        // Infisical Integration: Push secrets and sync to larakube-vault
+        if ($this->isInfisicalBootstrapped($kubectl, $this->secretsNamespace())) {
+            $this->withSpin('Syncing Vaultwarden secrets to Infisical...', function () use ($kubectl, $ns, $adminToken, $dbPassword, $databaseUrl) {
+                $this->pushInfisicalSecret($kubectl, 'VAULTWARDEN_ADMIN_TOKEN', $adminToken, 'production');
+                $this->pushInfisicalSecret($kubectl, 'VAULTWARDEN_DB_PASSWORD', $dbPassword, 'production');
+                if ($databaseUrl !== null) {
+                    $this->pushInfisicalSecret($kubectl, 'VAULTWARDEN_DATABASE_URL', $databaseUrl, 'production');
+                }
+                $this->syncInfisicalToNamespace($kubectl, $ns, 'vaultwarden-infisical', 'production');
+            });
+        }
 
         $vpnOnly = (bool) $this->option('vpn-only');
+
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::PASSWORDS, $kubectl)) {
+            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         $manifest = view('k8s.vault.shared', [
             'host' => $host,
             'adminToken' => $adminToken,
+            'hashedAdminToken' => $hashedAdminToken,
+            'databaseUrl' => $databaseUrl,
             'isLocal' => $env === 'local',
             'vpnOnly' => $vpnOnly,
         ])->render();
@@ -90,34 +128,6 @@ class PasswordsInitCommand extends Command
         $this->line("  <fg=gray>Admin Token:</>                <fg=yellow>{$adminToken}</>");
         $this->line("  <fg=gray>Admin URL:</>                  <fg=blue>https://{$host}/admin</>");
         $this->newLine();
-
-        return 0;
-    }
-
-    protected function removeVault(): int
-    {
-        $env = $this->resolveEnvironment();
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $context = (string) $this->option('context') ?: null;
-        if (! $context && $config && $env !== 'local') {
-            $context = $this->environmentContextOrCurrent($config, $env);
-        }
-
-        $kubectl = $this->vaultKubectl($context);
-        $ns = $this->vaultNamespace();
-
-        if (! $this->removeResources('Removing Vaultwarden namespace...', "{$kubectl} delete namespace {$ns} --ignore-not-found")) {
-            $this->laraKubeError('Failed to remove the Vaultwarden namespace — check kubectl access to the cluster above and re-run.');
-
-            return 1;
-        }
-
-        $this->laraKubeInfo("Vaultwarden removed from larakube-vault ({$env}).");
 
         return 0;
     }
@@ -146,28 +156,7 @@ class PasswordsInitCommand extends Command
      */
     protected function resolveEnvironment(): string
     {
-        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
-        if ($this->option('no-interaction') || $this->option('domain')) {
-            return 'local';
-        }
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $envs = $config ? array_merge(['local'], $config->getCloudEnvironments()) : ['local'];
-
-        return select(
-            label: 'Which environment is this Vaultwarden install for?',
-            options: array_combine($envs, $envs),
-            default: 'local',
-            hint: 'Local uses your dev TLD; a cloud env asks for + persists the Vaultwarden host.',
-        );
+        return $this->resolveToolEnvironment(ClusterTool::PASSWORDS);
     }
 
     /**

@@ -3,35 +3,36 @@
 namespace App\Commands\Sheet;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSheet;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class SheetsInitCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSheet, LaraKubeOutput, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSheet, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'sheets:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
-        {--env=      : Legacy alias for the environment}
         {--engine=   : Sheet engine — "baserow" (default) or "nocodb"}
-        {--domain=   : Raw override for the Sheet cluster domain}
+        {--domain=   : Base domain OR full host for Sheet (example.com → prefix.example.com)}
         {--no-plex   : Bypass Plex Commons and use local SQLite storage (nocodb only)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--remove    : Tear down the Sheet stack}';
+        {--force     : Skip the confirmation prompt}';
 
     protected $description = 'Deploy the no-code database spreadsheet stack (Baserow or NocoDB) into larakube-shared';
 
@@ -39,9 +40,7 @@ class SheetsInitCommand extends Command
     {
         $this->renderHeader();
 
-        return $this->option('remove')
-            ? $this->removeSheet()
-            : $this->deploySheet();
+        return $this->deploySheet();
     }
 
     protected function deploySheet(): int
@@ -71,6 +70,12 @@ class SheetsInitCommand extends Command
         $ns = $this->sheetNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
+
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SHEETS, $kubectl)) {
+            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         if ($engine === 'baserow' && $noPlex) {
             $this->laraKubeError('Baserow requires the Plex Commons (Postgres + Valkey). Drop --no-plex, or use --engine=nocodb for a standalone SQLite install.');
@@ -230,81 +235,6 @@ class SheetsInitCommand extends Command
         return 0;
     }
 
-    protected function removeSheet(): int
-    {
-        // Resolve the target environment like deploySheet() does, so
-        // `sheets:init production --remove` targets the cloud install instead of
-        // silently hitting the local context.
-        $env = $this->resolveEnvironment();
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $context = (string) $this->option('context') ?: null;
-        if (! $context && $config && $env !== 'local') {
-            $context = $this->environmentContextOrCurrent($config, $env);
-        }
-
-        $this->plexContext = $context;
-        $kubectl = $this->sheetKubectl($context);
-        $ns = $this->sheetNamespace();
-        $plexNs = $this->plexNamespace();
-
-        // Detect what's actually deployed; fall back to the requested engine.
-        $engine = $this->deployedSheetEngine($kubectl, $ns)
-            ?? (strtolower((string) $this->option('engine')) === 'nocodb' ? 'nocodb' : 'baserow');
-        $tenant = $engine === 'nocodb' ? 'nocodb' : 'baserow';
-
-        // Drop the Commons tenant DB unless this was a standalone (no-plex) NocoDB
-        // install. Baserow always uses the Commons. The IF EXISTS SQL is harmless
-        // if the DB was never allocated.
-        $hasSecret = trim(Process::run("{$kubectl} get secret sheet-secrets -n {$ns} --ignore-not-found")->output()) !== '';
-
-        $ok = true;
-
-        if ($engine === 'baserow' || $hasSecret) {
-            $sql = $this->buildDropTenantSql($tenant, $tenant);
-            $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop_sheet');
-            file_put_contents($tmp, $sql);
-            $client = \App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminClient();
-
-            $ok = $this->removeResources(
-                "Dropping database '{$tenant}' from Plex Commons...",
-                "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
-            );
-            @unlink($tmp);
-
-            if ($engine === 'baserow') {
-                $this->releaseCommonsRedisIndex('baserow');
-            }
-        }
-
-        // Delete both engines' resources + the stable and legacy names, so this
-        // cleans up regardless of which engine (or which CLI version) deployed it.
-        $ok = $this->removeResources(
-            'Removing Sheet resources...',
-            "{$kubectl} delete "
-            .'deployment/sheet-baserow deployment/sheet-nocodb '
-            .'service/sheet service/sheet-nocodb '
-            .'ingress/sheet ingress/sheet-nocodb '
-            .'secret/sheet-baserow-smtp secret/sheet-nocodb-smtp '
-            .'pvc/sheet-storage secret/sheet-secrets '
-            ."-n {$ns} --ignore-not-found",
-        ) && $ok;
-
-        if (! $ok) {
-            $this->laraKubeError('One or more Sheet resources failed to remove — check kubectl access to the cluster above and re-run.');
-
-            return 1;
-        }
-
-        $this->laraKubeInfo('Sheet ('.($engine === 'nocodb' ? 'NocoDB' : 'Baserow').') removed from larakube-shared.');
-
-        return 0;
-    }
-
     protected function resolveSheetHost(string $env): string
     {
         $service = SharedClusterService::SHEET;
@@ -323,27 +253,7 @@ class SheetsInitCommand extends Command
 
     protected function resolveEnvironment(): string
     {
-        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
-        if ($this->option('no-interaction') || $this->option('domain')) {
-            return 'local';
-        }
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $envs = $config ? array_merge(['local'], $config->getCloudEnvironments()) : ['local'];
-
-        return select(
-            label: 'Which environment is this Sheet install for?',
-            options: array_combine($envs, $envs),
-            default: 'local',
-        );
+        return $this->resolveToolEnvironment(ClusterTool::SHEETS);
     }
 
     protected function promptForCloudSheetHost(SharedClusterService $service, string $env): string

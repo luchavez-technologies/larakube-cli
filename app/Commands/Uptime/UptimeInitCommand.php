@@ -3,31 +3,32 @@
 namespace App\Commands\Uptime;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithTraefik;
 use App\Traits\InteractsWithUptime;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class UptimeInitCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'uptime:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Uptime Kuma host.}
         {--context=  : Target a specific kube-context (defaults to current context)}
-        {--env=      : Legacy alias for the environment argument}
-        {--domain=   : Raw override for the Uptime Kuma cluster domain (e.g. example.com → status.example.com); skips the prompt}
+        {--domain=   : Base domain OR full host for Uptime Kuma (example.com → status.example.com; status.example.com used as-is)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--remove    : Tear down the Uptime Kuma stack from larakube-shared}';
+        {--force     : Skip the confirmation prompt}';
 
     protected $description = 'Deploy the cluster-wide Uptime Kuma status page stack into larakube-shared';
 
@@ -35,9 +36,7 @@ class UptimeInitCommand extends Command
     {
         $this->renderHeader();
 
-        return $this->option('remove')
-            ? $this->removeUptime()
-            : $this->deployUptime();
+        return $this->deployUptime();
     }
 
     protected function deployUptime(): int
@@ -63,6 +62,12 @@ class UptimeInitCommand extends Command
         ));
 
         $vpnOnly = (bool) $this->option('vpn-only');
+
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::UPTIME, $kubectl)) {
+            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         $manifest = view('k8s.uptime.shared', [
             'host' => $host,
@@ -92,27 +97,6 @@ class UptimeInitCommand extends Command
         return 0;
     }
 
-    protected function removeUptime(): int
-    {
-        $env = $this->resolveEnvironment();
-        $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->uptimeKubectl($context);
-        $ns = $this->uptimeNamespace();
-
-        if (! $this->removeResources('Removing Uptime Kuma...',
-            "{$kubectl} delete deployment,svc,ingress,pvc"
-            .' uptime-kuma uptime-kuma-storage'
-            ." -n {$ns} --ignore-not-found")) {
-            $this->laraKubeError('Failed to remove Uptime Kuma resources — check kubectl access to the cluster above and re-run.');
-
-            return 1;
-        }
-
-        $this->laraKubeInfo('Uptime Kuma removed from larakube-shared.');
-
-        return 0;
-    }
-
     /**
      * Resolve the Uptime Kuma ingress host for this install.
      */
@@ -137,28 +121,7 @@ class UptimeInitCommand extends Command
      */
     protected function resolveEnvironment(): string
     {
-        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
-        if ($this->option('no-interaction') || $this->option('domain')) {
-            return 'local';
-        }
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $envs = $config ? array_merge(['local'], $config->getCloudEnvironments()) : ['local'];
-
-        return select(
-            label: 'Which environment is this Uptime Kuma install for?',
-            options: array_combine($envs, $envs),
-            default: 'local',
-            hint: 'Local uses your dev TLD; a cloud env asks for + persists the Uptime Kuma host.',
-        );
+        return $this->resolveToolEnvironment(ClusterTool::UPTIME);
     }
 
     /**

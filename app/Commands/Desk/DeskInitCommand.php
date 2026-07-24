@@ -3,35 +3,36 @@
 namespace App\Commands\Desk;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithDesk;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class DeskInitCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithPlex, LaraKubeOutput, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'desk:init
         {environment?    : Environment this install targets — "local" (default) or cloud.}
         {--context=      : Target a specific kube-context}
-        {--env=          : Legacy alias for the environment}
-        {--domain=       : Raw override for the FreeScout cluster domain}
+        {--domain=       : Base domain OR full host for FreeScout (example.com → prefix.example.com)}
         {--engine=       : Help-desk engine to deploy ("freescout")}
         {--admin-email=  : Admin email for the FreeScout first-run account}
         {--no-plex       : Bypass Plex Commons and bundle a dedicated Postgres}
         {--vpn-only      : Restrict access via NetBird VPN IP whitelisting}
-        {--remove        : Tear down the FreeScout stack}';
+        {--force         : Skip the confirmation prompt}';
 
     protected $description = 'Deploy the FreeScout help-desk / shared-inbox stack into larakube-shared';
 
@@ -39,9 +40,7 @@ class DeskInitCommand extends Command
     {
         $this->renderHeader();
 
-        return $this->option('remove')
-            ? $this->removeDesk()
-            : $this->deployDesk();
+        return $this->deployDesk();
     }
 
     protected function deployDesk(): int
@@ -65,6 +64,12 @@ class DeskInitCommand extends Command
         $ns = $this->deskNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
+
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DESK, $kubectl)) {
+            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         if (! $noPlex) {
             if (! $this->ensureCommons(['postgres'])) {
@@ -133,50 +138,6 @@ class DeskInitCommand extends Command
         return 0;
     }
 
-    protected function removeDesk(): int
-    {
-        $env = $this->resolveEnvironment();
-        $context = $this->resolveToolContext($env, $this->option('context'));
-        $this->plexContext = $context;
-        $kubectl = $this->deskKubectl($context);
-        $ns = $this->deskNamespace();
-        $plexNs = $this->plexNamespace();
-
-        $ok = true;
-
-        // A bundled (no-plex) install has its own Postgres; only drop the Commons
-        // tenant when this install actually used the Commons.
-        $bundled = trim(Process::run("{$kubectl} get deployment desk-freescout-db -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
-
-        if (! $bundled) {
-            $sql = $this->buildDropTenantSql('freescout', 'freescout');
-            $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop_freescout');
-            file_put_contents($tmp, $sql);
-            $client = \App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminClient();
-
-            $ok = $this->removeResources(
-                "Dropping database 'freescout' from Plex Commons...",
-                "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c ".escapeshellarg($client).' < '.escapeshellarg($tmp),
-            );
-            @unlink($tmp);
-        }
-
-        $ok = $this->removeResources(
-            'Removing FreeScout resources...',
-            "{$kubectl} delete deployment/desk-freescout deployment/desk-freescout-db service/desk-freescout service/desk-freescout-db ingress/desk-freescout pvc/desk-storage pvc/desk-freescout-db-storage secret/desk-secrets -n {$ns} --ignore-not-found",
-        ) && $ok;
-
-        if (! $ok) {
-            $this->laraKubeError('One or more FreeScout resources failed to remove — check kubectl access to the cluster above and re-run.');
-
-            return 1;
-        }
-
-        $this->laraKubeInfo('FreeScout removed from larakube-shared.');
-
-        return 0;
-    }
-
     protected function resolveEngine(): string
     {
         $explicit = strtolower((string) $this->option('engine'));
@@ -233,27 +194,7 @@ class DeskInitCommand extends Command
 
     protected function resolveEnvironment(): string
     {
-        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
-        if ($this->option('no-interaction') || $this->option('domain')) {
-            return 'local';
-        }
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $envs = $config ? array_merge(['local'], $config->getCloudEnvironments()) : ['local'];
-
-        return select(
-            label: 'Which environment is this FreeScout install for?',
-            options: array_combine($envs, $envs),
-            default: 'local',
-        );
+        return $this->resolveToolEnvironment(ClusterTool::DESK);
     }
 
     protected function promptForCloudDeskHost(SharedClusterService $service, string $env): string

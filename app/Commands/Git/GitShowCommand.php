@@ -3,6 +3,7 @@
 namespace App\Commands\Git;
 
 use App\Data\ConfigData;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithGitForge;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
@@ -13,7 +14,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class GitShowCommand extends Command
 {
-    use InteractsWithGitForge, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithGitForge, LaraKubeOutput;
 
     protected $signature = 'git:show
         {environment=local : Environment to show Gitea access for (resolves Gitea host)}
@@ -31,7 +32,13 @@ class GitShowCommand extends Command
             ? ConfigData::loadFromFile($projectPath)
             : null;
 
-        $access = $this->gitAccess($env, $config, (string) ($this->option('context') ?? ''));
+        // The {environment} argument must decide WHICH CLUSTER we inspect, not just
+        // which host string to print. Without this these commands read whatever
+        // kubectl currently points at, so `…:show production` could report
+        // "not installed" about a perfectly healthy production install.
+        $resolvedContext = (string) ($this->resolveToolContext($env, (string) $this->option('context') ?: null) ?? '');
+
+        $access = $this->gitAccess($env, $config, $resolvedContext);
 
         if ($access === null) {
             $this->warn('  Gitea is not installed in '.$this->gitNamespace().'.');
@@ -42,7 +49,7 @@ class GitShowCommand extends Command
 
         $gitUrl = $access['host'] ? "https://{$access['host']}" : '<fg=gray>host not configured — run git:init '.$env.'</>';
 
-        $kubectl = $this->gitKubectl($this->option('context'));
+        $kubectl = $this->gitKubectl($resolvedContext ?: null);
         $ns = $this->gitNamespace();
 
         $adminPassword = trim(Process::run(

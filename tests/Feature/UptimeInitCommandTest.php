@@ -17,13 +17,13 @@ test('uptime:init deploys uptime kuma to larakube-shared', function () {
         ->expectsOutputToContain('Uptime Kuma stack is live.');
 });
 
-test('uptime:init removes uptime kuma from larakube-shared when --remove is passed', function () {
+test('uptime:remove removes uptime kuma from larakube-shared when --remove is passed', function () {
     Process::fake([
         '*kubectl delete deployment,svc,ingress,pvc uptime-kuma*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('uptime:init local --remove')
+    $this->artisan('uptime:remove local --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Removing Uptime Kuma...')
-        ->expectsOutputToContain('Uptime Kuma removed from larakube-shared.');
+        ->expectsOutputToContain('Removing Uptime Kuma resources...')
+        ->expectsOutputToContain('removed from larakube-shared');
 });

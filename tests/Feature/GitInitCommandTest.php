@@ -44,13 +44,16 @@ test('git:init deploys standalone gitea when --no-plex is passed', function () {
         ->expectsOutputToContain('Gitea forge and Actions runner are live.');
 });
 
-test('git:init removes gitea stack and deletes resources', function () {
+test('git:remove removes gitea stack and deletes resources', function () {
     Process::fake([
+        // Gitea leases a Commons tenant, so teardown drops it before deleting
+        // the workloads — the exec is the psql that runs the DROP.
+        '*exec *' => Process::result(output: 'dropped'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('git:init local --remove')
+    $this->artisan('git:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Gitea resources...')
-        ->expectsOutputToContain('Gitea stack removed from larakube-shared.');
+        ->expectsOutputToContain('removed from larakube-shared');
 });

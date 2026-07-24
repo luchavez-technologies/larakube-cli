@@ -3,6 +3,7 @@
 namespace App\Commands\Monitor;
 
 use App\Data\ConfigData;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithMonitoring;
 use App\Traits\LaraKubeOutput;
 
@@ -12,7 +13,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MonitorShowCommand extends Command
 {
-    use InteractsWithMonitoring, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithMonitoring, LaraKubeOutput;
 
     protected $signature = 'monitor:show
         {environment=local : Environment to show monitoring access for (resolves the Grafana host)}
@@ -30,7 +31,13 @@ class MonitorShowCommand extends Command
             ? ConfigData::loadFromFile($projectPath)
             : null;
 
-        $access = $this->monitoringAccess($env, $config, (string) ($this->option('context') ?? ''));
+        // The {environment} argument must decide WHICH CLUSTER we inspect, not just
+        // which host string to print. Without this these commands read whatever
+        // kubectl currently points at, so `…:show production` could report
+        // "not installed" about a perfectly healthy production install.
+        $resolvedContext = (string) ($this->resolveToolContext($env, (string) $this->option('context') ?: null) ?? '');
+
+        $access = $this->monitoringAccess($env, $config, $resolvedContext);
 
         if ($access === null) {
             $this->warn('  Monitoring is not installed in '.$this->monitoringNamespace().'.');
