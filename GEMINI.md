@@ -26,6 +26,12 @@ Whenever you modify the LaraKube CLI codebase, you **must** proactively run test
 
 **CRITICAL RULE FOR AI AGENTS**: You are STRICTLY FORBIDDEN from running the `./build` command. When a build is required to update the global binary, you must tell the user to run `./build` and wait for them to do it.
 
+### 🔁 Idempotency & Safety Standard
+- **Mandatory Idempotency**: Users are expected to commit mistakes and re-run commands when retrying, troubleshooting, or automating. EVERY CLI command (`*:init`, `*:wire`, `*:add`) MUST be strictly **idempotent**.
+- **Credentials & State**: Initializers MUST read existing credentials (admin passwords, database keys, secrets) from the cluster or Infisical before falling back to generating new random values. Re-runs MUST NEVER wipe databases or break existing connection state.
+### 🔐 Infisical Secrets Prioritization Standard
+- **Infisical-First Credentials**: Whenever creating, provisioning, or wiring secrets (admin passwords, tokens, PATs, database credentials, or SMTP secrets), commands MUST prioritize pushing them to Infisical via `pushInfisicalSecret()` if Infisical is bootstrapped on the cluster (`infisicalAvailable()`).
+
 ### 🌐 Networking & Ingress
 -   **Local Domains**: Standardized on **`.dev.test`**.
 -   **Traefik v3**: Dedicated `traefik:*` suite for managing the cluster-wide networking stack.

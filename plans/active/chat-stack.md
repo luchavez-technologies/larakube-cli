@@ -68,12 +68,14 @@ actual paywall.
   wire `MM_FILESETTINGS_*` (`DriverName=amazons3`, endpoint, bucket,
   access/secret key) into the manifest — Mattermost speaks S3 natively, no new
   integration code needed beyond the env mapping.
-- **Outbound email**: add a `CHAT` arm to `ClusterTool::smtpEnv()` mapping
+- **Outbound email**: `CHAT` arm on `ClusterTool::smtpEnv()` mapping
   Mattermost's SMTP settings (`MM_EMAILSETTINGS_SMTPSERVER`, `SMTPPORT`,
-  `SMTPUSERNAME`, `SMTPPASSWORD`, `ENABLESMTPAUTH=true`,
-  `CONNECTIONSECURITY=STARTTLS`) — `larakube mail:wire chat` then works for
-  free, same as `flow`/`sheets`/`passwords` today. `tool:add`'s
+  `SMTPUSERNAME`, `SMTPPASSWORD`, static `ENABLESMTPAUTH=true` +
+  `CONNECTIONSECURITY=TLS` — Stalwart's `mailSmtpEndpoint()` now serves
+  submission on 465/implicit-TLS, not 587/STARTTLS) — `larakube mail:wire chat`
+  works for free, same as `flow`/`sheets`/`passwords`. `tool:add`'s
   `offerMailWiring()` picks it up automatically once `smtpEnv()` is non-null.
+  **Built.**
 - **Context resolution**: built on **`DeploysClusterTool`** (this session's
   trait) from day one — `resolveToolContext()` for deploy/remove,
   `removeResources()` for every teardown step. A brand-new tool has no excuse
@@ -102,14 +104,23 @@ larakube mail:wire chat       # SMTP notifications through Stalwart
 
 ## 🚦 Phases
 
-1. [ ] `SharedClusterService::CHAT` + `ClusterTool::CHAT` cases; `chat:init`
+1. [x] `SharedClusterService::CHAT` + `ClusterTool::CHAT` cases; `chat:init`
    deploy (namespace, Commons Postgres alloc, S3 bucket alloc, secrets sync,
-   manifest apply, rollout wait), Team Edition by default.
-2. [ ] `chat:init --remove` (Plex tenant drop + S3 bucket release + resource
-   delete, all through `removeResources()` with proper abort-on-failure).
-3. [ ] `ClusterTool::CHAT->smtpEnv()` + confirm `mail:wire chat` end-to-end.
+   manifest apply, rollout wait), Team Edition (`mattermost-team-edition:10.5`)
+   by default. Unit-tested (Commons-S3 path + `--no-plex` path), not yet
+   live-verified against a real cluster.
+2. [x] `chat:init --remove` (Plex tenant drop + resource delete, through
+   `removeResources()` with proper abort-on-failure). **Note**: doesn't release
+   the Commons S3 bucket on teardown — `git:init` doesn't either, no
+   `releaseStorageBucket()` exists in `InteractsWithPlex` yet; a stale bucket
+   is the current accepted behavior for every S3-backed tool, not unique to
+   chat. Unit-tested, not yet live-verified.
+3. [x] `ClusterTool::CHAT->smtpEnv()` — built, unit-tested. `mail:wire chat`
+   itself not yet run against a live Mattermost instance.
 4. [ ] Docs page (setup, the Team Edition vs Entry vs Professional licensing
    note above, Calls limitation) + Blueprint Anatomy update.
+5. [ ] **Live verification** (see checklist below) — nothing above has been
+   run against a real cluster yet, only `Process::fake()`-driven unit tests.
 
 ## ✅ Verification
 

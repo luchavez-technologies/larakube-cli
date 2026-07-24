@@ -44,12 +44,15 @@ first-class rather than SCIM-bolted-on.
   same pattern as every other Plex-backed tool. Redis is optional/standalone-
   only per Zitadel's own docs; skip it for v1 (add only if a real performance
   need shows up — Postgres alone is Zitadel's fully-supported baseline).
-- **Bootstrap**: Zitadel supports a headless first-instance config (org +
-  admin user + a machine user with a PAT, provisioned at startup with no
-  dashboard click) — same shape as `vpn:init`'s `bootstrapVpnAuth()` already
-  does for NetBird's `/api/setup`. **Verify the exact config format at
-  implementation time** — this is the one thing in this plan I haven't
-  hand-verified against a running instance yet.
+- **Bootstrap**: `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_*` env vars (verified
+  against Zitadel's own `cmd/defaults.yaml`, not a blog post) create the
+  default org + a human admin at first boot, with a LaraKube-generated known
+  password — **built in Phase 1**. What's still deferred to Phase 2: the
+  `Org.Machine` IAM_OWNER service-account + PAT path (needed for
+  `mail:create --sso`'s API automation) — its exact PAT-output mechanism
+  wasn't confirmed with the same certainty and has no live Zitadel to verify
+  against this session, unlike Stalwart's live JMAP round-trip. Same shape as
+  `vpn:init`'s `bootstrapVpnAuth()` for NetBird's `/api/setup`, once verified.
 - **Context/teardown**: built on `DeploysClusterTool` from day one —
   `resolveToolContext()` + `removeResources()`, same as every tool fixed this
   week. A brand-new tool has no excuse to reintroduce that bug class.
@@ -100,6 +103,12 @@ to know about a client before it'll authenticate for it:
    env vars via the existing `set env --from=secret` mechanism `mail:wire`
    already uses.
 
+`sso:wire <tool> --remove` reverses both steps: deregister the OIDC
+application in Zitadel (`zitadelDeleteOidcApp()`), then unset the client
+env vars on the target tool — same `*:wire --remove` convention `vpn:wire`
+(see `plans/active/vpn-wire.md`) establishes: every wiring command undoes
+exactly what it patched, not just applies it one-directionally.
+
 Five already-deployed tools support free OIDC and are the `oidcEnv()`
 candidates: **Gitea, Grafana, NetBird, Vaultwarden, GlitchTip**.
 Infisical/n8n/Baserow/Metabase/FreeScout's OAuth module and the planned
@@ -134,14 +143,116 @@ larakube sso:wire gitea                                # register + wire Gitea's
 
 ## 🚦 Phases
 
-1. [ ] `SharedClusterService::SSO` + `ClusterTool::SSO`; `sso:init` deploy
-   (dedicated namespace, Commons Postgres, headless bootstrap, manifest apply,
-   rollout wait) and `--remove`.
-2. [ ] `InteractsWithZitadelApi` + `mail:create --sso` / `mail:delete` symmetry
-   / `mail:show` SSO-status line.
-3. [ ] `ClusterTool::oidcEnv()` + `sso:wire <tool>` + `offerSsoWiring()` in
-   `tool:add` — federate Gitea, Grafana, NetBird, Vaultwarden, GlitchTip
-   (OIDC application registration in Zitadel + env wiring per tool).
+1. [x] `SharedClusterService::SSO` + `ClusterTool::SSO`; `sso:init` deploy
+   (dedicated `larakube-sso` namespace, Commons Postgres, `ghcr.io/zitadel/zitadel`
+   `start-from-init --masterkeyFromEnv --tlsMode external`, `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_*`
+   bootstrap with a LaraKube-generated known password, manifest apply, rollout
+   wait) and `--remove`. Every env var verified against Zitadel's own
+   `cmd/defaults.yaml` (not inferred from blog posts) — the DB
+   admin-vs-user-credential split points both at the same tenant-owner role,
+   never the Commons' real postgres superuser.
+   **Live-fix (prod droplet — three distinct bugs, found by iterating against
+   the real cluster; unit tests can't catch these since they fake the pods):**
+   1. **`permission denied to create database`.** Zitadel's init
+      unconditionally runs a "verify database" step that issues `CREATE
+      DATABASE` — even `init schema` does, confirmed live (it does NOT skip it,
+      contrary to the docs' implication). The pre-provisioned, non-superuser
+      tenant role lacks `CREATEDB`. Fix: `sso:init` grants `CREATEDB` to the
+      `zitadel` role every deploy (restored `InteractsWithPlex::grantPostgresCreateDb()`;
+      must run every deploy — a role recreation after `--remove` drops it).
+      Verified live: with `CREATEDB`, `CREATE DATABASE` on the existing DB
+      returns "already exists" (42P04), which Zitadel's restart-safe init
+      tolerates, and init proceeds through the schema bootstrap.
+      **(A mid-diagnosis detour wrongly concluded CREATEDB didn't help — that
+      was a red herring caused by the privilege having been reset to `f` by a
+      role recreation; re-granting + genuine-login test confirmed it IS the
+      fix.)**
+   2. **CrashLoop moved to setup: `PasswordComplexityPolicy.HasSymbol`.** The
+      first-instance admin password was `Str::random(20)` (alphanumeric — no
+      symbol), failing Zitadel's default policy (upper+lower+number+symbol).
+      Fix: `generateZitadelAdminPassword()` guarantees one of each class;
+      `isComplexEnoughForZitadel()` also **regenerates a stored non-compliant
+      password** (so a pre-fix secret whose setup never completed self-heals).
+      Guarded by a 100-iteration `SsoInitCommandTest` case.
+   3. **Blade `@{{ }}` escape:** `admin@{{ $host }}` emitted the literal tag
+      (`@{{` is Blade's verbatim escape) — now `{{ 'admin@'.$host }}`.
+   4. **Console login 404 (`/ui/v2/login` → Not Found).** Zitadel v4 marks
+      "Login V2" required on new instances and stops serving login itself,
+      redirecting to a SEPARATE Next.js login container we don't run. Fix:
+      `ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=false` keeps the legacy
+      V1 login bundled in the core container (served at `/ui/login`). It's a
+      DEFAULTINSTANCE feature (instance-creation-time only), so an
+      already-created instance needs `sso:init --remove` + re-init to pick it up.
+   **Admin email (design fix, not a crash):** the first-instance admin was a
+   synthetic hardcoded `admin@<sso-host>` — not a real mailbox, so Zitadel could
+   never email it. Now `sso:init` takes `--admin-email` / prompts (default: the
+   operator's global email, else `admin@<host>`), persists it in `sso-secrets`,
+   and feeds `$adminEmail` to the manifest. Does NOT assume Stalwart. (Applies on
+   a fresh instance only — existing installs need --remove + re-init.)
+   **Automation token — FIXED (two bugs):** (a) the PAT output path env var was
+   wrong — `ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PATPATH` doesn't exist; the real
+   key is FirstInstance-level `ZITADEL_FIRSTINSTANCE_PATPATH`, so Zitadel was
+   silently writing nothing. (b) even once written, the Zitadel image is
+   distroless (no shell/cat), so `captureMachinePat`'s `kubectl exec … cat`
+   failed. Fix: point PATPATH at a shared `/machinekey` emptyDir (pod
+   `fsGroup: 1000` so the non-root container can write it), add a tiny
+   `busybox` **pat-reader sidecar** mounting it read-only, and read via
+   `kubectl exec -c pat-reader -- cat`. Guarded by `SsoManifestYamlTest`
+   (asserts the correct env var + the sidecar). Still needs a live redeploy to
+   confirm the PAT is actually captured end-to-end.
+   Also cleaned up the end-of-`sso:init` warning: removed the internal
+   `plans/active/…` reference and the stale "not verified against a live
+   instance" hedge — it's operator-facing output.
+
+   **Zitadel outbound email → Stalwart (built).** Zitadel needs SMTP to send
+   verification/password-reset/OTP mail. `mail:wire` can't do it: its SMTP env
+   (`ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_*`) is a DEFAULTINSTANCE setting
+   that only seeds a FRESH instance, so a `kubectl set env` on a running
+   deployment is a no-op (and the env path has a known startup bug). SMTP is a
+   runtime instance setting → configured via the Admin API. So `sso:init` now,
+   after the PAT is captured AND if Stalwart is installed, calls
+   `InteractsWithZitadelApi::zitadelConfigureSmtp()` (`POST /admin/v1/email/smtp`
+   → `POST /admin/v1/email/{id}/_activate`) using the sender `mail:wire` already
+   cached (the `mail-sender` secret) — no new prompts, never assumes Stalwart,
+   fully non-fatal (falls back to a "set it in the console" note; the console
+   has a Test button). NOT added to `smtpEnv()`/`mail:wire` (wrong shape).
+   API shape verified against Zitadel docs, not a live instance — the add/
+   activate paths + the `plain` auth nesting + implicit-TLS-on-465 vs STARTTLS
+   are the bits to confirm on the live redeploy. Unit-tested (`SsoInitCommandTest`).
+
+   **Valkey/Redis cache — researched, deliberately NOT added.** Zitadel v4 can
+   use an external Redis/Valkey cache (`ZITADEL_CACHES_CONNECTORS_REDIS_*` +
+   per-cache connector assignment), and Plex Commons has Valkey — so it's
+   *possible* to reuse it. But it's an **experimental/beta** performance feature
+   for multi-instance HA (with known circuit-breaker bugs), and this is a
+   single-replica deploy on a $24 box. Postgres is the only required datastore
+   (already Commons-backed). If a `--cache` opt-in is ever wanted, it reuses the
+   Commons Valkey with an allocated logical-DB index like the Sheet/Baserow
+   pattern — but default stays off.
+   Manifest uses an **initContainer** `init schema` + main `start-from-setup`
+   (env shared via a `&zitadelEnv` anchor; image is distroless, no `sh -c`) —
+   validated live through init + into setup. `SsoManifestYamlTest` renders +
+   YAML-parses it, asserting the anchor resolves, the commands, and the real
+   email.
+2. [x] `InteractsWithZitadelApi` + `mail:create --sso` / `mail:delete` symmetry
+   / `mail:show` SSO-status line. Unit-tested (`MailCommandsTest`), not yet
+   live-verified.
+3. [x] `ClusterTool::oidcEnv()` + `sso:wire <tool>` + `offerSsoWiring()` in
+   `tool:add` — **scoped down to Grafana + Vaultwarden**, not all five
+   originally listed. Both take OIDC config via plain env vars
+   (`GF_AUTH_GENERIC_OAUTH_*` / `SSO_*`), so they fit the `oidcEnv()`
+   "enum-owns-the-schema" shape cleanly. Gitea/NetBird/GlitchTip need
+   CLI- or API-driven OIDC client registration on *their* side (not just env
+   vars) and are deliberately deferred — `oidcEnv()` returns `null` for them
+   for now; wiring them is a separate follow-up, not a loop over the same
+   mechanism. `InteractsWithZitadelApi` gained `zitadelEnsureProject()` +
+   `zitadelCreateOidcApp()` + `zitadelDeleteOidcApp()` (Zitadel's
+   Management API v1 — the v2 project/app APIs weren't stable enough to
+   build against confidently). `sso:wire <tool>` caches the registered
+   app's client id/secret in a per-tool `sso-app-{tool}` Secret so re-runs
+   reuse the existing OIDC client instead of registering a new one every
+   time; `--remove` deregisters it and unsets the tool's env vars. Unit-tested
+   (`SsoWireCommandTest`), not yet live-verified against a real Zitadel.
 4. [ ] Docs page (the licensing table above, the Zitadel-vs-Authentik
    tradeoff, which tools are and aren't SSO-capable for free).
 
