@@ -5,3 +5,6 @@
 /.vagrant
 .phpunit.result.cache
 .env*
+# Generated knowledge graph — ~65MB incl. a cache/ dir, fully rebuildable from
+# source. Each contributor generates their own; see .agents/workflows/graphify.md.
+/graphify-out
