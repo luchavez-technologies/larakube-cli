@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -30,7 +31,7 @@ use Illuminate\Support\Facades\Process;
  */
 trait DeploysClusterTool
 {
-    use InteractsWithProjectConfig, ResolvesEnvironmentContext;
+    use InteractsWithProjectConfig, InteractsWithToolRegistry, ResolvesEnvironmentContext;
 
     /**
      * Resolve the kube-context for a tool's deploy/remove. An explicit
@@ -64,6 +65,71 @@ trait DeploysClusterTool
      * (return 1) rather than continue on to a false "✅ removed" message.
      */
     protected function removeResources(string $label, string $command): bool
+    {
+        return $this->runCheckedStep($label, $command);
+    }
+
+    /**
+     * The create/apply-direction sibling of removeResources() — same "check
+     * the actual result instead of discarding it" discipline, for a
+     * `kubectl apply`/`create` step rather than a teardown one (e.g.
+     * vpn:wire's Middleware apply). Both delegate to the same underlying
+     * checked-spin so the semantics never drift apart.
+     */
+    protected function applyResource(string $label, string $command): bool
+    {
+        return $this->runCheckedStep($label, $command);
+    }
+
+    /**
+     * Create (or idempotently re-apply) the Traefik ipAllowList Middleware a
+     * tool's `--vpn-only` ingress annotation references — BEFORE that
+     * ingress is ever applied. Without this, `{tool}:init --vpn-only` sets
+     * an annotation pointing at a Middleware CRD that doesn't exist yet,
+     * which breaks the whole router for every visitor (see
+     * plans/active/vpn-wire.md — this is the actual fix for that bug, not
+     * just `vpn:wire` existing as a standalone command). Shared by every
+     * `*:init --vpn-only` and by VpnWireCommand::wire(), so the two paths
+     * can never drift apart. A no-op (returns true) for tools with no
+     * vpnMiddlewareTarget().
+     */
+    protected function ensureVpnMiddleware(ClusterTool $tool, string $kubectl): bool
+    {
+        $target = $tool->vpnMiddlewareTarget();
+        if ($target === null) {
+            return true;
+        }
+
+        $manifest = view('k8s.vpn.ip-allow-list-middleware', [
+            'name' => $target['name'],
+            'namespace' => $target['namespace'],
+        ])->render();
+
+        $tmp = sys_get_temp_dir().'/larakube-vpn-middleware-'.$target['name'].'.yaml';
+        file_put_contents($tmp, $manifest);
+
+        $ok = $this->applyResource("Ensuring VPN-only Middleware for {$tool->getLabel()}...", "{$kubectl} apply -f {$tmp}");
+        @unlink($tmp);
+
+        return $ok;
+    }
+
+    /**
+     * Register this tool in the cluster's tool registry so it's
+     * recognized as installed (e.g. by `tool:remove` and mail/S
+     * wiring prompts). Every *:init command calls this at the end
+     * of a successful deploy — no need for the `tool:add` proxy
+     * to be the only path that registers.
+     */
+    protected function registerDeployedTool(ClusterTool $tool, string $kubectl, ?string $host = null): bool
+    {
+        $metadata = $host !== null ? ['host' => $host] : [];
+
+        return $this->registerTool($kubectl, $tool, $metadata);
+    }
+
+    /** Shared implementation: run $command under a spinner, return its real success/failure. */
+    private function runCheckedStep(string $label, string $command): bool
     {
         return (bool) $this->withSpin($label, fn () => Process::run($command)->successful());
     }

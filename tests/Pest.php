@@ -25,6 +25,16 @@ require_once __DIR__.'/Support/KubectlExecMock.php';
 
 uses(TestCase::class)->in('Feature', 'Unit');
 
+// Force non-interactive prompts in EVERY test. Laravel Prompts only renders to
+// the terminal when STDIN is a TTY (`static::$interactive ??= stream_isatty(STDIN)`
+// in Prompt::prompt()). That's false in CI/Docker (so an unfaked prompt returns
+// its default) but TRUE in a developer's terminal — where an unfaked text()/
+// password() prompt renders and loops until it exhausts memory (the
+// TypedValue::trimWidthBackwards OOM). Pinning it false makes both environments
+// behave identically. Prompt::fake() calls interactive(true) itself, so the
+// tests that script key presses still work.
+beforeEach(fn () => Prompt::interactive(false));
+
 /**
  * Helper to generate manifests and return their content as a string for snapshotting.
  */

@@ -376,7 +376,7 @@ class AboutCommand extends Command
      * Render the Plex Commons credentials this project joined for the env (DB,
      * Redis, S3) — read from .env / .env.{env}. Silent no-op when the project
      * isn't a Plex tenant for this env, so it only appears when relevant. This is
-     * another place to recover the joined Commons secrets, alongside plex:status.
+     * another place to recover the joined Commons secrets, alongside plex:show.
      */
     protected function showPlexCredentials(ConfigData $config, string $environment): void
     {

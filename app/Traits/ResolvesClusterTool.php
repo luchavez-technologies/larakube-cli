@@ -4,38 +4,77 @@ namespace App\Traits;
 
 use App\Enums\ClusterTool;
 
-use function Laravel\Prompts\select;
+use function Laravel\Prompts\multiselect;
 
 trait ResolvesClusterTool
 {
+    use InteractsWithToolRegistry;
+
     /**
-     * Resolve a ClusterTool from an argument, or prompt the user.
+     * Resolve one or more ClusterTools from the --tool option (comma-separated)
+     * or via an interactive multiselect prompt. Filters available tools based
+     * on whether we're adding or removing them against the cluster's registry.
+     *
+     * @return array<ClusterTool>
      */
-    protected function resolveTool(string $actionHint = 'install'): ?ClusterTool
+    protected function resolveTools(string $kubectl, string $actionHint = 'install'): array
     {
-        $slug = $this->argument('tool');
+        $raw = $this->option('tool');
 
-        if ($slug !== null) {
-            $tool = ClusterTool::tryFrom($slug);
-            if ($tool === null) {
-                $this->error("  Unknown tool: {$slug}");
-                $this->line('  Available tools: '.implode(', ', array_map(fn ($t) => $t->value, ClusterTool::cases())));
+        if ($raw !== null) {
+            $slugs = array_map('trim', explode(',', $raw));
+            $tools = [];
 
-                return null;
+            foreach ($slugs as $slug) {
+                $tool = ClusterTool::tryFrom($slug);
+                if ($tool === null) {
+                    $this->error("  Unknown tool: {$slug}");
+                    $this->line('  Available tools: '.implode(', ', array_map(fn ($t) => $t->value, ClusterTool::cases())));
+
+                    return [];
+                }
+                $tools[] = $tool;
             }
 
-            return $tool;
+            return $tools;
         }
 
-        $options = ClusterTool::options();
+        $registry = $this->getRegisteredTools($kubectl);
+        $options = [];
 
-        $choice = select(
-            label: "Which tool would you like to {$actionHint}?",
+        foreach (ClusterTool::cases() as $tool) {
+            $isInstalled = isset($registry[$tool->value]);
+
+            if ($actionHint === 'install' && $isInstalled) {
+                continue;
+            }
+            if ($actionHint === 'remove' && ! $isInstalled) {
+                continue;
+            }
+
+            $options[$tool->value] = $tool->getLabel();
+        }
+
+        asort($options);
+
+        if (empty($options)) {
+            $this->laraKubeInfo("No shared tools available to {$actionHint} on this cluster.");
+
+            return [];
+        }
+
+        $choices = multiselect(
+            label: "Which tools would you like to {$actionHint}?",
             options: $options,
             scroll: count($options),
-            hint: "Select a shared tool to {$actionHint}.",
+            required: true,
+            hint: 'Type to filter, then select. Use space to toggle, enter to confirm.',
         );
 
-        return ClusterTool::from($choice);
+        if (empty($choices)) {
+            return [];
+        }
+
+        return array_map(fn ($value) => ClusterTool::from($value), $choices);
     }
 }

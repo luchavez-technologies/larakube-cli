@@ -94,3 +94,28 @@ test('ensureHostsAreSet does not crash when the project config is missing/unread
         @rmdir($dir);
     }
 });
+
+test('cloudflareToken persists only to the gitignored local file and wins on load', function () {
+    $dir = sys_get_temp_dir().'/larakube-cftoken-'.uniqid();
+    mkdir($dir, 0755, true);
+
+    $config = ConfigData::from([
+        'name' => 'cf-test',
+        'database' => 'sqlite',
+        'environments' => ['local' => [], 'production' => []],
+    ]);
+    $config->setCloudflareToken('cf-project-token-123');
+    $config->saveToFile($dir);
+
+    // Committed blueprint must NOT contain the secret; local file must.
+    $committed = json_decode((string) file_get_contents("$dir/.larakube.json"), true);
+    $local = json_decode((string) file_get_contents("$dir/.larakube.local.json"), true);
+    expect($committed)->not->toHaveKey('cloudflareToken');
+    expect($local['cloudflareToken'])->toBe('cf-project-token-123');
+
+    // Reload resolves the token from the local file.
+    $reloaded = ConfigData::loadFromFile($dir);
+    expect($reloaded->getCloudflareToken())->toBe('cf-project-token-123');
+
+    exec('rm -rf '.escapeshellarg($dir));
+});

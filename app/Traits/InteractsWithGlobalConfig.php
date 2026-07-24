@@ -2,12 +2,14 @@
 
 namespace App\Traits;
 
+use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\AiProvider;
 use App\State;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 trait InteractsWithGlobalConfig
 {
@@ -139,7 +141,28 @@ trait InteractsWithGlobalConfig
 
     protected function getCloudflareToken(): ?string
     {
-        return State::$transientCloudflareToken ?? $this->getGlobalConfig()->getCloudflareToken();
+        // Precedence: run-only --cloudflare-token (transient, never persisted)
+        // → PROJECT-scoped token in the gitignored .larakube.local.json → the
+        // operator's global token. The project token is what lets two clusters
+        // on different domains each carry a zone-scoped token so their
+        // ExternalDNS instances can't create/delete each other's records.
+        return State::$transientCloudflareToken
+            ?? $this->projectCloudflareToken()
+            ?? $this->getGlobalConfig()->getCloudflareToken();
+    }
+
+    /** The Cloudflare token stored in this project's .larakube.local.json, if any. */
+    protected function projectCloudflareToken(): ?string
+    {
+        if (! is_file(getcwd().'/'.ConfigData::CONFIG_FILE)) {
+            return null;
+        }
+
+        try {
+            return ConfigData::loadFromFile(getcwd())->getCloudflareToken();
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     protected function setCloudflareToken(?string $token): void

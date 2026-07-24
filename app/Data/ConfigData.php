@@ -127,6 +127,15 @@ class ConfigData extends Data
          * @var array<string, mixed>
          */
         public array $cloud = [],
+
+        /**
+         * Project-scoped Cloudflare API token, persisted ONLY to the gitignored
+         * .larakube.local.json (never the committed blueprint). Lets two clusters
+         * on different domains each carry a zone-scoped token, so their ExternalDNS
+         * instances can't create/delete each other's records. Null → fall back to
+         * the operator's global token.
+         */
+        public ?string $cloudflareToken = null,
     ) {
         if (empty($this->id)) {
             $this->id = (string) Str::uuid();
@@ -970,6 +979,19 @@ class ConfigData extends Data
         return $this;
     }
 
+    /** Project-scoped Cloudflare token (gitignored local file), or null to use the global one. */
+    public function getCloudflareToken(): ?string
+    {
+        return $this->cloudflareToken !== null && $this->cloudflareToken !== '' ? $this->cloudflareToken : null;
+    }
+
+    public function setCloudflareToken(?string $token): self
+    {
+        $this->cloudflareToken = $token !== null && trim($token) !== '' ? trim($token) : null;
+
+        return $this;
+    }
+
     public function getAdditionalExtensions(): array
     {
         return $this->additionalExtensions;
@@ -1737,6 +1759,11 @@ class ConfigData extends Data
             }
         }
 
+        // Project-scoped Cloudflare token lives only in the gitignored local file.
+        if (! empty($local['cloudflareToken'])) {
+            $data['cloudflareToken'] = $local['cloudflareToken'];
+        }
+
         return self::from($data);
     }
 
@@ -1753,8 +1780,12 @@ class ConfigData extends Data
         //    back to cwd), which shouldn't be committed or shared between machines.
         //  - cloud: legacy top-level cloud map; migrated into environments[env].cloud
         //    by the constructor, so it's always empty here and never written back.
+        // cloudflareToken is a secret that only ever lives in the gitignored
+        // local file — strip it from the committed blueprint here and re-add it
+        // to $local below.
         $data = $this->toArray();
-        unset($data['isScaffolding'], $data['path'], $data['cloud']);
+        $cloudflareToken = $data['cloudflareToken'] ?? null;
+        unset($data['isScaffolding'], $data['path'], $data['cloud'], $data['cloudflareToken']);
 
         // Split the per-env cloud CONNECTIONS into the gitignored local file —
         // server IP, SSH user/port, key path, managed kube-context are operator/
@@ -1780,11 +1811,15 @@ class ConfigData extends Data
             $local['environments'][$env] = ['cloud' => $cloud];
         }
 
+        if (! empty($cloudflareToken)) {
+            $local['cloudflareToken'] = $cloudflareToken;
+        }
+
         self::atomicWriteJson($filePath, $data);
 
-        // Write/refresh the local file only when there's a connection to persist,
-        // and make sure it's gitignored.
-        if ($local['environments'] !== []) {
+        // Write/refresh the local file only when there's something to persist
+        // (a cloud connection or a project-scoped token), and keep it gitignored.
+        if ($local['environments'] !== [] || ! empty($local['cloudflareToken'])) {
             self::atomicWriteJson("$directory/".self::LOCAL_CONFIG_FILE, $local);
             self::ensureGitignored($directory, self::LOCAL_CONFIG_FILE);
         }
