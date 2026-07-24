@@ -26,8 +26,7 @@ class MailCheckCommand extends Command
 
     protected $signature = 'mail:check
         {environment? : Environment to check — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--env=      : Legacy alias for the environment}';
+        {--context=  : Target a specific kube-context}';
 
     protected $description = 'Health-check the mail server (pod, ports, DNS, deliverability) with fix hints';
 
@@ -69,7 +68,7 @@ class MailCheckCommand extends Command
 
         // --- Cluster -------------------------------------------------------
         $ready = trim(Process::run(
-            "{$kubectl} get statefulset stalwart -n {$ns} -o jsonpath='{.status.readyReplicas}'",
+            "{$kubectl} get deployment stalwart -n {$ns} -o jsonpath='{.status.readyReplicas}'",
         )->output());
         $this->report($ready === '1' ? 'ok' : 'fail', 'Mail server pod is running',
             "Deploy it: larakube mail:init {$env}");
@@ -133,8 +132,28 @@ class MailCheckCommand extends Command
             $this->report($status, "Outbound relay for external mail{$where}", $hint);
         }
 
-        // --- DKIM (selector is per-domain; point them at the UI) -----------
+        // --- DKIM ----------------------------------------------------------
+        // Stalwart mints both an RSA and an Ed25519 key when a domain is added
+        // through the admin wizard and signs with both, which SES rejects as a
+        // 554 duplicate-header bounce. Judged on ACTIVE keys only: rotation
+        // legitimately leaves a pending/retiring key alongside the active one,
+        // and counting those would cry wolf every quarter.
         $this->newLine();
+        $signatures = $this->stalwartDkimSignatures($kubectl, $ns);
+
+        if ($signatures === null) {
+            $this->report('warn', 'DKIM signing keys',
+                "Could not read DKIM keys from Stalwart. Check the pod is healthy, then: larakube mail:dkim {$env}");
+        } else {
+            $duplicates = $this->stalwartDuplicateActiveDkim($signatures);
+
+            $duplicates === []
+                ? $this->report('ok', 'DKIM signing keys (one active key per domain)', '')
+                : $this->report('fail', 'DKIM signing keys · '.implode(', ', array_keys($duplicates)),
+                    'More than one ACTIVE key, so outbound mail carries duplicate DKIM-Signature headers — SES bounces these with 554. '
+                    ."Prune to RSA-only: larakube mail:dkim {$env} --fix");
+        }
+
         $this->laraKubeLine("  <fg=gray>DKIM · check admin → Domains → {$domain} → DKIM, and publish the selector TXT it shows.</>");
 
         // --- Summary -------------------------------------------------------
@@ -153,7 +172,7 @@ class MailCheckCommand extends Command
 
     protected function resolveEnvironment(): string
     {
-        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
+        $explicit = (string) ($this->argument('environment') ?: '');
         if ($explicit !== '') {
             return $explicit;
         }

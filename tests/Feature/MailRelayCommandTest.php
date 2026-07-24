@@ -9,17 +9,17 @@ test('mail:relay is registered', function () {
 });
 
 test('mail:relay requires installed stalwart', function () {
-    Process::fake(['*get statefulset stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
-    $this->artisan('mail:relay', ['provider' => 'brevo', '--username' => 'a@b.com', '--api-key' => 'k'])
+    $this->artisan('mail:relay', ['--provider' => 'brevo', '--username' => 'a@b.com', '--api-key' => 'k'])
         ->assertExitCode(1)
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
 test('mail:relay rejects an unknown provider', function () {
-    Process::fake(['*get statefulset stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d')]);
+    Process::fake(['*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d')]);
 
-    $this->artisan('mail:relay', ['provider' => 'sendgrid'])
+    $this->artisan('mail:relay', ['--provider' => 'sendgrid'])
         ->assertExitCode(1)
         ->expectsOutputToContain("Unknown relay provider 'sendgrid'");
 });
@@ -27,7 +27,7 @@ test('mail:relay rejects an unknown provider', function () {
 test('mail:relay wires brevo as the outbound relay', function () {
     $callCount = 0;
     Process::fake([
-        '*get statefulset stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-relay*' => Process::result(output: '', exitCode: 1),
         '*create secret generic mail-relay*' => Process::result(output: 'secret/mail-relay created'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -44,7 +44,7 @@ test('mail:relay wires brevo as the outbound relay', function () {
         },
     ]);
 
-    $this->artisan('mail:relay', ['provider' => 'brevo', '--username' => 'noreply@example.com', '--api-key' => 'xkeysib-test'])
+    $this->artisan('mail:relay', ['--provider' => 'brevo', '--username' => 'noreply@example.com', '--api-key' => 'xkeysib-test'])
         ->assertExitCode(0)
         ->expectsOutputToContain('Outbound mail now relays through Brevo')
         ->expectsOutputToContain('smtp-relay.brevo.com:2525')
@@ -57,7 +57,7 @@ test('mail:relay wires brevo as the outbound relay', function () {
 test('mail:relay wires SES with a region-scoped host on port 2587', function () {
     $callCount = 0;
     Process::fake([
-        '*get statefulset stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-relay*' => Process::result(output: '', exitCode: 1),
         '*create secret generic mail-relay*' => Process::result(output: 'secret/mail-relay created'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -74,7 +74,7 @@ test('mail:relay wires SES with a region-scoped host on port 2587', function () 
         },
     ]);
 
-    $this->artisan('mail:relay', ['provider' => 'ses', '--region' => 'eu-west-1', '--username' => 'AKIAEXAMPLE', '--api-key' => 'ses-smtp-pass'])
+    $this->artisan('mail:relay', ['--provider' => 'ses', '--region' => 'eu-west-1', '--username' => 'AKIAEXAMPLE', '--api-key' => 'ses-smtp-pass'])
         ->assertExitCode(0)
         ->expectsOutputToContain('Outbound mail now relays through Amazon SES')
         ->expectsOutputToContain('email-smtp.eu-west-1.amazonaws.com:2587')
@@ -84,7 +84,7 @@ test('mail:relay wires SES with a region-scoped host on port 2587', function () 
 test('mail:relay shows onboarding + pricing before prompting for fresh credentials', function () {
     $callCount = 0;
     Process::fake([
-        '*get statefulset stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-relay*' => Process::result(output: '', exitCode: 1),
         '*create secret generic mail-relay*' => Process::result(output: 'secret/mail-relay created'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -107,7 +107,7 @@ test('mail:relay shows onboarding + pricing before prompting for fresh credentia
     ]);
 
     $command = app(App\Commands\Mail\MailRelayCommand::class);
-    $input = new Symfony\Component\Console\Input\ArrayInput(['provider' => 'brevo']);
+    $input = new Symfony\Component\Console\Input\ArrayInput(['--provider' => 'brevo']);
     $input->bind($command->getDefinition());
     $input->setInteractive(true);
     $output = new Symfony\Component\Console\Output\BufferedOutput;
@@ -126,13 +126,13 @@ test('mail:relay shows onboarding + pricing before prompting for fresh credentia
 
 test('mail:relay --remove is a no-op when no relay route exists', function () {
     Process::fake([
-        '*get statefulset stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
         '*' => Process::result(output: '{"methodResponses":[["x:MtaRoute/query",{"ids":[]},"c0"],["x:MtaRoute/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}'),
     ]);
 
-    $this->artisan('mail:relay', ['provider' => 'brevo', '--remove' => true])
+    $this->artisan('mail:relay', ['--provider' => 'brevo', '--remove' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('No Brevo relay route is configured');
 });
@@ -140,7 +140,7 @@ test('mail:relay --remove is a no-op when no relay route exists', function () {
 test('mail:relay --remove reverts to MX and deletes the route', function () {
     $callCount = 0;
     Process::fake([
-        '*get statefulset stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
         '*delete secret mail-relay*' => Process::result(output: 'secret "mail-relay" deleted'),
@@ -156,9 +156,140 @@ test('mail:relay --remove reverts to MX and deletes the route', function () {
         },
     ]);
 
-    $this->artisan('mail:relay', ['provider' => 'brevo', '--remove' => true])
+    $this->artisan('mail:relay', ['--provider' => 'brevo', '--remove' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('Outbound mail now delivers directly via MX again')
         ->expectsOutputToContain('Clean up the DNS records Brevo added')
         ->expectsOutputToContain('brevo1._domainkey');
+});
+
+// ---------------------------------------------------------------------------
+// Guard-injection unit tests — pure Process::fake() approach
+//
+// stalwartJmap() writes its JMAP payload to a temp file and pipes it via:
+//   < escapeshellarg($tmp)  →  < '/tmp/larakube_stalwart_Abc123'
+//
+// Process::fake closures receive the PendingProcess as $process.
+// $process->command is the public string property for the full shell command.
+// The file still exists inside the closure because @unlink() runs only after
+// Process::run() returns — and the fake is fully synchronous.
+// We capture the path inside the single quotes (no surrounding quote chars)
+// so file_exists() sees the real path.
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract and JSON-decode the JMAP payload written to a temp file by stalwartJmap().
+ *
+ * @return array<string, mixed>|null
+ */
+function jmapPayloadFromProcess(mixed $process): ?array
+{
+    $cmd = is_string($process->command)
+        ? $process->command
+        : implode(' ', (array) $process->command);
+
+    // Matches: < '/tmp/larakube_stalwart_Abc123'
+    if (preg_match("!< '([^']+larakube_stalwart[^']+)'!", $cmd, $m) && file_exists($m[1])) {
+        return json_decode(file_get_contents($m[1]), true) ?: null;
+    }
+
+    return null;
+}
+
+test('stalwartSetOutboundRoute sets outbound strategy route', function () {
+    $callCount = 0;
+    $setPayload = null;
+
+    Process::fake([
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*' => function ($process) use (&$callCount, &$setPayload) {
+            $callCount++;
+            $payload = jmapPayloadFromProcess($process);
+
+            if ($payload && ($payload['methodCalls'][0][0] ?? '') === 'x:MtaOutboundStrategy/set') {
+                $setPayload = $payload;
+            }
+
+            if ($callCount === 1) {
+                return Process::result(output: '{"methodResponses":[["x:MtaOutboundStrategy/get",{"list":[{"route":{"match":{"0":{"if":"is_local_domain(rcpt_domain)","then":"\'local\'"}},"else":"\'mx\'"},"id":"singleton"}],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+
+            return Process::result(output: '{"methodResponses":[["x:MtaOutboundStrategy/set",{"updated":{"singleton":null}},"c1"]],"sessionState":"x"}');
+        },
+    ]);
+
+    $trait = new class
+    {
+        use App\Traits\InteractsWithMail;
+        use App\Traits\InteractsWithStalwartApi;
+
+        public function setRoute(string $kubectl, string $ns, string $routeName): bool
+        {
+            return $this->stalwartSetOutboundRoute($kubectl, $ns, $routeName);
+        }
+    };
+
+    $ok = $trait->setRoute('kubectl', 'larakube-shared', 'ses');
+    expect($ok)->toBeTrue();
+});
+
+function captureRoutePatch(array $existingMatch, string $routeName, string $existingElse = "'mx'"): array
+{
+    $callCount = 0;
+    $setPayload = null;
+
+    Process::fake([
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*' => function ($process) use (&$callCount, &$setPayload, $existingMatch, $existingElse) {
+            $callCount++;
+            $payload = jmapPayloadFromProcess($process);
+
+            if ($payload
+                && ($payload['methodCalls'][0][0] ?? '') === 'x:MtaOutboundStrategy/set'
+                && isset($payload['methodCalls'][0][1]['update']['singleton']['route']['match'])) {
+                $setPayload = $payload;
+            }
+
+            if ($callCount === 1) {
+                return Process::result(output: (string) json_encode([
+                    'methodResponses' => [[
+                        'x:MtaOutboundStrategy/get',
+                        ['list' => [['route' => ['match' => (object) $existingMatch, 'else' => $existingElse], 'id' => 'singleton']], 'notFound' => []],
+                        'c1',
+                    ]],
+                    'sessionState' => 'x',
+                ], JSON_UNESCAPED_SLASHES));
+            }
+
+            return Process::result(output: '{"methodResponses":[["x:MtaOutboundStrategy/set",{"updated":{"singleton":null}},"c1"]],"sessionState":"x"}');
+        },
+    ]);
+
+    $trait = new class
+    {
+        use App\Traits\InteractsWithMail;
+        use App\Traits\InteractsWithStalwartApi;
+
+        public function setRoute(string $kubectl, string $ns, string $routeName): bool
+        {
+            return $this->stalwartSetOutboundRoute($kubectl, $ns, $routeName);
+        }
+    };
+
+    $trait->setRoute('kubectl', 'larakube-shared', $routeName);
+
+    return (array) ($setPayload['methodCalls'][0][1]['update']['singleton']['route']['match'] ?? []);
+}
+
+test('the local-domain rule uses Stalwart\'s 1-argument is_local_domain', function () {
+    $match = captureRoutePatch(
+        ['0' => ['if' => 'is_local_domain(rcpt_domain)', 'then' => "'local'"]],
+        'ses',
+    );
+
+    $localRule = collect($match)->first(fn ($r) => str_contains((string) ($r['if'] ?? ''), 'is_local_domain'));
+
+    expect($localRule['if'])->toBe('is_local_domain(rcpt_domain)');
 });

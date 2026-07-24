@@ -1,13 +1,29 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: stalwart-data
+  namespace: larakube-shared
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: mail
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: stalwart
   namespace: larakube-shared
   labels:
     app: stalwart
 spec:
-  serviceName: stalwart
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: stalwart
@@ -22,11 +38,23 @@ spec:
         fsGroup: 2000
       containers:
         - name: stalwart
-          image: stalwartlabs/stalwart:latest
+          # PINNED, not :latest. Stalwart's management surface moves between
+          # minor versions — 0.16 removed the POST /api/settings REST endpoint
+          # this CLI used to write config, and reshaped directory config into
+          # JMAP objects. Floating :latest silently rolled a live cluster onto
+          # that and broke SSO wiring with no deploy of ours. Bump deliberately,
+          # and re-check app/Traits/InteractsWithStalwartApi.php when you do.
+          image: stalwartlabs/stalwart:0.16.14
           env:
-            # Fixed recovery/admin credential (username:password) so /admin has a
-            # known login instead of the random one printed to the pod logs on
-            # first boot. Honored during normal operation too.
+            # BREAK-GLASS credential — NOT the daily driver. The CLI authenticates
+            # to Stalwart with a least-privilege API key it mints on first use
+            # (mail-secrets/api-key, owned by the larakube-automation principal;
+            # see InteractsWithStalwartApi::stalwartAuthHeader). This recovery
+            # admin is used only to (a) bootstrap that key on first run and
+            # (b) rescue it via `larakube mail:recover` if it's lost. Stalwart
+            # discourages leaving it set permanently, but we keep it pinned
+            # deliberately so the one-command rescue path is always available;
+            # it is no longer used for normal operation.
             - name: STALWART_RECOVERY_ADMIN
               valueFrom:
                 secretKeyRef:
@@ -35,13 +63,22 @@ spec:
             # Public base URL for JMAP/OAuth discovery — required behind a proxy.
             - name: STALWART_PUBLIC_URL
               value: https://{{ $host }}
+            # Allow cross-origin requests from Bulwark webmail.
+            - name: STALWART_HTTP_PERMISSIVE_CORS
+              value: "true"
+            - name: STALWART_SERVER_HTTP_CORS_ALLOW_ORIGIN
+              value: "*"
+          envFrom:
+            - secretRef:
+                name: stalwart-infisical
+                optional: true
           ports:
             - { containerPort: 8080, name: http }
-            - { containerPort: 25, name: smtp }
-            - { containerPort: 587, name: submission }
-            - { containerPort: 465, name: submissions }
-            - { containerPort: 993, name: imaps }
-            - { containerPort: 4190, name: sieve }
+            - { containerPort: 25, @if($hostPort)hostPort: 25, @endif name: smtp }
+            - { containerPort: 587, @if($hostPort)hostPort: 587, @endif name: submission }
+            - { containerPort: 465, @if($hostPort)hostPort: 465, @endif name: submissions }
+            - { containerPort: 993, @if($hostPort)hostPort: 993, @endif name: imaps }
+            - { containerPort: 4190, @if($hostPort)hostPort: 4190, @endif name: sieve }
           readinessProbe:
             tcpSocket:
               port: 8080
@@ -53,24 +90,20 @@ spec:
             initialDelaySeconds: 20
             periodSeconds: 15
           volumeMounts:
-            # Self-contained: embedded RocksDB store on the PVC. One claim serves
-            # both Stalwart's writable config dir (/etc/stalwart) and its data
-            # dir (/var/lib/stalwart) via subPaths — no Commons, no ConfigMap.
+            # Persistent store: RocksDB (or Postgres-backed) config + data on a
+            # standalone PVC. One claim serves both Stalwart's writable config
+            # dir (/etc/stalwart) and its data dir (/var/lib/stalwart) via
+            # subPaths — no Commons, no ConfigMap.
             - name: stalwart-data
               mountPath: /var/lib/stalwart
               subPath: data
             - name: stalwart-data
               mountPath: /etc/stalwart
               subPath: etc
-  volumeClaimTemplates:
-    - metadata:
-        name: stalwart-data
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        resources:
-          requests:
-            storage: 5Gi
+      volumes:
+        - name: stalwart-data
+          persistentVolumeClaim:
+            claimName: stalwart-data
 ---
 # HTTP admin + JMAP, fronted by Traefik (TLS terminated at the ingress).
 apiVersion: v1
@@ -85,9 +118,9 @@ spec:
     - { protocol: TCP, port: 8080, targetPort: 8080, name: http }
   type: ClusterIP
 ---
-# L4 mail listeners. On single-node k3s the built-in ServiceLB (klipper) binds
-# these straight to the node's IP — no paid cloud load balancer. These ports do
-# not collide with Traefik's 80/443.
+# L4 mail listeners. When hostPort is enabled, the pod binds directly to the
+# node's network interface — the Service stays ClusterIP for internal routing.
+# Without hostPort, Klipper (k3s) or a cloud LoadBalancer exposes these ports.
 apiVersion: v1
 kind: Service
 metadata:
@@ -102,6 +135,6 @@ spec:
     - { protocol: TCP, port: 465, targetPort: 465, name: submissions }
     - { protocol: TCP, port: 993, targetPort: 993, name: imaps }
     - { protocol: TCP, port: 4190, targetPort: 4190, name: sieve }
-  type: LoadBalancer
+  type: {{ $hostPort ? 'ClusterIP' : 'LoadBalancer' }}
 ---
 @include('k8s.mail.ingress')

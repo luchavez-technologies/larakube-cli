@@ -110,8 +110,10 @@ enum RelayProvider: string
                 'Skipping this leaves outbound mail sent as this domain unauthenticated, which most inboxes will spam-filter or reject.',
             ],
             self::SES => [
-                "Verify '{$domain}' in SES → Identities → Create identity → Domain (enable Easy DKIM; add the 3 CNAME records it gives you in Cloudflare).",
-                'New SES accounts are in the SANDBOX: you can only send to VERIFIED recipient addresses (verify one under Identities to test right away).',
+                "Verify '{$domain}' in SES → Identities → Create identity → Domain.",
+                "IMPORTANT: In SES → Identities → '{$domain}' → Edit DKIM Settings, set 'DKIM signatures' to DISABLED. Stalwart signs outbound mail at origin with DKIM; disabling SES DKIM prevents 554 duplicate header bounces.",
+                "To pass DMARC alignment, enable 'Custom MAIL FROM domain' in the SES Identity settings. Use a subdomain like 'bounce' and add the MX/TXT records it gives you to Cloudflare.",
+                'New SES accounts start in the SANDBOX: you can only send to VERIFIED recipient addresses (verify one under Identities to test right away).',
                 'To send to anyone, request production access (SES → Account dashboard → Request production access) — a free self-service form, usually approved within 24h.',
                 'Make sure the SES region you picked matches where you verified the domain — identities are per-region.',
             ],

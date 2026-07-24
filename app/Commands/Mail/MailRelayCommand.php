@@ -21,9 +21,9 @@ class MailRelayCommand extends Command
     use InteractsWithClusterContext, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput;
 
     protected $signature = 'mail:relay
-        {provider?    : Outbound relay provider — "brevo" (omit to choose interactively)}
+        {environment=local : Environment whose Stalwart install to configure}
+        {--provider= : Outbound relay provider — "brevo" or "ses"}
         {--context=   : Target a specific kube-context}
-        {--env=       : Environment whose Stalwart install to configure (default: local)}
         {--username=  : SMTP login for the relay (skips the prompt)}
         {--api-key=   : SMTP credential/API key for the relay (skips the prompt)}
         {--region=    : AWS region for SES (e.g. us-east-1); prompted if omitted}
@@ -36,7 +36,7 @@ class MailRelayCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) ($this->option('env') ?: 'local');
+        $env = (string) $this->argument('environment');
 
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -157,6 +157,22 @@ class MailRelayCommand extends Command
             return 1;
         }
 
+        // Relaying is exactly when duplicate DKIM headers start bouncing (SES
+        // 554), so prune here as well as in mail:dkim. Reported rather than
+        // swallowed: this used to run inside the spinner above with its result
+        // discarded, so a failed prune was invisible right up until mail
+        // started bouncing.
+        $pruned = null;
+        $this->withSpin('Enforcing RSA-only DKIM signing...', function () use (&$pruned, $kubectl, $ns) {
+            $pruned = $this->stalwartEnforceSingleRsaDkimSignature($kubectl, $ns);
+        });
+
+        if ($pruned === null) {
+            $this->laraKubeWarn('Could not verify DKIM signing keys — run `larakube mail:dkim '.$env.'` before sending.');
+        } elseif ($pruned > 0) {
+            $this->laraKubeInfo("Removed {$pruned} Ed25519 DKIM key(s) — signing with RSA only.");
+        }
+
         $host = $this->resolveMailHostReadOnly($env, $config);
         $domain = $host ? $this->relayDomain($host) : null;
 
@@ -214,7 +230,7 @@ class MailRelayCommand extends Command
 
     protected function resolveProvider(bool $forRemoval = false): ?RelayProvider
     {
-        $slug = (string) ($this->argument('provider') ?: '');
+        $slug = (string) ($this->option('provider') ?: '');
         if ($slug !== '') {
             $provider = RelayProvider::tryFrom($slug);
             if ($provider === null) {

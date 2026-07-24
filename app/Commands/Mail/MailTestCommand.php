@@ -26,11 +26,11 @@ class MailTestCommand extends Command
     use InteractsWithClusterContext, InteractsWithMail, LaraKubeOutput;
 
     protected $signature = 'mail:test
-        {to?          : Recipient address to send the test email to}
+        {environment=local : Environment whose mail server to target}
+        {--to= : Recipient address to send the test email to}
         {--from=      : Sender — a Stalwart account (defaults to the cached sender / noreply@<domain>)}
         {--password=  : The sender account password (prompted if omitted)}
-        {--context=   : Target a specific kube-context}
-        {--env=       : Environment whose mail server to test (default: local)}';
+        {--context=   : Target a specific kube-context}';
 
     protected $description = 'Send a test email through Stalwart to verify authentication + delivery end-to-end';
 
@@ -38,7 +38,7 @@ class MailTestCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) ($this->option('env') ?: 'local');
+        $env = (string) $this->argument('environment');
 
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -62,7 +62,7 @@ class MailTestCommand extends Command
         $host = (string) $this->resolveMailHostReadOnly($env, $config);
         $domain = $this->testDomain($host);
 
-        $to = (string) ($this->argument('to') ?: text(
+        $to = (string) ($this->option('to') ?: text(
             label: 'Send the test email to',
             placeholder: 'you@example.com',
             required: true,
@@ -160,7 +160,7 @@ class MailTestCommand extends Command
         // \r\r\n — strict servers (e.g. SES) reject the doubled CR with a 501.
         $script = 'echo '.base64_encode($convo).' | base64 -d | openssl s_client -quiet -connect 127.0.0.1:465 2>/dev/null';
         $raw = Process::timeout(40)->run(
-            "{$kubectl} exec stalwart-0 -n {$ns} -- sh -c ".escapeshellarg($script),
+            "{$kubectl} exec deploy/stalwart -n {$ns} -- sh -c ".escapeshellarg($script),
         )->output();
 
         $auth = str_contains($raw, '235');

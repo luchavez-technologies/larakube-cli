@@ -3,20 +3,25 @@
 namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
+use App\Traits\DeploysClusterTool;
+use App\Traits\InteractsWithBulwark;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
+use App\Traits\InteractsWithPlex;
+use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithStalwartApi;
+use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class MailShowCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithMail, InteractsWithPlex, InteractsWithSso, InteractsWithStalwartApi, InteractsWithZitadelApi, LaraKubeOutput;
 
     protected $signature = 'mail:show
-        {email?     : Show client setup for this account instead of admin access (never shows its password — that\'s never recoverable; use mail:password to reset it)}
-        {--context= : Target a specific kube-context}
-        {--env=      : Environment whose mail server to show (default: local)}';
+        {environment=local : Environment whose mail server to show}
+        {--email=   : Show client setup for this account instead of admin access (never shows its password — that\'s never recoverable; use mail:password to reset it)}
+        {--context= : Target a specific kube-context}';
 
     protected $description = 'Show Stalwart admin credentials and access info, or a specific account\'s client setup';
 
@@ -24,7 +29,7 @@ class MailShowCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) ($this->option('env') ?: 'local');
+        $env = (string) $this->argument('environment');
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
             ? ConfigData::loadFromFile($projectPath)
@@ -35,6 +40,10 @@ class MailShowCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
+        // Same as mail:init — printPlexHint() reads the Commons through
+        // plexKubectl(), which needs this or it inspects the wrong cluster.
+        $this->plexContext = $context;
+
         $kubectl = $this->mailKubectl($context);
         $ns = $this->mailNamespace();
 
@@ -44,7 +53,7 @@ class MailShowCommand extends Command
             return 1;
         }
 
-        $email = (string) ($this->argument('email') ?? '');
+        $email = (string) ($this->option('email') ?? '');
         if ($email !== '') {
             return $this->showAccount($kubectl, $ns, $env, $config, $email);
         }
@@ -77,9 +86,28 @@ class MailShowCommand extends Command
             $this->newLine();
         }
 
+        $queued = $this->stalwartQueueCount($kubectl, $ns);
+        if ($queued !== null) {
+            $status = $queued === 0
+                ? '<fg=green>0</> — nothing waiting'
+                : "<fg=yellow>{$queued} waiting</> — inspect/clear with <fg=blue>larakube mail:queue</>";
+            $this->line("  <fg=gray>Outbound queue:</> {$status}");
+            $this->newLine();
+        }
+
+        $webmail = $this->webmailUrl($kubectl, $ns, $env, $config);
+        if ($webmail !== null) {
+            $this->line("  <fg=gray>Webmail:</>       <fg=blue>{$webmail}</>  (browser client for the team)");
+            $this->newLine();
+        }
+
         $this->line('  Share these credentials with your teammates so they can');
         $this->line('  configure their email clients (Apple Mail, Thunderbird, etc.).');
         $this->newLine();
+
+        if ($host) {
+            $this->printPlexHint($kubectl, $host);
+        }
 
         return 0;
     }
@@ -127,12 +155,67 @@ class MailShowCommand extends Command
             $this->line("     IMAP:  <fg=blue>{$host}</>  port <fg=blue>993</>  (SSL/TLS)   ·   SMTP:  <fg=blue>{$host}</>  port <fg=blue>465</>  (SSL/TLS)");
             $this->line("     Username: <fg=blue>{$email}</>");
         }
+
+        $webmail = $this->webmailUrl($kubectl, $ns, $env, $config);
+        if ($webmail !== null) {
+            $this->line("  <fg=yellow>Webmail:</> <fg=blue>{$webmail}</>  — log in with this address + password");
+        }
+
+        $ssoLine = $this->ssoStatusLine($env, $email);
+        if ($ssoLine !== null) {
+            $this->line($ssoLine);
+        }
+
         $this->newLine();
         $this->line("  <fg=gray>Password isn't recoverable — Stalwart only stores a hash.</>");
         $this->line('  <fg=gray>Lost it? Issue a new one:</>');
-        $this->line("  <fg=blue>larakube mail:password {$email}</>");
+        $this->line("  <fg=blue>larakube mail:password {$env} --email={$email}</>");
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * "SSO: yes/no" status line for showAccount() — null when Zitadel isn't
+     * installed at all (nothing worth mentioning), otherwise looks the
+     * account up by email. A lookup failure (credentials unreachable) is
+     * reported as "unknown", not silently treated as "no".
+     */
+    protected function ssoStatusLine(string $env, string $email): ?string
+    {
+        $ssoKubectl = $this->ssoKubectl($this->resolveToolContext($env));
+        $ssoNs = $this->ssoNamespace();
+
+        if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {
+            return null;
+        }
+
+        $host = $this->resolveSsoHostReadOnly($env, null);
+        $pat = $this->readSsoSecret($ssoKubectl, $ssoNs, 'machine-pat');
+
+        if ($host === null || $pat === null) {
+            return '  <fg=gray>SSO:</>     <fg=gray>unknown (could not reach Zitadel\'s automation credentials)</>';
+        }
+
+        $userId = $this->zitadelFindUserByEmail($host, $pat, $email);
+
+        return $userId !== null
+            ? "  <fg=gray>SSO:</>     <fg=green>yes</> — log in at <fg=blue>https://{$host}</>"
+            : '  <fg=gray>SSO:</>     <fg=gray>no</>';
+    }
+
+    /**
+     * The Bulwark webmail URL for this environment, or null when Bulwark isn't
+     * installed. Bulwark shares Stalwart's namespace, so the mail kubectl works.
+     */
+    protected function webmailUrl(string $kubectl, string $ns, string $env, ?ConfigData $config): ?string
+    {
+        if (! $this->isBulwarkInstalled($kubectl, $ns)) {
+            return null;
+        }
+
+        $host = $this->resolveBulwarkHostReadOnly($env, $config);
+
+        return $host !== null ? "https://{$host}" : null;
     }
 }

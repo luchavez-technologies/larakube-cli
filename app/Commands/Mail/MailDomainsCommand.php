@@ -17,8 +17,8 @@ class MailDomainsCommand extends Command
     use InteractsWithClusterContext, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput;
 
     protected $signature = 'mail:domains
-        {--context= : Target a specific kube-context}
-        {--env=      : Environment whose mail server to query (default: local)}';
+        {environment=local : Environment whose mail server to target}
+        {--context= : Target a specific kube-context}';
 
     protected $description = 'List domains configured in Stalwart';
 
@@ -26,7 +26,7 @@ class MailDomainsCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) ($this->option('env') ?: 'local');
+        $env = (string) $this->argument('environment');
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
             ? ConfigData::loadFromFile($projectPath)

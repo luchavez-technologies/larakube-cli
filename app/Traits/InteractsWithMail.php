@@ -2,19 +2,64 @@
 
 namespace App\Traits;
 
+use App\Data\CloudData;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 /**
- * Helpers for the Stalwart mail server tool. Mirrors InteractsWithSheet, minus
- * the Plex Commons bits: Stalwart is self-contained (embedded RocksDB store on
- * a PVC), so it never allocates a Commons database.
+ * Helpers for the Stalwart mail server tool.
  */
 trait InteractsWithMail
 {
-    use ResolvesEnvironmentContext;
+    use InteractsWithRemoteSsh, ManagesCloudFirewall, ResolvesEnvironmentContext;
+
+    /**
+     * The cloud target backing this environment, or null when there is nothing
+     * to open/close firewall ports on (local, or no saved cloud IP). Shared by
+     * openMailPorts() on the install side and closeMailPorts() on teardown.
+     */
+    protected function mailCloud(string $env): ?CloudData
+    {
+        if ($env === 'local') {
+            return null;
+        }
+
+        $projectPath = getcwd();
+        if (! file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)) {
+            return null;
+        }
+
+        $cloud = ConfigData::loadFromFile($projectPath)->getCloud($env);
+
+        return ($cloud && $cloud->ip) ? $cloud : null;
+    }
+
+    /**
+     * Reverse openMailPorts() on teardown. Best-effort — a mail server that is
+     * gone but whose SMTP ports are still open on the firewall is a real
+     * exposure, so this runs from `mail:remove` as well as the old
+     * `mail:init --remove`. Lives here rather than on either command so the two
+     * can't drift (openMailPorts is on MailInitCommand, which owns the opening).
+     */
+    protected function closeMailPorts(string $env): void
+    {
+        $cloud = $this->mailCloud($env);
+        if ($cloud === null) {
+            return;
+        }
+
+        $ports = SharedClusterService::MAIL->firewallPorts();
+        $this->removeCloudFirewall('mail', $cloud->ip);
+
+        $sshIp = $cloud->vpnIp ?: $cloud->ip;
+        $key = $cloud->key ? str_replace('~', home_path(), $cloud->key) : null;
+        if ($sshIp && $key && file_exists($key)) {
+            $script = collect($ports)->map(fn ($p) => "ufw delete allow {$p}/tcp 2>/dev/null || true")->implode("\n")."\nufw reload || true";
+            $this->runRemoteCommand($cloud->user ?? 'larakube', $sshIp, $cloud->port ?? 22, $key, $script);
+        }
+    }
 
     /** The namespace the mail stack lives in. */
     protected function mailNamespace(): string
@@ -31,10 +76,10 @@ trait InteractsWithMail
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    /** Stalwart StatefulSet present? */
+    /** Stalwart Deployment present? */
     protected function isMailInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get statefulset stalwart -n {$ns} --no-headers --ignore-not-found")->output();
+        $out = Process::run("{$kubectl} get deployment stalwart -n {$ns} --no-headers --ignore-not-found")->output();
 
         return trim($out) !== '';
     }
@@ -49,6 +94,26 @@ trait InteractsWithMail
         return $out !== '' ? (string) base64_decode($out) : null;
     }
 
+    /**
+     * Write (or overwrite) a key on the mail-secrets secret — a plain k8s Secret
+     * patch. mail-secrets holds the mail server's OWN credentials (recovery
+     * admin, admin password, automation api-key), which are deliberately
+     * k8s-only and never synced to Infisical: the mail server is foundational
+     * infrastructure that other tools depend on, so its break-glass and
+     * automation credentials must stay self-contained rather than gaining a
+     * dependency on the secrets manager. (Shared secrets that OTHER systems
+     * consume — the Plex Commons store/S3 creds, the mail:wire SMTP creds — do
+     * legitimately go to Infisical; those are handled elsewhere.)
+     */
+    protected function storeMailSecret(string $kubectl, string $ns, string $key, string $value): bool
+    {
+        $patch = json_encode(['data' => [$key => base64_encode($value)]]);
+
+        return Process::run(
+            "{$kubectl} patch secret mail-secrets -n {$ns} --type=merge -p ".escapeshellarg((string) $patch),
+        )->successful();
+    }
+
     /** Read-only Stalwart host for the given environment. */
     protected function resolveMailHostReadOnly(string $env, ?ConfigData $config): ?string
     {
@@ -58,7 +123,12 @@ trait InteractsWithMail
             return $service->hostFor(GlobalConfigData::load()->getLocalTld());
         }
 
-        return $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
+        $envData = $config?->getEnvironment($env);
+        if ($envData === null) {
+            return null;
+        }
+
+        return $envData->hosts[$service->value] ?? ($envData->domain ? $service->hostFor($envData->domain) : null);
     }
 
     /**

@@ -3,10 +3,12 @@
 namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
+use App\Exceptions\MissingFlagException;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithStalwartApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
@@ -15,13 +17,13 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailQuotaCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput;
+    use InteractsWithClusterContext, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive;
 
     protected $signature = 'mail:quota
-        {email?     : Email address of the account}
+        {environment=local : Environment whose mail server to target}
+        {--email= : Email address of the account}
         {--quota=   : Quota in GB (omit to prompt)}
-        {--context= : Target a specific kube-context}
-        {--env=     : Environment whose mail server to use (default: local)}';
+        {--context= : Target a specific kube-context}';
 
     protected $description = 'Set the mailbox quota for a Stalwart account';
 
@@ -29,7 +31,7 @@ class MailQuotaCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) ($this->option('env') ?: 'local');
+        $env = (string) $this->argument('environment');
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
             ? ConfigData::loadFromFile($projectPath)
@@ -111,7 +113,7 @@ class MailQuotaCommand extends Command
 
     protected function resolveTarget(array $accounts): ?array
     {
-        $email = (string) ($this->argument('email') ?? '');
+        $email = (string) ($this->option('email') ?? '');
 
         if ($email !== '') {
             foreach ($accounts as $a) {
@@ -140,6 +142,11 @@ class MailQuotaCommand extends Command
             $options[$a['id']] = $addr.' — '.$quota;
         }
 
+        // No --email and no way to ask: fail with the flag name rather than
+        // hanging on a prompt that will never be answered (CI, MCP, larakube proxy).
+        if ($this->cannotPrompt()) {
+            throw new MissingFlagException('email', 'which account to set a quota on', 'larakube mail:quota production --email=…');
+        }
         $choice = select(
             label: 'Which account would you like to update?',
             options: $options,

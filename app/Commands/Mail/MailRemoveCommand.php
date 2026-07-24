@@ -1,0 +1,67 @@
+<?php
+
+namespace App\Commands\Mail;
+
+use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Enums\ClusterTool;
+use App\Traits\InteractsWithMail;
+use Illuminate\Support\Facades\Process;
+
+class MailRemoveCommand extends AbstractToolRemoveCommand
+{
+    use InteractsWithMail;
+
+    protected function tool(): ClusterTool
+    {
+        return ClusterTool::MAIL;
+    }
+
+    protected function teardownWarning(string $env): array
+    {
+        return [
+            "The Stalwart mail server will be REMOVED from '{$env}':",
+            'Deployment, Services, Ingress, Secrets, ConfigMap, PVCs',
+            'Mail-wire SMTP secrets for every wired tool',
+            'Firewall ports (DO cloud + host UFW)',
+            'All mailboxes and their stored messages. This cannot be undone.',
+        ];
+    }
+
+    protected function teardown(string $kubectl, string $namespace): bool
+    {
+        $ok = $this->removeResources(
+            'Removing Stalwart resources...',
+            "{$kubectl} delete deployment/stalwart service/stalwart service/stalwart-mail "
+            .'ingress/stalwart secret/mail-secrets secret/mail-sender secret/mail-relay '
+            ."secret/webmail-secrets configmap/stalwart-config -n {$namespace} --ignore-not-found",
+        );
+
+        // Wait for pods to fully terminate — PVCs can't be deleted while bound.
+        Process::run("{$kubectl} wait --for=delete pod -l app=stalwart -n {$namespace} --timeout=60s 2>/dev/null || true");
+
+        // Standalone PVC — not garbage-collected with the Deployment.
+        $ok = $this->removeResources(
+            'Removing Stalwart storage...',
+            "{$kubectl} delete pvc/stalwart-data pvc/stalwart-data-stalwart-0 -n {$namespace} --ignore-not-found",
+        ) && $ok;
+
+        // Mail-wire SMTP secrets (<tool>-smtp) — useless without Stalwart, and
+        // they'd silently point a re-installed tool at a mail server that's gone.
+        $wired = trim((string) Process::run([
+            'bash', '-c',
+            "{$kubectl} get secrets -n {$namespace} -o name --no-headers 2>/dev/null | grep '\\-smtp$' || true",
+        ])->output());
+
+        if ($wired !== '') {
+            $ok = $this->removeResources(
+                'Removing mail-wire SMTP secrets...',
+                "{$kubectl} delete ".str_replace("\n", ' ', $wired)." -n {$namespace} --ignore-not-found",
+            ) && $ok;
+        }
+
+        // Reverse the firewall openings (dedicated DO firewall + UFW rules).
+        $this->closeMailPorts((string) $this->argument('environment'));
+
+        return $ok;
+    }
+}

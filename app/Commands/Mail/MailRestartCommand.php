@@ -5,6 +5,7 @@ namespace App\Commands\Mail;
 use App\Data\ConfigData;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
+use App\Traits\InteractsWithTraefik;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
@@ -15,12 +16,11 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailRestartCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithMail, LaraKubeOutput, StreamsProcessOutput;
+    use InteractsWithClusterContext, InteractsWithMail, InteractsWithTraefik, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'mail:restart
         {environment? : Environment the mail server runs in — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--env=      : Legacy alias for the environment}';
+        {--context=  : Target a specific kube-context}';
 
     protected $description = 'Restart Stalwart — applies the config written by the first-run setup wizard';
 
@@ -50,13 +50,15 @@ class MailRestartCommand extends Command
         }
 
         $this->withSpin('Restarting Stalwart...', fn () => Process::run(
-            "{$kubectl} rollout restart statefulset/stalwart -n {$ns}",
+            "{$kubectl} rollout restart deployment/stalwart -n {$ns}",
         ));
 
         $this->withSpin('Waiting for Stalwart to come back...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status statefulset/stalwart -n {$ns} --timeout=180s",
+            "{$kubectl} rollout status deployment/stalwart -n {$ns} --timeout=180s",
             190,
         ));
+
+        $this->withSpin('Refreshing Traefik routing...', fn () => $this->restartTraefikIngress($kubectl));
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Stalwart restarted ({$env}).");
@@ -71,7 +73,7 @@ class MailRestartCommand extends Command
      */
     protected function resolveEnvironment(): string
     {
-        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
+        $explicit = (string) ($this->argument('environment') ?: '');
         if ($explicit !== '') {
             return $explicit;
         }

@@ -4,10 +4,16 @@ namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use App\Enums\SharedClusterService;
+use App\Exceptions\MissingFlagException;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
+use App\Traits\InteractsWithSso;
+use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\SyncsInfisicalSecrets;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\password;
@@ -18,16 +24,17 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailWireCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithMail, LaraKubeOutput, StreamsProcessOutput;
+    use InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, StreamsProcessOutput, SyncsInfisicalSecrets;
 
     protected $signature = 'mail:wire
-        {tool?          : The tool to wire to Stalwart (omit to choose interactively)}
+        {environment=local : Environment whose mail server to target}
+        {--tool= : The tool to wire to Stalwart}
         {--all          : Wire every installed SMTP-capable tool}
         {--context=     : Target a specific kube-context}
-        {--env=         : Environment whose mail host to use (default: local)}
         {--sender=      : Sender/login address (default: noreply@<domain>)}
-        {--app-password=: Stalwart application password for the sender}
-        {--reprompt     : Ignore cached sender credentials and ask again}';
+        {--app-password= : Stalwart application password for the sender}
+        {--remove       : Unwire SMTP mail settings from the target tool and restart it}
+        {--forget       : Delete the cached sender credentials (mail-sender secret) and exit}';
 
     protected $description = 'Point a tool (n8n, NocoDB, …) at the Stalwart mail server for outbound email';
 
@@ -35,7 +42,7 @@ class MailWireCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) ($this->option('env') ?: 'local');
+        $env = (string) $this->argument('environment');
 
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -50,6 +57,21 @@ class MailWireCommand extends Command
         $kubectl = $this->mailKubectl($context);
         $ns = $this->mailNamespace();
 
+        // Clear the cached sender BEFORE the install check — a stale cache is
+        // worth clearing even if Stalwart has since been removed.
+        if ($this->option('forget')) {
+            Process::run("{$kubectl} delete secret mail-sender -n {$ns} --ignore-not-found");
+            $this->laraKubeInfo('✅ Cleared cached sender credentials (mail-sender). Next mail:wire asks fresh.');
+
+            return 0;
+        }
+
+        $targets = $this->resolveTargets($kubectl);
+
+        if ($this->option('remove')) {
+            return $this->unwireTargets($kubectl, $targets, $env);
+        }
+
         if (! $this->isMailInstalled($kubectl, $ns)) {
             $this->laraKubeError('Stalwart is not installed. Run `larakube mail:init` first.');
 
@@ -63,24 +85,28 @@ class MailWireCommand extends Command
             return 1;
         }
 
-        $targets = $this->resolveTargets($kubectl);
-        if ($targets === []) {
-            $this->laraKubeError('No SMTP-capable tools are installed to wire.');
-
-            return 1;
-        }
-
         $credentials = $this->resolveSenderCredentials($kubectl, $ns, $mailHost);
         if ($credentials === null) {
             return 1;
         }
         [$sender, $appPassword] = $credentials;
 
+        if ($targets === []) {
+            $this->laraKubeNewLine();
+            $this->laraKubeInfo("✅ Verified and cached sender credentials for {$sender}.");
+            $this->newLine();
+            $this->line("  <fg=gray>Sender:</> <fg=blue>{$sender}</>");
+            $this->line('  <fg=gray>Note:</>   No SMTP-capable tools are installed yet. Any tools installed in the future will pick these credentials up automatically.');
+            $this->newLine();
+
+            return 0;
+        }
+
         $endpoint = $this->mailSmtpEndpoint($mailHost);
         $wired = [];
 
         foreach ($targets as $tool) {
-            if ($this->wireTool($kubectl, $tool, $endpoint, $sender, $appPassword)) {
+            if ($this->wireTool($kubectl, $tool, $endpoint, $sender, $appPassword, $env)) {
                 $wired[] = $tool->getLabel();
             }
         }
@@ -101,34 +127,41 @@ class MailWireCommand extends Command
     }
 
     /**
-     * SMTP-capable tools (smtpEnv() !== null) whose Deployment is installed.
-     * Each tool's schema carries its own namespace (e.g. Vaultwarden lives in
-     * larakube-vault, not larakube-shared).
+     * SMTP-capable tools (smtpEnv() !== null or SSO) whose Deployment is installed.
      *
      * @return array<int, ClusterTool>
      */
     protected function resolveTargets(string $kubectl): array
     {
-        $capable = array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->smtpEnv() !== null);
+        $capable = array_filter(
+            ClusterTool::cases(),
+            fn (ClusterTool $t) => $t->smtpEnv() !== null || $t === ClusterTool::SSO,
+        );
 
         $installed = array_values(array_filter(
             $capable,
-            fn (ClusterTool $t) => $this->deploymentExists($kubectl, $t->smtpEnv()['namespace'], $t->smtpEnv()['deployment']),
+            fn (ClusterTool $t) => $t === ClusterTool::SSO
+                ? $this->isSsoInstalled($kubectl, $this->ssoNamespace())
+                : $this->deploymentExists($kubectl, $t->smtpEnv()['namespace'], $t->smtpEnv()['deployment']),
         ));
 
         if ($this->option('all')) {
             return $installed;
         }
 
-        $slug = $this->argument('tool');
+        $slug = $this->option('tool');
         if ($slug !== null) {
             $tool = ClusterTool::tryFrom($slug);
-            if ($tool === null || $tool->smtpEnv() === null) {
+            if ($tool === null || ($tool->smtpEnv() === null && $tool !== ClusterTool::SSO)) {
                 $this->laraKubeError("'{$slug}' is not an SMTP-capable tool.");
 
                 return [];
             }
-            if (! $this->deploymentExists($kubectl, $tool->smtpEnv()['namespace'], $tool->smtpEnv()['deployment'])) {
+            $isInstalled = $tool === ClusterTool::SSO
+                ? $this->isSsoInstalled($kubectl, $this->ssoNamespace())
+                : $this->deploymentExists($kubectl, $tool->smtpEnv()['namespace'], $tool->smtpEnv()['deployment']);
+
+            if (! $isInstalled) {
                 $this->laraKubeError("{$tool->getLabel()} is not installed.");
 
                 return [];
@@ -146,6 +179,11 @@ class MailWireCommand extends Command
             $options[$tool->value] = $tool->getLabel();
         }
 
+        // No --tool and no way to ask: fail with the flag name rather than
+        // hanging on a prompt that will never be answered (CI, MCP, larakube proxy).
+        if ($this->cannotPrompt()) {
+            throw new MissingFlagException('tool', 'which tool to wire', 'larakube mail:wire production --tool=…');
+        }
         $choice = select(
             label: 'Which tool would you like to wire to Stalwart?',
             options: $options,
@@ -161,15 +199,15 @@ class MailWireCommand extends Command
      * otherwise wire a tool with a credential that silently fails to send. On
      * failure it re-prompts (interactive) or aborts with null (scripted /
      * explicit --app-password). Only a VERIFIED pair is cached to the
-     * `mail-sender` secret; `--reprompt` ignores the cache entirely.
+     * `mail-sender` secret. Explicit --sender/--app-password override the cache;
+     * `mail:wire --forget` clears it entirely.
      *
      * @return array{0: string, 1: string}|null
      */
     protected function resolveSenderCredentials(string $kubectl, string $ns, string $mailHost): ?array
     {
-        $reprompt = (bool) $this->option('reprompt');
-        $cachedSender = $reprompt ? null : $this->readNamedSecret($kubectl, $ns, 'mail-sender', 'sender');
-        $cachedPassword = $reprompt ? null : $this->readNamedSecret($kubectl, $ns, 'mail-sender', 'app-password');
+        $cachedSender = $this->readNamedSecret($kubectl, $ns, 'mail-sender', 'sender');
+        $cachedPassword = $this->readNamedSecret($kubectl, $ns, 'mail-sender', 'app-password');
 
         $usingCache = $cachedSender !== null && $cachedPassword !== null
             && ! $this->option('sender') && ! $this->option('app-password');
@@ -216,17 +254,23 @@ class MailWireCommand extends Command
         }
 
         if ($usingCache) {
-            $this->laraKubeInfo("Using cached sender {$sender} (pass --reprompt to change it).");
+            $this->laraKubeInfo("Using cached sender {$sender} (run `larakube mail:wire --forget` to clear it).");
         }
 
         // Cache only a VERIFIED pair.
-        $this->withSpin('Caching sender credentials...', function () use ($kubectl, $ns, $sender, $appPassword) {
+        $env = (string) $this->argument('environment');
+        $this->withSpin('Caching sender credentials...', function () use ($kubectl, $ns, $sender, $appPassword, $env) {
             Process::run(
                 "{$kubectl} create secret generic mail-sender -n {$ns} "
                 .'--from-literal=sender='.escapeshellarg($sender).' '
                 .'--from-literal=app-password='.escapeshellarg($appPassword).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
+
+            if ($this->isInfisicalBootstrapped($kubectl, $this->secretsNamespace())) {
+                $this->pushInfisicalSecret($kubectl, 'STALWART_MAIL_SENDER', $sender, $env);
+                $this->pushInfisicalSecret($kubectl, 'STALWART_MAIL_PASSWORD', $appPassword, $env);
+            }
         });
 
         return [$sender, $appPassword];
@@ -248,7 +292,7 @@ class MailWireCommand extends Command
         // which strict servers reject (RFC 2821 §2.7.1).
         $script = 'echo '.base64_encode($convo).' | base64 -d | openssl s_client -quiet -connect 127.0.0.1:465 2>/dev/null';
         $out = Process::timeout(30)->run(
-            "{$kubectl} exec stalwart-0 -n {$ns} -- sh -c ".escapeshellarg($script),
+            "{$kubectl} exec deploy/stalwart -n {$ns} -- sh -c ".escapeshellarg($script),
         )->output();
 
         return str_contains($out, '235'); // 235 = authentication accepted
@@ -257,9 +301,41 @@ class MailWireCommand extends Command
     /**
      * @param  array{host: string, port: string}  $endpoint
      */
-    protected function wireTool(string $kubectl, ClusterTool $tool, array $endpoint, string $sender, string $appPassword): bool
+    protected function wireTool(string $kubectl, ClusterTool $tool, array $endpoint, string $sender, string $appPassword, string $env): bool
     {
+        if ($tool === ClusterTool::SSO) {
+            $pat = $this->readSsoSecret($kubectl, $this->ssoNamespace(), 'machine-pat');
+            if ($pat === null) {
+                $this->laraKubeError('Could not read Zitadel automation PAT. Ensure sso:init has completed.');
+
+                return false;
+            }
+
+            $projectPath = getcwd();
+            $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE) ? ConfigData::loadFromFile($projectPath) : null;
+            $ssoHost = SharedClusterService::SSO->hostFor($config?->getEnvironment($env)?->domain ?? 'luchtech.dev');
+            $ok = false;
+            $this->withSpin('Wiring Identity Provider / SSO (Zitadel)...', function () use ($ssoHost, $pat, $endpoint, $sender, $appPassword, &$ok) {
+                $ok = $this->zitadelConfigureSmtp(
+                    $ssoHost,
+                    $pat,
+                    $endpoint['host'].':'.$endpoint['port'],
+                    $sender,
+                    $appPassword,
+                    $sender,
+                    'Zitadel',
+                );
+
+                return $ok;
+            });
+
+            return $ok;
+        }
+
         $schema = $tool->smtpEnv();
+        if ($schema === null) {
+            return false;
+        }
         $deployment = $schema['deployment'];
         $ns = $schema['namespace'];
 
@@ -332,6 +408,63 @@ class MailWireCommand extends Command
     {
         $parts = explode('.', $host);
 
-        return count($parts) > 2 ? implode('.', array_slice($parts, 1)) : $host;
+        return count($parts) >= 2 ? implode('.', array_slice($parts, -2)) : $host;
+    }
+
+    /**
+     * @param  array<int, ClusterTool>  $targets
+     */
+    protected function unwireTargets(string $kubectl, array $targets, string $env): int
+    {
+        if ($targets === []) {
+            $this->laraKubeError('No target tool specified or installed to unwire.');
+
+            return 1;
+        }
+
+        $unwired = [];
+        foreach ($targets as $tool) {
+            if ($tool === ClusterTool::SSO) {
+                $ssoNs = $this->ssoNamespace();
+                $pat = $this->readSsoSecret($kubectl, $ssoNs, 'machine-pat');
+                $ssoHost = $this->resolveSsoHostReadOnly($env, null);
+                if ($pat && $ssoHost) {
+                    $this->zitadelConfigureSmtp($ssoHost, $pat, '', '', '', '', '');
+                }
+                $unwired[] = $tool->getLabel();
+
+                continue;
+            }
+
+            $schema = $tool->smtpEnv();
+            if ($schema === null) {
+                continue;
+            }
+
+            $unset = array_values($schema['vars']);
+            if (! empty($schema['static'])) {
+                $unset = array_merge($unset, array_keys($schema['static']));
+            }
+            $pairs = implode(' ', array_map(fn (string $key) => $key.'-', $unset));
+
+            $ok = false;
+            $this->withSpin("Unwiring mail from {$tool->getLabel()}...", function () use ($kubectl, $schema, $pairs, &$ok) {
+                $ok = Process::run("{$kubectl} set env deployment/{$schema['deployment']} -n {$schema['namespace']} {$pairs}")->successful();
+                if ($ok) {
+                    Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
+                }
+            });
+
+            if ($ok) {
+                $unwired[] = $tool->getLabel();
+            }
+        }
+
+        $this->laraKubeNewLine();
+        foreach ($unwired as $label) {
+            $this->laraKubeInfo("✅ {$label} no longer routes mail through Stalwart.");
+        }
+
+        return 0;
     }
 }

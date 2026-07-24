@@ -17,8 +17,8 @@ class MailAccountsCommand extends Command
     use InteractsWithClusterContext, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput;
 
     protected $signature = 'mail:accounts
-        {--context= : Target a specific kube-context}
-        {--env=      : Environment whose mail server to query (default: local)}';
+        {environment=local : Environment whose mail server to target}
+        {--context= : Target a specific kube-context}';
 
     protected $description = 'List all Stalwart mail accounts';
 
@@ -26,7 +26,7 @@ class MailAccountsCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) ($this->option('env') ?: 'local');
+        $env = (string) $this->argument('environment');
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
             ? ConfigData::loadFromFile($projectPath)
@@ -75,6 +75,12 @@ class MailAccountsCommand extends Command
                     : '-',
             ], $accounts),
         );
+
+        $queued = $this->stalwartQueueCount($kubectl, $ns);
+        if ($queued !== null && $queued > 0) {
+            $this->newLine();
+            $this->laraKubeWarn("Outbound queue: {$queued} message(s) waiting to send — inspect or clear with `larakube mail:queue`.");
+        }
 
         return 0;
     }

@@ -2,35 +2,44 @@
 
 namespace App\Commands\Mail;
 
-use App\Data\CloudData;
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
+use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
+use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
+use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithRemoteSsh;
+use App\Traits\InteractsWithSecrets;
+use App\Traits\InteractsWithStalwartApi;
+use App\Traits\InteractsWithTraefik;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesCloudFirewall;
+use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\SyncsInfisicalSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\select;
-use function Laravel\Prompts\text;
+use function Laravel\Prompts\confirm;
 
 use LaravelZero\Framework\Commands\Command;
 
 class MailInitCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithMail, InteractsWithRemoteSsh, LaraKubeOutput, ManagesCloudFirewall, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, LaraKubeOutput, ManagesCloudFirewall, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsInfisicalSecrets;
 
     protected $signature = 'mail:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
-        {--env=      : Legacy alias for the environment}
-        {--domain=   : Raw override for the Stalwart cluster domain}
+        {--domain=   : Base domain OR full host for Stalwart (example.com → prefix.example.com)}
         {--vpn-only  : Restrict the admin UI via NetBird VPN IP whitelisting}
-        {--remove    : Tear down the Stalwart stack}';
+        {--host-port : Bind mail ports directly to the node (default on single-node k3s)}
+        {--no-host-port : Skip hostPort — use on managed K8s with a real LoadBalancer}
+        {--force     : Skip the confirmation prompt}';
 
     protected $description = 'Deploy the Stalwart mail server (SMTP/IMAP/JMAP) into larakube-shared';
 
@@ -38,9 +47,7 @@ class MailInitCommand extends Command
     {
         $this->renderHeader();
 
-        return $this->option('remove')
-            ? $this->removeMail()
-            : $this->deployMail();
+        return $this->deployMail();
     }
 
     protected function deployMail(): int
@@ -58,9 +65,23 @@ class MailInitCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
+        // InteractsWithPlex reaches the Commons through its OWN kubectl
+        // (plexKubectl()), which is built from $plexContext — not from the
+        // $kubectl below. Leaving it null makes every Commons lookup here query
+        // whatever context happens to be current (usually local k3d) instead of
+        // the environment we're deploying to, so getCommonsSpec() returns null
+        // and both configureStalwartStore() and printPlexHint() silently no-op.
+        $this->plexContext = $context;
+
         $kubectl = $this->mailKubectl($context);
         $ns = $this->mailNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
+
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MAIL, $kubectl)) {
+            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         // Stalwart is self-contained (embedded RocksDB store on its PVC) — no Commons.
         // Keep the admin password stable across re-runs by reading it back.
@@ -83,6 +104,7 @@ class MailInitCommand extends Command
             'host' => $host,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
+            'hostPort' => ! $this->option('no-host-port'),
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-mail.yaml';
@@ -92,9 +114,28 @@ class MailInitCommand extends Command
         @unlink($tmp);
 
         $this->withSpin('Waiting for Stalwart...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status statefulset/stalwart -n {$ns} --timeout=180s",
+            "{$kubectl} rollout status deployment/stalwart -n {$ns} --timeout=180s",
             190,
         ));
+
+        $this->withSpin('Refreshing Traefik routing...', fn () => $this->restartTraefikIngress($kubectl));
+
+        // NOTE: a `dkimManagement.algorithms` write used to sit here, meant to
+        // stop Stalwart stamping both Ed25519 and RSA (the SES 554 duplicate
+        // DKIM-Signature bounce). It never ran: it used the REST settings
+        // endpoint that 0.16 removed, and it was non-fatal, so it failed
+        // silently. It was also mistimed — dkimManagement is a field on
+        // x:Domain, and no domain exists yet at init.
+        // Deliberately NOT reinstated: the duplicate-signature problem is
+        // already solved the other way round, by mail:relay calling
+        // stalwartEnforceSingleRsaDkimSignature() to keep RSA and prune
+        // Ed25519. Reviving this would flip that policy on every cluster.
+
+        // Auto-configure the Postgres main store via Plex Commons + Infisical
+        // when both are available — allocates the database, pushes the password
+        // to Infisical as STALWART_STORE_PASSWORD, and creates a sync CRD so
+        // Stalwart can read it from an env var instead of manual copy-paste.
+        $this->configureStalwartStore($kubectl, $ns);
 
         // On a cloud VPS, punch the mail L4 ports through both firewall layers
         // (DO cloud edge + host UFW) — klipper binds them, but both default-deny.
@@ -110,6 +151,7 @@ class MailInitCommand extends Command
         $this->line('  <fg=gray>Verify anytime:</>         <fg=blue>larakube mail:check '.$env.'</> <fg=gray>— runs every check below and shows what\'s left.</>');
         $this->newLine();
         $this->line('  <fg=yellow>1. First-run setup</> — open <fg=blue>https://'.$host.'</> and complete the wizard.');
+        $this->line('     <fg=gray>(You can configure your stores during the wizard or later in Settings → Storage — see step 7 below).</>');
         $this->line('     <fg=gray>At the wizard\'s "Setup complete" screen, apply it with:</> <fg=blue>larakube mail:restart '.$env.'</>');
         $this->line('     <fg=gray>(the config lives in Stalwart\'s store and needs a restart to load — else /admin loops the wizard).</>');
         $this->line('     <fg=gray>Won\'t load right after (re)deploy? That\'s a stale DNS cache, not a failure —</>');
@@ -149,52 +191,162 @@ class MailInitCommand extends Command
         $this->line('  <fg=gray>Ports 25/465/587/993/4190 must be reachable.  Wire a tool:</> <fg=blue>larakube mail:wire</>');
         $this->newLine();
 
+        $this->printPlexHint($kubectl, $host);
+
+        $this->registerDeployedTool(ClusterTool::MAIL, $kubectl, $host);
+
+        $this->offerWebmail($env);
+
         return 0;
     }
 
-    protected function removeMail(): int
+    /**
+     * Offer to add the Bulwark webmail UI right after mail:init — the discovery
+     * hook, mirroring tool:add's offerMailWiring()/offerSsoWiring(). Opt-in and
+     * interactive-only: webmail is NOT bundled into mail:init (not every install
+     * wants a browser UI, and we don't couple the critical mail deploy to a
+     * separate tool's failure modes), this just makes it discoverable.
+     */
+    protected function offerWebmail(string $env): void
     {
-        // Resolve the target environment the same way deployMail() does, so
-        // `mail:init production --remove` (or --env=) tears down the CLOUD install
-        // instead of silently targeting the local context.
-        $env = $this->resolveEnvironment();
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $context = (string) $this->option('context') ?: null;
-        if (! $context && $config && $env !== 'local') {
-            $context = $this->environmentContextOrCurrent($config, $env);
+        if ($this->option('no-interaction')) {
+            return;
         }
 
-        $kubectl = $this->mailKubectl($context);
-        $ns = $this->mailNamespace();
+        if (! confirm(label: "Also deploy a browser webmail UI (Bulwark) so your team isn't limited to Apple Mail/Thunderbird?", default: false)) {
+            $this->laraKubeLine("  <fg=gray>You can add it later:</> <fg=blue>larakube webmail:init {$env}</>");
 
-        $ok = $this->removeResources(
-            'Removing Stalwart resources...',
-            "{$kubectl} delete statefulset/stalwart service/stalwart service/stalwart-mail ingress/stalwart secret/mail-secrets secret/mail-sender -n {$ns} --ignore-not-found",
+            return;
+        }
+
+        // webmail:init resolves its own host (local → webmail.{tld}; cloud →
+        // prompt/persist) and handles the Stalwart CORS flip + restart itself.
+        $this->call('webmail:init', ['environment' => $env]);
+    }
+
+    /**
+     * Auto-configure Stalwart's Postgres main store via Plex Commons and
+     * Infisical when both are detected on the cluster. Creates the 'stalwart'
+     * database and role in the Plex Postgres, pushes the password as
+     * STALWART_STORE_PASSWORD to the LaraKube Infisical project, and creates
+     * an InfisicalStaticSecret CRD that syncs it into a native k8s Secret in
+     * the mail namespace. The Deployment already has envFrom with optional:
+     * true, so Stalwart can read the env var even if the Secret arrives later.
+     */
+    protected function configureStalwartStore(string $kubectl, string $ns): void
+    {
+        // Every bail-out below is a legitimate "not applicable here" case, but
+        // silence made them indistinguishable from a bug — the operator saw
+        // nothing at all and had no idea whether the step ran, was skipped, or
+        // failed. Each now says which precondition was missing and how to meet it.
+        $spec = $this->getCommonsSpec();
+        if ($spec === null) {
+            $this->line('  <fg=gray>Skipped Postgres store auto-config: no Plex Commons on this cluster.</>');
+            $this->line('  <fg=gray>  Set one up with</> <fg=blue>larakube plex:init</> <fg=gray>— Stalwart runs on embedded RocksDB until then.</>');
+
+            return;
+        }
+
+        $services = $this->enabledCommonsServices($spec);
+        if (! in_array('postgres', $services, true)) {
+            $this->line('  <fg=gray>Skipped Postgres store auto-config: the Commons has no Postgres service enabled.</>');
+            $this->line('  <fg=gray>  Enable it with</> <fg=blue>larakube plex:init</><fg=gray>.</>');
+
+            return;
+        }
+
+        if (! $this->isInfisicalBootstrapped($kubectl, $this->secretsNamespace())) {
+            $this->line('  <fg=gray>Skipped Postgres store auto-config: Infisical is not bootstrapped, so there is</>');
+            $this->line('  <fg=gray>  nowhere to sync STALWART_STORE_PASSWORD. Run</> <fg=blue>larakube secrets:init</><fg=gray>, or paste the</>');
+            $this->line('  <fg=gray>  password from the store details printed below straight into the wizard.</>');
+
+            return;
+        }
+
+        $existingPassword = $this->readNamedSecret($kubectl, $ns, 'stalwart-infisical', 'STALWART_STORE_PASSWORD');
+        $password = $existingPassword ?? Str::random(24);
+
+        // Unlike the checks above, this one is a real failure, not a missing
+        // precondition — say so loudly rather than in passing gray.
+        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'stalwart', $password)) {
+            $this->laraKubeError("Could not allocate the 'stalwart' database in the Plex Commons.");
+            $this->line('  <fg=gray>Check the Commons Postgres is reachable:</> <fg=blue>larakube plex:show</>');
+
+            return;
+        }
+
+        // Auto-allocate S3 bucket 'stalwart' if S3 backend is enabled
+        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+            if (in_array($candidate, $services, true)) {
+                $storageDriver = \App\Enums\StorageDriver::tryFrom($candidate);
+                if ($storageDriver !== null) {
+                    $this->allocateStorageBucket($storageDriver, 'stalwart');
+                }
+                break;
+            }
+        }
+
+        $bootstrapToken = $this->readInfisicalBootstrapSecret($kubectl, $this->secretsNamespace(), 'bootstrap-token');
+        if ($bootstrapToken === null) {
+            $this->laraKubeError('Allocated the database, but could not read Infisical\'s bootstrap token.');
+            $this->line('  <fg=gray>STALWART_STORE_PASSWORD was NOT synced — use the printed password in the wizard instead.</>');
+
+            return;
+        }
+
+        // Both steps now go through SyncsInfisicalSecrets — the same primitive
+        // plex:rotate uses — so a rotated STALWART_STORE_PASSWORD and a freshly
+        // provisioned one travel identical code paths.
+        $pushed = $this->withSpin(
+            'Pushing STALWART store secrets to Infisical...',
+            function () use ($kubectl, $password) {
+                $dbPushed = $this->pushInfisicalSecret($kubectl, 'STALWART_STORE_PASSWORD', $password, 'production');
+                $s3Creds = $this->readCommonsS3Credentials();
+                if ($s3Creds !== null) {
+                    $this->pushInfisicalSecret($kubectl, 'STALWART_S3_KEY_ID', $s3Creds['access'], 'production');
+                    $this->pushInfisicalSecret($kubectl, 'STALWART_S3_SECRET_KEY', $s3Creds['secret'], 'production');
+                }
+
+                return $dbPushed;
+            },
         );
 
-        // volumeClaimTemplate PVCs are not garbage-collected with the StatefulSet.
-        $ok = $this->removeResources(
-            'Removing Stalwart storage...',
-            "{$kubectl} delete pvc/stalwart-data-stalwart-0 -n {$ns} --ignore-not-found",
-        ) && $ok;
+        if (! $pushed) {
+            $this->laraKubeError('Could not store STALWART_STORE_PASSWORD in Infisical.');
+            if ($this->lastInfisicalError !== null) {
+                $this->line('  <fg=gray>Infisical said:</> <fg=yellow>'.$this->lastInfisicalError.'</>');
+            }
+            $this->line('  <fg=gray>The database was created, so use this password in the wizard directly:</>');
+            $this->line('  <fg=yellow>'.$password.'</>');
+            $this->line('  <fg=gray>Username</> <fg=blue>stalwart</> <fg=gray>· database</> <fg=blue>stalwart</>');
 
-        if (! $ok) {
-            $this->laraKubeError('One or more Stalwart resources failed to remove — check kubectl access to the cluster above and re-run.');
-
-            return 1;
+            return;
         }
 
-        // Reverse the firewall openings (delete the dedicated DO firewall + UFW rules).
-        $this->closeMailPorts($env);
+        $synced = $this->withSpin(
+            'Creating InfisicalStaticSecret CRD to sync STALWART_STORE_PASSWORD...',
+            fn () => $this->syncInfisicalToNamespace($kubectl, $ns, 'stalwart-infisical', 'production'),
+        );
 
-        $this->laraKubeInfo("Stalwart mail server removed from larakube-shared ({$env}).");
+        if ($synced) {
+            // Restart Stalwart deployment so its container process inherits the freshly synced
+            // env vars from the newly created stalwart-infisical secret.
+            Process::run("{$kubectl} rollout restart deployment/stalwart -n {$ns} >/dev/null 2>&1");
+        }
 
-        return 0;
+        if (! $synced) {
+            $this->laraKubeError('Stored the password in Infisical, but the sync CRD was not created.');
+            $this->line('  <fg=gray>Stalwart will not see STALWART_STORE_PASSWORD as an env var. Use it directly:</>');
+            $this->line('  <fg=yellow>'.$password.'</>');
+
+            return;
+        }
+
+        // Wait briefly for the operator to sync the secret
+        usleep(3_000_000);
+
+        $this->laraKubeInfo('Stalwart store configured via Plex Commons + Infisical.');
+        $this->laraKubeLine('  Use "Secret read from environment variable" in the wizard and enter "STALWART_STORE_PASSWORD".');
     }
 
     /**
@@ -203,22 +355,6 @@ class MailInitCommand extends Command
      * (context-only, no SSH host) env. Managed clusters expose L4 via a real
      * cloud LoadBalancer, so they need no firewall poking here.
      */
-    protected function mailCloud(string $env): ?CloudData
-    {
-        if ($env === 'local') {
-            return null;
-        }
-
-        $projectPath = getcwd();
-        if (! file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)) {
-            return null;
-        }
-
-        $cloud = ConfigData::loadFromFile($projectPath)->getCloud($env);
-
-        return ($cloud && $cloud->ip) ? $cloud : null;
-    }
-
     /**
      * Open Stalwart's L4 ports at both firewall layers on a VPS: the DO cloud
      * firewall (a dedicated, drift-free firewall) and the host UFW (over SSH).
@@ -250,25 +386,6 @@ class MailInitCommand extends Command
         }
     }
 
-    /** Reverse openMailPorts() on teardown. Best-effort. */
-    protected function closeMailPorts(string $env): void
-    {
-        $cloud = $this->mailCloud($env);
-        if ($cloud === null) {
-            return;
-        }
-
-        $ports = SharedClusterService::MAIL->firewallPorts();
-        $this->removeCloudFirewall('mail', $cloud->ip);
-
-        $sshIp = $cloud->vpnIp ?: $cloud->ip;
-        $key = $cloud->key ? str_replace('~', home_path(), $cloud->key) : null;
-        if ($sshIp && $key && file_exists($key)) {
-            $script = collect($ports)->map(fn ($p) => "ufw delete allow {$p}/tcp 2>/dev/null || true")->implode("\n")."\nufw reload || true";
-            $this->runRemoteCommand($cloud->user ?? 'larakube', $sshIp, $cloud->port ?? 22, $key, $script);
-        }
-    }
-
     /** Best-effort mail domain (drops the leftmost "mail." label) for the noreply hint. */
     protected function mailDomain(string $host): string
     {
@@ -277,75 +394,22 @@ class MailInitCommand extends Command
         return count($parts) > 2 ? implode('.', array_slice($parts, 1)) : $host;
     }
 
-    protected function resolveMailHost(string $env): string
+    protected function resolveMailHost(string $env, ?string $kubectl = null): string
     {
-        $service = SharedClusterService::MAIL;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveMailHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudMailHost($service, $env);
+        return $this->resolveToolHost(SharedClusterService::MAIL, ClusterTool::MAIL, $env, $kubectl);
     }
 
     protected function resolveEnvironment(): string
     {
-        $explicit = (string) ($this->argument('environment') ?: $this->option('env') ?: '');
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
-        if ($this->option('no-interaction') || $this->option('domain')) {
-            return 'local';
-        }
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $envs = $config ? array_merge(['local'], $config->getCloudEnvironments()) : ['local'];
-
-        return select(
-            label: 'Which environment is this mail server for?',
-            options: array_combine($envs, $envs),
-            default: 'local',
-        );
+        return $this->resolveToolEnvironment(ClusterTool::MAIL);
     }
 
-    protected function promptForCloudMailHost(SharedClusterService $service, string $env): string
+    protected function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
     {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
+        $out = trim(Process::run(
+            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
+        )->output());
 
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. mail.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
+        return $out !== '' ? (string) base64_decode($out) : null;
     }
 }

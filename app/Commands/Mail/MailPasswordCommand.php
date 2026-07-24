@@ -3,10 +3,15 @@
 namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
+use App\Exceptions\MissingFlagException;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
+use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithStalwartApi;
+use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
@@ -16,14 +21,16 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailPasswordCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithStalwartApi, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive;
 
     protected $signature = 'mail:password
-        {email?      : Email address of the account}
+        {environment=local : Environment whose mail server to target}
+        {--email= : Email address of the account}
         {--password= : New password (auto-generated if omitted)}
         {--force     : Skip confirmation prompt}
-        {--context=  : Target a specific kube-context}
-        {--env=      : Environment whose mail server to use (default: local)}';
+        {--sso       : Force-update the matching SSO password too (default when Zitadel is installed)}
+        {--no-sso     : Skip the SSO password — leave Zitadel untouched}
+        {--context=  : Target a specific kube-context}';
 
     protected $description = 'Reset the password for a Stalwart mail account';
 
@@ -31,7 +38,7 @@ class MailPasswordCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) ($this->option('env') ?: 'local');
+        $env = (string) $this->argument('environment');
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
             ? ConfigData::loadFromFile($projectPath)
@@ -128,12 +135,73 @@ class MailPasswordCommand extends Command
         $this->line("  <fg=gray>New password:</> <fg=yellow>{$newPassword}</>");
         $this->newLine();
 
+        $this->maybeSyncSsoPassword($env, $target['email'], $newPassword);
+
         return 0;
+    }
+
+    /**
+     * Keep the account's Zitadel password in step with the mailbox password just
+     * reset, so the single shared credential mail:create set up stays shared.
+     *
+     * Default-ON when Zitadel is installed, mirroring mail:create's --sso/--no-sso;
+     * opt out per-reset with --no-sso. Only updates an identity that already
+     * exists — it never creates one (that's mail:create/mail:sync-sso's job), so
+     * a mailbox with no SSO identity is a no-op with a hint, not an error. Never
+     * fails the command: the mailbox password is already changed by this point.
+     */
+    protected function maybeSyncSsoPassword(string $env, string $email, string $password): void
+    {
+        $ssoKubectl = $this->ssoKubectl($this->resolveToolContext($env));
+        $ssoNs = $this->ssoNamespace();
+
+        if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {
+            if ($this->option('sso')) {
+                $this->laraKubeError('--sso was requested, but Zitadel is not installed. Run `larakube sso:init` first.');
+            }
+
+            return;
+        }
+
+        $wantsSso = $this->flagOrConfirm(
+            'sso',
+            fn () => confirm(label: 'Also update this account\'s SSO password to match?', default: true),
+            default: true,
+        );
+
+        if (! $wantsSso) {
+            return;
+        }
+
+        $host = $this->resolveSsoHostReadOnly($env, null);
+        $pat = $this->readSsoSecret($ssoKubectl, $ssoNs, 'machine-pat');
+
+        if ($host === null || $pat === null) {
+            $this->laraKubeError('Mailbox password updated, but could not reach Zitadel\'s automation credentials — re-run `larakube sso:init`, then update the SSO password via the console.');
+
+            return;
+        }
+
+        $userId = $this->zitadelFindUserByEmail($host, $pat, $email);
+
+        if ($userId === null) {
+            $this->laraKubeInfo("No matching SSO identity for {$email} — nothing to sync (create one with `larakube mail:create --sso` or `larakube mail:sync-sso`).");
+
+            return;
+        }
+
+        if (! $this->zitadelSetPassword($host, $pat, $userId, $password)) {
+            $this->laraKubeError("Mailbox password updated, but the matching SSO password could not be changed — update it in Zitadel's console.");
+
+            return;
+        }
+
+        $this->laraKubeInfo("✅ SSO password updated for {$email} — same as the new mailbox password.");
     }
 
     protected function resolveTarget(array $accounts): ?array
     {
-        $email = (string) ($this->argument('email') ?? '');
+        $email = (string) ($this->option('email') ?? '');
 
         if ($email !== '') {
             foreach ($accounts as $a) {
@@ -154,6 +222,11 @@ class MailPasswordCommand extends Command
             $options[$a['id']] = $addr.' — '.($a['description'] ?? $a['name']);
         }
 
+        // No --email and no way to ask: fail with the flag name rather than
+        // hanging on a prompt that will never be answered (CI, MCP, larakube proxy).
+        if ($this->cannotPrompt()) {
+            throw new MissingFlagException('email', 'which account to reset', 'larakube mail:password production --email=…');
+        }
         $choice = select(
             label: 'Which account would you like to update?',
             options: $options,
