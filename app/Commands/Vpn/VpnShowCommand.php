@@ -3,6 +3,7 @@
 namespace App\Commands\Vpn;
 
 use App\Data\ConfigData;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 
@@ -12,7 +13,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class VpnShowCommand extends Command
 {
-    use InteractsWithVpn, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithVpn, LaraKubeOutput;
 
     protected $signature = 'vpn:show
         {environment=local : Environment to show NetBird VPN access for (resolves the NetBird host)}
@@ -30,7 +31,13 @@ class VpnShowCommand extends Command
             ? ConfigData::loadFromFile($projectPath)
             : null;
 
-        $access = $this->vpnAccess($env, $config, (string) ($this->option('context') ?? ''));
+        // The {environment} argument must decide WHICH CLUSTER we inspect, not just
+        // which host string to print. Without this these commands read whatever
+        // kubectl currently points at, so `…:show production` could report
+        // "not installed" about a perfectly healthy production install.
+        $resolvedContext = (string) ($this->resolveToolContext($env, (string) $this->option('context') ?: null) ?? '');
+
+        $access = $this->vpnAccess($env, $config, $resolvedContext);
 
         if ($access === null) {
             $this->warn('  NetBird VPN is not installed in '.$this->vpnNamespace().'.');

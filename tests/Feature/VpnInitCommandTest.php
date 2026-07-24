@@ -78,15 +78,15 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
     }
 });
 
-test('vpn:init removes netbird vpn namespace when --remove is passed', function () {
+test('vpn:remove removes netbird vpn namespace when --remove is passed', function () {
     Process::fake([
         vpnInitKubectl().' delete namespace larakube-vpn*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('vpn:init local --remove')
+    $this->artisan('vpn:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing NetBird VPN namespace...')
-        ->expectsOutputToContain('NetBird VPN removed from larakube-vpn.');
+        ->expectsOutputToContain('removed from larakube-vpn');
 });
 
 test('vpn:init bootstraps NetBird auth non-interactively on first run', function () {
@@ -138,7 +138,7 @@ test('vpn:init warns but does not fail when NetBird auth bootstrap fails', funct
         ->expectsOutputToContain('Could not bootstrap NetBird auth automatically');
 });
 
-test('vpn:init --remove also targets the CHOSEN environment\'s own saved context', function () {
+test('vpn:remove also targets the CHOSEN environment\'s own saved context', function () {
     $dir = sys_get_temp_dir().'/vpn-init-remove-'.uniqid();
     mkdir($dir, 0755, true);
     $original = getcwd();
@@ -152,17 +152,23 @@ test('vpn:init --remove also targets the CHOSEN environment\'s own saved context
     $config->setCloud('production', new CloudData(ip: '203.0.113.10', user: 'deploy'));
     $config->saveToFile($dir);
 
-    $kubectl = vpnInitKubectl().' --context=larakube-203.0.113.10';
+    // vpn:remove builds its kubectl through the shared contextKubectl() helper,
+    // which shell-escapes the context rather than interpolating it bare.
+    $kubectl = vpnInitKubectl()." --context 'larakube-203.0.113.10'";
 
     try {
         Process::fake([
             "{$kubectl} delete namespace larakube-vpn*" => Process::result(output: 'deleted'),
+            // The shared base also unregisters the tool from the cluster
+            // registry, which the old --remove path skipped entirely.
+            '*larakube-tools-registry*' => Process::result(output: ''),
+            '*apply -f -*' => Process::result(output: 'configured'),
         ]);
         Process::preventStrayProcesses();
 
-        $this->artisan('vpn:init production --remove')
+        $this->artisan('vpn:remove production --force')
             ->assertExitCode(0)
-            ->expectsOutputToContain('NetBird VPN removed from larakube-vpn.');
+            ->expectsOutputToContain('removed from larakube-vpn');
     } finally {
         chdir($original);
         exec('rm -rf '.escapeshellarg($dir));

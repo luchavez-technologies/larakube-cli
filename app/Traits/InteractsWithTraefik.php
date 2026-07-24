@@ -261,6 +261,25 @@ trait InteractsWithTraefik
     }
 
     /**
+     * Restart Traefik to clear stale conntrack / endpoint caches.
+     *
+     * Call this after restarting a long-lived Deployment (e.g. Stalwart) whose
+     * pod IP may be reused — kube-proxy conntrack entries in the Traefik pod
+     * can go stale and cause "Connection reset by peer" → 502 Bad Gateway until
+     * Traefik restarts and re-discovers the backend.
+     *
+     * Accepts a context-aware $kubectl prefix (e.g. "kubectl --context=foo")
+     * so it works on remote clusters, not just the current context.
+     */
+    protected function restartTraefikIngress(string $kubectl): void
+    {
+        $exists = Process::run("{$kubectl} get deployment traefik -n traefik --no-headers --ignore-not-found")->output();
+        if (trim($exists) !== '') {
+            Process::run("{$kubectl} rollout restart deployment/traefik -n traefik");
+        }
+    }
+
+    /**
      * Check if any Ingress Controller is currently active in the cluster.
      *
      * Tries increasingly broad detection strategies:

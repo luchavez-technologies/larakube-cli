@@ -90,6 +90,12 @@ metadata:
     app: traefik
 spec:
   replicas: 1
+  # hostPort binds ports 80/443 directly on the host — only one pod can hold
+  # them at a time. RollingUpdate (default) would try to start the new pod
+  # before killing the old one, causing a permanent Pending deadlock on a
+  # single-node VPS. Recreate kills the old pod first (~15s downtime).
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: traefik
