@@ -2,25 +2,35 @@
 
 namespace App\Commands\Plex;
 
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class PlexExportCommand extends Command
 {
-    use InteractsWithPlex, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithPlex, LaraKubeOutput;
 
     protected $signature = 'plex:export
-        {--output= : Write the spec to a file instead of stdout}';
+        {environment=local : Environment whose Commons to export}
+        {--context= : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
+        {--output=  : Write the spec to a file instead of stdout}';
 
     protected $description = 'Export the live Commons spec (for disaster recovery / GitOps)';
 
     public function handle(): int
     {
+        $env = (string) $this->argument('environment');
+
+        // Without this the Commons is always read from the CURRENT kube-context,
+        // so `plex:export production` silently exported the local Commons —
+        // exactly the wrong spec to hand to disaster recovery.
+        $this->plexContext = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
+
         $spec = $this->getCommonsSpec();
 
         if ($spec === null) {
-            $this->laraKubeError('No Commons found on the current cluster. Run plex:init first.');
+            $this->laraKubeError("No Commons found on the cluster for '{$env}'. Run plex:init first.");
 
             return 1;
         }

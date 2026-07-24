@@ -37,11 +37,25 @@ trait InteractsWithVault
     /** The existing Vaultwarden admin token, or null when the secret isn't there. */
     protected function readVaultAdminToken(string $kubectl, string $ns): ?string
     {
-        $encoded = trim(Process::run(
+        $plain = trim(Process::run(
+            "{$kubectl} get secret vault-admin -n {$ns} -o jsonpath='{.data.plain-token}'",
+        )->output());
+
+        if ($plain !== '') {
+            return (string) base64_decode($plain);
+        }
+
+        $legacy = trim(Process::run(
             "{$kubectl} get secret vault-admin -n {$ns} -o jsonpath='{.data.admin-token}'",
         )->output());
 
-        return $encoded !== '' ? (string) base64_decode($encoded) : null;
+        if ($legacy === '') {
+            return null;
+        }
+
+        $decoded = (string) base64_decode($legacy);
+
+        return str_starts_with($decoded, '$argon2') ? null : $decoded;
     }
 
     /**

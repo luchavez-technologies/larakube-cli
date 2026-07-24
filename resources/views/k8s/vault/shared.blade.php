@@ -5,7 +5,8 @@ metadata:
   namespace: larakube-vault
 type: Opaque
 data:
-  admin-token: {{ base64_encode($adminToken) }}
+  plain-token: {{ base64_encode($adminToken) }}
+  admin-token: {{ base64_encode($hashedAdminToken ?? $adminToken) }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -47,6 +48,14 @@ spec:
                 secretKeyRef:
                   name: vault-admin
                   key: admin-token
+@if(isset($databaseUrl) && $databaseUrl)
+            - name: DATABASE_URL
+              value: "{{ $databaseUrl }}"
+@endif
+          envFrom:
+            - secretRef:
+                name: vaultwarden-infisical
+                optional: true
           volumeMounts:
             - name: vaultwarden-volume
               mountPath: /data

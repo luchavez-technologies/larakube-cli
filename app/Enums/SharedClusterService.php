@@ -40,14 +40,35 @@ enum SharedClusterService: string
             self::INSIGHTS => 'k8s.insights.ingress',
             self::MAIL => 'k8s.mail.ingress',
             self::DESK => 'k8s.desk.ingress',
+            self::CHAT => 'k8s.chat.ingress',
+            self::SSO => 'k8s.sso.ingress',
+            self::WEBMAIL => 'k8s.webmail.ingress',
+            self::NOTES => 'k8s.notes.ingress',
+            self::DRIVE => 'k8s.drive.ingress',
+            self::ANALYTICS => 'k8s.analytics.ingress',
+            self::TASKS => 'k8s.tasks.ingress',
+
+            self::SIGN => 'k8s.sign.ingress',
+            self::SUPPORT => 'k8s.support.ingress',
+            self::LINK => 'k8s.link.ingress',
+            self::CRM => 'k8s.crm.ingress',
         };
     }
 
     public function templatePayload(): array
     {
         return match ($this) {
+            // Detect the installed Flow engine. Short timeout so that if the
+            // current kube-context is slow/unreachable this degrades to the
+            // default engine instead of blocking (default Process timeout is 60s).
             self::FLOW => [
-                'engine' => trim(\Illuminate\Support\Facades\Process::run('kubectl get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
+                'engine' => trim(\Illuminate\Support\Facades\Process::timeout(10)->run('kubectl get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
+            ],
+            self::DRIVE => [
+                'engine' => trim(\Illuminate\Support\Facades\Process::timeout(10)->run('kubectl get deployment drive-nextcloud -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'nextcloud' : 'ocis',
+            ],
+            self::TASKS => [
+                'engine' => 'planka',
             ],
             default => [],
         };
@@ -68,6 +89,7 @@ enum SharedClusterService: string
             self::GITEA => 'git',
             self::FLOW => 'flow',
             self::SHEET => 'sheet',
+            self::DRIVE => 'drive',
             self::INSIGHTS => 'insights',
             default => $this->value,
         };
@@ -80,7 +102,12 @@ enum SharedClusterService: string
      */
     public function hostFor(string $domain): string
     {
-        return "{$this->hostPrefix()}.{$domain}";
+        $prefix = $this->hostPrefix();
+        if ($prefix !== '' && str_starts_with($domain, "{$prefix}.")) {
+            return $domain;
+        }
+
+        return "{$prefix}.{$domain}";
     }
 
     /**
@@ -97,7 +124,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::INSIGHTS, self::MAIL, self::DESK => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM => false,
             default => true,
         };
     }
@@ -124,9 +151,21 @@ enum SharedClusterService: string
             self::GITEA => 'Gitea',
             self::FLOW => 'n8n',
             self::SHEET => 'Sheet',
+            self::DRIVE => 'Drive',
             self::INSIGHTS => 'Metabase',
             self::MAIL => 'Stalwart',
             self::DESK => 'FreeScout',
+            self::CHAT => 'Mattermost',
+            self::SSO => 'Zitadel',
+            self::WEBMAIL => 'Bulwark',
+            self::NOTES => 'Outline',
+            self::ANALYTICS => 'Umami',
+            self::TASKS => 'Planka',
+
+            self::SIGN => 'Documenso',
+            self::SUPPORT => 'Chatwoot',
+            self::LINK => 'Kutt',
+            self::CRM => 'Twenty',
         };
     }
 
@@ -154,9 +193,21 @@ enum SharedClusterService: string
             self::GITEA => 'deployment gitea -n larakube-shared',
             self::FLOW => 'deployment -l "app in (flow-n8n, flow-windmill)" -n larakube-shared',
             self::SHEET => 'deployment -l "app in (sheet-nocodb, sheet-baserow)" -n larakube-shared',
+            self::DRIVE => 'deployment -l "app in (drive-nextcloud, drive-ocis)" -n larakube-shared',
             self::INSIGHTS => 'deployment insights-metabase -n larakube-shared',
-            self::MAIL => 'statefulset stalwart -n larakube-shared',
+            self::MAIL => 'deployment stalwart -n larakube-shared',
             self::DESK => 'deployment desk-freescout -n larakube-shared',
+            self::CHAT => 'deployment chat-mattermost -n larakube-shared',
+            self::SSO => 'deployment sso-zitadel -n larakube-sso',
+            self::WEBMAIL => 'deployment webmail-bulwark -n larakube-shared',
+            self::NOTES => 'deployment notes-outline -n larakube-shared',
+            self::ANALYTICS => 'deployment analytics-umami -n larakube-shared',
+            self::TASKS => 'deployment tasks-planka -n larakube-shared',
+
+            self::SIGN => 'deployment sign-documenso -n larakube-shared',
+            self::SUPPORT => 'deployment support-chatwoot -n larakube-shared',
+            self::LINK => 'deployment link-kutt -n larakube-shared',
+            self::CRM => 'deployment crm-twenty -n larakube-shared',
         };
     }
 
@@ -234,9 +285,21 @@ enum SharedClusterService: string
             self::GITEA => 'Refreshing Gitea ingress...',
             self::FLOW => 'Refreshing Flow (n8n) ingress...',
             self::SHEET => 'Refreshing Sheet ingress...',
+            self::DRIVE => 'Refreshing Drive ingress...',
             self::INSIGHTS => 'Refreshing Insights (Metabase) ingress...',
             self::MAIL => 'Refreshing Stalwart (Mail) ingress...',
             self::DESK => 'Refreshing FreeScout (Help Desk) ingress...',
+            self::CHAT => 'Refreshing Mattermost (Chat) ingress...',
+            self::SSO => 'Refreshing Zitadel (SSO) ingress...',
+            self::WEBMAIL => 'Refreshing Bulwark (Webmail) ingress...',
+            self::NOTES => 'Refreshing Outline (Wiki) ingress...',
+            self::ANALYTICS => 'Refreshing Umami (Analytics) ingress...',
+            self::TASKS => 'Refreshing Planka (Tasks) ingress...',
+
+            self::SIGN => 'Refreshing Documenso (Sign) ingress...',
+            self::SUPPORT => 'Refreshing Chatwoot (Support) ingress...',
+            self::LINK => 'Refreshing Kutt (Link) ingress...',
+            self::CRM => 'Refreshing Twenty (CRM) ingress...',
         };
     }
 
@@ -263,4 +326,16 @@ enum SharedClusterService: string
     case INSIGHTS = 'insights';
     case MAIL = 'mail';
     case DESK = 'desk';
+    case CHAT = 'chat';
+    case SSO = 'sso';
+    case WEBMAIL = 'webmail';
+    case NOTES = 'notes';
+    case DRIVE = 'drive';
+    case ANALYTICS = 'analytics';
+    case TASKS = 'tasks';
+
+    case SIGN = 'sign';
+    case SUPPORT = 'support';
+    case LINK = 'link';
+    case CRM = 'crm';
 }

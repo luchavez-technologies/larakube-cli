@@ -527,7 +527,79 @@ trait InteractsWithPlex
             return false;
         }
 
+        $this->registerTenantDatabase($tenant, $driver);
+
         return true;
+    }
+
+    /**
+     * Register a tenant's database allocation in the Plex Registry ConfigMap.
+     */
+    protected function registerTenantDatabase(string $tenant, DatabaseDriver $driver): void
+    {
+        $registry = $this->getRegistry();
+        $registry['tenants'][$tenant]['db'] = $tenant;
+        $registry['tenants'][$tenant]['db_service'] = $driver->value;
+        $this->saveRegistry($registry);
+    }
+
+    /**
+     * Register a tenant's S3 storage bucket allocation in the Plex Registry ConfigMap.
+     */
+    protected function registerTenantStorage(string $bucket, StorageDriver $driver): void
+    {
+        $registry = $this->getRegistry();
+        $registry['tenants'][$bucket]['s3_bucket'] = $bucket;
+        $registry['tenants'][$bucket]['s3_service'] = $driver->value;
+        $this->saveRegistry($registry);
+    }
+
+    /**
+     * Unregister a tenant from the Plex Registry ConfigMap.
+     */
+    protected function unregisterTenant(string $tenant): void
+    {
+        $registry = $this->getRegistry();
+        if (isset($registry['tenants'][$tenant])) {
+            unset($registry['tenants'][$tenant]);
+            $this->saveRegistry($registry);
+        }
+    }
+
+    /**
+     * Grant CREATEDB to a Commons Postgres role. Most tools migrate INTO the
+     * database allocateDatabase() pre-creates and never need this — but Zitadel's
+     * init unconditionally runs a "verify database" step that issues CREATE
+     * DATABASE, so its role must have CREATEDB or it CrashLoopBackOffs with
+     * "permission denied to create database". The pre-created DB is fine: with
+     * CREATEDB the create returns "already exists" (42P04), which Zitadel's
+     * restart-safe init tolerates. Bounded: CREATEDB lets the role create NEW
+     * databases, never read another tenant's existing one, so cross-tenant
+     * isolation is unchanged. Idempotent — safe to re-run every deploy (and it
+     * MUST run every deploy, since a role recreation drops the attribute).
+     */
+    protected function grantPostgresCreateDb(string $role): bool
+    {
+        $ns = $this->plexNamespace();
+        $client = DatabaseDriver::POSTGRESQL->commonsAdminClient();
+        $service = DatabaseDriver::POSTGRESQL->value;
+
+        $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_grant');
+        file_put_contents($tmp, 'ALTER ROLE "'.$role.'" CREATEDB;');
+
+        $ok = false;
+        $this->withSpin("Granting CREATEDB to '{$role}' in the Commons...", function () use ($ns, $service, $client, $tmp, &$ok) {
+            $ok = Process::run(
+                $this->plexKubectl().' exec -i -n '.escapeshellarg($ns).' deploy/'.$service.' -- '.
+                'sh -c '.escapeshellarg($client).' < '.escapeshellarg($tmp),
+            )->successful();
+
+            return $ok;
+        });
+
+        @unlink($tmp);
+
+        return $ok;
     }
 
     /**
@@ -608,6 +680,8 @@ trait InteractsWithPlex
 
             return false;
         }
+
+        $this->registerTenantStorage($bucket, $driver);
 
         return true;
     }
@@ -736,5 +810,188 @@ trait InteractsWithPlex
         );
 
         @unlink($tmp);
+    }
+
+    /**
+     * Print Stalwart store configuration hints for enabled Plex services —
+     * main store (PostgreSQL), blob store (SeaweedFS / MinIO / Garage),
+     * cache (Valkey), and search (PostgreSQL).
+     */
+    protected function printPlexHint(string $kubectl, string $host): void
+    {
+        $ns = $this->plexNamespace();
+
+        $spec = $this->getCommonsSpec();
+        if ($spec === null) {
+            // Previously a bare return, which is how the Commons store details
+            // vanished with no explanation when $plexContext was left unset and
+            // this read the wrong cluster. Name the cluster we actually checked.
+            $this->newLine();
+            $this->line('  <fg=gray>No Plex Commons found on the cluster this command is pointed at, so there are</>');
+            $this->line('  <fg=gray>no Postgres/S3/Valkey store details to show. Stalwart stays on embedded RocksDB.</>');
+            $this->line('  <fg=gray>  Expected one? Check you targeted the right environment, then</> <fg=blue>larakube plex:show</><fg=gray>.</>');
+            $this->newLine();
+
+            return;
+        }
+
+        $services = $this->enabledCommonsServices($spec);
+
+        $pgPassword = trim(Process::run(
+            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath='{.data.POSTGRES_PASSWORD}'",
+        )->output());
+        $pgPassword = $pgPassword !== '' ? base64_decode($pgPassword) : '(unknown)';
+
+        $s3Access = trim(Process::run(
+            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath='{.data.S3_ACCESS_KEY}'",
+        )->output());
+        $s3Access = $s3Access !== '' ? base64_decode($s3Access) : '(unknown)';
+
+        $s3Secret = trim(Process::run(
+            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath='{.data.S3_SECRET_KEY}'",
+        )->output());
+        $s3Secret = $s3Secret !== '' ? base64_decode($s3Secret) : '(unknown)';
+
+        $s3Backend = null;
+        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+            if (in_array($candidate, $services, true)) {
+                $s3Backend = $candidate;
+                break;
+            }
+        }
+
+        $hasRedis = in_array('redis', $services, true);
+        $hasPostgres = in_array('postgres', $services, true);
+
+        if (! $hasPostgres) {
+            // Postgres is the anchor: the main store, and the search store reuses
+            // it. Without it there is no store configuration worth printing —
+            // but say so instead of just showing nothing.
+            $this->newLine();
+            $this->line('  <fg=gray>The Plex Commons has no Postgres service, which Stalwart\'s main store needs,</>');
+            $this->line('  <fg=gray>so store configuration is skipped. Enable it with</> <fg=blue>larakube plex:init</><fg=gray>.</>');
+            $this->newLine();
+
+            return;
+        }
+
+        // Whether configureStalwartStore() already provisioned a dedicated
+        // 'stalwart' role and synced its password as STALWART_STORE_PASSWORD.
+        // This decides WHICH credential step 7 should tell the operator to use —
+        // the two paths are mutually exclusive, and an earlier version printed
+        // both, so mixing the `postgres` username with STALWART_STORE_PASSWORD
+        // (the 'stalwart' role's password) failed authentication.
+        $infisicalBootstrapped = trim(Process::run(
+            "{$kubectl} get secret infisical-bootstrap -n larakube-secrets --no-headers 2>/dev/null",
+        )->output()) !== '';
+
+        $this->newLine();
+        $this->line('  <fg=yellow>7. Configure stores</> — replace Stalwart\'s embedded RocksDB with');
+        $this->line('     your Plex Commons services. Open the install wizard at');
+        $this->line("     <fg=blue>https://{$host}/</> and configure each section:");
+        $this->newLine();
+        $this->line('     <fg=red>⚠ Switching the Data (main) store starts Stalwart from an EMPTY directory.</>');
+        $this->line('     <fg=gray>  Accounts, domains and DKIM keys live in that store and are NOT migrated —</>');
+        $this->line('     <fg=gray>  you will re-create them after switching. Do this before onboarding people.</>');
+        $this->newLine();
+
+        $this->line('     <fg=gray>Settings → Store → Data (main):</>');
+        $this->line("       Host:     <fg=blue>postgres.{$ns}.svc.cluster.local</>");
+        $this->line('       Port:     <fg=blue>5432</>');
+
+        if ($infisicalBootstrapped) {
+            // The dedicated role path — least privilege, and rotatable via
+            // `larakube plex:rotate`.
+            $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(already created for you)</>');
+            $this->line('       Username: <fg=blue>stalwart</>');
+            $this->line('       Password: choose <fg=green>"Secret read from environment variable"</>');
+            $this->line('                 and enter <fg=green>STALWART_STORE_PASSWORD</>');
+            $this->line('       <fg=gray>Do NOT use the postgres superuser here — it is a different password</>');
+            $this->line('       <fg=gray>and pairing it with STALWART_STORE_PASSWORD will fail to authenticate.</>');
+        } else {
+            // No Infisical: no dedicated role was provisioned, so the superuser
+            // is the only credential that exists.
+            $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(create it — see the psql command below)</>');
+            $this->line('       Username: <fg=blue>postgres</>');
+            $this->line("       Password: <fg=blue>{$pgPassword}</>");
+            $this->line('       <fg=gray>This is the Commons superuser. Run</> <fg=blue>larakube secrets:init</> <fg=gray>first to get a</>');
+            $this->line('       <fg=gray>dedicated, rotatable "stalwart" role backed by an env var instead.</>');
+        }
+
+        $this->newLine();
+
+        if ($s3Backend !== null) {
+            $s3Label = match ($s3Backend) {
+                'seaweedfs' => 'SeaweedFS',
+                'minio' => 'MinIO',
+                'garage' => 'Garage',
+            };
+            $s3Host = $s3Backend === 'seaweedfs' ? 'seaweedfs' : $s3Backend;
+            $this->line("     <fg=gray>Settings → Storage → Blob Store:</> — {$s3Label} is available.");
+            $this->line('       Store Type:  <fg=blue>S3-compatible</>');
+            $this->line('       Region:      <fg=blue>Custom</> <fg=gray>(select "Custom" in the dropdown to reveal the URL box)</>');
+            $this->line("       URL:         <fg=blue>http://{$s3Host}.{$ns}.svc.cluster.local:8333</>");
+            $this->line('       Region name: <fg=blue>us-east-1</>');
+            $this->line('       Bucket:   <fg=blue>stalwart</> <fg=gray>(already created for you)</>');
+            if ($infisicalBootstrapped) {
+                $this->line('       Key ID:   choose <fg=green>"Secret read from environment variable"</>');
+                $this->line('                 and enter <fg=green>STALWART_S3_KEY_ID</> <fg=gray>(or literal: '.$s3Access.')</>');
+                $this->line('       Secret:   choose <fg=green>"Secret read from environment variable"</>');
+                $this->line('                 and enter <fg=green>STALWART_S3_SECRET_KEY</> <fg=gray>(or literal: '.$s3Secret.')</>');
+            } else {
+                $this->line("       Key ID:   <fg=blue>{$s3Access}</>");
+                $this->line("       Secret:   <fg=blue>{$s3Secret}</>");
+            }
+            $this->newLine();
+        } else {
+            $this->line('     <fg=gray>Settings → Store → Blob (S3):</> none — RocksDB works for now.');
+            $this->line('       Enable SeaweedFS in Plex later: <fg=blue>plex:init</>');
+            $this->newLine();
+        }
+
+        if ($hasRedis) {
+            $this->line('     <fg=gray>Settings → Store → Cache (Valkey):</>');
+            $this->line("       Redis URL:  <fg=blue>redis://redis.{$ns}.svc.cluster.local:6379/0</>");
+            $this->newLine();
+        } else {
+            $this->line('     <fg=gray>Settings → Store → Cache (Valkey):</> none — RocksDB works for now.');
+            $this->line('       Enable Valkey in Plex later: <fg=blue>plex:init</>');
+            $this->newLine();
+        }
+
+        $this->line('     <fg=gray>Settings → Store → Search (PostgreSQL):</>');
+        $this->line('       (Uses the same Postgres as the main store for minimal cost.)');
+        $this->line("       Host:     <fg=blue>postgres.{$ns}.svc.cluster.local</>");
+        $this->line('       Port:     <fg=blue>5432</>');
+        $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(same as main store)</>');
+        if ($infisicalBootstrapped) {
+            $this->line('       Username: <fg=blue>stalwart</>');
+            $this->line('       Password: choose <fg=green>"Secret read from environment variable"</>');
+            $this->line('                 and enter <fg=green>STALWART_STORE_PASSWORD</>');
+        } else {
+            $this->line('       Username: <fg=blue>postgres</>');
+            $this->line("       Password: <fg=blue>{$pgPassword}</>");
+        }
+        $this->newLine();
+
+        if (! $infisicalBootstrapped) {
+            // Only needed on the superuser path — configureStalwartStore()
+            // already ran CREATE DATABASE when Infisical was available.
+            $this->line('     <fg=gray>Create the database before applying the wizard:</>');
+            $this->line("       <fg=blue>psql -h postgres.{$ns}.svc.cluster.local -U postgres -c \"CREATE DATABASE stalwart;\"</>");
+        }
+
+        $this->line('     <fg=gray>After configuring stores, apply the wizard and run:</>');
+        $this->line('       <fg=blue>larakube mail:restart</>');
+        $this->newLine();
+
+        // The env-var tip that used to live here is now part of the Data (main)
+        // credentials block above, so the username and the password advice can
+        // never disagree — printing them separately is what allowed the
+        // `postgres` + STALWART_STORE_PASSWORD mismatch.
+        if ($infisicalBootstrapped) {
+            $this->line('     <fg=gray>Rotate the store password later with</> <fg=blue>larakube plex:rotate {env} --only=db</><fg=gray>.</>');
+            $this->newLine();
+        }
     }
 }

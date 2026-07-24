@@ -8,6 +8,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\SyncsInfisicalSecrets;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -17,7 +18,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class PlexJoinCommand extends Command
 {
-    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, SyncsInfisicalSecrets;
 
     protected $signature = 'plex:join
         {environment=local : The environment to join to the Commons (local, or a cloud environment)}
@@ -226,6 +227,21 @@ class PlexJoinCommand extends Command
             's3_service' => $s3['service'] ?? null,
         ]);
         $this->saveRegistry($registry);
+
+        // Push secrets to Infisical if bootstrapped
+        $kubectl = $this->plexKubectl();
+        if ($this->isInfisicalBootstrapped($kubectl, $this->secretsNamespace())) {
+            $targetNs = $config->getNamespace($env);
+            if ($dbService !== null) {
+                $this->pushInfisicalSecret($kubectl, 'DB_PASSWORD', $password, $env);
+            }
+            if ($s3 !== null && isset($s3['service'])) {
+                $s3Prefix = strtoupper((string) $s3['service']);
+                $this->pushInfisicalSecret($kubectl, "{$s3Prefix}_KEY_ID", $s3['access'], $env);
+                $this->pushInfisicalSecret($kubectl, "{$s3Prefix}_SECRET_KEY", $s3['secret'], $env);
+            }
+            $this->syncInfisicalToNamespace($kubectl, $targetNs, $config->getName().'-infisical', $env);
+        }
 
         // 7. Write tenant config (.env + managed).
         $this->writeTenantConfig($projectPath, $config, $env, $tenant, $password, $redisIndex, $services, $s3);

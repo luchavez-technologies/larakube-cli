@@ -1,7 +1,15 @@
 <?php
 
 use App\Enums\SharedClusterService;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\View;
+
+// SharedClusterService::templatePayload() for FLOW shells out to a live
+// `kubectl get deployment flow-windmill` to detect the installed engine. Fake
+// Process so these tests never touch the real cluster — otherwise, when the
+// current kube-context points at a remote cluster, the call blocks and the run
+// appears to hang on the *previous* test file (alphabetically ServicesManifestTest).
+beforeEach(fn () => Process::fake());
 
 test('every shared service maps to an existing blade template', function () {
     foreach (SharedClusterService::cases() as $service) {
@@ -30,12 +38,14 @@ test('every shared service renders its manifest with the resolved host', functio
                 'plexNamespace' => 'larakube-system',
             ]);
         }
-        if (in_array($service, [SharedClusterService::FLOW, SharedClusterService::SHEET, SharedClusterService::INSIGHTS])) {
+        if (in_array($service, [SharedClusterService::FLOW, SharedClusterService::SHEET, SharedClusterService::INSIGHTS, SharedClusterService::DRIVE])) {
             $params = array_merge($params, [
                 'noPlex' => true,
                 'plexNamespace' => 'larakube-system',
                 'vpnOnly' => false,
                 'dbPassword' => 'secret',
+                'redisIndex' => 1,
+                's3Creds' => null,
             ]);
         }
 
@@ -65,7 +75,7 @@ test('hostFor combines the host prefix with the given cluster domain', function 
         ->and(SharedClusterService::TRAEFIK_DASHBOARD->hostFor('localhost'))->toBe('traefik.localhost');
 });
 
-test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, Infisical, Gitea, Flow, Sheet, Insights, Mail, and Desk target non-local environments; the rest are local-only', function () {
+test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, Infisical, Gitea, Flow, Sheet, Insights, Mail, Desk, Chat, SSO, Webmail, Notes, Drive, and Startup OS tools target non-local environments; the rest are local-only', function () {
     foreach (SharedClusterService::cases() as $service) {
         $localOnly = ! in_array($service, [
             SharedClusterService::GRAFANA,
@@ -80,6 +90,17 @@ test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, Infisical,
             SharedClusterService::INSIGHTS,
             SharedClusterService::MAIL,
             SharedClusterService::DESK,
+            SharedClusterService::CHAT,
+            SharedClusterService::SSO,
+            SharedClusterService::WEBMAIL,
+            SharedClusterService::NOTES,
+            SharedClusterService::DRIVE,
+            SharedClusterService::ANALYTICS,
+            SharedClusterService::TASKS,
+            SharedClusterService::SIGN,
+            SharedClusterService::SUPPORT,
+            SharedClusterService::LINK,
+            SharedClusterService::CRM,
         ]);
 
         expect($service->isLocalOnly())->toBe($localOnly)

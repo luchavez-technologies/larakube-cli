@@ -7,13 +7,13 @@ type: Opaque
 data:
   encryption-key: {{ base64_encode($encryptionKey) }}
   auth-secret: {{ base64_encode($authSecret) }}
-  @if ($noPlex)
+@if ($noPlex)
   db-connection-uri: {{ base64_encode("postgres://infisical:{$dbPassword}@infisical-db:5432/infisical") }}
   redis-url: {{ base64_encode("redis://infisical-cache:6379/0") }}
-  @else
+@else
   db-connection-uri: {{ base64_encode("postgres://infisical:{$dbPassword}@postgres.{$plexNamespace}.svc.cluster.local:5432/infisical") }}
   redis-url: {{ base64_encode("redis://redis.{$plexNamespace}.svc.cluster.local:6379/14") }}
-  @endif
+@endif
 ---
 @if ($noPlex)
 apiVersion: v1
@@ -181,3 +181,7 @@ spec:
   type: ClusterIP
 ---
 @include('k8s.secrets.ingress')
+---
+@include('k8s.secrets.crds')
+---
+@include('k8s.secrets.operator')
