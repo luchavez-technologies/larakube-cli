@@ -28,7 +28,7 @@ spec:
             - name: MEILI_ENV
               value: "production"
             - name: MEILI_DB_PATH
-              value: "/meili_data"
+              value: "/meili_data/data.ms"
           readinessProbe:
             httpGet:
               path: /health
