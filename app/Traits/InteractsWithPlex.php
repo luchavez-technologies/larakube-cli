@@ -272,7 +272,7 @@ trait InteractsWithPlex
      * @param  array<int, string>  $services
      * @return array<string, int|string>
      */
-    public function commonsEnvValues(string $tenant, string $password, ?int $redisIndex, array $services, ?array $s3 = null): array
+    public function commonsEnvValues(string $tenant, string $password, ?int $redisIndex, array $services, ?array $s3 = null, ?array $search = null): array
     {
         $ns = $this->plexNamespace();
         $values = [];
@@ -324,6 +324,19 @@ trait InteractsWithPlex
                 $values['AWS_URL'] = 'https://'.$s3['host'].'/'.$bucket;
                 $values['AWS_TEMPORARY_URL'] = 'https://'.$s3['host'].'/'.$bucket;
             }
+        }
+
+        // Search. Wired explicitly rather than generically like S3 above: each
+        // Scout engine has its own env contract (MEILISEARCH_* vs TYPESENSE_*),
+        // and Meilisearch is the only Commons-provisionable one today
+        // (ScoutDriver::isPlexReady). Without this the overlay deletes the
+        // self-hosted Deployment while MEILISEARCH_HOST still points at it.
+        // The caller passes the shared Commons master key in $search — tenants
+        // share it (isolation is by index name), and reading it is I/O, which
+        // stays out of this method.
+        if ($search !== null && in_array($search['service'], $services, true)) {
+            $values['MEILISEARCH_HOST'] = 'http://'.$search['service'].'.'.$ns.'.svc.cluster.local:'.$search['port'];
+            $values['MEILISEARCH_KEY'] = $search['key'];
         }
 
         return $values;
@@ -649,6 +662,22 @@ trait InteractsWithPlex
         }
 
         return ['access' => (string) base64_decode($access), 'secret' => (string) base64_decode($secret)];
+    }
+
+    /**
+     * The Commons Meilisearch master key from the plex-admin Secret. Every tenant
+     * shares it — isolation is by index name, so there's no per-tenant key to
+     * allocate the way a database gets its own login.
+     */
+    protected function readCommonsMeiliKey(): ?string
+    {
+        $ns = $this->plexNamespace();
+
+        $value = trim(Process::run(
+            $this->plexKubectl().' get secret plex-admin -n '.$ns.' -o jsonpath='.escapeshellarg('{.data.MEILI_MASTER_KEY}'),
+        )->output());
+
+        return $value === '' ? null : (string) base64_decode($value);
     }
 
     /**

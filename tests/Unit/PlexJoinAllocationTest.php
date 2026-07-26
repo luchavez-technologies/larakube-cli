@@ -95,6 +95,23 @@ test('commonsEnvValues wires S3 generically from the tenant backend + per-tenant
         ->and($p->commonsEnvValues('app_four', 'pw', null, ['seaweedfs'], null))->not->toHaveKey('AWS_BUCKET');
 });
 
+test('commonsEnvValues repoints MEILISEARCH_* at the Commons when search joins', function () {
+    $p = plexJoin();
+
+    // Joining Meilisearch must move BOTH the host and the key off the tenant's
+    // own pod — the overlay deletes that Deployment, so a stale host is a
+    // guaranteed connection failure once the app redeploys.
+    $search = ['service' => 'meilisearch', 'port' => 7700, 'key' => 'commons-master-key'];
+    $joined = $p->commonsEnvValues('app_five', 'pw', null, ['meilisearch'], null, $search);
+
+    expect($joined['MEILISEARCH_HOST'])->toBe('http://meilisearch.larakube-plex.svc.cluster.local:7700')
+        ->and($joined['MEILISEARCH_KEY'])->toBe('commons-master-key');
+
+    // Kept self-hosted (not in $services, or no key resolved) → leave its env alone.
+    expect($p->commonsEnvValues('app_five', 'pw', null, ['postgres'], null, $search))->not->toHaveKey('MEILISEARCH_HOST')
+        ->and($p->commonsEnvValues('app_five', 'pw', null, ['meilisearch'], null, null))->not->toHaveKey('MEILISEARCH_HOST');
+});
+
 test('postgres tenant SQL is idempotent and escapes the password', function () {
     $p = plexJoin();
 

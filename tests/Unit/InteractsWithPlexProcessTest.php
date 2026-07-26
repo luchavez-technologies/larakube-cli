@@ -35,6 +35,11 @@ function plexProcessHelper(): object
         {
             return $this->readCommonsS3Credentials();
         }
+
+        public function meiliKey(): ?string
+        {
+            return $this->readCommonsMeiliKey();
+        }
     };
 }
 
@@ -92,4 +97,14 @@ test('readCommonsS3Credentials is null when either key is missing', function () 
     ]);
 
     expect(plexProcessHelper()->s3Credentials())->toBeNull();
+});
+
+test('readCommonsMeiliKey decodes the shared master key, or is null when absent', function () {
+    $kubectl = plexProcessKubectl();
+
+    Process::fake(["{$kubectl} get secret plex-admin -n larakube-plex -o jsonpath='{.data.MEILI_MASTER_KEY}'" => base64_encode('master-key')]);
+    expect(plexProcessHelper()->meiliKey())->toBe('master-key');
+
+    Process::fake(["{$kubectl} get secret plex-admin -n larakube-plex -o jsonpath='{.data.MEILI_MASTER_KEY}'" => Process::result(output: '', exitCode: 1)]);
+    expect(plexProcessHelper()->meiliKey())->toBeNull();
 });

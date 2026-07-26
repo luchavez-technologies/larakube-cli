@@ -218,6 +218,24 @@ class PlexJoinCommand extends Command
             }
         }
 
+        // Search: nothing to allocate (Meilisearch isolates by index name, not by
+        // per-tenant credentials) — we only need the shared Commons master key so
+        // the tenant's MEILISEARCH_* can be repointed off its own deleted pod.
+        $search = null;
+        $scout = $config->getScoutDriver();
+        $scoutService = $scout?->commonsServiceName();
+        if ($scout !== null && $scoutService !== null && in_array($scoutService, $services, true)) {
+            $meiliKey = $this->readCommonsMeiliKey();
+
+            if ($meiliKey === null) {
+                $this->laraKubeError('Commons Meilisearch master key (plex-admin) not found. Re-run `larakube plex:init`.');
+
+                return 1;
+            }
+
+            $search = ['service' => $scoutService, 'port' => $scout->port(), 'key' => $meiliKey];
+        }
+
         // 6. Record the allocation (db + redis index + s3 bucket/backend; never secrets).
         $registry = $this->registryAdd($registry, $tenant, [
             'db' => $dbService !== null ? $tenant : null,
@@ -244,7 +262,7 @@ class PlexJoinCommand extends Command
         }
 
         // 7. Write tenant config (.env + managed).
-        $this->writeTenantConfig($projectPath, $config, $env, $tenant, $password, $redisIndex, $services, $s3);
+        $this->writeTenantConfig($projectPath, $config, $env, $tenant, $password, $redisIndex, $services, $s3, $search);
 
         // 8. Regenerate manifests so this env's overlay DROPS the now-managed
         //    services (heal writes their delete-patches) instead of shipping
@@ -345,9 +363,9 @@ class PlexJoinCommand extends Command
      * the services to environments.{env}.managed so the app stops deploying its
      * own pods.
      */
-    protected function writeTenantConfig(string $projectPath, ConfigData $config, string $env, string $tenant, string $password, ?int $redisIndex, array $services, ?array $s3 = null): void
+    protected function writeTenantConfig(string $projectPath, ConfigData $config, string $env, string $tenant, string $password, ?int $redisIndex, array $services, ?array $s3 = null, ?array $search = null): void
     {
-        $values = $this->commonsEnvValues($tenant, $password, $redisIndex, $services, $s3);
+        $values = $this->commonsEnvValues($tenant, $password, $redisIndex, $services, $s3, $search);
         // Local reads .env (what the hostPath-mounted pod loads); cloud envs use
         // .env.{env}. The old production special-case was a no-op and missed local.
         $envFile = $env === 'local' ? '.env' : ".env.{$env}";
