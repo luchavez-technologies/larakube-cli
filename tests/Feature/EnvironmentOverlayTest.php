@@ -67,6 +67,154 @@ test('an all-environment feature (Reverb) reaches a custom env', function () {
         ->and($manifests['overlays/staging/kustomization.yaml']['resources'])->toContain('../../base');
 });
 
+test('a cloud env with a reverb host gets a public websocket Ingress', function () {
+    // The browser talks to Reverb directly (VITE_REVERB_HOST), so a cloud env
+    // needs its own Ingress — the ClusterIP is unreachable from outside and the
+    // configured reverb host would otherwise resolve to nothing.
+    $config = ConfigData::from([
+        'name' => 'wsapp',
+        'serverVariation' => 'fpm-nginx',
+        'phpVersion' => '8.5',
+        'database' => 'sqlite',
+        'features' => ['reverb'],
+        'environments' => [
+            'local' => [],
+            'staging' => ['hosts' => ['web' => 'stg.wsapp.com', 'reverb' => 'ws.wsapp.com']],
+        ],
+    ]);
+
+    $manifests = generateManifestsAsArray($config);
+
+    expect($manifests)->toHaveKey('overlays/staging/reverb-ingress.yaml');
+    $ingress = $manifests['overlays/staging/reverb-ingress.yaml'];
+
+    expect($ingress['metadata']['name'])->toBe('reverb')
+        // Standalone resource, so it inherits no annotations from base — it has
+        // to pin the TLS entrypoint itself or Traefik also binds it to :80.
+        ->and($ingress['metadata']['annotations'])
+        ->toHaveKey('traefik.ingress.kubernetes.io/router.entrypoints', 'websecure')
+        ->and($ingress['spec']['rules'][0]['host'])->toBe('ws.wsapp.com')
+        // Port 8080 is the Service port; the container listens on 8081.
+        ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service'])
+        ->toBe(['name' => 'reverb', 'port' => ['number' => 8080]])
+        // Its own certificate — reverb is a different hostname from web, so it
+        // must not share (and churn) the web route's TLS secret.
+        ->and($ingress['spec']['tls'][0]['secretName'])->toBe('wsapp-reverb-tls')
+        ->and($ingress['spec']['tls'][0]['hosts'])->toBe(['ws.wsapp.com']);
+
+    // Registered as a resource (a new object), not a patch over base.
+    expect($manifests['overlays/staging/kustomization.yaml']['resources'])
+        ->toContain('reverb-ingress.yaml');
+});
+
+test('the cloud reverb Ingress follows that env-s ingress controller', function () {
+    $config = ConfigData::from([
+        'name' => 'wsapp',
+        'serverVariation' => 'fpm-nginx',
+        'phpVersion' => '8.5',
+        'database' => 'sqlite',
+        'features' => ['reverb'],
+        'environments' => [
+            'local' => [],
+            'staging' => [
+                'ingress' => 'nginx',
+                'hosts' => ['web' => 'stg.wsapp.com', 'reverb' => 'ws.wsapp.com'],
+            ],
+        ],
+    ]);
+
+    $ingress = generateManifestsAsArray($config)['overlays/staging/reverb-ingress.yaml'];
+
+    expect($ingress['spec']['ingressClassName'])->toBe('nginx');
+});
+
+test('no reverb Ingress without the feature or without a configured host', function () {
+    // An Ingress rule with an empty host matches EVERY request, so a missing
+    // reverb host must skip the file rather than render a catch-all.
+    $noHost = generateManifestsAsArray(ConfigData::from([
+        'name' => 'wsapp',
+        'serverVariation' => 'fpm-nginx',
+        'phpVersion' => '8.5',
+        'database' => 'sqlite',
+        'features' => ['reverb'],
+        'environments' => ['local' => [], 'staging' => ['hosts' => ['web' => 'stg.wsapp.com']]],
+    ]));
+
+    expect($noHost)->not->toHaveKey('overlays/staging/reverb-ingress.yaml')
+        ->and($noHost['overlays/staging/kustomization.yaml']['resources'])
+        ->not->toContain('reverb-ingress.yaml');
+
+    $noReverb = generateManifestsAsArray(ConfigData::from([
+        'name' => 'wsapp',
+        'serverVariation' => 'fpm-nginx',
+        'phpVersion' => '8.5',
+        'database' => 'sqlite',
+        'features' => [],
+        'environments' => ['local' => [], 'staging' => ['hosts' => ['web' => 'stg.wsapp.com', 'reverb' => 'ws.wsapp.com']]],
+    ]));
+
+    expect($noReverb)->not->toHaveKey('overlays/staging/reverb-ingress.yaml');
+});
+
+test('server-side REVERB_* stays on the in-cluster port and scheme in every env', function () {
+    // REVERB_HOST is the cluster FQDN everywhere and the Service is plain HTTP
+    // on 8080. 443/https there made Laravel dial a TLS port that does not exist
+    // in-cluster; TLS belongs to the browser hop (VITE_REVERB_*).
+    $config = ConfigData::from([
+        'name' => 'wsapp',
+        'serverVariation' => 'fpm-nginx',
+        'phpVersion' => '8.5',
+        'database' => 'sqlite',
+        'features' => ['reverb'],
+        'environments' => [
+            'local' => [],
+            'staging' => ['hosts' => ['web' => 'stg.wsapp.com', 'reverb' => 'ws.wsapp.com']],
+        ],
+    ]);
+
+    foreach (['local', 'staging'] as $env) {
+        $vars = LaravelFeature::REVERB->getPublicEnvironmentVariables($config, $env);
+
+        expect($vars['REVERB_HOST'])->toBe("reverb.wsapp-{$env}.svc.cluster.local")
+            ->and($vars['REVERB_PORT'])->toBe('8080')
+            ->and($vars['REVERB_SCHEME'])->toBe('http');
+    }
+});
+
+test('browser-facing VITE_REVERB_HOST is written for cloud envs, not just local', function () {
+    // Cloud used to emit no VITE_REVERB_* at all, on the assumption that the
+    // deploy paths append them as build args. They do — and a later duplicate
+    // key does win — but it left .env.{env} advertising a *.test host for a
+    // cloud environment, which the local-URL guard then flagged on every
+    // cloud:configure run.
+    $config = ConfigData::from([
+        'name' => 'wsapp',
+        'serverVariation' => 'fpm-nginx',
+        'phpVersion' => '8.5',
+        'database' => 'sqlite',
+        'features' => ['reverb'],
+        'environments' => [
+            'local' => [],
+            'staging' => ['hosts' => ['web' => 'stg.wsapp.com', 'reverb' => 'ws.wsapp.com']],
+        ],
+    ]);
+
+    $staging = LaravelFeature::REVERB->getPublicEnvironmentVariables($config, 'staging');
+    expect($staging['VITE_REVERB_HOST'])->toBe('ws.wsapp.com')
+        ->and($staging['VITE_REVERB_PORT'])->toBe('443')
+        ->and($staging['VITE_REVERB_SCHEME'])->toBe('https');
+
+    // And it survives the aggregation heal actually calls — this is what gets
+    // written into .env.staging, so assert the path that matters, not just the
+    // component's own contribution.
+    expect($config->getAllEnvironmentVariables('staging'))
+        ->toHaveKey('VITE_REVERB_HOST', 'ws.wsapp.com');
+
+    // Local still resolves to its own ingress host.
+    $local = LaravelFeature::REVERB->getPublicEnvironmentVariables($config, 'local');
+    expect($local['VITE_REVERB_HOST'])->toBe('reverb.wsapp.'.$config->getLocalTld());
+});
+
 test('SSR applies to every cloud env, not only production', function () {
     expect(LaravelFeature::SSR->appliesToEnvironment('staging'))->toBeTrue()
         ->and(LaravelFeature::SSR->appliesToEnvironment('production'))->toBeTrue()

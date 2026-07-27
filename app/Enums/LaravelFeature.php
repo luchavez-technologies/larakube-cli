@@ -134,23 +134,38 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
                 'REVERB_APP_ID' => 'larakube',
                 'REVERB_APP_KEY' => 'larakubekey',
                 'REVERB_HOST' => $config ? $config->getInternalFqdn($this, $environment) : 'reverb',
-                // Local cluster uses plain HTTP on the internal Reverb port;
-                // any cloud env (production/staging/qa/etc.) terminates TLS
-                // at the ingress, so the client connects via WSS on 443.
-                'REVERB_PORT' => $environment === 'local' ? '8080' : '443',
-                'REVERB_SCHEME' => $environment === 'local' ? 'http' : 'https',
-            ], $environment === 'local' ? [
+                // These three describe the SERVER-side hop only: Laravel
+                // publishing events to Reverb (config/broadcasting.php feeds
+                // them to the client as host/port/scheme + useTLS). REVERB_HOST
+                // above is the in-cluster FQDN in EVERY environment, and the
+                // Service listens on plain HTTP :8080 — so the port and scheme
+                // must match that, cloud included. TLS at 443 belongs to the
+                // BROWSER hop, which is configured by VITE_REVERB_* instead;
+                // pairing an internal host with 443/https made Laravel dial
+                // https://reverb.<ns>.svc.cluster.local:443, where nothing
+                // listens and no certificate exists.
+                'REVERB_PORT' => '8080',
+                'REVERB_SCHEME' => 'http',
+            ], [
                 // Browser → Reverb. The server-side REVERB_* above point Laravel
                 // at the in-cluster ClusterIP; the browser can't reach that, so
                 // Echo (import.meta.env.VITE_REVERB_*, read by @laravel/echo-*)
-                // connects through the reverb ingress over WSS on 443 instead.
-                // Cloud envs bake these as Vite build args at deploy time (see
-                // InteractsWithRemoteDeploy), so they're only emitted for local.
+                // connects through the reverb ingress over WSS on 443 instead —
+                // same shape in every env, since local and cloud both terminate
+                // TLS at their ingress.
+                //
+                // Emitted for cloud too, not just local. The deploy paths append
+                // these as Vite build args (InteractsWithRemoteDeploy), and a
+                // duplicate key later in the file does win — but relying on that
+                // left .env.{env} carrying a *.test host for a cloud env, which
+                // tripped cloud:configure's own local-URL warning and would be
+                // the value used by any build that skips those paths. The env
+                // file should state the truth on its own.
                 'VITE_REVERB_APP_KEY' => 'larakubekey',
                 'VITE_REVERB_HOST' => $config ? $config->getServiceHost('reverb', $environment) : 'reverb',
                 'VITE_REVERB_PORT' => '443',
                 'VITE_REVERB_SCHEME' => 'https',
-            ] : []),
+            ]),
             self::QUEUES => [
                 'QUEUE_CONNECTION' => 'database',
             ],

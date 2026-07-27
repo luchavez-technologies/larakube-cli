@@ -385,6 +385,25 @@ trait GeneratesProjectInfrastructure
             }
         }
 
+        // Public websocket route. Echo connects the BROWSER straight to Reverb
+        // (VITE_REVERB_HOST), so the ClusterIP alone leaves the configured
+        // reverb host resolving to nothing. Local gets its ingress from
+        // LaravelFeature's `local` bucket; cloud is per-env because the host is
+        // per-env — and is skipped when the env has no reverb host configured,
+        // since an Ingress with an empty host would swallow all traffic.
+        foreach ($cloudEnvs as $env) {
+            if (! $config->hasFeature(LaravelFeature::REVERB, $env)) {
+                continue;
+            }
+
+            if (! $config->getHost($env, 'reverb')) {
+                continue;
+            }
+
+            $renderStub("overlays/$env/reverb-ingress.yaml", $env, $config->getNamespace($env), 'k8s.overlays.production.reverb-ingress');
+            $this->appendToKustomization($k8sPath, "overlays/$env", 'reverb-ingress.yaml');
+        }
+
         // App storage PVCs live in each environment's overlay (not base), so
         // their accessMode can follow that env's deployment strategy
         // (ReadWriteOnce for single-node, ReadWriteMany for multi-node-HA).
