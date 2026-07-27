@@ -6,19 +6,40 @@ use App\Contracts\HasPromptableHosts;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
 
 /**
  * The "no local/placeholder hosts allowed" guard, shared by every place that's
  * about to ship an environment's config somewhere remote: `cloud:configure`
- * (base/gha/gitlab) and `cloud:deploy`. Re-prompts only for hosts that are
- * missing, still the `{name}.com` placeholder, or a local TLD/`.dev.test`
- * value; leaves real values untouched. Previously reimplemented three-ish
+ * (base/gha/gitlab) and `cloud:deploy`. Previously reimplemented three-ish
  * times with drifting checks (one caller was missing the local-TLD check
  * entirely) — this is the single source of truth now.
+ *
+ * Every host is surfaced, never silently accepted. One that's missing,
+ * still the `{name}.com` placeholder, or on a local TLD/`.dev.test` is
+ * re-prompted outright; one that already looks real gets a keep-or-change
+ * confirmation. A host decides an ingress rule and the certificate issued
+ * for it, so a wrong one doesn't surface until requests fail in the browser
+ * — cheap to eyeball here, expensive to chase later. Under --no-interaction
+ * the confirmations default to keeping what's configured, so unattended runs
+ * behave exactly as they did before.
  */
 trait EnsuresRealHosts
 {
+    /**
+     * Environments already resolved during THIS command run, env => web host.
+     *
+     * `cloud:configure` runs its base step and its CI step back to back and each
+     * calls this guard, so without memoisation one invocation asks the same
+     * "keep this host?" questions twice. The base step persists its answers via
+     * saveProjectConfig() before the CI step re-reads the blueprint, so the
+     * second pass has nothing new to learn — reuse the first pass's answer.
+     *
+     * @var array<string, string>
+     */
+    private array $ensuredHosts = [];
+
     /**
      * Ensure this env has a real host for the web service, plus anything a
      * HasPromptableHosts component declares (Reverb WS, S3/CDN public
@@ -32,10 +53,25 @@ trait EnsuresRealHosts
      */
     protected function ensureHosts(ConfigData $config, string $environment): string
     {
+        if (isset($this->ensuredHosts[$environment])) {
+            return $this->ensuredHosts[$environment];
+        }
+
         $currentHost = $config->getHost($environment, 'web');
         $placeholder = "{$config->getName()}.com";
 
-        if (! $currentHost || $currentHost === $placeholder || $this->isLocalDomain((string) $currentHost)) {
+        $needsWebHost = ! $currentHost || $currentHost === $placeholder || $this->isLocalDomain((string) $currentHost);
+
+        // Already real: confirm rather than assume. Answering "no" falls into
+        // the same prompt below, pre-filled with the current value.
+        if (! $needsWebHost) {
+            $needsWebHost = ! confirm(
+                label: "Keep the web host '{$currentHost}' for '{$environment}'?",
+                default: true,
+            );
+        }
+
+        if ($needsWebHost) {
             $this->newLine();
             $this->info(' 🌐 ARCHITECTURAL ALIGNMENT');
             $this->line("   Remote deployments require a real web domain for '{$environment}'.");
@@ -61,22 +97,33 @@ trait EnsuresRealHosts
             }
             foreach ($component->getPromptableHostServices() as $service => $label) {
                 $current = (string) $config->getHost($environment, $service);
-                if ($current !== '' && ! $this->isLocalDomain($current)) {
+                $hasRealHost = $current !== '' && ! $this->isLocalDomain($current);
+
+                if ($hasRealHost && confirm(
+                    label: "Keep the {$label} host '{$current}' for '{$environment}'?",
+                    default: true,
+                )) {
                     continue;
                 }
+
+                // Blank means "derive from the web host" — but only when there
+                // was nothing real to begin with. Replacing a configured host
+                // demands an actual value, otherwise answering "no" and then
+                // pressing enter would silently leave the old one in place.
                 $serviceHost = text(
                     label: "Real {$label} host for '{$environment}'?",
-                    placeholder: 'leave blank to derive from web host',
+                    placeholder: $hasRealHost ? $current : 'leave blank to derive from web host',
                     default: $current,
-                    required: false,
+                    required: $hasRealHost,
                 );
+
                 if ($serviceHost !== '') {
                     $config->setHost($environment, $service, $serviceHost);
                 }
             }
         }
 
-        return (string) $currentHost;
+        return $this->ensuredHosts[$environment] = (string) $currentHost;
     }
 
     protected function isLocalDomain(string $host): bool
