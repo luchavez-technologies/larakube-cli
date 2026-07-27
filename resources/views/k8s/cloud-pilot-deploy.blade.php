@@ -25,8 +25,10 @@ jobs:
     steps:
       - name: 🛰 Checkout repository
         uses: actions/checkout@v6
-@if(! $audit['skip'])
+@if($audit['gitleaks'])
         with:
+          # Full history: Gitleaks scans commits, not just the working tree, so
+          # a shallow clone would quietly narrow the secret gate to one commit.
           fetch-depth: 0
 @endif
 
@@ -58,10 +60,16 @@ jobs:
 @if(! $audit['skip'])
 
       # ── Phase 1: Security Audit (gates the build) ──────────────────────
+@if($audit['gitleaks'])
+      # Runs the Gitleaks binary rather than gitleaks/gitleaks-action, which
+      # requires a paid licence on organisation-owned repos and hard-fails
+      # without one. The scanner itself is MIT-licensed — only the Action
+      # wrapper is gated — so this is the same check with no licence key.
       - name: 🔑 Gitleaks (secret gate)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: {!! $gha['token'] !!}
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/repo" ghcr.io/gitleaks/gitleaks:latest \
+            detect --source=/repo --redact --no-banner --exit-code=1
+@endif
 
       - name: 🐘 Setup PHP
         uses: shivammathur/setup-php@v2
@@ -89,15 +97,21 @@ jobs:
       - name: 🛠 Install Node dependencies
         run: {!! $config->getPackageManager()->installCommand() !!}
 
+@if($audit['dependencyAudit'])
+
       - name: 🧪 Dependency audit (Composer & NPM)
         run: |
           composer audit
           npm audit --audit-level={{ $audit['auditLevel'] }}
+@endif
+@if($audit['semgrep'])
 
       - name: 🛡 Semgrep (SAST, ERROR-only gate)
         run: |
           pip install semgrep
           semgrep scan --config=auto --severity=ERROR --error
+@endif
+@if($audit['trivy'])
 
       - name: 🗂 Cache Trivy DB
         uses: actions/cache@v4
@@ -113,6 +127,7 @@ jobs:
           format: 'table'
           exit-code: '0'
           ignore-unfixed: true
+@endif
 @if($audit['withTests'])
 
       - name: 🛡 Create .env file
@@ -167,6 +182,10 @@ jobs:
           password: {!! $gha['registry_password'] !!}
 @endif
 
+@if($audit['trivy'])
+      # Built locally first so the artifact can be scanned before it is
+      # published — the load/scan/push split exists purely for that gate, so it
+      # collapses to a single push below when the image scan is off.
       - name: 🐳 Build application image (load, do not push)
         uses: docker/build-push-action@v7
         with:
@@ -204,6 +223,21 @@ jobs:
             dotenv=.env
           cache-from: type=gha
           cache-to: type=gha,mode=max
+@else
+
+      - name: 🐳 Build and push application image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.php
+          push: true
+          tags: {!! $gha['image_latest'] !!},{!! $gha['image_sha'] !!}
+          target: deploy
+          secret-files: |
+            dotenv=.env
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+@endif
 @else
 
       - name: 🔐 Log in to Container Registry

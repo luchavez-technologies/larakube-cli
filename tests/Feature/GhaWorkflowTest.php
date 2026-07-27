@@ -19,13 +19,28 @@ function ghaViewData(array $overrides = []): array
     $auditOverrides = array_key_exists('audit', $overrides) ? $overrides['audit'] : [];
     unset($overrides['vpnHost'], $overrides['audit']);
 
+    // Mirrors the per-gate booleans ConfiguresCloudEnvironment passes in, which
+    // already have the master `skip` folded into each of them.
     $audit = array_merge([
         'skip' => false,
         'strict' => false,
+        'gitleaks' => true,
+        'semgrep' => true,
+        'dependencyAudit' => true,
+        'trivy' => true,
         'withTests' => false,
         'failOn' => 'CRITICAL',
         'auditLevel' => 'critical',
     ], $auditOverrides);
+
+    // `skip` is the master switch — ConfiguresCloudEnvironment folds it into
+    // every per-gate boolean before handing them to the view, so a test that
+    // sets only `skip` must see the same thing the command would produce.
+    if ($audit['skip']) {
+        foreach (['gitleaks', 'semgrep', 'dependencyAudit', 'trivy', 'withTests'] as $gate) {
+            $audit[$gate] = false;
+        }
+    }
 
     $secrets = array_merge([
         'k_env' => '${{ secrets.'.$upperEnv.'_KUBECONFIG }}',
@@ -104,9 +119,15 @@ test('GHA workflow generation uses correct literal injection syntax', function (
 test('GHA workflow with default audit config emits security gates and split build', function () {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
 
-    // Phase 1 — Audit gates are present
+    // Phase 1 — Audit gates are present. Gitleaks runs as the MIT-licensed
+    // binary, not gitleaks/gitleaks-action, which demands a paid licence on
+    // organisation-owned repos and fails the build without one.
     expect($workflowContent)
-        ->toContain('gitleaks/gitleaks-action@v2')
+        ->toContain('ghcr.io/gitleaks/gitleaks')
+        ->toContain('detect --source=/repo')
+        // The name still appears in an explanatory comment, so pin the thing
+        // that actually matters: it is never invoked as an action.
+        ->not->toContain('uses: gitleaks/gitleaks-action')
         ->toContain('composer audit')
         ->toContain('npm audit --audit-level=critical')
         ->toContain('semgrep scan --config=auto --severity=ERROR --error')
@@ -154,6 +175,67 @@ test('GHA workflow with --skip-audit produces the lean pipeline without gates', 
     expect($workflowContent)
         ->toContain('Build & Push')
         ->not->toContain('Audit, Build & Push');
+});
+
+test('a single gate can be dropped without losing the rest of the audit', function () {
+    // The point of the per-gate switches: Gitleaks' Action needs a paid licence
+    // on org repos, and before this the only escape was --skip-audit, which
+    // also threw away dependency auditing, SAST, Trivy and the tests.
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData([
+        'audit' => ['gitleaks' => false],
+    ]))->render();
+
+    expect($workflowContent)
+        ->not->toContain('gitleaks')
+        // fetch-depth: 0 exists only so Gitleaks can scan history — it goes too.
+        ->not->toContain('fetch-depth');
+
+    // Everything else survives.
+    expect($workflowContent)
+        ->toContain('composer audit')
+        ->toContain('semgrep scan')
+        ->toContain('Trivy image scan')
+        ->toContain('Audit, Build & Push');
+});
+
+test('each remaining gate can be dropped on its own', function () {
+    $render = fn (string $gate) => view('k8s.cloud-pilot-deploy', ghaViewData([
+        'audit' => [$gate => false],
+    ]))->render();
+
+    expect($render('semgrep'))
+        ->not->toContain('semgrep scan')
+        ->toContain('composer audit')
+        ->toContain('Trivy image scan');
+
+    expect($render('dependencyAudit'))
+        ->not->toContain('composer audit')
+        ->not->toContain('npm audit')
+        ->toContain('semgrep scan');
+
+    expect($render('trivy'))
+        ->not->toContain('Trivy')
+        ->toContain('semgrep scan')
+        ->toContain('composer audit');
+});
+
+test('dropping Trivy collapses the split build instead of building twice', function () {
+    // The load/scan/push split exists only to scan the artifact before
+    // publishing it. With no image scan the middle step is dead weight, so it
+    // must collapse to one build-and-push rather than building the image twice.
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData([
+        'audit' => ['trivy' => false],
+    ]))->render();
+
+    expect($workflowContent)
+        ->toContain('Build and push application image')
+        ->not->toContain('load, do not push')
+        ->not->toContain('load: true')
+        ->not->toContain('push: false')
+        ->not->toContain('Push verified image');
+
+    // Still one push of both tags.
+    expect(substr_count($workflowContent, 'push: true'))->toBe(1);
 });
 
 test('GHA workflow with --strict uses CRITICAL,HIGH severity', function () {

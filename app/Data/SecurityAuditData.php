@@ -33,7 +33,52 @@ class SecurityAuditData extends Data
          * test runner; a PR-triggered CI workflow is the better home.
          */
         public bool $withTests = false,
+        /**
+         * Per-gate switches, all on by default. `skip` remains the master off
+         * switch and still wins over each of these.
+         *
+         * These exist because `skip` is all-or-nothing: it wraps the entire
+         * audit phase, so turning off one gate used to cost you dependency
+         * auditing, SAST, Trivy AND the test run. That bites when a single
+         * tool is unavailable for reasons unrelated to your code — Gitleaks'
+         * GitHub Action, for instance, requires a paid licence on
+         * organisation-owned repos and hard-fails without one.
+         */
+        public bool $gitleaks = true,
+        public bool $semgrep = true,
+        public bool $dependencyAudit = true,
+        public bool $trivy = true,
     ) {}
+
+    /** Whether the secret scan runs (master switch folded in). */
+    public function runsGitleaks(): bool
+    {
+        return ! $this->skip && $this->gitleaks;
+    }
+
+    /** Whether the SAST gate runs. */
+    public function runsSemgrep(): bool
+    {
+        return ! $this->skip && $this->semgrep;
+    }
+
+    /** Whether the Composer/NPM advisory audit runs. */
+    public function runsDependencyAudit(): bool
+    {
+        return ! $this->skip && $this->dependencyAudit;
+    }
+
+    /** Whether either Trivy scan (filesystem, image) runs. */
+    public function runsTrivy(): bool
+    {
+        return ! $this->skip && $this->trivy;
+    }
+
+    /** Whether the application test suite runs in the audit phase. */
+    public function runsTests(): bool
+    {
+        return ! $this->skip && $this->withTests;
+    }
 
     /**
      * The Trivy/Semgrep severity string: CRITICAL-only by default,

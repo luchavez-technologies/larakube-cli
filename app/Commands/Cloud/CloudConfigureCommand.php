@@ -39,7 +39,11 @@ class CloudConfigureCommand extends Command
         {--branch= : Git branch that triggers the CI deployment (skips the prompt)}
         {--strict : Also fail security gates on HIGH severity (not just CRITICAL)}
         {--skip-audit : Generate the lean pipeline without security audit steps}
-        {--with-tests : Include the PHPUnit/Pest suite in the audit phase}';
+        {--with-tests : Include the PHPUnit/Pest suite in the audit phase}
+        {--no-gitleaks : Drop only the secret scan, keeping every other gate}
+        {--no-semgrep : Drop only the SAST gate, keeping every other gate}
+        {--no-dependency-audit : Drop only the Composer/NPM advisory audit}
+        {--no-trivy : Drop only the Trivy filesystem and image scans}';
 
     /**
      * The console command description.

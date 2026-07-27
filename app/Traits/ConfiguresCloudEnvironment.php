@@ -410,18 +410,31 @@ trait ConfiguresCloudEnvironment
             $auditConfig->withTests = true;
         }
 
+        // Per-gate opt-outs. Only applied when the flag is actually passed, so
+        // a re-run without them keeps whatever the blueprint already persisted.
+        foreach ([
+            'no-gitleaks' => 'gitleaks',
+            'no-semgrep' => 'semgrep',
+            'no-dependency-audit' => 'dependencyAudit',
+            'no-trivy' => 'trivy',
+        ] as $flag => $property) {
+            if ($this->flag($flag)) {
+                $auditConfig->{$property} = false;
+            }
+        }
+
         $config->environments[$environment]->securityAudit = $auditConfig;
         $this->saveProjectConfig($projectPath, $config);
 
         table(
             headers: ['Security Gate', 'Status'],
             rows: [
-                ['Gitleaks (secret scan)', $auditConfig->skip ? '⏭ Skipped' : '✅ Enabled'],
-                ['Semgrep (SAST)', $auditConfig->skip ? '⏭ Skipped' : '✅ ERROR-only'],
-                ['Composer / NPM audit', $auditConfig->skip ? '⏭ Skipped' : '✅ '.$auditConfig->auditLevel()],
-                ['Trivy filesystem scan', $auditConfig->skip ? '⏭ Skipped' : '📊 Report-only'],
-                ['Trivy image scan', $auditConfig->skip ? '⏭ Skipped' : '🚦 '.$auditConfig->failOnSeverity()],
-                ['Application tests', $auditConfig->withTests ? '✅ Enabled' : '⏭ Skipped'],
+                ['Gitleaks (secret scan)', $auditConfig->runsGitleaks() ? '✅ Enabled' : '⏭ Skipped'],
+                ['Semgrep (SAST)', $auditConfig->runsSemgrep() ? '✅ ERROR-only' : '⏭ Skipped'],
+                ['Composer / NPM audit', $auditConfig->runsDependencyAudit() ? '✅ '.$auditConfig->auditLevel() : '⏭ Skipped'],
+                ['Trivy filesystem scan', $auditConfig->runsTrivy() ? '📊 Report-only' : '⏭ Skipped'],
+                ['Trivy image scan', $auditConfig->runsTrivy() ? '🚦 '.$auditConfig->failOnSeverity() : '⏭ Skipped'],
+                ['Application tests', $auditConfig->runsTests() ? '✅ Enabled' : '⏭ Skipped'],
                 ['Severity policy', $auditConfig->strict ? '🔒 Strict (HIGH+CRITICAL)' : '🛡 Default (CRITICAL)'],
             ],
         );
@@ -465,7 +478,13 @@ trait ConfiguresCloudEnvironment
             'audit' => [
                 'skip' => $auditConfig->skip,
                 'strict' => $auditConfig->strict,
-                'withTests' => $auditConfig->withTests,
+                // Per-gate, with the master `skip` already folded in, so the
+                // template never has to combine the two itself.
+                'gitleaks' => $auditConfig->runsGitleaks(),
+                'semgrep' => $auditConfig->runsSemgrep(),
+                'dependencyAudit' => $auditConfig->runsDependencyAudit(),
+                'trivy' => $auditConfig->runsTrivy(),
+                'withTests' => $auditConfig->runsTests(),
                 'failOn' => $auditConfig->failOnSeverity(),
                 'auditLevel' => $auditConfig->auditLevel(),
             ],
