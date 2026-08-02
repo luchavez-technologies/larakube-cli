@@ -1,121 +1,71 @@
-# Plan: Multi-node / managed storage strategy (the DOKS blocker)
+# Plan: Multi-Node & Managed Storage Strategy (DOKS / VPS / Multi-Node HA)
 
-## 🚨 The problem
+**Status:** Active Plan Document
+**Created:** 2026-07-27
+**Updated:** 2026-07-29
 
-LaraKube's **app pods** — `web`, `horizon`, `queues`, `scheduler`, `reverb` —
-all mount the **same** app-storage PVC (Laravel `storage/`, cache, etc.). On a
-**single node** this works because every pod lands on the same node and
-`ReadWriteOnce` allows multiple pods on one node to mount the same volume.
+---
 
-On **multi-node (DOKS/EKS/GKE)** the pods spread across nodes, so the shared
-volume needs **ReadWriteMany (RWX)** — and **DigitalOcean block storage is RWO
-only** (so are EBS gp3, GCE PD, Azure Disk). Result: the second pod to schedule
-onto a different node gets a volume it can't mount → **`Pending` forever**.
+## 1. Executive Problem Statement
 
-This is THE blocker for a multi-node DOKS deploy, and it's architectural — not a
-storageClass tweak. Even a fully-externalized app hits it because LaraKube still
-*mounts* the shared PVC today.
+On a **single-node VPS**, all LaraKube pods (`web`, `horizon`, `scheduler`, `reverb`, `postgres`, `redis`) run on the same server. `local-path` (`ReadWriteOnce`) allows multiple pods on the same node to mount shared storage seamlessly.
 
-## 🛡 NON-NEGOTIABLE: no silent gotcha on the VPS → multi-node upgrade
+On **multi-node clusters (DOKS / EKS / GKE)**, pods spread across multiple worker nodes. Standard cloud block storage (DigitalOcean Block Storage, AWS EBS, GCP PD) is **`ReadWriteOnce` (RWO)** — it cannot be mounted simultaneously by pods on different nodes. If a second web pod lands on Node B while Node A holds the volume, the pod stays stuck in `Pending` forever.
 
-The worst outcome is a user flipping `strategy: single-node` → `multi-node-ha`,
-redeploying, and getting `Pending` pods + a cryptic RWX volume error — with no
-idea why. **We must fail LOUD and CLEAR before that happens**, not generate
-manifests that silently break.
+---
 
-Required guard (build this even before the full solution): a **preflight** at
-`heal` / `cloud:deploy` / strategy-switch time that fires when the env is
-`multi-node-ha` (or a managed `context`) AND the app still mounts a shared
-app-storage PVC AND state isn't externalized — and explains, in plain language:
+## 2. The Two First-Class Multi-Node Paths
 
-> "Multi-node spreads your pods across nodes, but your block storage is
-> ReadWriteOnce — a shared `storage/` folder won't work across nodes. Either
-> externalize state (S3 + Redis — `larakube plex:join` gives you both), or enable
-> shared storage (`--rwx` / opt-in NFS). See: <docs link>."
+LaraKube offers **two first-class paths** for multi-node storage:
 
-Loud warning + explicit confirm (or hard stop) — never a surprise. This guard is
-worth shipping on its own, ahead of the full storage solution.
+### Path A: Stateless 12-Factor App (Recommended for Greenfield & Scaled Apps)
+App pods share **no filesystem on disk**. State is completely externalized:
 
-## ✅ The fix: externalize state, don't share a filesystem (12-factor)
+| State Domain | Single-Node Storage | Multi-Node Stateless Target |
+| :--- | :--- | :--- |
+| **Uploads (`storage/app`)** | Shared PVC | **S3 Object Storage** (SeaweedFS / MinIO / DigitalOcean Spaces) |
+| **Cache & Sessions** | File (`storage/framework`) | **Redis** (Plex Redis / Dedicated Redis) |
+| **Compiled Assets** | Shared PVC | **Baked into Container Image** at build (`artisan optimize`) |
+| **System Logs** | Local files | **stdout/stderr** (Streamed to Vector / Fluentbit) |
 
-The cloud-native answer isn't RWX storage — it's making the app pods
-**stateless** so they share nothing on disk. Each piece of state goes to a
-backing service LaraKube already supports:
+### Path B: In-Cluster Shared NFS (`RWX` via `cloud:init:nfs`)
+For existing Laravel applications that require a shared physical `/var/www/storage/app/public` folder across multiple web nodes with **zero app code changes**:
+- `larakube cloud:init:nfs` deploys an in-cluster NFS storage driver (`larakube-nfs` / `nfs-subdir-external-provisioner`).
+- All web worker pods across Node A, Node B, and Node C mount the shared NFS storage class concurrently with real-time POSIX file locks.
 
-| State | Single-node today | Multi-node target |
-|---|---|---|
-| Uploads (`storage/app`) | shared PVC | **Object storage (S3)** — MinIO / SeaweedFS / Garage, or a Plex Commons bucket |
-| Cache | file (shared PVC) | **Redis** |
-| Sessions | file (shared PVC) | **Redis / database** |
-| Compiled views/config/routes | shared PVC | **baked into the image** at build (`artisan optimize`) — per-pod, no sharing |
-| Logs | files | **stdout/stderr** (container logs) — per-pod |
-| Failed jobs | (already DB/Redis) | unchanged |
+---
 
-With those externalized, **no app pod needs a shared writable PVC** — they spread
-across nodes freely. This is exactly the shape **Plex Commons** already
-provides (Redis + S3), so a Plex-on-DOKS app is the natural stateless target.
+## 3. High Availability Database Failover (`external-provisioner`)
 
-## 🛠 What to build
+For single-pod databases (Postgres, MySQL, OpenBao, Redis):
+- Databases use `do-block-storage` (`ReadWriteOnce`).
+- **Automatic Failover**: If Worker Node A fails, Kubernetes reschedules the Postgres pod onto Worker Node B.
+- `external-provisioner` automatically detaches the DigitalOcean Block Storage volume from Node A and attaches it to Node B in **~10 seconds**. The database starts up on Node B with **zero data loss**.
 
-1. **Stop mounting the cross-pod app-storage PVC on multi-node / managed envs.**
-   The PVC + mounts on `web`/`horizon`/`queues`/`scheduler`/`reverb` should be
-   gated to single-node. Give each pod a per-pod `emptyDir` for any genuinely
-   per-pod scratch (e.g. local `framework/cache`, compiled views if not baked).
-2. **Require externalized backends on multi-node.** Validate/warn at generate or
-   deploy time: multi-node-ha needs **Redis** (cache+session) and **S3** (uploads,
-   `FILESYSTEM_DISK=s3`) — error clearly if the env is still on `file`/`local`,
-   since those silently won't be shared.
-3. **Service pods are fine.** `postgres`/`redis`/`minio` each own a single-pod
-   RWO PVC — one mounter, works on multi-node unchanged.
-4. **Docs:** "multi-node means stateless app pods" — make this the headline of
-   the DOKS/managed guide, with Plex as the easy way to get Redis+S3.
+---
 
-## ⚠️ The hard case: generated files the WEB pod serves
+## 4. Zero-Data-Loss Volume Migration (`storage:migrate`)
 
-Externalizing is clean for state accessed via Laravel's `Storage` facade
-(uploads, cache, sessions). It's NOT free for files that are **written by a
-background pod and served as a static file by the web pod** — e.g. a **sitemap**
-generated by `scheduler`/`queues` and served at `/storage/sitemap.xml` by nginx
-(search engines fetch it from your domain). Externalizing that means an app-level
-change: either a Laravel **route that streams it from S3** (keeps the URL on your
-domain), or pointing links at the **S3/CDN URL**. Real refactor, not a config flip.
+When migrating a database or workload from local node storage (`local-path`) to dedicated cloud block storage (`do-block-storage`):
 
-This is why a shared-filesystem option must stay first-class — most existing
-Laravel apps lean on this pattern.
+```bash
+larakube storage:migrate postgres-data-postgres-0 --to=do-block-storage --size=200Gi
+```
 
-## 🧭 Two first-class multi-node paths (offer BOTH)
+### Execution Flow:
+1. **Workload Pause**: Scales workload `--replicas=0` to freeze active writes.
+2. **Data Sync**: Spawns migration helper container streaming data from `local-path` to `do-block-storage` via high-speed `rsync -aHAX`.
+3. **PVC Re-binding**: Binds target claim to the new DO Block Volume.
+4. **Workload Resume**: Scales `--replicas=1` and verifies health probe (`pg_isready`).
 
-1. **Externalize (cloud-native, recommended for greenfield).** Stateless pods;
-   served-generated-files via a route or a public S3 URL. Scales cleanly; needs
-   app awareness.
-2. **RWX shared storage via an opt-in in-cluster NFS provisioner** (one block
-   volume re-exported RWX, e.g. `nfs-subdir-external-provisioner`). The shared
-   `public/storage` folder works across nodes with **zero app change** — the
-   sitemap/generated-asset pattern keeps working exactly as single-node. LaraKube
-   deploys the provisioner; the existing shared-PVC manifests point at its RWX
-   StorageClass instead of `do-block-storage`.
-   - Caveat: the NFS server pod is pinned to its RWO backing volume's node → soft
-     SPOF for *storage* (app pods stay HA). Truly-HA shared FS (CephFS / managed
-     filer) is heavier and a later option.
+---
 
-Default to (1); make (2) an opt-in (`storage: shared` / an `--rwx` knob) so apps
-with a shared-folder pattern go multi-node **unchanged**.
+## Technical File Architecture Map
 
-## 🔁 Also-rans
-
-- **Node affinity to co-locate all app pods on one node:** defeats multi-node HA.
-- **Per-pod RWO PVCs:** solves per-pod scratch but NOT *shared* state (a file a
-  `queues` pod writes must be readable by `web`) → doesn't help.
-
-## 🧪 Interim for the FIRST DOKS test (unblock validation now)
-
-Don't let this block proving the rest of the managed path. **Use a 1-node DOKS
-pool with `strategy: single-node`** → all pods co-locate, RWO works, and you can
-validate context resolution, registry push, scoped-RBAC apply, and Traefik TLS
-*today*. Then implement the externalization above for true multi-node-HA.
-
-## 🔗 Relation
-
-This is the real substance of "DOKS / managed multi-node" readiness on the
-roadmap — it gates the multi-node validation. [[arm-edge-deploy]] (single-board)
-is single-node, so it's unaffected.
+| File Path | Description / Purpose |
+| :--- | :--- |
+| `app/Enums/StorageDriver.php` | Storage drivers (`LOCAL_PATH`, `DO_BLOCK_STORAGE`, `LARAKUBE_NFS`, `S3`). |
+| `app/Commands/Cloud/CloudInitNfsCommand.php` | Command for deploying in-cluster NFS provisioner (`cloud:init:nfs`). |
+| `app/Commands/Storage/StorageMigrateCommand.php` | Command for zero-data-loss volume migration between storage classes. |
+| `resources/views/k8s/storage/nfs.blade.php` | Manifest template for `larakube-nfs` driver. |
+| `resources/views/k8s/storage/provisioner.blade.php` | Manifest template for CSI `external-provisioner` driver. |

@@ -13,7 +13,7 @@ mirrors it — one command, gone everywhere federated.
 ## 🔍 Why Zitadel (picked over Authentik, Keycloak, Authelia)
 
 Researched against the actual constraint: a single modest VPS already running
-Traefik, Stalwart, FreeScout, Gitea, GlitchTip, Metabase, n8n, Baserow,
+Traefik, Stalwart, FreeScout, Gitea, GlitchTip, Metabase, n8n,
 NetBird, Grafana+Loki+Prometheus, Vaultwarden, and the project's own app pods.
 
 | | License | RAM (practical) | Provisioning API |
@@ -38,7 +38,7 @@ first-class rather than SCIM-bolted-on.
   dual-registration every shared tool has.
 - **Namespace: `larakube-sso`** (dedicated, not `larakube-shared`) — this is
   the one thing that, if compromised, compromises everything federated to it.
-  Same posture as Vaultwarden/Infisical/NetBird.
+  Same posture as Vaultwarden/OpenBao/NetBird.
 - **Database**: Plex Commons Postgres via `ensureCommons(['postgres'])` →
   `allocateDatabase(DatabaseDriver::POSTGRESQL, 'zitadel', $dbPassword)` —
   same pattern as every other Plex-backed tool. Redis is optional/standalone-
@@ -111,8 +111,7 @@ exactly what it patched, not just applies it one-directionally.
 
 Five already-deployed tools support free OIDC and are the `oidcEnv()`
 candidates: **Gitea, Grafana, NetBird, Vaultwarden, GlitchTip**.
-Infisical/n8n/Baserow/Metabase/FreeScout's OAuth module and the planned
-Mattermost all gate SSO behind a paid tier on *their* side regardless of what
+n8n/Metabase/FreeScout's OAuth module all gate SSO behind a paid tier on *their* side regardless of what
 IdP you point at them — Zitadel doesn't change that, it just means the five
 free ones become one login instead of five.
 
@@ -227,7 +226,7 @@ larakube sso:wire gitea                                # register + wire Gitea's
    for multi-instance HA (with known circuit-breaker bugs), and this is a
    single-replica deploy on a $24 box. Postgres is the only required datastore
    (already Commons-backed). If a `--cache` opt-in is ever wanted, it reuses the
-   Commons Valkey with an allocated logical-DB index like the Sheet/Baserow
+    Commons Valkey with an allocated logical-DB index like the Sheet
    pattern — but default stays off.
    Manifest uses an **initContainer** `init schema` + main `start-from-setup`
    (env shared via a `&zitadelEnv` anchor; image is distroless, no `sh -c`) —

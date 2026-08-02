@@ -54,23 +54,20 @@ hand-maintained allowlist.
 
 ## 🚧 Scope boundary — what this plan does NOT cover
 
-The **ESO + OpenBao + Zitadel** stream is already in flight and owns:
+The **ESO + OpenBao** stream has been completed and owns:
 
 - deploying OpenBao and the External Secrets Operator,
-- the `k8s.secrets.eso-sync` template (referenced by `SecretsBackend::getCrdTemplateName()`
-  but not yet written),
-- making `SyncsClusterSecrets` genuinely polymorphic — today its generic method
-  names (`pushClusterSecret`, `secretsBackendAvailable`) wrap an Infisical-only
-  implementation,
-- retiring Infisical, which OpenBao replaces.
+- `ClusterSecretStore/openbao` wiring ESO to OpenBao,
+- `ExternalSecret` CRDs per tool (forgejo, stalwart, sso, vaultwarden, sign, record, webmail, etc.),
+- all legacy Infisical references purged from the codebase: alias methods, blade templates,
+  CRDs, operator manifests, and variable names.
 
 This plan must **dovetail with that work, not duplicate it**. Everything below
 is backend-agnostic and can land before OpenBao exists.
 
-Cluster state at time of writing: `larakube-secrets` runs `infisical-backend` +
-`infisical-operator-controller-manager`; there are no `externalsecrets` /
-`secretstores` CRDs; `larakube-vault` runs **vaultwarden** (a human password
-manager), not OpenBao.
+Cluster state after the migration: `larakube-secrets` runs `openbao-backend` +
+`external-secrets`; `ClusterSecretStore/openbao` is `Ready: True`; per-tool
+`ExternalSecrets` sync production secrets into each tool's namespace.
 
 ## 📐 Settled: `.env.{env}` is authoritative
 
@@ -135,9 +132,10 @@ and it does not depend on which secrets backend wins.
 
 ## 🔧 Phase 3 — hand-off seam to ESO / OpenBao
 
-Once the ESO+OpenBao stream lands, `dotenv:push` grows one branch:
+OpenBao is live on the production cluster and ESO is syncing secrets. `dotenv:push`
+grows one branch:
 
-- **Backend present** → write to OpenBao; let the generated `SecretStore` +
+- **Backend present** → write to OpenBao; let `ClusterSecretStore` +
   `ExternalSecret` materialise `laravel-secrets` in the namespace.
 - **No backend** → Phase 1's direct Secret write, unchanged.
 
@@ -149,17 +147,12 @@ implementation detail of `dotenv:push`, not a concept they have to learn.
 `dotenv:diff` gains a third column in this phase (file / cluster / backend), so
 a backend that has drifted from the Secret it feeds is visible too.
 
-## 🔄 Cutover concern — OpenBao replaces Infisical
+## 🔄 Migration complete — OpenBao has replaced Infisical
 
-This is a migration, not an addition. Anything already stored in Infisical needs
-a decision:
-
-- export/import into OpenBao, **or**
-- re-push from the `.env.{env}` files as the source of truth, **or**
-- a window where both backends are readable.
-
-The choice determines whether `dotenv:push` ever needs to *read* from Infisical
-or only ever writes — which is worth settling before Phase 3 starts.
+The migration is done: `secrets:init` now deploys OpenBao directly (no Infisical
+operator, no Infisical CRDs, no Infisical app manifests). Existing secrets were
+re-pushed from `.env.{env}` files into OpenBao via the `pushClusterSecret` /
+`syncClusterSecretToNamespace` path. No data was lost.
 
 ## ❓ Open decisions (needed before implementation)
 

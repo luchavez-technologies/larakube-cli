@@ -3,7 +3,7 @@
 ## 🎯 Objective
 
 Give workmates a browser-based mailbox — the same way `chat:init` gives them
-Mattermost — instead of only IMAP/SMTP in Apple Mail / Thunderbird. LaraKube's
+team chat — instead of only IMAP/SMTP in Apple Mail / Thunderbird. LaraKube's
 Stalwart deploys deliberately WITHOUT webmail (self-contained, no bundled UI);
 this adds one on top, reusing the mailbox each `mail:create` already makes.
 
@@ -36,7 +36,7 @@ is a first-class supported mode.
 
 ### Shape: a first-class `webmail` tool, hard-coupled to mail
 
-Mirrors the Mattermost framing in the request: `webmail:init` is its own tool
+Mirrors the `chat:init` framing: `webmail:init` is its own tool
 (like `chat:init`/`desk:init`), gets `tool:add` discoverability, `vpn:wire`,
 and `sso:wire` for free — but it **refuses to deploy unless Stalwart is
 installed** (`isMailInstalled()`), because a webmail with no mail server is

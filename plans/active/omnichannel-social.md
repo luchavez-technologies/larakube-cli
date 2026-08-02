@@ -80,7 +80,7 @@ Postiz is the pick only if max-platform-coverage outweighs the RAM cost.
     fiddly LinkedIn pain point. And again: **no messaging API at all.**
   LaraKube can deploy the tool and template the OAuth-credential wiring, but it
   **cannot** shortcut Meta/LinkedIn review. Set that expectation up front.
-- **Overlap with existing tools.** Mattermost (`chat`) = internal team chat;
+- **Overlap with existing tools.** Matrix/Synapse (`chat`) = internal team chat;
   FreeScout (`desk`) = email shared-inbox. Chatwoot overlaps FreeScout (both are
   inboxes) — decide whether to run both or standardize the inbox on Chatwoot
   (which also does email). Don't deploy two inboxes by accident.
