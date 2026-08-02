@@ -8,12 +8,13 @@ use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithVault;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
-use App\Traits\SyncsInfisicalSecrets;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -23,14 +24,14 @@ use LaravelZero\Framework\Commands\Command;
 
 class PasswordsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithVault, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsInfisicalSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVault, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'passwords:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Vaultwarden host.}
         {--context=  : Target a specific kube-context (defaults to current context)}
         {--domain=   : Base domain OR full host for Vaultwarden (example.com → vault.example.com; vault.example.com used as-is)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the cluster-wide Vaultwarden team password manager into larakube-vault';
 
@@ -81,15 +82,44 @@ class PasswordsInitCommand extends Command
             }
         }
 
-        // Infisical Integration: Push secrets and sync to larakube-vault
-        if ($this->isInfisicalBootstrapped($kubectl, $this->secretsNamespace())) {
-            $this->withSpin('Syncing Vaultwarden secrets to Infisical...', function () use ($kubectl, $ns, $adminToken, $dbPassword, $databaseUrl) {
-                $this->pushInfisicalSecret($kubectl, 'VAULTWARDEN_ADMIN_TOKEN', $adminToken, 'production');
-                $this->pushInfisicalSecret($kubectl, 'VAULTWARDEN_DB_PASSWORD', $dbPassword, 'production');
-                if ($databaseUrl !== null) {
-                    $this->pushInfisicalSecret($kubectl, 'VAULTWARDEN_DATABASE_URL', $databaseUrl, 'production');
+        // Secrets Backend Integration: Push secrets and sync to larakube-vault.
+        // The manifest branches on this: when the sync lands, DATABASE_URL is
+        // sourced from the synced Secret so plex:rotate can reach this pod;
+        // otherwise it stays a literal. Only a sync that actually SUCCEEDED
+        // counts — pointing the Deployment at a Secret that was never created
+        // would leave DATABASE_URL unset, and Vaultwarden falls back to SQLite
+        // when it is, quietly stranding every existing vault.
+        $secretsSynced = false;
+
+        if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
+            $this->withSpin('Syncing Vaultwarden secrets to the cluster...', function () use ($kubectl, $ns, $adminToken, $dbPassword, $databaseUrl, &$secretsSynced) {
+                $this->pushClusterSecret($kubectl, 'VAULTWARDEN_ADMIN_TOKEN', $adminToken, 'production');
+                if ($this->databaseEngineMounted($kubectl)) {
+                    $this->registerStaticRole($kubectl, 'vaultwarden', 'plex-postgres', 'vaultwarden');
+                } else {
+                    $this->pushClusterSecret($kubectl, 'VAULTWARDEN_DB_PASSWORD', $dbPassword, 'production');
                 }
-                $this->syncInfisicalToNamespace($kubectl, $ns, 'vaultwarden-infisical', 'production');
+
+                $urlPushed = $databaseUrl === null
+                    || $this->pushClusterSecret($kubectl, 'VAULTWARDEN_DATABASE_URL', $databaseUrl, 'production');
+
+                // NOT syncClusterSecretToNamespace() here — same bug that
+                // took down Zitadel (confirmed live 2026-08-02): it extracts
+                // KV path "production" as one object, but VAULTWARDEN_DATABASE_URL
+                // above is written at the deeper "production/{KEY}" path, so
+                // it always syncs empty and, as an Owner-mode ExternalSecret
+                // with a 1m refresh, wipes vaultwarden-secrets on its next
+                // reconcile — the manifest's DATABASE_URL isn't optional, so
+                // that's a crash loop, not a quiet fallback. PASSWORDS is now
+                // in ClusterTool::openbaoSyncConfig(), so secrets:init's own
+                // sweep (tool-es.blade.php) maintains the real one; reconcile
+                // that instead of creating a second, conflicting one.
+                $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ns, 'vaultwarden-secrets');
+                $this->forceExternalSecretReconcile($kubectl, $ns, 'vaultwarden-secrets');
+                $synced = $this->waitForExternalSecretSynced($kubectl, $ns, 'vaultwarden-secrets', $refreshTimeBefore);
+                $secretsSynced = $urlPushed && $synced && $databaseUrl !== null;
+
+                return $synced;
             });
         }
 
@@ -106,7 +136,9 @@ class PasswordsInitCommand extends Command
             'adminToken' => $adminToken,
             'hashedAdminToken' => $hashedAdminToken,
             'databaseUrl' => $databaseUrl,
+            'secretsSynced' => $secretsSynced,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
         ])->render();
 

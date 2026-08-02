@@ -10,6 +10,7 @@ use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSecrets;
@@ -18,7 +19,7 @@ use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
-use App\Traits\SyncsInfisicalSecrets;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -28,7 +29,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsInfisicalSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'sso:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -37,7 +38,7 @@ class SsoInitCommand extends Command
         {--admin-email= : Console admin login email (default: your operator email, or admin@<host>)}
         {--no-plex      : Bypass Plex Commons and bundle a dedicated Postgres}
         {--vpn-only     : Restrict access via NetBird VPN IP whitelisting}
-        {--force        : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy Zitadel — a self-hosted OIDC/SAML identity provider — into its own larakube-sso namespace';
 
@@ -123,11 +124,22 @@ class SsoInitCommand extends Command
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
 
-            if ($this->isInfisicalBootstrapped($kubectl, $this->secretsNamespace())) {
-                $this->pushInfisicalSecret($kubectl, 'ZITADEL_ADMIN_EMAIL', $adminEmail, 'production');
-                $this->pushInfisicalSecret($kubectl, 'ZITADEL_ADMIN_PASSWORD', $adminPassword, 'production');
-                $this->pushInfisicalSecret($kubectl, 'ZITADEL_DB_PASSWORD', $dbPassword, 'production');
-                $this->syncInfisicalToNamespace($kubectl, $ns, 'sso-infisical', 'production');
+            if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
+                $this->pushClusterSecret($kubectl, 'ZITADEL_ADMIN_EMAIL', $adminEmail, 'production');
+                $this->pushClusterSecret($kubectl, 'ZITADEL_ADMIN_PASSWORD', $adminPassword, 'production');
+                if ($this->databaseEngineMounted($kubectl)) {
+                    $this->registerStaticRole($kubectl, 'zitadel', 'plex-postgres', 'zitadel');
+                } else {
+                    $this->pushClusterSecret($kubectl, 'ZITADEL_DB_PASSWORD', $dbPassword, 'production');
+                }
+                // NOT syncClusterSecretToNamespace() here — confirmed live
+                // 2026-08-02: it extracts OpenBao KV path "production" as one
+                // object, but every value here is written at the deeper
+                // "production/{KEY}" path, so the extract is always empty. As
+                // an Owner-mode ExternalSecret with a 1m refresh, it silently
+                // wiped this exact Secret (masterkey included) on every
+                // reconcile — took Zitadel down. The `create secret` above is
+                // the real, working sync; this was a redundant second one.
             }
         });
 
@@ -138,6 +150,7 @@ class SsoInitCommand extends Command
             'noPlex' => $noPlex,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-sso.yaml';
@@ -155,6 +168,8 @@ class SsoInitCommand extends Command
         ));
 
         $machinePatCaptured = $this->captureMachinePat($kubectl, $ns);
+
+        $this->registerDeployedTool(ClusterTool::SSO, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Zitadel is live.');
@@ -266,9 +281,9 @@ class SsoInitCommand extends Command
             .'-p=\'[{"op":"add","path":"/data/machine-pat","value":"'.base64_encode($pat).'"}]\'',
         );
 
-        if ($this->isInfisicalBootstrapped($kubectl, $this->secretsNamespace())) {
-            $this->pushInfisicalSecret($kubectl, 'ZITADEL_MACHINE_PAT', $pat, 'production');
-            $this->syncInfisicalToNamespace($kubectl, $ns, 'sso-infisical', 'production');
+        if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
+            $this->pushClusterSecret($kubectl, 'ZITADEL_MACHINE_PAT', $pat, 'production');
+            $this->syncClusterSecretToNamespace($kubectl, $ns, 'sso-secrets', 'production');
         }
 
         return true;

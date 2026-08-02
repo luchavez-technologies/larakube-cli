@@ -9,12 +9,13 @@ use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBulwark;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithStalwartApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
-use App\Traits\SyncsInfisicalSecrets;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -24,7 +25,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class WebmailInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsInfisicalSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'webmail:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -33,7 +34,7 @@ class WebmailInitCommand extends Command
         {--app-name=  : Branding shown on the webmail login/app (default: "Webmail")}
         {--vpn-only   : Restrict access via NetBird VPN IP whitelisting}
         {--no-mail-restart : Skip the brief Stalwart restart that applies the CORS change}
-        {--force           : Skip the confirmation prompt}';
+        {--force           : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy Bulwark — a JMAP webmail UI for Stalwart — into larakube-shared';
 
@@ -100,11 +101,18 @@ class WebmailInitCommand extends Command
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
 
-            if ($this->infisicalAvailable($kubectl)) {
-                $infisicalEnv = $env === 'local' ? 'dev' : $env;
-                $this->pushInfisicalSecret($kubectl, 'WEBMAIL_SESSION_SECRET', $sessionSecret, $infisicalEnv);
-                $this->pushInfisicalSecret($kubectl, 'WEBMAIL_ADMIN_PASSWORD', $adminPassword, $infisicalEnv);
-                $this->syncInfisicalToNamespace($kubectl, $ns, 'webmail-secrets', $infisicalEnv);
+            if ($this->secretsBackendAvailable($kubectl)) {
+                $clusterEnv = $env === 'local' ? 'dev' : $env;
+                $this->pushClusterSecret($kubectl, 'WEBMAIL_SESSION_SECRET', $sessionSecret, $clusterEnv);
+                $this->pushClusterSecret($kubectl, 'WEBMAIL_ADMIN_PASSWORD', $adminPassword, $clusterEnv);
+                // NOT syncClusterSecretToNamespace() here — same bug that
+                // took down Zitadel (confirmed live 2026-08-02): it extracts
+                // KV path "{env}" as one object, but every value above is at
+                // the deeper "{env}/{KEY}" path, so it always syncs empty
+                // and, as an Owner-mode ExternalSecret with a 1m refresh,
+                // wipes the `create secret` above on its next reconcile.
+                // secrets:init's own sweep (tool-es.blade.php) is the
+                // correct, working path.
             }
         });
 
@@ -114,6 +122,7 @@ class WebmailInitCommand extends Command
             'appName' => $appName,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-webmail.yaml';

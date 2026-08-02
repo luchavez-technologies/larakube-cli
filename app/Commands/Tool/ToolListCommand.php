@@ -6,6 +6,7 @@ use App\Enums\ClusterTool;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesStandaloneEnvironment;
+use App\Traits\SyncsClusterSecrets;
 
 use function Laravel\Prompts\table;
 
@@ -24,7 +25,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class ToolListCommand extends Command
 {
-    use InteractsWithToolRegistry, LaraKubeOutput, ResolvesStandaloneEnvironment;
+    use InteractsWithToolRegistry, LaraKubeOutput, ResolvesStandaloneEnvironment, SyncsClusterSecrets;
 
     protected $signature = 'tool:list
         {environment? : The environment to inspect}
@@ -48,10 +49,19 @@ class ToolListCommand extends Command
         $rows = [];
         foreach (ClusterTool::cases() as $tool) {
             $entry = $registry[$tool->value] ?? null;
-            $installed = $entry !== null;
+            $isPresent = $this->isToolPresentOnCluster($kubectl, $tool);
+            $installed = $entry !== null || $isPresent;
 
             if ($onlyInstalled && ! $installed) {
                 continue;
+            }
+
+            $host = $entry['host'] ?? null;
+            if ($installed && ($host === null || $host === '')) {
+                $host = $this->resolveLiveToolHost($kubectl, $tool);
+                if ($host !== null && $host !== '') {
+                    $this->registerTool($kubectl, $tool, ['host' => $host]);
+                }
             }
 
             $rows[] = [
@@ -59,11 +69,30 @@ class ToolListCommand extends Command
                 'label' => $tool->getLabel(),
                 'installed' => $installed,
                 'namespace' => $tool->namespace(),
-                'host' => $entry['host'] ?? null,
-                'url' => isset($entry['host']) ? 'https://'.$entry['host'] : null,
+                'host' => $host,
+                'url' => $host !== null ? 'https://'.$host : null,
                 'installed_at' => $entry['installed_at'] ?? null,
+                // Cluster-tool static roles use the bare Commons DB name, no
+                // "tenant-" prefix (unlike Application Tenants) — matching
+                // every registerStaticRole() call site for tools.
+                'db_role' => $installed ? ($tool->commonsDatabases()[0] ?? null) : null,
             ];
         }
+
+        // One readiness check up front, only if some installed row actually
+        // has a Commons DB to report on — same reasoning as plex:show: a
+        // cluster without OpenBao (or with nothing DB-backed installed)
+        // shouldn't pay for a port-forward it can never use.
+        $openBaoReady = collect($rows)->contains(fn ($r) => $r['db_role'] !== null)
+            ? $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())
+            : false;
+
+        foreach ($rows as &$row) {
+            $row['rotation'] = $row['db_role'] === null
+                ? null
+                : $this->rotationCell($openBaoReady, $openBaoReady ? $this->staticRoleExists($kubectl, $row['db_role']) : null);
+        }
+        unset($row);
 
         if ($this->option('json')) {
             $this->line((string) json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -79,12 +108,13 @@ class ToolListCommand extends Command
         }
 
         table(
-            ['', 'Tool', 'What it is', 'URL'],
+            ['', 'Tool', 'What it is', 'URL', 'Rotation'],
             array_map(fn (array $r) => [
                 $r['installed'] ? '<fg=green>●</>' : '<fg=gray>○</>',
                 $r['tool'],
                 $r['label'],
                 $r['url'] ?? ($r['installed'] ? '<fg=gray>no host recorded</>' : '<fg=gray>—</>'),
+                $r['rotation'] ?? '<fg=gray>—</>',
             ], $rows),
         );
 
@@ -96,5 +126,26 @@ class ToolListCommand extends Command
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * Compact rotation status for a table cell — the short form of
+     * plex:show's rotationStatusLine(). $wired is null, not just false, when
+     * OpenBao is bootstrapped but this specific check couldn't be confirmed
+     * (sealed/unreachable) — never collapse that into "not wired".
+     */
+    private function rotationCell(bool $openBaoReady, ?bool $wired): string
+    {
+        if (! $openBaoReady) {
+            return '<fg=gray>manual (.env)</>';
+        }
+
+        if ($wired === null) {
+            return '<fg=yellow>unreachable</>';
+        }
+
+        return $wired
+            ? '<fg=green>OpenBao</>'
+            : '<fg=gray>manual (.env)</>';
     }
 }

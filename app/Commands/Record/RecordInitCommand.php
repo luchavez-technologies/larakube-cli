@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Sign;
+namespace App\Commands\Record;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
@@ -12,7 +12,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
-use App\Traits\InteractsWithSign;
+use App\Traits\InteractsWithRecord;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
@@ -24,38 +24,39 @@ use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
-class SignInitCommand extends Command
+class RecordInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSign, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithRecord, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
 
-    protected $signature = 'sign:init
+    protected $signature = 'record:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Sign (example.com → prefix.example.com)}
+        {--domain=   : Base domain OR full host for Sendrec (example.com → prefix.example.com)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
+        {--allow-registration : Open public sign-up (needed once to create the first account, then re-run without it)}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
-    protected $description = 'Deploy the Documenso electronic signature stack into larakube-shared';
+    protected $description = 'Deploy the Sendrec async video platform stack into larakube-shared';
 
     public function handle(): int
     {
         $this->renderHeader();
 
-        return $this->deploySign();
+        return $this->deployRecord();
     }
 
-    protected function deploySign(): int
+    protected function deployRecord(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveSignHost($env);
+        $host = $this->resolveRecordHost($env);
 
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->signKubectl($context);
-        $ns = $this->signNamespace();
+        $kubectl = $this->recordKubectl($context);
+        $ns = $this->recordNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SIGN, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::RECORD, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -65,9 +66,6 @@ class SignInitCommand extends Command
             return 1;
         }
 
-        // Documenso stores signed PDFs in object storage. Default it onto the
-        // Commons SeaweedFS (MinIO fallback) instead of its `database` upload
-        // transport, which would otherwise bloat Commons Postgres with blobs.
         $spec = $this->getCommonsSpec();
         $s3Service = null;
         if ($spec !== null) {
@@ -90,18 +88,16 @@ class SignInitCommand extends Command
             return 1;
         }
         $s3Driver = StorageDriver::from($s3Service);
-        $s3Bucket = 'sign-storage';
+        $s3Bucket = 'record-storage';
         $s3Endpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$s3Driver->port()}";
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;
         }
 
-        $dbPassword = $this->readSignSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-        $nextauthSecret = $this->readSignSecret($kubectl, $ns, 'nextauth-secret') ?? bin2hex(random_bytes(32));
-        $encryptionKey = $this->readSignSecret($kubectl, $ns, 'encryption-key') ?? bin2hex(random_bytes(32));
-        $encryptionSecondaryKey = $this->readSignSecret($kubectl, $ns, 'encryption-secondary-key') ?? bin2hex(random_bytes(32));
+        $dbPassword = $this->readRecordSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
+        $jwtSecret = $this->readRecordSecret($kubectl, $ns, 'jwt-secret') ?? bin2hex(random_bytes(32));
 
-        $dbName = 'sign_documenso';
+        $dbName = 'record_sendrec';
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
@@ -112,12 +108,10 @@ class SignInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $nextauthSecret, $encryptionKey, $encryptionSecondaryKey, $clusterEnv) {
-            $cmd = "{$kubectl} create secret generic sign-documenso-secrets -n {$ns} "
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $jwtSecret, $clusterEnv) {
+            $cmd = "{$kubectl} create secret generic record-sendrec-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=nextauth-secret='.escapeshellarg($nextauthSecret).' '
-                .'--from-literal=encryption-key='.escapeshellarg($encryptionKey).' '
-                .'--from-literal=encryption-secondary-key='.escapeshellarg($encryptionSecondaryKey).' '
+                .'--from-literal=jwt-secret='.escapeshellarg($jwtSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -";
             Process::run($cmd);
 
@@ -125,23 +119,20 @@ class SignInitCommand extends Command
                 if ($this->databaseEngineMounted($kubectl)) {
                     $this->registerStaticRole($kubectl, $dbName, 'plex-postgres', $dbName);
                 } else {
-                    $this->pushClusterSecret($kubectl, 'SIGN_DB_PASSWORD', $dbPassword, $clusterEnv);
+                    $this->pushClusterSecret($kubectl, 'RECORD_DB_PASSWORD', $dbPassword, $clusterEnv);
                 }
-                $this->pushClusterSecret($kubectl, 'SIGN_NEXTAUTH_SECRET', $nextauthSecret, $clusterEnv);
-                $this->pushClusterSecret($kubectl, 'SIGN_ENCRYPTION_KEY', $encryptionKey, $clusterEnv);
-                $this->pushClusterSecret($kubectl, 'SIGN_ENCRYPTION_SECONDARY_KEY', $encryptionSecondaryKey, $clusterEnv);
-                // NOT syncClusterSecretToNamespace() here — same bug that
-                // took down Zitadel (confirmed live 2026-08-02): it extracts
-                // KV path "{env}" as one object, but every value above is at
-                // the deeper "{env}/{KEY}" path, so it always syncs empty
-                // and, as an Owner-mode ExternalSecret with a 1m refresh,
-                // wipes the `create secret` above on its next reconcile.
-                // secrets:init's own sweep (tool-es.blade.php) is the
-                // correct, working path.
+                $this->pushClusterSecret($kubectl, 'RECORD_JWT_SECRET', $jwtSecret, $clusterEnv);
+                // NOT syncClusterSecretToNamespace() here — same bug that took
+                // down Zitadel (confirmed live 2026-08-02): it extracts KV
+                // path "{env}" as one object, but every value above is at the
+                // deeper "{env}/{KEY}" path, so it always syncs empty and, as
+                // an Owner-mode ExternalSecret with a 1m refresh, wipes the
+                // `create secret` above on its next reconcile. secrets:init's
+                // own sweep (tool-es.blade.php) is the correct, working path.
             }
         });
 
-        $manifest = view('k8s.sign.shared', [
+        $manifest = view('k8s.record.shared', [
             'host' => $host,
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
@@ -151,21 +142,29 @@ class SignInitCommand extends Command
             's3Bucket' => $s3Bucket,
             's3AccessKey' => $s3Creds['access'],
             's3SecretKey' => $s3Creds['secret'],
+            // The blade reads this to set REGISTRATION_ENABLED. It was never
+            // passed, so it always fell back to false — and since record:init
+            // seeds no admin and Sendrec's users table has no role column,
+            // that shipped an instance with zero accounts and no way to make
+            // one. Open it for the first sign-up, then re-run without the flag.
+            'allowRegistration' => (bool) $this->option('allow-registration'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-sign-documenso.yaml';
+        $tmp = sys_get_temp_dir().'/larakube-record-sendrec.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Documenso manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $this->withSpin('Applying Sendrec manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Documenso...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/sign-documenso -n {$ns} --timeout=180s",
+        $this->withSpin('Waiting for Sendrec...', fn () => $this->runStreaming(
+            "{$kubectl} rollout status deploy/record-sendrec -n {$ns} --timeout=180s",
             190,
         ));
 
+        $this->registerTool($kubectl, ClusterTool::RECORD, ['host' => $host]);
+
         $this->laraKubeNewLine();
-        $this->laraKubeInfo('✅ Documenso signature stack is live.');
+        $this->laraKubeInfo('✅ Sendrec async video platform stack is live.');
         $this->newLine();
         $this->line("  <fg=gray>Access URL:</>  <fg=blue>https://{$host}</>");
         $this->line("  <fg=gray>Database:</>    <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
@@ -174,9 +173,9 @@ class SignInitCommand extends Command
         return 0;
     }
 
-    protected function resolveSignHost(string $env): string
+    protected function resolveRecordHost(string $env): string
     {
-        $service = SharedClusterService::SIGN;
+        $service = SharedClusterService::RECORD;
 
         $domain = (string) ($this->option('domain') ?? '');
         if ($domain !== '') {
@@ -184,18 +183,18 @@ class SignInitCommand extends Command
         }
 
         if ($env === 'local') {
-            return (string) $this->resolveSignHostReadOnly('local', null);
+            return (string) $this->resolveRecordHostReadOnly('local', null);
         }
 
-        return $this->promptForCloudSignHost($service, $env);
+        return $this->promptForCloudRecordHost($service, $env);
     }
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::SIGN);
+        return $this->resolveToolEnvironment(ClusterTool::RECORD);
     }
 
-    protected function promptForCloudSignHost(SharedClusterService $service, string $env): string
+    protected function promptForCloudRecordHost(SharedClusterService $service, string $env): string
     {
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -212,7 +211,7 @@ class SignInitCommand extends Command
 
         $host = text(
             label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. sign.example.com',
+            placeholder: $default !== '' ? $default : 'e.g. record.example.com',
             default: $default,
             required: true,
         );

@@ -9,6 +9,7 @@ use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithRemoteSsh;
@@ -20,7 +21,7 @@ use App\Traits\ManagesCloudFirewall;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
-use App\Traits\SyncsInfisicalSecrets;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -30,7 +31,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, LaraKubeOutput, ManagesCloudFirewall, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsInfisicalSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, LaraKubeOutput, ManagesCloudFirewall, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -39,7 +40,7 @@ class MailInitCommand extends Command
         {--vpn-only  : Restrict the admin UI via NetBird VPN IP whitelisting}
         {--host-port : Bind mail ports directly to the node (default on single-node k3s)}
         {--no-host-port : Skip hostPort — use on managed K8s with a real LoadBalancer}
-        {--force     : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the Stalwart mail server (SMTP/IMAP/JMAP) into larakube-shared';
 
@@ -104,6 +105,7 @@ class MailInitCommand extends Command
             'host' => $host,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
             'hostPort' => ! $this->option('no-host-port'),
         ])->render();
 
@@ -131,9 +133,9 @@ class MailInitCommand extends Command
         // stalwartEnforceSingleRsaDkimSignature() to keep RSA and prune
         // Ed25519. Reviving this would flip that policy on every cluster.
 
-        // Auto-configure the Postgres main store via Plex Commons + Infisical
+        // Auto-configure the Postgres main store via Plex Commons + the secrets backend
         // when both are available — allocates the database, pushes the password
-        // to Infisical as STALWART_STORE_PASSWORD, and creates a sync CRD so
+        // to the secrets backend as STALWART_STORE_PASSWORD, and creates a sync CRD so
         // Stalwart can read it from an env var instead of manual copy-paste.
         $this->configureStalwartStore($kubectl, $ns);
 
@@ -226,10 +228,10 @@ class MailInitCommand extends Command
 
     /**
      * Auto-configure Stalwart's Postgres main store via Plex Commons and
-     * Infisical when both are detected on the cluster. Creates the 'stalwart'
+     * OpenBao when both are detected on the cluster. Creates the 'stalwart'
      * database and role in the Plex Postgres, pushes the password as
-     * STALWART_STORE_PASSWORD to the LaraKube Infisical project, and creates
-     * an InfisicalStaticSecret CRD that syncs it into a native k8s Secret in
+     * STALWART_STORE_PASSWORD to the LaraKube OpenBao project, and creates
+     * a CRD that syncs it into a native k8s Secret in
      * the mail namespace. The Deployment already has envFrom with optional:
      * true, so Stalwart can read the env var even if the Secret arrives later.
      */
@@ -255,15 +257,15 @@ class MailInitCommand extends Command
             return;
         }
 
-        if (! $this->isInfisicalBootstrapped($kubectl, $this->secretsNamespace())) {
-            $this->line('  <fg=gray>Skipped Postgres store auto-config: Infisical is not bootstrapped, so there is</>');
+        if (! $this->secretsBackendAvailable($kubectl)) {
+            $this->line('  <fg=gray>Skipped Postgres store auto-config: Secrets backend is not bootstrapped, so there is</>');
             $this->line('  <fg=gray>  nowhere to sync STALWART_STORE_PASSWORD. Run</> <fg=blue>larakube secrets:init</><fg=gray>, or paste the</>');
             $this->line('  <fg=gray>  password from the store details printed below straight into the wizard.</>');
 
             return;
         }
 
-        $existingPassword = $this->readNamedSecret($kubectl, $ns, 'stalwart-infisical', 'STALWART_STORE_PASSWORD');
+        $existingPassword = $this->readNamedSecret($kubectl, $ns, 'stalwart-openbao', 'STALWART_STORE_PASSWORD');
         $password = $existingPassword ?? Str::random(24);
 
         // Unlike the checks above, this one is a real failure, not a missing
@@ -286,25 +288,17 @@ class MailInitCommand extends Command
             }
         }
 
-        $bootstrapToken = $this->readInfisicalBootstrapSecret($kubectl, $this->secretsNamespace(), 'bootstrap-token');
-        if ($bootstrapToken === null) {
-            $this->laraKubeError('Allocated the database, but could not read Infisical\'s bootstrap token.');
-            $this->line('  <fg=gray>STALWART_STORE_PASSWORD was NOT synced — use the printed password in the wizard instead.</>');
-
-            return;
-        }
-
-        // Both steps now go through SyncsInfisicalSecrets — the same primitive
-        // plex:rotate uses — so a rotated STALWART_STORE_PASSWORD and a freshly
-        // provisioned one travel identical code paths.
+        // Pushing STALWART store secrets to OpenBao
         $pushed = $this->withSpin(
-            'Pushing STALWART store secrets to Infisical...',
+            'Pushing STALWART store secrets to OpenBao...',
             function () use ($kubectl, $password) {
-                $dbPushed = $this->pushInfisicalSecret($kubectl, 'STALWART_STORE_PASSWORD', $password, 'production');
+                $dbPushed = $this->databaseEngineMounted($kubectl)
+                    ? $this->registerStaticRole($kubectl, 'stalwart', 'plex-postgres', 'stalwart')
+                    : $this->pushClusterSecret($kubectl, 'STALWART_STORE_PASSWORD', $password, 'production');
                 $s3Creds = $this->readCommonsS3Credentials();
                 if ($s3Creds !== null) {
-                    $this->pushInfisicalSecret($kubectl, 'STALWART_S3_KEY_ID', $s3Creds['access'], 'production');
-                    $this->pushInfisicalSecret($kubectl, 'STALWART_S3_SECRET_KEY', $s3Creds['secret'], 'production');
+                    $this->pushClusterSecret($kubectl, 'STALWART_S3_KEY_ID', $s3Creds['access'], 'production');
+                    $this->pushClusterSecret($kubectl, 'STALWART_S3_SECRET_KEY', $s3Creds['secret'], 'production');
                 }
 
                 return $dbPushed;
@@ -312,10 +306,7 @@ class MailInitCommand extends Command
         );
 
         if (! $pushed) {
-            $this->laraKubeError('Could not store STALWART_STORE_PASSWORD in Infisical.');
-            if ($this->lastInfisicalError !== null) {
-                $this->line('  <fg=gray>Infisical said:</> <fg=yellow>'.$this->lastInfisicalError.'</>');
-            }
+            $this->laraKubeError('Could not store STALWART_STORE_PASSWORD in OpenBao.');
             $this->line('  <fg=gray>The database was created, so use this password in the wizard directly:</>');
             $this->line('  <fg=yellow>'.$password.'</>');
             $this->line('  <fg=gray>Username</> <fg=blue>stalwart</> <fg=gray>· database</> <fg=blue>stalwart</>');
@@ -323,20 +314,33 @@ class MailInitCommand extends Command
             return;
         }
 
+        // NOT syncClusterSecretToNamespace() here — same bug that took down
+        // Zitadel (confirmed live 2026-08-02): it extracts KV path
+        // "production" as one object, but the value pushed above is at the
+        // deeper "production/STALWART_STORE_PASSWORD" path, so it always
+        // syncs empty and, as an Owner-mode ExternalSecret with a 1m
+        // refresh, wipes out the correct one secrets:init already maintains
+        // (tool-es.blade.php) on its next reconcile. Reconcile that existing
+        // ExternalSecret instead of creating a second, conflicting one.
         $synced = $this->withSpin(
-            'Creating InfisicalStaticSecret CRD to sync STALWART_STORE_PASSWORD...',
-            fn () => $this->syncInfisicalToNamespace($kubectl, $ns, 'stalwart-infisical', 'production'),
+            'Waiting for stalwart to sync into the cluster...',
+            function () use ($kubectl, $ns) {
+                $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ns, 'stalwart');
+                $this->forceExternalSecretReconcile($kubectl, $ns, 'stalwart');
+
+                return $this->waitForExternalSecretSynced($kubectl, $ns, 'stalwart', $refreshTimeBefore);
+            },
         );
 
         if ($synced) {
             // Restart Stalwart deployment so its container process inherits the freshly synced
-            // env vars from the newly created stalwart-infisical secret.
+            // env vars from the newly created stalwart secret.
             Process::run("{$kubectl} rollout restart deployment/stalwart -n {$ns} >/dev/null 2>&1");
         }
 
         if (! $synced) {
-            $this->laraKubeError('Stored the password in Infisical, but the sync CRD was not created.');
-            $this->line('  <fg=gray>Stalwart will not see STALWART_STORE_PASSWORD as an env var. Use it directly:</>');
+            $this->laraKubeError('Stored the password in OpenBao, but the sync into the cluster did not confirm in time.');
+            $this->line('  <fg=gray>Check</> <fg=yellow>kubectl get externalsecret stalwart -n '.$ns.'</> <fg=gray>— run</> <fg=blue>larakube secrets:init</> <fg=gray>if it is missing. Or use the password directly:</>');
             $this->line('  <fg=yellow>'.$password.'</>');
 
             return;
@@ -345,45 +349,18 @@ class MailInitCommand extends Command
         // Wait briefly for the operator to sync the secret
         usleep(3_000_000);
 
-        $this->laraKubeInfo('Stalwart store configured via Plex Commons + Infisical.');
+        $this->laraKubeInfo('Stalwart store configured via Plex Commons + OpenBao.');
         $this->laraKubeLine('  Use "Secret read from environment variable" in the wizard and enter "STALWART_STORE_PASSWORD".');
     }
 
     /**
-     * Load the cloud (VPS) connection details for a non-local environment, or
-     * null when there's nothing to act on: local, no project, or a managed
-     * (context-only, no SSH host) env. Managed clusters expose L4 via a real
-     * cloud LoadBalancer, so they need no firewall poking here.
-     */
-    /**
-     * Open Stalwart's L4 ports at both firewall layers on a VPS: the DO cloud
+     * Open Stalwart's L4 ports at both firewall layers on a VPS: the cloud
      * firewall (a dedicated, drift-free firewall) and the host UFW (over SSH).
      * Best-effort — a failure never fails the deploy; it prints the manual fix.
      */
     protected function openMailPorts(string $env): void
     {
-        $cloud = $this->mailCloud($env);
-        if ($cloud === null) {
-            return;
-        }
-
-        $ports = SharedClusterService::MAIL->firewallPorts();
-
-        // 1. DO cloud edge — skipped silently on a non-DO host / when no token.
-        if ($this->ensureCloudFirewallPorts('mail', $cloud->ip, $ports)) {
-            $this->laraKubeInfo('Opened mail ports on the DigitalOcean cloud firewall.');
-        }
-
-        // 2. Host UFW over SSH (prefers the VPN overlay IP when one is recorded).
-        $sshIp = $cloud->vpnIp ?: $cloud->ip;
-        $key = $cloud->key ? str_replace('~', home_path(), $cloud->key) : null;
-        if ($sshIp && $key && file_exists($key)) {
-            $script = "set -e\n".collect($ports)->map(fn ($p) => "ufw allow {$p}/tcp")->implode("\n")."\nufw reload";
-            $ok = $this->runRemoteCommand($cloud->user ?? 'larakube', $sshIp, $cloud->port ?? 22, $key, $script);
-            $this->laraKubeInfo($ok
-                ? 'Opened mail ports in the host UFW firewall.'
-                : 'Could not open UFW over SSH — do it manually: ufw allow '.implode(',', $ports).'/tcp');
-        }
+        $this->openToolPorts(SharedClusterService::MAIL, $env);
     }
 
     /** Best-effort mail domain (drops the leftmost "mail." label) for the noreply hint. */
