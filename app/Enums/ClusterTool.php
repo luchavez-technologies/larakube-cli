@@ -10,8 +10,9 @@ enum ClusterTool: string
             self::FLOW => 'Workflow Automation (N8N or Windmill)',
             self::SHEETS => 'Spreadsheet Database (Baserow or NocoDB)',
             self::PASSWORDS => 'Password Manager (Vaultwarden)',
+            self::RECORD => 'Screen Recording & Sharing (Sendrec)',
             self::MONITOR => 'Monitoring Stack (Grafana + Loki + Prometheus)',
-            self::SECRETS => 'Secrets Manager (Infisical)',
+            self::SECRETS => 'Secrets Manager (OpenBao)',
             self::ERRORS => 'Error Tracking (GlitchTip)',
             self::UPTIME => 'Status Pages (Uptime Kuma)',
             self::GIT => 'Git Forge & CI/CD (Gitea)',
@@ -24,7 +25,7 @@ enum ClusterTool: string
             self::SSO => 'Identity Provider / SSO (Zitadel)',
             self::WEBMAIL => 'Webmail UI (Bulwark)',
             self::NOTES => 'Team Wiki & Knowledge Base (Outline)',
-            self::DRIVE => 'Cloud Storage & Sync (Nextcloud or oCIS)',
+            self::DRIVE => 'Cloud Storage & Sync (oCIS)',
             self::ANALYTICS => 'Web Analytics (Umami)',
             self::TASKS => 'Project Management (Plane or Planka)',
             self::SIGN => 'Document Signing (Documenso)',
@@ -42,7 +43,7 @@ enum ClusterTool: string
             self::CRM => 'Twenty',
             self::DESK => 'FreeScout',
             self::DNS => 'ExternalDNS',
-            self::DRIVE => 'Nextcloud',
+            self::DRIVE => 'oCIS',
             self::ERRORS => 'GlitchTip',
             self::FLOW => 'n8n',
             self::GIT => 'Gitea',
@@ -52,7 +53,8 @@ enum ClusterTool: string
             self::MONITOR => 'Grafana',
             self::NOTES => 'Outline',
             self::PASSWORDS => 'Vaultwarden',
-            self::SECRETS => 'Infisical',
+            self::RECORD => 'Sendrec',
+            self::SECRETS => 'OpenBao',
             self::SHEETS => 'Baserow',
             self::SIGN => 'Documenso',
             self::SSO => 'Zitadel',
@@ -594,6 +596,108 @@ enum ClusterTool: string
     }
 
     /**
+     * The Zitadel project role keys this tool gates login behind, keyed to a
+     * short description for the operator instructions `sso:wire` prints.
+     * Empty for every tool that has no elevated-access story of its own (its
+     * users are scoped per-account — Vaultwarden's vault, Forgejo's repos —
+     * so "any authenticated org member" is the correct default).
+     *
+     * A non-empty return routes the tool onto rbacProjectName() instead of
+     * the shared "LaraKube Shared Tools" project, and makes sso:wire ensure
+     * the role exists there and enable projectRoleAssertion so the
+     * larakube_roles claim (see ensureRbacAction()) is populated. Granting
+     * the role to specific users stays a manual Zitadel console step — see
+     * plans/active/openbao-hardening.md.
+     *
+     * @return array<string, string>
+     */
+    public function rbacRoles(): array
+    {
+        return match ($this) {
+            self::SECRETS => [
+                'openbao-admin' => 'Full read/write on all secrets and Commons database credentials',
+                'openbao-operator' => 'Read-only on production secrets and static database roles',
+                'openbao-auditor' => 'Read-only on audit logs and secret metadata (no values)',
+            ],
+            self::MONITOR => [
+                'grafana-admin' => 'Full Grafana admin — manage users, datasources, plugins',
+                'grafana-editor' => 'Can create/edit dashboards and alerts',
+                'grafana-user' => 'Can log in to Grafana (Viewer role)',
+            ],
+            default => [],
+        };
+    }
+
+    /** True when this tool's SSO login is gated by rbacRoles() rather than open to any org member. */
+    public function requiresRbacGating(): bool
+    {
+        return $this->rbacRoles() !== [];
+    }
+
+    /**
+     * Roles that gate ADMIN privileges (not login) for open-to-org tools —
+     * the counterpart to rbacRoles(). A tool with rbacRoles() keeps its
+     * login itself gated: un-granted users are denied at the door. A tool
+     * with only ssoAdminRoles() is open to every org member and merely
+     * distinguishes elevated privileges (e.g. oCIS admin vs. regular user).
+     *
+     * sso:wire creates these on the tool's OWN project (the shared one, not
+     * the RBAC project), and — unlike rbacRoles(), whose grants are a manual
+     * `sso:grant` step — accepts an --admin-email= to grant the first one
+     * right away. The claim-flattening Action (flattenOcisRoles) turns these
+     * grants into the ocisRoles claim oCIS's PROXY_ROLE_ASSIGNMENT_DRIVER=oidc
+     * re-asserts on every login.
+     *
+     * @return array<string, string>
+     */
+    public function ssoAdminRoles(): array
+    {
+        return match ($this) {
+            self::DRIVE => [
+                'ocisAdmin' => 'oCIS administrator — can create and manage Spaces',
+                'ocisSpaceAdmin' => 'oCIS space administrator — create and manage Spaces, no system admin',
+            ],
+            default => [],
+        };
+    }
+
+    /** The Zitadel project open-to-org tools with ssoAdminRoles() register under, instead of the RBAC project. */
+    public static function ssoAdminProjectName(): string
+    {
+        return 'LaraKube Shared Tools';
+    }
+
+    /**
+     * Every role key this tool supports granting — rbacRoles() plus
+     * ssoAdminRoles(). Disjoint by construction: a tool is either gated
+     * (rbacRoles) or open-to-org (ssoAdminRoles), never both.
+     *
+     * @return array<string, string>
+     */
+    public function grantableRoles(): array
+    {
+        return $this->rbacRoles() + $this->ssoAdminRoles();
+    }
+
+    /** The Zitadel project role-gated tools register under, instead of the shared open project. */
+    public static function rbacProjectName(): string
+    {
+        return 'LaraKube RBAC';
+    }
+
+    /** The tool that owns a given grantableRoles() key, or null if none claims it. */
+    public static function forGrantableRoleKey(string $roleKey): ?self
+    {
+        foreach (self::cases() as $tool) {
+            if (array_key_exists($roleKey, $tool->grantableRoles())) {
+                return $tool;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The OIDC redirect URI to register in Zitadel for this tool.
      *
      * @return array<int, string>
@@ -666,6 +770,7 @@ enum ClusterTool: string
     case MONITOR = 'monitor';
     case NOTES = 'notes';
     case PASSWORDS = 'passwords';
+    case RECORD = 'record';
     case SECRETS = 'secrets';
     case SHEETS = 'sheets';
     case SIGN = 'sign';

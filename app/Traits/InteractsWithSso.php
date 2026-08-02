@@ -50,6 +50,16 @@ trait InteractsWithSso
         return $out !== '' ? (string) base64_decode($out) : null;
     }
 
+    /** Read a key from any named secret in the SSO namespace (e.g. sso-app-drive). */
+    protected function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
+    {
+        $out = trim(Process::run(
+            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
+        )->output());
+
+        return $out !== '' ? (string) base64_decode($out) : null;
+    }
+
     /** Read-only Zitadel host for the given environment. */
     protected function resolveSsoHostReadOnly(string $env, ?ConfigData $config): ?string
     {

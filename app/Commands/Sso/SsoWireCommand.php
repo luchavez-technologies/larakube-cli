@@ -3,15 +3,13 @@
 namespace App\Commands\Sso;
 
 use App\Data\ConfigData;
+use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
-use App\Traits\InteractsWithMonitoring;
 use App\Traits\InteractsWithSso;
-use App\Traits\InteractsWithVault;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
-use App\Traits\SyncsInfisicalSecrets;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
@@ -21,13 +19,14 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithMonitoring, InteractsWithSso, InteractsWithVault, InteractsWithZitadelApi, LaraKubeOutput, SyncsInfisicalSecrets;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput;
 
     protected $signature = 'sso:wire
         {environment=local : Environment whose deployment to wire}
         {--tool= : The tool to wire to Zitadel}
         {--context= : Target a specific kube-context}
         {--project= : Zitadel project name to register the OIDC app under (default: LaraKube Shared Tools)}
+        {--admin-email= : Email of the user to grant the tool\'s admin role to (tools with ssoAdminRoles(), e.g. drive)}
         {--sso-only : Enforce SSO-only login and disable local password authentication}
         {--remove   : Deregister the OIDC app and unset the tool\'s SSO env vars}';
 
@@ -105,6 +104,30 @@ class SsoWireCommand extends Command
         $projectName = (string) ($this->option('project') ?: 'LaraKube Shared Tools');
         $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
 
+        // Open-to-org tools with ssoAdminRoles() (e.g. drive's ocisAdmin)
+        // ship PROXY_ROLE_ASSIGNMENT_DRIVER=oidc, which re-asserts the role
+        // from the `ocisRoles` claim on every login and DENIES a token with
+        // no such claim. Installing the claim-flattening Action + the admin
+        // role is therefore NOT optional — it's the safety precondition that
+        // makes driver=oidc safe. Without it, sso:wire would turn off the
+        // only thing that keeps open-to-org logins working.
+        if ($tool->ssoAdminRoles() !== []) {
+            if ($projectId === null || ! $this->ensureSsoAdminGating($ssoHost, $pat, $projectId, $tool)) {
+                $this->laraKubeError(
+                    "Could not set up admin-role claims for {$tool->getLabel()} — the claim-flattening Action or ".
+                    'project role failed to apply. PROXY_ROLE_ASSIGNMENT_DRIVER=oidc depends on the ocisRoles '.
+                    'claim, so this stops here rather than deny every login.',
+                );
+
+                return 1;
+            }
+
+            $adminEmail = trim((string) ($this->option('admin-email') ?: ''));
+            if ($adminEmail !== '' && ! $this->ensureSsoAdminGrant($ssoHost, $pat, $projectId, $tool, $adminEmail)) {
+                return 1;
+            }
+        }
+
         // Zitadel's app endpoint keys on the APP id, not the client id — they're
         // different values. Looking it up by client id always 404s, which made
         // the reuse branch below dead code: every re-run silently re-registered
@@ -151,13 +174,6 @@ class SsoWireCommand extends Command
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
 
-            if ($this->infisicalAvailable($kubectl)) {
-                $infisicalEnv = $env === 'local' ? 'dev' : $env;
-                $prefix = strtoupper($tool->name);
-                $this->pushInfisicalSecret($kubectl, "{$prefix}_OIDC_CLIENT_ID", $registered['clientId'], $infisicalEnv);
-                $this->pushInfisicalSecret($kubectl, "{$prefix}_OIDC_CLIENT_SECRET", $registered['clientSecret'], $infisicalEnv);
-            }
-
             $clientId = $registered['clientId'];
             $clientSecret = $registered['clientSecret'];
         } else {
@@ -194,6 +210,86 @@ class SsoWireCommand extends Command
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * Safety precondition for open-to-org tools that ship
+     * PROXY_ROLE_ASSIGNMENT_DRIVER=oidc: the org-wide flattenOcisRoles
+     * Action (always-emit ocisRoles claim) plus every ssoAdminRoles() role
+     * on the tool's own project. Unlike role-gated tools this does NOT deny
+     * anyone login — the Action's ocisUser fallback keeps every org member
+     * in — but without it driver=oidc would lock everyone out, so a failure
+     * must stop the wire before the statics are applied.
+     *
+     * The tool's project must also carry projectRoleAssertion: Zitadel only
+     * populates the Action's ctx.v1.user.grants for projects in the role
+     * audience, and without the flag the grants resolve empty at runtime —
+     * the Action falls back to ocisUser and every grantee silently lands on
+     * the plain "user" role (the live "no + New Space button" bug on Drive,
+     * 2026-08-02).
+     *
+     * Prints the admin roles and the sso:grant incantation for the operator.
+     */
+    protected function ensureSsoAdminGating(string $ssoHost, string $pat, string $projectId, ClusterTool $tool): bool
+    {
+        $ok = true;
+        $this->withSpin("Configuring admin-role claims for {$tool->getLabel()}...", function () use ($ssoHost, $pat, $projectId, $tool, &$ok) {
+            $ok = $this->zitadelEnsureSsoAdminProjectSettings($ssoHost, $pat, $projectId);
+
+            if ($ok) {
+                $ok = $this->zitadelEnsureOcisRolesAction($ssoHost, $pat);
+            }
+
+            foreach ($tool->ssoAdminRoles() as $roleKey => $label) {
+                if (! $ok) {
+                    break;
+                }
+                $ok = $this->zitadelEnsureProjectRole($ssoHost, $pat, $projectId, $roleKey, $label);
+            }
+        });
+
+        if (! $ok) {
+            return false;
+        }
+
+        $this->newLine();
+        $this->line('  <fg=blue>Open-to-org tool — every org member can log in. Admin roles:</>');
+        foreach ($tool->ssoAdminRoles() as $roleKey => $label) {
+            $this->line("    <fg=blue>{$roleKey}</> — {$label}");
+        }
+        $this->line("  <fg=gray>larakube sso:grant --tool={$tool->value} --role=<role> --email=<user> — or re-wire with --admin-email=</>");
+        $this->newLine();
+
+        return true;
+    }
+
+    /**
+     * Grant --admin-email every ssoAdminRoles() role on the tool's own
+     * project. Hard-fails (instead of warning and continuing) when the
+     * email resolves to no Zitadel user — the whole point of --admin-email
+     * is that this person IS the admin, so a typo'd address must surface.
+     */
+    protected function ensureSsoAdminGrant(string $ssoHost, string $pat, string $projectId, ClusterTool $tool, string $adminEmail): bool
+    {
+        $userId = $this->zitadelFindUserByEmail($ssoHost, $pat, $adminEmail);
+        if ($userId === null) {
+            $this->laraKubeError("No Zitadel user found for '{$adminEmail}' — create the user in Zitadel or fix --admin-email, then re-run.");
+
+            return false;
+        }
+
+        foreach (array_keys($tool->ssoAdminRoles()) as $roleKey) {
+            if (! $this->zitadelGrantRole($ssoHost, $pat, $userId, $projectId, $roleKey)) {
+                $this->laraKubeError("Failed to grant '{$roleKey}' to {$adminEmail}.");
+
+                return false;
+            }
+        }
+
+        $granted = implode(', ', array_map(fn (string $k) => "'{$k}'", array_keys($tool->ssoAdminRoles())));
+        $this->laraKubeInfo("✅ Granted {$granted} to {$adminEmail}.");
+
+        return true;
     }
 
     protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat): int
@@ -293,11 +389,20 @@ class SsoWireCommand extends Command
 
     protected function targetHost(ClusterTool $tool, string $env, ?ConfigData $config): ?string
     {
-        return match ($tool) {
-            ClusterTool::MONITOR => $this->resolveGrafanaHostReadOnly($env, $config),
-            ClusterTool::PASSWORDS => $this->resolveVaultHostReadOnly($env, $config),
-            default => null,
-        };
+        // Every OIDC-capable tool resolves its host the same read-only way its
+        // own resolve*HostReadOnly() does — through its SharedClusterService.
+        // Keying off $tool->service() means a tool becomes wireable the moment
+        // it has an oidcEnv() schema, with no per-tool case to remember here.
+        $service = $tool->service();
+        if ($service === null) {
+            return null;
+        }
+
+        if ($env === 'local') {
+            return $service->hostFor(GlobalConfigData::load()->getLocalTld());
+        }
+
+        return $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
     }
 
     protected function resolveTool(?string $kubectl = null): ?ClusterTool
@@ -346,14 +451,5 @@ class SsoWireCommand extends Command
         return trim(Process::run(
             "{$kubectl} get deployment {$deployment} -n {$ns} --no-headers --ignore-not-found",
         )->output()) !== '';
-    }
-
-    protected function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
     }
 }
