@@ -61,15 +61,15 @@ execute() {
                     final_args+=("$arg")
                 fi
             done
-            php "${php_flags[@]}" "${final_args[@]}"
+            php -d memory_limit=1G "${php_flags[@]}" "${final_args[@]}"
         elif [[ "$first_cmd" == "larakube" ]]; then
-             php "${php_flags[@]}" "$larakube_binary" "${cmd_args[@]:1}"
+             php -d memory_limit=1G "${php_flags[@]}" "$larakube_binary" "${cmd_args[@]:1}"
         else
             "${cmd_args[@]}"
         fi
     else
         # Otherwise, run via PHP with flags
-        php "${php_flags[@]}" "${cmd_args[@]}"
+        php -d memory_limit=1G "${php_flags[@]}" "${cmd_args[@]}"
     fi
 }
 
@@ -118,6 +118,7 @@ if ! docker ps --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
         -e HOME=/home/php \
         -e COMPOSER_ALLOW_SUPERUSER=1 \
         -e SHOW_WELCOME_MESSAGE=false \
+        -e PHP_MEMORY_LIMIT=1G \
         -e KUBECONFIG=/home/php/.kube/config-container \
         -e DOCKER_HOST=unix:///var/run/docker.sock \
         --entrypoint /bin/sh \
