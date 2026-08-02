@@ -13,7 +13,7 @@ use App\Enums\IngressController;
 use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PhpVersion;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
@@ -24,7 +24,7 @@ class ConfigDataTest extends TestCase
     public function test_it_casts_strings_to_enums_correctly()
     {
         $data = [
-            'blueprints' => ['statamic'],
+            'blueprints' => ['filament'],
             'serverVariation' => 'fpm-nginx',
             'frontend' => 'react',
             'phpVersion' => '8.5',
@@ -43,7 +43,7 @@ class ConfigDataTest extends TestCase
 
         // Array of Enums
         $this->assertIsArray($config->blueprints);
-        $this->assertEquals(Blueprint::STATAMIC, $config->blueprints[0]);
+        $this->assertEquals(Blueprint::FILAMENT, $config->blueprints[0]);
     }
 
     public function test_it_handles_multiple_enum_values_in_arrays()
@@ -502,15 +502,15 @@ class ConfigDataTest extends TestCase
         $this->assertNull($config->buildWaitForCommand([CacheDriver::DATABASE]));
 
         // 10. Meilisearch scout returns command on port 7700
-        $command = $config->buildWaitForCommand([ScoutDriver::MEILISEARCH]);
+        $command = $config->buildWaitForCommand([SearchDriver::MEILISEARCH]);
         $this->assertStringContainsString('meilisearch 7700', $command);
 
         // 11. Typesense scout returns command on port 8108
-        $command = $config->buildWaitForCommand([ScoutDriver::TYPESENSE]);
+        $command = $config->buildWaitForCommand([SearchDriver::TYPESENSE]);
         $this->assertStringContainsString('typesense 8108', $command);
 
         // 12. Database scout returns null
-        $this->assertNull($config->buildWaitForCommand([ScoutDriver::DATABASE]));
+        $this->assertNull($config->buildWaitForCommand([SearchDriver::DATABASE]));
 
         // 13. Storage drivers return command on correct ports
         $command = $config->buildWaitForCommand([StorageDriver::MINIO]);
