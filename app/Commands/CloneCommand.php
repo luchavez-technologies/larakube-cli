@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Data\GlobalConfigData;
+use App\Enums\AppFramework;
 use App\Traits\ClonesRepositories;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -21,9 +22,9 @@ class CloneCommand extends Command
         {directory? : Target directory (defaults to repo name)}
         {--branch= : Branch to clone}
         {--provider=github : Git host for user/repo shorthand (github, gitlab, bitbucket)}
-        {--no-install : Skip composer install}';
+        {--no-install : Skip package installation (composer/npm/pip/go)}';
 
-    protected $description = 'Clone a Laravel repository and prepare it for LaraKube CLI in one command';
+    protected $description = 'Clone a web repository (Laravel, Next.js, Django, Go, Rust, etc.) and prepare it for LaraKube CLI in one command';
 
     public function handle(): int
     {
@@ -67,15 +68,15 @@ class CloneCommand extends Command
         $this->newLine();
         $this->laraKubeInfo("Cloned into {$directory}/");
 
-        // ── Step 2: Detect project state ───────────────────────────────────────
+        // ── Step 2: Detect platform framework ───────────────────────────
 
-        $hasComposerJson = file_exists($targetPath.'/composer.json');
+        $framework = AppFramework::detect($targetPath);
+        if ($framework !== null) {
+            $this->laraKubeInfo("Detected platform: {$framework->getLabel()}");
+        } else {
+            $this->laraKubeWarn("Unrecognized project framework layout in {$directory}/");
 
-        if (! $hasComposerJson) {
-            $this->newLine();
-            $this->laraKubeWarn("This repo doesn't look like a PHP/Laravel project (no composer.json found).");
-
-            if (! confirm('Continue anyway?', false)) {
+            if (! confirm('Continue initializing LaraKube anyway?', true)) {
                 return 0;
             }
         }
@@ -95,7 +96,7 @@ class CloneCommand extends Command
         $this->newLine();
 
         if ($envResult === 'copied') {
-            $this->laraKubeInfo('.env created from .env.example with a fresh APP_KEY.');
+            $this->laraKubeInfo('.env created from .env.example with a fresh secret key.');
 
             // Patch APP_URL and ASSET_URL so they point to the local LaraKube domain
             $tld = GlobalConfigData::load()->getLocalTld();
@@ -109,17 +110,28 @@ class CloneCommand extends Command
             $this->line('  <fg=gray>.env already exists — left untouched.</>');
         }
 
-        // ── Step 4: composer install ───────────────────────────────────────────
+        // ── Step 4: Package Installation ─────────────────────────────────────
 
-        if (! $this->option('no-install') && $hasComposerJson) {
-            $this->newLine();
-            $this->laraKubeInfo('Running composer install…');
-            $this->newLine();
+        if (! $this->option('no-install')) {
+            $hasComposer = file_exists($targetPath.'/composer.json');
+            $hasPackageJson = file_exists($targetPath.'/package.json');
 
-            $installCode = $this->runComposerInstall($targetPath);
+            if ($hasComposer) {
+                $this->newLine();
+                $this->laraKubeInfo('Running composer install…');
+                $this->newLine();
 
-            if ($installCode !== 0) {
-                $this->laraKubeWarn('composer install exited with errors. You may need to fix dependencies manually.');
+                $installCode = $this->runComposerInstall($targetPath);
+                if ($installCode !== 0) {
+                    $this->laraKubeWarn('composer install exited with warnings.');
+                }
+            } elseif ($hasPackageJson && in_array($framework, [AppFramework::NEXTJS, AppFramework::NESTJS, AppFramework::ADONISJS], true)) {
+                $this->newLine();
+                $this->laraKubeInfo('Running npm install…');
+                $this->newLine();
+
+                // Run npm install inside Node container or host
+                passthru("cd $targetPath && npm install");
             }
         }
 
@@ -131,7 +143,6 @@ class CloneCommand extends Command
             $this->newLine();
             $this->laraKubeInfo('Existing LaraKube CLI config found (.larakube.json) — skipping init wizard.');
 
-            // Detect Plex-managed services for the local environment and offer to join
             $projectConfig = $this->getProjectConfig($targetPath);
             if ($projectConfig) {
                 $plexServices = $projectConfig->getPlex('local');

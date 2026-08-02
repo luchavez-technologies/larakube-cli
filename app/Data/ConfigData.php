@@ -7,6 +7,7 @@ use App\Contracts\HasEnvironmentVariables;
 use App\Contracts\HasHosts;
 use App\Contracts\HasPodName;
 use App\Contracts\RequiresPhpExtensions;
+use App\Enums\AppFramework;
 use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
@@ -17,7 +18,7 @@ use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PackageManager;
 use App\Enums\PhpVersion;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
@@ -57,6 +58,7 @@ class ConfigData extends Data
         public string $id = '',
         public ?string $name = null,
         public ?string $path = null,
+        public ?AppFramework $framework = null,
         /** @var array<Blueprint> */
         public array $blueprints = [],
         public ?ServerVariation $serverVariation = null,
@@ -74,8 +76,8 @@ class ConfigData extends Data
         public array $additionalExtensions = [],
         /** @var array<LaravelFeature> */
         public array $features = [],
-        public ?ScoutDriver $scoutDriver = null,
-        /** @var array<ScoutDriver> */
+        public ?SearchDriver $scoutDriver = null,
+        /** @var array<SearchDriver> */
         public array $scoutDrivers = [],
         public ?PackageManager $packageManager = null,
         public ?StorageDriver $objectStorage = null,
@@ -634,7 +636,7 @@ class ConfigData extends Data
             $manageable = match (true) {
                 $component instanceof DatabaseDriver => $component->dbPort() > 0,
                 $component instanceof CacheDriver => $component->dbPort() > 0,
-                $component instanceof ScoutDriver => $component !== ScoutDriver::DATABASE,
+                $component instanceof SearchDriver => $component !== SearchDriver::DATABASE,
                 $component instanceof StorageDriver => true,
                 default => false,
             };
@@ -746,7 +748,7 @@ class ConfigData extends Data
             ?? new SecurityAuditData;
     }
 
-    public function getScoutDriver(): ?ScoutDriver
+    public function getScoutDriver(): ?SearchDriver
     {
         return $this->scoutDriver;
     }
@@ -1051,7 +1053,7 @@ class ConfigData extends Data
         return $this;
     }
 
-    public function setScoutDriver(?ScoutDriver $driver): self
+    public function setScoutDriver(?SearchDriver $driver): self
     {
         $this->scoutDriver = $driver;
 
@@ -1198,7 +1200,7 @@ class ConfigData extends Data
 
     public function setScoutDrivers(array $ds): self
     {
-        $this->scoutDrivers = array_map(fn ($d) => is_string($d) ? ScoutDriver::from($d) : $d, $ds);
+        $this->scoutDrivers = array_map(fn ($d) => is_string($d) ? SearchDriver::from($d) : $d, $ds);
 
         return $this;
     }
@@ -1246,7 +1248,7 @@ class ConfigData extends Data
         return $this;
     }
 
-    public function addScoutDriver(ScoutDriver ...$ds): self
+    public function addScoutDriver(SearchDriver ...$ds): self
     {
         foreach ($ds as $d) {
             $this->scoutDrivers[] = $d;
@@ -1368,7 +1370,7 @@ class ConfigData extends Data
                     $port = match (true) {
                         $dep instanceof DatabaseDriver => $dep->dbPort() ?: null,
                         $dep instanceof CacheDriver => $dep->dbPort() ?: null,
-                        $dep instanceof ScoutDriver => $dep === ScoutDriver::DATABASE ? null : $dep->port(),
+                        $dep instanceof SearchDriver => $dep === SearchDriver::DATABASE ? null : $dep->port(),
                         $dep instanceof StorageDriver => $dep->port(),
                         default => null,
                     };

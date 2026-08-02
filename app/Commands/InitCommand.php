@@ -89,6 +89,9 @@ class InitCommand extends Command
         $config->setIsScaffolding(false);
         $config = $this->gatherConfig($config, forcePrompts: $isReinit);
         $config->setPath(getcwd());
+        if ($config->framework === null) {
+            $config->framework = \App\Enums\AppFramework::detect(getcwd());
+        }
 
         $name = Str::slug(basename($config->getPath()));
         if ($name === 'console') {

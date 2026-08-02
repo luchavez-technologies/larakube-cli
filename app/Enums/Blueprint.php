@@ -22,15 +22,14 @@ enum Blueprint: string implements HasArtisanCommands, HasCommandOptions, HasComp
 
     public function isHidden(?ConfigData $config = null): bool
     {
-        return $this === self::STATAMIC;
+        return false;
     }
 
-    public function getLabel(): ?string
+    public function getLabel(): string
     {
         return match ($this) {
             self::LARAVEL => 'Laravel (Standard)',
             self::FILAMENT => 'Filament PHP (Admin Panel)',
-            self::STATAMIC => 'Statamic (CMS)',
         };
     }
 
@@ -56,7 +55,6 @@ enum Blueprint: string implements HasArtisanCommands, HasCommandOptions, HasComp
         return match ($this) {
             self::LARAVEL => 'A clean, modern Laravel application.',
             self::FILAMENT => 'The elegant TALL stack admin panel for Laravel.',
-            self::STATAMIC => 'The radical, flat-file (or database) CMS for Laravel.',
         };
     }
 
@@ -75,12 +73,7 @@ enum Blueprint: string implements HasArtisanCommands, HasCommandOptions, HasComp
 
     public function getSecretEnvironmentVariables(?ConfigData $config = null, string $environment = 'local'): array
     {
-        return match ($this) {
-            self::STATAMIC => [
-                'STATAMIC_LICENSE_KEY' => '',
-            ],
-            default => [],
-        };
+        return [];
     }
 
     public function getHosts(ConfigData $config, string $environment = 'local'): array
@@ -96,9 +89,6 @@ enum Blueprint: string implements HasArtisanCommands, HasCommandOptions, HasComp
     public function getComposerDependencies(?ConfigData $context = null): array
     {
         return match ($this) {
-            self::STATAMIC => [
-                'statamic/cms',
-            ],
             self::FILAMENT => [
                 'filament/filament',
             ],
@@ -109,9 +99,6 @@ enum Blueprint: string implements HasArtisanCommands, HasCommandOptions, HasComp
     public function getArtisanCommands(?ConfigData $context = null): array
     {
         return match ($this) {
-            self::STATAMIC => [
-                'statamic:install --no-interaction',
-            ],
             self::FILAMENT => [
                 'filament:install --panels',
             ],
@@ -127,7 +114,6 @@ enum Blueprint: string implements HasArtisanCommands, HasCommandOptions, HasComp
     public function getPhpExtensions(): array
     {
         return match ($this) {
-            self::STATAMIC => ['gd', 'exif'],
             self::FILAMENT => ['intl'],
             default => [],
         };
@@ -136,10 +122,6 @@ enum Blueprint: string implements HasArtisanCommands, HasCommandOptions, HasComp
     public function getPostInstallInstructions(?ConfigData $config = null): array
     {
         return match ($this) {
-            self::STATAMIC => [
-                'To create your first super user, run:',
-                'larakube art make:statamic-user',
-            ],
             self::FILAMENT => [
                 'To create your first admin user, run:',
                 'larakube art make:filament-user',
@@ -150,5 +132,4 @@ enum Blueprint: string implements HasArtisanCommands, HasCommandOptions, HasComp
 
     case LARAVEL = 'laravel';
     case FILAMENT = 'filament';
-    case STATAMIC = 'statamic';
 }
