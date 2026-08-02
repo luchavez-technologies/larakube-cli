@@ -436,9 +436,27 @@ class GitInitCommand extends Command
         $ok = $this->withSpin(
             "Syncing {$key} to the cluster...",
             function () use ($kubectl, $ns, $clusterEnv, $dbPassword, $key) {
-                $synced = $this->databaseEngineMounted($kubectl)
-                    ? $this->registerStaticRole($kubectl, 'forgejo', 'plex-postgres', 'forgejo')
-                    : $this->pushClusterSecret($kubectl, $key, $dbPassword, $clusterEnv);
+                if ($this->databaseEngineMounted($kubectl)) {
+                    $synced = $this->registerStaticRole($kubectl, 'forgejo', 'plex-postgres', 'forgejo');
+
+                    // Without this, $key is never pushed to OpenBao's KV at
+                    // all on this branch — secrets:init's sweep reads it
+                    // from there, so the synced Secret would end up with no
+                    // password key. And even if it had been pushed with
+                    // $dbPassword, registerStaticRole() rotates the real one
+                    // as a side effect the instant a role is first created —
+                    // read back what OpenBao actually set, not the
+                    // pre-rotation value. Same class of bug that desynced
+                    // Zitadel, confirmed live 2026-08-02.
+                    if ($synced) {
+                        $realPassword = $this->readStaticRolePassword($kubectl, 'forgejo');
+                        if ($realPassword !== null) {
+                            $this->pushClusterSecret($kubectl, $key, $realPassword, $clusterEnv);
+                        }
+                    }
+                } else {
+                    $synced = $this->pushClusterSecret($kubectl, $key, $dbPassword, $clusterEnv);
+                }
 
                 if (! $synced) {
                     return false;

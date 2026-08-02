@@ -129,6 +129,20 @@ class SsoInitCommand extends Command
                 $this->pushClusterSecret($kubectl, 'ZITADEL_ADMIN_PASSWORD', $adminPassword, 'production');
                 if ($this->databaseEngineMounted($kubectl)) {
                     $this->registerStaticRole($kubectl, 'zitadel', 'plex-postgres', 'zitadel');
+
+                    // registerStaticRole() rotates the password as a side
+                    // effect the instant a role is FIRST created — the
+                    // literal $dbPassword the Secret above already has is
+                    // stale from that moment on. This exact gap is why
+                    // Zitadel came up healthy and then desynced again a
+                    // restart later, confirmed live 2026-08-02.
+                    $realPassword = $this->readStaticRolePassword($kubectl, 'zitadel');
+                    if ($realPassword !== null) {
+                        Process::run(
+                            "{$kubectl} patch secret sso-secrets -n {$ns} --type=json "
+                            .'-p=\'[{"op":"replace","path":"/data/db-password","value":"'.base64_encode($realPassword).'"}]\'',
+                        );
+                    }
                 } else {
                     $this->pushClusterSecret($kubectl, 'ZITADEL_DB_PASSWORD', $dbPassword, 'production');
                 }
@@ -283,7 +297,12 @@ class SsoInitCommand extends Command
 
         if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
             $this->pushClusterSecret($kubectl, 'ZITADEL_MACHINE_PAT', $pat, 'production');
-            $this->syncClusterSecretToNamespace($kubectl, $ns, 'sso-secrets', 'production');
+            // NOT syncClusterSecretToNamespace() here — same bug as the other
+            // call site in this file (see deploySso()): it always syncs
+            // empty and, as an Owner-mode ExternalSecret with a 1m refresh,
+            // wipes sso-secrets on its next reconcile. The kubectl patch
+            // above already wrote machine-pat directly; nothing else needs
+            // to sync it into the namespace.
         }
 
         return true;

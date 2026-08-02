@@ -282,6 +282,55 @@ trait SyncsClusterSecrets
     }
 
     /**
+     * The password OpenBao's static role currently has cached for this
+     * credential — the only correct source of truth immediately after
+     * registerStaticRole() creates a NEW role, since that POST rotates the
+     * password as a side effect the instant it runs (same fact
+     * rotateStaticRole()'s docblock notes). A caller that writes its own
+     * locally-generated password into a Secret instead of reading this back
+     * is one restart away from desyncing from what OpenBao/Postgres actually
+     * have — confirmed live 2026-08-02 on Zitadel's first-ever registration.
+     */
+    protected function readStaticRolePassword(string $kubectl, string $roleName): ?string
+    {
+        $ns = $this->secretsNamespace();
+        $token = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
+        if ($token === null) {
+            return null;
+        }
+
+        $res = $this->openBaoApi($kubectl, 'GET', "/v1/database/static-creds/{$roleName}", null, $token);
+
+        return $res['data']['password'] ?? null;
+    }
+
+    /**
+     * Delete a static role's OpenBao registration entirely — required before
+     * a tool's Commons database tenant is dropped, or the role is left
+     * pointing at a Postgres user that no longer exists in that form. Left
+     * behind, OpenBao's own internal static-role management keeps enforcing
+     * its stale cached password against whatever a LATER re-init sets,
+     * silently reverting it — confirmed live 2026-08-02: Zitadel came back up
+     * fine after a fresh sso:init, then desynced again ~40 minutes later once
+     * OpenBao "self-healed" the DB password back to a role from the PREVIOUS
+     * (already torn down) instance. registerStaticRole() is idempotent and
+     * treats an existing role as already-correct, so it never notices.
+     */
+    protected function deleteStaticRole(string $kubectl, string $roleName): bool
+    {
+        $ns = $this->secretsNamespace();
+        $token = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
+        if ($token === null) {
+            return false;
+        }
+
+        // A 404 here means it was never registered — not a failure.
+        $this->openBaoApi($kubectl, 'DELETE', "/v1/database/static-roles/{$roleName}", null, $token);
+
+        return true;
+    }
+
+    /**
      * Force OpenBao to rotate a static role's credential RIGHT NOW, rather
      * than waiting out its rotation_period. registerStaticRole()'s POST only
      * rotates the password automatically the FIRST time a role is created —

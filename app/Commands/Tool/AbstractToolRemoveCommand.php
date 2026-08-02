@@ -9,6 +9,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
@@ -33,19 +34,21 @@ use LaravelZero\Framework\Commands\Command;
  */
 abstract class AbstractToolRemoveCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, SyncsClusterSecrets;
 
     public function __construct()
     {
         $tool = $this->tool();
 
-        $this->signature = "{$tool->value}:remove
-        {environment=local : Environment to remove ".$tool->getLabel()." from}
-        {--context=  : Target a specific kube-context (defaults to the environment's saved cloud target)}
-        {--keep-data : Leave the Plex Commons database and storage in place — remove workloads only}
-        {--force     : Skip the confirmation prompt (required for non-interactive runs)}";
+        if (empty($this->signature)) {
+            $this->signature = "{$tool->value}:remove
+            {environment=local : Environment to remove ".$tool->getLabel()." from}
+            {--context=  : Target a specific kube-context (defaults to the environment's saved cloud target)}
+            {--keep-data : Leave the Plex Commons database and storage in place — remove workloads only}
+            {--force     : Skip the confirmation prompt (required for non-interactive runs)}";
+        }
 
-        $this->description = "Remove {$tool->getLabel()} from a cluster";
+        $this->description ??= "Remove {$tool->getLabel()} from a cluster";
 
         parent::__construct();
     }
@@ -157,6 +160,16 @@ abstract class AbstractToolRemoveCommand extends Command
                 "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c "
                 .escapeshellarg($client).' < '.escapeshellarg($tmp),
             ) && $ok;
+
+            // The role being dropped above is exactly what OpenBao's static
+            // role (if this tool ever ran secrets:wire or its own :init
+            // registered one) points at. Left registered, a later :init that
+            // recreates the role idempotently no-ops registerStaticRole()'s
+            // POST — OpenBao then keeps enforcing its stale cached password
+            // against the freshly-created Postgres user, silently reverting
+            // whatever the fresh install set. Confirmed live 2026-08-02 on
+            // Zitadel: came back up fine, desynced again ~40 minutes later.
+            $this->deleteStaticRole($kubectl, $database);
 
             $this->unregisterTenant($database);
 

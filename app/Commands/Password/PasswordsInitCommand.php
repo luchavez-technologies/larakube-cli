@@ -92,10 +92,22 @@ class PasswordsInitCommand extends Command
         $secretsSynced = false;
 
         if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
-            $this->withSpin('Syncing Vaultwarden secrets to the cluster...', function () use ($kubectl, $ns, $adminToken, $dbPassword, $databaseUrl, &$secretsSynced) {
+            $this->withSpin('Syncing Vaultwarden secrets to the cluster...', function () use ($kubectl, $ns, $plexNs, $adminToken, $dbPassword, $databaseUrl, &$secretsSynced) {
                 $this->pushClusterSecret($kubectl, 'VAULTWARDEN_ADMIN_TOKEN', $adminToken, 'production');
                 if ($this->databaseEngineMounted($kubectl)) {
                     $this->registerStaticRole($kubectl, 'vaultwarden', 'plex-postgres', 'vaultwarden');
+
+                    // registerStaticRole() rotates the password as a side
+                    // effect the instant a role is FIRST created — $databaseUrl
+                    // still has the pre-rotation $dbPassword baked in at that
+                    // point. Rebuild it from what OpenBao actually set before
+                    // pushing, or the KV value (and everything synced from
+                    // it) is stale from the moment it's written. Confirmed
+                    // live 2026-08-02 on Zitadel's identical registration.
+                    $realPassword = $this->readStaticRolePassword($kubectl, 'vaultwarden');
+                    if ($realPassword !== null && $databaseUrl !== null) {
+                        $databaseUrl = "postgresql://vaultwarden:{$realPassword}@postgres.{$plexNs}.svc.cluster.local:5432/vaultwarden";
+                    }
                 } else {
                     $this->pushClusterSecret($kubectl, 'VAULTWARDEN_DB_PASSWORD', $dbPassword, 'production');
                 }

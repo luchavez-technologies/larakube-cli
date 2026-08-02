@@ -118,6 +118,19 @@ class RecordInitCommand extends Command
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 if ($this->databaseEngineMounted($kubectl)) {
                     $this->registerStaticRole($kubectl, $dbName, 'plex-postgres', $dbName);
+
+                    // registerStaticRole() rotates the password as a side
+                    // effect the instant a role is FIRST created — the
+                    // literal $dbPassword the Secret above already has is
+                    // stale from that moment on. Confirmed live 2026-08-02
+                    // on Zitadel: worked once, desynced on next restart.
+                    $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
+                    if ($realPassword !== null) {
+                        Process::run(
+                            "{$kubectl} patch secret record-sendrec-secrets -n {$ns} --type=json "
+                            .'-p=\'[{"op":"replace","path":"/data/db-password","value":"'.base64_encode($realPassword).'"}]\'',
+                        );
+                    }
                 } else {
                     $this->pushClusterSecret($kubectl, 'RECORD_DB_PASSWORD', $dbPassword, $clusterEnv);
                 }
