@@ -6,11 +6,12 @@ use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\select;
 
 /**
  * Shared helpers for the Plex feature — the multi-tenant "Commons" (shared
@@ -54,13 +55,13 @@ trait InteractsWithPlex
     {
         // Images/ports are derived from the SAME driver enums the rest of LaraKube
         // uses, so the Commons never drifts from the project defaults (e.g. Meili's
-        // version stays in lockstep with ScoutDriver instead of a stale literal).
+        // version stays in lockstep with SearchDriver instead of a stale literal).
         $defaults = [
             'postgres' => ['image' => DatabaseDriver::POSTGRESQL->getDockerImage(), 'port' => DatabaseDriver::POSTGRESQL->dbPort(), 'storage' => '10Gi', 'memory' => '1Gi'],
             'mysql' => ['image' => DatabaseDriver::MYSQL->getDockerImage(),       'port' => DatabaseDriver::MYSQL->dbPort(),       'storage' => '10Gi', 'memory' => '1Gi'],
             'mariadb' => ['image' => DatabaseDriver::MARIADB->getDockerImage(),     'port' => DatabaseDriver::MARIADB->dbPort(),     'storage' => '10Gi', 'memory' => '1Gi'],
             'redis' => ['image' => CacheDriver::REDIS->getDockerImage(),          'port' => CacheDriver::REDIS->dbPort(),                               'memory' => '128Mi'],
-            'meilisearch' => ['image' => ScoutDriver::MEILISEARCH->getDockerImage(),    'port' => ScoutDriver::MEILISEARCH->port(),      'storage' => '5Gi',  'memory' => '512Mi'],
+            'meilisearch' => ['image' => SearchDriver::MEILISEARCH->getDockerImage(),    'port' => SearchDriver::MEILISEARCH->port(),      'storage' => '5Gi',  'memory' => '512Mi'],
             'seaweedfs' => ['image' => StorageDriver::SEAWEEDFS->getDockerImage(),    'port' => StorageDriver::SEAWEEDFS->port(),      'storage' => '10Gi', 'memory' => '512Mi'],
             'minio' => ['image' => StorageDriver::MINIO->getDockerImage(),        'port' => StorageDriver::MINIO->port(),          'storage' => '10Gi', 'memory' => '512Mi'],
             'garage' => ['image' => StorageDriver::GARAGE->getDockerImage(),       'port' => StorageDriver::GARAGE->port(),         'storage' => '10Gi', 'memory' => '512Mi'],
@@ -112,7 +113,7 @@ trait InteractsWithPlex
         $drivers = array_merge(
             DatabaseDriver::cases(),
             CacheDriver::cases(),
-            ScoutDriver::cases(),
+            SearchDriver::cases(),
             StorageDriver::cases(),
         );
 
@@ -193,6 +194,82 @@ trait InteractsWithPlex
     }
 
     /**
+     * Resolve which environment a Plex operation (plex:init, plex:join, ...)
+     * targets — same UX as every other {tool}:init (mail:init, secrets:init,
+     * ...): explicit positional wins, --no-interaction defaults to local,
+     * otherwise a picker over local + this project's known cloud
+     * environments. Unlike resolveToolEnvironment(), this has no ClusterTool
+     * to hang a label on (Plex isn't a single deployable tool), so it's a
+     * smaller, Plex-specific mirror of that trait, shared here rather than
+     * duplicated per command. The point of asking rather than silently
+     * defaulting: a bare `plex:join` with no visible confirmation of WHICH
+     * environment it's about to touch is exactly the "hit and miss" failure
+     * mode ResolvesToolEnvironment's own docblock documents — a fat-fingered
+     * or forgotten positional silently doing something to the wrong
+     * Commons, local or cloud, is the risk this closes.
+     *
+     * $config is nullable — some Plex commands (plex:rotate) can run without
+     * a project in cwd at all; without one there's no cloud-env list to
+     * offer, but the prompt still confirms "local" rather than assuming it.
+     */
+    public function resolvePlexEnvironment(?ConfigData $config): string
+    {
+        $explicit = (string) ($this->argument('environment') ?: '');
+        if ($explicit !== '') {
+            return $explicit;
+        }
+
+        if ($this->option('no-interaction')) {
+            return 'local';
+        }
+
+        $envs = array_merge(['local'], $config?->getCloudEnvironments() ?? []);
+
+        return select(
+            label: 'Which environment is this Plex operation for?',
+            options: array_combine($envs, $envs),
+            default: 'local',
+            hint: 'Local uses the current kube-context; a cloud env asks for + persists the Commons context.',
+        );
+    }
+
+    /**
+     * Delete a self-hosted PVC, scaling its deployment to 0 first if the
+     * delete doesn't complete immediately. A plain `kubectl delete pvc`
+     * blocks indefinitely via the pvc-protection finalizer while a pod is
+     * still mounting it, with zero feedback — issue the delete without
+     * waiting, then poll briefly and report what's actually true instead of
+     * assuming success. Shared by plex:migrate's own cleanup step and
+     * plex:join --fresh (discard instead of migrate).
+     */
+    public function releaseSelfHostedPvc(string $kubectl, string $namespace, string $pvc, string $deployment): bool
+    {
+        Process::run($kubectl.' delete pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' --wait=false');
+
+        $stillThere = trim(Process::run(
+            $kubectl.' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' -o name',
+        )->output()) !== '';
+
+        if ($stillThere) {
+            Process::run($kubectl.' scale deployment/'.escapeshellarg($deployment).' --replicas=0 -n '.escapeshellarg($namespace));
+
+            for ($i = 0; $i < 10; $i++) {
+                $stillThere = trim(Process::run(
+                    $kubectl.' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' -o name',
+                )->output()) !== '';
+
+                if (! $stillThere) {
+                    break;
+                }
+
+                usleep(500_000);
+            }
+        }
+
+        return ! $stillThere;
+    }
+
+    /**
      * Turn a tenant identifier into a DNS-safe S3 bucket name (lowercase, hyphens,
      * 3–63 chars) — MinIO/S3 reject the underscores plexTenantIdentifier produces,
      * and SeaweedFS tolerates either, so this one rule serves every backend
@@ -231,12 +308,16 @@ trait InteractsWithPlex
 
     /**
      * Merge KEY=VALUE pairs into existing .env content — replacing a key in place
-     * (even if commented) or appending it. Pure, so it's unit-testable and works
-     * for any `.env.{env}` (syncEnvFile only handles .env / .env.production).
+     * (even if commented) or appending it. $removeKeys deletes a line outright
+     * instead of setting it — needed so a key that's no longer written (e.g.
+     * DB_PASSWORD once OpenBao owns it) doesn't leave a stale value from a
+     * previous run sitting in the file forever. Pure, so it's unit-testable and
+     * works for any `.env.{env}` (syncEnvFile only handles .env / .env.production).
      *
      * @param  array<string, int|string>  $values
+     * @param  list<string>  $removeKeys
      */
-    public function applyEnvValues(string $content, array $values): string
+    public function applyEnvValues(string $content, array $values, array $removeKeys = []): string
     {
         $lines = $content === '' ? [] : explode("\n", $content);
         $out = [];
@@ -244,6 +325,17 @@ trait InteractsWithPlex
 
         foreach ($lines as $line) {
             $matched = false;
+
+            foreach ($removeKeys as $key) {
+                if (preg_match('/^#?\s*'.preg_quote($key, '/').'=.*/', $line)) {
+                    $matched = true;
+                    break;
+                }
+            }
+            if ($matched) {
+                continue;
+            }
+
             foreach ($values as $key => $value) {
                 if (preg_match('/^#?\s*'.preg_quote($key, '/').'=.*/', $line)) {
                     $out[] = "{$key}={$value}";
@@ -329,7 +421,7 @@ trait InteractsWithPlex
         // Search. Wired explicitly rather than generically like S3 above: each
         // Scout engine has its own env contract (MEILISEARCH_* vs TYPESENSE_*),
         // and Meilisearch is the only Commons-provisionable one today
-        // (ScoutDriver::isPlexReady). Without this the overlay deletes the
+        // (SearchDriver::isPlexReady). Without this the overlay deletes the
         // self-hosted Deployment while MEILISEARCH_HOST still points at it.
         // The caller passes the shared Commons master key in $search — tenants
         // share it (isolation is by index name), and reading it is I/O, which
@@ -439,6 +531,7 @@ trait InteractsWithPlex
         $manifest = view('k8s.plex.commons', [
             'spec' => $spec,
             'specJsonIndented' => preg_replace('/^/m', '    ', $json),
+            'isLocal' => $this->targetsLocalCluster(),
         ])->render();
 
         $ns = $this->plexNamespace();
@@ -449,6 +542,32 @@ trait InteractsWithPlex
             echo $output;
         });
         @unlink($tmp);
+    }
+
+    /**
+     * Whether the resolved Plex context is a local dev cluster — k3s, OrbStack,
+     * Docker Desktop, or any of the other local-cluster naming conventions
+     * isLocalContextName() knows, not just one specific hardcoded name.
+     *
+     * Lives here rather than on any one command because the Commons manifest
+     * itself needs it: a local cluster is served by the LaraKube Local CA, so
+     * its ingresses must NOT ask Traefik for a Let's Encrypt certificate.
+     */
+    protected function targetsLocalCluster(): bool
+    {
+        $context = $this->plexContext ?: trim(Process::run($this->kubectl().' config current-context')->output());
+
+        if ($this->isLocalContextName($context)) {
+            return true;
+        }
+
+        // Fallback: a local API server (e.g. a raw k3s "default" context)
+        // regardless of what it's named — scoped to the resolved context via
+        // --context so an explicitly-picked context is checked, not just
+        // whatever the ambient kubectl context happens to be.
+        $server = trim(Process::run($this->plexKubectl().' config view --minify -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}'))->output());
+
+        return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
     }
 
     /**
@@ -781,7 +900,7 @@ trait InteractsWithPlex
      * Allocate (idempotently) a dedicated Commons Redis logical-DB index for a
      * shared-tool tenant and persist it to the registry. Re-runs return the same
      * index; returns null only when all 16 indexes are taken. This lets a shared
-     * tool (e.g. Baserow) reuse the Commons Valkey instead of bundling its own —
+     * tool reuse the Commons Valkey instead of bundling its own —
      * the dedicated index isolates its keys and FLUSHDB from other tenants.
      */
     protected function allocateCommonsRedisIndex(string $tenant): ?int
@@ -910,8 +1029,8 @@ trait InteractsWithPlex
         // the two paths are mutually exclusive, and an earlier version printed
         // both, so mixing the `postgres` username with STALWART_STORE_PASSWORD
         // (the 'stalwart' role's password) failed authentication.
-        $infisicalBootstrapped = trim(Process::run(
-            "{$kubectl} get secret infisical-bootstrap -n larakube-secrets --no-headers 2>/dev/null",
+        $openBaoBootstrapped = trim(Process::run(
+            "{$kubectl} get secret openbao-bootstrap -n larakube-secrets --no-headers 2>/dev/null",
         )->output()) !== '';
 
         $this->newLine();
@@ -928,7 +1047,7 @@ trait InteractsWithPlex
         $this->line("       Host:     <fg=blue>postgres.{$ns}.svc.cluster.local</>");
         $this->line('       Port:     <fg=blue>5432</>');
 
-        if ($infisicalBootstrapped) {
+        if ($openBaoBootstrapped) {
             // The dedicated role path — least privilege, and rotatable via
             // `larakube plex:rotate`.
             $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(already created for you)</>');
@@ -938,7 +1057,7 @@ trait InteractsWithPlex
             $this->line('       <fg=gray>Do NOT use the postgres superuser here — it is a different password</>');
             $this->line('       <fg=gray>and pairing it with STALWART_STORE_PASSWORD will fail to authenticate.</>');
         } else {
-            // No Infisical: no dedicated role was provisioned, so the superuser
+            // No secrets backend: no dedicated role was provisioned, so the superuser
             // is the only credential that exists.
             $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(create it — see the psql command below)</>');
             $this->line('       Username: <fg=blue>postgres</>');
@@ -962,7 +1081,7 @@ trait InteractsWithPlex
             $this->line("       URL:         <fg=blue>http://{$s3Host}.{$ns}.svc.cluster.local:8333</>");
             $this->line('       Region name: <fg=blue>us-east-1</>');
             $this->line('       Bucket:   <fg=blue>stalwart</> <fg=gray>(already created for you)</>');
-            if ($infisicalBootstrapped) {
+            if ($openBaoBootstrapped) {
                 $this->line('       Key ID:   choose <fg=green>"Secret read from environment variable"</>');
                 $this->line('                 and enter <fg=green>STALWART_S3_KEY_ID</> <fg=gray>(or literal: '.$s3Access.')</>');
                 $this->line('       Secret:   choose <fg=green>"Secret read from environment variable"</>');
@@ -993,7 +1112,7 @@ trait InteractsWithPlex
         $this->line("       Host:     <fg=blue>postgres.{$ns}.svc.cluster.local</>");
         $this->line('       Port:     <fg=blue>5432</>');
         $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(same as main store)</>');
-        if ($infisicalBootstrapped) {
+        if ($openBaoBootstrapped) {
             $this->line('       Username: <fg=blue>stalwart</>');
             $this->line('       Password: choose <fg=green>"Secret read from environment variable"</>');
             $this->line('                 and enter <fg=green>STALWART_STORE_PASSWORD</>');
@@ -1003,9 +1122,9 @@ trait InteractsWithPlex
         }
         $this->newLine();
 
-        if (! $infisicalBootstrapped) {
+        if (! $openBaoBootstrapped) {
             // Only needed on the superuser path — configureStalwartStore()
-            // already ran CREATE DATABASE when Infisical was available.
+            // already ran CREATE DATABASE when the secrets backend was available.
             $this->line('     <fg=gray>Create the database before applying the wizard:</>');
             $this->line("       <fg=blue>psql -h postgres.{$ns}.svc.cluster.local -U postgres -c \"CREATE DATABASE stalwart;\"</>");
         }
@@ -1018,7 +1137,7 @@ trait InteractsWithPlex
         // credentials block above, so the username and the password advice can
         // never disagree — printing them separately is what allowed the
         // `postgres` + STALWART_STORE_PASSWORD mismatch.
-        if ($infisicalBootstrapped) {
+        if ($openBaoBootstrapped) {
             $this->line('     <fg=gray>Rotate the store password later with</> <fg=blue>larakube plex:rotate {env} --only=db</><fg=gray>.</>');
             $this->newLine();
         }

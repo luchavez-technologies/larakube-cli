@@ -19,7 +19,8 @@ class PlexRemoveCommand extends Command
 
     protected $signature = 'plex:remove
         {service? : The Commons service to remove (postgres, redis, meilisearch, seaweedfs)}
-        {environment=local : The environment whose Commons to edit (local, or a cloud environment)}
+        {environment? : Environment whose Commons to edit — "local" (default) or a cloud environment. Omit to be prompted.}
+        {--context= : Target a specific kube-context (defaults to the environment\'s saved target, or the current context for local)}
         {--keep-data : Delete the workload but KEEP its PersistentVolumeClaim (data)}
         {--force : Skip the confirmation (and the tenant-in-use guard)}';
 
@@ -39,8 +40,8 @@ class PlexRemoveCommand extends Command
             return 1;
         }
 
-        $env = (string) $this->argument('environment');
-        $context = $this->environmentContextOrCurrent($config, $env);
+        $env = $this->resolvePlexEnvironment($config);
+        $context = $this->contextOverrideOr($config, $env);
         $this->plexContext = $context;
 
         if (! $this->plexContextReachable()) {

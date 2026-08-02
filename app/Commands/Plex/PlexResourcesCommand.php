@@ -21,7 +21,7 @@ class PlexResourcesCommand extends Command
     use InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     protected $signature = 'plex:resources
-        {environment=local : The environment whose Commons to configure (local, or a cloud environment)}
+        {environment? : Environment whose Commons to configure — "local" (default) or a cloud environment. Omit to be prompted (used only inside a project).}
         {--context= : Target a specific kube-context (else: the project env context, or you are prompted)}';
 
     protected $description = 'Configure Kubernetes resource limits and storage for Commons services';
@@ -36,7 +36,7 @@ class PlexResourcesCommand extends Command
         if ($this->option('context')) {
             $this->plexContext = (string) $this->option('context');
         } elseif ($config !== null) {
-            $env = (string) $this->argument('environment');
+            $env = $this->resolvePlexEnvironment($config);
             $this->plexContext = $this->environmentContextOrCurrent($config, $env);
         } else {
             $target = $this->askForClusterContext();
@@ -121,6 +121,7 @@ class PlexResourcesCommand extends Command
         $manifest = view('k8s.plex.commons', [
             'spec' => $spec,
             'specJsonIndented' => $this->indentedSpecJson($spec),
+            'isLocal' => $this->targetsLocalCluster(),
         ])->render();
 
         $ns = $this->plexNamespace();

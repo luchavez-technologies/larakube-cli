@@ -4,6 +4,7 @@ namespace App\Commands\Plex;
 
 use App\Contracts\HasPromptableHosts;
 use App\Data\GlobalConfigData;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithPlex;
@@ -13,6 +14,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesLocalCa;
 use App\Traits\PromotesIngressDns;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\multiselect;
@@ -22,9 +24,10 @@ use LaravelZero\Framework\Commands\Command;
 
 class PlexInitCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithHosts, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithTraefik, LaraKubeOutput, ManagesLocalCa, PromotesIngressDns, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithHosts, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithTraefik, LaraKubeOutput, ManagesLocalCa, PromotesIngressDns, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'plex:init
+        {environment? : Environment this Commons install targets — "local" (default) or a cloud env. Omit to be prompted (when run from inside a project) or pick a raw kube-context (when not).}
         {--services= : Comma-separated services to provision non-interactively, e.g. postgres,redis,meilisearch (no prompt; nothing assumed)}
         {--context= : Target a specific kube-context non-interactively (else you are prompted)}
         {--s3-host= : Public host for the object-storage S3 (creates an ingress; used for tenant AWS_URL)}
@@ -38,21 +41,36 @@ class PlexInitCommand extends Command
         $this->laraKubeInfo('LaraKube Plex — Commons Installer');
 
         // Target the cluster directly (no context switching) — every Commons op
-        // below runs through plexKubectl() against it. An explicit --context wins;
-        // otherwise we pick interactively, unless --services makes this run
-        // non-interactive (then we stay on the current context).
+        // below runs through plexKubectl() against it. An explicit --context
+        // always wins. Otherwise, {environment} resolves to a context the same
+        // way every other {tool}:init does — prompting for local vs. a known
+        // cloud env when a project exists in cwd, so plex:init gives the same
+        // "which environment, not just which raw context" information every
+        // other provisioning command already does. --services signals a
+        // non-interactive run (matches the prior behavior: stay on local/the
+        // current context). With no project to resolve an environment against
+        // (e.g. bootstrapping Commons on a bare cluster before any project
+        // exists), fall back to the original raw kube-context picker.
         if ($this->option('context')) {
             $this->plexContext = (string) $this->option('context');
-        } elseif ($this->option('services') === null) {
-            $target = $this->askForClusterContext();
+        } elseif ($this->option('services') !== null) {
+            $this->plexContext = $this->resolveToolContext($this->argument('environment') ?: 'local');
+        } else {
+            $config = $this->getProjectConfig(getcwd());
 
-            if (! $target) {
-                $this->laraKubeError('No Kubernetes context selected.');
+            if ($config !== null) {
+                $this->plexContext = $this->resolveToolContext($this->resolvePlexEnvironment($config));
+            } else {
+                $target = $this->askForClusterContext();
 
-                return 1;
+                if (! $target) {
+                    $this->laraKubeError('No Kubernetes context selected.');
+
+                    return 1;
+                }
+
+                $this->plexContext = $target;
             }
-
-            $this->plexContext = $target;
         }
 
         if (! $this->plexContextReachable()) {
@@ -92,6 +110,7 @@ class PlexInitCommand extends Command
         $manifest = view('k8s.plex.commons', [
             'spec' => $spec,
             'specJsonIndented' => $this->indentedSpecJson($spec),
+            'isLocal' => $this->targetsLocalCluster(),
         ])->render();
 
         $this->withSpin('Applying Commons manifests...', function () use ($manifest, $ns, $kubectl) {
@@ -124,6 +143,11 @@ class PlexInitCommand extends Command
         // never re-assigns the layout or rotates the key.
         if (in_array('garage', $enabled, true)) {
             $this->ensureGarageBootstrap($ns, $kubectl);
+        }
+
+        // 7. Wire the OpenBao Database Secrets Engine if OpenBao is present.
+        if ($this->secretsBackendAvailable($kubectl)) {
+            $this->wireDatabaseEngineToOpenBao($kubectl, $enabled);
         }
 
         $this->printCommonsReady($spec);
@@ -317,28 +341,6 @@ class PlexInitCommand extends Command
         }
 
         return $spec;
-    }
-
-    /**
-     * Whether the resolved Plex context is a local dev cluster — k3s, OrbStack,
-     * Docker Desktop, or any of the other local-cluster naming conventions
-     * isLocalContextName() knows, not just one specific hardcoded name.
-     */
-    protected function targetsLocalCluster(): bool
-    {
-        $context = $this->plexContext ?: trim(Process::run($this->kubectl().' config current-context')->output());
-
-        if ($this->isLocalContextName($context)) {
-            return true;
-        }
-
-        // Fallback: a local API server (e.g. a raw k3s "default" context)
-        // regardless of what it's named — scoped to the resolved context via
-        // --context so an explicitly-picked context is checked, not just
-        // whatever the ambient kubectl context happens to be.
-        $server = trim(Process::run($this->plexKubectl().' config view --minify -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}'))->output());
-
-        return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
     }
 
     /**

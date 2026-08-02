@@ -21,7 +21,8 @@ class PlexLeaveCommand extends Command
     use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
 
     protected $signature = 'plex:leave
-        {environment=local : The environment to remove from the Commons (local, or a cloud environment)}
+        {environment? : Environment to remove from the Commons — "local" (default) or a cloud environment. Omit to be prompted.}
+        {--context= : Target a specific kube-context (defaults to the environment\'s saved target, or the current context for local)}
         {--backup= : Path for the pre-drop pg_dump backup (default: ./<tenant>-commons-<env>.sql)}
         {--no-backup : Skip the safety backup before dropping (dangerous)}
         {--restore : Phase 2 — copy Commons data into the now-live self-hosted pod(s), then finish leaving}
@@ -59,7 +60,7 @@ class PlexLeaveCommand extends Command
             return 1;
         }
 
-        $env = (string) $this->argument('environment');
+        $env = $this->resolvePlexEnvironment($config);
         if ($env === 'local') {
             $this->laraKubeWarn('You are leaving Plex in a local environment.');
             $this->line('  <fg=gray>Local Plex commons data is ephemeral and lost on <fg=yellow>larakube down</>.</>');
@@ -74,8 +75,8 @@ class PlexLeaveCommand extends Command
         $tenant = $this->plexTenantIdentifier($appName, $env);
 
         // Target the env's own Commons context (no switching); fall back to the
-        // current context if no deploy target is recorded.
-        $context = $this->environmentContextOrCurrent($config, $env);
+        // current context if no deploy target is recorded. --context always wins.
+        $context = $this->contextOverrideOr($config, $env);
         $this->plexContext = $context;
 
         if (! $this->plexContextReachable()) {

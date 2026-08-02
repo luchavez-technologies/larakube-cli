@@ -4,15 +4,16 @@ namespace App\Commands\Plex;
 
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithPlex;
+use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class PlexExportCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithPlex, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput;
 
     protected $signature = 'plex:export
-        {environment=local : Environment whose Commons to export}
+        {environment? : Environment whose Commons to export — "local" (default) or a cloud environment. Omit to be prompted.}
         {--context= : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
         {--output=  : Write the spec to a file instead of stdout}';
 
@@ -20,7 +21,7 @@ class PlexExportCommand extends Command
 
     public function handle(): int
     {
-        $env = (string) $this->argument('environment');
+        $env = $this->resolvePlexEnvironment($this->getProjectConfig(getcwd()));
 
         // Without this the Commons is always read from the CURRENT kube-context,
         // so `plex:export production` silently exported the local Commons —

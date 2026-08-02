@@ -59,25 +59,25 @@ test('secretsKubectl scopes to a context only when one is given', function () {
         ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
-test('isSecretsInstalled reflects whether the infisical-backend Deployment exists', function () {
-    Process::fake(['kubectl get deployment infisical-backend -n larakube-secrets --no-headers' => 'infisical-backend   1/1   1   1   5d']);
+test('isSecretsInstalled reflects whether the openbao-backend Deployment exists', function () {
+    Process::fake(['kubectl get deployment openbao-backend -n larakube-secrets --no-headers' => 'openbao-backend   1/1   1   1   5d']);
     expect(secretsReader()->installed('kubectl', 'larakube-secrets'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment infisical-backend -n larakube-secrets --no-headers' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['kubectl get deployment openbao-backend -n larakube-secrets --no-headers' => Process::result(output: '', exitCode: 1)]);
     expect(secretsReader()->installed('kubectl', 'larakube-secrets'))->toBeFalse();
 });
 
-test('secretsAccess is null when infisical is not installed, populated when it is', function () {
+test('secretsAccess is null when openbao is not installed, populated when it is', function () {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    Process::fake(["{$kubectl} get deployment infisical-backend -n larakube-secrets --no-headers" => Process::result(output: '', exitCode: 1)]);
+    Process::fake(["{$kubectl} get deployment openbao-backend -n larakube-secrets --no-headers" => Process::result(output: '', exitCode: 1)]);
     expect(secretsReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        "{$kubectl} get deployment infisical-backend -n larakube-secrets --no-headers" => 'infisical-backend   1/1   1   1   5d',
+        "{$kubectl} get deployment openbao-backend -n larakube-secrets --no-headers" => 'openbao-backend   1/1   1   1   5d',
     ]);
     $access = secretsReader()->access('local', null);
 
     expect($access['host'])->toStartWith('secrets.')
-        ->and($access['label'])->toBe('Infisical');
+        ->and($access['label'])->toBe('OpenBao');
 });

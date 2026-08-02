@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
+
+use Laravel\Prompts\Prompt;
+
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
@@ -20,7 +23,8 @@ class PlexMigrateCommand extends Command
     use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
 
     protected $signature = 'plex:migrate
-        {environment=local : The environment whose data to migrate to the Commons}
+        {environment? : Environment whose data to migrate to the Commons — "local" (default) or a cloud environment. Omit to be prompted.}
+        {--context= : Target a specific kube-context (defaults to the environment\'s saved target, or the current context for local)}
         {--keep-pvc : Keep the self-hosted PVC(s) after migration (don\'t delete them)}';
 
     protected $description = 'Copy this project\'s self-hosted database and/or object storage into the shared Commons, then join';
@@ -29,6 +33,13 @@ class PlexMigrateCommand extends Command
     {
         $this->renderHeader();
         $this->laraKubeInfo('LaraKube CLI Plex — Migrate data to the Commons');
+
+        // Same fix as PlexJoinCommand — confirm()/multiselect() below are raw
+        // Laravel\Prompts calls that decide interactivity from STDIN's TTY
+        // status, not from this Symfony console option.
+        if ($this->option('no-interaction')) {
+            Prompt::interactive(false);
+        }
 
         if (! $this->isLaraKubeProject()) {
             return 1;
@@ -41,7 +52,7 @@ class PlexMigrateCommand extends Command
             return 1;
         }
 
-        $env = (string) $this->argument('environment');
+        $env = $this->resolvePlexEnvironment($config);
 
         // Only relational drivers have data to migrate (SQLite is a local file).
         $driver = $config->getDatabase();
@@ -94,8 +105,15 @@ class PlexMigrateCommand extends Command
         $storagePvc = $storageService !== null ? "{$appName}-{$storage->value}-pvc" : null;
 
         // ── Resolve context ───────────────────────────────────────────────────
+        // --context always wins — the only way to avoid silently targeting
+        // whatever kubectl's current context happens to be, which a
+        // concurrently-running tool can flip out from under you.
 
-        if ($env === 'local') {
+        $override = (string) ($this->option('context') ?: '');
+
+        if ($override !== '') {
+            $context = $override;
+        } elseif ($env === 'local') {
             $context = null;
         } else {
             [$config, $context] = $this->resolveEnvironmentContext($config, $env, $projectPath);
@@ -410,49 +428,19 @@ class PlexMigrateCommand extends Command
                     continue;
                 }
 
-                // --wait=false: a plain `kubectl delete pvc` blocks with NO
-                // timeout until the pvc-protection finalizer clears, which
-                // only happens once the pod still mounting it is gone — if
-                // its self-hosted deployment hasn't been torn down yet
-                // (needs `larakube up` after this env's services were marked
-                // managed), this would hang the CLI indefinitely with zero
-                // feedback. Issue the delete without waiting, then report
-                // what's actually true instead of assuming it finished.
-                Process::run($selfHostedKubectl.' delete pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' --wait=false');
+                // Its own pod may still be mounting it — releaseSelfHostedPvc()
+                // scales the deployment to 0 and polls if a plain delete
+                // doesn't finish immediately, rather than hanging on the
+                // pvc-protection finalizer with zero feedback. Safe
+                // regardless: this service is confirmed migrated and approved
+                // for deletion, and gets dropped from the local overlay
+                // entirely on the next heal+up anyway.
+                $released = false;
+                $this->withSpin("Releasing '{$target['pvc']}'...", function () use ($selfHostedKubectl, $namespace, $target, &$released) {
+                    $released = $this->releaseSelfHostedPvc($selfHostedKubectl, $namespace, $target['pvc'], $target['deployment']);
+                });
 
-                $stillThere = trim(Process::run(
-                    $selfHostedKubectl.' get pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' -o name',
-                )->output()) !== '';
-
-                if ($stillThere) {
-                    // Its own pod is still mounting it. Scale JUST that one
-                    // deployment to 0 — not the whole app (`larakube stop`
-                    // would pause everything, which is overkill and imprecise
-                    // here) — then give the already-issued delete a few
-                    // seconds to actually finish now that nothing holds it.
-                    // Safe regardless: this service is confirmed migrated and
-                    // approved for deletion, and gets dropped from the local
-                    // overlay entirely on the next heal+up anyway.
-                    $this->withSpin("Releasing '{$target['pvc']}' (scaling {$target['deployment']} to 0)...", function () use ($selfHostedKubectl, $target, $namespace, &$stillThere) {
-                        Process::run($selfHostedKubectl.' scale deployment/'.escapeshellarg($target['deployment']).' --replicas=0 -n '.escapeshellarg($namespace));
-
-                        for ($i = 0; $i < 10; $i++) {
-                            $stillThere = trim(Process::run(
-                                $selfHostedKubectl.' get pvc '.escapeshellarg($target['pvc']).' -n '.escapeshellarg($namespace).' -o name',
-                            )->output()) !== '';
-
-                            if (! $stillThere) {
-                                break;
-                            }
-
-                            usleep(500_000);
-                        }
-
-                        return ! $stillThere;
-                    });
-                }
-
-                if ($stillThere) {
+                if (! $released) {
                     $this->laraKubeWarn("'{$target['pvc']}' is still Terminating — its pod may need a moment longer, or run `larakube up` to fully remove it.");
                 } else {
                     $this->line("  <fg=gray>Deleted:</> {$target['pvc']}");
@@ -469,10 +457,13 @@ class PlexMigrateCommand extends Command
         // Forced non-interactive regardless of how THIS command was run — the
         // service list was already decided by what we just migrated, so
         // re-asking join's own service picker here would just be redundant.
-        $joinCode = $this->call('plex:join', [
+        // --context is forwarded explicitly so join targets the same cluster
+        // this run resolved to, rather than re-resolving it.
+        $joinCode = $this->call('plex:join', array_filter([
             'environment' => $env,
+            '--context' => $context,
             '--no-interaction' => true,
-        ]);
+        ]));
 
         if ($joinCode !== 0) {
             $this->laraKubeWarn('plex:join did not complete cleanly. Run `larakube plex:join '.$env.'` manually.');

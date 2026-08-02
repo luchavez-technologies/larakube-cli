@@ -82,6 +82,23 @@ trait ResolvesEnvironmentContext
         return $cloud?->ip ? $this->environmentContextName($cloud->ip) : null;
     }
 
+    /**
+     * environmentContextOrCurrent(), but an explicit --context option (when the
+     * calling command defines one) always wins. For "local" this is the ONLY
+     * way to avoid silently targeting kubectl's current context — which a
+     * concurrently-running tool can flip out from under you. Found live
+     * 2026-08-01: plex:init/plex:join for a "local" join landed on a
+     * production droplet because another CLI tool switched the default
+     * kubectl context mid-session; plex:leave/plex:destroy/plex:remove had no
+     * override to route around it. The using command must declare `--context=`.
+     */
+    protected function contextOverrideOr(ConfigData $config, string $environment): ?string
+    {
+        $override = (string) ($this->option('context') ?: '');
+
+        return $override !== '' ? $override : $this->environmentContextOrCurrent($config, $environment);
+    }
+
     /** `kubectl` scoped to an env's context (plain kubectl for local / no target). */
     protected function environmentKubectl(ConfigData $config, string $environment): string
     {

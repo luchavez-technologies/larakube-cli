@@ -7,12 +7,13 @@ use App\Data\ConfigData;
 trait ReadsPlexCredentials
 {
     /**
-     * The Commons credentials this project joined for $env, read from its env file
-     * (.env for local, .env.{env} otherwise). The Plex registry stores only
-     * allocation metadata — never passwords — so the joined .env is the single
-     * source for these secrets. Returns a structured array keyed by resource
-     * (database / redis / s3), each holding only the fields that are present, or []
-     * when the project isn't a Plex tenant for $env or the env file is missing.
+     * The Commons credentials this project joined for $env, read from its env
+     * file (.env for local, .env.{env} otherwise). The DB password is absent
+     * once OpenBao manages it (writeTenantConfig strips it from .env) — the
+     * live value lives in OpenBao/the synced K8s Secret instead. Returns a
+     * structured array keyed by resource (database / redis / s3), each
+     * holding only the fields present, or [] when the project isn't a Plex
+     * tenant for $env or the env file is missing.
      *
      * @return array<string, array<string, string>>
      */

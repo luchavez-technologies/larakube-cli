@@ -52,6 +52,18 @@ test('applyEnvValues replaces in place (even commented) and appends new keys', f
         ->toContain('DB_PASSWORD=keepme');
 });
 
+test('applyEnvValues removeKeys deletes an existing line outright, even if commented', function () {
+    $p = plexJoin();
+
+    $content = "APP_NAME=Demo\nDB_PASSWORD=stale\n# DB_HOST=old";
+    $out = $p->applyEnvValues($content, ['DB_HOST' => 'postgres.local'], ['DB_PASSWORD']);
+
+    expect($out)
+        ->toContain('APP_NAME=Demo')
+        ->toContain('DB_HOST=postgres.local')
+        ->not->toContain('DB_PASSWORD');
+});
+
 test('commonsEnvValues emits only the requested services', function () {
     $p = plexJoin();
 
