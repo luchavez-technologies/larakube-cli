@@ -76,42 +76,42 @@ test('gitKubectl scopes to a context only when one is given', function () {
         ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
-test('isGitInstalled reflects whether the gitea Deployment exists', function () {
-    Process::fake(['kubectl get deployment gitea -n larakube-shared --no-headers' => 'gitea   1/1   1   1   5d']);
+test('isGitInstalled reflects whether the forgejo Deployment exists', function () {
+    Process::fake(['kubectl get deployment forgejo -n larakube-shared --no-headers' => 'forgejo   1/1   1   1   5d']);
     expect(gitReader()->installed('kubectl', 'larakube-shared'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment gitea -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['kubectl get deployment forgejo -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 1)]);
     expect(gitReader()->installed('kubectl', 'larakube-shared'))->toBeFalse();
 });
 
-test('gitAccess is null when gitea is not installed, populated when it is', function () {
+test('gitAccess is null when forgejo is not installed, populated when it is', function () {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    Process::fake(["{$kubectl} get deployment gitea -n larakube-shared --no-headers" => Process::result(output: '', exitCode: 1)]);
+    Process::fake(["{$kubectl} get deployment forgejo -n larakube-shared --no-headers" => Process::result(output: '', exitCode: 1)]);
     expect(gitReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        "{$kubectl} get deployment gitea -n larakube-shared --no-headers" => 'gitea   1/1   1   1   5d',
+        "{$kubectl} get deployment forgejo -n larakube-shared --no-headers" => 'forgejo   1/1   1   1   5d',
     ]);
     $access = gitReader()->access('local', null);
 
     expect($access['host'])->toStartWith('git.')
-        ->and($access['label'])->toBe('Gitea');
+        ->and($access['label'])->toBe('Forgejo');
 });
 
 test('ensureGiteaPullSecret copies credentials from shared secret to target namespace', function () {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
-        "{$kubectl} get secret gitea-admin -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
-        "{$kubectl} get secret gitea-admin -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok123'),
+        "{$kubectl} get secret forgejo-admin -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
+        "{$kubectl} get secret forgejo-admin -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok123'),
         "{$kubectl} delete secret gitea-login -n 'demo-production' --ignore-not-found" => Process::result(output: 'deleted'),
         "{$kubectl} create secret docker-registry gitea-login -n 'demo-production' --docker-server='git.dev.test' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local" => Process::result(output: 'created'),
     ]);
 
     gitReader()->runPullSecret('', 'demo-production');
-    Process::assertRan("{$kubectl} get secret gitea-admin -n larakube-shared -o jsonpath='{.data.username}'");
-    Process::assertRan("{$kubectl} get secret gitea-admin -n larakube-shared -o jsonpath='{.data.registry-token}'");
+    Process::assertRan("{$kubectl} get secret forgejo-admin -n larakube-shared -o jsonpath='{.data.username}'");
+    Process::assertRan("{$kubectl} get secret forgejo-admin -n larakube-shared -o jsonpath='{.data.registry-token}'");
     Process::assertRan("{$kubectl} delete secret gitea-login -n 'demo-production' --ignore-not-found");
     Process::assertRan("{$kubectl} create secret docker-registry gitea-login -n 'demo-production' --docker-server='git.dev.test' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local");
 });

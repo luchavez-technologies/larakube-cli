@@ -8,6 +8,9 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 @unless($isLocal ?? false)
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+@if($proxied ?? false)
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+@endif
 @endunless
 @if($vpnOnly ?? false)
     traefik.ingress.kubernetes.io/router.middlewares: larakube-sso-sso-vpn-only@kubernetescrd

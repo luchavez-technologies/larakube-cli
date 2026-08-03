@@ -26,26 +26,12 @@ trait InteractsWithSheet
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    /** Sheet Deployment (either engine) present? */
+    /** Sheet Deployment present? */
     protected function isSheetInstalled(string $kubectl, string $ns): bool
     {
-        return $this->deployedSheetEngine($kubectl, $ns) !== null;
-    }
+        $out = Process::run("{$kubectl} get deployment sheet-teable -n {$ns} --no-headers --ignore-not-found")->output();
 
-    /**
-     * Which Sheet engine is deployed — 'baserow', 'nocodb', or null if neither.
-     * Baserow wins if both somehow exist (it's the default).
-     */
-    protected function deployedSheetEngine(string $kubectl, string $ns): ?string
-    {
-        foreach (['baserow', 'nocodb'] as $engine) {
-            $out = Process::run("{$kubectl} get deployment sheet-{$engine} -n {$ns} --no-headers --ignore-not-found")->output();
-            if (trim($out) !== '') {
-                return $engine;
-            }
-        }
-
-        return null;
+        return trim($out) !== '';
     }
 
     /** Read database password. */
@@ -86,11 +72,9 @@ trait InteractsWithSheet
             return null;
         }
 
-        $engine = $this->deployedSheetEngine($kubectl, $ns);
-
         return [
             'host' => $this->resolveSheetHostReadOnly($env, $config),
-            'label' => $engine === 'nocodb' ? 'NocoDB' : 'Baserow',
+            'label' => 'Teable',
         ];
     }
 }

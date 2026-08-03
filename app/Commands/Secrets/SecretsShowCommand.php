@@ -16,10 +16,10 @@ class SecretsShowCommand extends Command
     use DeploysClusterTool, InteractsWithSecrets, LaraKubeOutput;
 
     protected $signature = 'secrets:show
-        {environment=local : Environment to show Infisical access for (resolves the Infisical host)}
+        {environment=local : Environment to show OpenBao access for (resolves the OpenBao host)}
         {--context= : Target a specific kube-context (defaults to current context)}';
 
-    protected $description = 'Show the Infisical URLs and admin credentials';
+    protected $description = 'Show the OpenBao URLs and admin credentials';
 
     public function handle(): int
     {
@@ -31,43 +31,37 @@ class SecretsShowCommand extends Command
             ? ConfigData::loadFromFile($projectPath)
             : null;
 
-        // The {environment} argument must decide WHICH CLUSTER we inspect, not just
-        // which host string to print. Without this these commands read whatever
-        // kubectl currently points at, so `…:show production` could report
-        // "not installed" about a perfectly healthy production install.
         $resolvedContext = (string) ($this->resolveToolContext($env, (string) $this->option('context') ?: null) ?? '');
-
         $access = $this->secretsAccess($env, $config, $resolvedContext);
 
         if ($access === null) {
-            $this->laraKubeWarn('Infisical is not installed in '.$this->secretsNamespace().'.');
+            $this->laraKubeWarn('Secrets Manager is not installed in '.$this->secretsNamespace().'.');
             $this->line('  Run <fg=yellow>larakube secrets:init</> to deploy it.');
 
             return 1;
         }
 
-        $secretsUrl = $access['host'] ? "https://{$access['host']}" : '<fg=gray>host not configured</>';
-
-        $rows = [
-            ['Infisical Admin', $secretsUrl],
-        ];
-
         $kubectl = $this->secretsKubectl($resolvedContext ?: null);
         $ns = $this->secretsNamespace();
 
-        if ($this->isInfisicalBootstrapped($kubectl, $ns)) {
-            $email = $this->readInfisicalBootstrapSecret($kubectl, $ns, 'admin-email');
-            $password = $this->readInfisicalBootstrapSecret($kubectl, $ns, 'admin-password');
+        $openbaoToken = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
 
-            if ($email !== null) {
-                $rows[] = ['Admin Email', "<fg=blue>{$email}</>"];
-            }
-            if ($password !== null) {
-                $rows[] = ['Admin Password', "<fg=green>{$password}</>"];
-            }
+        $secretsUrl = $access['host'] ? "https://{$access['host']}" : '<fg=gray>host not configured</>';
+
+        if ($openbaoToken !== null) {
+            $rows = [
+                ['Secrets Engine', '<fg=cyan>OpenBao (KV v2)</>'],
+                ['Web Console URL', $secretsUrl],
+                ['Root Token', "<fg=green>{$openbaoToken}</>"],
+            ];
+        } else {
+            $rows = [
+                ['Secrets Engine', '<fg=cyan>OpenBao</>'],
+                ['Web Console URL', $secretsUrl],
+            ];
         }
 
-        table(['Component', 'Access'], $rows);
+        table(['Component', 'Access Credentials'], $rows);
 
         return 0;
     }

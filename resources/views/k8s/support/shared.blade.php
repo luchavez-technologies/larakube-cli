@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: chatwoot
-          image: chatwoot/chatwoot:latest
+          image: chatwoot/chatwoot:v4.16.1
           command:
             - docker/entrypoints/render.sh
           ports:
@@ -114,6 +114,13 @@ spec:
                   name: support-chatwoot-oidc
                   key: OIDC_CLIENT_SECRET
                   optional: true
+          startupProbe:
+            httpGet:
+              path: /api
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /api
@@ -158,7 +165,7 @@ spec:
     spec:
       containers:
         - name: sidekiq
-          image: chatwoot/chatwoot:latest
+          image: chatwoot/chatwoot:v4.16.1
           command:
             - bundle
             - exec

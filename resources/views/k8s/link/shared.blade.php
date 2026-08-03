@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: kutt
-          image: kutt/kutt:latest
+          image: kutt/kutt:v3.2.6
           ports:
             - containerPort: 3000
               name: http
@@ -46,6 +46,10 @@ spec:
               value: "link_kutt"
             - name: DB_USER
               value: "link_kutt"
+            - name: DB_CLIENT
+              value: "pg"
+            - name: REDIS_ENABLED
+              value: "true"
             - name: REDIS_HOST
               value: "redis.{{ $plexNamespace }}.svc.cluster.local"
             - name: REDIS_PORT
@@ -108,6 +112,13 @@ spec:
                   name: link-kutt-oidc
                   key: OIDC_CLIENT_SECRET
                   optional: true
+          startupProbe:
+            httpGet:
+              path: /
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /

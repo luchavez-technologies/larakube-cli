@@ -8,26 +8,30 @@ use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithMonitoring;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
+use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class MonitorInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithMonitoring, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'monitor:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Grafana host.}
-        {--context=  : Target a specific kube-context (defaults to current context)}
-        {--domain=   : Base domain OR full host for Grafana (example.com → grafana.example.com; grafana.example.com used as-is)}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}';
+        {--context=   : Target a specific kube-context (defaults to current context)}
+        {--domain=    : Base domain OR full host for Grafana (example.com → grafana.example.com; grafana.example.com used as-is)}
+        {--vpn-only   : Restrict access via NetBird VPN IP whitelisting}
+        {--no-logs    : Skip deploying Loki + Promtail log aggregation (~300MB RAM saved)}
+        {--with-logs  : Force deploying Loki + Promtail log aggregation}
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the cluster-wide monitoring stack (Prometheus, Loki, Grafana) into larakube-shared';
 
@@ -50,6 +54,8 @@ class MonitorInitCommand extends Command
         // would come up on grafana.localhost and be unreachable.
         $host = $this->resolveGrafanaHost($env);
 
+        $withLogs = $this->resolveLogAggregation();
+
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
@@ -68,7 +74,9 @@ class MonitorInitCommand extends Command
             'host' => $host,
             'grafanaPassword' => $password,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
+            'withLogs' => $withLogs,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-monitoring.yaml';
@@ -81,10 +89,12 @@ class MonitorInitCommand extends Command
             "{$kubectl} rollout status deploy/prometheus -n {$ns} --timeout=120s",
             130,
         ));
-        $this->withSpin('Waiting for Loki...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/loki -n {$ns} --timeout=120s",
-            130,
-        ));
+        if ($withLogs) {
+            $this->withSpin('Waiting for Loki...', fn () => $this->runStreaming(
+                "{$kubectl} rollout status deploy/loki -n {$ns} --timeout=120s",
+                130,
+            ));
+        }
         $this->withSpin('Waiting for kube-state-metrics...', fn () => $this->runStreaming(
             "{$kubectl} rollout status deploy/kube-state-metrics -n {$ns} --timeout=120s",
             130,
@@ -93,23 +103,72 @@ class MonitorInitCommand extends Command
             "{$kubectl} rollout status deploy/grafana -n {$ns} --timeout=120s",
             130,
         ));
-        $this->withSpin('Waiting for Promtail...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status daemonset/promtail -n {$ns} --timeout=120s",
-            130,
-        ));
+        if ($withLogs) {
+            $this->withSpin('Waiting for Promtail...', fn () => $this->runStreaming(
+                "{$kubectl} rollout status daemonset/promtail -n {$ns} --timeout=120s",
+                130,
+            ));
+        }
+
+        $this->registerDeployedTool(ClusterTool::MONITOR, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Monitoring stack is live.');
         $this->newLine();
         $this->line("  <fg=gray>Grafana:</>            <fg=blue>https://{$host}</>  <fg=gray>admin / {$password}</>");
         $this->line("  <fg=gray>Prometheus:</>         prometheus.{$ns}.svc.cluster.local:9090  <fg=gray>(in-cluster)</>");
-        $this->line("  <fg=gray>Loki:</>               loki.{$ns}.svc.cluster.local:3100  <fg=gray>(in-cluster)</>");
+        if ($withLogs) {
+            $this->line("  <fg=gray>Loki:</>               loki.{$ns}.svc.cluster.local:3100  <fg=gray>(in-cluster)</>");
+        }
         $this->newLine();
-        $this->line('  Prometheus + Loki are pre-wired as Grafana data sources.');
-        $this->line('  Run <fg=yellow>larakube up</> to wire per-service exporters (MySQL, Redis, etc.).');
+        if ($withLogs) {
+            $this->line('  Prometheus + Loki are pre-wired as Grafana data sources.');
+        } else {
+            $this->line('  Prometheus is pre-wired as Grafana data source.');
+            $this->line('  <fg=yellow>Note:</> Log aggregation (Loki + Promtail) is disabled (~300MB RAM saved).');
+            $this->line('  Run <fg=yellow>larakube monitor:init --with-logs</> anytime to enable log search in Grafana.');
+        }
+        if ($env === 'local') {
+            $this->line('  Run <fg=yellow>larakube up</> to wire local per-service exporters (MySQL, Redis, etc.).');
+        } else {
+            $this->line('  Services with <fg=gray>prometheus.io/scrape=true</> annotations are automatically scraped.');
+        }
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * Determine whether to deploy log aggregation (Loki + Promtail).
+     *
+     * In non-interactive environments, default to metrics-only (--no-logs) to save RAM.
+     * In interactive human terminals, prompt with a multiselect.
+     */
+    protected function resolveLogAggregation(): bool
+    {
+        if ($this->option('no-logs')) {
+            return false;
+        }
+
+        if ($this->option('with-logs')) {
+            return true;
+        }
+
+        if ($this->option('no-interaction') || ! stream_isatty(STDIN)) {
+            return false;
+        }
+
+        $selected = multiselect(
+            label: 'Which monitoring components would you like to deploy?',
+            options: [
+                'metrics' => 'Metrics & Alerting (Grafana, Prometheus, kube-state-metrics) — ~150MB RAM',
+                'logs' => 'Log Aggregation (Loki, Promtail) — ~300MB RAM',
+            ],
+            default: ['metrics', 'logs'],
+            required: true,
+        );
+
+        return in_array('logs', $selected, true);
     }
 
     /**

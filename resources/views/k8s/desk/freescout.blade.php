@@ -135,6 +135,12 @@ spec:
           ports:
             - containerPort: 80
               name: http
+          startupProbe:
+            tcpSocket:
+              port: 80
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             tcpSocket:
               port: 80

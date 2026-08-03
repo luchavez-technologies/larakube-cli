@@ -720,7 +720,7 @@ test('the store hint never mixes the postgres superuser with STALWART_STORE_PASS
 
     // The superuser username and the env-var advice must sit in opposite
     // branches of the same conditional, never in one straight-line block.
-    expect($source)->toContain('$infisicalBootstrapped')
+    expect($source)->toContain('$openBaoBootstrapped')
         ->and(substr_count($source, 'STALWART_STORE_PASSWORD'))->toBeGreaterThan(0);
 
     $hintSection = substr($source, (int) strpos($source, '7. Configure stores'));
@@ -939,7 +939,7 @@ test('mail:recover re-mints the automation API key via the recovery admin', func
         '*get secret mail-secrets*api-key*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('recovery-pass')),
         '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
-        '*get secret infisical-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*patch secret mail-secrets*' => Process::result(output: 'patched'),
         '*exec *' => function () use (&$callCount) {
             $callCount++;

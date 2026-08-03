@@ -84,7 +84,7 @@ spec:
     spec:
       containers:
         - name: windmill-server
-          image: ghcr.io/windmill-labs/windmill:main
+          image: ghcr.io/windmill-labs/windmill:1.770.0
           env:
             - name: DB_PASSWORD
               valueFrom:
@@ -112,7 +112,7 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 10
         - name: windmill-worker
-          image: ghcr.io/windmill-labs/windmill:main
+          image: ghcr.io/windmill-labs/windmill:1.770.0
           env:
             - name: DB_PASSWORD
               valueFrom:
@@ -131,7 +131,7 @@ spec:
             - name: WORKER_GROUP
               value: default
         - name: windmill-lsp
-          image: ghcr.io/windmill-labs/windmill-lsp:main
+          image: ghcr.io/windmill-labs/windmill-lsp:1.134.1
           ports:
             - containerPort: 3001
 ---

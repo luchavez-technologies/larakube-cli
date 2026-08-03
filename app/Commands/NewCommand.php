@@ -11,7 +11,7 @@ use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PackageManager;
 use App\Enums\PhpVersion;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 use App\Traits\CheckPrerequisites;
@@ -50,7 +50,7 @@ class NewCommand extends Command
      * options are marked so their values are consumed correctly.
      *
      * Deliberately absent: `--database`. That name already belongs to
-     * LaraKube CLI semantics (CacheDriver/ScoutDriver's boolean "use the
+     * LaraKube CLI semantics (CacheDriver/SearchDriver's boolean "use the
      * database as this driver" flag), and database selection for the app
      * itself goes through the per-driver flags (--mysql, --pgsql, …) —
      * runLaravelNew() always scaffolds with --database=sqlite and
@@ -281,7 +281,7 @@ class NewCommand extends Command
             DatabaseDriver::getCommandOptions(),
             LaravelFeature::getCommandOptions(),
             StorageDriver::getCommandOptions(),
-            ScoutDriver::getCommandOptions(),
+            SearchDriver::getCommandOptions(),
         );
 
         // Filter out LaraKube flags AND the project name to forward only native Laravel flags

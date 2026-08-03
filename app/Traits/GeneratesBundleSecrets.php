@@ -5,7 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 use App\Enums\LaravelFeature;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use Illuminate\Support\Str;
 
 trait GeneratesBundleSecrets
@@ -50,9 +50,9 @@ trait GeneratesBundleSecrets
         // 5. Scout (Meilisearch / Typesense)
         $scout = $config->getScoutDriver();
         if ($scout) {
-            if ($scout === ScoutDriver::MEILISEARCH) {
+            if ($scout === SearchDriver::MEILISEARCH) {
                 $secrets['MEILISEARCH_KEY'] = $existing['MEILISEARCH_KEY'] ?? Str::random(32);
-            } elseif ($scout === ScoutDriver::TYPESENSE) {
+            } elseif ($scout === SearchDriver::TYPESENSE) {
                 $secrets['TYPESENSE_API_KEY'] = $existing['TYPESENSE_API_KEY'] ?? Str::random(32);
             }
         }

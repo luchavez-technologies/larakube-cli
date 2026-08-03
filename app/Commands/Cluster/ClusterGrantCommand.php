@@ -12,6 +12,8 @@ use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
 
+use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
@@ -27,6 +29,8 @@ class ClusterGrantCommand extends Command
         {--read : Read-only (view): logs + status, no exec/secrets}
         {--edit : Operate the app (edit) — the DEFAULT}
         {--admin : Namespace-admin (edit + manage access within the namespace)}
+        {--namespaces= : Comma-separated namespaces to bind (omit to pick them interactively)}
+        {--cluster : Grant across EVERY namespace (ClusterRoleBinding) — last resort; prefer --namespaces}
         {--context= : Standalone: target a kube-context directly (when not in a project)}
         {--json : Emit one machine-readable JSON result (incl. the minted kubeconfig) on stdout}';
 
@@ -111,6 +115,84 @@ class ClusterGrantCommand extends Command
         );
     }
 
+    /**
+     * Gate the cluster-wide grant behind an informed yes.
+     *
+     * `view` cluster-wide is broad but bounded. `edit` and `admin` are not: the
+     * built-in roles carry Secret access and the ability to run a pod as ANY
+     * ServiceAccount in the namespace — cluster-wide that includes kube-system,
+     * so it is a documented escalation path to cluster-admin, not merely "edit
+     * everywhere". On this cluster it also exposes the Commons Postgres
+     * superuser, the secrets-backend bootstrap and Zitadel's machine PAT.
+     *
+     * That can be exactly right for a DevOps operator — it just should never be
+     * something someone discovers after the fact.
+     */
+    protected function confirmClusterScope(string $name, string $role, string $adminContext): bool
+    {
+        $this->laraKubeWarn("Cluster-wide grant: '{$name}' gets [{$role}] in EVERY namespace on '{$adminContext}'.");
+
+        if ($role !== 'view') {
+            $this->line('  <fg=gray>That includes reading every Secret in every namespace — Commons Postgres</>');
+            $this->line('  <fg=gray>superuser, secrets-backend bootstrap, Zitadel machine PAT — and running pods</>');
+            $this->line('  <fg=gray>as any ServiceAccount, which is an escalation path to cluster-admin.</>');
+            $this->line('  <fg=gray>Scope it per namespace instead with:</> <fg=yellow>larakube cluster:grant <env> --name '.$name.'</>');
+        }
+
+        if ($this->flag('no-interaction')) {
+            // Explicit --cluster in a script is the operator's decision; don't
+            // deadlock CI on a prompt, but the warning above is still emitted.
+            return true;
+        }
+
+        return confirm(label: "Grant '{$name}' [{$role}] across the entire cluster?", default: false);
+    }
+
+    /**
+     * Which namespaces this grant binds.
+     *
+     * --namespaces wins; otherwise offer a multiselect of what's actually on the
+     * cluster, pre-checking the resolved target. This is the least-privilege path
+     * and should be preferred over --cluster: a DevOps operator usually needs
+     * several namespaces, not kube-system.
+     *
+     * @return list<string>
+     */
+    protected function resolveGrantNamespaces(string $adminContext, string $defaultNs): array
+    {
+        $raw = (string) ($this->option('namespaces') ?? '');
+        if ($raw !== '') {
+            return array_values(array_filter(array_map('trim', explode(',', $raw))));
+        }
+
+        if ($this->flag('no-interaction')) {
+            return [$defaultNs];
+        }
+
+        $listed = trim(Process::run(
+            $this->contextKubectl($adminContext).' get namespace -o name',
+        )->output());
+
+        $available = array_values(array_filter(array_map(
+            fn (string $l) => trim(str_replace('namespace/', '', $l)),
+            preg_split('/\R/', $listed) ?: [],
+        )));
+
+        if ($available === []) {
+            return [$defaultNs];
+        }
+
+        $chosen = multiselect(
+            label: 'Which namespaces should they have this access on?',
+            options: array_combine($available, $available),
+            default: in_array($defaultNs, $available, true) ? [$defaultNs] : [],
+            hint: 'Pick only what they need — each one is a separate RoleBinding you can revoke individually.',
+            scroll: max(10, min(20, count($available))),
+        );
+
+        return array_values($chosen);
+    }
+
     protected function applyManifest(string $adminContext, string $manifest, array &$output = []): bool
     {
         $file = tempnam(sys_get_temp_dir(), 'lk_grant_');
@@ -158,8 +240,25 @@ class ClusterGrantCommand extends Command
         $role = $this->resolveAccessRole();
         $accessNs = $this->accessNamespace();
         $ctx = $this->contextKubectl($adminContext);
+        $clusterWide = (bool) $this->option('cluster');
 
-        $this->laraKubeInfo("Granting '{$name}' [{$role}] on '{$appNs}'...");
+        if ($clusterWide && ! $this->confirmClusterScope($name, $role, $adminContext)) {
+            return 1;
+        }
+
+        $grantNamespaces = $clusterWide ? [] : $this->resolveGrantNamespaces($adminContext, $appNs);
+
+        if (! $clusterWide && $grantNamespaces === []) {
+            $this->laraKubeError('No namespaces selected — nothing to grant.');
+
+            return 1;
+        }
+
+        $scopeLabel = $clusterWide
+            ? 'the whole cluster'
+            : (count($grantNamespaces) === 1 ? "'{$grantNamespaces[0]}'" : count($grantNamespaces).' namespaces');
+
+        $this->laraKubeInfo("Granting '{$name}' [{$role}] on {$scopeLabel}...");
         $this->line("  <fg=gray>Cluster:</> <fg=cyan>{$adminContext}</>");
 
         // 1. Identity — namespace + SA + bound-token Secret (idempotent; an
@@ -179,15 +278,41 @@ class ClusterGrantCommand extends Command
             Process::run("{$ctx} create namespace ".escapeshellarg($appNs));
         }
 
-        // 2. RoleBinding in the app namespace. roleRef is immutable, so to support
-        //    upgrade/downgrade we delete any existing binding for this user first,
-        //    then recreate with the chosen role.
-        Process::run("{$ctx} -n ".escapeshellarg($appNs).' delete rolebinding '.escapeshellarg($this->teammateBindingName($sa)).' --ignore-not-found');
+        // 2. The binding. roleRef is immutable, so to support upgrade/downgrade we
+        //    delete any existing binding for this user first, then recreate with
+        //    the chosen role. Cluster-wide uses a ClusterRoleBinding under its own
+        //    name, so a person can hold both scopes without either clobbering the
+        //    other — and `cluster:revoke` can find each by its label.
         $bindOut = [];
-        if (! $this->applyManifest($adminContext, $this->teammateBindingManifest($appNs, $accessNs, $sa, $role), $bindOut)) {
-            $this->laraKubeError("Failed to bind access in '{$appNs}':\n  ".implode("\n  ", array_slice($bindOut, -3)));
 
-            return 1;
+        if ($clusterWide) {
+            Process::run("{$ctx} delete clusterrolebinding ".escapeshellarg($this->teammateClusterBindingName($sa)).' --ignore-not-found');
+
+            if (! $this->applyManifest($adminContext, $this->teammateClusterBindingManifest($accessNs, $sa, $role), $bindOut)) {
+                $this->laraKubeError("Failed to bind access on {$scopeLabel}:\n  ".implode("\n  ", array_slice($bindOut, -3)));
+
+                return 1;
+            }
+        } else {
+            foreach ($grantNamespaces as $ns) {
+                // Each namespace is its own RoleBinding under the same name, so
+                // revoking one leaves the others intact.
+                if (! Process::run("{$ctx} get namespace ".escapeshellarg($ns))->successful()) {
+                    $this->laraKubeWarn("Namespace '{$ns}' doesn't exist — skipping.");
+
+                    continue;
+                }
+
+                Process::run("{$ctx} -n ".escapeshellarg($ns).' delete rolebinding '.escapeshellarg($this->teammateBindingName($sa)).' --ignore-not-found');
+
+                if (! $this->applyManifest($adminContext, $this->teammateBindingManifest($ns, $accessNs, $sa, $role), $bindOut)) {
+                    $this->laraKubeError("Failed to bind access in '{$ns}':\n  ".implode("\n  ", array_slice($bindOut, -3)));
+
+                    return 1;
+                }
+
+                $this->line("  <fg=gray>bound</> <fg=cyan>{$ns}</> <fg=gray>→ {$role}</>");
+            }
         }
 
         // 3. Token + CA + server → a teammate kubeconfig.
@@ -201,8 +326,12 @@ class ClusterGrantCommand extends Command
             return 1;
         }
 
-        $contextName = $this->teammateContextName($appNs);
-        $kubeconfig = $this->assembleTeammateKubeconfig($contextName, $server, $ca, $appNs, $token, $sa);
+        // Cluster-wide: the context isn't pinned to one app, so name it for the
+        // cluster and default to `default` — they can switch namespace freely,
+        // which is the point of the grant.
+        $contextName = $clusterWide ? $this->teammateContextName('') : $this->teammateContextName($grantNamespaces[0]);
+        $defaultNs = $clusterWide ? 'default' : $grantNamespaces[0];
+        $kubeconfig = $this->assembleTeammateKubeconfig($contextName, $server, $ca, $defaultNs, $token, $sa);
 
         $file = getcwd().'/'.$sa.'.kubeconfig';
         file_put_contents($file, $kubeconfig);
@@ -216,14 +345,16 @@ class ClusterGrantCommand extends Command
         $this->result = [
             'name' => $name,
             'role' => $role,
-            'namespace' => $appNs,
+            'scope' => $clusterWide ? 'cluster' : 'namespace',
+            'namespace' => $clusterWide ? null : $grantNamespaces[0],
+            'namespaces' => $clusterWide ? null : $grantNamespaces,
             'context' => $contextName,
             'identity' => $accessNs.'/'.$sa,
             'kubeconfigPath' => $file,
             'kubeconfig' => $kubeconfig,
         ];
 
-        $this->laraKubeInfo("✅ Granted '{$name}' [{$role}] on '{$appNs}'.");
+        $this->laraKubeInfo("✅ Granted '{$name}' [{$role}] on {$scopeLabel}.");
         $this->line("  <fg=gray>Identity:</> {$accessNs}/{$sa}  <fg=gray>· context they'll see:</> <fg=cyan>{$contextName}</>");
         $this->line('  <fg=gray>Kubeconfig:</> <fg=cyan>'.$file.'</> <fg=gray>(0600)</>');
         $this->laraKubeWarn('Deliver this file SECURELY — not committed, not pasted in chat.');

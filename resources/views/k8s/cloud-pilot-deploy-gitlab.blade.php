@@ -54,7 +54,7 @@ build:{{ $envName }}:
 
 deploy:{{ $envName }}:
   stage: deploy
-  image: bitnami/kubectl:latest
+  image: registry.k8s.io/kubectl:v1.36.3
   needs: ["build:{{ $envName }}"]
   rules:
     - if: '$CI_COMMIT_BRANCH == "{{ $envMeta['branch'] }}"'

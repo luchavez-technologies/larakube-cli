@@ -36,6 +36,13 @@ spec:
                   key: db-password
             - name: DATABASE_URL
               value: "postgres://umami:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/umami"
+          startupProbe:
+            httpGet:
+              path: /api/heartbeat
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /api/heartbeat

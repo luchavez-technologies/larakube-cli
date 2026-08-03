@@ -4,27 +4,27 @@ namespace App\Commands\Drive;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
-use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class DriveInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'drive:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -32,10 +32,10 @@ class DriveInitCommand extends Command
         {--domain=   : Base domain OR full host for Drive (example.com → prefix.example.com)}
         {--no-plex   : Bypass Plex Commons (SQLite/Local PVC instead of Postgres/S3)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--engine=   : The drive engine to deploy ("ocis" or "nextcloud")}
-        {--force     : Skip the confirmation prompt}';
+        {--engine=   : The drive engine to deploy ("ocis")}
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
-    protected $description = 'Deploy a cloud storage and sync stack (oCIS or Nextcloud) into larakube-shared';
+    protected $description = 'Deploy the oCIS cloud storage and sync stack into larakube-shared';
 
     public function handle(): int
     {
@@ -46,7 +46,7 @@ class DriveInitCommand extends Command
 
     protected function deployDrive(): int
     {
-        $engine = $this->resolveEngine();
+        $this->resolveEngine();
         $env = $this->resolveEnvironment();
         $host = $this->resolveDriveHost($env);
 
@@ -72,83 +72,76 @@ class DriveInitCommand extends Command
             return 1;
         }
 
-        $dbPassword = null;
-        $redisIndex = null;
         $s3Creds = null;
 
         if (! $noPlex) {
-            if ($engine === 'nextcloud') {
-                if (! $this->ensureCommons(['postgres', 'redis'])) {
-                    return 1;
-                }
+            if (! $this->ensureCommons(['seaweedfs'])) {
+                return 1;
+            }
 
-                $dbPassword = $this->readDriveSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-                if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'drive', $dbPassword)) {
-                    return 1;
-                }
+            $s3Creds = $this->readCommonsS3Credentials();
+            if (! $s3Creds) {
+                $this->laraKubeError('Failed to read SeaweedFS credentials from the Plex Commons.');
 
-                $redisIndex = $this->allocateCommonsRedisIndex('drive');
-                if ($redisIndex === null) {
-                    $this->laraKubeError('The Commons Redis is full (all 16 logical databases taken). Cannot allocate an index for Drive.');
+                return 1;
+            }
 
-                    return 1;
-                }
-            } else {
-                // oCIS
-                if (! $this->ensureCommons(['seaweedfs'])) {
-                    return 1;
-                }
-
-                $s3Creds = $this->readCommonsS3Credentials();
-                if (! $s3Creds) {
-                    $this->laraKubeError('Failed to read SeaweedFS credentials from the Plex Commons.');
-
-                    return 1;
-                }
-
-                if (! $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, 'drive-ocis')) {
-                    return 1;
-                }
+            if (! $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, 'drive-ocis')) {
+                return 1;
             }
         }
 
         $adminPassword = $this->readDriveSecret($kubectl, $ns, 'admin-password') ?? Str::random(24);
         $machineAuth = $this->readDriveSecret($kubectl, $ns, 'machine-auth-api-key') ?? Str::random(32);
+        $jwtSecret = $this->readDriveSecret($kubectl, $ns, 'jwt-secret') ?? Str::random(32);
+        $transferSecret = $this->readDriveSecret($kubectl, $ns, 'transfer-secret') ?? Str::random(32);
+        $systemUserApiKey = $this->readDriveSecret($kubectl, $ns, 'system-user-api-key') ?? Str::random(32);
+        $serviceAccountSecret = $this->readDriveSecret($kubectl, $ns, 'service-account-secret') ?? Str::random(32);
+        $rekeyKey = $this->readDriveSecret($kubectl, $ns, 'rekey-key') ?? Str::random(32);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $dbPassword, $machineAuth) {
+        $clusterEnv = $env === 'local' ? 'dev' : $env;
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $clusterEnv, $adminPassword, $machineAuth, $jwtSecret, $transferSecret, $systemUserApiKey, $serviceAccountSecret, $rekeyKey) {
             $cmd = "{$kubectl} create secret generic drive-secrets -n {$ns} "
                 .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
-                .'--from-literal=machine-auth-api-key='.escapeshellarg($machineAuth).' ';
-
-            if ($dbPassword) {
-                $cmd .= '--from-literal=db-password='.escapeshellarg($dbPassword).' ';
-            }
-
-            $cmd .= "--dry-run=client -o yaml | {$kubectl} apply -f -";
+                .'--from-literal=machine-auth-api-key='.escapeshellarg($machineAuth).' '
+                .'--from-literal=jwt-secret='.escapeshellarg($jwtSecret).' '
+                .'--from-literal=transfer-secret='.escapeshellarg($transferSecret).' '
+                .'--from-literal=system-user-api-key='.escapeshellarg($systemUserApiKey).' '
+                .'--from-literal=service-account-secret='.escapeshellarg($serviceAccountSecret).' '
+                .'--from-literal=rekey-key='.escapeshellarg($rekeyKey).' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
             Process::run($cmd);
+
+            if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
+                $this->pushClusterSecret($kubectl, 'DRIVE_ADMIN_PASSWORD', $adminPassword, $clusterEnv);
+                $this->pushClusterSecret($kubectl, 'DRIVE_MACHINE_AUTH_API_KEY', $machineAuth, $clusterEnv);
+                $this->pushClusterSecret($kubectl, 'DRIVE_JWT_SECRET', $jwtSecret, $clusterEnv);
+                $this->pushClusterSecret($kubectl, 'DRIVE_TRANSFER_SECRET', $transferSecret, $clusterEnv);
+                $this->pushClusterSecret($kubectl, 'DRIVE_SYSTEM_USER_API_KEY', $systemUserApiKey, $clusterEnv);
+                $this->pushClusterSecret($kubectl, 'DRIVE_SERVICE_ACCOUNT_SECRET', $serviceAccountSecret, $clusterEnv);
+                $this->pushClusterSecret($kubectl, 'DRIVE_REKEY_KEY', $rekeyKey, $clusterEnv);
+            }
         });
 
-        $manifest = view("k8s.drive.{$engine}", [
-            'engine' => $engine,
+        $manifest = view('k8s.drive.ocis', [
             'host' => $host,
-            'dbPassword' => $dbPassword,
-            'redisIndex' => $redisIndex,
             's3Creds' => $s3Creds,
             'plexNamespace' => $this->plexNamespace(),
             'noPlex' => $noPlex,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-drive.yaml';
         file_put_contents($tmp, $manifest);
 
-        $engineName = $engine === 'nextcloud' ? 'Nextcloud' : 'oCIS';
-        $deployName = $engine === 'nextcloud' ? 'deploy/drive-nextcloud' : 'deploy/drive-ocis';
+        $engineName = 'oCIS';
+        $deployName = 'deploy/drive-ocis';
 
         $this->withSpin("Applying Drive ({$engineName}) manifests...", fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
         @unlink($tmp);
@@ -224,18 +217,12 @@ class DriveInitCommand extends Command
     protected function resolveEngine(): string
     {
         $explicit = strtolower((string) $this->option('engine'));
-        if (in_array($explicit, ['ocis', 'nextcloud'], true)) {
-            return $explicit;
+        if ($explicit !== '' && $explicit !== 'ocis') {
+            $this->laraKubeError("Unknown drive engine '{$explicit}'. Supported: ocis.");
+            exit(1);
         }
 
-        return select(
-            label: 'Which drive engine do you want to deploy?',
-            options: [
-                'ocis' => 'oCIS (Go-based, ultra-fast, native S3 backend)',
-                'nextcloud' => 'Nextcloud (PHP-based, massive all-in-one suite)',
-            ],
-            default: 'ocis',
-        );
+        return 'ocis';
     }
 
     protected function driveKubectl(?string $context): string

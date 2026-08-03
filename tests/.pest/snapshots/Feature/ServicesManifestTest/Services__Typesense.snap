@@ -63,6 +63,16 @@ spec:
                 name: laravel-config
             - secretRef:
                 name: laravel-secrets
+          # Gate liveness/readiness behind startup so a slow first boot
+          # (composer/artisan migrate before the server binds) can't be
+          # SIGKILLed mid-flight. failureThreshold 30 x 10s = up to 5 min.
+          startupProbe:
+            httpGet:
+              path: /up
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /up

@@ -5,7 +5,7 @@ namespace App\Enums;
 /**
  * The credential kinds `plex:rotate` can roll.
  *
- * Each case owns everything that differs between them — the Infisical key, the
+ * Each case owns everything that differs between them — the secrets backend key, the
  * env vars it feeds, and whether it is per-tenant or cluster-wide — so the
  * rotate command stays a loop over cases instead of a switch. This is the same
  * "maximize the enum" shape as ClusterTool: adding a rotatable credential means
@@ -34,7 +34,7 @@ enum CommonsSecret: string
 
     /**
      * The env var names this credential feeds in a tenant's configuration.
-     * These are the keys that become secretKeyRef-backed when Infisical is
+     * These are the keys that become secretKeyRef-backed when the secrets backend is
      * available, and literal .env values when it isn't.
      *
      * @return list<string>
@@ -50,16 +50,21 @@ enum CommonsSecret: string
     }
 
     /**
-     * The Infisical secret key this credential is stored under. Per-tenant
+     * The secrets backend secret key this credential is stored under. Per-tenant
      * secrets are namespaced by tenant so two apps on one Commons never
      * collide. Returns null for kinds whose key is owned by the consumer
      * (TOOL_STORE — the tool names its own).
      */
-    public function infisicalKey(?string $tenant = null): ?string
+    public function clusterSecretKey(?string $tenant = null): ?string
     {
         return match ($this) {
+            // Delegated to the tool, not synthesised with a PLEX_ prefix. The
+            // key must survive a tool moving off the Commons (--no-plex), so it
+            // names the tool rather than where its database happens to live —
+            // and the tool's own :init pushes under the SAME key, which is what
+            // makes a rotation land somewhere the tool actually reads.
             self::TENANT_DB => $tenant !== null
-                ? 'PLEX_'.strtoupper(str_replace('-', '_', $tenant)).'_DB_PASSWORD'
+                ? (ClusterTool::forCommonsTenant($tenant)?->clusterSecretDbKey($tenant) ?? ClusterTool::tenantKey($tenant))
                 : null,
             self::COMMONS_S3 => 'PLEX_COMMONS_S3_SECRET_KEY',
             self::COMMONS_ADMIN => 'PLEX_COMMONS_ADMIN_PASSWORD',

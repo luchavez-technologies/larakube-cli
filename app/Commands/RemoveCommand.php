@@ -7,7 +7,7 @@ use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\LaravelFeature;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
@@ -88,7 +88,7 @@ class RemoveCommand extends Command
                 $selectedItems[] = $case->value;
             }
         }
-        foreach (ScoutDriver::cases() as $case) {
+        foreach (SearchDriver::cases() as $case) {
             if ($case instanceof HasHiddenComponents && $case->isHidden($config)) {
                 continue;
             }

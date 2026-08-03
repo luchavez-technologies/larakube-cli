@@ -7,15 +7,15 @@ use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\LaravelFeature;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 
 test('every host-publishing component declares its overrideable services', function () {
     // Cloud-overrideable components — must have entries in getHostServices.
     expect(LaravelFeature::REVERB->getHostServices())->toHaveKey('reverb')
-        ->and(ScoutDriver::MEILISEARCH->getHostServices())->toHaveKey('meilisearch')
-        ->and(ScoutDriver::TYPESENSE->getHostServices())
+        ->and(SearchDriver::MEILISEARCH->getHostServices())->toHaveKey('meilisearch')
+        ->and(SearchDriver::TYPESENSE->getHostServices())
         ->toHaveKey('typesense')
         ->toHaveKey('typesense-dashboard')
         ->and(StorageDriver::MINIO->getHostServices())
@@ -171,8 +171,8 @@ test('only client-facing endpoints are promptable for custom hosts', function ()
     // Search drivers do NOT implement HasPromptableHosts at all, so the env
     // wizard never prompts for a Meilisearch/Typesense console host (they
     // still publish a derived ingress host via getHostServices()).
-    expect(ScoutDriver::MEILISEARCH)->not->toBeInstanceOf(HasPromptableHosts::class)
-        ->and(ScoutDriver::TYPESENSE)->not->toBeInstanceOf(HasPromptableHosts::class);
+    expect(SearchDriver::MEILISEARCH)->not->toBeInstanceOf(HasPromptableHosts::class)
+        ->and(SearchDriver::TYPESENSE)->not->toBeInstanceOf(HasPromptableHosts::class);
 
 });
 
@@ -180,7 +180,7 @@ test('all HasHosts implementers conform to the new contract', function () {
     // Catches future enums that implement HasHosts but forget getHostServices.
     $implementers = [
         LaravelFeature::REVERB,
-        ScoutDriver::DATABASE,
+        SearchDriver::DATABASE,
         StorageDriver::GARAGE,
         DatabaseDriver::SQLITE,
         CacheDriver::DATABASE,

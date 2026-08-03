@@ -26,7 +26,7 @@ class SsoRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        // Whole dedicated namespace, matching Vaultwarden/Infisical/NetBird —
+        // Whole dedicated namespace, matching Vaultwarden/OpenBao/NetBird —
         // nothing else lives in larakube-sso.
         return $this->removeResources(
             'Removing Zitadel namespace...',

@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: twenty
-          image: twentycrm/twenty:latest
+          image: twentycrm/twenty:v2.24.1
           ports:
             - containerPort: 3000
               name: http
@@ -74,6 +74,13 @@ spec:
                   name: crm-twenty-oidc
                   key: SSO_OIDC_CLIENT_SECRET
                   optional: true
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /health

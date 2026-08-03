@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: cloudflared
-          image: cloudflare/cloudflared:latest
+          image: cloudflare/cloudflared:2026.7.3
 @if(!empty($token))
           args:
             - tunnel

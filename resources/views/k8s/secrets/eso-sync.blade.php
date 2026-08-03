@@ -1,0 +1,44 @@
+@php
+    $provider = $provider ?? 'openbao';
+@endphp
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $authName }}
+  namespace: {{ $namespace }}
+type: Opaque
+data:
+  token: {{ $token }}
+---
+apiVersion: external-secrets.io/v1beta1
+kind: SecretStore
+metadata:
+  name: {{ $authName }}
+  namespace: {{ $namespace }}
+spec:
+  provider:
+    vault:
+      server: {{ $hostAPI ?? 'http://openbao-backend.larakube-secrets.svc.cluster.local:8200' }}
+      path: secret
+      version: v2
+      auth:
+        tokenSecretRef:
+          name: {{ $authName }}
+          key: token
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ $namespace }}
+spec:
+  refreshInterval: 1m
+  secretStoreRef:
+    name: {{ $authName }}
+    kind: SecretStore
+  target:
+    name: {{ $secretName }}
+    creationPolicy: Owner
+  dataFrom:
+    - extract:
+        key: {{ $environmentSlug ?? 'production' }}

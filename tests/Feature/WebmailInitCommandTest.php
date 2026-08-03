@@ -42,7 +42,7 @@ test('webmail:init deploys Bulwark and enables CORS when Stalwart is present', f
         ->doesntExpectOutputToContain('Could not auto-enable CORS');
 });
 
-test('webmail bulwark manifest references standard Infisical secret keys', function () {
+test('webmail bulwark manifest references standard secret keys', function () {
     $manifest = view('k8s.webmail.bulwark', [
         'host' => 'mail.example.com',
         'mailHost' => 'send.example.com',

@@ -35,6 +35,13 @@ spec:
           volumeMounts:
             - name: uptime-kuma-volume
               mountPath: /app/data
+          startupProbe:
+            httpGet:
+              path: /
+              port: 3001
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /

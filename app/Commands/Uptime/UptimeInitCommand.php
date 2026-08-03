@@ -8,6 +8,7 @@ use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithTraefik;
 use App\Traits\InteractsWithUptime;
 use App\Traits\LaraKubeOutput;
@@ -21,14 +22,14 @@ use LaravelZero\Framework\Commands\Command;
 
 class UptimeInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'uptime:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Uptime Kuma host.}
         {--context=  : Target a specific kube-context (defaults to current context)}
         {--domain=   : Base domain OR full host for Uptime Kuma (example.com → status.example.com; status.example.com used as-is)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the cluster-wide Uptime Kuma status page stack into larakube-shared';
 
@@ -72,6 +73,7 @@ class UptimeInitCommand extends Command
         $manifest = view('k8s.uptime.shared', [
             'host' => $host,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
         ])->render();
 
@@ -85,6 +87,8 @@ class UptimeInitCommand extends Command
             "{$kubectl} rollout status deploy/uptime-kuma -n {$ns} --timeout=120s",
             130,
         ));
+
+        $this->registerDeployedTool(ClusterTool::UPTIME, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Uptime Kuma stack is live.');

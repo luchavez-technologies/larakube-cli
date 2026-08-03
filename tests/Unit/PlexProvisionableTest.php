@@ -10,7 +10,7 @@
 use App\Data\ConfigData;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use App\Traits\InteractsWithPlex;
 
@@ -25,7 +25,7 @@ function plexCatalog(): object
 test('a Commons service name is just the driver value (no remapping)', function () {
     expect(DatabaseDriver::POSTGRESQL->commonsServiceName())->toBe('postgres')
         ->and(CacheDriver::REDIS->commonsServiceName())->toBe('redis')
-        ->and(ScoutDriver::MEILISEARCH->commonsServiceName())->toBe('meilisearch')   // the enum value, not a shortened 'meili'
+        ->and(SearchDriver::MEILISEARCH->commonsServiceName())->toBe('meilisearch')   // the enum value, not a shortened 'meili'
         ->and(StorageDriver::SEAWEEDFS->commonsServiceName())->toBe('seaweedfs')
         ->and(StorageDriver::MINIO->commonsServiceName())->toBe('minio');            // distinct from seaweedfs → can coexist
 });
@@ -33,7 +33,7 @@ test('a Commons service name is just the driver value (no remapping)', function 
 test('non-shareable drivers have no Commons service', function () {
     expect(DatabaseDriver::SQLITE->commonsServiceName())->toBeNull()   // local file
         ->and(CacheDriver::DATABASE->commonsServiceName())->toBeNull() // runs in the app's own DB
-        ->and(ScoutDriver::DATABASE->commonsServiceName())->toBeNull();
+        ->and(SearchDriver::DATABASE->commonsServiceName())->toBeNull();
 });
 
 test('plex-readiness reflects what is actually wired today', function () {
@@ -42,8 +42,8 @@ test('plex-readiness reflects what is actually wired today', function () {
         ->and(DatabaseDriver::MARIADB->isPlexReady())->toBeTrue()       // wired Commons db backend
         ->and(DatabaseDriver::MONGODB->isPlexReady())->toBeFalse()      // mapped, not yet wired
         ->and(CacheDriver::REDIS->isPlexReady())->toBeTrue()
-        ->and(ScoutDriver::MEILISEARCH->isPlexReady())->toBeTrue()
-        ->and(ScoutDriver::TYPESENSE->isPlexReady())->toBeFalse()
+        ->and(SearchDriver::MEILISEARCH->isPlexReady())->toBeTrue()
+        ->and(SearchDriver::TYPESENSE->isPlexReady())->toBeFalse()
         ->and(StorageDriver::SEAWEEDFS->isPlexReady())->toBeTrue()   // wired: Commons S3 backend
         ->and(StorageDriver::MINIO->isPlexReady())->toBeTrue()       // wired: SeaweedFS alternative
         ->and(StorageDriver::GARAGE->isPlexReady())->toBeTrue();     // wired: shared "commons-admin" key, not a root credential

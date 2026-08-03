@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: outline
-          image: outlinewiki/outline:latest
+          image: outlinewiki/outline:1.9.2
           ports:
             - containerPort: 3000
               name: http
@@ -79,51 +79,62 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: notes-outline-oidc
-                  key: client-id
+                  key: OIDC_CLIENT_ID
                   optional: true
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: notes-outline-oidc
-                  key: client-secret
+                  key: OIDC_CLIENT_SECRET
                   optional: true
             - name: OIDC_AUTH_URI
               valueFrom:
                 secretKeyRef:
                   name: notes-outline-oidc
-                  key: auth-url
+                  key: OIDC_AUTH_URI
                   optional: true
             - name: OIDC_TOKEN_URI
               valueFrom:
                 secretKeyRef:
                   name: notes-outline-oidc
-                  key: token-url
+                  key: OIDC_TOKEN_URI
                   optional: true
             - name: OIDC_USERINFO_URI
               valueFrom:
                 secretKeyRef:
                   name: notes-outline-oidc
-                  key: userinfo-url
+                  key: OIDC_USERINFO_URI
                   optional: true
             - name: OIDC_DISPLAY_NAME
               value: "SSO"
             - name: OIDC_SCOPES
               value: "openid profile email"
+          # Outline runs 100+ migrations on first boot — some are data backfills
+          # that take tens of seconds each — and only binds :3000 afterward. A
+          # startupProbe holds liveness/readiness off until it's up so the slow
+          # migration run can't be SIGKILLed mid-flight (the CrashLoop cause).
+          # failureThreshold 60 x 10s = up to 10 min of first-boot runway.
+          startupProbe:
+            httpGet:
+              path: /_health
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /_health
               port: 3000
-            initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 6
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /_health
               port: 3000
-            initialDelaySeconds: 60
             periodSeconds: 15
             timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             requests:
               memory: 256Mi

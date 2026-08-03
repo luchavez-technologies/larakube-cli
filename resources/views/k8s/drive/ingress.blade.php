@@ -8,7 +8,17 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    cert-manager.io/cluster-issuer: "letsencrypt"
+    # LaraKube's managed clusters serve TLS via Traefik's own letsencrypt
+    # certresolver — cert-manager is NOT installed, so the old
+    # `cert-manager.io/cluster-issuer` annotation was silently ignored and
+    # Traefik fell back to its default *.dev.test certificate. Mirror the
+    # pattern every other tool's ingress uses.
+@unless($isLocal ?? false)
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+@if($proxied ?? false)
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+@endif
+@endunless
 @if ($vpnOnly ?? false)
     traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-drive-vpn-only@kubernetescrd
 @endif
@@ -27,4 +37,3 @@ spec:
   tls:
     - hosts:
         - {{ $host }}
-      secretName: drive-{{ $engine }}-tls

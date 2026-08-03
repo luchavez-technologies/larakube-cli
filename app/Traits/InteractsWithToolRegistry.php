@@ -93,4 +93,59 @@ trait InteractsWithToolRegistry
 
         return Process::run($cmd)->successful();
     }
+
+    /**
+     * Ask the cluster whether a tool's workload is actually there, independent
+     * of the registry.
+     */
+    protected function isToolPresentOnCluster(string $kubectl, ClusterTool $tool): bool
+    {
+        if ($tool === ClusterTool::DNS) {
+            return trim(Process::run("{$kubectl} get deployment -n larakube-shared --no-headers --ignore-not-found 2>/dev/null | grep external-dns")->output()) !== '';
+        }
+
+        $probe = $tool->service()?->presenceProbe();
+
+        if ($probe === null) {
+            return false;
+        }
+
+        return trim(Process::run("{$kubectl} get {$probe} --no-headers --ignore-not-found 2>/dev/null")->output()) !== '';
+    }
+
+    /**
+     * Resolve the host for an installed tool by checking the registry first,
+     * then probing live cluster Ingress resources if not registered or missing a host.
+     */
+    protected function resolveLiveToolHost(string $kubectl, ClusterTool $tool): ?string
+    {
+        $registeredHost = $this->getToolHost($kubectl, $tool);
+        if ($registeredHost !== null && $registeredHost !== '') {
+            return $registeredHost;
+        }
+
+        $namespaces = array_unique([$tool->namespace(), 'larakube-shared']);
+        $prefix = $tool->service()?->hostPrefix() ?? $tool->value;
+
+        foreach ($namespaces as $ns) {
+            $hostsStr = trim(Process::run("{$kubectl} get ingress -n {$ns} -o jsonpath='{.items[*].spec.rules[*].host}' 2>/dev/null")->output());
+            if ($hostsStr === '') {
+                continue;
+            }
+
+            $hosts = array_filter(explode(' ', $hostsStr));
+
+            foreach ($hosts as $host) {
+                if (str_starts_with($host, "{$prefix}.") || $host === $prefix) {
+                    return $host;
+                }
+            }
+
+            if (count($hosts) === 1 && $ns !== 'larakube-shared') {
+                return reset($hosts) ?: null;
+            }
+        }
+
+        return null;
+    }
 }

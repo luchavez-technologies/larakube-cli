@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 use App\Enums\LaravelFeature;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 
 test('it always generates an app key', function () {
@@ -71,11 +71,11 @@ test('it generates storage secrets when enabled', function () {
 
 test('it generates scout secrets when enabled', function () {
     $generator = new SecretsGenerator;
-    $configMeili = new ConfigData(name: 'test', scoutDriver: ScoutDriver::MEILISEARCH);
+    $configMeili = new ConfigData(name: 'test', scoutDriver: SearchDriver::MEILISEARCH);
     $secretsMeili = $generator->generateInstallSecrets($configMeili, 'production');
     expect($secretsMeili)->toHaveKey('MEILISEARCH_KEY');
 
-    $configType = new ConfigData(name: 'test', scoutDriver: ScoutDriver::TYPESENSE);
+    $configType = new ConfigData(name: 'test', scoutDriver: SearchDriver::TYPESENSE);
     $secretsType = $generator->generateInstallSecrets($configType, 'production');
     expect($secretsType)->toHaveKey('TYPESENSE_API_KEY');
 });

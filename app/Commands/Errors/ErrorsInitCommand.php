@@ -9,6 +9,7 @@ use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithErrors;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
@@ -22,7 +23,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class ErrorsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'errors:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the GlitchTip host.}
@@ -30,7 +31,7 @@ class ErrorsInitCommand extends Command
         {--domain=   : Base domain OR full host for GlitchTip (example.com → errors.example.com; errors.example.com used as-is)}
         {--no-plex   : Bypass Plex Commons and deploy dedicated database/cache pods instead}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the cluster-wide GlitchTip error tracking stack into larakube-shared';
 
@@ -101,6 +102,7 @@ class ErrorsInitCommand extends Command
             'plexNamespace' => $this->plexNamespace(),
             'noPlex' => $noPlex,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
         ])->render();
 
@@ -135,6 +137,8 @@ class ErrorsInitCommand extends Command
             "{$kubectl} rollout status deploy/glitchtip-worker -n {$ns} --timeout=120s",
             130,
         ));
+
+        $this->registerDeployedTool(ClusterTool::ERRORS, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ GlitchTip stack is live.');

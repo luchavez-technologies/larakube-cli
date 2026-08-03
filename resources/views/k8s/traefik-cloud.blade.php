@@ -1,3 +1,4 @@
+@include('k8s.traefik-crds')
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -57,12 +58,13 @@ rules:
       - ingressroutes
       - ingressroutetcps
       - ingressrouteudps
-      - middlewaress
       - middlewares
+      - middlewaretcps
       - tlsoptions
       - tlsstores
       - traefikservices
       - serverstransports
+      - serverstransporttcps
     verbs:
       - get
       - list
@@ -118,6 +120,9 @@ spec:
             - --entrypoints.websecure.Address=:443
             - --entrypoints.websecure.http.tls=true
             - --providers.kubernetesingress
+            {{-- Without this Traefik ignores Middleware objects entirely, so
+                 vpn-only and ForwardAuth SSO annotations resolve to nothing. --}}
+            - --providers.kubernetescrd
 @if(isset($ip))
             - --providers.kubernetesingress.ingressendpoint.ip={{ $ip }}
 @endif

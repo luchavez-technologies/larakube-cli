@@ -3,19 +3,23 @@
 namespace App\Commands\Flow;
 
 use App\Data\ConfigData;
+use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
-use App\Enums\SharedClusterService;
+use App\Exceptions\MissingFlagException;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithFlow;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
@@ -23,7 +27,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class FlowInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'flow:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -32,7 +36,7 @@ class FlowInitCommand extends Command
         {--no-plex   : Bypass Plex Commons and use local SQLite storage}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--engine=   : The automation engine to deploy ("n8n" or "windmill")}
-        {--force     : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy a workflow automation stack (n8n or Windmill) into larakube-shared';
 
@@ -47,7 +51,7 @@ class FlowInitCommand extends Command
     {
         $engine = $this->resolveEngine();
         $env = $this->resolveEnvironment();
-        $host = $this->resolveFlowHost($env);
+        $host = $this->resolveFlowHost($env, $engine);
 
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -64,6 +68,20 @@ class FlowInitCommand extends Command
         $ns = $this->flowNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
+
+        // n8n and windmill are distinct products grouped under "flow" — they
+        // coexist, not replace each other. If the other engine is already here,
+        // just flag the scope overlap rather than blocking or overwriting.
+        $other = $engine === 'windmill' ? 'n8n' : 'windmill';
+        $otherInstalled = trim(Process::run(
+            "{$kubectl} get deployment flow-{$other} -n {$ns} --no-headers --ignore-not-found",
+        )->output()) !== '';
+        if ($otherInstalled && ! $this->option('force') && ! $this->cannotPrompt()
+            && ! confirm("{$this->engineLabel($other)} is already installed under 'flow'. {$this->engineLabel($engine)} overlaps in scope — install it alongside?", default: true)) {
+            $this->laraKubeInfo('Aborted — no changes made.');
+
+            return 0;
+        }
 
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::FLOW, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
@@ -127,6 +145,7 @@ class FlowInitCommand extends Command
             'noPlex' => $noPlex,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-flow.yaml';
@@ -153,56 +172,77 @@ class FlowInitCommand extends Command
         return 0;
     }
 
-    protected function resolveFlowHost(string $env): string
-    {
-        $service = SharedClusterService::FLOW;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveFlowHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudFlowHost($service, $env);
-    }
-
-    protected function resolveEnvironment(): string
-    {
-        return $this->resolveToolEnvironment(ClusterTool::FLOW);
-    }
-
-    protected function promptForCloudFlowHost(SharedClusterService $service, string $env): string
+    /**
+     * Resolve the host for THIS engine. n8n and windmill are distinct products
+     * under the "flow" group, so each gets its own host (n8n.tld / windmill.tld),
+     * stored under its own `flow-{engine}` key — never a shared flow.tld that
+     * would collide when both are installed. The derived host is only ever a
+     * suggestion: prompted (editable) the same way on local AND cloud, so the
+     * mental model doesn't change between them. --domain skips the prompt.
+     */
+    protected function resolveFlowHost(string $env, string $engine): string
     {
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
             ? ConfigData::loadFromFile($projectPath)
             : null;
+        $key = "flow-{$engine}";
+        $engineName = $this->engineLabel($engine);
 
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
+        // --domain: a base domain (n8n.example.com) OR a full host, verbatim if
+        // it already starts with the engine prefix. Prefix with the ENGINE name.
+        $domain = trim((string) ($this->option('domain') ?? ''));
+        if ($domain !== '') {
+            $domain = preg_replace('#^https?://#', '', rtrim($domain, '/'));
+            $host = str_starts_with($domain, "{$engine}.") ? $domain : "{$engine}.{$domain}";
+
+            return $this->persistFlowHost($config, $projectPath, $env, $key, $host);
         }
 
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
+        // Suggestion: a previously-saved host, else a clean per-engine default.
+        $existing = $config?->getEnvironment($env)?->hosts[$key] ?? null;
+        $baseDomain = $env === 'local'
+            ? GlobalConfigData::load()->getLocalTld()
+            : ($config?->getEnvironment($env)?->hosts['web'] ?? null);
+        $default = $existing ?? ($baseDomain ? "{$engine}.{$baseDomain}" : '');
+
+        if ($this->cannotPrompt()) {
+            if ($default === '') {
+                throw new MissingFlagException('domain', "the host {$engineName} should use", "larakube flow:init {$env} --engine={$engine} --domain=example.com");
+            }
+
+            return $this->persistFlowHost($config, $projectPath, $env, $key, $default);
+        }
 
         $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. flow.example.com',
+            label: "What host should {$engineName} use in '{$env}'?",
+            placeholder: $default !== '' ? $default : "e.g. {$engine}.example.com",
             default: $default,
             required: true,
         );
 
+        return $this->persistFlowHost($config, $projectPath, $env, $key, $host);
+    }
+
+    protected function persistFlowHost(?ConfigData $config, string $projectPath, string $env, string $key, string $host): string
+    {
         if ($config) {
-            $config->setHost($env, $service->value, $host);
+            $config->setHost($env, $key, $host);
             $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
+            $this->laraKubeInfo("Saved {$key} host for '{$env}' to .larakube.json");
         }
 
         return $host;
+    }
+
+    protected function engineLabel(string $engine): string
+    {
+        return $engine === 'windmill' ? 'Windmill' : 'n8n';
+    }
+
+    protected function resolveEnvironment(): string
+    {
+        return $this->resolveToolEnvironment(ClusterTool::FLOW);
     }
 
     protected function resolveEngine(): string
@@ -215,10 +255,10 @@ class FlowInitCommand extends Command
         return select(
             label: 'Which automation engine do you want to deploy?',
             options: [
+                'windmill' => 'Windmill (Code-first, Rust/Python/Go, performant, free OIDC SSO)',
                 'n8n' => 'n8n (Visual, Node.js-based, Zapier-like)',
-                'windmill' => 'Windmill (Code-first, Rust/Python/Go, Performant)',
             ],
-            default: 'n8n',
+            default: 'windmill',
         );
     }
 }

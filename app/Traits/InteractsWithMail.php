@@ -2,7 +2,6 @@
 
 namespace App\Traits;
 
-use App\Data\CloudData;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
@@ -13,52 +12,20 @@ use Illuminate\Support\Facades\Process;
  */
 trait InteractsWithMail
 {
-    use InteractsWithRemoteSsh, ManagesCloudFirewall, ResolvesEnvironmentContext;
+    use ManagesToolFirewallPorts, ResolvesEnvironmentContext;
 
     /**
-     * The cloud target backing this environment, or null when there is nothing
-     * to open/close firewall ports on (local, or no saved cloud IP). Shared by
-     * openMailPorts() on the install side and closeMailPorts() on teardown.
-     */
-    protected function mailCloud(string $env): ?CloudData
-    {
-        if ($env === 'local') {
-            return null;
-        }
-
-        $projectPath = getcwd();
-        if (! file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)) {
-            return null;
-        }
-
-        $cloud = ConfigData::loadFromFile($projectPath)->getCloud($env);
-
-        return ($cloud && $cloud->ip) ? $cloud : null;
-    }
-
-    /**
-     * Reverse openMailPorts() on teardown. Best-effort — a mail server that is
+     * Reverse the install-time port opening on teardown. A mail server that is
      * gone but whose SMTP ports are still open on the firewall is a real
-     * exposure, so this runs from `mail:remove` as well as the old
-     * `mail:init --remove`. Lives here rather than on either command so the two
-     * can't drift (openMailPorts is on MailInitCommand, which owns the opening).
+     * exposure, so this runs from `mail:remove`.
+     *
+     * Thin alias over the generic helper — Stalwart was the first tool to need
+     * raw L4 ports, Forgejo's SSH listener the second, so the mechanism lives on
+     * ManagesToolFirewallPorts and every tool declares its ports on the enum.
      */
     protected function closeMailPorts(string $env): void
     {
-        $cloud = $this->mailCloud($env);
-        if ($cloud === null) {
-            return;
-        }
-
-        $ports = SharedClusterService::MAIL->firewallPorts();
-        $this->removeCloudFirewall('mail', $cloud->ip);
-
-        $sshIp = $cloud->vpnIp ?: $cloud->ip;
-        $key = $cloud->key ? str_replace('~', home_path(), $cloud->key) : null;
-        if ($sshIp && $key && file_exists($key)) {
-            $script = collect($ports)->map(fn ($p) => "ufw delete allow {$p}/tcp 2>/dev/null || true")->implode("\n")."\nufw reload || true";
-            $this->runRemoteCommand($cloud->user ?? 'larakube', $sshIp, $cloud->port ?? 22, $key, $script);
-        }
+        $this->closeToolPorts(SharedClusterService::MAIL, $env);
     }
 
     /** The namespace the mail stack lives in. */
@@ -98,12 +65,12 @@ trait InteractsWithMail
      * Write (or overwrite) a key on the mail-secrets secret — a plain k8s Secret
      * patch. mail-secrets holds the mail server's OWN credentials (recovery
      * admin, admin password, automation api-key), which are deliberately
-     * k8s-only and never synced to Infisical: the mail server is foundational
+     * k8s-only and never synced to the secrets backend: the mail server is foundational
      * infrastructure that other tools depend on, so its break-glass and
      * automation credentials must stay self-contained rather than gaining a
      * dependency on the secrets manager. (Shared secrets that OTHER systems
      * consume — the Plex Commons store/S3 creds, the mail:wire SMTP creds — do
-     * legitimately go to Infisical; those are handled elsewhere.)
+     * legitimately go to the secrets backend; those are handled elsewhere.)
      */
     protected function storeMailSecret(string $kubectl, string $ns, string $key, string $value): bool
     {

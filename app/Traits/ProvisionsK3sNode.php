@@ -352,9 +352,17 @@ BASH;
      * transient API blip, a timeout on a loaded droplet, …) still printed
      * "Traefik deployed and configured" even though nothing was actually there.
      */
-    protected function deployTraefik(string $contextName, string $ip): bool
+    /**
+     * @param  bool  $force  Re-apply even when Traefik is already installed. The
+     *                       skip below is right for provisioning (don't disturb a
+     *                       working ingress), but it also meant an existing
+     *                       cluster could never pick up manifest changes — which
+     *                       is how these clusters ended up with no Traefik CRDs.
+     *                       `traefik:setup {env}` passes true to upgrade in place.
+     */
+    protected function deployTraefik(string $contextName, string $ip, bool $force = false): bool
     {
-        if ($this->traefikInstalledOnContext($contextName)) {
+        if (! $force && $this->traefikInstalledOnContext($contextName)) {
             $this->laraKubeInfo('ℹ️  Traefik is already installed on this cluster — skipping deploy.');
 
             return true;

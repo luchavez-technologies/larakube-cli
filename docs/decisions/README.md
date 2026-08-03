@@ -20,3 +20,7 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0002](0002-mail-credential-model.md) | Mail server credentials: API-key daily driver, recovery break-glass, k8s-only | Accepted |
 | [0003](0003-dkim-rsa-only.md) | DKIM is RSA-only | Accepted |
 | [0004](0004-stalwart-oidc-two-roles.md) | Stalwart's two OIDC roles (provider vs directory) — reference | Accepted |
+| [0005](0005-environment-names-are-dynamic.md) | Environment names are dynamic; only `local` is reserved | Accepted |
+| [0006](0006-centralized-forwardauth-sso.md) | Centralized OAuth2-Proxy (ForwardAuth) for tools with no free native OIDC | Accepted |
+| [0007](0007-environment-context-resolution.md) | Environment → kube-context resolution is a single contract | Accepted |
+| [0008](0008-rbac-claim-flattening.md) | Role-gated SSO via a claim-flattening Zitadel Action | Accepted |

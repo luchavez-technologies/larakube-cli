@@ -33,14 +33,14 @@ Three credentials, all in the k8s `mail-secrets` Secret:
   `STALWART_RECOVERY_ADMIN`, but used **only** to (a) bootstrap the API key on first
   run and (b) rescue it via `larakube mail:recover`. No longer the daily driver.
 
-**These credentials are deliberately k8s-only — never synced to Infisical.** The
+**These credentials are deliberately k8s-only — never synced to the secrets backend.** The
 mail server is foundational infrastructure other tools depend on; its own
 break-glass and automation credentials must stay self-contained rather than gaining
 a dependency on the secrets manager being healthy. The API key is also cheaply
 regenerable (`mail:recover`), so a backup copy would only ever drift with no
 consumer to read it.
 
-**Shared secrets that *other* systems consume do still go to Infisical** — the Plex
+**Shared secrets that *other* systems consume do still go to OpenBao** — the Plex
 Commons store/S3 creds (`STALWART_STORE_PASSWORD`, `STALWART_S3_*`) and the
 `mail:wire` SMTP creds. Those aren't the mail server's own admin credentials.
 
@@ -52,7 +52,6 @@ Commons store/S3 creds (`STALWART_STORE_PASSWORD`, `STALWART_S3_*`) and the
   future re-enable of mail SSO ([0001](0001-mail-sso-shelved.md)).
 - `STALWART_RECOVERY_ADMIN` stays pinned deliberately (against Stalwart's general
   advice) so the one-command `mail:recover` rescue path is always available.
-- Rejected: making Infisical the source of truth for these. `InfisicalPushSecret`
-  (k8s→Infisical mirror) is dead — editing Infisical gets overwritten by the
-  operator. True Infisical→k8s sync would need a secret split + first-boot ordering
-  for a credential that shouldn't depend on Infisical at all.
+- Rejected: making the secrets backend the source of truth for these. `kubectl edit secret` gets
+  overwritten by the ExternalSecret controller. True backend→k8s sync would need a secret split +
+  first-boot ordering for a credential that shouldn't depend on the backend at all.

@@ -34,7 +34,7 @@ enum SharedClusterService: string
             self::VPN => 'k8s.vpn.ingress',
             self::ERRORS => 'k8s.errors.ingress',
             self::SECRETS => 'k8s.secrets.ingress',
-            self::GITEA => 'k8s.gitea.shared',
+            self::GITEA => 'k8s.git.forgejo',
             self::FLOW => 'k8s.flow.ingress',
             self::SHEET => 'k8s.sheet.ingress',
             self::INSIGHTS => 'k8s.insights.ingress',
@@ -52,6 +52,7 @@ enum SharedClusterService: string
             self::SUPPORT => 'k8s.support.ingress',
             self::LINK => 'k8s.link.ingress',
             self::CRM => 'k8s.crm.ingress',
+            self::RECORD => 'k8s.record.ingress',
         };
     }
 
@@ -64,9 +65,7 @@ enum SharedClusterService: string
             self::FLOW => [
                 'engine' => trim(\Illuminate\Support\Facades\Process::timeout(10)->run('kubectl get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
             ],
-            self::DRIVE => [
-                'engine' => trim(\Illuminate\Support\Facades\Process::timeout(10)->run('kubectl get deployment drive-nextcloud -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'nextcloud' : 'ocis',
-            ],
+            self::DRIVE => ['engine' => 'ocis'],
             self::TASKS => [
                 'engine' => 'planka',
             ],
@@ -91,6 +90,8 @@ enum SharedClusterService: string
             self::SHEET => 'sheet',
             self::DRIVE => 'drive',
             self::INSIGHTS => 'insights',
+            self::MAIL => 'send',
+            self::VAULT => 'vault',
             default => $this->value,
         };
     }
@@ -124,7 +125,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::RECORD => false,
             default => true,
         };
     }
@@ -147,15 +148,15 @@ enum SharedClusterService: string
             self::VAULT => 'Vaultwarden',
             self::VPN => 'NetBird VPN',
             self::ERRORS => 'GlitchTip',
-            self::SECRETS => 'Infisical',
-            self::GITEA => 'Gitea',
+            self::SECRETS => 'OpenBao',
+            self::GITEA => 'Forgejo',
             self::FLOW => 'n8n',
             self::SHEET => 'Sheet',
             self::DRIVE => 'Drive',
             self::INSIGHTS => 'Metabase',
             self::MAIL => 'Stalwart',
             self::DESK => 'FreeScout',
-            self::CHAT => 'Mattermost',
+            self::CHAT => 'Team Chat (Matrix)',
             self::SSO => 'Zitadel',
             self::WEBMAIL => 'Bulwark',
             self::NOTES => 'Outline',
@@ -166,6 +167,7 @@ enum SharedClusterService: string
             self::SUPPORT => 'Chatwoot',
             self::LINK => 'Kutt',
             self::CRM => 'Twenty',
+            self::RECORD => 'Sendrec',
         };
     }
 
@@ -189,15 +191,15 @@ enum SharedClusterService: string
             self::VAULT => 'deployment vaultwarden -n larakube-vault',
             self::VPN => 'deployment netbird-management -n larakube-vpn',
             self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
-            self::SECRETS => 'deployment infisical-backend -n larakube-secrets',
-            self::GITEA => 'deployment gitea -n larakube-shared',
+            self::SECRETS => 'deployment openbao-backend -n larakube-secrets',
+            self::GITEA => 'deployment forgejo -n larakube-shared',
             self::FLOW => 'deployment -l "app in (flow-n8n, flow-windmill)" -n larakube-shared',
-            self::SHEET => 'deployment -l "app in (sheet-nocodb, sheet-baserow)" -n larakube-shared',
-            self::DRIVE => 'deployment -l "app in (drive-nextcloud, drive-ocis)" -n larakube-shared',
+            self::SHEET => 'deployment sheet-teable -n larakube-shared',
+            self::DRIVE => 'deployment drive-ocis -n larakube-shared',
             self::INSIGHTS => 'deployment insights-metabase -n larakube-shared',
             self::MAIL => 'deployment stalwart -n larakube-shared',
             self::DESK => 'deployment desk-freescout -n larakube-shared',
-            self::CHAT => 'deployment chat-mattermost -n larakube-shared',
+            self::CHAT => 'deployment chat-synapse -n larakube-shared',
             self::SSO => 'deployment sso-zitadel -n larakube-sso',
             self::WEBMAIL => 'deployment webmail-bulwark -n larakube-shared',
             self::NOTES => 'deployment notes-outline -n larakube-shared',
@@ -208,6 +210,7 @@ enum SharedClusterService: string
             self::SUPPORT => 'deployment support-chatwoot -n larakube-shared',
             self::LINK => 'deployment link-kutt -n larakube-shared',
             self::CRM => 'deployment crm-twenty -n larakube-shared',
+            self::RECORD => 'deployment record-sendrec -n larakube-shared',
         };
     }
 
@@ -224,6 +227,10 @@ enum SharedClusterService: string
     {
         return match ($this) {
             self::MAIL => [25, 465, 587, 993, 4190],
+            // Forgejo's SSH listener, for `git clone ssh://git@<host>:2222/…`.
+            // Deliberately not 22: that's the node's own sshd, and the LaraKube
+            // hardening step allows it for admin access only.
+            self::GITEA => [2222],
             default => [],
         };
     }
@@ -281,15 +288,15 @@ enum SharedClusterService: string
             self::VAULT => 'Refreshing Vaultwarden ingress...',
             self::VPN => 'Refreshing NetBird VPN ingress...',
             self::ERRORS => 'Refreshing GlitchTip ingress...',
-            self::SECRETS => 'Refreshing Infisical ingress...',
-            self::GITEA => 'Refreshing Gitea ingress...',
+            self::SECRETS => 'Refreshing OpenBao ingress...',
+            self::GITEA => 'Refreshing Forgejo ingress...',
             self::FLOW => 'Refreshing Flow (n8n) ingress...',
             self::SHEET => 'Refreshing Sheet ingress...',
             self::DRIVE => 'Refreshing Drive ingress...',
             self::INSIGHTS => 'Refreshing Insights (Metabase) ingress...',
             self::MAIL => 'Refreshing Stalwart (Mail) ingress...',
             self::DESK => 'Refreshing FreeScout (Help Desk) ingress...',
-            self::CHAT => 'Refreshing Mattermost (Chat) ingress...',
+            self::CHAT => 'Refreshing Matrix (Chat) ingress...',
             self::SSO => 'Refreshing Zitadel (SSO) ingress...',
             self::WEBMAIL => 'Refreshing Bulwark (Webmail) ingress...',
             self::NOTES => 'Refreshing Outline (Wiki) ingress...',
@@ -300,6 +307,7 @@ enum SharedClusterService: string
             self::SUPPORT => 'Refreshing Chatwoot (Support) ingress...',
             self::LINK => 'Refreshing Kutt (Link) ingress...',
             self::CRM => 'Refreshing Twenty (CRM) ingress...',
+            self::RECORD => 'Refreshing Sendrec (Screen Recording) ingress...',
         };
     }
 
@@ -338,4 +346,5 @@ enum SharedClusterService: string
     case SUPPORT = 'support';
     case LINK = 'link';
     case CRM = 'crm';
+    case RECORD = 'record';
 }

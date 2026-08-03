@@ -4,7 +4,6 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
-use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithFlow
@@ -54,16 +53,27 @@ trait InteractsWithFlow
         return $out !== '' ? (string) base64_decode($out) : null;
     }
 
-    /** Read-only Flow host for an env. */
-    protected function resolveFlowHostReadOnly(string $env, ?ConfigData $config): ?string
+    /**
+     * Read-only Flow host for an env. Each engine has its own host (stored under
+     * `flow-{engine}`); without an explicit engine, prefer whichever is recorded
+     * (n8n first for back-compat) so flow:show still resolves.
+     */
+    protected function resolveFlowHostReadOnly(string $env, ?ConfigData $config, ?string $engine = null): ?string
     {
-        $service = SharedClusterService::FLOW;
+        $engines = $engine !== null ? [$engine] : ['n8n', 'windmill'];
 
         if ($env === 'local') {
-            return $service->hostFor(GlobalConfigData::load()->getLocalTld());
+            return $engines[0].'.'.GlobalConfigData::load()->getLocalTld();
         }
 
-        return $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
+        foreach ($engines as $candidate) {
+            $host = $config?->getEnvironment($env)?->hosts["flow-{$candidate}"] ?? null;
+            if ($host !== null && $host !== '') {
+                return $host;
+            }
+        }
+
+        return null;
     }
 
     /** Resolve Flow's access details. */

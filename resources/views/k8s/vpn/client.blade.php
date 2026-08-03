@@ -46,7 +46,7 @@ spec:
             - name: data
               mountPath: /etc/netbird
         - name: ingress-proxy
-          image: alpine/socat
+          image: alpine/socat:1.8.1.3
           command: ["/bin/sh", "-c"]
           args:
             - |

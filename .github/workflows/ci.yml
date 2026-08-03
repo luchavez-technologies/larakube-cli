@@ -39,6 +39,29 @@ jobs:
       - name: Run Tests
         run: ./vendor/bin/pest
 
+  images:
+    name: Verify Container Images
+    runs-on: ubuntu-latest
+    # Separate job, not a Pest test: it makes real network calls, which the
+    # suite forbids. A manifest with a typo'd tag is valid YAML and passes every
+    # other check — it only fails at pull time, on the cluster, by which point a
+    # single-replica Recreate Deployment has already destroyed the old pod.
+    # `stalwartlabs/stalwart:0.16.14` (published as v0.16.14) took mail down
+    # exactly this way.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, curl
+          coverage: none
+
+      - name: Check every pinned image resolves
+        run: php scripts/check-images.php
+
   publish:
     name: Build and Publish
     needs: test

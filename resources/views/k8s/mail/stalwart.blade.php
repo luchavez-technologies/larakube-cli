@@ -44,7 +44,11 @@ spec:
           # JMAP objects. Floating :latest silently rolled a live cluster onto
           # that and broke SSO wiring with no deploy of ours. Bump deliberately,
           # and re-check app/Traits/InteractsWithStalwartApi.php when you do.
-          image: stalwartlabs/stalwart:0.16.14
+          {{-- The `v` is REQUIRED: stalwartlabs publishes v0.16.14, not 0.16.14.
+               Without it the pull 404s, and because this Deployment is a single
+               replica the old pod is already gone by then — mail goes down, it
+               does not merely fail to update. --}}
+          image: stalwartlabs/stalwart:v0.16.14
           env:
             # BREAK-GLASS credential — NOT the daily driver. The CLI authenticates
             # to Stalwart with a least-privilege API key it mints on first use
@@ -68,10 +72,29 @@ spec:
               value: "true"
             - name: STALWART_SERVER_HTTP_CORS_ALLOW_ORIGIN
               value: "*"
-          envFrom:
-            - secretRef:
-                name: stalwart-infisical
-                optional: true
+            {{-- Named refs, NOT `envFrom: secretRef`. The synced Secret mirrors
+                 every key stored in the cluster backend — SIGN_ENCRYPTION_KEY,
+                 RECORD_JWT_SECRET, every other tool's credentials — as env vars
+                 inside the mail server. Naming the three Stalwart actually needs
+                 keeps the blast radius to those three. --}}
+            - name: STALWART_STORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: stalwart
+                  key: STALWART_STORE_PASSWORD
+                  optional: true
+            - name: STALWART_S3_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: stalwart
+                  key: STALWART_S3_KEY_ID
+                  optional: true
+            - name: STALWART_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stalwart
+                  key: STALWART_S3_SECRET_KEY
+                  optional: true
           ports:
             - { containerPort: 8080, name: http }
             - { containerPort: 25, @if($hostPort)hostPort: 25, @endif name: smtp }
@@ -79,13 +102,22 @@ spec:
             - { containerPort: 465, @if($hostPort)hostPort: 465, @endif name: submissions }
             - { containerPort: 993, @if($hostPort)hostPort: 993, @endif name: imaps }
             - { containerPort: 4190, @if($hostPort)hostPort: 4190, @endif name: sieve }
+          # /healthz/{ready,live} are Stalwart's own purpose-built probes —
+          # each returns non-200 if the process is stuck, unresponsive, or
+          # deadlocked internally. The plain tcpSocket check this replaces
+          # only verified the listener accepted a connection, which stays
+          # green even while the app itself is hung — Kubernetes had no way
+          # to notice or auto-restart it, so the admin UI/Bulwark silently
+          # stopped answering until someone manually ran mail:restart.
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz/ready
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 5
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz/live
               port: 8080
             initialDelaySeconds: 20
             periodSeconds: 15

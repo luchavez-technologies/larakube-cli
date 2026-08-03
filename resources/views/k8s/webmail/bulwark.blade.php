@@ -75,6 +75,13 @@ spec:
           volumeMounts:
             - name: webmail-data
               mountPath: /data
+          startupProbe:
+            httpGet:
+              path: /
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /

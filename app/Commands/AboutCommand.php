@@ -196,7 +196,7 @@ class AboutCommand extends Command
         // 6e. GlitchTip (cluster-wide, larakube-shared) — shown only when installed.
         $this->showErrorsAccess($environment, $config);
 
-        // 6f. Infisical (cluster-wide, larakube-secrets) — shown only when installed.
+        // 6f. OpenBao (cluster-wide, larakube-secrets) — shown only when installed.
         $this->showSecretsAccess($environment, $config);
 
         // 6g. Gitea (cluster-wide, larakube-shared) — shown only when installed.
@@ -331,7 +331,7 @@ class AboutCommand extends Command
     }
 
     /**
-     * Render the cluster-wide Infisical stack's URL when installed.
+     * Render the cluster-wide OpenBao stack's URL when installed.
      */
     protected function showSecretsAccess(string $environment, ConfigData $config): void
     {
@@ -342,12 +342,12 @@ class AboutCommand extends Command
         }
 
         $this->newLine();
-        $this->laraKubeInfo('Infisical (Secrets Manager)');
+        $this->laraKubeInfo('OpenBao (Secrets Manager)');
 
         $secretsUrl = $access['host'] ? "<fg=blue>https://{$access['host']}</>" : '<fg=gray>host not configured</>';
 
         table(['Component', 'Access'], [
-            ['Infisical Admin', $secretsUrl],
+            ['OpenBao Admin', $secretsUrl],
         ]);
     }
 

@@ -28,9 +28,9 @@ Whenever you modify the LaraKube CLI codebase, you **must** proactively run test
 
 ### 🔁 Idempotency & Safety Standard
 - **Mandatory Idempotency**: Users are expected to commit mistakes and re-run commands when retrying, troubleshooting, or automating. EVERY CLI command (`*:init`, `*:wire`, `*:add`) MUST be strictly **idempotent**.
-- **Credentials & State**: Initializers MUST read existing credentials (admin passwords, database keys, secrets) from the cluster or Infisical before falling back to generating new random values. Re-runs MUST NEVER wipe databases or break existing connection state.
-### 🔐 Infisical Secrets Prioritization Standard
-- **Infisical-First Credentials**: Whenever creating, provisioning, or wiring secrets (admin passwords, tokens, PATs, database credentials, or SMTP secrets), commands MUST prioritize pushing them to Infisical via `pushInfisicalSecret()` if Infisical is bootstrapped on the cluster (`infisicalAvailable()`).
+- **Credentials & State**: Initializers MUST read existing credentials (admin passwords, database keys, secrets) from the cluster or OpenBao before falling back to generating new random values. Re-runs MUST NEVER wipe databases or break existing connection state.
+### 🔐 OpenBao Secrets Prioritization Standard
+- **OpenBao-First Credentials**: Whenever creating, provisioning, or wiring secrets (admin passwords, tokens, PATs, database credentials, or SMTP secrets), commands MUST prioritize pushing them to OpenBao via `pushClusterSecret()` if OpenBao is bootstrapped on the cluster (`isOpenBaoBootstrapped()`).
 
 ### 🌐 Networking & Ingress
 -   **Local Domains**: Standardized on **`.dev.test`**.

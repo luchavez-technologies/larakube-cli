@@ -65,9 +65,22 @@ data:
           - source_labels: [__meta_kubernetes_namespace]
             action: replace
             target_label: kubernetes_namespace
-          - source_labels: [__meta_kubernetes_pod_name]
-            action: replace
-            target_label: kubernetes_pod_name
+      - job_name: 'kubernetes-cadvisor'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -87,6 +100,8 @@ metadata:
   namespace: larakube-shared
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: prometheus
@@ -111,6 +126,13 @@ spec:
               mountPath: /etc/prometheus/
             - name: storage
               mountPath: /prometheus/
+          startupProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /-/ready
@@ -144,6 +166,7 @@ spec:
       port: 9090
       targetPort: 9090
   type: ClusterIP
+@if($withLogs ?? true)
 ---
 # ── Loki ─────────────────────────────────────────────────────────────────────
 apiVersion: v1
@@ -385,6 +408,7 @@ spec:
         - name: containers
           hostPath:
             path: /var/lib/docker/containers
+@endif
 ---
 # ── kube-state-metrics ───────────────────────────────────────────────────────
 apiVersion: v1
@@ -506,11 +530,13 @@ data:
         url: http://prometheus.larakube-shared.svc.cluster.local:9090
         isDefault: true
         editable: false
+@if($withLogs ?? true)
       - name: Loki
         type: loki
         access: proxy
         url: http://loki.larakube-shared.svc.cluster.local:3100
         editable: false
+@endif
 ---
 apiVersion: apps/v1
 kind: Deployment

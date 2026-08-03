@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Process;
 /**
  * Helpers for the Zitadel identity-provider tool. Mirrors InteractsWithDesk,
  * except its own dedicated `larakube-sso` namespace — same posture as
- * Vaultwarden/Infisical/NetBird: if this is compromised, everything
+ * Vaultwarden/OpenBao/NetBird: if this is compromised, everything
  * federated to it is compromised, so it doesn't share larakube-shared.
  */
 trait InteractsWithSso
@@ -60,7 +60,16 @@ trait InteractsWithSso
         return $out !== '' ? (string) base64_decode($out) : null;
     }
 
-    /** Read-only Zitadel host for the given environment. */
+    /**
+     * Read-only Zitadel host for the given environment.
+     *
+     * $config is optional: several callers (the mail:* SSO-sync helpers) only
+     * carry an $env, and passing null used to mean "no host" for every cloud
+     * environment — which surfaced as a bogus "could not reach Zitadel's
+     * automation credentials" even though the PAT was perfectly readable. Fall
+     * back to the project config on disk so the answer depends on the
+     * environment, not on which caller happened to thread the config through.
+     */
     protected function resolveSsoHostReadOnly(string $env, ?ConfigData $config): ?string
     {
         $service = SharedClusterService::SSO;
@@ -68,6 +77,10 @@ trait InteractsWithSso
         if ($env === 'local') {
             return $service->hostFor(GlobalConfigData::load()->getLocalTld());
         }
+
+        $config ??= file_exists(getcwd().'/'.ConfigData::CONFIG_FILE)
+            ? ConfigData::loadFromFile(getcwd())
+            : null;
 
         return $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
     }

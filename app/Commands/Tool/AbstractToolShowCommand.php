@@ -58,7 +58,13 @@ abstract class AbstractToolShowCommand extends Command
         // Pins KUBECONFIG to ~/.kube/config, same as every tool's own helper.
         $kubectl = $this->contextKubectl($context);
 
-        $installed = $this->isToolRegistered($kubectl, $tool);
+        // The registry is a convenience index, NOT the source of truth: only a
+        // handful of {tool}:init commands ever call registerDeployedTool(), so
+        // trusting it alone reported long-running installs as "not installed"
+        // (sso:show said Zitadel was missing while sso-zitadel had been up for
+        // days). Fall back to asking the cluster itself.
+        $installed = $this->isToolRegistered($kubectl, $tool)
+            || $this->isToolPresentOnCluster($kubectl, $tool);
         $host = $this->resolveHost($tool, $env, $kubectl);
         $rows = $this->rows($host, $env, $kubectl);
 

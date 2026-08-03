@@ -75,7 +75,7 @@ test('hostFor combines the host prefix with the given cluster domain', function 
         ->and(SharedClusterService::TRAEFIK_DASHBOARD->hostFor('localhost'))->toBe('traefik.localhost');
 });
 
-test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, Infisical, Gitea, Flow, Sheet, Insights, Mail, Desk, Chat, SSO, Webmail, Notes, Drive, and Startup OS tools target non-local environments; the rest are local-only', function () {
+test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Gitea, Flow, Sheet, Insights, Mail, Desk, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function () {
     foreach (SharedClusterService::cases() as $service) {
         $localOnly = ! in_array($service, [
             SharedClusterService::GRAFANA,
@@ -101,6 +101,7 @@ test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, Infisical,
             SharedClusterService::SUPPORT,
             SharedClusterService::LINK,
             SharedClusterService::CRM,
+            SharedClusterService::RECORD,
         ]);
 
         expect($service->isLocalOnly())->toBe($localOnly)

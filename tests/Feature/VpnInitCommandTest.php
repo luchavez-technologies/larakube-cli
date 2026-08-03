@@ -23,6 +23,8 @@ test('vpn:init deploys netbird vpn to larakube-vpn', function () {
         // Already bootstrapped — vpn:init should skip auth/config setup entirely, no Http calls made.
         "{$kubectl} get secret netbird-admin -n larakube-vpn*" => Process::result(output: 'netbird-admin', exitCode: 0),
         "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
+        '*larakube-tools-registry*' => Process::result(output: ''),
+        '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
 
     $this->artisan('vpn:init local')
@@ -64,6 +66,8 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
             "{$kubectl} rollout status deploy/netbird-client -n larakube-vpn*" => Process::result(output: 'rollout success'),
             "{$kubectl} get secret netbird-admin -n larakube-vpn*" => Process::result(output: 'netbird-admin', exitCode: 0),
             "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
+            '*larakube-tools-registry*' => Process::result(output: ''),
+            '*create namespace larakube-shared*' => Process::result(output: 'created'),
         ]);
         Process::preventStrayProcesses();
 

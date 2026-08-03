@@ -4,78 +4,118 @@ namespace App\Commands\Secrets;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
+use App\Enums\SecretsBackend;
 use Illuminate\Support\Facades\Process;
 
 class SecretsRemoveCommand extends AbstractToolRemoveCommand
 {
-    /**
-     * Infisical ships a Kubernetes Operator, so its teardown reaches outside its
-     * own namespace in both directions: CRD *instances* can exist in any
-     * namespace, and the operator's ClusterRoles/Bindings are cluster-scoped and
-     * survive a namespace delete — leaving them behind makes the next
-     * secrets:init collide on an existing ClusterRole.
-     */
+    use \App\Traits\InteractsWithSecrets;
+
+    protected $signature = 'secrets:remove
+        {environment=local  : Environment to remove the secrets engine from}
+        {--context=         : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
+        {--keep-data        : Leave OpenBao storage in place — remove workloads only}
+        {--force            : Skip the confirmation prompt (required for non-interactive runs)}';
+
+    protected $description = 'Remove OpenBao secrets manager and External Secrets Operator from a cluster';
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::SECRETS;
     }
 
-    protected function usesBundledStorage(string $kubectl, string $namespace): bool
-    {
-        $url = trim(Process::run(
-            "{$kubectl} get secret infisical-secrets -n {$namespace} -o jsonpath='{.data.db-connection-uri}' --ignore-not-found",
-        )->output());
-
-        if ($url === '') {
-            return false;
-        }
-
-        return str_contains((string) base64_decode($url), 'infisical-db');
-    }
-
     protected function teardownWarning(string $env): array
     {
-        return array_merge(parent::teardownWarning($env), [
-            'The Infisical Kubernetes Operator: CRDs, ClusterRoles and ClusterRoleBindings',
-        ]);
+        return [
+            "OpenBao Secrets Manager & External Secrets Operator will be REMOVED from '{$env}':",
+            'OpenBao Deployment, Service, ConfigMap, Secrets, and ESO Controller in larakube-secrets',
+        ];
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        // CRD instances first — they must go before the namespace, or finalizers
-        // can wedge the namespace in Terminating forever.
         $ok = $this->removeResources(
-            'Removing InfisicalConnection CRD instance...',
-            "{$kubectl} delete infisicalconnection infisical-connection -n {$namespace} --ignore-not-found",
+            'Removing OpenBao Deployment...',
+            "{$kubectl} delete deployment openbao-backend -n {$namespace} --ignore-not-found",
         );
 
-        $crds = [
-            'infisicalsecret', 'infisicalstaticsecret', 'infisicalpushsecret',
-            'infisicaldynamicsecret', 'infisicalauth', 'infisicalconnection', 'clustergenerator',
-        ];
-
-        foreach ($crds as $crd) {
-            Process::run("{$kubectl} delete {$crd} --all --all-namespaces --ignore-not-found");
-        }
-
         $ok = $this->removeResources(
-            'Removing Infisical namespace...',
-            "{$kubectl} delete namespace {$namespace} --ignore-not-found",
+            'Removing OpenBao Service...',
+            "{$kubectl} delete service openbao-backend -n {$namespace} --ignore-not-found",
         ) && $ok;
 
-        // Cluster-scoped — not garbage-collected with the namespace.
-        $clusterResources = [
-            'clusterrole/infisical-operator-manager-role',
-            'clusterrole/infisical-operator-metrics-auth-role',
-            'clusterrole/infisical-operator-metrics-reader',
-            'clusterrolebinding/infisical-operator-manager-rolebinding',
-            'clusterrolebinding/infisical-operator-metrics-auth-rolebinding',
-        ];
+        $ok = $this->removeResources(
+            'Removing OpenBao ConfigMap & Ingress...',
+            "{$kubectl} delete configmap openbao-config ingress openbao-backend -n {$namespace} --ignore-not-found",
+        ) && $ok;
 
-        foreach ($clusterResources as $resource) {
-            Process::run("{$kubectl} delete {$resource} --ignore-not-found");
+        // Only one Deployment actually exists — eso.blade.php bundles the
+        // controller into a single Deployment, not the cert-controller/webhook
+        // split the real upstream ESO Helm chart uses. The other two names
+        // here were dead no-ops (--ignore-not-found masked it) until 2026-07-31.
+        $ok = $this->removeResources(
+            'Removing External Secrets Operator...',
+            "{$kubectl} delete deployment external-secrets -n {$namespace} --ignore-not-found",
+        ) && $ok;
+
+        // ClusterRole/ClusterRoleBinding are genuinely cluster-scoped RBAC for
+        // the ServiceAccount just deleted with the namespace below — safe to
+        // remove, they own nothing and nothing else references this exact
+        // binding name.
+        $ok = $this->removeResources(
+            'Removing External Secrets Operator RBAC...',
+            "{$kubectl} delete clusterrole external-secrets-controller clusterrolebinding external-secrets-controller --ignore-not-found",
+        ) && $ok;
+
+        // Cluster-scoped, like the binding above — the openbao ServiceAccount
+        // it targets dies with the namespace below, but the binding itself
+        // wouldn't (cluster-scoped RBAC objects don't cascade with a namespace).
+        $ok = $this->removeResources(
+            "Removing OpenBao's Kubernetes-auth RBAC binding...",
+            "{$kubectl} delete clusterrolebinding openbao-auth-delegator --ignore-not-found",
+        ) && $ok;
+
+        if (! $this->option('keep-data')) {
+            Process::run("{$kubectl} delete pvc openbao-data -n {$namespace} --ignore-not-found");
+            Process::run("{$kubectl} delete secret openbao-bootstrap -n {$namespace} --ignore-not-found");
         }
 
+        Process::run("{$kubectl} delete namespace {$namespace} --ignore-not-found");
+
+        // Deliberately NOT removing the external-secrets.io CRDs here. They're
+        // cluster-scoped, shared infrastructure — ANY tool's ExternalSecret
+        // (Forgejo, Stalwart, whatever else openbaoSyncConfig() covers) uses
+        // them, not just OpenBao. Deleting a CRD cascades to delete every
+        // custom resource of that type cluster-wide, and tool-es.blade.php
+        // sets creationPolicy: Owner, so that cascade would ALSO delete the
+        // actual K8s Secret objects those other apps are using right now —
+        // confirmed live 2026-07-31 via a real ownerReference
+        // (blockOwnerDeletion: true) on the forgejo Secret. secrets:remove's
+        // job is "remove OpenBao from this environment," not "remove the
+        // sync mechanism cluster-wide" — those are different scopes that
+        // just happen to ship together via secrets:init today.
         return $ok;
+    }
+
+    /**
+     * Detect ALL engines currently deployed in the namespace.
+     *
+     * @return list<SecretsBackend>
+     */
+    protected function detectEngines(string $kubectl, string $namespace): array
+    {
+        $found = [];
+
+        foreach (SecretsBackend::cases() as $backend) {
+            $output = trim(Process::run(
+                "{$kubectl} get deployment {$backend->getDeploymentName()} -n {$namespace} --no-headers --ignore-not-found",
+            )->output());
+
+            if ($output !== '') {
+                $found[] = $backend;
+            }
+        }
+
+        return $found;
     }
 }

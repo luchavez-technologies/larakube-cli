@@ -1,16 +1,19 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: gitea
+  name: forgejo
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
 @unless($isLocal ?? false)
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+@if($proxied ?? false)
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+@endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-gitea-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-forgejo-vpn-only@kubernetescrd
 @endif
 spec:
   rules:
@@ -21,7 +24,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: gitea-http
+                name: forgejo-http
                 port:
                   number: 3000
   tls:

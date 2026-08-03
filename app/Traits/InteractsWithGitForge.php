@@ -27,7 +27,7 @@ trait InteractsWithGitForge
     /** Gitea Deployment present? A cheap "is Gitea installed" probe. */
     protected function isGitInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment gitea -n {$ns} --no-headers")->output();
+        $out = Process::run("{$kubectl} get deployment forgejo -n {$ns} --no-headers")->output();
 
         return trim($out) !== '';
     }
@@ -65,12 +65,12 @@ trait InteractsWithGitForge
 
         return [
             'host' => $this->resolveGitHostReadOnly($env, $config),
-            'label' => 'Gitea',
+            'label' => 'Forgejo',
         ];
     }
 
     /**
-     * Copy registry credentials from the shared `gitea-admin` secret in the
+     * Copy registry credentials from the shared `forgejo-admin` secret in the
      * `larakube-shared` namespace and create a local namespace-scoped pull-secret
      * named `gitea-login` so project pods can pull private registry images.
      */
@@ -79,15 +79,15 @@ trait InteractsWithGitForge
         $kubectl = $this->gitKubectl($context);
         $sharedNs = $this->gitNamespace();
 
-        // Read username and registry-token from gitea-admin secret
-        $usernameRaw = Process::run("{$kubectl} get secret gitea-admin -n {$sharedNs} -o jsonpath='{.data.username}'")->output();
-        $tokenRaw = Process::run("{$kubectl} get secret gitea-admin -n {$sharedNs} -o jsonpath='{.data.registry-token}'")->output();
+        // Read username and registry-token from forgejo-admin secret
+        $usernameRaw = Process::run("{$kubectl} get secret forgejo-admin -n {$sharedNs} -o jsonpath='{.data.username}'")->output();
+        $tokenRaw = Process::run("{$kubectl} get secret forgejo-admin -n {$sharedNs} -o jsonpath='{.data.registry-token}'")->output();
 
         $username = trim((string) base64_decode(trim($usernameRaw)));
         $token = trim((string) base64_decode(trim($tokenRaw)));
 
         if ($username === '' || $token === '') {
-            $this->laraKubeWarn('Skipped Gitea pull secret — could not read gitea-admin credentials from '.$sharedNs);
+            $this->laraKubeWarn('Skipped Forgejo pull secret — could not read forgejo-admin credentials from '.$sharedNs);
 
             return;
         }

@@ -5,13 +5,17 @@ namespace App\Commands\Sso;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
+use App\Enums\SecretsBackend;
 use App\Traits\DeploysClusterTool;
+use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
 
@@ -19,11 +23,12 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, SyncsClusterSecrets;
 
     protected $signature = 'sso:wire
         {environment=local : Environment whose deployment to wire}
         {--tool= : The tool to wire to Zitadel}
+        {--engine= : Specific engine to target ("matrix")}
         {--context= : Target a specific kube-context}
         {--project= : Zitadel project name to register the OIDC app under (default: LaraKube Shared Tools)}
         {--admin-email= : Email of the user to grant the tool\'s admin role to (tools with ssoAdminRoles(), e.g. drive)}
@@ -57,7 +62,8 @@ class SsoWireCommand extends Command
             return 1;
         }
 
-        $schema = $tool->oidcEnv();
+        $engine = $this->resolveToolEngine($kubectl, $tool);
+        $schema = $tool->oidcEnv($engine);
         if ($schema === null) {
             return 1;
         }
@@ -69,7 +75,8 @@ class SsoWireCommand extends Command
         }
 
         if (! $this->deploymentExists($kubectl, $schema['namespace'], $schema['deployment'])) {
-            $this->laraKubeError("{$tool->getLabel()} is not installed.");
+            $label = $engine ? "{$tool->getLabel()} ({$engine})" : $tool->getLabel();
+            $this->laraKubeError("{$label} is not installed.");
 
             return 1;
         }
@@ -97,20 +104,40 @@ class SsoWireCommand extends Command
 
     protected function wire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env): int
     {
+        // ForwardAuth tools have no native OIDC to configure — gating happens at
+        // the ingress, so they never get a per-tool Zitadel app or env vars.
+        if ($tool->usesForwardAuth()) {
+            return $this->wireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env);
+        }
+
         $appSecret = "sso-app-{$tool->value}";
         $clientId = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'client-id');
         $clientSecret = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'client-secret');
 
-        $projectName = (string) ($this->option('project') ?: 'LaraKube Shared Tools');
+        $defaultProject = $tool->requiresRbacGating() ? ClusterTool::rbacProjectName() : 'LaraKube Shared Tools';
+        $projectName = (string) ($this->option('project') ?: $defaultProject);
         $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
+
+        if ($tool->requiresRbacGating()) {
+            if ($projectId === null || ! $this->ensureRbacGating($ssoHost, $pat, $projectId, $tool)) {
+                $this->laraKubeError(
+                    "Could not set up role-gated access for {$tool->getLabel()} — the claim-flattening Action, ".
+                    'project roles, or role assertion failed to apply. Wiring bound_claims/role_attribute_path '.
+                    'against unconfirmed infrastructure would risk denying every login, so this stops here.',
+                );
+
+                return 1;
+            }
+        }
 
         // Open-to-org tools with ssoAdminRoles() (e.g. drive's ocisAdmin)
         // ship PROXY_ROLE_ASSIGNMENT_DRIVER=oidc, which re-asserts the role
         // from the `ocisRoles` claim on every login and DENIES a token with
         // no such claim. Installing the claim-flattening Action + the admin
         // role is therefore NOT optional — it's the safety precondition that
-        // makes driver=oidc safe. Without it, sso:wire would turn off the
-        // only thing that keeps open-to-org logins working.
+        // makes driver=oidc safe, exactly like ensureRbacGating() for
+        // RBAC-gated tools. Without it, sso:wire would turn off the only
+        // thing that keeps open-to-org logins working.
         if ($tool->ssoAdminRoles() !== []) {
             if ($projectId === null || ! $this->ensureSsoAdminGating($ssoHost, $pat, $projectId, $tool)) {
                 $this->laraKubeError(
@@ -136,22 +163,59 @@ class SsoWireCommand extends Command
         $appId = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'app-id');
 
         $appExistsInZitadel = false;
+        $registeredRedirectUris = null;
+        $registeredPostLogoutRedirectUris = null;
         if ($appId !== null && $projectId !== null) {
             $checkApp = Http::withToken($pat)->timeout(10)->get("https://{$ssoHost}/management/v1/projects/{$projectId}/apps/{$appId}");
-            $appExistsInZitadel = $checkApp->successful();
+            if ($checkApp->successful()) {
+                $appExistsInZitadel = true;
+                $registeredRedirectUris = $checkApp->json('app.oidcConfig.redirectUris');
+                $registeredPostLogoutRedirectUris = $checkApp->json('app.oidcConfig.postLogoutRedirectUris');
+            }
         }
 
-        if ($clientId === null || $clientSecret === null || ! $appExistsInZitadel) {
-            $redirectUris = $tool->oidcRedirectUris($toolHost);
+        // A registered app is only reusable if it still matches THIS tool's
+        // current schema. Existence alone was the reuse gate before, which
+        // silently kept stale Zitadel registrations — the live drive bug:
+        // its app was confidential with the tool root as the only redirect URI
+        // while the pod already ran the corrected env. Reusing it 400'd every
+        // /oidc-callback.html authorize request. Redirect URIs are the one
+        // signal the app GET exposes (authMethodType is not returned), and
+        // they are exactly what changed for drive, so compare them.
+        $desiredRedirectUris = $tool->oidcRedirectUris($toolHost);
+        $redirectUrisMatch = is_array($registeredRedirectUris)
+            && count($desiredRedirectUris) === count($registeredRedirectUris)
+            && array_diff($desiredRedirectUris, $registeredRedirectUris) === [];
+
+        // Same staleness gate for post_logout_redirect_uri. oCIS web sends its
+        // origin root to end_session; an app registered without
+        // postLogoutRedirectUris 400s every logout ("post_logout_redirect_uri
+        // invalid" — live 2026-08-01). A registered app is only reusable if its
+        // post-logout set still matches the tool's current schema, or re-wiring
+        // would silently leave logout broken. A missing field counts as an
+        // empty set, so tools that don't use RP-initiated logout still reuse.
+        $desiredPostLogoutRedirectUris = $tool->oidcPostLogoutRedirectUris($toolHost);
+        $registeredPostLogout = is_array($registeredPostLogoutRedirectUris) ? $registeredPostLogoutRedirectUris : [];
+        $postLogoutRedirectUrisMatch = count($desiredPostLogoutRedirectUris) === count($registeredPostLogout)
+            && array_diff($desiredPostLogoutRedirectUris, $registeredPostLogout) === [];
+
+        // Public SPA clients carry no client secret, so a missing secret is not
+        // a "needs registration" signal for them — only confidential clients
+        // require one.
+        $publicClient = (bool) ($schema['public_client'] ?? false);
+        $missingCredentials = $clientId === null || (! $publicClient && $clientSecret === null);
+
+        if ($missingCredentials || ! $appExistsInZitadel || ! $redirectUrisMatch || ! $postLogoutRedirectUrisMatch) {
+            $redirectUris = $desiredRedirectUris;
 
             $registered = null;
-            $this->withSpin("Registering {$tool->getLabel()} as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $projectName, $tool, $redirectUris) {
+            $this->withSpin("Registering {$tool->getLabel()} as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $projectName, $tool, $redirectUris, $publicClient, $desiredPostLogoutRedirectUris) {
                 $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
                 if ($projectId === null) {
                     return;
                 }
 
-                $app = $this->zitadelCreateOidcApp($ssoHost, $pat, $projectId, $tool->productName(), $redirectUris);
+                $app = $this->zitadelCreateOidcApp($ssoHost, $pat, $projectId, $tool->productName(), $redirectUris, $publicClient, $desiredPostLogoutRedirectUris);
                 if ($app === null) {
                     return;
                 }
@@ -174,6 +238,14 @@ class SsoWireCommand extends Command
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
 
+            // A public SPA client has no secret to vault.
+            if (! $publicClient && $this->secretsBackendAvailable($kubectl)) {
+                $clusterEnv = $env === 'local' ? 'dev' : $env;
+                $prefix = strtoupper($tool->name);
+                $this->pushClusterSecret($kubectl, "{$prefix}_OIDC_CLIENT_ID", $registered['clientId'], $clusterEnv);
+                $this->pushClusterSecret($kubectl, "{$prefix}_OIDC_CLIENT_SECRET", $registered['clientSecret'], $clusterEnv);
+            }
+
             $clientId = $registered['clientId'];
             $clientSecret = $registered['clientSecret'];
         } else {
@@ -182,14 +254,35 @@ class SsoWireCommand extends Command
 
         $logical = [
             'client_id' => $clientId,
-            'client_secret' => $clientSecret,
+            // Public SPA clients (oCIS web) exchange tokens with PKCE in the
+            // browser and hold no client secret. Writing an empty value makes
+            // applyToolEnv overwrite any stale secret left over from an earlier
+            // confidential registration instead of leaving it dangling.
+            'client_secret' => ($schema['public_client'] ?? false) ? '' : $clientSecret,
             'auth_url' => "https://{$ssoHost}/oauth/v2/authorize",
             'token_url' => "https://{$ssoHost}/oauth/v2/token",
             'userinfo_url' => "https://{$ssoHost}/oidc/v1/userinfo",
             'issuer' => "https://{$ssoHost}",
+            // Full discovery URL for clients that fetch it directly (e.g.
+            // Documenso/NextAuth's `wellKnown`), vs. issuer-base clients.
+            'well_known' => "https://{$ssoHost}/.well-known/openid-configuration",
+            // Full absolute callback URL for tools that require it as an env var
+            // (e.g. Teable's BACKEND_OIDC_CALLBACK_URL).
+            'callback_url' => "https://{$toolHost}{$schema['redirect_path']}",
         ];
 
-        $ok = $this->applyToolEnv($kubectl, $schema, $logical);
+        // Synapse is configured via homeserver.yaml (a Secret), not env vars.
+        // Skip applyToolEnv and go straight to wireSynapseOidc.
+        // OpenBao is configured via its CLI inside the pod (bao auth enable oidc).
+        if ($schema['deployment'] === 'chat-synapse') {
+            $ok = $this->wireSynapseOidc($kubectl, $schema['namespace'], $ssoHost, $logical['issuer'], $clientId, $clientSecret, $env);
+        } elseif ($schema['deployment'] === 'openbao-backend') {
+            $ok = $this->wireOpenBaoOidc($kubectl, $schema['namespace'], $ssoHost, $toolHost, $clientId, $clientSecret, $env);
+        } else {
+            $ok = $tool->usesCliOidc()
+                ? $this->applyCliOidc($kubectl, $schema, $ssoHost, $clientId, $clientSecret)
+                : $this->applyToolEnv($kubectl, $schema, $logical);
+        }
 
         if (! $ok) {
             $this->laraKubeError("Failed to wire {$tool->getLabel()} to Zitadel.");
@@ -213,13 +306,66 @@ class SsoWireCommand extends Command
     }
 
     /**
+     * Ensure the RBAC project is set up to gate this tool: role-assertion
+     * AND projectRoleCheck both on (see zitadelEnsureRbacProjectSettings()
+     * — login is denied outright for anyone with zero roles on the project,
+     * from the moment this runs, not as a later manual step), every role
+     * rbacRoles() declares exists, and the org-wide claim-flattening Action
+     * (see zitadelEnsureRbacAction()) is attached. Prints the roles for the
+     * operator to grant via `sso:grant` — nobody, including the operator,
+     * can SSO into a freshly-wired tool until that runs; OpenBao's root
+     * token and Grafana's local admin login are unaffected (see
+     * plans/active/openbao-hardening.md).
+     *
+     * Returns false — and the caller must stop, not proceed to wire
+     * bound_claims/role_attribute_path against infrastructure that was
+     * never confirmed to exist — if any step fails. This used to be void
+     * and discard every step's result, which let zitadelEnsureRbacAction()
+     * silently fail on every single run (a real, since-fixed body-encoding
+     * bug) while `sso:wire` printed success regardless. Confirmed live
+     * 2026-07-30 — caught by `sso:grant`, not by this command's own tests.
+     */
+    protected function ensureRbacGating(string $ssoHost, string $pat, string $projectId, ClusterTool $tool): bool
+    {
+        $ok = true;
+        $this->withSpin("Configuring role-gated access for {$tool->getLabel()}...", function () use ($ssoHost, $pat, $projectId, $tool, &$ok) {
+            $ok = $this->zitadelEnsureRbacProjectSettings($ssoHost, $pat, $projectId);
+            if ($ok) {
+                $ok = $this->zitadelEnsureRbacAction($ssoHost, $pat);
+            }
+
+            foreach ($tool->rbacRoles() as $roleKey => $label) {
+                if (! $ok) {
+                    break;
+                }
+                $ok = $this->zitadelEnsureProjectRole($ssoHost, $pat, $projectId, $roleKey, $label);
+            }
+        });
+
+        if (! $ok) {
+            return false;
+        }
+
+        $this->newLine();
+        $this->line('  <fg=yellow>⚠ Role-gated tool — login is denied until you grant a role:</>');
+        foreach ($tool->rbacRoles() as $roleKey => $label) {
+            $this->line("    <fg=blue>{$roleKey}</> — {$label}");
+        }
+        $this->line("  <fg=gray>larakube sso:grant --tool={$tool->value} --role=<role> --email=<user></>");
+        $this->line("  <fg=gray>Nobody, including you, can SSO into {$tool->getLabel()} until then — its own non-SSO admin access (if any) is unaffected.</>");
+        $this->newLine();
+
+        return true;
+    }
+
+    /**
      * Safety precondition for open-to-org tools that ship
      * PROXY_ROLE_ASSIGNMENT_DRIVER=oidc: the org-wide flattenOcisRoles
      * Action (always-emit ocisRoles claim) plus every ssoAdminRoles() role
-     * on the tool's own project. Unlike role-gated tools this does NOT deny
-     * anyone login — the Action's ocisUser fallback keeps every org member
-     * in — but without it driver=oidc would lock everyone out, so a failure
-     * must stop the wire before the statics are applied.
+     * on the tool's own project. Unlike ensureRbacGating() this does NOT
+     * deny anyone login — the Action's ocisUser fallback keeps every org
+     * member in — but without it driver=oidc would lock everyone out, so a
+     * failure must stop the wire before the statics are applied.
      *
      * The tool's project must also carry projectRoleAssertion: Zitadel only
      * populates the Action's ctx.v1.user.grants for projects in the role
@@ -294,6 +440,10 @@ class SsoWireCommand extends Command
 
     protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat): int
     {
+        if ($tool->usesForwardAuth()) {
+            return $this->unwireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat);
+        }
+
         $appSecret = "sso-app-{$tool->value}";
         $projectId = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'project-id');
         $appId = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'app-id');
@@ -304,12 +454,48 @@ class SsoWireCommand extends Command
 
         Process::run("{$kubectl} delete secret {$appSecret} -n {$ssoNs} --ignore-not-found");
 
+        // Also drop the tool's own OIDC secret. The Deployment reads it via
+        // optional valueFrom refs, so leaving it behind would let a later
+        // :init / heal re-inject creds for the now-deregistered Zitadel app.
+        Process::run("{$kubectl} delete secret {$schema['secret']} -n {$schema['namespace']} --ignore-not-found");
+
+        if ($schema['deployment'] === 'chat-synapse') {
+            $this->unwireSynapseOidc($kubectl, $schema['namespace']);
+            Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$schema['namespace']}");
+            $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
+
+            return 0;
+        }
+
+        if ($schema['deployment'] === 'openbao-backend') {
+            $this->unwireOpenBaoOidc($kubectl, $schema['namespace']);
+            $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
+
+            return 0;
+        }
+
         $unset = array_values($schema['vars']);
         if (! empty($schema['static'])) {
             $unset = array_merge($unset, array_keys($schema['static']));
         }
         if (! empty($schema['sso_only_vars'])) {
             $unset = array_merge($unset, array_keys($schema['sso_only_vars']));
+        }
+
+        // CLI-wired tools hold the login source in their own DB — there is no env
+        // to unset, so delete it the same way it was created.
+        if ($tool->usesCliOidc()) {
+            $exec = "{$kubectl} exec deploy/{$schema['deployment']} -n {$schema['namespace']} -- su-exec git forgejo --config /data/gitea/conf/app.ini admin auth";
+            foreach (preg_split('/\R/', Process::run("{$exec} list")->output()) ?: [] as $line) {
+                if (preg_match('/^(\d+)\s+zitadel\b/', trim($line), $m) === 1) {
+                    $this->withSpin("Removing the Zitadel login source from {$tool->getLabel()}...", fn () => Process::run("{$exec} delete --id {$m[1]}")->successful());
+                    break;
+                }
+            }
+
+            $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
+
+            return 0;
         }
 
         $pairs = implode(' ', array_map(fn (string $key) => $key.'-', $unset));
@@ -331,6 +517,369 @@ class SsoWireCommand extends Command
         $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
         return 0;
+    }
+
+    /**
+     * Register the OIDC login source inside the tool itself (Gitea keeps them in
+     * its database, not in env). Idempotent: updates the existing `zitadel`
+     * source when one is already present, mirroring how git:init checks
+     * `admin user list` before creating its admin.
+     *
+     * @param  array{deployment: string, namespace: string, secret: string, vars: array<string, string>, redirect_path: string}  $schema
+     */
+    protected function applyCliOidc(string $kubectl, array $schema, string $ssoHost, string $clientId, string $clientSecret): bool
+    {
+        $ns = $schema['namespace'];
+        $exec = "{$kubectl} exec deploy/{$schema['deployment']} -n {$ns} -- su-exec git forgejo --config /data/gitea/conf/app.ini admin auth";
+
+        $existingId = null;
+        foreach (preg_split('/\R/', Process::run("{$exec} list")->output()) ?: [] as $line) {
+            // `admin auth list` is a tab-separated table: ID, Name, Type, Enabled.
+            if (preg_match('/^(\d+)\s+zitadel\b/', trim($line), $m) === 1) {
+                $existingId = $m[1];
+                break;
+            }
+        }
+
+        $args = '--name zitadel --provider openidConnect '
+            .'--key '.escapeshellarg($clientId).' '
+            .'--secret '.escapeshellarg($clientSecret).' '
+            .'--auto-discover-url '.escapeshellarg("https://{$ssoHost}/.well-known/openid-configuration");
+
+        $ok = false;
+        $this->withSpin('Registering the Zitadel login source in Gitea...', function () use ($exec, $args, $existingId, &$ok) {
+            $result = $existingId === null
+                ? Process::run("{$exec} add-oauth {$args}")
+                : Process::run("{$exec} update-oauth --id {$existingId} {$args}");
+
+            $ok = $result->successful();
+            if (! $ok) {
+                $this->laraKubeLine('    '.trim($result->errorOutput() ?: $result->output()));
+            }
+
+            return $ok;
+        });
+
+        return $ok;
+    }
+
+    /** Namespace that hosts the one shared OAuth2-Proxy. */
+    protected function proxyNamespace(): string
+    {
+        return 'larakube-shared';
+    }
+
+    /**
+     * Gate a tool that has no native OIDC behind the SHARED OAuth2-Proxy, using
+     * a Traefik ForwardAuth middleware on its Ingress.
+     *
+     * One proxy + one Zitadel app serve every gated tool: the callback lives on
+     * a dedicated auth host, so adding a tool never touches Zitadel again.
+     * See docs/decisions/0006-centralized-forwardauth-sso.md.
+     *
+     * @param  array{deployment: string, namespace: string, secret: string, vars: array<string, string>, redirect_path: string}  $schema
+     */
+    protected function wireForwardAuth(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env): int
+    {
+        $apex = $this->apexDomain($ssoHost);
+        if ($apex === null) {
+            $this->laraKubeError("Cannot derive a base domain from '{$ssoHost}' — ForwardAuth SSO needs a real domain.");
+
+            return 1;
+        }
+
+        $authHost = "auth.{$apex}";
+        // Cookies cannot be scoped to a single-label TLD (e.g. `.test`), so a
+        // local *.test cluster can't share the session across hosts.
+        $cookieDomain = str_contains($apex, '.') ? ".{$apex}" : null;
+        if ($cookieDomain === null) {
+            $this->laraKubeWarn("'{$apex}' is a single-label domain — the SSO session can't be shared across hosts, so login may loop locally.");
+        }
+
+        // Traefik ignores Middleware objects unless its CRDs are installed and
+        // --providers.kubernetescrd is on. Fail loudly here instead of leaving a
+        // registered Zitadel app and a running proxy that gate nothing.
+        if (! $this->traefikMiddlewareCrdExists($kubectl)) {
+            $this->laraKubeError('Traefik has no Middleware CRD on this cluster — ForwardAuth SSO cannot be attached.');
+            $this->newLine();
+            $this->line('  <fg=gray>LaraKube now ships the Traefik CRDs. Re-provision Traefik (</><fg=blue>larakube heal '.$env.'</><fg=gray>), then re-run this command.</>');
+            $this->newLine();
+
+            return 1;
+        }
+
+        $app = $this->ensureProxyOidcApp($kubectl, $ssoNs, $ssoHost, $authHost, $pat, $env);
+        if ($app === null) {
+            return 1;
+        }
+
+        // Stable across re-wires: regenerating this would sign every user out.
+        // Length is re-validated because oauth2-proxy needs EXACTLY 16/24/32
+        // bytes for its AES cipher and only auto-decodes base64url — plain
+        // base64_encode(random_bytes(32)) yields 44 chars and crashloops the pod
+        // ("cookie_secret must be 16, 24, or 32 bytes"). A rotten cached value
+        // would otherwise be reused forever, so regenerate instead of trusting it.
+        $cookieSecret = $this->readNamedSecret($kubectl, $this->proxyNamespace(), 'sso-proxy', 'OAUTH2_PROXY_COOKIE_SECRET');
+        if ($cookieSecret === null || ! in_array(strlen($cookieSecret), [16, 24, 32], true)) {
+            $cookieSecret = Str::random(32);
+        }
+
+        $ok = true;
+        $this->withSpin('Deploying the shared SSO proxy...', function () use ($kubectl, $ssoHost, $authHost, $app, $cookieSecret, $cookieDomain, $env, &$ok) {
+            $ok = $this->applyManifest($kubectl, view('k8s.sso.proxy', [
+                'namespace' => $this->proxyNamespace(),
+                'ssoHost' => $ssoHost,
+                'authHost' => $authHost,
+                'clientId' => $app['clientId'],
+                'clientSecret' => $app['clientSecret'],
+                'cookieSecret' => $cookieSecret,
+                'cookieDomain' => $cookieDomain,
+                'isLocal' => $env === 'local',
+                'proxied' => $this->ingressIsProxied($kubectl, 'sso-proxy', $this->proxyNamespace()),
+                'secretChecksum' => substr(hash('sha256', $app['clientId'].$app['clientSecret'].$cookieSecret), 0, 16),
+            ])->render(), 'sso-proxy');
+
+            // task() only marks a step failed on an explicit false — without
+            // this a failed apply still rendered a green tick.
+            return $ok;
+        });
+
+        if ($ok) {
+            $this->withSpin("Attaching the ForwardAuth middleware to {$tool->getLabel()}...", function () use ($kubectl, $schema, &$ok) {
+                $ok = $this->applyManifest($kubectl, view('k8s.sso.forwardauth-middleware', [
+                    'namespace' => $schema['namespace'],
+                    'proxyNamespace' => $this->proxyNamespace(),
+                ])->render(), 'sso-forwardauth');
+
+                return $ok;
+            });
+        }
+
+        if ($ok) {
+            $ok = $this->applyToolIngress($kubectl, $tool, $toolHost, true, $env === 'local');
+        }
+
+        if (! $ok) {
+            $this->laraKubeError("Failed to gate {$tool->getLabel()} behind the SSO proxy.");
+
+            return 1;
+        }
+
+        Process::run("{$kubectl} rollout status deployment/sso-proxy -n {$this->proxyNamespace()} --timeout=120s");
+
+        $this->laraKubeInfo("✅ {$tool->getLabel()} is gated behind Zitadel SSO.");
+        $this->newLine();
+        $this->line("  <fg=gray>Auth host:</>  <fg=blue>https://{$authHost}</> <fg=gray>— must resolve to this cluster (DNS).</>");
+        $this->line("  <fg=gray>Gated URL:</>  <fg=blue>https://{$toolHost}</>");
+        $this->newLine();
+        $this->line('  <fg=yellow>Note:</> this is an access gate, not an app login — anyone with a Zitadel');
+        $this->line("  <fg=gray>      </> account can reach it, and {$tool->productName()} keeps its own accounts.");
+        $this->newLine();
+
+        return 0;
+    }
+
+    /**
+     * @param  array{deployment: string, namespace: string, secret: string, vars: array<string, string>, redirect_path: string}  $schema
+     */
+    protected function unwireForwardAuth(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat): int
+    {
+        $env = (string) $this->argument('environment');
+        $projectPath = getcwd();
+        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
+            ? ConfigData::loadFromFile($projectPath)
+            : null;
+        $toolHost = $this->targetHost($tool, $env, $config);
+
+        $ok = true;
+        if ($toolHost !== null) {
+            $ok = $this->applyToolIngress($kubectl, $tool, $toolHost, false, $env === 'local');
+        }
+
+        Process::run("{$kubectl} delete middleware sso-forwardauth -n {$schema['namespace']} --ignore-not-found");
+
+        // The proxy is SHARED — only tear it down once nothing else is gated.
+        if ($this->gatedForwardAuthTools($kubectl, $tool) === []) {
+            $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $ssoNs, $ssoHost, $pat) {
+                $projectId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
+                $appId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
+                if ($projectId !== null && $appId !== null) {
+                    $this->zitadelDeleteOidcApp($ssoHost, $pat, $projectId, $appId);
+                }
+
+                $ns = $this->proxyNamespace();
+                Process::run("{$kubectl} delete ingress sso-proxy -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete service sso-proxy -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete deployment sso-proxy -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete secret sso-proxy -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete secret sso-app-proxy -n {$ssoNs} --ignore-not-found");
+            });
+        }
+
+        if (! $ok) {
+            $this->laraKubeError("Failed to unwire {$tool->getLabel()} from Zitadel.");
+
+            return 1;
+        }
+
+        $this->laraKubeInfo("✅ {$tool->getLabel()} is no longer gated behind Zitadel SSO.");
+
+        return 0;
+    }
+
+    /**
+     * Register (or reuse) the ONE OIDC app that backs the shared proxy. Its
+     * redirect URI is the fixed auth host, so it never needs updating.
+     *
+     * @return array{clientId: string, clientSecret: string}|null
+     */
+    protected function ensureProxyOidcApp(string $kubectl, string $ssoNs, string $ssoHost, string $authHost, string $pat, string $env): ?array
+    {
+        $clientId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'client-id');
+        $clientSecret = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'client-secret');
+        $appId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
+        $projectId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
+
+        if ($clientId !== null && $clientSecret !== null && $appId !== null && $projectId !== null
+            && Http::withToken($pat)->timeout(10)->get("https://{$ssoHost}/management/v1/projects/{$projectId}/apps/{$appId}")->successful()) {
+            return ['clientId' => $clientId, 'clientSecret' => $clientSecret];
+        }
+
+        $projectName = (string) ($this->option('project') ?: 'LaraKube Shared Tools');
+        $registered = null;
+        $this->withSpin('Registering the shared SSO proxy in Zitadel...', function () use (&$registered, $ssoHost, $pat, $projectName, $authHost) {
+            $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
+            if ($projectId === null) {
+                return;
+            }
+
+            $app = $this->zitadelCreateOidcApp($ssoHost, $pat, $projectId, 'LaraKube SSO Proxy', ["https://{$authHost}/oauth2/callback"]);
+            if ($app === null) {
+                return;
+            }
+
+            $registered = array_merge($app, ['projectId' => $projectId]);
+        });
+
+        if ($registered === null) {
+            $this->laraKubeError("Could not register the SSO proxy in Zitadel — check the automation credentials and Zitadel's own logs.");
+
+            return null;
+        }
+
+        Process::run(
+            "{$kubectl} create secret generic sso-app-proxy -n {$ssoNs} "
+            .'--from-literal=project-id='.escapeshellarg($registered['projectId']).' '
+            .'--from-literal=app-id='.escapeshellarg($registered['appId']).' '
+            .'--from-literal=client-id='.escapeshellarg($registered['clientId']).' '
+            .'--from-literal=client-secret='.escapeshellarg($registered['clientSecret']).' '
+            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+        );
+
+        if ($this->secretsBackendAvailable($kubectl)) {
+            $clusterEnv = $env === 'local' ? 'dev' : $env;
+            $this->pushClusterSecret($kubectl, 'SSO_PROXY_OIDC_CLIENT_ID', $registered['clientId'], $clusterEnv);
+            $this->pushClusterSecret($kubectl, 'SSO_PROXY_OIDC_CLIENT_SECRET', $registered['clientSecret'], $clusterEnv);
+        }
+
+        return ['clientId' => $registered['clientId'], 'clientSecret' => $registered['clientSecret']];
+    }
+
+    /**
+     * Every OTHER ForwardAuth tool whose Ingress still carries the middleware.
+     *
+     * @return list<string>
+     */
+    protected function gatedForwardAuthTools(string $kubectl, ClusterTool $except): array
+    {
+        $gated = [];
+        foreach (ClusterTool::cases() as $candidate) {
+            if ($candidate === $except || ! $candidate->usesForwardAuth()) {
+                continue;
+            }
+
+            $annotations = Process::run(
+                "{$kubectl} get ingress {$candidate->value} -n {$candidate->namespace()} "
+                ."-o jsonpath='{.metadata.annotations}' --ignore-not-found",
+            )->output();
+
+            if (str_contains($annotations, 'sso-forwardauth')) {
+                $gated[] = $candidate->value;
+            }
+        }
+
+        return $gated;
+    }
+
+    /** Re-render a tool's own Ingress with the SSO middleware on or off. */
+    protected function applyToolIngress(string $kubectl, ClusterTool $tool, string $host, bool $ssoWired, bool $isLocal): bool
+    {
+        $view = "k8s.{$tool->value}.ingress";
+        if (! view()->exists($view)) {
+            $this->laraKubeError("No ingress template for '{$tool->value}' — cannot toggle its SSO middleware.");
+
+            return false;
+        }
+
+        return $this->applyManifest($kubectl, view($view, [
+            'host' => $host,
+            'ssoWired' => $ssoWired,
+            'isLocal' => $isLocal,
+            'vpnOnly' => $this->toolIngressUsesVpn($kubectl, $tool),
+            'proxied' => $this->toolIngressIsProxied($kubectl, $tool),
+        ])->render(), "{$tool->value}-ingress");
+    }
+
+    /** Preserve an existing vpn-only middleware when re-rendering the Ingress. */
+    protected function toolIngressUsesVpn(string $kubectl, ClusterTool $tool): bool
+    {
+        return str_contains(Process::run(
+            "{$kubectl} get ingress {$tool->value} -n {$tool->namespace()} "
+            ."-o jsonpath='{.metadata.annotations}' --ignore-not-found",
+        )->output(), 'vpn-only');
+    }
+
+    /** Preserve the Cloudflare proxy mode when re-rendering an Ingress. */
+    protected function toolIngressIsProxied(string $kubectl, ClusterTool $tool): bool
+    {
+        return $this->ingressIsProxied($kubectl, $tool->value, $tool->namespace());
+    }
+
+    protected function ingressIsProxied(string $kubectl, string $name, string $namespace): bool
+    {
+        return str_contains(Process::run(
+            "{$kubectl} get ingress {$name} -n {$namespace} "
+            ."-o jsonpath='{.metadata.annotations}' --ignore-not-found",
+        )->output(), 'cloudflare-proxied');
+    }
+
+    protected function applyManifest(string $kubectl, string $yaml, string $name): bool
+    {
+        $tmp = sys_get_temp_dir()."/larakube-{$name}.yaml";
+        file_put_contents($tmp, $yaml);
+        $result = Process::run("{$kubectl} apply -f {$tmp}");
+        @unlink($tmp);
+
+        return $result->successful();
+    }
+
+    /** Is Traefik's Middleware CRD registered on this cluster? */
+    protected function traefikMiddlewareCrdExists(string $kubectl): bool
+    {
+        return trim(Process::run(
+            "{$kubectl} get crd middlewares.traefik.io --no-headers --ignore-not-found",
+        )->output()) !== '';
+    }
+
+    /** `sso.luchtech.dev` → `luchtech.dev`; null when there's nothing to strip. */
+    protected function apexDomain(string $host): ?string
+    {
+        $parts = explode('.', $host);
+        if (count($parts) < 2) {
+            return null;
+        }
+
+        return implode('.', array_slice($parts, 1));
     }
 
     /**
@@ -392,7 +941,8 @@ class SsoWireCommand extends Command
         // Every OIDC-capable tool resolves its host the same read-only way its
         // own resolve*HostReadOnly() does — through its SharedClusterService.
         // Keying off $tool->service() means a tool becomes wireable the moment
-        // it has an oidcEnv() schema, with no per-tool case to remember here.
+        // it has an oidcEnv() schema, with no per-tool case to remember here —
+        // the omission that silently broke sign/notes/drive/tasks.
         $service = $tool->service();
         if ($service === null) {
             return null;
@@ -422,6 +972,10 @@ class SsoWireCommand extends Command
         $capable = array_values(array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->hasSsoWire()));
         $installed = $kubectl !== null
             ? array_values(array_filter($capable, function (ClusterTool $t) use ($kubectl) {
+                if ($t === ClusterTool::CHAT) {
+                    return $this->deploymentExists($kubectl, 'larakube-shared', 'chat-synapse');
+                }
+
                 $schema = $t->oidcEnv();
 
                 return $schema !== null && $this->deploymentExists($kubectl, $schema['namespace'], $schema['deployment']);
@@ -446,10 +1000,271 @@ class SsoWireCommand extends Command
         ));
     }
 
+    protected function resolveToolEngine(string $kubectl, ClusterTool $tool): ?string
+    {
+        $flag = $this->option('engine');
+        if ($flag !== null) {
+            return (string) $flag;
+        }
+
+        if ($tool === ClusterTool::CHAT) {
+            return $this->deploymentExists($kubectl, 'larakube-shared', 'chat-synapse') ? 'matrix' : null;
+        }
+
+        return null;
+    }
+
     protected function deploymentExists(string $kubectl, string $ns, string $deployment): bool
     {
         return trim(Process::run(
             "{$kubectl} get deployment {$deployment} -n {$ns} --no-headers --ignore-not-found",
         )->output()) !== '';
+    }
+
+    /**
+     * Persist the OIDC credentials to the `chat-oidc` Secret (so `chat:init`
+     * re-renders the oidc_providers: block on re-run) and apply them to
+     * Synapse's homeserver.yaml Secret. Preserves any existing `email:` block.
+     * Issues a rollout restart so Synapse picks up the new config immediately.
+     *
+     * @return bool true on success
+     */
+    protected function wireSynapseOidc(
+        string $kubectl,
+        string $ns,
+        string $ssoHost,
+        string $issuer,
+        string $clientId,
+        string $clientSecret,
+        string $env,
+    ): bool {
+        // 1. Persist credentials to the chat-oidc Secret so chat:init can
+        //    re-render the oidc_providers: block on a re-run.
+        Process::run(
+            "{$kubectl} create secret generic chat-oidc -n {$ns} "
+            .'--from-literal=issuer='.escapeshellarg($issuer).' '
+            .'--from-literal=client-id='.escapeshellarg($clientId).' '
+            .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
+            .'--from-literal=name=Zitadel '
+            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+        );
+
+        // 2. Re-render homeserver.yaml with the oidc_providers: block,
+        //    preserving any existing email: block (same read-back discipline).
+        $smtp = $this->readChatWiredSmtp($kubectl, $ns);
+        $oidc = [
+            'issuer' => $issuer,
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+            'name' => 'Zitadel',
+        ];
+
+        $raw = trim(Process::run(
+            "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+        )->output());
+
+        if ($raw === '') {
+            return false;
+        }
+
+        $rawYaml = (string) base64_decode($raw);
+        $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, $oidc);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'synapse_config');
+        file_put_contents($tmp, $homeserver);
+        $result = Process::run(
+            "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
+            ."--from-file=homeserver.yaml={$tmp} "
+            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+        );
+        @unlink($tmp);
+
+        if ($result->successful()) {
+            Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+        }
+
+        return $result->successful();
+    }
+
+    /**
+     * Remove the `oidc_providers:` block from Synapse's homeserver.yaml Secret,
+     * delete the `chat-oidc` credential Secret, and restart the pod.
+     * Preserves any existing `email:` block.
+     */
+    protected function unwireSynapseOidc(string $kubectl, string $ns): void
+    {
+        // Delete the chat-oidc credential Secret first so chat:init won't
+        // re-render the oidc_providers: block on the next run.
+        Process::run("{$kubectl} delete secret chat-oidc -n {$ns} --ignore-not-found");
+
+        $smtp = $this->readChatWiredSmtp($kubectl, $ns);
+
+        $raw = trim(Process::run(
+            "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+        )->output());
+
+        if ($raw === '') {
+            return;
+        }
+
+        $rawYaml = (string) base64_decode($raw);
+        $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, null);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'synapse_config');
+        file_put_contents($tmp, $homeserver);
+        $result = Process::run(
+            "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
+            ."--from-file=homeserver.yaml={$tmp} "
+            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+        );
+        @unlink($tmp);
+
+        if ($result->successful()) {
+            Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+        }
+    }
+
+    /**
+     * Enable the OIDC auth backend on OpenBao, configure it to use Zitadel,
+     * and write three role-gated roles (admin/operator/auditor) instead of
+     * one unconditional-admin role. Idempotent: skips `bao auth enable oidc`
+     * when the backend is already mounted; policies/roles/config are
+     * (re)written every run, which is a no-op when unchanged and
+     * self-heals drift when not.
+     *
+     * bound_claims matches against `larakube_roles`, a flat array claim that
+     * only exists because ensureRbacGating() (called from wire() before
+     * this) attaches zitadelEnsureRbacAction()'s Action to Zitadel's
+     * Complement Token flow — Zitadel's native roles claim is a nested
+     * object bound_claims cannot read. See plans/active/openbao-hardening.md.
+     */
+    protected function wireOpenBaoOidc(
+        string $kubectl,
+        string $ns,
+        string $ssoHost,
+        string $toolHost,
+        string $clientId,
+        string $clientSecret,
+        string $env,
+    ): bool {
+        $rootToken = $this->readNamedSecret($kubectl, $ns, 'openbao-bootstrap', 'root-token');
+        if ($rootToken === null) {
+            $this->laraKubeError('OpenBao is not initialized — no root token found. Run `larakube secrets:import` first.');
+
+            return false;
+        }
+
+        // -i is required: the policy-write loop below pipes HCL into `bao
+        // policy write NAME -` over stdin, and `kubectl exec` drops piped
+        // stdin silently unless told to forward it. Without it, bao gets an
+        // empty payload and every policy write 400s with "'policy'
+        // parameter not supplied or empty" — confirmed live on
+        // 2026-07-30 (this bug predates this rewrite but was never
+        // exercised: the old code only wrote the `admin` policy when it
+        // didn't already exist, which was never true on this cluster).
+        $exec = "{$kubectl} exec -i deploy/openbao-backend -n {$ns} -- env "
+            .'BAO_TOKEN='.escapeshellarg($rootToken).' '
+            .'BAO_ADDR=http://127.0.0.1:8200';
+
+        // Shared with SecretsInitCommand's baseline userpass admin — see
+        // SecretsBackend::policies()'s docblock for why these must not be
+        // two independently-maintained copies.
+        $policies = SecretsBackend::OPENBAO->policies();
+
+        $ok = true;
+        $this->withSpin('Enabling OIDC auth backend on OpenBao...', function () use ($exec, $ssoHost, $clientId, $clientSecret, $toolHost, $policies, &$ok) {
+            $list = Process::run("{$exec} bao auth list -format=json")->output();
+            if (! str_contains($list, '"oidc/"')) {
+                $ok = Process::run("{$exec} bao auth enable oidc")->successful();
+            }
+
+            foreach ($policies as $name => $hcl) {
+                if (! $ok) {
+                    break;
+                }
+                $ok = Process::run(
+                    'printf "%s" '.escapeshellarg($hcl).' | '.$exec.' bao policy write '.$name.' -',
+                )->successful();
+            }
+
+            if ($ok) {
+                $ok = Process::run(
+                    "{$exec} bao write auth/oidc/config "
+                    .'oidc_discovery_url='.escapeshellarg("https://{$ssoHost}").' '
+                    .'oidc_client_id='.escapeshellarg($clientId).' '
+                    .'oidc_client_secret='.escapeshellarg($clientSecret),
+                )->successful();
+            }
+
+            // Unconditional, not migration-detection: the pre-hardening
+            // setup wrote a `user` role with no bound_claims (unconditional
+            // admin) and default_role=user. That role is no longer
+            // referenced by config above, but stays selectable by name
+            // (?role=user) until deleted — a no-op if it never existed.
+            if ($ok) {
+                Process::run("{$exec} bao delete auth/oidc/role/user");
+            }
+
+            $redirectUris = ["https://{$toolHost}/v1/auth/oidc/oidc/callback", "https://{$toolHost}/ui/vault/auth/oidc/oidc/callback"];
+            $tiers = ['admin' => 'openbao-admin', 'operator' => 'openbao-operator', 'auditor' => 'openbao-auditor'];
+            foreach ($tiers as $role => $roleKey) {
+                if (! $ok) {
+                    break;
+                }
+
+                // `bao write PATH key=value...` always sends each value as a
+                // JSON string — bound_claims needs the "map" type, and
+                // OpenBao's server never coerces a string into one, so
+                // bound_claims='{"...":"..."}' 400s with "unconvertible
+                // type 'string'" even though the string IS valid JSON.
+                // Piping the whole role as one JSON document via `write
+                // PATH -` sidesteps the CLI's flat k=v parser entirely, so
+                // bound_claims parses as a real object. Confirmed live
+                // 2026-07-30 after the first fix (adding -i) alone still
+                // failed on this.
+                // max_age is a per-role field (duration seconds), not a
+                // config-level one — auth/oidc/config has no such parameter
+                // at all in this OpenBao version and silently drops unknown
+                // fields instead of erroring, which is how the original
+                // config-level max_age=3600 shipped without any write
+                // failing. Confirmed via `bao path-help` on both paths.
+                $roleJson = json_encode([
+                    'allowed_redirect_uris' => $redirectUris,
+                    'user_claim' => 'sub',
+                    'bound_claims' => ['larakube_roles' => $roleKey],
+                    'bound_claims_type' => 'string',
+                    'policies' => ["{$role}-policy"],
+                    'default_ttl' => '30m',
+                    'max_ttl' => '4h',
+                    'max_age' => '3600',
+                ]);
+                $ok = Process::run(
+                    'printf "%s" '.escapeshellarg((string) $roleJson).' | '.$exec." bao write auth/oidc/role/{$role} -",
+                )->successful();
+            }
+        });
+
+        if ($ok && $this->secretsBackendAvailable($kubectl)) {
+            $clusterEnv = $env === 'local' ? 'dev' : $env;
+            $this->pushClusterSecret($kubectl, 'OPENBAO_OIDC_CLIENT_ID', $clientId, $clusterEnv);
+            $this->pushClusterSecret($kubectl, 'OPENBAO_OIDC_CLIENT_SECRET', $clientSecret, $clusterEnv);
+        }
+
+        return $ok;
+    }
+
+    /** Disable the OIDC auth backend on OpenBao. */
+    protected function unwireOpenBaoOidc(string $kubectl, string $ns): void
+    {
+        $rootToken = $this->readNamedSecret($kubectl, $ns, 'openbao-bootstrap', 'root-token');
+        if ($rootToken === null) {
+            return;
+        }
+
+        $exec = "{$kubectl} exec deploy/openbao-backend -n {$ns} -- env "
+            .'BAO_TOKEN='.escapeshellarg($rootToken).' '
+            .'BAO_ADDR=http://127.0.0.1:8200';
+
+        Process::run("{$exec} bao auth disable oidc");
     }
 }

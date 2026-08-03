@@ -22,7 +22,7 @@ use LaravelZero\Framework\Commands\Command;
  * credential guaranteed to work regardless of the API key or an OIDC directory),
  * it destroys the old keys and mints a fresh one, overwriting the single source
  * of truth — mail-secrets/api-key. There is deliberately no second copy: the key
- * is CLI-internal and cheaply regenerable, so a mirror (e.g. in Infisical) would
+ * is CLI-internal and cheaply regenerable, so a mirror (e.g. in the secrets backend) would
  * only ever drift out of sync with no consumer to notice.
  *
  * This is the ONLY command that deliberately uses the recovery admin during

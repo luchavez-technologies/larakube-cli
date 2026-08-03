@@ -43,12 +43,13 @@ locals {
 }
 
 resource "digitalocean_droplet" "larakube" {
-  name     = "{{ $dropletName }}"
-  region   = "{{ $region }}"
-  size     = "{{ $size }}"
-  image    = "{{ $image ?? 'ubuntu-24-04-x64' }}"
-  ssh_keys = [local.ssh_fingerprint]
-  tags     = ["larakube"]
+  name        = "{{ $dropletName }}"
+  region      = "{{ $region }}"
+  size        = "{{ $size }}"
+  resize_disk = {{ ($resizeDisk ?? false) ? 'true' : 'false' }}
+  image       = "{{ $image ?? 'ubuntu-24-04-x64' }}"
+  ssh_keys    = [local.ssh_fingerprint]
+  tags        = ["larakube"]
 }
 
 resource "digitalocean_firewall" "larakube" {

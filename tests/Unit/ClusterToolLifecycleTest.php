@@ -61,7 +61,7 @@ test('engine-switchable tools drop every engine database, not just the active on
     // Switching engines between installs used to strand the previous engine's
     // Commons tenant, which then collided on the next init.
     expect(ClusterTool::FLOW->commonsDatabases())->toEqualCanonicalizing(['n8n', 'windmill'])
-        ->and(ClusterTool::SHEETS->commonsDatabases())->toEqualCanonicalizing(['baserow', 'nocodb']);
+        ->and(ClusterTool::SHEETS->commonsDatabases())->toEqualCanonicalizing(['teable']);
 });
 
 test('every tool with engines declares a default that is one of them', function () {
@@ -78,8 +78,8 @@ test('every tool with engines declares a default that is one of them', function 
     }
 });
 
-test('sheets defaults to baserow, not the paywalled nocodb', function () {
-    expect(ClusterTool::SHEETS->defaultEngine())->toBe('baserow');
+test('sheets no longer has selectable engines', function () {
+    expect(ClusterTool::SHEETS->defaultEngine())->toBeNull();
 });
 
 test('only tools that can bundle their own storage advertise --no-plex', function () {
@@ -89,12 +89,16 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
     );
 
     expect($noPlex)->toEqualCanonicalizing([
-        'chat', 'desk', 'drive', 'errors', 'flow', 'insights', 'secrets', 'sheets', 'sso',
+        'chat', 'desk', 'drive', 'errors', 'flow', 'git', 'insights', 'sso',
     ]);
 
-    // A tool that leases no Commons tenant has nothing to bypass.
+    // A tool that leases no Commons tenant has nothing to bypass. Drive is the
+    // one exception: its `--no-plex` bundles its own storage, and its Commons
+    // lease is the SeaweedFS S3 bucket — never a Postgres tenant — so it has no
+    // commonsDatabases to assert.
+    $storageLeaseOnly = [ClusterTool::DRIVE];
     foreach (ClusterTool::cases() as $tool) {
-        if ($tool->supportsNoPlex()) {
+        if ($tool->supportsNoPlex() && ! in_array($tool, $storageLeaseOnly, true)) {
             expect($tool->commonsDatabases())->not->toBeEmpty();
         }
     }
@@ -105,4 +109,20 @@ test('command name helpers spell the canonical tool:action shape', function () {
         ->and(ClusterTool::FLOW->removeCommand())->toBe('flow:remove')
         ->and(ClusterTool::FLOW->showCommand())->toBe('flow:show')
         ->and(ClusterTool::PASSWORDS->removeCommand())->toBe('passwords:remove');
+});
+
+test('deploymentName() matches the actual Deployment name each tool\'s own manifest creates', function () {
+    // Regression guard for three real drifts found live 2026-07-31: SSO,
+    // ERRORS, and VPN's deploymentName() didn't match reality (returned
+    // 'zitadel'/'errors-glitchtip'/'netbird' — none of which any manifest
+    // ever creates). Silent for years because most callers resolve presence
+    // via SharedClusterService::presenceProbe() instead, a parallel path
+    // that already had the correct names — until secrets:wire (2026-07-31)
+    // called deploymentName() directly and it silently reported these tools
+    // as "not installed". Values here are cross-checked against
+    // SharedClusterService::presenceProbe() and the tools' own manifests,
+    // not just re-asserting whatever the enum currently says.
+    expect(ClusterTool::SSO->deploymentName())->toBe('sso-zitadel');
+    expect(ClusterTool::ERRORS->deploymentName())->toBe('glitchtip-web');
+    expect(ClusterTool::VPN->deploymentName())->toBe('netbird-management');
 });

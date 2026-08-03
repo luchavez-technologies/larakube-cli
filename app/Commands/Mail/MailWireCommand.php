@@ -4,8 +4,8 @@ namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
-use App\Enums\SharedClusterService;
 use App\Exceptions\MissingFlagException;
+use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithSso;
@@ -13,7 +13,7 @@ use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\StreamsProcessOutput;
-use App\Traits\SyncsInfisicalSecrets;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\password;
@@ -24,11 +24,12 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailWireCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, StreamsProcessOutput, SyncsInfisicalSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:wire
         {environment=local : Environment whose mail server to target}
         {--tool= : The tool to wire to Stalwart}
+        {--engine= : Specific engine to target ("matrix")}
         {--all          : Wire every installed SMTP-capable tool}
         {--context=     : Target a specific kube-context}
         {--sender=      : Sender/login address (default: noreply@<domain>)}
@@ -36,7 +37,7 @@ class MailWireCommand extends Command
         {--remove       : Unwire SMTP mail settings from the target tool and restart it}
         {--forget       : Delete the cached sender credentials (mail-sender secret) and exit}';
 
-    protected $description = 'Point a tool (n8n, NocoDB, …) at the Stalwart mail server for outbound email';
+    protected $description = 'Point a tool (n8n, …) at the Stalwart mail server for outbound email';
 
     public function handle(): int
     {
@@ -140,9 +141,7 @@ class MailWireCommand extends Command
 
         $installed = array_values(array_filter(
             $capable,
-            fn (ClusterTool $t) => $t === ClusterTool::SSO
-                ? $this->isSsoInstalled($kubectl, $this->ssoNamespace())
-                : $this->deploymentExists($kubectl, $t->smtpEnv()['namespace'], $t->smtpEnv()['deployment']),
+            fn (ClusterTool $t) => $this->isToolInstalledForMail($kubectl, $t),
         ));
 
         if ($this->option('all')) {
@@ -157,11 +156,8 @@ class MailWireCommand extends Command
 
                 return [];
             }
-            $isInstalled = $tool === ClusterTool::SSO
-                ? $this->isSsoInstalled($kubectl, $this->ssoNamespace())
-                : $this->deploymentExists($kubectl, $tool->smtpEnv()['namespace'], $tool->smtpEnv()['deployment']);
 
-            if (! $isInstalled) {
+            if (! $this->isToolInstalledForMail($kubectl, $tool)) {
                 $this->laraKubeError("{$tool->getLabel()} is not installed.");
 
                 return [];
@@ -267,9 +263,9 @@ class MailWireCommand extends Command
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
 
-            if ($this->isInfisicalBootstrapped($kubectl, $this->secretsNamespace())) {
-                $this->pushInfisicalSecret($kubectl, 'STALWART_MAIL_SENDER', $sender, $env);
-                $this->pushInfisicalSecret($kubectl, 'STALWART_MAIL_PASSWORD', $appPassword, $env);
+            if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
+                $this->pushClusterSecret($kubectl, 'STALWART_MAIL_SENDER', $sender, $env);
+                $this->pushClusterSecret($kubectl, 'STALWART_MAIL_PASSWORD', $appPassword, $env);
             }
         });
 
@@ -311,9 +307,13 @@ class MailWireCommand extends Command
                 return false;
             }
 
-            $projectPath = getcwd();
-            $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE) ? ConfigData::loadFromFile($projectPath) : null;
-            $ssoHost = SharedClusterService::SSO->hostFor($config?->getEnvironment($env)?->domain ?? 'luchtech.dev');
+            $ssoHost = $this->resolveSsoHostReadOnly($env, null);
+            if ($ssoHost === null) {
+                $this->laraKubeError("Could not resolve Zitadel's host for '{$env}'. Re-run `larakube sso:init {$env}` so the host is persisted.");
+
+                return false;
+            }
+
             $ok = false;
             $this->withSpin('Wiring Identity Provider / SSO (Zitadel)...', function () use ($ssoHost, $pat, $endpoint, $sender, $appPassword, &$ok) {
                 $ok = $this->zitadelConfigureSmtp(
@@ -332,9 +332,14 @@ class MailWireCommand extends Command
             return $ok;
         }
 
-        $schema = $tool->smtpEnv();
+        $engine = $this->resolveToolEngine($kubectl, $tool);
+        $schema = $tool->smtpEnv($engine);
         if ($schema === null) {
             return false;
+        }
+
+        if ($tool->configuresViaConfigFile($engine)) {
+            return $this->wireSynapseSmtp($kubectl, $tool, $endpoint, $sender, $appPassword, $env);
         }
         $deployment = $schema['deployment'];
         $ns = $schema['namespace'];
@@ -348,8 +353,11 @@ class MailWireCommand extends Command
             'secure' => 'false',
         ];
 
-        // Secret keys ARE the target env var names, so `set env --from=secret`
-        // maps them 1:1 onto the tool's Deployment.
+        // Grafana combines host & port into a single GF_SMTP_HOST=host:port
+        if ($tool === ClusterTool::MONITOR) {
+            $logical['host'] = $endpoint['host'].':'.$endpoint['port'];
+        }
+
         $literals = '';
         foreach ($schema['vars'] as $key => $envName) {
             if (isset($logical[$key])) {
@@ -360,7 +368,8 @@ class MailWireCommand extends Command
         $secret = $schema['secret'];
 
         $ok = true;
-        $this->withSpin("Wiring {$tool->getLabel()}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, &$ok) {
+        $label = $engine ? "{$tool->getLabel()} ({$engine})" : $tool->getLabel();
+        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, &$ok) {
             Process::run(
                 "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -382,10 +391,37 @@ class MailWireCommand extends Command
         });
 
         if (! $ok) {
-            $this->laraKubeError("Failed to wire {$tool->getLabel()}.");
+            $this->laraKubeError("Failed to wire {$label}.");
         }
 
         return $ok;
+    }
+
+    protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool
+    {
+        if ($tool === ClusterTool::SSO) {
+            return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
+        }
+
+        if ($tool === ClusterTool::CHAT) {
+            return $this->deploymentExists($kubectl, 'larakube-shared', 'chat-synapse');
+        }
+
+        return $this->deploymentExists($kubectl, $tool->smtpEnv()['namespace'], $tool->smtpEnv()['deployment']);
+    }
+
+    protected function resolveToolEngine(string $kubectl, ClusterTool $tool): ?string
+    {
+        $flag = $this->option('engine');
+        if ($flag !== null) {
+            return (string) $flag;
+        }
+
+        if ($tool === ClusterTool::CHAT) {
+            return $this->deploymentExists($kubectl, 'larakube-shared', 'chat-synapse') ? 'matrix' : null;
+        }
+
+        return null;
     }
 
     protected function deploymentExists(string $kubectl, string $ns, string $deployment): bool
@@ -436,6 +472,16 @@ class MailWireCommand extends Command
                 continue;
             }
 
+            $engine = $this->resolveToolEngine($kubectl, $tool);
+
+            if ($tool->configuresViaConfigFile($engine)) {
+                if ($this->unwireSynapseSmtp($kubectl, $tool)) {
+                    $unwired[] = $tool->getLabel();
+                }
+
+                continue;
+            }
+
             $schema = $tool->smtpEnv();
             if ($schema === null) {
                 continue;
@@ -466,5 +512,146 @@ class MailWireCommand extends Command
         }
 
         return 0;
+    }
+
+    /**
+     * Wire outbound mail into Synapse by persisting the SMTP credentials to the
+     * `chat-smtp` Secret and re-rendering the homeserver.yaml Secret with an
+     * `email:` block. A rollout restart is issued so Synapse picks up the new
+     * config without waiting for the next pod eviction.
+     */
+    protected function wireSynapseSmtp(
+        string $kubectl,
+        ClusterTool $tool,
+        array $endpoint,
+        string $sender,
+        string $appPassword,
+        string $env,
+    ): bool {
+        $schema = $tool->smtpEnv('matrix');
+        if ($schema === null) {
+            return false;
+        }
+
+        $ns = $schema['namespace'];
+        $port = $endpoint['port'];
+
+        $smtpValues = [
+            'host' => $endpoint['host'],
+            'port' => $port,
+            'user' => $sender,
+            'password' => $appPassword,
+            'from' => $sender,
+        ];
+
+        $ok = true;
+        $this->withSpin('Wiring Matrix (Synapse) mail via homeserver.yaml...', function () use ($kubectl, $ns, $smtpValues, $env, &$ok) {
+            // 1. Persist the SMTP credentials to the chat-smtp Secret so
+            //    chat:init re-renders the email: block on re-run.
+            Process::run(
+                "{$kubectl} create secret generic chat-smtp -n {$ns} "
+                .'--from-literal=host='.escapeshellarg($smtpValues['host']).' '
+                .'--from-literal=port='.escapeshellarg((string) $smtpValues['port']).' '
+                .'--from-literal=user='.escapeshellarg($smtpValues['user']).' '
+                .'--from-literal=password='.escapeshellarg($smtpValues['password']).' '
+                .'--from-literal=from='.escapeshellarg($smtpValues['from']).' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+
+            if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
+                $this->pushClusterSecret($kubectl, 'SYNAPSE_SMTP_HOST', $smtpValues['host'], $env);
+                $this->pushClusterSecret($kubectl, 'SYNAPSE_SMTP_PORT', (string) $smtpValues['port'], $env);
+                $this->pushClusterSecret($kubectl, 'SYNAPSE_SMTP_USER', $smtpValues['user'], $env);
+                $this->pushClusterSecret($kubectl, 'SYNAPSE_SMTP_PASS', $smtpValues['password'], $env);
+                $this->pushClusterSecret($kubectl, 'SYNAPSE_SMTP_FROM', $smtpValues['from'], $env);
+            }
+
+            // 2. Re-render homeserver.yaml with the email: block.
+            //    readChatWiredOidc reads the chat-oidc Secret to preserve any
+            //    existing OIDC wiring — same read-back discipline as chat:init.
+            $oidc = $this->readChatWiredOidc($kubectl, $ns);
+
+            $raw = Process::run(
+                "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+            )->output();
+            if (trim($raw) === '') {
+                $ok = false;
+
+                return;
+            }
+            $rawYaml = (string) base64_decode(trim($raw));
+
+            $homeserver = $this->renderSynapseConfig($rawYaml, $smtpValues, $oidc);
+
+            $tmp = tempnam(sys_get_temp_dir(), 'synapse_cfg');
+            file_put_contents($tmp, $homeserver);
+            $result = Process::run(
+                "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
+                ."--from-file=homeserver.yaml={$tmp} "
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+            @unlink($tmp);
+
+            $ok = $result->successful();
+            if ($ok) {
+                Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+            }
+        });
+
+        if (! $ok) {
+            $this->laraKubeError('Failed to wire Synapse mail via homeserver.yaml.');
+        }
+
+        return $ok;
+    }
+
+    /**
+     * Remove the `email:` block from Synapse's homeserver.yaml Secret, then
+     * delete the `chat-smtp` credential Secret and restart the pod.
+     * Preserves any existing `oidc_providers:` block.
+     */
+    protected function unwireSynapseSmtp(string $kubectl, ClusterTool $tool): bool
+    {
+        $schema = $tool->smtpEnv('matrix');
+        if ($schema === null) {
+            return false;
+        }
+
+        $ns = $schema['namespace'];
+        $ok = true;
+
+        $this->withSpin('Unwiring Matrix (Synapse) mail from homeserver.yaml...', function () use ($kubectl, $ns, &$ok) {
+            // Re-render without email: block, preserving any OIDC wiring.
+            $oidc = $this->readChatWiredOidc($kubectl, $ns);
+
+            $raw = Process::run(
+                "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+            )->output();
+            if (trim($raw) === '') {
+                $ok = false;
+
+                return;
+            }
+            $rawYaml = (string) base64_decode(trim($raw));
+
+            $homeserver = $this->renderSynapseConfig($rawYaml, null, $oidc);
+
+            $tmp = tempnam(sys_get_temp_dir(), 'synapse_cfg');
+            file_put_contents($tmp, $homeserver);
+            $result = Process::run(
+                "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
+                ."--from-file=homeserver.yaml={$tmp} "
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+            @unlink($tmp);
+
+            $ok = $result->successful();
+            if ($ok) {
+                Process::run("{$kubectl} delete secret chat-smtp -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+            }
+        });
+
+        return $ok;
     }
 }

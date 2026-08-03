@@ -26,7 +26,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: glitchtip/glitchtip:v4
+          image: glitchtip/glitchtip:6.2.2
           command: ["./manage.py", "migrate"]
           env:
             - name: DATABASE_URL
@@ -64,7 +64,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: glitchtip/glitchtip:v4
+          image: glitchtip/glitchtip:6.2.2
           ports:
             - containerPort: 8000
               name: http
@@ -131,7 +131,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: glitchtip/glitchtip:v4
+          image: glitchtip/glitchtip:6.2.2
           command: ["celery", "-A", "glitchtip", "worker", "-B"]
           env:
             - name: DATABASE_URL

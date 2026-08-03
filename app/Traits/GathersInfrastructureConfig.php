@@ -12,7 +12,7 @@ use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PackageManager;
 use App\Enums\PhpVersion;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 use Illuminate\Support\Arr;
@@ -205,11 +205,11 @@ trait GathersInfrastructureConfig
         if ($config->hasFeature(LaravelFeature::SCOUT)) {
             $driver = select(
                 label: 'Which primary search driver would you like to use for Scout?',
-                options: ScoutDriver::getSelectOptions($config),
-                default: $config->getScoutDriver()?->value ?? ScoutDriver::MEILISEARCH->value,
+                options: SearchDriver::getSelectOptions($config),
+                default: $config->getScoutDriver()?->value ?? SearchDriver::MEILISEARCH->value,
             );
 
-            $config->setScoutDriver(ScoutDriver::from($driver));
+            $config->setScoutDriver(SearchDriver::from($driver));
         }
 
         // 9. Package Manager

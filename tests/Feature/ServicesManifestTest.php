@@ -2,7 +2,7 @@
 
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 
@@ -10,7 +10,7 @@ test('Services: Meilisearch', function () {
     $config = new ConfigData(name: 'meilisearch-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
-    $config->addScoutDriver(ScoutDriver::MEILISEARCH);
+    $config->addScoutDriver(SearchDriver::MEILISEARCH);
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
@@ -18,7 +18,7 @@ test('Services: Typesense', function () {
     $config = new ConfigData(name: 'typesense-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
-    $config->addScoutDriver(ScoutDriver::TYPESENSE);
+    $config->addScoutDriver(SearchDriver::TYPESENSE);
     expect(generateManifests($config))->toMatchSnapshot();
 });
 

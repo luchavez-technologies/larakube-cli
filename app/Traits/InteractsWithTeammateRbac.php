@@ -122,6 +122,47 @@ roleRef:
 YAML;
     }
 
+    /** The labeled ClusterRoleBinding name for a person granted cluster-wide. */
+    public function teammateClusterBindingName(string $sa): string
+    {
+        return 'larakube-cluster-user-'.$sa;
+    }
+
+    /**
+     * ClusterRoleBinding → a built-in ClusterRole across EVERY namespace, subject
+     * = the person's central SA. The cluster-wide counterpart of
+     * teammateBindingManifest(); separate name so a person can hold both a
+     * cluster grant and per-namespace ones without the two clobbering each other.
+     *
+     * Read the security note on ClusterGrantCommand's --cluster flag before
+     * reaching for this: bound to `edit` or `admin` it reaches every Secret in
+     * every namespace, which on this cluster includes the Commons Postgres
+     * superuser, the secrets-backend bootstrap and Zitadel's machine PAT. Pure.
+     */
+    public function teammateClusterBindingManifest(string $accessNs, string $sa, string $clusterRole): string
+    {
+        $binding = $this->teammateClusterBindingName($sa);
+
+        return <<<YAML
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {$binding}
+  labels:
+    app.kubernetes.io/managed-by: larakube
+    larakube.dev/access-user: {$sa}
+    larakube.dev/access-scope: cluster
+subjects:
+  - kind: ServiceAccount
+    name: {$sa}
+    namespace: {$accessNs}
+roleRef:
+  kind: ClusterRole
+  name: {$clusterRole}
+  apiGroup: rbac.authorization.k8s.io
+YAML;
+    }
+
     /**
      * A teammate kubeconfig whose context is named for the APP+ENV (so it reads
      * cleanly and tells them what they're operating), defaulting to that namespace.

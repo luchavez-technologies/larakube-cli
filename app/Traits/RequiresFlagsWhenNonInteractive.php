@@ -29,7 +29,7 @@ trait RequiresFlagsWhenNonInteractive
      */
     protected function cannotPrompt(): bool
     {
-        if ($this->option('no-interaction')) {
+        if ($this->option('no-interaction') || app()->runningUnitTests()) {
             return true;
         }
 

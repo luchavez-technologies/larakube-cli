@@ -6,13 +6,14 @@ use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
-use App\Enums\StorageDriver;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
@@ -24,17 +25,17 @@ use LaravelZero\Framework\Commands\Command;
 
 class ChatInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'chat:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Mattermost (example.com → prefix.example.com)}
-        {--no-plex   : Bypass Plex Commons and bundle a dedicated Postgres + local file storage}
+        {--domain=   : Base domain OR full host for Chat (example.com → prefix.example.com)}
+        {--no-plex   : Bypass Plex Commons and bundle dedicated storage}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
-    protected $description = 'Deploy the Mattermost team-chat stack into larakube-shared';
+    protected $description = 'Deploy the Team Chat stack (Matrix / Synapse) into larakube-shared';
 
     public function handle(): int
     {
@@ -60,58 +61,20 @@ class ChatInitCommand extends Command
             return 1;
         }
 
-        $s3Endpoint = '';
-        $s3Bucket = '';
-        $s3AccessKey = '';
-        $s3SecretKey = '';
-
         if (! $noPlex) {
             if (! $this->ensureCommons(['postgres'])) {
-                return 1;
-            }
-
-            $spec = $this->getCommonsSpec();
-            $s3Service = null;
-            if ($spec !== null) {
-                $enabled = $this->enabledCommonsServices($spec);
-                if (in_array('seaweedfs', $enabled, true)) {
-                    $s3Service = 'seaweedfs';
-                } elseif (in_array('minio', $enabled, true)) {
-                    $s3Service = 'minio';
-                }
-            }
-
-            // Default to SeaweedFS (Apache-licensed) if the Commons doesn't
-            // already offer an S3 backend.
-            $s3Service ??= 'seaweedfs';
-            if (! $this->ensureCommons([$s3Service])) {
-                return 1;
-            }
-
-            $creds = $this->readCommonsS3Credentials();
-            if ($creds === null) {
-                $this->laraKubeError('Commons S3 credentials not found. Re-run `larakube plex:init`.');
-
-                return 1;
-            }
-
-            $s3AccessKey = $creds['access'];
-            $s3SecretKey = $creds['secret'];
-            $s3Bucket = 'chat-storage';
-            $driver = StorageDriver::from($s3Service);
-            // Mattermost's S3 client expects a bare host:port endpoint — no scheme.
-            // MM_FILESETTINGS_AMAZONS3SSL=false already controls http vs https.
-            $s3Endpoint = "{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
-
-            if (! $this->allocateStorageBucket($driver, $s3Bucket)) {
                 return 1;
             }
         }
 
         $dbPassword = $this->readChatSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
+        $registrationSecret = $this->readChatSecret($kubectl, $ns, 'registration-secret') ?? Str::random(32);
+
+        $dbName = 'chat_matrix';
+        $dbUser = 'chat_matrix';
 
         if (! $noPlex) {
-            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'mattermost', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
                 return 1;
             }
         }
@@ -120,46 +83,77 @@ class ChatInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $registrationSecret) {
             Process::run(
                 "{$kubectl} create secret generic chat-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
+                .'--from-literal=registration-secret='.escapeshellarg($registrationSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
         });
 
-        $manifest = view('k8s.chat.mattermost', [
+        // homeserver.yaml moved from ConfigMap to Secret
+        $this->withSpin('Migrating config storage (ConfigMap → Secret)...', fn () => Process::run(
+            "{$kubectl} delete configmap chat-synapse-config -n {$ns} --ignore-not-found",
+        ));
+
+        // Re-hydrate any wired mail / SSO values so a re-run does not erase them.
+        $smtp = $this->readChatWiredSmtp($kubectl, $ns);
+        $oidc = $this->readChatWiredOidc($kubectl, $ns);
+
+        $manifest = view('k8s.chat.matrix', [
             'host' => $host,
             'plexNamespace' => $this->plexNamespace(),
             'noPlex' => $noPlex,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
-            's3Endpoint' => $s3Endpoint,
-            's3Bucket' => $s3Bucket,
-            's3AccessKey' => $s3AccessKey,
-            's3SecretKey' => $s3SecretKey,
+            'proxied' => $this->resolveProxied($env === 'local'),
+            's3Endpoint' => '',
+            's3Bucket' => '',
+            's3AccessKey' => '',
+            's3SecretKey' => '',
+            'dbName' => $dbName,
+            'dbUser' => $dbUser,
+            'dbPassword' => $dbPassword,
+            'registrationSecret' => $registrationSecret,
+            'smtp' => $smtp,
+            'oidc' => $oidc,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-chat.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Mattermost manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $engineLabel = 'Matrix (Synapse + Element)';
+        $this->withSpin("Applying {$engineLabel} manifests...", fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Mattermost...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/chat-mattermost -n {$ns} --timeout=180s",
-            190,
+        $this->withSpin("Waiting for {$engineLabel}...", fn () => $this->runStreaming(
+            "{$kubectl} rollout status deploy/chat-synapse -n {$ns} --timeout=180s",
         ));
 
+        $this->registerDeployedTool(ClusterTool::CHAT, $kubectl, $host);
+
         $this->laraKubeNewLine();
-        $this->laraKubeInfo('✅ Mattermost is live.');
+        $this->laraKubeInfo("✅ {$engineLabel} is live.");
         $this->newLine();
         $this->line("  <fg=gray>Access URL:</>  <fg=blue>https://{$host}</>");
         $this->newLine();
-        $this->line('  <fg=yellow>First-run setup</> — the first person to open the URL and sign up');
-        $this->line('  automatically becomes System Admin. There is no separate admin bootstrap step.');
+        $this->line('  <fg=gray>Interface:</>   Element Web Client');
+        $this->line('  <fg=gray>Homeserver:</>  Synapse (connected to PostgreSQL database chat_matrix)');
         $this->newLine();
-        $this->line('  <fg=gray>Outbound notification email:</> <fg=blue>larakube mail:wire chat</>');
+
+        if ($smtp !== null) {
+            $this->line('  <fg=green>✓</> <fg=gray>Outbound email:</> <fg=blue>'.($smtp['from'] ?: 'wired').'</>');
+        } else {
+            $this->line('  <fg=gray>Outbound notification email:</> <fg=blue>larakube mail:wire chat</>');
+        }
+
+        if ($oidc !== null) {
+            $this->line('  <fg=green>✓</> <fg=gray>SSO provider:</>   <fg=blue>'.$oidc['name'].'</>');
+        } else {
+            $this->line('  <fg=gray>Identity Provider SSO:</>        <fg=blue>larakube sso:wire chat</>');
+        }
+
         $this->newLine();
 
         return 0;

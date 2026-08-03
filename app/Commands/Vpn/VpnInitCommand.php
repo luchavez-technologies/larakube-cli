@@ -100,6 +100,8 @@ class VpnInitCommand extends Command
             130,
         ));
 
+        $this->registerDeployedTool(ClusterTool::VPN, $kubectl, $host);
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ NetBird VPN stack is live.');
         $this->newLine();

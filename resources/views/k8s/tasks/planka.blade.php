@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: planka
-          image: ghcr.io/plankanban/planka:latest
+          image: ghcr.io/plankanban/planka:2.1.1
           ports:
             - containerPort: 1337
               name: http
@@ -60,6 +60,13 @@ spec:
                   optional: true
             - name: OIDC_SCOPES
               value: "openid profile email"
+          startupProbe:
+            httpGet:
+              path: /
+              port: 1337
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /

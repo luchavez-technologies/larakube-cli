@@ -9,6 +9,7 @@ use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithDesk;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
@@ -22,7 +23,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DeskInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'desk:init
         {environment?    : Environment this install targets — "local" (default) or cloud.}
@@ -32,7 +33,7 @@ class DeskInitCommand extends Command
         {--admin-email=  : Admin email for the FreeScout first-run account}
         {--no-plex       : Bypass Plex Commons and bundle a dedicated Postgres}
         {--vpn-only      : Restrict access via NetBird VPN IP whitelisting}
-        {--force         : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the FreeScout help-desk / shared-inbox stack into larakube-shared';
 
@@ -108,6 +109,7 @@ class DeskInitCommand extends Command
             'noPlex' => $noPlex,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-desk.yaml';

@@ -20,12 +20,12 @@ test('git:init deploys gitea using plex commons seaweedfs by default', function 
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('git:init local')
+    $this->artisan('git:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Creating object-storage bucket')
-        ->expectsOutputToContain('Applying Gitea core manifests...')
-        ->expectsOutputToContain('Initializing Gitea admin user...')
-        ->expectsOutputToContain('Gitea forge and Actions runner are live.');
+        ->expectsOutputToContain('Applying Forgejo core manifests...')
+        ->expectsOutputToContain('Initializing Forgejo admin user...')
+        ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 });
 
 test('git:init deploys standalone gitea when --no-plex is passed', function () {
@@ -37,11 +37,11 @@ test('git:init deploys standalone gitea when --no-plex is passed', function () {
         '*exec *' => Process::result(output: 'success'),
     ]);
 
-    $this->artisan('git:init local --no-plex')
+    $this->artisan('git:init local --no-plex --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Applying Gitea core manifests...')
-        ->expectsOutputToContain('Initializing Gitea admin user...')
-        ->expectsOutputToContain('Gitea forge and Actions runner are live.');
+        ->expectsOutputToContain('Applying Forgejo core manifests...')
+        ->expectsOutputToContain('Initializing Forgejo admin user...')
+        ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 });
 
 test('git:remove removes gitea stack and deletes resources', function () {
@@ -54,6 +54,6 @@ test('git:remove removes gitea stack and deletes resources', function () {
 
     $this->artisan('git:remove local --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Removing Gitea resources...')
+        ->expectsOutputToContain('Removing Forgejo resources...')
         ->expectsOutputToContain('removed from larakube-shared');
 });

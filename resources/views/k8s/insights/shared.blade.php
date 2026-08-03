@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
         - name: metabase
-          image: metabase/metabase:latest
+          image: metabase/metabase:v0.63.1
           env:
             - name: MB_ENCRYPTION_SECRET_KEY
               valueFrom:
@@ -63,6 +63,13 @@ spec:
           ports:
             - containerPort: 3000
               name: http
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /api/health

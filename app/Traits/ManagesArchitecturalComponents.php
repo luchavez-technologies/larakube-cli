@@ -9,7 +9,7 @@ use App\Enums\DatabaseDriver;
 use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PhpVersion;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 
@@ -169,7 +169,7 @@ trait ManagesArchitecturalComponents
         $this->installComponent($config, $storage);
     }
 
-    protected function addScoutDriver(ScoutDriver $scout, ConfigData $config, bool $skipConfirm = false): void
+    protected function addScoutDriver(SearchDriver $scout, ConfigData $config, bool $skipConfirm = false): void
     {
         $projectPath = $config->getPath();
         if (in_array($scout, $config->getScoutDrivers())) {

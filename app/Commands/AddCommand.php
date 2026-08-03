@@ -11,7 +11,7 @@ use App\Enums\DatabaseDriver;
 use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PhpVersion;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 use App\Traits\CheckPrerequisites;
@@ -119,7 +119,7 @@ class AddCommand extends Command
             }
         }
 
-        foreach (ScoutDriver::cases() as $case) {
+        foreach (SearchDriver::cases() as $case) {
             if ($case instanceof HasHiddenComponents && $case->isHidden($config)) {
                 continue;
             }
@@ -315,7 +315,7 @@ class AddCommand extends Command
                 continue;
             }
 
-            $scout = ScoutDriver::tryFrom($item);
+            $scout = SearchDriver::tryFrom($item);
             if ($scout) {
                 $this->addScoutDriver($scout, $config);
                 $addedCount++;
@@ -353,7 +353,7 @@ class AddCommand extends Command
                 $component = DatabaseDriver::tryFrom($item)
                     ?? CacheDriver::tryFrom($item)
                     ?? LaravelFeature::tryFrom($item)
-                    ?? ScoutDriver::tryFrom($item)
+                    ?? SearchDriver::tryFrom($item)
                     ?? StorageDriver::tryFrom($item)
                     ?? Blueprint::tryFrom($item);
 

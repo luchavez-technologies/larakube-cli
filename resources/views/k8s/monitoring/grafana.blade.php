@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: grafana
-          image: grafana/grafana:latest
+          image: grafana/grafana:13.1.1
           ports:
             - containerPort: 3000
           env:

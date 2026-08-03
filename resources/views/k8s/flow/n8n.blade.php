@@ -75,6 +75,12 @@ spec:
           ports:
             - containerPort: 5678
               name: http
+          startupProbe:
+            tcpSocket:
+              port: 5678
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             tcpSocket:
               port: 5678

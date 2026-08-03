@@ -47,6 +47,9 @@ spec:
     metadata:
       labels:
         app: postgres
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
     spec:
       containers:
         - name: postgres
@@ -83,6 +86,25 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+        - name: postgres-exporter
+          image: {{ \App\Enums\DatabaseDriver::POSTGRESQL->exporterImage() }}
+          ports:
+            - containerPort: 9187
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plex-admin
+                  key: POSTGRES_PASSWORD
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/postgres?sslmode=disable"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -139,6 +161,9 @@ spec:
     metadata:
       labels:
         app: {{ $engine }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9104"
     spec:
       containers:
         - name: {{ $engine }}
@@ -175,6 +200,25 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
+        - name: mysqld-exporter
+          image: {{ \App\Enums\DatabaseDriver::MYSQL->exporterImage() }}
+          ports:
+            - containerPort: 9104
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plex-admin
+                  key: MYSQL_ROOT_PASSWORD
+            - name: DATA_SOURCE_NAME
+              value: "root:$(MYSQL_ROOT_PASSWORD)@(127.0.0.1:3306)/"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -215,6 +259,9 @@ spec:
     metadata:
       labels:
         app: redis
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
     spec:
       containers:
         - name: redis
@@ -238,6 +285,20 @@ spec:
               command: ["redis-cli", "ping"]
             initialDelaySeconds: 5
             periodSeconds: 10
+        - name: redis-exporter
+          image: {{ \App\Enums\CacheDriver::REDIS->exporterImage() }}
+          ports:
+            - containerPort: 9121
+          env:
+            - name: REDIS_ADDR
+              value: "redis://127.0.0.1:6379"
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "25m"
+            limits:
+              memory: "32Mi"
+              cpu: "50m"
 ---
 apiVersion: v1
 kind: Service
@@ -370,7 +431,51 @@ spec:
     metadata:
       labels:
         app: seaweedfs
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9333"
     spec:
+      initContainers:
+        # Without an -s3.config, SeaweedFS has NO S3 identities: it allows
+        # anonymous access but REJECTS every SigV4-signed request with
+        # "Signed request requires setting up SeaweedFS S3 authentication".
+        # Since every S3 SDK signs once it is given credentials, that silently
+        # broke uploads for every tool leasing a Commons bucket.
+        # Built here from the plex-admin Secret so the keys never land in a
+        # ConfigMap.
+        - name: s3-identities
+          image: {{ $spec['services']['seaweedfs']['image'] }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              cat > /s3/config.json <<JSON
+              {
+                "identities": [
+                  {
+                    "name": "larakube",
+                    "credentials": [
+                      { "accessKey": "${S3_ACCESS_KEY}", "secretKey": "${S3_SECRET_KEY}" }
+                    ],
+                    "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+                  }
+                ]
+              }
+              JSON
+          env:
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: plex-admin
+                  key: S3_ACCESS_KEY
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: plex-admin
+                  key: S3_SECRET_KEY
+          volumeMounts:
+            - name: s3-config
+              mountPath: /s3
       containers:
         - name: seaweedfs
           image: {{ $spec['services']['seaweedfs']['image'] }}
@@ -378,7 +483,7 @@ spec:
           # (ClusterIP) by default; tenants are isolated by their own bucket.
           # The master's own admin UI (9333) always binds too — only exposed
           # via Service/Ingress when admin_host is set (see below).
-          args: ["server", "-dir=/data", "-s3"]
+          args: ["server", "-dir=/data", "-s3", "-s3.config=/s3/config.json"]
           ports:
             - containerPort: {{ $spec['services']['seaweedfs']['port'] }}
             - containerPort: 9333
@@ -392,10 +497,14 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: s3-config
+              mountPath: /s3
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: seaweedfs-data
+        - name: s3-config
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -430,6 +539,12 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
+@unless($isLocal ?? false)
+    # Without this, Traefik serves its fallback self-signed cert on the public
+    # S3 host — which browsers reject, breaking every presigned attachment URL
+    # a tool hands out (locally the LaraKube Local CA covers it instead).
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+@endunless
 spec:
   rules:
     - host: {{ $spec['services']['seaweedfs']['host'] }}

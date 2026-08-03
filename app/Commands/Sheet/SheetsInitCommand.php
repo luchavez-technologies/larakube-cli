@@ -4,10 +4,13 @@ namespace App\Commands\Sheet;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
+use App\Enums\StorageDriver;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSheet;
 use App\Traits\LaraKubeOutput;
@@ -16,25 +19,22 @@ use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class SheetsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSheet, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSheet, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'sheets:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
-        {--engine=   : Sheet engine — "baserow" (default) or "nocodb"}
         {--domain=   : Base domain OR full host for Sheet (example.com → prefix.example.com)}
-        {--no-plex   : Bypass Plex Commons and use local SQLite storage (nocodb only)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
-    protected $description = 'Deploy the no-code database spreadsheet stack (Baserow or NocoDB) into larakube-shared';
+    protected $description = 'Deploy Teable (spreadsheet database) into larakube-shared';
 
     public function handle(): int
     {
@@ -45,13 +45,6 @@ class SheetsInitCommand extends Command
 
     protected function deploySheet(): int
     {
-        $engine = strtolower((string) ($this->option('engine') ?: 'baserow'));
-        if (! in_array($engine, ['baserow', 'nocodb'], true)) {
-            $this->laraKubeError("Unknown --engine '{$engine}'. Use 'baserow' (default) or 'nocodb'.");
-
-            return 1;
-        }
-
         $env = $this->resolveEnvironment();
         $host = $this->resolveSheetHost($env);
 
@@ -68,7 +61,6 @@ class SheetsInitCommand extends Command
         $this->plexContext = $context;
         $kubectl = $this->sheetKubectl($context);
         $ns = $this->sheetNamespace();
-        $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
 
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SHEETS, $kubectl)) {
@@ -77,56 +69,25 @@ class SheetsInitCommand extends Command
             return 1;
         }
 
-        if ($engine === 'baserow' && $noPlex) {
-            $this->laraKubeError('Baserow requires the Plex Commons (Postgres + Valkey). Drop --no-plex, or use --engine=nocodb for a standalone SQLite install.');
-
-            return 1;
-        }
-
-        // Guard the toggle: if the other engine is already running, confirm the
-        // switch (its pod is removed, its data kept) before deploying over it.
-        $current = $this->deployedSheetEngine($kubectl, $ns);
-        if ($current !== null && $current !== $engine) {
-            $switch = (bool) $this->option('no-interaction') || confirm(
-                label: "Sheet is currently running the '{$current}' engine. Switch to '{$engine}'?",
-                default: false,
-                hint: "The '{$current}' pod is removed; its data (Commons DB) is kept.",
-            );
-
-            if (! $switch) {
-                $this->laraKubeInfo("Keeping the '{$current}' engine. Re-run with --engine={$current} to update it.");
-
-                return 0;
-            }
-
-            $this->withSpin("Removing the '{$current}' engine pod...", fn () => Process::run(
-                "{$kubectl} delete deployment/sheet-{$current} -n {$ns} --ignore-not-found",
-            ));
-        }
-
-        return $engine === 'baserow'
-            ? $this->deployBaserow($kubectl, $ns, $env, $host, $vpnOnly)
-            : $this->deployNocodb($kubectl, $ns, $env, $host, $noPlex, $vpnOnly);
-    }
-
-    /** Baserow engine: Commons Postgres + a dedicated Commons Valkey DB index. */
-    protected function deployBaserow(string $kubectl, string $ns, string $env, string $host, bool $vpnOnly): int
-    {
         if (! $this->ensureCommons(['postgres', 'redis'])) {
             return 1;
         }
 
-        // Keep secrets stable across re-runs: rotating SECRET_KEY/JWT would
-        // invalidate every Baserow session and signed token.
+        // Keep secrets stable across re-runs: rotating SECRET_KEY would
+        // invalidate every Teable session and signed token.
         $dbPassword = $this->readSheetDbPassword($kubectl, $ns) ?? Str::random(24);
         $secretKey = $this->readSheetSecret($kubectl, $ns, 'secret-key') ?? Str::random(50);
-        $jwtKey = $this->readSheetSecret($kubectl, $ns, 'jwt-key') ?? Str::random(50);
 
-        if (! $this->allocateDatabase(\App\Enums\DatabaseDriver::POSTGRESQL, 'baserow', $dbPassword)) {
+        $storage = $this->resolveSheetStorage();
+        if ($storage === null) {
             return 1;
         }
 
-        $redisIndex = $this->allocateCommonsRedisIndex('baserow');
+        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'teable', $dbPassword)) {
+            return 1;
+        }
+
+        $redisIndex = $this->allocateCommonsRedisIndex('teable');
         if ($redisIndex === null) {
             $this->laraKubeError('The Commons Valkey has no free logical DB index (all 16 in use).');
 
@@ -137,102 +98,134 @@ class SheetsInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey, $jwtKey) {
+        // Pre-compute the full Prisma connection string so the blade template
+        // can read it directly from the Secret. Kubernetes does NOT expand
+        // $(VAR) in env value fields — Prisma would see the literal string.
+        $plexNs = $this->plexNamespace();
+        $dbUrl = "postgresql://teable:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/teable";
+
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey, $storage, $dbUrl) {
             Process::run(
                 "{$kubectl} create secret generic sheet-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=secret-key='.escapeshellarg($secretKey).' '
-                .'--from-literal=jwt-key='.escapeshellarg($jwtKey).' '
+                .'--from-literal=s3-access-key='.escapeshellarg($storage['access']).' '
+                .'--from-literal=s3-secret-key='.escapeshellarg($storage['secret']).' '
+                .'--from-literal=database-url='.escapeshellarg($dbUrl).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
         });
 
-        $manifest = view('k8s.sheet.baserow', [
+        $manifest = view('k8s.sheet.teable', [
             'host' => $host,
             'plexNamespace' => $this->plexNamespace(),
             'redisIndex' => $redisIndex,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
+            's3PublicEndpoint' => $storage['publicEndpoint'],
+            's3InternalEndpoint' => $storage['internalEndpoint'],
+            's3PublicBucket' => $storage['publicBucket'],
+            's3PrivateBucket' => $storage['privateBucket'],
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-sheet.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Sheet (Baserow) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $this->withSpin('Applying Sheet (Teable) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
         @unlink($tmp);
 
-        // Baserow runs its DB migrations on first boot — allow generous time.
-        $this->withSpin('Waiting for Sheet (Baserow)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/sheet-baserow -n {$ns} --timeout=300s",
+        $this->withSpin('Waiting for Sheet (Teable)...', fn () => $this->runStreaming(
+            "{$kubectl} rollout status deploy/sheet-teable -n {$ns} --timeout=300s",
             310,
         ));
 
         $this->laraKubeNewLine();
-        $this->laraKubeInfo('✅ Sheet (Baserow) stack is live.');
+        $this->laraKubeInfo('✅ Sheet (Teable) stack is live.');
         $this->newLine();
         $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
         $this->line('  <fg=gray>Cache/queue:</>             <fg=blue>Commons Valkey</> · logical DB index <fg=blue>'.$redisIndex.'</>');
+        $this->line('  <fg=gray>Object storage:</>          <fg=blue>'.$storage['publicEndpoint'].'</> · buckets <fg=blue>'
+            .$storage['publicBucket'].'</>, <fg=blue>'.$storage['privateBucket'].'</>');
         $this->newLine();
 
         return 0;
     }
 
-    /** NocoDB engine: Commons Postgres (or --no-plex SQLite on a PVC). */
-    protected function deployNocodb(string $kubectl, string $ns, string $env, string $host, bool $noPlex, bool $vpnOnly): int
+    /**
+     * Resolve everything Teable needs to talk to the Commons object store:
+     * shared credentials, its two buckets, and the endpoint pair.
+     *
+     * Teable presigns every attachment URL — including the "public" bucket —
+     * so the Commons never needs an anonymous S3 identity (adding one would
+     * open every OTHER tenant's bucket too, since SeaweedFS grants actions
+     * cluster-wide, not per-bucket). What it does need is for the presigning
+     * endpoint to be the host a browser can actually reach.
+     *
+     * @return array{access: string, secret: string, publicEndpoint: string, internalEndpoint: string, publicBucket: string, privateBucket: string}|null
+     */
+    protected function resolveSheetStorage(): ?array
     {
-        if (! $noPlex) {
-            if (! $this->ensureCommons(['postgres'])) {
-                return 1;
+        $spec = $this->getCommonsSpec();
+        $s3Service = null;
+        if ($spec !== null) {
+            $enabled = $this->enabledCommonsServices($spec);
+            if (in_array('seaweedfs', $enabled, true)) {
+                $s3Service = 'seaweedfs';
+            } elseif (in_array('minio', $enabled, true)) {
+                $s3Service = 'minio';
             }
         }
 
-        $dbPassword = $this->readSheetDbPassword($kubectl, $ns) ?? Str::random(24);
-
-        if (! $noPlex) {
-            if (! $this->allocateDatabase(\App\Enums\DatabaseDriver::POSTGRESQL, 'nocodb', $dbPassword)) {
-                return 1;
-            }
+        $s3Service ??= 'seaweedfs';
+        if (! $this->ensureCommons([$s3Service])) {
+            return null;
         }
 
-        $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
-            "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
-        ));
+        $creds = $this->readCommonsS3Credentials();
+        if ($creds === null) {
+            $this->laraKubeError('Commons S3 credentials not found. Re-run `larakube plex:init`.');
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword) {
-            Process::run(
-                "{$kubectl} create secret generic sheet-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            return null;
+        }
+
+        $driver = StorageDriver::from($s3Service);
+        $internalEndpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
+
+        $publicBucket = 'sheet-public';
+        $privateBucket = 'sheet-private';
+
+        if (! $this->allocateStorageBucket($driver, $publicBucket)
+            || ! $this->allocateStorageBucket($driver, $privateBucket)) {
+            return null;
+        }
+
+        // The Commons only has a browser-reachable S3 host if plex:init was
+        // given one. Without it Teable still works server-side, but every
+        // attachment link points at cluster DNS and 404s in the browser — so
+        // say so plainly rather than shipping a half-working install.
+        // Re-read: ensureCommons() may have just created or extended the spec.
+        $liveSpec = $this->getCommonsSpec() ?? [];
+        $publicHost = $liveSpec['services'][$s3Service]['host'] ?? null;
+        $publicEndpoint = $publicHost !== null && $publicHost !== ''
+            ? 'https://'.$publicHost
+            : $internalEndpoint;
+
+        if (! $publicHost) {
+            $this->laraKubeWarn(
+                "The Commons '{$s3Service}' has no public host, so Teable's attachment links will not "
+                .'resolve from a browser. Set one with `larakube plex:init --s3-host=files.example.com`.',
             );
-        });
+        }
 
-        $manifest = view('k8s.sheet.shared', [
-            'host' => $host,
-            'dbPassword' => $dbPassword,
-            'plexNamespace' => $this->plexNamespace(),
-            'noPlex' => $noPlex,
-            'vpnOnly' => $vpnOnly,
-            'isLocal' => $env === 'local',
-        ])->render();
-
-        $tmp = sys_get_temp_dir().'/larakube-sheet.yaml';
-        file_put_contents($tmp, $manifest);
-
-        $this->withSpin('Applying Sheet (NocoDB) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
-        @unlink($tmp);
-
-        $this->withSpin('Waiting for Sheet (NocoDB)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/sheet-nocodb -n {$ns} --timeout=120s",
-            130,
-        ));
-
-        $this->laraKubeNewLine();
-        $this->laraKubeInfo('✅ Sheet (NocoDB) stack is live.');
-        $this->newLine();
-        $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
-        $this->newLine();
-
-        return 0;
+        return [
+            'access' => $creds['access'],
+            'secret' => $creds['secret'],
+            'publicEndpoint' => $publicEndpoint,
+            'internalEndpoint' => $internalEndpoint,
+            'publicBucket' => $publicBucket,
+            'privateBucket' => $privateBucket,
+        ];
     }
 
     protected function resolveSheetHost(string $env): string

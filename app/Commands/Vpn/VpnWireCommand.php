@@ -7,6 +7,7 @@ use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
 
@@ -68,6 +69,7 @@ class VpnWireCommand extends Command
             'environment' => $env,
             '--vpn-only' => true,
             '--no-interaction' => true,
+            '--proxied' => $this->toolIngressIsProxied($kubectl, $tool) ? '1' : null,
         ]));
 
         if ($reapplied !== 0) {
@@ -90,6 +92,7 @@ class VpnWireCommand extends Command
         $reapplied = $this->call("{$tool->value}:init", array_filter([
             'environment' => $env,
             '--no-interaction' => true,
+            '--proxied' => $this->toolIngressIsProxied($kubectl, $tool) ? '1' : null,
         ]));
 
         if ($reapplied !== 0) {
@@ -112,6 +115,15 @@ class VpnWireCommand extends Command
         $this->laraKubeInfo("✅ {$tool->getLabel()} is reachable from anywhere again (VPN-only lifted).");
 
         return 0;
+    }
+
+    /** Preserve the Cloudflare proxy mode when re-applying a tool's Ingress. */
+    protected function toolIngressIsProxied(string $kubectl, ClusterTool $tool): bool
+    {
+        return str_contains(Process::run(
+            "{$kubectl} get ingress {$tool->value} -n {$tool->namespace()} "
+            ."-o jsonpath='{.metadata.annotations}' --ignore-not-found",
+        )->output(), 'cloudflare-proxied');
     }
 
     protected function resolveTool(): ?ClusterTool

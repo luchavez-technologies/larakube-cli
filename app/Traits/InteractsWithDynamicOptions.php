@@ -14,7 +14,7 @@ use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PackageManager;
 use App\Enums\PhpVersion;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 use Illuminate\Support\Arr;
@@ -39,7 +39,7 @@ trait InteractsWithDynamicOptions
             ...FrontendStack::getCommandOptionArrays(),
             ...PackageManager::getCommandOptionArrays(),
             ...StorageDriver::getCommandOptionArrays(),
-            ...ScoutDriver::getCommandOptionArrays(),
+            ...SearchDriver::getCommandOptionArrays(),
             ...DeploymentStrategy::getCommandOptionArrays(),
         ];
 
@@ -173,7 +173,7 @@ trait InteractsWithDynamicOptions
         }
 
         // Scout Drivers
-        foreach (ScoutDriver::cases() as $case) {
+        foreach (SearchDriver::cases() as $case) {
             if ($case instanceof HasHiddenComponents && $case->isHidden($config)) {
                 continue;
             }

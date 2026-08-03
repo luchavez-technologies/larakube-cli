@@ -63,6 +63,66 @@ test('sso:remove aborts when the namespace delete fails', function () {
         ->expectsOutputToContain('failed to remove');
 });
 
+test('sso:init registers zitadel as a static role when the OpenBao DB engine is mounted', function () {
+    Illuminate\Support\Facades\Http::fake([
+        'localhost:*' => Illuminate\Support\Facades\Http::response([], 204),
+    ]);
+
+    Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => [
+                'postgres' => ['enabled' => true],
+                'redis' => ['enabled' => true],
+            ],
+        ]),
+        '*get secret sso-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-bootstrap*' => base64_encode('s.test-root-token'),
+        '*port-forward*' => Process::result(output: ''),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+    ]);
+
+    $this->artisan('sso:init local --admin-email=admin@example.com')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Applying Zitadel manifests...')
+        ->expectsOutputToContain('Zitadel is live.');
+});
+
+test('sso:init falls back to KV push when the OpenBao DB engine is not mounted', function () {
+    Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => [
+                'postgres' => ['enabled' => true],
+                'redis' => ['enabled' => true],
+            ],
+        ]),
+        '*get secret sso-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-bootstrap*' => base64_encode('s.test-root-token'),
+        '*port-forward*' => Process::result(output: ''),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+    ]);
+
+    Illuminate\Support\Facades\Http::fake([
+        'localhost:*' => Illuminate\Support\Facades\Http::response([
+            'data' => [
+                'secret/' => ['type' => 'kv'],
+            ],
+        ]),
+    ]);
+
+    $this->artisan('sso:init local --admin-email=admin@example.com')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Applying Zitadel manifests...')
+        ->expectsOutputToContain('Zitadel is live.');
+});
+
 test('generated Zitadel admin password always satisfies the default complexity policy', function () {
     $cmd = app(App\Commands\Sso\SsoInitCommand::class);
 

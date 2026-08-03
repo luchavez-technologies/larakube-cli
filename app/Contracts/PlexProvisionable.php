@@ -5,7 +5,7 @@ namespace App\Contracts;
 /**
  * A backing-service driver that can (or one day will) be offered as a shared
  * "Commons" service in the Plex tier. The plex commands enumerate every driver
- * across DatabaseDriver/CacheDriver/ScoutDriver/StorageDriver and ask the enum
+ * across DatabaseDriver/CacheDriver/SearchDriver/StorageDriver and ask the enum
  * itself — so adding a new Commons service is "implement this contract", not
  * another hardcoded 'postgres'/'redis' string in the plex code.
  */

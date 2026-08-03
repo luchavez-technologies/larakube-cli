@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: documenso
-          image: documenso/documenso:latest
+          image: documenso/documenso:v2.16.0
           ports:
             - containerPort: 3000
               name: http
@@ -35,13 +35,43 @@ spec:
                 secretKeyRef:
                   name: sign-documenso-secrets
                   key: nextauth-secret
+            - name: NEXT_PRIVATE_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sign-documenso-secrets
+                  key: encryption-key
+            - name: NEXT_PRIVATE_ENCRYPTION_SECONDARY_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sign-documenso-secrets
+                  key: encryption-secondary-key
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sign-documenso-secrets
                   key: db-password
-            - name: DATABASE_URL
+            - name: NEXT_PRIVATE_DATABASE_URL
               value: "postgres://sign_documenso:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/sign_documenso"
+            # Prisma Migrate connects via directUrl to bypass a connection pooler.
+            # We talk straight to Commons Postgres (no pooler), so it's identical.
+            - name: NEXT_PRIVATE_DIRECT_DATABASE_URL
+              value: "postgres://sign_documenso:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/sign_documenso"
+            # Store signed PDFs on the Commons SeaweedFS (S3), not the default
+            # `database` transport. FORCE_PATH_STYLE is required for non-AWS S3.
+            - name: NEXT_PUBLIC_UPLOAD_TRANSPORT
+              value: "s3"
+            - name: NEXT_PRIVATE_UPLOAD_ENDPOINT
+              value: "{{ $s3Endpoint }}"
+            - name: NEXT_PRIVATE_UPLOAD_FORCE_PATH_STYLE
+              value: "true"
+            - name: NEXT_PRIVATE_UPLOAD_REGION
+              value: "us-east-1"
+            - name: NEXT_PRIVATE_UPLOAD_BUCKET
+              value: "{{ $s3Bucket }}"
+            - name: NEXT_PRIVATE_UPLOAD_ACCESS_KEY_ID
+              value: "{{ $s3AccessKey }}"
+            - name: NEXT_PRIVATE_UPLOAD_SECRET_ACCESS_KEY
+              value: "{{ $s3SecretKey }}"
             - name: NEXT_PRIVATE_SMTP_TRANSPORT
               valueFrom:
                 secretKeyRef:
@@ -90,11 +120,11 @@ spec:
                   name: sign-documenso-oidc
                   key: NEXT_PUBLIC_DISABLE_OIDC_SIGNIN
                   optional: true
-            - name: NEXT_PRIVATE_OIDC_ALLOW_SIGNUP
+            - name: NEXT_PUBLIC_DISABLE_OIDC_SIGNUP
               valueFrom:
                 secretKeyRef:
                   name: sign-documenso-oidc
-                  key: NEXT_PRIVATE_OIDC_ALLOW_SIGNUP
+                  key: NEXT_PUBLIC_DISABLE_OIDC_SIGNUP
                   optional: true
             - name: NEXT_PRIVATE_OIDC_CLIENT_ID
               valueFrom:
@@ -114,21 +144,32 @@ spec:
                   name: sign-documenso-oidc
                   key: NEXT_PRIVATE_OIDC_WELL_KNOWN
                   optional: true
-          readinessProbe:
+          # Documenso verifies 163 migrations + runs service-account migrations +
+          # a license check before it binds :3000 (~60-90s). A startupProbe holds
+          # liveness/readiness off until it's actually up, so the slow boot can't
+          # be SIGKILLed mid-flight (the CrashLoop cause). failureThreshold 30 x
+          # 10s = up to 5 min of startup runway.
+          startupProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: 3000
-            initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 6
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: 3000
-            initialDelaySeconds: 30
             periodSeconds: 15
             timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             requests:
               memory: 256Mi

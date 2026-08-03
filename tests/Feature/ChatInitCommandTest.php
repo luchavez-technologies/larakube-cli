@@ -2,14 +2,12 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('chat:init deploys mattermost using plex commons seaweedfs by default', function () {
+test('chat:init deploys matrix using plex commons postgres by default', function () {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
             'services' => [
                 'postgres' => ['enabled' => true],
-                'redis' => ['enabled' => true],
-                'seaweedfs' => ['enabled' => true],
             ],
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
@@ -20,14 +18,13 @@ test('chat:init deploys mattermost using plex commons seaweedfs by default', fun
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('chat:init local')
+    $this->artisan('chat:init local --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Creating object-storage bucket')
-        ->expectsOutputToContain('Applying Mattermost manifests...')
-        ->expectsOutputToContain('Mattermost is live.');
+        ->expectsOutputToContain('Applying Matrix (Synapse + Element) manifests...')
+        ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
 });
 
-test('chat:init deploys standalone mattermost when --no-plex is passed', function () {
+test('chat:init deploys standalone matrix when --no-plex is passed', function () {
     Process::fake([
         '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -35,11 +32,10 @@ test('chat:init deploys standalone mattermost when --no-plex is passed', functio
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('chat:init local --no-plex')
+    $this->artisan('chat:init local --no-plex --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Applying Mattermost manifests...')
-        ->expectsOutputToContain('Mattermost is live.')
-        ->doesntExpectOutputToContain('Creating object-storage bucket');
+        ->expectsOutputToContain('Applying Matrix (Synapse + Element) manifests...')
+        ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
 });
 
 test('chat:init --vpn-only creates the Traefik Middleware before applying the manifests', function () {
@@ -50,10 +46,10 @@ test('chat:init --vpn-only creates the Traefik Middleware before applying the ma
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('chat:init local --no-plex --vpn-only')
+    $this->artisan('chat:init local --no-plex --vpn-only --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Ensuring VPN-only Middleware for Team Chat (Mattermost)...')
-        ->expectsOutputToContain('Mattermost is live.');
+        ->expectsOutputToContain('Ensuring VPN-only Middleware for Team Chat (Matrix)...')
+        ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
 });
 
 test('chat:init --vpn-only aborts when the Middleware apply fails', function () {
@@ -63,27 +59,27 @@ test('chat:init --vpn-only aborts when the Middleware apply fails', function () 
         '*apply -f *' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('chat:init local --no-plex --vpn-only')
+    $this->artisan('chat:init local --no-plex --vpn-only --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('Failed to create the VPN-only Middleware');
 });
 
-test('chat:remove removes mattermost stack and deletes resources', function () {
+test('chat:remove removes matrix stack and deletes resources', function () {
     Process::fake([
-        '*get deployment chat-mattermost-db*' => Process::result(output: '', exitCode: 1),
+        '*get deployment chat-synapse-db*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
     $this->artisan('chat:remove local --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Removing Mattermost resources...')
+        ->expectsOutputToContain('Removing Matrix (Synapse + Element) resources...')
         ->expectsOutputToContain('removed from larakube-shared');
 });
 
 test('chat:remove aborts when a delete step fails', function () {
     Process::fake([
-        '*get deployment chat-mattermost-db*' => Process::result(output: 'chat-mattermost-db   1/1   1   1   1d'),
+        '*get deployment chat-synapse-db*' => Process::result(output: 'chat-synapse-db   1/1   1   1   1d'),
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);
 

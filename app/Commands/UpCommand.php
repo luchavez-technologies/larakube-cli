@@ -6,7 +6,7 @@ use App\Contracts\HasReloadCommand;
 use App\Data\ConfigData;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use App\Traits\CollectsReminders;
 use App\Traits\DeploysMonitoringExporters;
@@ -494,7 +494,7 @@ class UpCommand extends Command
                 // missing PV just yields an empty jsonpath below, a no-op.
                 foreach ($config->getComponents() as $component) {
                     if (! ($component instanceof DatabaseDriver || $component instanceof CacheDriver
-                        || $component instanceof ScoutDriver || $component instanceof StorageDriver)) {
+                        || $component instanceof SearchDriver || $component instanceof StorageDriver)) {
                         continue;
                     }
 

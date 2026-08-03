@@ -6,7 +6,7 @@
  * appear in the manifest.
  */
 
-use App\Enums\ScoutDriver;
+use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use App\Traits\InteractsWithPlex;
 
@@ -48,7 +48,7 @@ test('enabling Meilisearch adds it to the manifest', function () {
     $yaml = plexManifest($spec);
 
     expect($yaml)
-        ->toContain('image: '.ScoutDriver::MEILISEARCH->getDockerImage())  // in lockstep with the enum, not a stale literal
+        ->toContain('image: '.SearchDriver::MEILISEARCH->getDockerImage())  // in lockstep with the enum, not a stale literal
         ->toContain('claimName: meilisearch-data');
 });
 

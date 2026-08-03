@@ -241,16 +241,18 @@ trait InteractsWithZitadelApi
     }
 
     /**
-     * Register a confidential OIDC web-app client for a tool under the given
-     * project — the counterpart to zitadelDeleteOidcApp(). Returns the new
-     * app's {appId, clientId, clientSecret}, or null on failure. authMethodType
-     * BASIC + a single authorization-code redirect URI matches every tool
-     * sso:wire targets (Grafana, Vaultwarden) — both are confidential
-     * server-side clients, not SPAs.
+     * Register an OIDC web-app client for a tool under the given project — the
+     * counterpart to zitadelDeleteOidcApp(). Returns the new app's
+     * {appId, clientId, clientSecret}, or null on failure. Defaults to a
+     * confidential client (authMethodType BASIC) matching every server-side
+     * tool sso:wire targets (Grafana, Vaultwarden). Pass $publicClient=true
+     * for browser SPA tools (oCIS web): those exchange tokens in-page via PKCE
+     * and cannot hold a client secret, so the app must be registered with
+     * authMethodType NONE and no clientSecret is returned.
      *
      * @return array{appId: string, clientId: string, clientSecret: string}|null
      */
-    protected function zitadelCreateOidcApp(string $host, string $pat, string $projectId, string $name, array|string $redirectUri): ?array
+    protected function zitadelCreateOidcApp(string $host, string $pat, string $projectId, string $name, array|string $redirectUri, bool $publicClient = false, array $postLogoutRedirectUris = []): ?array
     {
         // 1. Delete existing app by name if present (idempotent overwrite)
         $search = Http::withToken($pat)->timeout(15)->post(
@@ -269,17 +271,30 @@ trait InteractsWithZitadelApi
 
         // 2. Create OIDC app with full redirect URIs
         $redirectUris = array_values(array_unique((array) $redirectUri));
+        $postLogoutRedirectUris = array_values(array_unique($postLogoutRedirectUris));
+        $body = [
+            'name' => $name,
+            'redirectUris' => $redirectUris,
+            'responseTypes' => ['OIDC_RESPONSE_TYPE_CODE'],
+            'grantTypes' => ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE', 'OIDC_GRANT_TYPE_REFRESH_TOKEN'],
+            'appType' => 'OIDC_APP_TYPE_WEB',
+            'authMethodType' => $publicClient ? 'OIDC_AUTH_METHOD_TYPE_NONE' : 'OIDC_AUTH_METHOD_TYPE_BASIC',
+            'accessTokenType' => 'OIDC_TOKEN_TYPE_BEARER',
+            // Assert userinfo (email, name, …) INTO the ID token. Zitadel
+            // otherwise serves those claims only from the userinfo endpoint,
+            // but ID-token-reading clients (Documenso/NextAuth) then fail
+            // with "Missing email". Harmless for userinfo-reading clients.
+            'idTokenUserinfoAssertion' => true,
+        ];
+        if ($postLogoutRedirectUris !== []) {
+            // SPAs that use RP-initiated logout (oCIS web) send their own
+            // origin root to end_session; Zitadel 400s it ("post_logout_redirect_uri
+            // invalid") unless pre-registered here — the live logout bug.
+            $body['postLogoutRedirectUris'] = $postLogoutRedirectUris;
+        }
         $response = Http::withToken($pat)->timeout(15)->post(
             "https://{$host}/management/v1/projects/{$projectId}/apps/oidc",
-            [
-                'name' => $name,
-                'redirectUris' => $redirectUris,
-                'responseTypes' => ['OIDC_RESPONSE_TYPE_CODE'],
-                'grantTypes' => ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE', 'OIDC_GRANT_TYPE_REFRESH_TOKEN'],
-                'appType' => 'OIDC_APP_TYPE_WEB',
-                'authMethodType' => 'OIDC_AUTH_METHOD_TYPE_BASIC',
-                'accessTokenType' => 'OIDC_TOKEN_TYPE_BEARER',
-            ],
+            $body,
         );
 
         if ($response->failed()) {
@@ -288,7 +303,7 @@ trait InteractsWithZitadelApi
 
         $appId = $response->json('appId');
         $clientId = $response->json('clientId');
-        $clientSecret = $response->json('clientSecret');
+        $clientSecret = $response->json('clientSecret') ?? ($publicClient ? '' : null);
 
         if ($appId === null || $clientId === null || $clientSecret === null) {
             return null;
@@ -303,6 +318,47 @@ trait InteractsWithZitadelApi
         return Http::withToken($pat)->timeout(15)
             ->delete("https://{$host}/management/v1/projects/{$projectId}/apps/{$appId}")
             ->successful();
+    }
+
+    /**
+     * Turn on projectRoleAssertion (so granted roles are asserted into the
+     * larakube_roles claim by ensureRbacAction()'s Action) AND
+     * projectRoleCheck (deny login outright for any user with zero roles on
+     * the project) on the RBAC project.
+     *
+     * projectRoleCheck used to be left off deliberately — the worry was
+     * locking out users mid-rollout before grants existed. That worry
+     * didn't survive scrutiny: OpenBao keeps its root-token auth and
+     * Grafana keeps local password login, both entirely outside Zitadel,
+     * and `sso:grant` itself authenticates as the machine PAT rather than
+     * an OIDC end-user login — so nothing Zitadel-side can ever actually
+     * lock an operator out. What flipping it late DOES cost is a window
+     * where zero-role users can reach the app's own gate for no reason
+     * (bound_claims/role_attribute_path denies them anyway, just later and
+     * with a less clear error) — deny-by-default from the moment a tool is
+     * wired is strictly better. GETs current settings first and only
+     * changes these two — Zitadel's UpdateProject replaces the whole
+     * settings object, so blindly resending hardcoded values would
+     * silently clobber hasProjectCheck if an operator had set it manually.
+     */
+    protected function zitadelEnsureRbacProjectSettings(string $host, string $pat, string $projectId): bool
+    {
+        $get = Http::withToken($pat)->timeout(15)->get("https://{$host}/management/v1/projects/{$projectId}");
+        if ($get->failed()) {
+            return false;
+        }
+
+        $project = $get->json('project', []);
+        if (($project['projectRoleAssertion'] ?? false) === true && ($project['projectRoleCheck'] ?? false) === true) {
+            return true;
+        }
+
+        return Http::withToken($pat)->timeout(15)->put("https://{$host}/management/v1/projects/{$projectId}", [
+            'name' => $project['name'],
+            'projectRoleAssertion' => true,
+            'projectRoleCheck' => true,
+            'hasProjectCheck' => $project['hasProjectCheck'] ?? false,
+        ])->successful();
     }
 
     /**
@@ -367,6 +423,91 @@ trait InteractsWithZitadelApi
             "https://{$host}/management/v1/projects/{$projectId}/roles",
             ['roleKey' => $roleKey, 'displayName' => $displayName],
         )->successful();
+    }
+
+    /**
+     * Ensure the org-wide Action that flattens a user's Zitadel project role
+     * grants into a single top-level `larakube_roles` claim (array of role
+     * keys), and that it's attached to the Complement Token flow's two
+     * triggers. bound_claims (OpenBao) and role_attribute_path (Grafana) can
+     * only match scalar/list-of-string claims — Zitadel's own roles claim
+     * (urn:zitadel:iam:org:project:roles) is a nested object keyed by role,
+     * which neither can read. This Action is the flattening step that makes
+     * per-tool RBAC possible at all. Verified end-to-end against a live
+     * login on 2026-07-30 (larakube_roles: ["openbao-admin"] appeared in the
+     * id_token) — see plans/active/openbao-hardening.md.
+     *
+     * Fires for EVERY OIDC client in the org, not just RBAC-gated tools —
+     * Zitadel Actions/Flows have no project or app scope. Harmless for tools
+     * that don't read the claim, but it does mean this touches every
+     * existing tool's login, so the script must degrade to a no-op (not an
+     * error) for a user with zero grants.
+     */
+    protected function zitadelEnsureRbacAction(string $host, string $pat): bool
+    {
+        $name = 'flattenLaraKubeRoles';
+        $script = <<<'JS'
+        function flattenLaraKubeRoles(ctx, api) {
+          if (ctx.v1.user.grants == undefined || ctx.v1.user.grants.count == 0) return;
+          let roles = [];
+          ctx.v1.user.grants.grants.forEach(grant => {
+            grant.roles.forEach(role => {
+              roles.push(role);
+            });
+          });
+          api.v1.claims.setClaim("larakube_roles", roles);
+        }
+        JS;
+
+        // Zitadel's _search endpoints want a JSON OBJECT body even with no
+        // filters — a bare [] (which is what Http::post(..., []) sends,
+        // since PHP's json_encode([]) produces a JSON array, not {}) 400s
+        // with "proto: syntax error... unexpected token [". Confirmed live
+        // 2026-07-30: this exact bug had been silently breaking this call
+        // since it was written (search always failed, fell through to a
+        // create that then 409'd against the action created manually
+        // during this session's testing — masked entirely because
+        // ensureRbacGating() didn't check this method's return value).
+        $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/management/v1/actions/_search", ['queries' => []]);
+        $actionId = null;
+        if ($search->successful()) {
+            foreach ($search->json('result', []) as $action) {
+                if (($action['name'] ?? null) === $name) {
+                    $actionId = $action['id'];
+                    break;
+                }
+            }
+        }
+
+        if ($actionId === null) {
+            $create = Http::withToken($pat)->timeout(15)->post("https://{$host}/management/v1/actions", [
+                'name' => $name,
+                'script' => $script,
+                'timeout' => '10s',
+            ]);
+            if ($create->failed()) {
+                return false;
+            }
+            $actionId = $create->json('id');
+        }
+
+        // Complement Token flow (type 2), Pre Userinfo creation (trigger 4)
+        // and Pre access token creation (trigger 5) — undocumented in
+        // Zitadel's REST reference, confirmed live via the Management API
+        // (GET /management/v1/flows/2 returns Action.Flow.Type.CustomiseToken).
+        // A resend with the same actionIds 400s with "No Changes" — that's
+        // success, not a failure, so it's treated as such below.
+        foreach ([4, 5] as $trigger) {
+            $set = Http::withToken($pat)->timeout(15)->post(
+                "https://{$host}/management/v1/flows/2/trigger/{$trigger}",
+                ['actionIds' => [$actionId]],
+            );
+            if ($set->failed() && ! str_contains($set->body(), 'No Changes')) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

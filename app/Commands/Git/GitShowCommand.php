@@ -53,7 +53,7 @@ class GitShowCommand extends Command
         $ns = $this->gitNamespace();
 
         $adminPassword = trim(Process::run(
-            "{$kubectl} get secret gitea-admin -n {$ns} -o jsonpath='{.data.password}'",
+            "{$kubectl} get secret forgejo-admin -n {$ns} -o jsonpath='{.data.password}'",
         )->output());
         $adminPassword = $adminPassword !== '' ? (string) base64_decode($adminPassword) : '<unknown>';
 

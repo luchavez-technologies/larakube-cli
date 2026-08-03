@@ -8,6 +8,7 @@ use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithInsights;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
@@ -22,7 +23,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class InsightsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'insights:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -30,7 +31,7 @@ class InsightsInitCommand extends Command
         {--domain=   : Base domain OR full host for Insights (example.com → prefix.example.com)}
         {--no-plex   : Bypass Plex Commons and deploy a dedicated database}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}';
+        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the Metabase BI stack into larakube-shared';
 
@@ -103,6 +104,7 @@ class InsightsInitCommand extends Command
             'noPlex' => $noPlex,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
+            'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-insights.yaml';
