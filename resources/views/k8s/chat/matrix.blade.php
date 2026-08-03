@@ -120,19 +120,6 @@ stringData:
     turn_user_lifetime: 86400000
     turn_allow_guests: false
 @endif
-@if($s3Bucket ?? null)
-    media_storage_providers:
-      - module: s3_storage_provider.S3StorageProviderExtension
-        store_local: true
-        store_remote: true
-        store_synchronous: false
-        config:
-          bucket: "{{ $s3Bucket }}"
-          prefix: "media"
-          endpoint_url: "{{ $s3Endpoint }}"
-          access_key_id: "{{ $s3AccessKey }}"
-          secret_access_key: "{{ $s3SecretKey }}"
-@endif
 @if($smtp ?? null)
     email:
       enable_notifs: true

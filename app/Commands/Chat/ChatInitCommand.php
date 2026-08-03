@@ -63,7 +63,7 @@ class ChatInitCommand extends Command
         }
 
         if (! $noPlex) {
-            if (! $this->ensureCommons(['postgres', 'seaweedfs'])) {
+            if (! $this->ensureCommons(['postgres'])) {
                 return 1;
             }
         }
@@ -79,7 +79,6 @@ class ChatInitCommand extends Command
             if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
                 return 1;
             }
-            $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, 'chat-media');
         }
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
@@ -112,7 +111,7 @@ class ChatInitCommand extends Command
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
-            's3Endpoint' => $noPlex ? '' : "http://seaweedfs-s3.{$this->plexNamespace()}.svc.cluster.local:8333",
+            's3Endpoint' => $noPlex ? '' : "http://seaweedfs.{$this->plexNamespace()}.svc.cluster.local:8333",
             's3Bucket' => $noPlex ? '' : 'chat-media',
             's3AccessKey' => 'seaweedfs',
             's3SecretKey' => 'seaweedfs',
