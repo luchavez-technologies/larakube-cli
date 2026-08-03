@@ -104,7 +104,7 @@ When OpenBao is bootstrapped in `larakube-secrets`:
 
 1. **Static Database Roles**: LaraKube registers static database roles in OpenBao via `registerStaticRole($kubectl, $roleName, $dbEngine, $dbName)`. OpenBao takes ownership of the database password inside PostgreSQL/MySQL and rotates it automatically on a schedule or via `larakube plex:rotate`.
 2. **Zero-Downtime ESO Sync**: OpenBao writes the new password to `secret/data/{app}/{environment}/DB_PASSWORD`. ESO detects the change within 60s and updates `laravel-secrets` in `{app}-{environment}`. Reloader performs a rolling update, passing `/up` health checks before cutting over traffic.
-3. **Local Synchronization (`dotenv:pull`)**: Developers running `larakube dotenv:pull {environment}` fetch the latest active rotated password back into `.env.{environment}` for local development and recovery.
+3. **Local Synchronization (`secrets:pull`)**: Developers running `larakube secrets:pull {environment} --app=my-app` fetch the latest active rotated password back into `.env.{environment}` for local development and recovery.
 
 ---
 
@@ -112,54 +112,54 @@ When OpenBao is bootstrapped in `larakube-secrets`:
 
 Secrets are stored in OpenBao using an **App-First 3-level deterministic path structure**:
 
-```
-  OpenBao KV v2 Mount: secret/
-   └── data/
-       ├── my-laravel-app/            <-- App Scope (Top-Level)
-       │   ├── production/            <-- Environment Scope
-       │   │   ├── APP_KEY
-       │   │   ├── DB_PASSWORD (rotated via OpenBao static role)
-       │   │   └── AWS_SECRET_ACCESS_KEY
-       │   ├── staging/
-       │   │   ├── APP_KEY
-       │   │   └── DB_PASSWORD (sk_test_...)
-       │   └── local/
-       │       └── DB_PASSWORD
-       └── my-store-locator/
-           ├── production/
-           │   ├── APP_KEY
-           │   └── DB_PASSWORD
-           └── staging/
-               └── DB_PASSWORD
-```
-
 ### Deterministic Command Scoping:
-- **`larakube dotenv:push staging --app=my-laravel-app`**: Pushes `.env.staging` secret keys exclusively to `secret/data/my-laravel-app/staging`.
-- **`larakube dotenv:push production --app=my-store-locator`**: Pushes `.env.production` secret keys exclusively to `secret/data/my-store-locator/production`.
+- **`larakube secrets:push [environment] --app=my-laravel-app`**: Pushes `.env.{environment}` secret keys exclusively to `secret/data/my-laravel-app/{environment}`.
+- **`larakube secrets:push production --app=my-store-locator`**: Pushes `.env.production` secret keys exclusively to `secret/data/my-store-locator/production`.
 - **Namespace Isolation**: Each environment (`my-laravel-app-staging`, `my-laravel-app-production`) deploys an `ExternalSecret` custom resource bound specifically to its path (`secret/data/{app}/{environment}`). Cross-tenant or cross-environment secret leaks are cryptographically impossible.
 
-The local env file is the **source of truth**; the cluster and any secrets
-backend are downstream copies. This is a deliberate choice, not an interim one —
-it keeps the mental model the same whether or not a backend exists.
+### 🛡️ App-Scoped OpenBao UI RBAC Enforcement (`secrets:grant` & `secrets:revoke`)
 
-It also decides the command naming. **`dotenv:*`, not `secrets:*`** — most
-installs will never run OpenBao, and a `secrets:` namespace implies a vault the
-user doesn't have. `dotenv:` names the thing they actually edit.
+Thanks to the App-First hierarchy (`secret/data/{app}/{environment}/`), LaraKube enforces strict per-application developer access in the OpenBao Web UI (`secrets.{domain}`):
 
-| Command                   | Does                                                        |
-| ------------------------- | ----------------------------------------------------------- |
-| `dotenv:push {env}`       | `.env.{env}` → cluster Secret (and backend, when present)   |
-| `dotenv:pull {env}`       | cluster/backend → `.env.{env}`, for recovery and onboarding |
-| `dotenv:diff {env}`       | drift report, read-only, exits non-zero when they disagree  |
+```bash
+# Grant a developer access exclusively to my-laravel-app in OpenBao UI on target environment
+larakube secrets:grant [environment] --email=dev@example.com --app=my-laravel-app
 
-`dotenv:diff` is the one that earns its keep: once the file is authoritative,
-the failure mode is silent divergence — someone edits a Secret with `kubectl`,
-or a backend rotates a value, and the file no longer describes reality. It must
-compare **keys and value-equality**, never printing values — only
-`same / differs / missing here / missing there` per key. It's also the natural
-pre-flight check for `cloud:deploy`.
+# Revoke a developer's access to my-laravel-app
+larakube secrets:revoke [environment] --email=dev@example.com --app=my-laravel-app
+```
 
-## 🔧 Phase 1 — `larakube dotenv:push {env}`
+**OpenBao Policy Generated (`policy-app-my-laravel-app`):**
+```hcl
+path "secret/data/my-laravel-app/*" {
+  capabilities = ["create", "read", "update", "patch", "list"]
+}
+path "secret/metadata/my-laravel-app/*" {
+  capabilities = ["read", "list"]
+}
+```
+
+When `dev@example.com` logs into OpenBao UI via Zitadel SSO, OpenBao **restricts their view exclusively to `my-laravel-app/`**. Other applications' production secrets remain completely hidden!
+
+---
+
+## 📐 Standard Command Signatures (`{noun}:{verb} <environment?> --flag1=value1`)
+
+The local env file is the **source of truth**; the cluster and any secrets backend are downstream copies. All secret operations follow LaraKube's mandatory `{noun}:{verb} <environment?> --flag1=value1` signature convention:
+
+| Command Signature | Description |
+| :--- | :--- |
+| `larakube secrets:push [environment] --app=name` | `.env.{environment}` secret keys → cluster Secret (and OpenBao when present) |
+| `larakube secrets:pull [environment] --app=name` | cluster Secret/OpenBao → `.env.{environment}`, for onboarding & recovery |
+| `larakube secrets:diff [environment] --app=name` | Read-only drift report, exits non-zero (1) when file and cluster disagree |
+| `larakube secrets:grant [environment] --email=user --app=name` | Grants app-scoped OpenBao UI RBAC policy to a user |
+| `larakube secrets:revoke [environment] --email=user --app=name` | Revokes app-scoped OpenBao UI RBAC policy from a user |
+
+`secrets:diff` is the pre-flight check: once the file is authoritative, the failure mode is silent divergence — someone edits a Secret with `kubectl`, or a backend rotates a value, and the file no longer describes reality. It compares **keys and value-equality**, never printing plaintext values — only `same / differs / missing in file / missing in cluster` per key.
+
+---
+
+## 🔧 Phase 1 — `larakube secrets:push [environment]`
 
 Write `laravel-secrets` into the target namespace directly from the developer's
 machine, keyed **individually** rather than via `--from-env-file`, so a single
