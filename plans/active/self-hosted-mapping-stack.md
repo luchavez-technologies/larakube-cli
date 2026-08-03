@@ -32,7 +32,7 @@ ForwardAuth.
 | **Data Pipeline** | Kubernetes Job (one-shot) | Downloads PBF → osmium trim → builds all 3 formats |
 | **API Pattern** | Traefik IngressRoute + Middleware | Single URL `map.{domain}/api/v1/{tiles,geocode,route}/*` — reuses existing cluster Traefik, no extra gateway pod |
 | **Naming & Enum** | `ClusterTool::MAP` & `SharedClusterService::MAP` | Clean integration into LaraKube's companion tool framework, including `commonsBuckets() => ['larakube-map']` |
-| **SSO Decoupling** | Decoupled by default; wired via `sso:wire <env> --tool=map` | `map:init` runs standalone without Zitadel dependency; `sso:wire` attaches ForwardAuth on demand |
+| **SSO Decoupling** | Decoupled by default; wired via `sso:wire <env> --tool=map` | `map:init` runs standalone without Zitadel (matching `RecordInitCommand` / `ClusterTool::RECORD` precedence); `usesForwardAuth() => true` lets `sso:wire` attach Zitadel ForwardAuth on demand |
 | **CLI UX** | Multi-select checkboxes | Users pick exactly which layers they need |
 | **CORS** | Traefik CORS Middleware on `/api/v1/*` | Required for browser-based MapLibre tile fetching across subdomains |
 | **Local/Cloud** | Both OrbStack/k3s local AND cloud clusters | Same Blade templates, swap TLS config per environment |
