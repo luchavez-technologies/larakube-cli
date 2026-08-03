@@ -1,6 +1,6 @@
 # Plan: Matrix Voice & Video Calling Stack (Coturn TURN + LiveKit RTC)
 
-**Status:** Active Plan / Ready for Implementation
+**Status:** Active Plan / Grounded in Codebase (`matrix.blade.php`)
 **Created:** 2026-08-04
 **Target Version:** LaraKube CLI v1.2.0
 
@@ -8,48 +8,62 @@
 
 ## 🎯 Objective
 
-Upgrade `chat:init` (Matrix / Synapse + Cinny web client) to automatically include real-time **1-on-1 voice/video calling** and **multi-party group video calls** natively out-of-the-box in Cinny and Element clients.
+Upgrade `chat:init` (Matrix / Synapse `matrixdotorg/synapse:v1.120.0` + Cinny Web Client `ghcr.io/cinnyapp/cinny:v4.12.3`) to automatically support real-time **1-on-1 voice/video calling** and **multi-party group video calls** natively out-of-the-box.
 
-Without a TURN relay and WebRTC SFU, Matrix calls fail behind residential NATs, symmetric firewalls, and cellular networks. This plan integrates:
-1. **Coturn**: STUN/TURN media relay server for NAT/firewall traversal.
-2. **LiveKit**: Matrix 2.0 WebRTC SFU (Selective Forwarding Unit) for high-performance multi-party group calls.
+In LaraKube's codebase ([`matrix.blade.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/cli/resources/views/k8s/chat/matrix.blade.php)), Cinny and Synapse run on a **single shared domain** (`{{ $host }}` e.g. `chat.example.com` or `chat.dev.test`):
+- `/` → `chat-cinny` (Cinny SPA)
+- `/_matrix` & `/_synapse` → `chat-synapse` (Synapse Matrix server)
+- `/.well-known/matrix` → `chat-synapse` (Delegation endpoint)
+
+This single-domain architecture means **Cinny and Synapse share the exact same domain**, eliminating CORS errors entirely!
 
 ---
 
-## 🏛 Architecture & Media Flow
+## 🏛 Real-World Grounded Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                       LaraKube Shared Namespace (`larakube-shared`)         │
+│             LaraKube Shared Namespace (`larakube-shared`) — Single Domain   │
 │                                                                             │
-│  ┌────────────────────────┐      ┌────────────────────────┐                 │
-│  │   Cinny / Element Web  │      │     Synapse Matrix     │                 │
-│  │     `chat.{domain}`    ├─────►│    `matrix.{domain}`   │                 │
-│  └───────────┬────────────┘      └───────────┬────────────┘                 │
-│              │                               │                              │
-│              │ WebRTC Signaling              │ TURN Shared Secret           │
-│              ▼                               ▼                              │
-│  ┌────────────────────────┐      ┌────────────────────────┐                 │
-│  │      LiveKit SFU       │      │  Coturn TURN/STUN Pod  │                 │
-│  │     `rtc.{domain}`     │      │   `turn.{domain}:3478` │                 │
-│  └───────────┬────────────┘      └───────────┬────────────┘                 │
-│              │ UDP 7882                      │ UDP 3478 / 49152-49200       │
-│              ▼                               ▼                              │
-│  ┌────────────────────────────────────────────────────────┐                 │
-│  │              WebRTC Media Stream (Voice/Video)         │                 │
-│  └────────────────────────────────────────────────────────┘                 │
+│  Traefik Ingress: `chat.example.com`                                        │
+│  ├── /_matrix & /_synapse ─────────────────► Synapse (matrixdotorg:v1.120.0)│
+│  └── / ───────────────────────────────────► Cinny SPA (cinny:v4.12.3)       │
+│                                                   │                         │
+│                                                   ▼                         │
+│  1-on-1 WebRTC Calls                             1-on-1 STUN/TURN          │
+│  Cinny queries `/_matrix/client/v3/turnServer`   Credentials via HMAC      │
+│                    │                               │                        │
+│                    └───────────────┬───────────────┘                        │
+│                                    ▼                                        │
+│                     Coturn TURN Pod (`chat-coturn`)                         │
+│                     UDP 3478 / 49152-49200                                  │
+│                                    │                                        │
+│  Group Video Calls                 ▼                                        │
+│  LiveKit SFU (`chat-livekit`) ──► Matrix 2.0 MSC3401 Call Widget            │
+│  UDP 7882 / TCP 7881                                                        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
+## 🔍 Codebase Grounding Audit (`matrix.blade.php`)
+
+1. **Cinny & Synapse Domain Single-Host Alignment**:
+   Because `matrix.blade.php` routes `/_matrix` and `/` under the same Traefik Ingress rule (`{{ $host }}`), Cinny calls `https://{{ $host }}/_matrix/client/v3/turnServer` natively without cross-origin CORS headers needed.
+2. **TURN Credentials API (`homeserver.yaml`)**:
+   Synapse natively implements Matrix Client-Server API `GET /_matrix/client/v3/turnServer`. When `turn_shared_secret` is configured in `homeserver.yaml`, Synapse generates short-lived HMAC TURN credentials dynamically for Cinny users whenever a 1-on-1 call starts.
+3. **Database Precedence (Plex Commons Postgres)**:
+   Synapse uses Plex Commons PostgreSQL database (`chat_matrix` tenant) or bundled `chat-synapse-db` (`postgres:15-alpine` when `--no-plex` is passed). Coturn requires no database (stateless HMAC authentication via shared secret).
+
+---
+
 ## 🌐 Topology & Multi-Node Parity
 
-| Topology Tier | UDP Traffic Routing | IP Resolution (`turn_uris`) |
+| Topology Tier | UDP Traffic Routing | STUN/TURN Listener |
 |---|---|---|
-| **Single-Node K3s VPS ($12/mo)** | Direct `hostPort: 3478` (Coturn) & `hostPort: 7882` (LiveKit) | Auto-detected Node Public IPv4 (`curl -s api.ipify.org`) |
-| **Multi-Node Cluster (DOKS / EKS / AKS)** | Traefik `IngressRouteUDP` CRD / `LoadBalancer` Service | Auto-detected LoadBalancer External IP (`kubectl get svc traefik`) |
-| **Local Dev (`.dev.test`)** | Local `hostPort` / Docker bridge | Local host IP (`127.0.0.1`) |
+| **Single-Node K3s VPS ($12/mo)** | Direct `hostPort: 3478` (Coturn) & `hostPort: 7882` (LiveKit) | Binds to single VPS node IP |
+| **Multi-Node Cluster (DOKS / EKS / AKS)** | Traefik `IngressRouteUDP` CRDs / `LoadBalancer` Service | Node-agnostic routing (survives pod reschedules across nodes) |
+| **Local Dev (`.dev.test`)** | Local `hostPort` / Docker bridge | `127.0.0.1` |
 
 > [!IMPORTANT]
 > **Multi-Node Resilience**: On multi-node Kubernetes clusters, static `hostPort` bindings fail when pods move across worker nodes. LaraKube automatically detects `SharedStorageGuard::isMultiNode()` and deploys Traefik `IngressRouteUDP` CRDs for node-agnostic UDP packet routing.
@@ -58,7 +72,7 @@ Without a TURN relay and WebRTC SFU, Matrix calls fail behind residential NATs, 
 WebRTC TURN servers must announce their public IP address in ICE candidates so clients outside the cluster can traverse NATs.
 1. `InteractsWithClusterContext::resolveExternalIp()` automatically queries:
    - Multi-node: Traefik LoadBalancer External IP (`{.status.loadBalancer.ingress[0].ip}`)
-   - Single-node VPS: Cluster Node External IP
+   - Single-node VPS: Cluster Node External IP (`159.89.205.239`)
    - Local: `127.0.0.1`
 2. Optional override via `chat:init --public-ip=x.x.x.x`.
 
