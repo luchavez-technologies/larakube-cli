@@ -121,22 +121,33 @@ Secrets are stored in OpenBao using an **App-First 3-level deterministic path st
 
 ### 🛡️ App & Environment-Scoped OpenBao UI RBAC (`secrets:grant` & `secrets:revoke`)
 
-LaraKube enforces strict per-application and per-environment access policies in the OpenBao Web UI (`secrets.{domain}`). Using `--only` and `--except`, admins can grant access exclusively to non-production environments (e.g. `staging`):
+LaraKube enforces strict per-application and per-environment access policies in the OpenBao Web UI (`secrets.{domain}`). Using `--only`, `--except`, and `--role`, admins control exactly which environments a developer can access, and whether they have Read-Write or Read-Only capabilities:
 
 ```bash
-# Grant access ONLY to staging secrets for my-laravel-app (junior developers)
+# Grant Read-Write access (create, read, update, patch) ONLY to staging secrets (default role=developer)
 larakube secrets:grant [environment?] --email=junior@example.com --only=staging
 
-# Grant access to all environments EXCEPT production
+# Grant Read-Only access (read, list) to staging secrets (contractor/auditor)
+larakube secrets:grant [environment?] --email=auditor@example.com --only=staging --role=viewer
+
+# Grant full Read-Write access across all environments EXCEPT production
 larakube secrets:grant [environment?] --email=dev@example.com --except=production
 
-# Grant full access across all environments for senior lead
-larakube secrets:grant [environment?] --email=lead@example.com
+# Grant full Admin access across all environments
+larakube secrets:grant [environment?] --email=lead@example.com --role=admin
 ```
 
-**OpenBao Policy Generated (`policy-app-my-laravel-app-staging`):**
+#### OpenBao Policy Matrix by Role:
+
+| Role (`--role=`) | Path Scope | Granted HCL Capabilities | What the User Can Do |
+| :--- | :--- | :--- | :--- |
+| **`developer`** (default) | `secret/data/{app}/{env}/*` | `["create", "read", "update", "patch", "list"]` | **Full Read-Write**: Can view, create, update, and patch keys in their allowed environments (e.g. `staging`). Cannot delete keys or access unauthorized envs (e.g. `production`). |
+| **`viewer`** | `secret/data/{app}/{env}/*` | `["read", "list"]` | **Read-Only**: Can view and pull secrets (`secrets:pull`) into local `.env`, but cannot push, modify, or create keys in OpenBao. |
+| **`admin`** | `secret/data/{app}/*` | `["create", "read", "update", "patch", "delete", "list"]` | **Full Admin**: Can manage all environments, create/delete keys, and rotate static credentials. |
+
+**Generated HCL Policy for `--role=developer --only=staging` (`policy-app-my-laravel-app-staging`):**
 ```hcl
-# Scoped strictly to staging path when --only=staging is specified
+# Scoped strictly to staging path with full Read-Write permissions
 path "secret/data/my-laravel-app/staging/*" {
   capabilities = ["create", "read", "update", "patch", "list"]
 }
@@ -145,7 +156,7 @@ path "secret/metadata/my-laravel-app/staging/*" {
 }
 ```
 
-When `junior@example.com` logs into OpenBao UI via Zitadel SSO, OpenBao **restricts their view exclusively to `my-laravel-app/staging/`**. Production credentials (`my-laravel-app/production/`) remain completely hidden!
+When `junior@example.com` logs into OpenBao UI via Zitadel SSO, OpenBao **grants them full Read-Write access to `my-laravel-app/staging/`** so they can push, edit, and patch staging secrets freely, while `my-laravel-app/production/` remains completely hidden!
 
 ---
 
