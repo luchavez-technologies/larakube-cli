@@ -773,6 +773,7 @@ enum ClusterTool: string
                     'SSO_ENABLED' => 'true',
                     'SSO_PKCE' => 'true',
                     'SSO_SCOPES' => 'email profile',
+                    'SSO_SIGNUPS_MATCH_EMAIL' => 'true',
                     // Zitadel includes extra audiences (project id, etc.) in the
                     // id_token beyond the client_id. Vaultwarden trusts only the
                     // client_id by default and rejects the rest ("not a trusted
