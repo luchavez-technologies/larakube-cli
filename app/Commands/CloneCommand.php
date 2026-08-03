@@ -150,7 +150,7 @@ class CloneCommand extends Command
                 if (! empty($plexServices)) {
                     $this->newLine();
                     $this->laraKubeWarn('This project uses shared Plex commons for: '.implode(', ', $plexServices).'.');
-                    $this->line('  <fg=gray>Run <fg=yellow>plex:join local</> to reconnect your tenant credentials (requires K3D to be running).</>');
+                    $this->line('  <fg=gray>Run <fg=yellow>plex:join local</> to reconnect your tenant credentials (requires your local cluster to be running).</>');
                     $this->newLine();
 
                     if (confirm('Join the local Plex commons now?', false)) {

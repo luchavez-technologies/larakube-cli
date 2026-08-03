@@ -61,20 +61,10 @@ trait ResolvesStandaloneEnvironment
         }
 
         $currentContext = $this->currentKubeContext();
-        $options = [];
-        $k3dRunning = $this->isK3dClusterRunning();
-
-        foreach ($contexts as $ctx) {
-            $label = $ctx;
-            if (str_contains(strtolower($ctx), 'k3d') && ! $k3dRunning) {
-                $label .= ' <fg=yellow>(stopped)</>';
-            }
-            $options[$ctx] = $label;
-        }
 
         $context = select(
             label: 'Which Kubernetes context would you like to target?',
-            options: $options,
+            options: array_combine($contexts, $contexts),
             default: in_array($currentContext, $contexts, true) ? $currentContext : null,
         );
 

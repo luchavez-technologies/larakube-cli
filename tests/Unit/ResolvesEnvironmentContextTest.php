@@ -98,8 +98,8 @@ test('availableKubeContexts is empty when kubectl has no contexts (or is not ins
 test('currentKubeContext trims the active context, empty string when there is none', function () {
     $kubectl = envContextKubectl();
 
-    Process::fake(["{$kubectl} config current-context" => "k3d-larakube\n"]);
-    expect(envContext()->currentContext())->toBe('k3d-larakube');
+    Process::fake(["{$kubectl} config current-context" => "k3s-larakube\n"]);
+    expect(envContext()->currentContext())->toBe('k3s-larakube');
 
     Process::fake(["{$kubectl} config current-context" => Process::result(output: '', exitCode: 1)]);
     expect(envContext()->currentContext())->toBe('');

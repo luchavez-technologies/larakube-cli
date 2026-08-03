@@ -10,32 +10,18 @@ trait InteractsWithDocker
     use InteractsWithProjectConfig, StreamsProcessOutput;
 
     /**
-     * Decide where a freshly built image must be sideloaded, from the active
-     * kube-context. Pure (no I/O) so the routing is unit-testable.
+     * Whether a freshly built image must be sideloaded into a local cluster's
+     * container runtime, decided from the active kube-context. Pure (no I/O)
+     * so the routing is unit-testable.
      *
-     * Returns ['engine' => 'k3d', 'cluster' => '<name>'] for a `k3d-<name>`
-     * context, ['engine' => 'k3s'] for the LOCAL native k3s context that
-     * cluster:setup creates, or null for remote/registry-backed clusters
-     * (including remote k3s, which is named "larakube-<ip>").
+     * True only for the LOCAL native k3s context that cluster:setup creates.
+     * False for remote/registry-backed clusters (including remote k3s, named
+     * "larakube-<ip>") and for clusters sharing the host Docker daemon
+     * (OrbStack, Docker Desktop), where the image is already visible.
      */
-    public function resolveSideloadTarget(string $context): ?array
+    public function resolveSideloadTarget(string $context): bool
     {
-        $cluster = $this->resolveK3dClusterName($context);
-
-        if ($cluster !== null) {
-            return ['engine' => 'k3d', 'cluster' => $cluster];
-        }
-
-        if (trim($context) === 'k3s-larakube') {
-            return ['engine' => 'k3s'];
-        }
-
-        // Docker Desktop shares the host Docker daemon — images are already visible.
-        if (trim($context) === 'docker-desktop') {
-            return null;
-        }
-
-        return null;
+        return trim($context) === 'k3s-larakube';
     }
 
     /**
@@ -97,26 +83,6 @@ trait InteractsWithDocker
         $this->buildTargetedImage("$appName:local", "$path/Dockerfile.php", $path, $uid, $gid);
     }
 
-    /**
-     * Resolve the k3d cluster name from a kube-context, or null if the context
-     * isn't a k3d cluster. k3d contexts are named `k3d-<cluster>`. Kept pure (no
-     * shell) so the detection that decides which cluster to sideload the image
-     * into is unit-testable — this is the logic that was previously hardcoded to
-     * "larakube" and silently skipped other clusters.
-     */
-    protected function resolveK3dClusterName(string $context): ?string
-    {
-        $context = trim($context);
-
-        if (! str_starts_with($context, 'k3d-')) {
-            return null;
-        }
-
-        $cluster = substr($context, strlen('k3d-'));
-
-        return $cluster !== '' ? $cluster : null;
-    }
-
     protected function buildTargetedImage(string $imageTag, string $dockerfile, string $path, int $uid, int $gid): void
     {
         if (! file_exists($dockerfile)) {
@@ -153,17 +119,12 @@ trait InteractsWithDocker
     protected function sideloadToActiveCluster(string $imageTag): void
     {
         $context = trim(Process::run('kubectl config current-context')->output());
-        $sideload = $this->resolveSideloadTarget($context);
 
-        if ($sideload === null) {
+        if (! $this->resolveSideloadTarget($context)) {
             return; // Remote/registry-backed cluster — the image is pulled, not sideloaded.
         }
 
-        if ($sideload['engine'] === 'k3d') {
-            $this->sideloadIntoK3d($imageTag, $sideload['cluster']);
-        } else { // k3s
-            $this->sideloadIntoK3s($imageTag);
-        }
+        $this->sideloadIntoK3s($imageTag);
     }
 
     /**
@@ -179,21 +140,9 @@ trait InteractsWithDocker
     protected function imageInActiveCluster(string $imageTag): ?bool
     {
         $context = trim(Process::run('kubectl config current-context')->output());
-        $sideload = $this->resolveSideloadTarget($context);
 
-        if ($sideload === null) {
+        if (! $this->resolveSideloadTarget($context)) {
             return true; // Nothing to sideload into.
-        }
-
-        if ($sideload['engine'] === 'k3d') {
-            // k3d nodes run in Docker; query the server node's containerd (no sudo).
-            $node = 'k3d-'.$sideload['cluster'].'-server-0';
-            if (trim(Process::run('docker inspect -f "{{.State.Running}}" '.escapeshellarg($node))->output()) !== 'true') {
-                return null; // Node isn't up — can't tell; don't force a re-import.
-            }
-            $images = Process::run('docker exec '.escapeshellarg($node).' crictl images')->output();
-
-            return $this->clusterImageListContains($images, $imageTag);
         }
 
         // Native k3s: containerd is root-owned, so checking needs sudo. Only look
@@ -205,40 +154,6 @@ trait InteractsWithDocker
         $images = Process::run('sudo -n k3s ctr -n k8s.io images ls -q')->output();
 
         return $this->clusterImageListContains($images, $imageTag);
-    }
-
-    /**
-     * Sideload a host-built image into a k3d cluster's nodes.
-     */
-    protected function sideloadIntoK3d(string $imageTag, string $cluster): void
-    {
-        // Confirm the cluster exists in k3d (also skips cleanly if k3d isn't installed).
-        if (trim(Process::run('k3d cluster list '.escapeshellarg($cluster).' --no-headers')->output()) === '') {
-            return;
-        }
-
-        $this->laraKubeInfo("Importing '$imageTag' into k3d cluster '$cluster'...");
-
-        $result = Process::forever()->run('k3d image import '.escapeshellarg($imageTag).' -c '.escapeshellarg($cluster));
-
-        if (! $result->successful()) {
-            $this->laraKubeError("Could not sideload '$imageTag' into k3d cluster '$cluster'.");
-            $this->line('  The local image is not visible to the cluster nodes, so pods will');
-            $this->line('  likely fail with ImagePullBackOff. Last output from k3d:');
-            $output = explode("\n", trim($result->output().$result->errorOutput()));
-            foreach (array_slice($output, -4) as $line) {
-                $this->line('    '.$line);
-            }
-
-            return;
-        }
-
-        // Verify availability on the cluster's server node.
-        $this->withSpin('Verifying cluster image availability...', function () use ($imageTag, $cluster) {
-            $images = Process::run('docker exec k3d-'.$cluster.'-server-0 crictl images')->output();
-
-            return $this->clusterImageListContains($images, $imageTag);
-        });
     }
 
     /**

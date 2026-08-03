@@ -5,7 +5,7 @@
  * built from the $plexContext property — not through whatever $kubectl the
  * calling command assembled. A command that resolves a cloud context for its own
  * work but leaves $plexContext null therefore queries the Commons on the
- * CURRENT context (usually local k3d) instead of the target cluster.
+ * CURRENT context (usually local) instead of the target cluster.
  *
  * That failure is silent and nasty: getCommonsSpec() just returns null, so
  * configureStalwartStore() and printPlexHint() no-op and the operator sees

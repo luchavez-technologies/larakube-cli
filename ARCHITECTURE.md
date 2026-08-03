@@ -10,7 +10,7 @@ LaraKube CLI is a professional-grade Kubernetes orchestrator for the Laravel eco
 - `uninstall`: The "Clean Break" command. Performs a synchronized wipe of local manifests, cluster namespaces, and optionally Docker images. Requires project name confirmation.
 
 ### 2. Deployment Operations (`ops`)
-- `up`: The "Launch" button. Orchestrates image building (with k3d sideloading), .env injection, and manifest application.
+- `up`: The "Launch" button. Orchestrates image building (with k3s sideloading), .env injection, and manifest application.
 - `status`: Professional health dashboard for all project services.
 - `down`: Synchronized namespace removal with a 5-second volume cleanup cooldown.
 - `stop` / `start`: Scaling-based pause/resume to preserve state without deleting volumes.

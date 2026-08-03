@@ -9,7 +9,8 @@ LaraKube environment names are **chosen by the user** — `production`, `prod`,
 `live`, `staging`, `eu`, anything. The CLI must carry the resolved `$env` string
 through verbatim and never assume a particular name exists.
 
-`local` is the **only** reserved, absolute name (developer machine / K3D). It is
+`local` is the **only** reserved, absolute name (developer machine / k3s /
+OrbStack / Docker Desktop). It is
 the only environment name any code may compare against as a literal.
 
 Rules:

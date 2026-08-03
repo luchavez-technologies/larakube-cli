@@ -40,7 +40,7 @@ class PlexShowCommand extends Command
             $this->plexContext = (string) $this->option('context');
         } elseif ($config !== null) {
             $env = $this->resolvePlexEnvironment($config);
-            // Local → null context = current kubectl context (K3D). No error; status works.
+            // Local → null context = current kubectl context. No error; status works.
             $this->plexContext = $this->environmentContextOrCurrent($config, $env);
         } else {
             // Outside a project (no env config to map): pick the cluster, like plex:init.

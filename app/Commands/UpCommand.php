@@ -96,7 +96,7 @@ class UpCommand extends Command
             $currentContext = $this->kubectlCurrentContext();
 
             // Scenario A: a local-looking context already exists but isn't
-            // selected (e.g. a cloud context is active while OrbStack/k3s/k3d
+            // selected (e.g. a cloud context is active while OrbStack/k3s
             // sits unused). No single canonical name — findLocalClusterContext()
             // scans the kubeconfig rather than checking one hardcoded string.
             if ($localContext !== null && $currentContext !== $localContext) {
@@ -133,9 +133,8 @@ class UpCommand extends Command
                 $this->newLine();
                 $this->line('  👉 <fg=gray>Suggestions:</>');
                 $this->line('  1. Ensure your Docker daemon / cluster app (OrbStack, Docker Desktop) is running.');
-                $this->line('  2. If using k3d, run: <fg=yellow>k3d cluster start larakube</>');
-                $this->line('  3. If using native k3s, run: <fg=yellow>sudo systemctl start k3s</>');
-                $this->line('  4. If you want to use a different cluster, run: <fg=yellow>larakube context</>');
+                $this->line('  2. If using native k3s, run: <fg=yellow>sudo systemctl start k3s</>');
+                $this->line('  3. If you want to use a different cluster, run: <fg=yellow>larakube context</>');
                 $this->newLine();
 
                 if (confirm('Would you like LaraKube to try starting it now?', true)) {

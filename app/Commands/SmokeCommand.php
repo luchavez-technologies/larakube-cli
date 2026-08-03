@@ -60,7 +60,7 @@ class SmokeCommand extends Command
                 $externalIp = Process::run("kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'")->output();
                 $externalIp = $externalIp !== '' ? $externalIp : '127.0.0.1';
 
-                // If it's a k3d setup, localhost (127.0.0.1) is usually the correct bridge for the daemon
+                // For a local cluster, localhost (127.0.0.1) is usually the correct bridge for the daemon
                 $bypassUrl = "{$protocol}://127.0.0.1";
                 $httpCode = trim(Process::run("curl -k -s -o /dev/null -w \"%{http_code}\" -H \"Host: {$host}\" {$bypassUrl} --connect-timeout 2")->output());
 

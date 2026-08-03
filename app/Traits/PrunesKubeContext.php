@@ -8,8 +8,8 @@ trait PrunesKubeContext
 {
     /**
      * Surgically remove a (destroyed) local cluster's entries from ~/.kube/config:
-     * its context/cluster/user, plus k3d's `admin@<ctx>` user, and unset
-     * current-context if it pointed at one of them.
+     * its context/cluster/user, and unset current-context if it pointed at one
+     * of them.
      *
      * This is why k9s/kubectl can't connect after `cluster:destroy` then
      * `cluster:setup` on WSL: a dangling current-context (and stale entry) lingers,
@@ -17,7 +17,7 @@ trait PrunesKubeContext
      * leaves every OTHER context (cloud, teammate imports) intact. Best-effort and
      * idempotent — a no-op when there's no kubeconfig or kubectl.
      *
-     * @param  array<int, string>  $contexts  Context names to purge (e.g. ['k3d-larakube'])
+     * @param  array<int, string>  $contexts  Context names to purge (e.g. ['k3s-larakube'])
      */
     protected function pruneKubeContext(array $contexts): void
     {
@@ -41,11 +41,6 @@ trait PrunesKubeContext
             Process::run($kc.' delete-context '.escapeshellarg($ctx));
             Process::run($kc.' delete-cluster '.escapeshellarg($ctx));
             Process::run($kc.' delete-user '.escapeshellarg($ctx));
-
-            // k3d stores the user as `admin@k3d-<name>`, not the context name.
-            if (str_starts_with($ctx, 'k3d-')) {
-                Process::run($kc.' delete-user '.escapeshellarg('admin@'.$ctx));
-            }
         }
 
         // A current-context naming a now-removed cluster makes k9s/kubectl fail to

@@ -58,11 +58,6 @@ namespace Tests\Feature {
                 return $this->findLocalClusterContext();
             }
 
-            public function testIsK3dClusterRunning(): bool
-            {
-                return $this->isK3dClusterRunning();
-            }
-
             public function testSwitchClusterContext(string $name): bool
             {
                 return $this->switchClusterContext($name);
@@ -84,7 +79,7 @@ namespace Tests\Feature {
         $kubectl = fakeKubectl();
         // Each of these names alone satisfies isLocalContextName(), so the
         // fallback "kubectl config view" server check is never reached.
-        $localContexts = ['k3d-larakube', 'minikube', 'docker-desktop', 'orbstack', 'kind-cluster', 'colima'];
+        $localContexts = ['k3s-larakube', 'minikube', 'docker-desktop', 'orbstack', 'kind-cluster', 'colima'];
 
         foreach ($localContexts as $context) {
             Process::fake(["{$kubectl} config current-context" => $context]);
@@ -127,13 +122,13 @@ namespace Tests\Feature {
         expect(clusterContext()->testHasActiveCluster())->toBeFalse();
 
         Process::fake([
-            "{$kubectl} config current-context" => 'k3d-larakube',
+            "{$kubectl} config current-context" => 'k3s-larakube',
             "{$kubectl} cluster-info --request-timeout=2s" => Process::result(exitCode: 0),
         ]);
         expect(clusterContext()->testHasActiveCluster())->toBeTrue();
 
         Process::fake([
-            "{$kubectl} config current-context" => 'k3d-larakube',
+            "{$kubectl} config current-context" => 'k3s-larakube',
             "{$kubectl} cluster-info --request-timeout=2s" => Process::result(exitCode: 1),
         ]);
         expect(clusterContext()->testHasActiveCluster())->toBeFalse();
@@ -141,7 +136,7 @@ namespace Tests\Feature {
 
     test('hasAnyContext reflects whether kubeconfig has any contexts at all', function () {
         $kubectl = fakeKubectl();
-        Process::fake(["{$kubectl} config get-contexts -o name" => "k3d-larakube\norbstack\n"]);
+        Process::fake(["{$kubectl} config get-contexts -o name" => "k3s-larakube\norbstack\n"]);
         expect(clusterContext()->testHasAnyContext())->toBeTrue();
 
         Process::fake(["{$kubectl} config get-contexts -o name" => Process::result(output: '', exitCode: 1)]);
@@ -150,8 +145,8 @@ namespace Tests\Feature {
 
     test('findLocalClusterContext prefers a LaraKube-provisioned context over a generic local one', function () {
         $kubectl = fakeKubectl();
-        Process::fake(["{$kubectl} config get-contexts -o name" => "orbstack\nk3d-larakube\ngke_remote\n"]);
-        expect(clusterContext()->testFindLocalClusterContext())->toBe('k3d-larakube');
+        Process::fake(["{$kubectl} config get-contexts -o name" => "orbstack\nk3s-larakube\ngke_remote\n"]);
+        expect(clusterContext()->testFindLocalClusterContext())->toBe('k3s-larakube');
 
         Process::fake(["{$kubectl} config get-contexts -o name" => "orbstack\ngke_remote\n"]);
         expect(clusterContext()->testFindLocalClusterContext())->toBe('orbstack');
@@ -160,18 +155,10 @@ namespace Tests\Feature {
         expect(clusterContext()->testFindLocalClusterContext())->toBeNull();
     });
 
-    test('isK3dClusterRunning reads the SERVERS column from k3d cluster list', function () {
-        Process::fake(["k3d cluster list 'larakube' --no-headers" => 'larakube   1/1   0/0   true']);
-        expect(clusterContext()->testIsK3dClusterRunning())->toBeTrue();
-
-        Process::fake(["k3d cluster list 'larakube' --no-headers" => 'larakube   0/1   0/0   true']);
-        expect(clusterContext()->testIsK3dClusterRunning())->toBeFalse();
-    });
-
     test('switchClusterContext reflects whether kubectl config use-context succeeded', function () {
         $kubectl = fakeKubectl();
-        Process::fake(["{$kubectl} config use-context 'k3d-larakube'" => Process::result(exitCode: 0)]);
-        expect(clusterContext()->testSwitchClusterContext('k3d-larakube'))->toBeTrue();
+        Process::fake(["{$kubectl} config use-context 'k3s-larakube'" => Process::result(exitCode: 0)]);
+        expect(clusterContext()->testSwitchClusterContext('k3s-larakube'))->toBeTrue();
 
         Process::fake(["{$kubectl} config use-context 'missing-ctx'" => Process::result(exitCode: 1)]);
         expect(clusterContext()->testSwitchClusterContext('missing-ctx'))->toBeFalse();

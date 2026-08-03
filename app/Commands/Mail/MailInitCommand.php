@@ -69,7 +69,7 @@ class MailInitCommand extends Command
         // InteractsWithPlex reaches the Commons through its OWN kubectl
         // (plexKubectl()), which is built from $plexContext — not from the
         // $kubectl below. Leaving it null makes every Commons lookup here query
-        // whatever context happens to be current (usually local k3d) instead of
+        // whatever context happens to be current (usually local) instead of
         // the environment we're deploying to, so getCommonsSpec() returns null
         // and both configureStalwartStore() and printPlexHint() silently no-op.
         $this->plexContext = $context;

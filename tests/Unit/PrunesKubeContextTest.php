@@ -56,13 +56,11 @@ test('pruneKubeContext deletes the context, cluster, and user entries', function
             '*' => '',
         ]);
 
-        pruneKubeContextHelper()->prune(['k3d-larakube']);
+        pruneKubeContextHelper()->prune(['k3s-larakube']);
 
-        Process::assertRan("{$kc} delete-context 'k3d-larakube'");
-        Process::assertRan("{$kc} delete-cluster 'k3d-larakube'");
-        Process::assertRan("{$kc} delete-user 'k3d-larakube'");
-        // k3d's admin user is named admin@<context>, not the context name.
-        Process::assertRan("{$kc} delete-user 'admin@k3d-larakube'");
+        Process::assertRan("{$kc} delete-context 'k3s-larakube'");
+        Process::assertRan("{$kc} delete-cluster 'k3s-larakube'");
+        Process::assertRan("{$kc} delete-user 'k3s-larakube'");
     });
 });
 

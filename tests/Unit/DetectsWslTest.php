@@ -76,7 +76,7 @@ test('isDockerDesktopKubernetesOnWsl checks the current context on WSL', functio
         Process::fake(['kubectl config current-context' => 'docker-desktop']);
         expect(wslDetector()->dockerDesktopKubernetes())->toBeTrue();
 
-        Process::fake(['kubectl config current-context' => 'k3d-larakube']);
+        Process::fake(['kubectl config current-context' => 'k3s-larakube']);
         expect(wslDetector()->dockerDesktopKubernetes())->toBeFalse();
     });
 });

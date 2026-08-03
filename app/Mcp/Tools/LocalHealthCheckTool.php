@@ -14,7 +14,7 @@ use Laravel\Mcp\Server\Tool;
 
 #[Name('local-health-check')]
 #[Title('Local Health Check')]
-#[Description('Verifies the status of the local orchestration environment (Docker, K3d, Networking).')]
+#[Description('Verifies the status of the local orchestration environment (Docker, Kubernetes, Networking).')]
 class LocalHealthCheckTool extends Tool
 {
     /**
@@ -31,7 +31,7 @@ class LocalHealthCheckTool extends Tool
             $report[] = '- ❌ **Docker:** Engine is NOT running or not accessible.';
         }
 
-        // 2. Check K3d
+        // 2. Check Kubernetes
         if (Process::run('kubectl get nodes')->successful()) {
             $report[] = '- ✅ **Kubernetes:** Cluster is reachable via kubectl.';
         } else {

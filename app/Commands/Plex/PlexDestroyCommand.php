@@ -41,7 +41,7 @@ class PlexDestroyCommand extends Command
         $env = $this->resolvePlexEnvironment($config);
         if ($env === 'local') {
             $this->laraKubeWarn('You are destroying a Plex Commons in a local environment.');
-            $this->line("  <fg=gray>This deletes the <fg=red>{$this->plexNamespace()}</> namespace and ALL tenant data on K3D.</> <fg=yellow>This cannot be undone.</>");
+            $this->line("  <fg=gray>This deletes the <fg=red>{$this->plexNamespace()}</> namespace and ALL tenant data on your local cluster.</> <fg=yellow>This cannot be undone.</>");
             $this->newLine();
 
             if (! confirm('Destroy the local Commons?', false)) {

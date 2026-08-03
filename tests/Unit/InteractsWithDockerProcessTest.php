@@ -37,6 +37,16 @@ function dockerProcessHelper(): object
         {
             return $this->imageInActiveCluster($imageTag);
         }
+
+        public function sideload(string $context): bool
+        {
+            return $this->resolveSideloadTarget($context);
+        }
+
+        public function contains(string $list, string $tag): bool
+        {
+            return $this->clusterImageListContains($list, $tag);
+        }
     };
 }
 
@@ -77,21 +87,36 @@ test('imageInActiveCluster is null for native k3s when sudo is not cached (never
     expect(dockerProcessHelper()->inActiveCluster('app:local'))->toBeNull();
 });
 
-test('imageInActiveCluster is null for a k3d cluster whose server node is not running', function () {
-    Process::fake([
-        'kubectl config current-context' => "k3d-demo\n",
-        'docker inspect -f "{{.State.Running}}" \'k3d-demo-server-0\'' => "false\n",
-    ]);
+test('resolveSideloadTarget is true only for the local native k3s context', function () {
+    $r = dockerProcessHelper();
 
-    expect(dockerProcessHelper()->inActiveCluster('app:local'))->toBeNull();
+    expect($r->sideload('k3s-larakube'))->toBeTrue()
+        ->and($r->sideload('  k3s-larakube  '))->toBeTrue()   // trims whitespace
+        ->and($r->sideload('larakube-203.0.113.5'))->toBeFalse()  // remote k3s from cloud:init
+        ->and($r->sideload('arn:aws:eks:...'))->toBeFalse()       // managed cloud
+        ->and($r->sideload('orbstack'))->toBeFalse()               // shares the host Docker daemon
+        ->and($r->sideload('docker-desktop'))->toBeFalse()
+        ->and($r->sideload(''))->toBeFalse();
 });
 
-test('imageInActiveCluster matches the crictl listing on a running k3d server node', function () {
-    Process::fake([
-        'kubectl config current-context' => "k3d-demo\n",
-        'docker inspect -f "{{.State.Running}}" \'k3d-demo-server-0\'' => "true\n",
-        "docker exec 'k3d-demo-server-0' crictl images" => "app:local\n",
-    ]);
+/**
+ * Deciding whether the active cluster already has the image (so `up` can import
+ * a missing-from-cluster image without a full rebuild). The matcher must cope
+ * with how crictl/ctr decorate refs: a docker.io/library/ prefix, or the repo
+ * and tag landing in separate columns.
+ */
+test('clusterImageListContains matches an image across its decorations', function () {
+    $r = dockerProcessHelper();
 
-    expect(dockerProcessHelper()->inActiveCluster('app:local'))->toBeTrue();
+    expect($r->contains("app-two:latest\nredis:7\n", 'app-two:latest'))->toBeTrue()        // exact ref
+        ->and($r->contains('docker.io/library/app-two:latest', 'app-two:latest'))->toBeTrue() // prefixed
+        ->and($r->contains("IMAGE                TAG\napp-two              latest\n", 'app-two:latest'))->toBeTrue(); // columns
+});
+
+test('clusterImageListContains reports an image absent from the listing', function () {
+    $r = dockerProcessHelper();
+
+    expect($r->contains("redis:7\npostgres:16\n", 'app-two:latest'))->toBeFalse() // not listed
+        ->and($r->contains('', 'app-two:latest'))->toBeFalse()                     // empty listing
+        ->and($r->contains('app-two:latest', ''))->toBeFalse();                    // empty tag
 });

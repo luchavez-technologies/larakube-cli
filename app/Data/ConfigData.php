@@ -653,8 +653,7 @@ class ConfigData extends Data
      * Ingress controller for a given env. Each env can pick its own
      * controller — staging on Traefik, QA on Nginx, production on AWS ALB
      * is a legitimate setup when envs live in separate VPCs. Falls back
-     * to Traefik for envs that don't specify one (k3d's default; matches
-     * local reality).
+     * to Traefik for envs that don't specify one (matches local reality).
      */
     public function getIngress(string $environment): IngressController
     {
@@ -837,7 +836,7 @@ class ConfigData extends Data
      */
     public function getStrategy(?string $environment = null): DeploymentStrategy
     {
-        // Local is always a single node (k3d/k3s on one machine), so its
+        // Local is always a single node (k3s on one machine), so its
         // volumes are ReadWriteOnce regardless of the project/prod strategy.
         if ($environment === 'local') {
             return DeploymentStrategy::SINGLE_NODE;

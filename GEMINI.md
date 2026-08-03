@@ -59,7 +59,7 @@ Whenever you modify the LaraKube CLI codebase, you **must** proactively run test
 
 ### 📦 Development Wrappers
 -   **Standalone**: Distributed as a Mach-O/Linux binary with embedded PHP runtime.
--   **K3D Bridge**: Automated image sideloading via `k3d image import` for local builds.
+-   **K3s Bridge**: Automated image sideloading via `k3s ctr images import` for local builds.
 -   **Total Cleanup**: `larakube uninstall` performs a synchronized wipe of manifests, cluster resources, and Docker images.
 -   **Daemon Runner**: Persistent Docker-based development environment for zero-host dependencies:
     -   **CLI**: `./php` (Daemon: `larakube-php-cli`)

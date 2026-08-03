@@ -9,28 +9,6 @@ use function Laravel\Prompts\confirm;
 trait InteractsWithClusterContext
 {
     /**
-     * Decide whether a single `k3d cluster list --no-headers` line represents a
-     * running cluster. Pure (no I/O) so the SERVERS-column parsing can be tested.
-     *
-     * The columns are NAME, SERVERS, AGENTS, LOADBALANCER, where SERVERS is
-     * "running/total" — e.g. "1/1" when up, "0/1" when stopped. An empty line
-     * means the cluster doesn't exist (or k3d isn't installed).
-     */
-    public function k3dClusterListLineIsRunning(string $line): bool
-    {
-        $line = trim($line);
-
-        if ($line === '') {
-            return false;
-        }
-
-        $columns = preg_split('/\s+/', $line);
-        $serversRunning = (int) explode('/', $columns[1] ?? '0/0')[0];
-
-        return $serversRunning > 0;
-    }
-
-    /**
      * Every kubectl call in this trait pins KUBECONFIG explicitly to
      * ~/.kube/config — that's where LaraKube always merges contexts
      * (syncKubeconfig(), mergeKubeconfig(), ContextImportCommand, …), but a
@@ -61,14 +39,13 @@ trait InteractsWithClusterContext
     /**
      * Find a local-cluster-looking context already in the kubeconfig. There's
      * no single canonical name anymore — `cluster:setup` names a native k3s
-     * install "k3s-larakube" (Linux/WSL2), a legacy/manual k3d install is
-     * "k3d-larakube", and macOS users bring their own (OrbStack's "orbstack",
-     * Docker Desktop's "docker-desktop") — so this scans every available
-     * context via isLocalContextName() rather than checking one hardcoded
-     * string. Prefers a LaraKube-provisioned context (k3s-larakube /
-     * k3d-larakube) over a generic bring-your-own one, since only the former
-     * can be auto-restarted by startLocalCluster() below. Null when no
-     * local-looking context exists at all.
+     * install "k3s-larakube" (Linux/WSL2), and macOS users bring their own
+     * (OrbStack's "orbstack", Docker Desktop's "docker-desktop") — so this
+     * scans every available context via isLocalContextName() rather than
+     * checking one hardcoded string. Prefers the LaraKube-provisioned
+     * "k3s-larakube" context over a generic bring-your-own one, since only
+     * the former can be auto-restarted by startLocalCluster() below. Null
+     * when no local-looking context exists at all.
      */
     protected function findLocalClusterContext(): ?string
     {
@@ -84,8 +61,7 @@ trait InteractsWithClusterContext
 
             $any ??= $context;
 
-            $lower = strtolower($context);
-            if (str_contains($lower, 'k3s-larakube') || str_contains($lower, 'k3d-larakube')) {
+            if (str_contains(strtolower($context), 'k3s-larakube')) {
                 $provisioned ??= $context;
             }
         }
@@ -94,41 +70,20 @@ trait InteractsWithClusterContext
     }
 
     /**
-     * Attempt to (re)start a discovered local cluster context, dispatched by
-     * its underlying engine. Returns false when there's no automated way to
-     * start it — OrbStack/Docker Desktop/minikube/kind/colima are apps this
-     * CLI doesn't drive; the caller should tell the user to open/start them
-     * manually instead.
+     * Attempt to (re)start a discovered local cluster context. Returns false
+     * when there's no automated way to start it — OrbStack/Docker
+     * Desktop/minikube/kind/colima are apps this CLI doesn't drive; the
+     * caller should tell the user to open/start them manually instead.
      */
     protected function startLocalCluster(string $context): bool
     {
-        $lower = strtolower($context);
-
-        if (str_contains($lower, 'k3d')) {
-            return Process::run('k3d cluster start larakube')->successful();
-        }
-
         // A context named this way is only ever created by cluster:setup on a
         // Linux/WSL2 host, so no separate platform check is needed here.
-        if (str_contains($lower, 'k3s-larakube')) {
+        if (str_contains(strtolower($context), 'k3s-larakube')) {
             return Process::run('sudo systemctl start k3s')->successful();
         }
 
         return false;
-    }
-
-    /**
-     * Determine whether the local k3d cluster is currently running.
-     *
-     * `k3d cluster list <name> --no-headers` prints the SERVERS column as
-     * "running/total" (e.g. "1/1" up, "0/1" stopped) — there is no literal
-     * "running"/"stopped" word to match on, so we parse that column instead.
-     */
-    protected function isK3dClusterRunning(string $name = 'larakube'): bool
-    {
-        $line = Process::run('k3d cluster list '.escapeshellarg($name).' --no-headers')->output();
-
-        return $this->k3dClusterListLineIsRunning($line);
     }
 
     /**
@@ -163,7 +118,7 @@ trait InteractsWithClusterContext
 
     /**
      * Whether a context NAME matches a known local-cluster naming convention
-     * (k3d, OrbStack, Docker Desktop, minikube, kind, colima, or LaraKube's own
+     * (OrbStack, Docker Desktop, minikube, kind, colima, or LaraKube's own
      * native k3s install). Pure — no kubectl calls — so callers that resolve
      * an EXPLICIT context (e.g. picked via --context, without switching the
      * global kubectl context) can check it directly, not just the ambient
@@ -181,7 +136,7 @@ trait InteractsWithClusterContext
             return false;
         }
 
-        $localKeywords = ['k3d', 'minikube', 'docker-desktop', 'orbstack', 'kind', 'colima', 'k3s-larakube'];
+        $localKeywords = ['minikube', 'docker-desktop', 'orbstack', 'kind', 'colima', 'k3s-larakube'];
 
         foreach ($localKeywords as $keyword) {
             if (str_contains($context, $keyword)) {
@@ -204,21 +159,9 @@ trait InteractsWithClusterContext
             return null;
         }
 
-        // --- 🔍 ENHANCED STATUS DETECTION ---
-        $options = [];
-        $k3dRunning = $this->isK3dClusterRunning();
-
-        foreach ($contexts as $context) {
-            $label = $context;
-            if (str_contains(strtolower($context), 'k3d') && ! $k3dRunning) {
-                $label .= ' <fg=yellow>(stopped)</>';
-            }
-            $options[$context] = $label;
-        }
-
         return \Laravel\Prompts\select(
             label: 'Which Kubernetes context would you like to use?',
-            options: $options,
+            options: array_combine($contexts, $contexts),
             default: $currentContext ?: null,
         );
     }
