@@ -137,6 +137,23 @@ larakube secrets:grant [environment?] --email=dev@example.com --except=productio
 larakube secrets:grant [environment?] --email=lead@example.com --role=admin
 ```
 
+#### Interactive Role Selection (`Laravel\Prompts\select`):
+If `--role` is omitted in an interactive terminal session, LaraKube renders an interactive **Laravel Prompts** `select()` menu defaulting to `developer`:
+
+```php
+$role = $this->option('role') ?? select(
+    label: 'Select the OpenBao RBAC role for this user',
+    options: [
+        'developer' => 'Developer (Read-Write: create, read, update, patch secrets)',
+        'viewer'    => 'Viewer (Read-Only: read & pull secrets into local .env)',
+        'admin'     => 'Admin (Full Access: read, write, delete & rotate credentials)',
+    ],
+    default: 'developer'
+);
+```
+
+In non-interactive CI environments (`--no-interaction`), it defaults to `'developer'` automatically.
+
 #### OpenBao Policy Matrix by Role:
 
 | Role (`--role=`) | Path Scope | Granted HCL Capabilities | What the User Can Do |
