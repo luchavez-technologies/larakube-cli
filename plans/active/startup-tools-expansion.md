@@ -61,12 +61,11 @@ Deploy **Penpot** — the leading open-source design, prototyping, and whiteboar
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### CLI Command (`larakube design:init`)
+### CLI Commands
 
-- **Enum**: `ClusterTool::DESIGN = 'design'`, `SharedClusterService::DESIGN = 'design'`
-- **Host**: `design.{domain}` (e.g., `design.dev.test`)
-- **Bucket**: `commonsBuckets() => ['design-assets']`
-- **SSO Wiring**: `sso:wire <env> --tool=design` sets `PENPOT_OIDC_CLIENT_ID`, `PENPOT_OIDC_CLIENT_SECRET`, `PENPOT_OIDC_URI_ISSUER`
+- `larakube design:init` — Deploys Penpot into `larakube-shared`
+- `larakube design:show` — Displays Penpot deployment status, host, and database details
+- `larakube design:remove` — Teardowns Penpot workload and drops `penpot` database from Plex Commons
 
 ---
 
@@ -107,12 +106,68 @@ Deploy **Hoppscotch** — the web-first open-source API development and testing 
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### CLI Command (`larakube api:init`)
+### CLI Commands (`larakube api:*`)
 
 - **Enum**: `ClusterTool::API = 'api'`, `SharedClusterService::API = 'api'`
 - **Host**: `api.{domain}` (e.g., `api.dev.test`)
 - **ForwardAuth SSO**: `usesForwardAuth() => true` enables `larakube sso:wire <env> --tool=api`
 - **CI/CD Integration**: Project pipelines can execute API collection test suites via CLI test runners (`npx @usebruno/cli run` or `hoppscotch-cli`)
+- `larakube api:init` — Deploys Hoppscotch into `larakube-shared`
+- `larakube api:show` — Displays Hoppscotch deployment status, host, and database details
+- `larakube api:remove` — Teardowns Hoppscotch workload and drops `hoppscotch` database from Plex Commons
+
+---
+
+## 📧 Email Wiring (`mail:wire`) Integration
+
+Both Penpot and Hoppscotch send emails (team invites, password resets, notification alerts). They implement `smtpEnv()` in `ClusterTool.php`:
+
+```php
+// Penpot smtpEnv
+self::DESIGN => [
+    'deployment' => 'penpot-backend',
+    'namespace' => 'larakube-shared',
+    'secret' => 'penpot-smtp',
+    'vars' => [
+        'host' => 'PENPOT_SMTP_DEFAULT_FROM',
+        'port' => 'PENPOT_SMTP_SERVER_PORT',
+        'user' => 'PENPOT_SMTP_USERNAME',
+        'password' => 'PENPOT_SMTP_PASSWORD',
+        'from' => 'PENPOT_SMTP_DEFAULT_FROM',
+    ],
+],
+
+// Hoppscotch smtpEnv
+self::API => [
+    'deployment' => 'hoppscotch-backend',
+    'namespace' => 'larakube-shared',
+    'secret' => 'hoppscotch-smtp',
+    'vars' => [
+        'host' => 'MAILER_SMTP_URL',
+        'from' => 'MAILER_ADDRESS_FROM',
+    ],
+],
+```
+
+Executing `larakube mail:wire design` or `larakube mail:wire api` automatically connects them to Stalwart Mail Server!
+
+---
+
+## 🔐 OpenBao & Secrets Prioritization Standard
+
+Per the **OpenBao Secrets Prioritization Standard**:
+1. When OpenBao is bootstrapped, `design:init` and `api:init` register static database role credentials (`PENPOT_DB_PASSWORD`, `HOPPSCOTCH_DB_PASSWORD`).
+2. Database passwords are auto-rotated into OpenBao and synced to `larakube-shared` via ExternalSecret controller.
+
+---
+
+## 🐳 Pinned Docker Images
+
+| Tool | Service | Image | Tag | Notes |
+|------|---------|-------|-----|-------|
+| `design` | Penpot Backend | `penpotapp/backend` | `2.17` | Clojure JVM backend |
+| `design` | Penpot Frontend | `penpotapp/frontend` | `2.17` | Nginx SPA frontend |
+| `api` | Hoppscotch | `hoppscotch/hoppscotch` | `2026.7.0` | Unified web UI + backend |
 
 ---
 
@@ -120,6 +175,7 @@ Deploy **Hoppscotch** — the web-first open-source API development and testing 
 
 - [ ] Add `ClusterTool::DESIGN = 'design'` and `SharedClusterService::DESIGN = 'design'`
 - [ ] Add `ClusterTool::API = 'api'` and `SharedClusterService::API = 'api'`
+- [ ] Add `commonsDatabases()` entries: `penpot` for `DESIGN`, `hoppscotch` for `API`
 - [ ] Implement `app/Commands/Design/DesignInitCommand.php` (`larakube design:init`)
 - [ ] Implement `app/Commands/Api/ApiInitCommand.php` (`larakube api:init`)
 - [ ] Create Blade templates for `k8s.design.*` and `k8s.api.*`
