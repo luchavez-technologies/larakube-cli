@@ -40,7 +40,7 @@ ForwardAuth.
 | **Status Command** | `map:show` | Consistent with LaraKube `*:show` pattern |
 | **Job Retry** | `backoffLimit: 3` with exponential backoff | K8s native retry; `map:show` surfaces failures |
 | **Tile Caching** | `Cache-Control: public, max-age=86400` via Traefik | 24h browser/CDN cache; tiles are static until `--refresh` |
-| **S3 Backend** | Auto-detect active `StorageDriver` (`SEAWEEDFS`/`MINIO`/`GARAGE`) | Reuses `StorageDriver::commonsBucketCreateCommand()` & `InteractsWithPlex::allocateStorageBucket()` for zero-wheel-reinvention bucket setup |
+| **S3 Backend** | Auto-detect active `StorageDriver` (`SEAWEEDFS`/`MINIO`/`GARAGE`) | Reuses `InteractsWithPlex::ensureCommons([$s3Service])` to demand-bootstrap S3 via `plex:init` if missing, plus `allocateStorageBucket()` for bucket setup |
 | **Map Style** | LaraKube-branded dark style.json | Custom dark theme, users can override |
 | **Photon ES** | Embedded Elasticsearch (bundled in Photon image) | Isolated, no cluster-wide ES dependency |
 | **External Access** | Standard `cloud:deploy` flow with Let's Encrypt | Mobile apps, SPAs, partners authenticate via `X-API-Key` |
