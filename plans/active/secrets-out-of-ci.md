@@ -113,47 +113,62 @@ When OpenBao is bootstrapped in `larakube-secrets`:
 Secrets are stored in OpenBao using an **App-First 3-level deterministic path structure**:
 
 ### Deterministic Command Scoping:
-- **`larakube secrets:push [environment] --app=my-laravel-app`**: Pushes `.env.{environment}` secret keys exclusively to `secret/data/my-laravel-app/{environment}`.
-- **`larakube secrets:push production --app=my-store-locator`**: Pushes `.env.production` secret keys exclusively to `secret/data/my-store-locator/production`.
+- **`larakube secrets:push [environment]`**: Inside a project directory, `--app` is optional and defaults to `$config->name` from `.larakube.json`.
+- **`larakube secrets:push production --app=my-store-locator`**: Outside a project directory, `--app=name` explicitly targets a specific application repository.
 - **Namespace Isolation**: Each environment (`my-laravel-app-staging`, `my-laravel-app-production`) deploys an `ExternalSecret` custom resource bound specifically to its path (`secret/data/{app}/{environment}`). Cross-tenant or cross-environment secret leaks are cryptographically impossible.
 
-### 🛡️ App-Scoped OpenBao UI RBAC Enforcement (`secrets:grant` & `secrets:revoke`)
+---
 
-Thanks to the App-First hierarchy (`secret/data/{app}/{environment}/`), LaraKube enforces strict per-application developer access in the OpenBao Web UI (`secrets.{domain}`):
+### 🛡️ App & Environment-Scoped OpenBao UI RBAC (`secrets:grant` & `secrets:revoke`)
+
+LaraKube enforces strict per-application and per-environment access policies in the OpenBao Web UI (`secrets.{domain}`). Using `--only` and `--except`, admins can grant access exclusively to non-production environments (e.g. `staging`):
 
 ```bash
-# Grant a developer access exclusively to my-laravel-app in OpenBao UI on target environment
-larakube secrets:grant [environment] --email=dev@example.com --app=my-laravel-app
+# Grant access ONLY to staging secrets for my-laravel-app (junior developers)
+larakube secrets:grant [environment?] --email=junior@example.com --only=staging
 
-# Revoke a developer's access to my-laravel-app
-larakube secrets:revoke [environment] --email=dev@example.com --app=my-laravel-app
+# Grant access to all environments EXCEPT production
+larakube secrets:grant [environment?] --email=dev@example.com --except=production
+
+# Grant full access across all environments for senior lead
+larakube secrets:grant [environment?] --email=lead@example.com
 ```
 
-**OpenBao Policy Generated (`policy-app-my-laravel-app`):**
+**OpenBao Policy Generated (`policy-app-my-laravel-app-staging`):**
 ```hcl
-path "secret/data/my-laravel-app/*" {
+# Scoped strictly to staging path when --only=staging is specified
+path "secret/data/my-laravel-app/staging/*" {
   capabilities = ["create", "read", "update", "patch", "list"]
 }
-path "secret/metadata/my-laravel-app/*" {
+path "secret/metadata/my-laravel-app/staging/*" {
   capabilities = ["read", "list"]
 }
 ```
 
-When `dev@example.com` logs into OpenBao UI via Zitadel SSO, OpenBao **restricts their view exclusively to `my-laravel-app/`**. Other applications' production secrets remain completely hidden!
+When `junior@example.com` logs into OpenBao UI via Zitadel SSO, OpenBao **restricts their view exclusively to `my-laravel-app/staging/`**. Production credentials (`my-laravel-app/production/`) remain completely hidden!
+
+---
+
+## 🚀 Onboarding & Automated `.env` Seeding (`secrets:pull`)
+
+When developers run **`larakube clone <repo>`** or **`larakube init`**:
+1. LaraKube checks if OpenBao or cluster credentials exist for the project.
+2. LaraKube prompts: `"Sync environment secrets from cluster/OpenBao for 'staging'?"`
+3. Running **`larakube secrets:pull [environment]`** pulls active keys from `secret/data/{app}/{environment}` (or cluster Secret `laravel-secrets`) and seeds a 100% working `.env.{environment}` locally!
 
 ---
 
 ## 📐 Standard Command Signatures (`{noun}:{verb} <environment?> --flag1=value1`)
 
-The local env file is the **source of truth**; the cluster and any secrets backend are downstream copies. All secret operations follow LaraKube's mandatory `{noun}:{verb} <environment?> --flag1=value1` signature convention:
+The local env file is the **source of truth**; the cluster and any secrets backend are downstream copies. All secret operations follow LaraKube's mandatory `{noun}:{verb} <environment?> --flag1=value1` signature convention (`--app` is optional when run inside a project):
 
 | Command Signature | Description |
 | :--- | :--- |
-| `larakube secrets:push [environment] --app=name` | `.env.{environment}` secret keys → cluster Secret (and OpenBao when present) |
-| `larakube secrets:pull [environment] --app=name` | cluster Secret/OpenBao → `.env.{environment}`, for onboarding & recovery |
-| `larakube secrets:diff [environment] --app=name` | Read-only drift report, exits non-zero (1) when file and cluster disagree |
-| `larakube secrets:grant [environment] --email=user --app=name` | Grants app-scoped OpenBao UI RBAC policy to a user |
-| `larakube secrets:revoke [environment] --email=user --app=name` | Revokes app-scoped OpenBao UI RBAC policy from a user |
+| `larakube secrets:push [environment?] [--app=name]` | `.env.{environment}` secret keys → cluster Secret (and OpenBao when present) |
+| `larakube secrets:pull [environment?] [--app=name]` | cluster Secret/OpenBao → `.env.{environment}`, for onboarding & recovery |
+| `larakube secrets:diff [environment?] [--app=name]` | Read-only drift report, exits non-zero (1) when file and cluster disagree |
+| `larakube secrets:grant [environment?] --email=user [--only=envs] [--except=envs]` | Grants app & environment-scoped OpenBao UI RBAC policy to a user |
+| `larakube secrets:revoke [environment?] --email=user [--only=envs] [--except=envs]` | Revokes app & environment-scoped OpenBao UI RBAC policy from a user |
 
 `secrets:diff` is the pre-flight check: once the file is authoritative, the failure mode is silent divergence — someone edits a Secret with `kubectl`, or a backend rotates a value, and the file no longer describes reality. It compares **keys and value-equality**, never printing plaintext values — only `same / differs / missing in file / missing in cluster` per key.
 
