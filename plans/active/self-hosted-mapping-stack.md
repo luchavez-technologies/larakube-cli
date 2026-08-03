@@ -31,10 +31,8 @@ ForwardAuth.
 | **Geofencing** | Geofabrik interactive region picker | Country-level extracts reduce planet (70GB) to ~500MB |
 | **Data Pipeline** | Kubernetes Job (one-shot) | Downloads PBF → osmium trim → builds all 3 formats |
 | **API Pattern** | Traefik IngressRoute + Middleware | Single URL `map.{domain}/api/v1/{tiles,geocode,route}/*` — reuses existing cluster Traefik, no extra gateway pod |
-| **SSO** | ForwardAuth on dashboard only | API uses API keys (machine-to-machine), dashboard uses Zitadel SSO |
-| **Frontend** | MapLibre GL JS | Free, no token, vector tiles, 3D terrain, ships with default style |
-| **Storage** | MinIO for PMTiles + PVC for geocoding/routing | CDN-like tile serving via S3, PVC for Elasticsearch/Valhalla data |
-| **Naming** | `MAP` — `map:init`, `map:wire`, `larakube-map` namespace | Clean, obvious, consistent with other LaraKube service slugs |
+| **Naming & Enum** | `ClusterTool::MAP` & `SharedClusterService::MAP` | Clean integration into LaraKube's companion tool framework, including `commonsBuckets() => ['larakube-map']` |
+| **SSO Decoupling** | Decoupled by default; wired via `sso:wire <env> --tool=map` | `map:init` runs standalone without Zitadel dependency; `sso:wire` attaches ForwardAuth on demand |
 | **CLI UX** | Multi-select checkboxes | Users pick exactly which layers they need |
 | **CORS** | Traefik CORS Middleware on `/api/v1/*` | Required for browser-based MapLibre tile fetching across subdomains |
 | **Local/Cloud** | Both OrbStack/k3s local AND cloud clusters | Same Blade templates, swap TLS config per environment |
@@ -397,13 +395,13 @@ All endpoints require `X-API-Key` header.
 
 ## Docker Images
 
-| Service | Image | Tag | Notes |
-|---------|-------|-----|-------|
-| Martin | `ghcr.io/maplibre/martin` | `latest` | Rust tile server |
-| Photon | `komoot/photon` | `latest` | Elasticsearch-backed geocoder |
-| Valhalla | `ghcr.io/valhalla/valhalla` | `latest` | C++ routing engine |
-| Auth Sidecar | Alpine + shell or tiny Go binary | — | Validates X-API-Key header against K8s Secret |
-| Data Builder | Custom Job image | — | `osmium` + `tilemaker` + import scripts |
+| Service | Image | Tag | Verified Notes |
+|---------|-------|-----|---------------|
+| Martin | `ghcr.io/maplibre/martin` | `v0.14.0` | Rust tile server (serves PMTiles via S3 range requests) |
+| Photon | `komoot/photon` | `v1.2.1` | Geocoder with embedded Elasticsearch |
+| Valhalla | `ghcr.io/valhalla/valhalla` | `v3.8.3` | C++ routing engine with dynamic costing |
+| Auth Sidecar | Alpine + Go binary | `latest` | Validates X-API-Key header against K8s Secret |
+| Data Builder | Custom Job image | `latest` | `osmium` + `tilemaker` + import scripts |
 
 > [!IMPORTANT]
 > Verify latest stable image tags before implementation. Run `search_web` against
