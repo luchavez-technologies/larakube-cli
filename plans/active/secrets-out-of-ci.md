@@ -103,41 +103,40 @@ When OpenBao is bootstrapped in `larakube-secrets`:
 ```
 
 1. **Static Database Roles**: LaraKube registers static database roles in OpenBao via `registerStaticRole($kubectl, $roleName, $dbEngine, $dbName)`. OpenBao takes ownership of the database password inside PostgreSQL/MySQL and rotates it automatically on a schedule or via `larakube plex:rotate`.
-2. **Zero-Downtime ESO Sync**: OpenBao writes the new password to `secret/data/{environment}/{app}/DB_PASSWORD`. ESO detects the change within 60s and updates `laravel-secrets` in `{app}-{environment}`. Reloader performs a rolling update, passing `/up` health checks before cutting over traffic.
+2. **Zero-Downtime ESO Sync**: OpenBao writes the new password to `secret/data/{app}/{environment}/DB_PASSWORD`. ESO detects the change within 60s and updates `laravel-secrets` in `{app}-{environment}`. Reloader performs a rolling update, passing `/up` health checks before cutting over traffic.
 3. **Local Synchronization (`dotenv:pull`)**: Developers running `larakube dotenv:pull {environment}` fetch the latest active rotated password back into `.env.{environment}` for local development and recovery.
 
 ---
 
-## 🌐 Multi-Project & Multi-Environment Scoping Architecture
+## 🌐 Multi-Project & Multi-Environment Scoping Architecture (App-First: `secret/data/{app}/{environment}/`)
 
-Secrets are stored in OpenBao using a 3-level deterministic path structure:
+Secrets are stored in OpenBao using an **App-First 3-level deterministic path structure**:
 
 ```
   OpenBao KV v2 Mount: secret/
    └── data/
-       ├── production/
-       │   ├── my-laravel-app/
+       ├── my-laravel-app/            <-- App Scope (Top-Level)
+       │   ├── production/            <-- Environment Scope
        │   │   ├── APP_KEY
        │   │   ├── DB_PASSWORD (rotated via OpenBao static role)
        │   │   └── AWS_SECRET_ACCESS_KEY
-       │   └── my-store-locator/
-       │       ├── APP_KEY
-       │       └── DB_PASSWORD
-       ├── staging/
-       │   ├── my-laravel-app/
+       │   ├── staging/
        │   │   ├── APP_KEY
        │   │   └── DB_PASSWORD (sk_test_...)
-       │   └── my-store-locator/
+       │   └── local/
        │       └── DB_PASSWORD
-       └── local/
-           └── my-laravel-app/
+       └── my-store-locator/
+           ├── production/
+           │   ├── APP_KEY
+           │   └── DB_PASSWORD
+           └── staging/
                └── DB_PASSWORD
 ```
 
 ### Deterministic Command Scoping:
-- **`larakube dotenv:push staging --app=my-laravel-app`**: Pushes `.env.staging` secret keys exclusively to `secret/data/staging/my-laravel-app`.
-- **`larakube dotenv:push production --app=my-store-locator`**: Pushes `.env.production` secret keys exclusively to `secret/data/production/my-store-locator`.
-- **Namespace Isolation**: Each environment (`my-laravel-app-staging`, `my-laravel-app-production`) deploys an `ExternalSecret` custom resource bound specifically to its path (`secret/data/{environment}/{app}`). Cross-tenant or cross-environment secret leaks are cryptographically impossible.
+- **`larakube dotenv:push staging --app=my-laravel-app`**: Pushes `.env.staging` secret keys exclusively to `secret/data/my-laravel-app/staging`.
+- **`larakube dotenv:push production --app=my-store-locator`**: Pushes `.env.production` secret keys exclusively to `secret/data/my-store-locator/production`.
+- **Namespace Isolation**: Each environment (`my-laravel-app-staging`, `my-laravel-app-production`) deploys an `ExternalSecret` custom resource bound specifically to its path (`secret/data/{app}/{environment}`). Cross-tenant or cross-environment secret leaks are cryptographically impossible.
 
 The local env file is the **source of truth**; the cluster and any secrets
 backend are downstream copies. This is a deliberate choice, not an interim one —
