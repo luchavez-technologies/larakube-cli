@@ -74,7 +74,70 @@ Cluster state after the migration: `larakube-secrets` runs `openbao-backend` +
 `external-secrets`; `ClusterSecretStore/openbao` is `Ready: True`; per-tool
 `ExternalSecrets` sync production secrets into each tool's namespace.
 
-## 📐 Settled: `.env.{env}` is authoritative
+---
+
+## 🔄 OpenBao Automatic Database Rotation Integration
+
+When OpenBao is bootstrapped in `larakube-secrets`:
+
+```
+  ┌─────────────────────────────────────────────────────────────┐
+  │                   OpenBao Secret Engine                     │
+  │  1. OpenBao Static Database Role (`registerStaticRole()`)   │
+  │     OpenBao rotates DB_PASSWORD in PostgreSQL directly      │
+  │                          │                                  │
+  │                          ▼                                  │
+  │  2. OpenBao updates `secret/data/{env}/{app}/DB_PASSWORD`   │
+  └──────────────────────────┬──────────────────────────────────┘
+                             │
+                             ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │          External Secrets Operator (ESO Sync)               │
+  │  3. ESO detects OpenBao change within 60s                   │
+  │     Updates K8s Secret `laravel-secrets` in {app}-{env}     │
+  │                          │                                  │
+  │                          ▼                                  │
+  │  4. Reloader Controller triggers zero-downtime rollout      │
+  │     New pod boots → passes /up health check → old pod stops │
+  └─────────────────────────────────────────────────────────────┘
+```
+
+1. **Static Database Roles**: LaraKube registers static database roles in OpenBao via `registerStaticRole($kubectl, $roleName, $dbEngine, $dbName)`. OpenBao takes ownership of the database password inside PostgreSQL/MySQL and rotates it automatically on a schedule or via `larakube plex:rotate`.
+2. **Zero-Downtime ESO Sync**: OpenBao writes the new password to `secret/data/{environment}/{app}/DB_PASSWORD`. ESO detects the change within 60s and updates `laravel-secrets` in `{app}-{environment}`. Reloader performs a rolling update, passing `/up` health checks before cutting over traffic.
+3. **Local Synchronization (`dotenv:pull`)**: Developers running `larakube dotenv:pull {environment}` fetch the latest active rotated password back into `.env.{environment}` for local development and recovery.
+
+---
+
+## 🌐 Multi-Project & Multi-Environment Scoping Architecture
+
+Secrets are stored in OpenBao using a 3-level deterministic path structure:
+
+```
+  OpenBao KV v2 Mount: secret/
+   └── data/
+       ├── production/
+       │   ├── my-laravel-app/
+       │   │   ├── APP_KEY
+       │   │   ├── DB_PASSWORD (rotated via OpenBao static role)
+       │   │   └── AWS_SECRET_ACCESS_KEY
+       │   └── my-store-locator/
+       │       ├── APP_KEY
+       │       └── DB_PASSWORD
+       ├── staging/
+       │   ├── my-laravel-app/
+       │   │   ├── APP_KEY
+       │   │   └── DB_PASSWORD (sk_test_...)
+       │   └── my-store-locator/
+       │       └── DB_PASSWORD
+       └── local/
+           └── my-laravel-app/
+               └── DB_PASSWORD
+```
+
+### Deterministic Command Scoping:
+- **`larakube dotenv:push staging --app=my-laravel-app`**: Pushes `.env.staging` secret keys exclusively to `secret/data/staging/my-laravel-app`.
+- **`larakube dotenv:push production --app=my-store-locator`**: Pushes `.env.production` secret keys exclusively to `secret/data/production/my-store-locator`.
+- **Namespace Isolation**: Each environment (`my-laravel-app-staging`, `my-laravel-app-production`) deploys an `ExternalSecret` custom resource bound specifically to its path (`secret/data/{environment}/{app}`). Cross-tenant or cross-environment secret leaks are cryptographically impossible.
 
 The local env file is the **source of truth**; the cluster and any secrets
 backend are downstream copies. This is a deliberate choice, not an interim one —
