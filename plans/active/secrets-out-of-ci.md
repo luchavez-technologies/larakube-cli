@@ -106,6 +106,28 @@ When OpenBao is bootstrapped in `larakube-secrets`:
 2. **Zero-Downtime ESO Sync**: OpenBao writes the new password to `secret/data/{app}/{environment}/DB_PASSWORD`. ESO detects the change within 60s and updates `laravel-secrets` in `{app}-{environment}`. Reloader performs a rolling update, passing `/up` health checks before cutting over traffic.
 3. **Local Synchronization (`secrets:pull`)**: Developers running `larakube secrets:pull {environment} --app=my-app` fetch the latest active rotated password back into `.env.{environment}` for local development and recovery.
 
+### ⚖️ Precedence & Collision Resolution Rules
+
+If a developer runs `larakube secrets:push` containing a local `DB_PASSWORD` or `DB_USERNAME`, LaraKube enforces strict ownership precedence:
+
+```
+  ┌──────────────────────────────────────────────────────────────────┐
+  │                    SECRET PRECEDENCE ORDER                       │
+  │                                                                  │
+  │  1. OpenBao Static DB Role (Highest Priority - Auto-Rotated)     │
+  │     OpenBao engine owns DB_PASSWORD & DB_USERNAME.               │
+  │                                                                  │
+  │  2. OpenBao KV Store / K8s Secret (Pushed via secrets:push)       │
+  │     (APP_KEY, AWS_SECRET_ACCESS_KEY, REVERB_APP_SECRET, etc.)    │
+  │                                                                  │
+  │  3. Local .env.{environment} File (Developer input source)       │
+  └──────────────────────────────────────────────────────────────────┘
+```
+
+- **Static Role Protection**: `secrets:push` queries `SyncsClusterSecrets::staticRoleExists($roleName)` and `ConfigData::isPlexBacked()`. If a static role exists for `DB_PASSWORD`, `secrets:push` **automatically skips overwriting `DB_PASSWORD`** and surfaces a console notice:
+  `"⚠️ DB_PASSWORD is managed by OpenBao static role 'app-db-role' — local .env value excluded from push."`
+- **Self-Healing Reconciliation**: If a manual KV edit somehow alters `DB_PASSWORD`, OpenBao's static role reconciliation engine (and `larakube plex:rotate`) immediately rewrites the active rotated password back into `secret/data/{app}/{environment}/DB_PASSWORD`, guaranteeing that database connections never break!
+
 ---
 
 ## 🌐 Multi-Project & Multi-Environment Scoping Architecture (App-First: `secret/data/{app}/{environment}/`)
