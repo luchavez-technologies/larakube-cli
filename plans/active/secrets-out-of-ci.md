@@ -1,6 +1,11 @@
-# Plan: stop shipping `.env.{env}` to the CI provider — deliver runtime secrets to the cluster
+# Plan: Stop Shipping Runtime Secrets to CI Providers (`dotenv:push` & `dotenv:diff`)
 
-## 🎯 Objective
+**Status:** Finalized Plan / Ready for Implementation
+**Created:** 2026-07-29
+**Updated:** 2026-08-03 (post grill-me gap analysis & user alignment)
+**Target Version:** LaraKube CLI v1.2.0
+
+---
 
 `cloud:configure` base64-encodes the **entire** `.env.{env}` into a single CI
 secret, and the generated workflow turns it back into a file that does two
@@ -154,24 +159,41 @@ operator, no Infisical CRDs, no Infisical app manifests). Existing secrets were
 re-pushed from `.env.{env}` files into OpenBao via the `pushClusterSecret` /
 `syncClusterSecretToNamespace` path. No data was lost.
 
-## ❓ Open decisions (needed before implementation)
+## ⚖️ Resolved Decisions (Grill-Me Alignment)
 
-1. **How `heal` and `dotenv:pull` coexist.** `.env.{env}` being authoritative
-   settles the direction of travel, but heal already rewrites those files from
-   the blueprint — it syncs every cloud env file
-   (`GeneratesProjectInfrastructure.php:930`) and seeds a missing one by copying
-   local `.env` (`syncEnvFile()`, ~line 180), which is how local values like a
-   `*.test` host leak into a cloud env file. So three writers exist: the user,
-   heal, and `dotenv:pull`. Decide which keys each may touch — the natural split
-   is that heal owns derived/architectural keys (`APP_URL`, `VITE_*`, hosts,
-   ports) and `dotenv:pull` owns credentials, but that boundary should be
-   explicit rather than emergent.
-2. **Cross-cluster placement.** OpenBao would presumably live in
-   `larakube-shared`, while app environments run on their own clusters. ESO can
-   reach across, but that is a trust boundary worth choosing deliberately rather
-   than inheriting.
-3. **Unseal-key custody.** The real operational cost of OpenBao. Auto-unseal
-   needs a KMS; manual unseal means an environment breaks on every pod restart.
+1. **Fallback when OpenBao is absent**:
+   `dotenv:push` checks `isOpenBaoBootstrapped()`. If OpenBao is present, it calls `pushClusterSecret()`. If OpenBao is absent (e.g. single-node VPS, local k3s/OrbStack), `dotenv:push` writes directly to the Kubernetes Secret `laravel-secrets` via `kubectl create secret generic laravel-secrets -n {namespace} ... --dry-run=client -o yaml | kubectl apply -f -`. Zero OpenBao dependency required.
+2. **`heal` vs `dotenv:push` boundaries**:
+   - `heal` owns derived architectural keys (`APP_URL`, `ASSET_URL`, `VITE_*`, hosts, ports).
+   - `dotenv:push` / `dotenv:pull` owns secret credentials (`APP_KEY`, `DB_PASSWORD`, `AWS_SECRET_ACCESS_KEY`, `REVERB_APP_SECRET`).
+3. **CI Secret Reduction**:
+   `uploadGhaSecrets()` uploads only `{$ENV}_BUILD_ENV_BASE64` (public `VITE_*` and build variables). `{ENV}_ENV_FILE_BASE64` is removed, preventing runtime credentials from entering GitHub Secrets.
+
+---
+
+## 📋 Implementation Tasks
+
+- [ ] Create `app/Commands/DotenvPushCommand.php` (`larakube dotenv:push [env]`)
+  - Parses `.env.{env}`
+  - Filters secret keys using `getSecretEnvironmentVariables()`
+  - If OpenBao present: calls `pushClusterSecret()`
+  - If OpenBao absent: executes direct K8s Secret apply for `laravel-secrets`
+- [ ] Create `app/Commands/DotenvDiffCommand.php` (`larakube dotenv:diff [env]`)
+  - Compares local `.env.{env}` keys against cluster Secret/ConfigMap
+  - Outputs a key-level drift table (`same / differs / missing in file / missing in cluster`) without printing values
+  - Exits non-zero (1) if divergent
+- [ ] Update `app/Traits/ConfiguresCloudEnvironment.php`:
+  - Modify `uploadGhaSecrets()` to upload `{$ENV}_BUILD_ENV_BASE64` containing public build variables only
+  - Remove production secret credentials from GitHub Secret payload
+- [ ] Update GHA Blade template (`resources/views/k8s/cloud-pilot-deploy.blade.php`):
+  - Consume `{$ENV}_BUILD_ENV_BASE64` for `docker build`
+  - Remove `kubectl create secret generic laravel-secrets --from-env-file=.env` line
+- [ ] Create Pest unit and feature tests:
+  - `tests/Feature/DotenvPushCommandTest.php`
+  - `tests/Feature/DotenvDiffCommandTest.php`
+- [ ] Format with `./php vendor/bin/pint` and verify PHPStan (0 errors)
+
+---
 
 ## ✅ Definition of done
 
