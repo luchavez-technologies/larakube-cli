@@ -52,8 +52,10 @@ This single-domain architecture means **Cinny and Synapse share the exact same d
    Because `matrix.blade.php` routes `/_matrix` and `/` under the same Traefik Ingress rule (`{{ $host }}`), Cinny calls `https://{{ $host }}/_matrix/client/v3/turnServer` natively without cross-origin CORS headers needed.
 2. **TURN Credentials API (`homeserver.yaml`)**:
    Synapse natively implements Matrix Client-Server API `GET /_matrix/client/v3/turnServer`. When `turn_shared_secret` is configured in `homeserver.yaml`, Synapse generates short-lived HMAC TURN credentials dynamically for Cinny users whenever a 1-on-1 call starts.
-3. **Database Precedence (Plex Commons Postgres)**:
-   Synapse uses Plex Commons PostgreSQL database (`chat_matrix` tenant) or bundled `chat-synapse-db` (`postgres:15-alpine` when `--no-plex` is passed). Coturn requires no database (stateless HMAC authentication via shared secret).
+3. **Plex Commons Infrastructure Integration (Postgres + SeaweedFS/MinIO S3)**:
+   - **Database**: Synapse uses Plex Commons PostgreSQL database (`chat_matrix` tenant) or bundled `chat-synapse-db` (`postgres:15-alpine` when `--no-plex` is passed).
+   - **S3 Media Offloading**: `ClusterTool::CHAT` is mapped in `commonsBuckets() => ['chat-media']`. `chat:init` automatically provisions the `chat-media` S3 bucket in Plex Commons (SeaweedFS / MinIO) and configures Synapse's S3 media provider plugin to store all photo, audio, and video uploads directly on S3 storage, keeping disk usage lightweight.
+   - Coturn requires no database (stateless HMAC authentication via shared secret).
 
 ---
 

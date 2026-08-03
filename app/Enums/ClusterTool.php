@@ -1276,6 +1276,7 @@ enum ClusterTool: string
     private function commonsBucketList(): array
     {
         return match ($this) {
+            self::CHAT => ['chat-media'],
             self::DRIVE => ['drive-ocis'],
             self::GIT => ['forgejo-storage', 'forgejo-packages', 'forgejo-lfs'],
             self::MAIL => ['stalwart'],
