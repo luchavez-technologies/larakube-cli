@@ -4,16 +4,17 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithSupport
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     protected function supportNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::SUPPORT->namespace();
     }
 
     protected function supportKubectl(?string $context = null): string
@@ -33,11 +34,7 @@ trait InteractsWithSupport
 
     protected function readSupportSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret support-chatwoot-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'support-chatwoot-secrets', $key);
     }
 
     protected function resolveSupportHostReadOnly(string $env, ?ConfigData $config): ?string

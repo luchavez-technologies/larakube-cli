@@ -4,16 +4,17 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithNotes
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     protected function notesNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::NOTES->namespace();
     }
 
     protected function notesKubectl(?string $context = null): string
@@ -33,11 +34,7 @@ trait InteractsWithNotes
 
     protected function readNotesSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret notes-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'notes-secrets', $key);
     }
 
     protected function resolveNotesHostReadOnly(string $env, ?ConfigData $config): ?string

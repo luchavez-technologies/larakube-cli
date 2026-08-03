@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -15,7 +16,7 @@ trait InteractsWithVpn
     /** The dedicated namespace the NetBird VPN lives in. */
     protected function vpnNamespace(): string
     {
-        return 'larakube-vpn';
+        return ClusterTool::VPN->namespace();
     }
 
     /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */

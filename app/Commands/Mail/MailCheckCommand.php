@@ -205,9 +205,9 @@ class MailCheckCommand extends Command
      */
     private function probeRelay(string $kubectl, string $ns): array
     {
-        $provider = $this->readNamedSecret($kubectl, $ns, 'mail-relay', 'provider') ?: 'relay';
-        $user = (string) $this->readNamedSecret($kubectl, $ns, 'mail-relay', 'username');
-        $pass = (string) $this->readNamedSecret($kubectl, $ns, 'mail-relay', 'password');
+        $provider = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'provider') ?: 'relay';
+        $user = (string) $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'username');
+        $pass = (string) $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'password');
 
         // Host/port/TLS come from the Stalwart route itself — that's what
         // actually gets used for delivery (and honors any --port override).
@@ -251,15 +251,6 @@ class MailCheckCommand extends Command
         // No banner / no auth response = the port never opened.
         return ['fail', $where.' — port unreachable from the cluster',
             "Nothing answered on {$address}:{$port}. DigitalOcean null-routes outbound 25/465/587 (above the cloud firewall); use 2525 instead: larakube mail:relay {$provider} --env=<env> --port=2525 (Brevo's default is already 2525)."];
-    }
-
-    private function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
     }
 
     private function report(string $status, string $label, string $hint = ''): void

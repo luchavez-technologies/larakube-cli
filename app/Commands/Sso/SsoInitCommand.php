@@ -308,16 +308,6 @@ class SsoInitCommand extends Command
         return true;
     }
 
-    /** Read one key from a named secret in a namespace. */
-    protected function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
-    }
-
     protected function resolveSsoHost(string $env): string
     {
         $service = SharedClusterService::SSO;

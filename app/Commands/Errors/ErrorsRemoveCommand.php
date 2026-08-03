@@ -4,10 +4,12 @@ namespace App\Commands\Errors;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
-use Illuminate\Support\Facades\Process;
+use App\Traits\ReadsClusterSecrets;
 
 class ErrorsRemoveCommand extends AbstractToolRemoveCommand
 {
+    use ReadsClusterSecrets;
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::ERRORS;
@@ -21,15 +23,9 @@ class ErrorsRemoveCommand extends AbstractToolRemoveCommand
      */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $url = trim(Process::run(
-            "{$kubectl} get secret glitchtip-admin -n {$namespace} -o jsonpath='{.data.database-url}'",
-        )->output());
+        $url = $this->readClusterSecretKey($kubectl, $namespace, 'glitchtip-admin', 'database-url');
 
-        if ($url === '') {
-            return false;
-        }
-
-        return str_contains((string) base64_decode($url), 'glitchtip-db');
+        return $url !== null && str_contains($url, 'glitchtip-db');
     }
 
     protected function teardown(string $kubectl, string $namespace): bool

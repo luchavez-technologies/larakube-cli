@@ -12,6 +12,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ReadsClusterSecrets;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
@@ -24,7 +25,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DriveInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ReadsClusterSecrets, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'drive:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -241,8 +242,6 @@ class DriveInitCommand extends Command
 
     protected function readDriveSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $val = trim(Process::run("{$kubectl} get secret drive-secrets -n {$ns} -o jsonpath='{.data.{$key}}' 2>/dev/null")->output());
-
-        return $val === '' ? null : (string) base64_decode($val);
+        return $this->readClusterSecretKey($kubectl, $ns, 'drive-secrets', $key);
     }
 }

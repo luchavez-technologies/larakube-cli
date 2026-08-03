@@ -69,8 +69,8 @@ class MailRelayCommand extends Command
 
     protected function configureRelay(string $kubectl, string $ns, string $env, ?ConfigData $config, RelayProvider $provider): int
     {
-        $cachedUsername = $this->readNamedSecret($kubectl, $ns, 'mail-relay', 'username');
-        $cachedPassword = $this->readNamedSecret($kubectl, $ns, 'mail-relay', 'password');
+        $cachedUsername = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'username');
+        $cachedPassword = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'password');
 
         // Only show onboarding/pricing when we're actually about to prompt —
         // stay quiet on scripted runs (--username/--api-key) and re-runs that
@@ -93,7 +93,7 @@ class MailRelayCommand extends Command
         // region-scoped, and the onboarding text tells the user to note it first.
         $region = '';
         if ($provider->requiresRegion()) {
-            $cachedRegion = $this->readNamedSecret($kubectl, $ns, 'mail-relay', 'region');
+            $cachedRegion = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'region');
             $region = (string) ($this->option('region') ?: $cachedRegion ?: text(
                 label: "AWS region for {$provider->label()} (where you verified your domain)",
                 placeholder: 'us-east-1',
@@ -256,15 +256,6 @@ class MailRelayCommand extends Command
             label: $forRemoval ? 'Which relay would you like to remove?' : 'Which relay provider?',
             options: $options,
         ));
-    }
-
-    protected function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
     }
 
     /** Best-effort mail domain (drops the leftmost "mail." label). */

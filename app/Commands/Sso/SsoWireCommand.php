@@ -111,8 +111,8 @@ class SsoWireCommand extends Command
         }
 
         $appSecret = "sso-app-{$tool->value}";
-        $clientId = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'client-id');
-        $clientSecret = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'client-secret');
+        $clientId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-id');
+        $clientSecret = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-secret');
 
         $defaultProject = $tool->requiresRbacGating() ? ClusterTool::rbacProjectName() : 'LaraKube Shared Tools';
         $projectName = (string) ($this->option('project') ?: $defaultProject);
@@ -160,7 +160,7 @@ class SsoWireCommand extends Command
         // the reuse branch below dead code: every re-run silently re-registered
         // and rotated the client secret, despite the "pass --remove to rotate"
         // message promising the opposite.
-        $appId = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'app-id');
+        $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
 
         $appExistsInZitadel = false;
         $registeredRedirectUris = null;
@@ -445,8 +445,8 @@ class SsoWireCommand extends Command
         }
 
         $appSecret = "sso-app-{$tool->value}";
-        $projectId = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'project-id');
-        $appId = $this->readNamedSecret($kubectl, $ssoNs, $appSecret, 'app-id');
+        $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
+        $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
 
         if ($projectId !== null && $appId !== null) {
             $this->withSpin("Deregistering {$tool->getLabel()} from Zitadel...", fn () => $this->zitadelDeleteOidcApp($ssoHost, $pat, $projectId, $appId));
@@ -619,7 +619,7 @@ class SsoWireCommand extends Command
         // base64_encode(random_bytes(32)) yields 44 chars and crashloops the pod
         // ("cookie_secret must be 16, 24, or 32 bytes"). A rotten cached value
         // would otherwise be reused forever, so regenerate instead of trusting it.
-        $cookieSecret = $this->readNamedSecret($kubectl, $this->proxyNamespace(), 'sso-proxy', 'OAUTH2_PROXY_COOKIE_SECRET');
+        $cookieSecret = $this->readClusterSecretKey($kubectl, $this->proxyNamespace(), 'sso-proxy', 'OAUTH2_PROXY_COOKIE_SECRET');
         if ($cookieSecret === null || ! in_array(strlen($cookieSecret), [16, 24, 32], true)) {
             $cookieSecret = Str::random(32);
         }
@@ -701,8 +701,8 @@ class SsoWireCommand extends Command
         // The proxy is SHARED — only tear it down once nothing else is gated.
         if ($this->gatedForwardAuthTools($kubectl, $tool) === []) {
             $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $ssoNs, $ssoHost, $pat) {
-                $projectId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
-                $appId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
+                $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
+                $appId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
                 if ($projectId !== null && $appId !== null) {
                     $this->zitadelDeleteOidcApp($ssoHost, $pat, $projectId, $appId);
                 }
@@ -735,10 +735,10 @@ class SsoWireCommand extends Command
      */
     protected function ensureProxyOidcApp(string $kubectl, string $ssoNs, string $ssoHost, string $authHost, string $pat, string $env): ?array
     {
-        $clientId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'client-id');
-        $clientSecret = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'client-secret');
-        $appId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
-        $projectId = $this->readNamedSecret($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
+        $clientId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'client-id');
+        $clientSecret = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'client-secret');
+        $appId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
+        $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
 
         if ($clientId !== null && $clientSecret !== null && $appId !== null && $projectId !== null
             && Http::withToken($pat)->timeout(10)->get("https://{$ssoHost}/management/v1/projects/{$projectId}/apps/{$appId}")->successful()) {
@@ -1147,7 +1147,7 @@ class SsoWireCommand extends Command
         string $clientSecret,
         string $env,
     ): bool {
-        $rootToken = $this->readNamedSecret($kubectl, $ns, 'openbao-bootstrap', 'root-token');
+        $rootToken = $this->readClusterSecretKey($kubectl, $ns, 'openbao-bootstrap', 'root-token');
         if ($rootToken === null) {
             $this->laraKubeError('OpenBao is not initialized — no root token found. Run `larakube secrets:import` first.');
 
@@ -1256,7 +1256,7 @@ class SsoWireCommand extends Command
     /** Disable the OIDC auth backend on OpenBao. */
     protected function unwireOpenBaoOidc(string $kubectl, string $ns): void
     {
-        $rootToken = $this->readNamedSecret($kubectl, $ns, 'openbao-bootstrap', 'root-token');
+        $rootToken = $this->readClusterSecretKey($kubectl, $ns, 'openbao-bootstrap', 'root-token');
         if ($rootToken === null) {
             return;
         }

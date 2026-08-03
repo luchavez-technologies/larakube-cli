@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Process;
 
 trait InteractsWithInsights
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /** The namespace the insights stack lives in. */
     protected function insightsNamespace(): string

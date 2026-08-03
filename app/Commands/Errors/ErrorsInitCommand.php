@@ -154,15 +154,9 @@ class ErrorsInitCommand extends Command
     /** Check if database-url points locally or to Plex Commons */
     protected function isErrorsDatabaseLocal(string $kubectl, string $ns): bool
     {
-        $url = trim(Process::run(
-            "{$kubectl} get secret glitchtip-admin -n {$ns} -o jsonpath='{.data.database-url}'",
-        )->output());
+        $url = $this->readClusterSecretKey($kubectl, $ns, 'glitchtip-admin', 'database-url');
 
-        if ($url === '') {
-            return false;
-        }
-
-        return str_contains((string) base64_decode($url), 'glitchtip-db');
+        return $url !== null && str_contains($url, 'glitchtip-db');
     }
 
     /**
@@ -170,18 +164,14 @@ class ErrorsInitCommand extends Command
      */
     protected function readExistingDbPassword(string $kubectl, string $ns): ?string
     {
-        $url = trim(Process::run(
-            "{$kubectl} get secret glitchtip-admin -n {$ns} -o jsonpath='{.data.database-url}'",
-        )->output());
+        $url = $this->readClusterSecretKey($kubectl, $ns, 'glitchtip-admin', 'database-url');
 
-        if ($url === '') {
+        if ($url === null) {
             return null;
         }
 
-        $decoded = (string) base64_decode($url);
-
         // Pattern: postgres://glitchtip:<password>@...
-        if (preg_match('/^postgres:\/\/glitchtip:([^@]+)@/', $decoded, $matches)) {
+        if (preg_match('/^postgres:\/\/glitchtip:([^@]+)@/', $url, $matches)) {
             return $matches[1];
         }
 

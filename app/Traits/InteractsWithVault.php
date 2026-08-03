@@ -4,17 +4,18 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithVault
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /** The dedicated namespace the Vaultwarden stack lives in. */
     protected function vaultNamespace(): string
     {
-        return 'larakube-vault';
+        return ClusterTool::PASSWORDS->namespace();
     }
 
     /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
@@ -37,25 +38,17 @@ trait InteractsWithVault
     /** The existing Vaultwarden admin token, or null when the secret isn't there. */
     protected function readVaultAdminToken(string $kubectl, string $ns): ?string
     {
-        $plain = trim(Process::run(
-            "{$kubectl} get secret vault-admin -n {$ns} -o jsonpath='{.data.plain-token}'",
-        )->output());
-
-        if ($plain !== '') {
-            return (string) base64_decode($plain);
+        $plain = $this->readClusterSecretKey($kubectl, $ns, 'vault-admin', 'plain-token');
+        if ($plain !== null) {
+            return $plain;
         }
 
-        $legacy = trim(Process::run(
-            "{$kubectl} get secret vault-admin -n {$ns} -o jsonpath='{.data.admin-token}'",
-        )->output());
-
-        if ($legacy === '') {
+        $legacy = $this->readClusterSecretKey($kubectl, $ns, 'vault-admin', 'admin-token');
+        if ($legacy === null) {
             return null;
         }
 
-        $decoded = (string) base64_decode($legacy);
-
-        return str_starts_with($decoded, '$argon2') ? null : $decoded;
+        return str_starts_with($legacy, '$argon2') ? null : $legacy;
     }
 
     /**

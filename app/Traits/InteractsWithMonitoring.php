@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Process;
 
 trait InteractsWithMonitoring
 {
+    use ReadsClusterSecrets;
+
     /** The shared namespace the monitoring stack lives in. */
     protected function monitoringNamespace(): string
     {
@@ -35,11 +37,7 @@ trait InteractsWithMonitoring
     /** The existing Grafana admin password, or null when the secret isn't there. */
     protected function readGrafanaPassword(string $kubectl, string $ns): ?string
     {
-        $encoded = trim(Process::run(
-            "{$kubectl} get secret grafana-admin -n {$ns} -o jsonpath='{.data.password}'",
-        )->output());
-
-        return $encoded !== '' ? (string) base64_decode($encoded) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'grafana-admin', 'password');
     }
 
     /**

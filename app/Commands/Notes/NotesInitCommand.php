@@ -200,7 +200,7 @@ class NotesInitCommand extends Command
     protected function ensureOidcSecret(string $kubectl, string $ns, string $env, string $host): bool
     {
         // 1. Existing real credentials?
-        $existing = $this->readNotesNamedSecret($kubectl, $ns, 'notes-outline-oidc', 'OIDC_CLIENT_ID');
+        $existing = $this->readClusterSecretKey($kubectl, $ns, 'notes-outline-oidc', 'OIDC_CLIENT_ID');
         if ($existing !== null && $existing !== 'pending') {
             $this->laraKubeInfo('Reusing existing OIDC credentials for Outline.');
 
@@ -344,19 +344,6 @@ class NotesInitCommand extends Command
         $this->withSpin('Writing OIDC secret...', fn () => Process::run(
             "{$kubectl} create secret generic notes-outline-oidc -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
-    }
-
-    /**
-     * Read a key from an arbitrary secret (unlike readNotesSecret which is
-     * pinned to notes-secrets).
-     */
-    protected function readNotesNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
     }
 
     protected function resolveNotesHost(string $env): string

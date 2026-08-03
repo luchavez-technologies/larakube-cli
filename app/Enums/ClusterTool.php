@@ -309,7 +309,7 @@ enum ClusterTool: string
         return match ($this) {
             self::SHEETS => [
                 'deployment' => 'sheet-teable',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'sheet-teable-smtp',
                 'static' => [
                     'BACKEND_MAIL_SECURE' => 'true',
@@ -324,7 +324,7 @@ enum ClusterTool: string
             ],
             self::FLOW => [
                 'deployment' => 'flow-n8n',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'flow-n8n-smtp',
                 'static' => [
                     'N8N_EMAIL_MODE' => 'smtp',
@@ -341,7 +341,7 @@ enum ClusterTool: string
             ],
             self::PASSWORDS => [
                 'deployment' => 'vaultwarden',
-                'namespace' => 'larakube-vault',
+                'namespace' => $this->namespace(),
                 'secret' => 'vaultwarden-smtp',
                 'static' => [
                     'SMTP_SECURITY' => 'force_tls',
@@ -356,7 +356,7 @@ enum ClusterTool: string
             ],
             self::CHAT => [
                 'deployment' => 'chat-synapse',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'chat-smtp',
                 'static' => [],
                 'vars' => [
@@ -369,7 +369,7 @@ enum ClusterTool: string
             ],
             self::NOTES => [
                 'deployment' => 'notes-outline',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'notes-outline-smtp',
                 // Stalwart submissions is port 465 (implicit TLS). Outline
                 // defaults SMTP_SECURE to true, but pin it so the 465 intent
@@ -390,7 +390,7 @@ enum ClusterTool: string
                 // Its notifications service reads NOTIFICATIONS_SMTP_*; ssltls is
                 // implicit TLS for Stalwart's port 465 (starttls|ssltls|none).
                 'deployment' => 'drive-ocis',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'drive-ocis-smtp',
                 'static' => [
                     'NOTIFICATIONS_SMTP_ENCRYPTION' => 'ssltls',
@@ -406,7 +406,7 @@ enum ClusterTool: string
             ],
             self::TASKS => [
                 'deployment' => 'tasks-planka',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'tasks-planka-smtp',
                 'static' => [
                     'SMTP_SECURE' => 'true',
@@ -421,7 +421,7 @@ enum ClusterTool: string
             ],
             self::SIGN => [
                 'deployment' => 'sign-documenso',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'sign-documenso-smtp',
                 'static' => [
                     'NEXT_PRIVATE_SMTP_TRANSPORT' => 'smtp-auth',
@@ -440,7 +440,7 @@ enum ClusterTool: string
             ],
             self::SUPPORT => [
                 'deployment' => 'support-chatwoot',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'support-chatwoot-smtp',
                 'static' => [
                     'SMTP_ENABLE_STARTTLS_AUTO' => 'true',
@@ -455,7 +455,7 @@ enum ClusterTool: string
             ],
             self::LINK => [
                 'deployment' => 'link-kutt',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'link-kutt-smtp',
                 'static' => [
                     'MAIL_ENABLED' => 'true',
@@ -471,7 +471,7 @@ enum ClusterTool: string
             ],
             self::CRM => [
                 'deployment' => 'crm-twenty',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'crm-twenty-smtp',
                 'static' => [
                     'EMAIL_DRIVER' => 'smtp',
@@ -491,7 +491,7 @@ enum ClusterTool: string
                 // MAILER_TYPE/HOST). `smtps` = implicit TLS, which is Stalwart's
                 // 465 submissions listener.
                 'deployment' => 'forgejo',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'forgejo-smtp',
                 'static' => [
                     'FORGEJO__mailer__ENABLED' => 'true',
@@ -507,7 +507,7 @@ enum ClusterTool: string
             ],
             self::RECORD => [
                 'deployment' => 'record-sendrec',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'record-sendrec-smtp',
                 // SendRec defaults to STARTTLS, which deadlocks on Stalwart's
                 // 465 (implicit TLS) listener: plaintext EHLO vs a waiting TLS
@@ -535,7 +535,7 @@ enum ClusterTool: string
             ],
             self::MONITOR => [
                 'deployment' => 'grafana',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'grafana-smtp',
                 'static' => [
                     'GF_SMTP_ENABLED' => 'true',
@@ -724,7 +724,7 @@ enum ClusterTool: string
         return match ($this) {
             self::MONITOR => [
                 'deployment' => 'grafana',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'grafana-oidc',
                 'static' => [
                     'GF_AUTH_GENERIC_OAUTH_ENABLED' => 'true',
@@ -767,7 +767,7 @@ enum ClusterTool: string
             ],
             self::PASSWORDS => [
                 'deployment' => 'vaultwarden',
-                'namespace' => 'larakube-vault',
+                'namespace' => $this->namespace(),
                 'secret' => 'vaultwarden-oidc',
                 'static' => [
                     'SSO_ENABLED' => 'true',
@@ -797,7 +797,7 @@ enum ClusterTool: string
                 // /user/oauth2/<source name>/callback, and sso:wire names the
                 // source `zitadel`.
                 'deployment' => 'forgejo',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'forgejo-oidc',
                 'static' => [],
                 'vars' => [],
@@ -805,7 +805,7 @@ enum ClusterTool: string
             ],
             self::NOTES => [
                 'deployment' => 'notes-outline',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'notes-outline-oidc',
                 'static' => [
                     'FORCE_HTTPS' => 'true',
@@ -821,7 +821,7 @@ enum ClusterTool: string
             ],
             self::DRIVE => [
                 'deployment' => 'drive-ocis',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'drive-ocis-oidc',
                 // oCIS web is a browser SPA doing the full authorize+token
                 // exchange in-page with PKCE — the served config.json's
@@ -897,7 +897,7 @@ enum ClusterTool: string
             ],
             self::SIGN => [
                 'deployment' => 'sign-documenso',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'sign-documenso-oidc',
                 'static' => [
                     'NEXT_PUBLIC_DISABLE_OIDC_SIGNIN' => 'false',
@@ -917,7 +917,7 @@ enum ClusterTool: string
             ],
             self::TASKS => [
                 'deployment' => 'tasks-planka',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'tasks-planka-oidc',
                 'static' => [],
                 'vars' => [
@@ -936,7 +936,7 @@ enum ClusterTool: string
                 // /login/oidc, and OIDC_SCOPE defaults to "openid profile
                 // email" (matches Zitadel's default scopes).
                 'deployment' => 'link-kutt',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'link-kutt-oidc',
                 'static' => [
                     'OIDC_ENABLED' => 'true',
@@ -961,7 +961,7 @@ enum ClusterTool: string
             // its own accounts.
             self::RECORD => [
                 'deployment' => 'record-sendrec',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'record-sendrec-oidc',
                 'static' => [],
                 'vars' => [
@@ -973,7 +973,7 @@ enum ClusterTool: string
             ],
             self::CHAT => [
                 'deployment' => 'chat-synapse',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'chat-oidc',
                 'static' => [
                     'SYNAPSE_OIDC_ENABLED' => 'true',
@@ -987,7 +987,7 @@ enum ClusterTool: string
             ],
             self::SHEETS => [
                 'deployment' => 'sheet-teable',
-                'namespace' => 'larakube-shared',
+                'namespace' => $this->namespace(),
                 'secret' => 'sheet-teable-oidc',
                 'static' => [
                     'SOCIAL_AUTH_PROVIDERS' => 'oidc',
@@ -1016,7 +1016,7 @@ enum ClusterTool: string
             ],
             self::SECRETS => [
                 'deployment' => 'openbao-backend',
-                'namespace' => 'larakube-secrets',
+                'namespace' => $this->namespace(),
                 'secret' => 'openbao-oidc',
                 'static' => [],
                 'vars' => [],
@@ -1099,30 +1099,30 @@ enum ClusterTool: string
     public function vpnMiddlewareTarget(): ?array
     {
         return match ($this) {
-            self::FLOW => ['name' => 'flow-vpn-only', 'namespace' => 'larakube-shared'],
-            self::SHEETS => ['name' => 'sheet-vpn-only', 'namespace' => 'larakube-shared'],
-            self::PASSWORDS => ['name' => 'vault-vpn-only', 'namespace' => 'larakube-vault'],
-            self::MONITOR => ['name' => 'grafana-vpn-only', 'namespace' => 'larakube-shared'],
-            self::SECRETS => ['name' => 'openbao-vpn-only', 'namespace' => 'larakube-secrets'],
-            self::ERRORS => ['name' => 'glitchtip-web-vpn-only', 'namespace' => 'larakube-shared'],
-            self::UPTIME => ['name' => 'uptime-kuma-vpn-only', 'namespace' => 'larakube-shared'],
-            self::GIT => ['name' => 'forgejo-vpn-only', 'namespace' => 'larakube-shared'],
-            self::INSIGHTS => ['name' => 'insights-vpn-only', 'namespace' => 'larakube-shared'],
-            self::MAIL => ['name' => 'mail-vpn-only', 'namespace' => 'larakube-shared'],
-            self::DESK => ['name' => 'desk-vpn-only', 'namespace' => 'larakube-shared'],
-            self::CHAT => ['name' => 'chat-vpn-only', 'namespace' => 'larakube-shared'],
-            self::SSO => ['name' => 'sso-vpn-only', 'namespace' => 'larakube-sso'],
-            self::WEBMAIL => ['name' => 'webmail-vpn-only', 'namespace' => 'larakube-shared'],
-            self::NOTES => ['name' => 'notes-vpn-only', 'namespace' => 'larakube-shared'],
-            self::DRIVE => ['name' => 'drive-vpn-only', 'namespace' => 'larakube-shared'],
-            self::ANALYTICS => ['name' => 'analytics-vpn-only', 'namespace' => 'larakube-shared'],
-            self::TASKS => ['name' => 'tasks-vpn-only', 'namespace' => 'larakube-shared'],
+            self::FLOW => ['name' => 'flow-vpn-only', 'namespace' => $this->namespace()],
+            self::SHEETS => ['name' => 'sheet-vpn-only', 'namespace' => $this->namespace()],
+            self::PASSWORDS => ['name' => 'vault-vpn-only', 'namespace' => $this->namespace()],
+            self::MONITOR => ['name' => 'grafana-vpn-only', 'namespace' => $this->namespace()],
+            self::SECRETS => ['name' => 'openbao-vpn-only', 'namespace' => $this->namespace()],
+            self::ERRORS => ['name' => 'glitchtip-web-vpn-only', 'namespace' => $this->namespace()],
+            self::UPTIME => ['name' => 'uptime-kuma-vpn-only', 'namespace' => $this->namespace()],
+            self::GIT => ['name' => 'forgejo-vpn-only', 'namespace' => $this->namespace()],
+            self::INSIGHTS => ['name' => 'insights-vpn-only', 'namespace' => $this->namespace()],
+            self::MAIL => ['name' => 'mail-vpn-only', 'namespace' => $this->namespace()],
+            self::DESK => ['name' => 'desk-vpn-only', 'namespace' => $this->namespace()],
+            self::CHAT => ['name' => 'chat-vpn-only', 'namespace' => $this->namespace()],
+            self::SSO => ['name' => 'sso-vpn-only', 'namespace' => $this->namespace()],
+            self::WEBMAIL => ['name' => 'webmail-vpn-only', 'namespace' => $this->namespace()],
+            self::NOTES => ['name' => 'notes-vpn-only', 'namespace' => $this->namespace()],
+            self::DRIVE => ['name' => 'drive-vpn-only', 'namespace' => $this->namespace()],
+            self::ANALYTICS => ['name' => 'analytics-vpn-only', 'namespace' => $this->namespace()],
+            self::TASKS => ['name' => 'tasks-vpn-only', 'namespace' => $this->namespace()],
 
-            self::SIGN => ['name' => 'sign-vpn-only', 'namespace' => 'larakube-shared'],
-            self::SUPPORT => ['name' => 'support-vpn-only', 'namespace' => 'larakube-shared'],
-            self::LINK => ['name' => 'link-vpn-only', 'namespace' => 'larakube-shared'],
-            self::CRM => ['name' => 'crm-vpn-only', 'namespace' => 'larakube-shared'],
-            self::RECORD => ['name' => 'record-vpn-only', 'namespace' => 'larakube-shared'],
+            self::SIGN => ['name' => 'sign-vpn-only', 'namespace' => $this->namespace()],
+            self::SUPPORT => ['name' => 'support-vpn-only', 'namespace' => $this->namespace()],
+            self::LINK => ['name' => 'link-vpn-only', 'namespace' => $this->namespace()],
+            self::CRM => ['name' => 'crm-vpn-only', 'namespace' => $this->namespace()],
+            self::RECORD => ['name' => 'record-vpn-only', 'namespace' => $this->namespace()],
             default => null,
         };
     }

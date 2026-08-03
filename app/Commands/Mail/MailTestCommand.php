@@ -68,7 +68,7 @@ class MailTestCommand extends Command
             required: true,
         ));
 
-        $cachedSender = $this->readNamedSecret($kubectl, $ns, 'mail-sender', 'sender');
+        $cachedSender = $this->readClusterSecretKey($kubectl, $ns, 'mail-sender', 'sender');
         $from = (string) ($this->option('from') ?: text(
             label: 'From — a Stalwart account',
             default: $cachedSender ?: ($domain !== '' ? 'noreply@'.$domain : ''),
@@ -184,15 +184,6 @@ class MailTestCommand extends Command
         foreach (array_slice($lines, -6) as $line) {
             $this->line('    <fg=gray>'.$line.'</>');
         }
-    }
-
-    protected function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
     }
 
     /** Drop the leftmost label ("mail.example.com" → "example.com"). */

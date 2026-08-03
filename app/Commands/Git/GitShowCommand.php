@@ -6,7 +6,6 @@ use App\Data\ConfigData;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithGitForge;
 use App\Traits\LaraKubeOutput;
-use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
 
@@ -52,10 +51,7 @@ class GitShowCommand extends Command
         $kubectl = $this->gitKubectl($resolvedContext ?: null);
         $ns = $this->gitNamespace();
 
-        $adminPassword = trim(Process::run(
-            "{$kubectl} get secret forgejo-admin -n {$ns} -o jsonpath='{.data.password}'",
-        )->output());
-        $adminPassword = $adminPassword !== '' ? (string) base64_decode($adminPassword) : '<unknown>';
+        $adminPassword = $this->readClusterSecretKey($kubectl, $ns, 'forgejo-admin', 'password') ?? '<unknown>';
 
         table(['Component', 'Detail / Access'], [
             ['Gitea Web URL', $gitUrl],

@@ -265,7 +265,7 @@ class MailInitCommand extends Command
             return;
         }
 
-        $existingPassword = $this->readNamedSecret($kubectl, $ns, 'stalwart-openbao', 'STALWART_STORE_PASSWORD');
+        $existingPassword = $this->readClusterSecretKey($kubectl, $ns, 'stalwart-openbao', 'STALWART_STORE_PASSWORD');
         $password = $existingPassword ?? Str::random(24);
 
         // Unlike the checks above, this one is a real failure, not a missing
@@ -396,14 +396,5 @@ class MailInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::MAIL);
-    }
-
-    protected function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
     }
 }

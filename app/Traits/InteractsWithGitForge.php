@@ -4,15 +4,18 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithGitForge
 {
+    use ReadsClusterSecrets;
+
     /** The shared namespace Gitea lives in. */
     protected function gitNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::GIT->namespace();
     }
 
     /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */

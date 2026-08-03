@@ -202,8 +202,8 @@ class MailWireCommand extends Command
      */
     protected function resolveSenderCredentials(string $kubectl, string $ns, string $mailHost): ?array
     {
-        $cachedSender = $this->readNamedSecret($kubectl, $ns, 'mail-sender', 'sender');
-        $cachedPassword = $this->readNamedSecret($kubectl, $ns, 'mail-sender', 'app-password');
+        $cachedSender = $this->readClusterSecretKey($kubectl, $ns, 'mail-sender', 'sender');
+        $cachedPassword = $this->readClusterSecretKey($kubectl, $ns, 'mail-sender', 'app-password');
 
         $usingCache = $cachedSender !== null && $cachedPassword !== null
             && ! $this->option('sender') && ! $this->option('app-password');
@@ -429,15 +429,6 @@ class MailWireCommand extends Command
         return trim(Process::run(
             "{$kubectl} get deployment {$deployment} -n {$ns} --no-headers --ignore-not-found",
         )->output()) !== '';
-    }
-
-    protected function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
     }
 
     protected function senderDomain(string $host): string

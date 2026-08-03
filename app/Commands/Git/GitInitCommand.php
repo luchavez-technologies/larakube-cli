@@ -493,21 +493,13 @@ class GitInitCommand extends Command
 
     protected function readForgejoSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret forgejo-admin -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'forgejo-admin', $key);
     }
 
     /** Parse admin password from existing secret */
     protected function readExistingAdminPassword(string $kubectl, string $ns): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret forgejo-admin -n {$ns} -o jsonpath='{.data.password}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readForgejoSecret($kubectl, $ns, 'password');
     }
 
     /** Resolve the Gitea host for this environment */

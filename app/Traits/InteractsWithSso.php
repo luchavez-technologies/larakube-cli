@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
@@ -15,12 +16,12 @@ use Illuminate\Support\Facades\Process;
  */
 trait InteractsWithSso
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /** The namespace the SSO stack lives in — dedicated, not larakube-shared. */
     protected function ssoNamespace(): string
     {
-        return 'larakube-sso';
+        return ClusterTool::SSO->namespace();
     }
 
     /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */
@@ -43,21 +44,7 @@ trait InteractsWithSso
     /** Read a key from the sso-secrets secret. */
     protected function readSsoSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret sso-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
-    }
-
-    /** Read a key from any named secret in the SSO namespace (e.g. sso-app-drive). */
-    protected function readNamedSecret(string $kubectl, string $ns, string $secret, string $key): ?string
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'sso-secrets', $key);
     }
 
     /**

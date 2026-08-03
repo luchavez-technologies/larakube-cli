@@ -4,16 +4,17 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithCrm
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     protected function crmNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::CRM->namespace();
     }
 
     protected function crmKubectl(?string $context = null): string
@@ -33,11 +34,7 @@ trait InteractsWithCrm
 
     protected function readCrmSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret crm-twenty-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'crm-twenty-secrets', $key);
     }
 
     protected function resolveCrmHostReadOnly(string $env, ?ConfigData $config): ?string

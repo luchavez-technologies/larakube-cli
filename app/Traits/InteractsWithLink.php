@@ -4,16 +4,17 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithLink
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     protected function linkNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::LINK->namespace();
     }
 
     protected function linkKubectl(?string $context = null): string
@@ -33,11 +34,7 @@ trait InteractsWithLink
 
     protected function readLinkSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret link-kutt-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'link-kutt-secrets', $key);
     }
 
     protected function resolveLinkHostReadOnly(string $env, ?ConfigData $config): ?string

@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
@@ -15,12 +16,12 @@ use Illuminate\Support\Facades\Process;
  */
 trait InteractsWithBulwark
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /** The namespace the webmail client lives in (next to Stalwart). */
     protected function bulwarkNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::WEBMAIL->namespace();
     }
 
     /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */
@@ -43,11 +44,7 @@ trait InteractsWithBulwark
     /** Read a key from the webmail-secrets secret. */
     protected function readBulwarkSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret webmail-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'webmail-secrets', $key);
     }
 
     /** Read-only Bulwark host for the given environment. */

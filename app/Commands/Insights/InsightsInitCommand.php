@@ -181,10 +181,6 @@ class InsightsInitCommand extends Command
 
     protected function readInsightsEncryptionKey(string $kubectl, string $ns): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret insights-secrets -n {$ns} -o jsonpath='{.data.encryption-key}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'insights-secrets', 'encryption-key');
     }
 }

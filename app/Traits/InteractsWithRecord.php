@@ -4,16 +4,17 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithRecord
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     protected function recordNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::RECORD->namespace();
     }
 
     protected function recordKubectl(?string $context = null): string
@@ -33,11 +34,7 @@ trait InteractsWithRecord
 
     protected function readRecordSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret record-sendrec-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'record-sendrec-secrets', $key);
     }
 
     protected function resolveRecordHostReadOnly(string $env, ?ConfigData $config): ?string

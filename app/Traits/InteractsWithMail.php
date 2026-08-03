@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Process;
  */
 trait InteractsWithMail
 {
-    use ManagesToolFirewallPorts, ResolvesEnvironmentContext;
+    use ManagesToolFirewallPorts, ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /**
      * Reverse the install-time port opening on teardown. A mail server that is
@@ -54,11 +54,7 @@ trait InteractsWithMail
     /** Read a key from the mail-secrets secret. */
     protected function readMailSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret mail-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'mail-secrets', $key);
     }
 
     /**

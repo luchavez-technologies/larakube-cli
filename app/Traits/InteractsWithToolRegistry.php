@@ -7,18 +7,20 @@ use Illuminate\Support\Facades\Process;
 
 trait InteractsWithToolRegistry
 {
+    use ReadsClusterSecrets;
+
     /**
      * @return array<string, array>
      */
     protected function getRegisteredTools(string $kubectl): array
     {
-        $json = trim(Process::run("{$kubectl} get secret larakube-tools-registry -n larakube-shared -o jsonpath='{.data.registry\\.json}' 2>/dev/null")->output());
+        $json = $this->readClusterSecretKey($kubectl, 'larakube-shared', 'larakube-tools-registry', 'registry\.json');
 
-        if ($json === '') {
+        if ($json === null) {
             return [];
         }
 
-        $decoded = json_decode(base64_decode($json), true);
+        $decoded = json_decode($json, true);
 
         return is_array($decoded) ? $decoded : [];
     }

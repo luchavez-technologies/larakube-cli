@@ -4,16 +4,17 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithFlow
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /** The namespace the flow stack lives in. */
     protected function flowNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::FLOW->namespace();
     }
 
     /** Build the kubectl command, optionally scoped to a specific context. */
@@ -36,21 +37,13 @@ trait InteractsWithFlow
     /** Read flow encryption key. */
     protected function readFlowEncryptionKey(string $kubectl, string $ns): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret flow-secrets -n {$ns} -o jsonpath='{.data.encryption-key}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'flow-secrets', 'encryption-key');
     }
 
     /** Read flow database password. */
     protected function readFlowDbPassword(string $kubectl, string $ns): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret flow-secrets -n {$ns} -o jsonpath='{.data.db-password}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'flow-secrets', 'db-password');
     }
 
     /**

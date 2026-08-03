@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Process;
  */
 trait InteractsWithChat
 {
-    use ResolvesEnvironmentContext;
+    use ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /** The namespace the chat stack lives in. */
     protected function chatNamespace(): string
@@ -44,11 +44,7 @@ trait InteractsWithChat
     /** Read a key from the chat-secrets secret. */
     protected function readChatSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret chat-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
-        )->output());
-
-        return $out !== '' ? (string) base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'chat-secrets', $key);
     }
 
     /**

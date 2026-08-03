@@ -4,15 +4,18 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithErrors
 {
+    use ReadsClusterSecrets;
+
     /** The namespace the GlitchTip stack lives in. */
     protected function errorsNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::ERRORS->namespace();
     }
 
     /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */

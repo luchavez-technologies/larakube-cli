@@ -95,51 +95,16 @@ enum AppFramework: string implements HasLabel
      */
     public static function detect(string $projectPath): ?self
     {
-        // Next.js: config file present
-        foreach (self::NEXTJS->markerFiles() as $files) {
-            if (self::allFilesExist($projectPath, $files)) {
-                return self::NEXTJS;
+        // Pure marker-file frameworks: each case's own markerFiles() is the
+        // single source of truth, checked in priority order (most specific
+        // first — a Next.js/NestJS/Adonis project can also carry a package.json
+        // that would otherwise be ambiguous with a plain Node setup).
+        foreach ([self::NEXTJS, self::NESTJS, self::ADONISJS, self::DJANGO, self::FASTAPI, self::GIN, self::AXUM, self::SPRINGBOOT, self::DOTNET] as $case) {
+            foreach ($case->markerFiles() as $files) {
+                if (self::allFilesExist($projectPath, $files)) {
+                    return $case;
+                }
             }
-        }
-
-        // NestJS: nest-cli.json present
-        if (file_exists("$projectPath/nest-cli.json")) {
-            return self::NESTJS;
-        }
-
-        // AdonisJS: adonisrc.ts or adonisrc.js present
-        if (file_exists("$projectPath/adonisrc.ts") || file_exists("$projectPath/adonisrc.js")) {
-            return self::ADONISJS;
-        }
-
-        // Django: manage.py present
-        if (file_exists("$projectPath/manage.py")) {
-            return self::DJANGO;
-        }
-
-        // FastAPI: main.py present (and no manage.py)
-        if (file_exists("$projectPath/main.py")) {
-            return self::FASTAPI;
-        }
-
-        // Go (Gin): go.mod present
-        if (file_exists("$projectPath/go.mod")) {
-            return self::GIN;
-        }
-
-        // Rust (Axum): Cargo.toml present
-        if (file_exists("$projectPath/Cargo.toml")) {
-            return self::AXUM;
-        }
-
-        // Spring Boot: build.gradle.kts or pom.xml present
-        if (file_exists("$projectPath/build.gradle.kts") || file_exists("$projectPath/pom.xml")) {
-            return self::SPRINGBOOT;
-        }
-
-        // .NET Core: Program.cs present
-        if (file_exists("$projectPath/Program.cs")) {
-            return self::DOTNET;
         }
 
         // WordPress: wp-config.php OR composer.json containing roots/bedrock

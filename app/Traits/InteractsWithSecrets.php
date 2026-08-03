@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
 use App\Enums\SharedClusterService;
 use Illuminate\Contracts\Process\InvokedProcess;
@@ -16,13 +17,15 @@ use function Laravel\Prompts\select;
 
 trait InteractsWithSecrets
 {
+    use ReadsClusterSecrets;
+
     /** Status + body of the last failed secrets API call, for diagnostics. */
     protected ?string $lastSecretsBackendError = null;
 
     /** The dedicated namespace the Secrets Manager lives in. */
     protected function secretsNamespace(): string
     {
-        return 'larakube-secrets';
+        return ClusterTool::SECRETS->namespace();
     }
 
     /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
@@ -218,11 +221,7 @@ trait InteractsWithSecrets
      */
     protected function readOpenBaoBootstrapSecret(string $kubectl, string $ns, string $key): ?string
     {
-        $out = trim(Process::run(
-            "{$kubectl} get secret openbao-bootstrap -n {$ns} -o jsonpath='{.data.{$key}}' 2>/dev/null",
-        )->output());
-
-        return $out !== '' ? base64_decode($out) : null;
+        return $this->readClusterSecretKey($kubectl, $ns, 'openbao-bootstrap', $key);
     }
 
     /**
