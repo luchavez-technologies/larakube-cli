@@ -107,8 +107,18 @@ larakube chat:init production --domain=example.com
 ```
 
 ### Automatic Secret Generation:
-- Generates `turn_shared_secret` (64-char random string) stored in `chat-coturn-secret`.
-- Generates LiveKit `api_key` and `api_secret` stored in `chat-livekit-secret`.
+---
+
+## 🛡️ Production Resilience & Edge-Case Safeguards
+
+1. **Matrix Federation `.well-known` Delegation**:
+   `chat:init` provisions a Traefik Ingress Middleware serving `https://{domain}/.well-known/matrix/server` returning `{"m.server": "matrix.{{ $domain }}:443"}` so external Matrix homeservers (`matrix.org`, partner companies) can discover and federate with your cluster automatically.
+2. **Plex Commons S3 Media Storage (`larakube-chat-media`)**:
+   Media attachments (photos, voice messages, video clips) are stored in Plex Commons S3 object storage (`StorageDriver::commonsBucketCreateCommand('larakube-chat-media')`) via S3 API, preventing local pod disk bloat.
+3. **Traefik CORS & Cross-Origin Alignment**:
+   `homeserver.yaml` is configured with `public_baseurl: "https://matrix.{{ $domain }}"` and `allow_origin: "*"` so Cinny (`chat.{domain}`) can send WebRTC REST and WebSocket API requests without browser CORS errors.
+4. **Coturn & Synapse Secret Synchronization**:
+   `turn_shared_secret` is stored in a single Kubernetes Secret (`chat-turn-secret`) mounted by both Synapse and Coturn pods simultaneously, preventing secret drift and WebRTC call drops.
 
 ---
 
@@ -118,6 +128,8 @@ larakube chat:init production --domain=example.com
 - [ ] Create LiveKit SFU deployment template (`resources/views/k8s/tools/chat-livekit.blade.php`)
 - [ ] Update `resources/views/k8s/tools/chat-synapse.blade.php`:
   - Inject `turn_shared_secret` and `turn_uris` into `homeserver.yaml` Secret
+  - Add `.well-known/matrix/server` delegation Traefik middleware
+  - Wire S3 media repository settings to `larakube-chat-media`
 - [ ] Update `InteractsWithChat.php` trait:
   - Add `renderCoturnConfig()`, `renderLiveKitConfig()`
   - Generate TURN and LiveKit API secrets on first init
