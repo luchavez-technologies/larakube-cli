@@ -8,6 +8,7 @@ test('chat:init deploys matrix using plex commons postgres by default', function
             'version' => 1,
             'services' => [
                 'postgres' => ['enabled' => true],
+                'seaweedfs' => ['enabled' => true],
             ],
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),

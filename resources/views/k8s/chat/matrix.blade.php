@@ -111,6 +111,28 @@ stringData:
         cp_max: 10
     enable_registration: false
     registration_shared_secret: "{{ $registrationSecret }}"
+@if($turnSecret ?? null)
+    turn_shared_secret: "{{ $turnSecret }}"
+    turn_uris:
+      - "turn:{{ $host }}:3478?transport=udp"
+      - "turn:{{ $host }}:3478?transport=tcp"
+      - "stun:{{ $host }}:3478"
+    turn_user_lifetime: 86400000
+    turn_allow_guests: false
+@endif
+@if($s3Bucket ?? null)
+    media_storage_providers:
+      - module: s3_storage_provider.S3StorageProviderExtension
+        store_local: true
+        store_remote: true
+        store_synchronous: false
+        config:
+          bucket: "{{ $s3Bucket }}"
+          prefix: "media"
+          endpoint_url: "{{ $s3Endpoint }}"
+          access_key_id: "{{ $s3AccessKey }}"
+          secret_access_key: "{{ $s3SecretKey }}"
+@endif
 @if($smtp ?? null)
     email:
       enable_notifs: true
@@ -135,6 +157,78 @@ stringData:
             localpart_template: "@{{ user.preferred_username }}"
             display_name_template: "@{{ user.name }}"
             email_template: "@{{ user.email }}"
+@endif
+@if($turnSecret ?? null)
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: chat-coturn-config
+  namespace: larakube-shared
+type: Opaque
+stringData:
+  turnserver.conf: |
+    listening-port=3478
+    tls-listening-port=5349
+    realm={{ $host }}
+    use-auth-secret
+    static-auth-secret={{ $turnSecret }}
+    user-quota=12
+    total-quota=1200
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-coturn
+  namespace: larakube-shared
+  labels:
+    app: chat-coturn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chat-coturn
+  template:
+    metadata:
+      labels:
+        app: chat-coturn
+    spec:
+      containers:
+        - name: coturn
+          image: coturn/coturn:4.6.3-alpine
+          ports:
+            - containerPort: 3478
+              protocol: UDP
+              hostPort: 3478
+            - containerPort: 3478
+              protocol: TCP
+              hostPort: 3478
+          volumeMounts:
+            - name: config
+              mountPath: /etc/coturn/turnserver.conf
+              subPath: turnserver.conf
+      volumes:
+        - name: config
+          secret:
+            secretName: chat-coturn-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-coturn
+  namespace: larakube-shared
+spec:
+  selector:
+    app: chat-coturn
+  ports:
+    - name: turn-udp
+      protocol: UDP
+      port: 3478
+      targetPort: 3478
+    - name: turn-tcp
+      protocol: TCP
+      port: 3478
+      targetPort: 3478
 @endif
 ---
 apiVersion: apps/v1

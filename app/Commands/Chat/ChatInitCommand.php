@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
+use App\Enums\StorageDriver;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithChat;
@@ -62,13 +63,14 @@ class ChatInitCommand extends Command
         }
 
         if (! $noPlex) {
-            if (! $this->ensureCommons(['postgres'])) {
+            if (! $this->ensureCommons(['postgres', 'seaweedfs'])) {
                 return 1;
             }
         }
 
         $dbPassword = $this->readChatSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         $registrationSecret = $this->readChatSecret($kubectl, $ns, 'registration-secret') ?? Str::random(32);
+        $turnSecret = $this->readChatSecret($kubectl, $ns, 'turn-secret') ?? Str::random(32);
 
         $dbName = 'chat_matrix';
         $dbUser = 'chat_matrix';
@@ -77,17 +79,19 @@ class ChatInitCommand extends Command
             if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
                 return 1;
             }
+            $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, 'chat-media');
         }
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $registrationSecret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $registrationSecret, $turnSecret) {
             Process::run(
                 "{$kubectl} create secret generic chat-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=registration-secret='.escapeshellarg($registrationSecret).' '
+                .'--from-literal=turn-secret='.escapeshellarg($turnSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
         });
@@ -108,14 +112,15 @@ class ChatInitCommand extends Command
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
-            's3Endpoint' => '',
-            's3Bucket' => '',
-            's3AccessKey' => '',
-            's3SecretKey' => '',
+            's3Endpoint' => $noPlex ? '' : "http://seaweedfs-s3.{$this->plexNamespace()}.svc.cluster.local:8333",
+            's3Bucket' => $noPlex ? '' : 'chat-media',
+            's3AccessKey' => 'seaweedfs',
+            's3SecretKey' => 'seaweedfs',
             'dbName' => $dbName,
             'dbUser' => $dbUser,
             'dbPassword' => $dbPassword,
             'registrationSecret' => $registrationSecret,
+            'turnSecret' => $turnSecret,
             'smtp' => $smtp,
             'oidc' => $oidc,
         ])->render();
