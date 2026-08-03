@@ -43,13 +43,34 @@ Without a TURN relay and WebRTC SFU, Matrix calls fail behind residential NATs, 
 
 ---
 
+## 🌐 Topology & Multi-Node Parity
+
+| Topology Tier | UDP Traffic Routing | IP Resolution (`turn_uris`) |
+|---|---|---|
+| **Single-Node K3s VPS ($12/mo)** | Direct `hostPort: 3478` (Coturn) & `hostPort: 7882` (LiveKit) | Auto-detected Node Public IPv4 (`curl -s api.ipify.org`) |
+| **Multi-Node Cluster (DOKS / EKS / AKS)** | Traefik `IngressRouteUDP` CRD / `LoadBalancer` Service | Auto-detected LoadBalancer External IP (`kubectl get svc traefik`) |
+| **Local Dev (`.dev.test`)** | Local `hostPort` / Docker bridge | Local host IP (`127.0.0.1`) |
+
+> [!IMPORTANT]
+> **Multi-Node Resilience**: On multi-node Kubernetes clusters, static `hostPort` bindings fail when pods move across worker nodes. LaraKube automatically detects `SharedStorageGuard::isMultiNode()` and deploys Traefik `IngressRouteUDP` CRDs for node-agnostic UDP packet routing.
+
+### Automated External Public IP Discovery
+WebRTC TURN servers must announce their public IP address in ICE candidates so clients outside the cluster can traverse NATs.
+1. `InteractsWithClusterContext::resolveExternalIp()` automatically queries:
+   - Multi-node: Traefik LoadBalancer External IP (`{.status.loadBalancer.ingress[0].ip}`)
+   - Single-node VPS: Cluster Node External IP
+   - Local: `127.0.0.1`
+2. Optional override via `chat:init --public-ip=x.x.x.x`.
+
+---
+
 ## 🔧 Component Specifications
 
 ### 1. Coturn (TURN/STUN Relay)
 - **Image**: `coturn/coturn:4.6.3-alpine`
 - **RAM Footprint**: ~30MB
 - **Ports**:
-  - `3478/UDP` & `3478/TCP` — STUN/TURN listener (hostPort)
+  - `3478/UDP` & `3478/TCP` — STUN/TURN listener (`hostPort` on K3s, `IngressRouteUDP` on Multi-Node)
   - `49152-49200/UDP` — Dynamic media relay port range
 - **Synapse Configuration (`homeserver.yaml`)**:
   ```yaml
@@ -78,6 +99,7 @@ Without a TURN relay and WebRTC SFU, Matrix calls fail behind residential NATs, 
 
 ```bash
 # Deploys Synapse + Cinny + Coturn + LiveKit automatically
+larakube chat:init [environment] [--public-ip=x.x.x.x]
 larakube chat:init [environment]
 
 # Re-wires Coturn & LiveKit secrets when domain changes
