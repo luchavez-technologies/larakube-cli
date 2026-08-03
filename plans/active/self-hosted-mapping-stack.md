@@ -117,6 +117,25 @@ ForwardAuth.
 
 ---
 
+## 🛠️ Admin & Debug Explorer Dashboard (`map.{domain}`)
+
+Accessible at `https://map.{domain}` (SSO-gated via Zitadel ForwardAuth):
+
+1. **Visual Map Explorer (MapLibre GL JS)**:
+   - Interactive full-screen map rendered with the LaraKube-branded dark theme.
+   - Vector tile inspection tool (hover/click on roads, buildings, or polygons to inspect raw OSM tags and layer properties).
+2. **Geocode Tester**:
+   - Address search bar (`q=...`) to test forward geocoding results live in the browser.
+   - Click anywhere on the map to trigger reverse geocoding (`lat`, `lon`) and display raw JSON responses alongside human-readable addresses.
+3. **Route & Isochrone Tester**:
+   - Click point A (origin) and point B (destination) to visualize turn-by-turn routes calculated by Valhalla.
+   - Isochrone radius visualizer (e.g. 5m / 10m / 15m driving or walking polygons rendered on the map).
+4. **Service Health & Region Inspector**:
+   - Live pod status indicators for Martin, Photon, and Valhalla.
+   - Shows loaded Geofabrik region extracts, data build timestamps, S3 bucket storage usage, and active project API keys.
+
+---
+
 ## CLI Commands
 
 ### `larakube map:init`
