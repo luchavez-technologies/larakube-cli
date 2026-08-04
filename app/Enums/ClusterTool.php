@@ -69,6 +69,81 @@ enum ClusterTool: string
     }
 
     /**
+     * A terminal-safe emoji icon that visually identifies this tool at a glance.
+     * Rendered in `tool:list`, `tool:show`, and init command headers.
+     */
+    public function icon(): string
+    {
+        return match ($this) {
+            self::ANALYTICS => '📊',
+            self::CHAT => '💬',
+            self::CRM => '🤝',
+            self::DATA => '🗄️',
+            self::DESK => '🎫',
+            self::DNS => '🌐',
+            self::DRIVE => '☁️',
+            self::ERRORS => '🐛',
+            self::FLOW => '⚡',
+            self::GIT => '🦊',
+            self::INSIGHTS => '📈',
+            self::LINK => '🔗',
+            self::MAIL => '✉️',
+            self::MONITOR => '📡',
+            self::NOTES => '📝',
+            self::PASSWORDS => '🔐',
+            self::RECORD => '🎥',
+            self::SECRETS => '🔒',
+            self::SHEETS => '📋',
+            self::SIGN => '✍️',
+            self::SSO => '🪪',
+            self::SUPPORT => '💬',
+            self::TASKS => '✅',
+            self::UPTIME => '🟢',
+            self::VPN => '🔑',
+            self::WEBMAIL => '📬',
+        };
+    }
+
+    /**
+     * The operator-facing branded name shown in CLI output and Cinny/UI titles.
+     * This is the static default — init commands may accept an --app-name flag
+     * to override it and persist the custom value to the cluster registry under
+     * the 'brand_name' key, making it visible to `tool:list` and `tool:show`
+     * without any project file involvement.
+     */
+    public function brandName(): string
+    {
+        return match ($this) {
+            self::ANALYTICS => 'Analytics',
+            self::CHAT => 'Chat',
+            self::CRM => 'CRM',
+            self::DATA => 'Data',
+            self::DESK => 'Help Desk',
+            self::DNS => 'DNS',
+            self::DRIVE => 'Drive',
+            self::ERRORS => 'Error Tracking',
+            self::FLOW => 'Automation',
+            self::GIT => 'Git',
+            self::INSIGHTS => 'Insights',
+            self::LINK => 'Links',
+            self::MAIL => 'Mail',
+            self::MONITOR => 'Monitor',
+            self::NOTES => 'Notes',
+            self::PASSWORDS => 'Passwords',
+            self::RECORD => 'Record',
+            self::SECRETS => 'Secrets',
+            self::SHEETS => 'Sheets',
+            self::SIGN => 'Sign',
+            self::SSO => 'SSO',
+            self::SUPPORT => 'Support',
+            self::TASKS => 'Tasks',
+            self::UPTIME => 'Uptime',
+            self::VPN => 'VPN',
+            self::WEBMAIL => 'Webmail',
+        };
+    }
+
+    /**
      * The SharedClusterService this tool exposes over HTTP — the single source
      * for its hostname (hostFor/hostPrefix) and human label. This is what makes
      * a generic `{tool}:show` possible: the show command resolves the host from
