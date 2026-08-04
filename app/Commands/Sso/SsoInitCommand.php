@@ -20,6 +20,7 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -29,7 +30,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'sso:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -171,16 +172,18 @@ class SsoInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-sso.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Zitadel manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
-        @unlink($tmp);
-
         // First boot runs Zitadel's own DB init + schema setup before it starts
         // serving traffic — give it generous headroom, mirroring FreeScout's
         // "first boot runs migrations" wait.
-        $this->withSpin('Waiting for Zitadel (first boot runs schema setup)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/sso-zitadel -n {$ns} --timeout=300s",
-            310,
-        ));
+        $rolledOut = $this->withSpin(
+            'Applying Zitadel manifests (first boot runs schema setup)...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'sso-zitadel', 300),
+        );
+        @unlink($tmp);
+
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $machinePatCaptured = $this->captureMachinePat($kubectl, $ns);
 

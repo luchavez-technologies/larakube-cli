@@ -15,13 +15,14 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class CrmInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithCrm, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithCrm, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'crm:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -101,13 +102,15 @@ class CrmInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-crm-twenty.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Twenty CRM manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Twenty CRM manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'crm-twenty', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Twenty CRM...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/crm-twenty -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::CRM, $kubectl, $host);
 

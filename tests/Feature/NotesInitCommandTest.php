@@ -28,11 +28,11 @@ function notesCommonsSpec(?string $s3Host): array
     ];
 }
 
-function fakeNotesInitProcess(?string $s3Host, ?string &$appliedManifest): void
+function fakeNotesInitProcess(?string $s3Host, ?string &$appliedManifest, int $applyExitCode = 0): void
 {
     $spec = notesCommonsSpec($s3Host);
 
-    Process::fake(function ($process) use ($spec, &$appliedManifest) {
+    Process::fake(function ($process) use ($spec, &$appliedManifest, $applyExitCode) {
         $cmd = $process->command;
 
         if (str_contains($cmd, 'apply -f')) {
@@ -42,7 +42,7 @@ function fakeNotesInitProcess(?string $s3Host, ?string &$appliedManifest): void
                 $appliedManifest = file_get_contents($path);
             }
 
-            return Process::result(output: 'applied');
+            return Process::result(output: 'applied', exitCode: $applyExitCode);
         }
 
         return match (true) {
@@ -107,4 +107,20 @@ test('notes:init falls back to the internal S3 endpoint when the Commons has no 
 
     expect($appliedManifest)->not->toBeNull()
         ->and($appliedManifest)->toContain('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
+});
+
+test('notes:init returns a failing exit code and does not claim success when kubectl apply is rejected', function () {
+    // Regression guard: withSpin()'s success check is `!== false`, and the
+    // old runStreaming() call returned an int exit code — never `=== false`
+    // — so a rejected kubectl apply still printed a green check and "Outline
+    // wiki stack is live." applyAndVerifyRollout() returns a real bool.
+    $appliedManifest = null;
+    fakeNotesInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
+
+    $this->artisan(NotesInitCommand::class, [
+        'environment' => 'local',
+        '--no-interaction' => true,
+    ])
+        ->assertExitCode(1)
+        ->doesntExpectOutputToContain('Outline wiki stack is live');
 });

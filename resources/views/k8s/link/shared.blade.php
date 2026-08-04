@@ -69,12 +69,12 @@ spec:
                   name: link-kutt-smtp
                   key: MAIL_PORT
                   optional: true
+            # mail:wire sets this as a plain literal (kubectl set env
+            # NAME=value), never through the link-kutt-smtp Secret — must
+            # stay a literal here too, or a future kubectl apply conflicts
+            # with mail:wire's live value (see ClusterTool::LINK's smtpEnv()).
             - name: MAIL_SECURE
-              valueFrom:
-                secretKeyRef:
-                  name: link-kutt-smtp
-                  key: MAIL_SECURE
-                  optional: true
+              value: "true"
             - name: MAIL_USER
               valueFrom:
                 secretKeyRef:

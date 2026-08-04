@@ -25,6 +25,71 @@ enum AppFramework: string implements HasLabel
     }
 
     /**
+     * @return list<DatabaseDriver>
+     */
+    public function supportedDatabaseDrivers(): array
+    {
+        return match ($this) {
+            self::LARAVEL, self::STATAMIC => [
+                DatabaseDriver::POSTGRESQL,
+                DatabaseDriver::MYSQL,
+                DatabaseDriver::MARIADB,
+                DatabaseDriver::SQLITE,
+            ],
+            self::WORDPRESS => [
+                DatabaseDriver::MYSQL,
+                DatabaseDriver::MARIADB,
+            ],
+            default => [
+                DatabaseDriver::POSTGRESQL,
+                DatabaseDriver::MYSQL,
+                DatabaseDriver::SQLITE,
+            ],
+        };
+    }
+
+    /**
+     * @return list<CacheDriver>
+     */
+    public function supportedCacheDrivers(): array
+    {
+        return match ($this) {
+            self::LARAVEL, self::STATAMIC => [
+                CacheDriver::REDIS,
+                CacheDriver::MEMCACHED,
+                CacheDriver::DATABASE,
+            ],
+            default => [
+                CacheDriver::REDIS,
+                CacheDriver::MEMCACHED,
+            ],
+        };
+    }
+
+    /**
+     * @return list<StorageDriver>
+     */
+    public function supportedStorageDrivers(): array
+    {
+        return [
+            StorageDriver::SEAWEEDFS,
+            StorageDriver::MINIO,
+            StorageDriver::GARAGE,
+        ];
+    }
+
+    /**
+     * @return list<SearchDriver>
+     */
+    public function supportedSearchDrivers(): array
+    {
+        return [
+            SearchDriver::MEILISEARCH,
+            SearchDriver::DATABASE,
+        ];
+    }
+
+    /**
      * Path used for liveness / readiness / startup probes.
      */
     public function healthProbePath(): string

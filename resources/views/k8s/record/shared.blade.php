@@ -55,8 +55,11 @@ spec:
             - name: S3_FORCE_PATH_STYLE
               value: "true"
             # 465 is implicit TLS; SendRec defaults to STARTTLS and would hang.
+            # Must be "tls", not "implicit" — SendRec coerces any
+            # unrecognised value back to starttls (see ClusterTool::RECORD's
+            # smtpEnv(), which documents this exact deadlock).
             - name: SMTP_TLS
-              value: "implicit"
+              value: "tls"
             - name: SMTP_HOST
               valueFrom:
                 secretKeyRef:

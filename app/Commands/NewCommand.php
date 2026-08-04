@@ -312,16 +312,21 @@ class NewCommand extends Command
         // This will be taken care of by the orchestration process
         $extraArgs[] = '--no-boost';
 
-        // Set default database to SQLite temporarily during "laravel new"
-        // The database will be configured later in the orchestration process\
-        $extraArgs[] = '--database=sqlite';
+        // Set database flag to match chosen driver (pgsql, mysql, mariadb, or sqlite)
+        $dbDriver = match ($config->getDatabase()) {
+            DatabaseDriver::POSTGRESQL => 'pgsql',
+            DatabaseDriver::MYSQL => 'mysql',
+            DatabaseDriver::MARIADB => 'mariadb',
+            default => 'sqlite',
+        };
+        $extraArgs[] = "--database={$dbDriver}";
 
         $extraFlags = implode(' ', $extraArgs);
 
         $pkgCommand = $this->getNodeInstallationCommand($image);
         $baseDir = dirname($projectPath);
 
-        $cmd = "docker run --rm -it -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false --user root $image ".
+        $cmd = "docker run --rm -it --add-host=host.docker.internal:host-gateway -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false -e DB_HOST=host.docker.internal --user root $image ".
                "sh -c '$pkgCommand && composer config -g bin-dir /usr/local/bin && composer global require laravel/installer && laravel new $appName $extraFlags'";
 
         passthru($cmd);

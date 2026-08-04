@@ -15,13 +15,14 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class TasksInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithTasks, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithTasks, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'tasks:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -93,13 +94,15 @@ class TasksInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-tasks-planka.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Planka tasks manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Planka tasks manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'tasks-planka', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Planka...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/tasks-planka -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::TASKS, $kubectl, $host);
 

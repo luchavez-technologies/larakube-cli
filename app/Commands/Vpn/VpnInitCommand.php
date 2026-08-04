@@ -14,13 +14,14 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class VpnInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'vpn:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the NetBird VPN host.}
@@ -64,21 +65,36 @@ class VpnInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-vpn.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying NetBird VPN manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        // Three resources to verify per apply (management/signal/relay), so
+        // this can't use the single apply+rollout applyAndVerifyRollout()
+        // helper — every step checks its real exit code via an explicit
+        // ->timeout() exceeding its own kubectl --timeout flag, or a
+        // rejected apply / stuck rollout prints ✔ and this command claims
+        // success regardless (confirmed live on Documenso, 2026-08-05).
+        $applied = $this->withSpin('Applying NetBird VPN manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
         @unlink($tmp);
 
-        $this->withSpin('Waiting for NetBird Management...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/netbird-management -n {$ns} --timeout=120s",
-            130,
-        ));
-        $this->withSpin('Waiting for NetBird Signal...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/netbird-signal -n {$ns} --timeout=120s",
-            130,
-        ));
-        $this->withSpin('Waiting for NetBird Relay...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/netbird-relay -n {$ns} --timeout=120s",
-            130,
-        ));
+        if (! $applied) {
+            $this->laraKubeError('Could not apply the NetBird VPN manifest — see the output above.');
+
+            return 1;
+        }
+
+        if (! $this->withSpin('Waiting for NetBird Management...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/netbird-management -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('netbird-management never became Ready.');
+
+            return 1;
+        }
+        if (! $this->withSpin('Waiting for NetBird Signal...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/netbird-signal -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('netbird-signal never became Ready.');
+
+            return 1;
+        }
+        if (! $this->withSpin('Waiting for NetBird Relay...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/netbird-relay -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('netbird-relay never became Ready.');
+
+            return 1;
+        }
 
         // The client Deployment authenticates with NB_SETUP_KEY, so it can only
         // be applied AFTER bootstrapVpnAuth() mints one — applying it earlier
@@ -90,13 +106,15 @@ class VpnInitCommand extends Command
         $clientTmp = sys_get_temp_dir().'/larakube-vpn-client.yaml';
         file_put_contents($clientTmp, $clientManifest);
 
-        $this->withSpin('Deploying NetBird Client...', fn () => $this->runStreaming("{$kubectl} apply -f {$clientTmp}"));
+        $clientRolledOut = $this->withSpin(
+            'Deploying NetBird Client...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $clientTmp, $ns, 'netbird-client', 120),
+        );
         @unlink($clientTmp);
 
-        $this->withSpin('Waiting for NetBird Client...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/netbird-client -n {$ns} --timeout=120s",
-            130,
-        ));
+        if (! $clientRolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::VPN, $kubectl, $host);
 

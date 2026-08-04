@@ -17,13 +17,14 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class RecordInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithRecord, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithRecord, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'record:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -172,13 +173,15 @@ class RecordInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-record-sendrec.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Sendrec manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Sendrec manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'record-sendrec', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Sendrec...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/record-sendrec -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::RECORD, $kubectl, $host);
 

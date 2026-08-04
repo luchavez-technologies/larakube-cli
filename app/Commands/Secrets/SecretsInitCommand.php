@@ -83,18 +83,33 @@ class SecretsInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-openbao.yaml';
         file_put_contents($tmp, $crdsManifest."\n---\n".$generatorCrdsManifest."\n---\n".$manifest."\n---\n".$esoManifest);
 
-        $this->withSpin('Applying OpenBao & External Secrets Operator manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        // Two resources to verify per apply (openbao-backend + external-
+        // secrets), so this can't use the single apply+rollout
+        // applyAndVerifyRollout() helper — every step checks its real exit
+        // code via an explicit ->timeout() exceeding its own kubectl
+        // --timeout flag, or a rejected apply / stuck rollout prints ✔ and
+        // this command claims success regardless (confirmed live on
+        // Documenso, 2026-08-05).
+        $applied = $this->withSpin('Applying OpenBao & External Secrets Operator manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
         @unlink($tmp);
 
-        $this->withSpin('Waiting for OpenBao Backend...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/openbao-backend -n {$ns} --timeout=120s",
-            130,
-        ));
+        if (! $applied) {
+            $this->laraKubeError('Could not apply the OpenBao/ESO manifest — see the output above.');
 
-        $this->withSpin('Waiting for External Secrets Operator...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/external-secrets -n {$ns} --timeout=120s",
-            130,
-        ));
+            return 1;
+        }
+
+        if (! $this->withSpin('Waiting for OpenBao Backend...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/openbao-backend -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('openbao-backend never became Ready.');
+
+            return 1;
+        }
+
+        if (! $this->withSpin('Waiting for External Secrets Operator...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/external-secrets -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('external-secrets never became Ready.');
+
+            return 1;
+        }
 
         if (! $this->wireEsoToOpenBao($kubectl, $ns)) {
             return 1;

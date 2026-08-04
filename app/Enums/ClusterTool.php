@@ -33,6 +33,7 @@ enum ClusterTool: string
             self::CRM => 'CRM (Twenty)',
             self::DATA => 'Headless CMS & Data API (Directus)',
             self::RECORD => 'Screen Recording & Sharing (Sendrec)',
+            self::DASHBOARD => 'Kubernetes Control Plane (Headlamp)',
         };
     }
 
@@ -65,6 +66,7 @@ enum ClusterTool: string
             self::UPTIME => 'Uptime Kuma',
             self::VPN => 'NetBird',
             self::WEBMAIL => 'Bulwark',
+            self::DASHBOARD => 'Headlamp',
         };
     }
 
@@ -101,6 +103,7 @@ enum ClusterTool: string
             self::UPTIME => '🟢',
             self::VPN => '🔑',
             self::WEBMAIL => '📬',
+            self::DASHBOARD => '☸️',
         };
     }
 
@@ -140,6 +143,7 @@ enum ClusterTool: string
             self::UPTIME => 'Uptime',
             self::VPN => 'VPN',
             self::WEBMAIL => 'Webmail',
+            self::DASHBOARD => 'Dashboard',
         };
     }
 
@@ -201,6 +205,7 @@ enum ClusterTool: string
             self::UPTIME => SharedClusterService::UPTIME_KUMA,
             self::VPN => SharedClusterService::VPN,
             self::WEBMAIL => SharedClusterService::WEBMAIL,
+            self::DASHBOARD => SharedClusterService::DASHBOARD,
         };
     }
 
@@ -1171,6 +1176,20 @@ enum ClusterTool: string
                 ],
                 'redirect_path' => '/auth/login/zitadel/callback',
             ],
+            self::DASHBOARD => [
+                'deployment' => 'dashboard-headlamp',
+                'namespace' => $this->namespace(),
+                'secret' => 'dashboard-headlamp-oidc',
+                'static' => [
+                    'HEADLAMP_OIDC_SCOPES' => 'openid profile email groups',
+                ],
+                'vars' => [
+                    'client_id' => 'HEADLAMP_OIDC_CLIENT_ID',
+                    'client_secret' => 'HEADLAMP_OIDC_CLIENT_SECRET',
+                    'issuer' => 'HEADLAMP_OIDC_IDP_ISSUER_URL',
+                ],
+                'redirect_path' => '/oidc-callback',
+            ],
             default => null,
         };
     }
@@ -1272,6 +1291,7 @@ enum ClusterTool: string
             self::LINK => ['name' => 'link-vpn-only', 'namespace' => $this->namespace()],
             self::CRM => ['name' => 'crm-vpn-only', 'namespace' => $this->namespace()],
             self::RECORD => ['name' => 'record-vpn-only', 'namespace' => $this->namespace()],
+            self::DASHBOARD => ['name' => 'dashboard-vpn-only', 'namespace' => $this->namespace()],
             default => null,
         };
     }
@@ -1308,6 +1328,7 @@ enum ClusterTool: string
             self::VPN => 'netbird-management',
             self::WEBMAIL => 'webmail-bulwark',
             self::DNS => 'external-dns',
+            self::DASHBOARD => 'dashboard-headlamp',
         };
     }
 
@@ -1466,4 +1487,5 @@ enum ClusterTool: string
     case UPTIME = 'uptime';
     case VPN = 'vpn';
     case WEBMAIL = 'webmail';
+    case DASHBOARD = 'dashboard';
 }

@@ -99,12 +99,13 @@ spec:
                   name: support-chatwoot-smtp
                   key: SMTP_DOMAIN
                   optional: true
+            # mail:wire sets this as a plain literal (kubectl set env
+            # NAME=value), never through the support-chatwoot-smtp Secret —
+            # must stay a literal here too, or a future kubectl apply
+            # conflicts with mail:wire's live value (see ClusterTool::SUPPORT's
+            # smtpEnv()).
             - name: SMTP_ENABLE_STARTTLS_AUTO
-              valueFrom:
-                secretKeyRef:
-                  name: support-chatwoot-smtp
-                  key: SMTP_ENABLE_STARTTLS_AUTO
-                  optional: true
+              value: "true"
             # OIDC
             - name: OIDC_ISSUER
               valueFrom:
@@ -242,12 +243,13 @@ spec:
                   name: support-chatwoot-smtp
                   key: SMTP_DOMAIN
                   optional: true
+            # mail:wire sets this as a plain literal (kubectl set env
+            # NAME=value), never through the support-chatwoot-smtp Secret —
+            # must stay a literal here too, or a future kubectl apply
+            # conflicts with mail:wire's live value (see ClusterTool::SUPPORT's
+            # smtpEnv()).
             - name: SMTP_ENABLE_STARTTLS_AUTO
-              valueFrom:
-                secretKeyRef:
-                  name: support-chatwoot-smtp
-                  key: SMTP_ENABLE_STARTTLS_AUTO
-                  optional: true
+              value: "true"
             # OIDC
             - name: OIDC_ISSUER
               valueFrom:

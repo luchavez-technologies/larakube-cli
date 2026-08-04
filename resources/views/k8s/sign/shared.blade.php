@@ -72,18 +72,14 @@ spec:
               value: "{{ $s3AccessKey }}"
             - name: NEXT_PRIVATE_UPLOAD_SECRET_ACCESS_KEY
               value: "{{ $s3SecretKey }}"
+            # mail:wire sets these two as plain literals (kubectl set env
+            # NAME=value), never through the sign-documenso-smtp Secret — must
+            # stay literals here too, or a future kubectl apply conflicts with
+            # mail:wire's live value (see ClusterTool::SIGN's smtpEnv()).
             - name: NEXT_PRIVATE_SMTP_TRANSPORT
-              valueFrom:
-                secretKeyRef:
-                  name: sign-documenso-smtp
-                  key: NEXT_PRIVATE_SMTP_TRANSPORT
-                  optional: true
+              value: "smtp-auth"
             - name: NEXT_PRIVATE_SMTP_SECURE
-              valueFrom:
-                secretKeyRef:
-                  name: sign-documenso-smtp
-                  key: NEXT_PRIVATE_SMTP_SECURE
-                  optional: true
+              value: "true"
             - name: NEXT_PRIVATE_SMTP_HOST
               valueFrom:
                 secretKeyRef:
@@ -114,18 +110,12 @@ spec:
                   name: sign-documenso-smtp
                   key: NEXT_PRIVATE_SMTP_FROM_ADDRESS
                   optional: true
+            # sso:wire sets these two as plain literals too — same reasoning
+            # as the SMTP pair above (see ClusterTool::SIGN's oidcEnv()).
             - name: NEXT_PUBLIC_DISABLE_OIDC_SIGNIN
-              valueFrom:
-                secretKeyRef:
-                  name: sign-documenso-oidc
-                  key: NEXT_PUBLIC_DISABLE_OIDC_SIGNIN
-                  optional: true
+              value: "false"
             - name: NEXT_PUBLIC_DISABLE_OIDC_SIGNUP
-              valueFrom:
-                secretKeyRef:
-                  name: sign-documenso-oidc
-                  key: NEXT_PUBLIC_DISABLE_OIDC_SIGNUP
-                  optional: true
+              value: "false"
             - name: NEXT_PRIVATE_OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:

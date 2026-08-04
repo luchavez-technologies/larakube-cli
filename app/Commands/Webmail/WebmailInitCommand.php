@@ -17,13 +17,14 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class WebmailInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'webmail:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -126,13 +127,15 @@ class WebmailInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-webmail.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Bulwark manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Bulwark manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'webmail-bulwark', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Bulwark...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/webmail-bulwark -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         // The browser talks to Stalwart's JMAP endpoint directly (cross-origin
         // from the webmail host), so Stalwart must CORS-allow it. Best-effort:
@@ -149,10 +152,9 @@ class WebmailInitCommand extends Command
             $this->withSpin('Restarting Stalwart to apply CORS (brief mail blip)...', fn () => Process::run(
                 "{$kubectl} rollout restart deployment/stalwart -n {$ns}",
             ));
-            $this->withSpin('Waiting for Stalwart to come back...', fn () => $this->runStreaming(
+            $this->withSpin('Waiting for Stalwart to come back...', fn () => Process::timeout(190)->run(
                 "{$kubectl} rollout status deployment/stalwart -n {$ns} --timeout=180s",
-                190,
-            ));
+            )->successful());
             $restarted = true;
         }
 

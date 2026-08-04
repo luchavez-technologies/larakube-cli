@@ -17,13 +17,14 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class DataInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'data:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -123,13 +124,15 @@ class DataInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-data-directus.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Directus manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Directus manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'data-directus', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Directus...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/data-directus -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::DATA, $kubectl, $host);
 

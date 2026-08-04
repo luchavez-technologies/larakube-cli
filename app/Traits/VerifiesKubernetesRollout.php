@@ -28,14 +28,21 @@ trait VerifiesKubernetesRollout
      */
     protected function applyAndVerifyRollout(string $kubectl, string $manifestPath, string $namespace, string $deployment, int $timeoutSeconds = 120, string $extraApplyFlags = ''): bool
     {
+        // Process::run()'s default PHP-level timeout is 60s — well under
+        // kubectl's OWN --timeout flags below on a slow rollout (e.g. a
+        // Recreate-strategy Deployment waiting out a terminating pod). Without
+        // an explicit ->timeout() here, Laravel kills the process and throws
+        // a ProcessTimedOutException before kubectl's own timeout ever fires,
+        // crashing the command instead of returning false. Confirmed live on
+        // Documenso, 2026-08-05.
         $applyFlags = $extraApplyFlags !== '' ? ' '.$extraApplyFlags : '';
-        if (! Process::run("{$kubectl} apply -f ".escapeshellarg($manifestPath).' --request-timeout=60s'.$applyFlags)->successful()) {
+        if (! Process::timeout(70)->run("{$kubectl} apply -f ".escapeshellarg($manifestPath).' --request-timeout=60s'.$applyFlags)->successful()) {
             $this->laraKubeError("Could not apply the {$deployment} manifest — see the output above.");
 
             return false;
         }
 
-        if (! Process::run("{$kubectl} rollout status deployment/{$deployment} -n ".escapeshellarg($namespace)." --timeout={$timeoutSeconds}s")->successful()) {
+        if (! Process::timeout($timeoutSeconds + 10)->run("{$kubectl} rollout status deployment/{$deployment} -n ".escapeshellarg($namespace)." --timeout={$timeoutSeconds}s")->successful()) {
             $this->laraKubeError("{$deployment} manifest applied, but the Deployment never became Ready — check `kubectl get pods -n {$namespace}`.");
 
             return false;

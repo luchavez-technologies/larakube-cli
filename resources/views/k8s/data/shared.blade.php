@@ -87,13 +87,13 @@ spec:
               value: "http://seaweedfs.{{ $plexNamespace }}.svc.cluster.local:8333"
             - name: STORAGE_S3_FORCE_PATH_STYLE
               value: "true"
-            # Optional SMTP
+            # Optional SMTP. mail:wire sets EMAIL_TRANSPORT as a plain
+            # literal (kubectl set env NAME=value), never through the
+            # data-smtp Secret — must stay a literal here too, or a future
+            # kubectl apply conflicts with mail:wire's live value (see
+            # ClusterTool::DATA's smtpEnv()).
             - name: EMAIL_TRANSPORT
-              valueFrom:
-                secretKeyRef:
-                  name: data-smtp
-                  key: EMAIL_TRANSPORT
-                  optional: true
+              value: "smtp"
             - name: EMAIL_SMTP_HOST
               valueFrom:
                 secretKeyRef:
@@ -124,19 +124,15 @@ spec:
                   name: data-smtp
                   key: EMAIL_FROM
                   optional: true
-            # Optional Zitadel OIDC SSO
+            # Optional Zitadel OIDC SSO. sso:wire sets these 5 as plain
+            # literals (kubectl set env NAME=value), never through the
+            # data-oidc Secret — must stay literals here too, or a future
+            # kubectl apply conflicts with sso:wire's live values (see
+            # ClusterTool::DATA's oidcEnv()).
             - name: AUTH_PROVIDERS
-              valueFrom:
-                secretKeyRef:
-                  name: data-oidc
-                  key: AUTH_PROVIDERS
-                  optional: true
+              value: "local,zitadel"
             - name: AUTH_ZITADEL_DRIVER
-              valueFrom:
-                secretKeyRef:
-                  name: data-oidc
-                  key: AUTH_ZITADEL_DRIVER
-                  optional: true
+              value: "openid"
             - name: AUTH_ZITADEL_CLIENT_ID
               valueFrom:
                 secretKeyRef:
@@ -174,23 +170,11 @@ spec:
                   key: AUTH_ZITADEL_PROFILE_URL
                   optional: true
             - name: AUTH_ZITADEL_SCOPE
-              valueFrom:
-                secretKeyRef:
-                  name: data-oidc
-                  key: AUTH_ZITADEL_SCOPE
-                  optional: true
+              value: "openid email profile"
             - name: AUTH_ZITADEL_IDENTIFIER_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: data-oidc
-                  key: AUTH_ZITADEL_IDENTIFIER_KEY
-                  optional: true
+              value: "email"
             - name: AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION
-              valueFrom:
-                secretKeyRef:
-                  name: data-oidc
-                  key: AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION
-                  optional: true
+              value: "true"
           startupProbe:
             httpGet:
               path: /server/ping

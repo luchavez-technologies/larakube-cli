@@ -20,7 +20,7 @@ test('sso:init deploys zitadel using plex commons postgres by default', function
 
     $this->artisan('sso:init local --admin-email=admin@example.com')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Applying Zitadel manifests...')
+        ->expectsOutputToContain('Applying Zitadel manifests (first boot runs schema setup)...')
         ->expectsOutputToContain('Zitadel is live.')
         ->expectsOutputToContain('admin@');
 });
@@ -35,7 +35,7 @@ test('sso:init deploys standalone zitadel when --no-plex is passed', function ()
 
     $this->artisan('sso:init local --no-plex --admin-email=admin@example.com')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Applying Zitadel manifests...')
+        ->expectsOutputToContain('Applying Zitadel manifests (first boot runs schema setup)...')
         ->expectsOutputToContain('Zitadel is live.');
 });
 
@@ -87,7 +87,7 @@ test('sso:init registers zitadel as a static role when the OpenBao DB engine is 
 
     $this->artisan('sso:init local --admin-email=admin@example.com')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Applying Zitadel manifests...')
+        ->expectsOutputToContain('Applying Zitadel manifests (first boot runs schema setup)...')
         ->expectsOutputToContain('Zitadel is live.');
 });
 
@@ -119,7 +119,7 @@ test('sso:init falls back to KV push when the OpenBao DB engine is not mounted',
 
     $this->artisan('sso:init local --admin-email=admin@example.com')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Applying Zitadel manifests...')
+        ->expectsOutputToContain('Applying Zitadel manifests (first boot runs schema setup)...')
         ->expectsOutputToContain('Zitadel is live.');
 });
 

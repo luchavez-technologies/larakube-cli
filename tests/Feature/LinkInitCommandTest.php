@@ -43,6 +43,27 @@ test('link manifest pins Kutt to the Commons postgres client and enables redis',
         ->toContain('value: "true"');
 });
 
+test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a future kubectl apply never conflicts with mail:wire', function () {
+    // Regression guard: mail:wire sets MAIL_SECURE via a plain literal
+    // `kubectl set env NAME=value`, never through the link-kutt-smtp Secret.
+    // Declaring it here as valueFrom made a later link:init re-run fail —
+    // kubectl apply's merge re-adds valueFrom on top of the live literal
+    // value mail:wire already set, and the two are mutually exclusive
+    // (the exact bug confirmed live on Documenso, 2026-08-05).
+    $manifest = view('k8s.link.shared', [
+        'host' => 'link.example.test',
+        'plexNamespace' => 'larakube-plex',
+        'redisIndex' => 3,
+        'vpnOnly' => false,
+        'isLocal' => true,
+    ])->render();
+
+    preg_match('/- name: MAIL_SECURE\s*\n\s*(value|valueFrom):\s*"?([^"\n]*)"?/', $manifest, $m);
+
+    expect($m[1] ?? null)->toBe('value')
+        ->and(trim($m[2] ?? '', '"'))->toBe('true');
+});
+
 test('link ingress proxies through Cloudflare on cloud deploys when proxied, so Kutt receives the cf-ipcountry header', function () {
     $cloud = view('k8s.link.shared', [
         'host' => 'link.luchtech.dev',

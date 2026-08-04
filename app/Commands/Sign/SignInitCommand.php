@@ -174,13 +174,15 @@ class SignInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-sign-documenso.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Documenso manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Documenso manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'sign-documenso', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Documenso...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/sign-documenso -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::SIGN, $kubectl, $host);
 

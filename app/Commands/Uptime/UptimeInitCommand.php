@@ -14,12 +14,13 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class UptimeInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'uptime:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Uptime Kuma host.}
@@ -77,13 +78,15 @@ class UptimeInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-uptime.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Uptime Kuma manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Uptime Kuma manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'uptime-kuma', 120),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Uptime Kuma...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/uptime-kuma -n {$ns} --timeout=120s",
-            130,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::UPTIME, $kubectl, $host);
 

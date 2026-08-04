@@ -27,11 +27,11 @@ function recordCommonsSpec(?string $s3Host): array
     ];
 }
 
-function fakeRecordInitProcess(?string $s3Host, ?string &$appliedManifest): void
+function fakeRecordInitProcess(?string $s3Host, ?string &$appliedManifest, int $applyExitCode = 0): void
 {
     $spec = recordCommonsSpec($s3Host);
 
-    Process::fake(function ($process) use ($spec, &$appliedManifest) {
+    Process::fake(function ($process) use ($spec, &$appliedManifest, $applyExitCode) {
         $cmd = $process->command;
 
         if (str_contains($cmd, 'apply -f')) {
@@ -41,7 +41,7 @@ function fakeRecordInitProcess(?string $s3Host, ?string &$appliedManifest): void
                 $appliedManifest = file_get_contents($path);
             }
 
-            return Process::result(output: 'applied');
+            return Process::result(output: 'applied', exitCode: $applyExitCode);
         }
 
         return match (true) {
@@ -89,4 +89,30 @@ test('record:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when th
 
     expect($internal[1] ?? null)->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:8333')
         ->and($public[1] ?? null)->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
+});
+
+test('record:init sets SMTP_TLS to "tls", not the stale "implicit" value that deadlocks SendRec against Stalwart', function () {
+    $appliedManifest = null;
+    fakeRecordInitProcess('files.example.com', $appliedManifest);
+
+    $this->artisan(RecordInitCommand::class, [
+        'environment' => 'local',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    preg_match('/name: SMTP_TLS\s*\n\s*value: "([^"]*)"/', $appliedManifest, $m);
+
+    expect($m[1] ?? null)->toBe('tls');
+});
+
+test('record:init returns a failing exit code and does not claim success when kubectl apply is rejected', function () {
+    $appliedManifest = null;
+    fakeRecordInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
+
+    $this->artisan(RecordInitCommand::class, [
+        'environment' => 'local',
+        '--no-interaction' => true,
+    ])
+        ->assertExitCode(1)
+        ->doesntExpectOutputToContain('Sendrec async video platform stack is live');
 });

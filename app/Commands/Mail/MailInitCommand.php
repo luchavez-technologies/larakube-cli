@@ -22,6 +22,7 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -31,7 +32,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, LaraKubeOutput, ManagesCloudFirewall, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, LaraKubeOutput, ManagesCloudFirewall, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'mail:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -112,13 +113,15 @@ class MailInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-mail.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Stalwart manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Stalwart manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'stalwart', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Stalwart...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deployment/stalwart -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->withSpin('Refreshing Traefik routing...', fn () => $this->restartTraefikIngress($kubectl));
 

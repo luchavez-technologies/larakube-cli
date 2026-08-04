@@ -16,13 +16,14 @@ use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class SupportInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'support:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -103,13 +104,15 @@ class SupportInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-support-chatwoot.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Chatwoot manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Chatwoot manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'support-chatwoot', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Chatwoot...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/support-chatwoot -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::SUPPORT, $kubectl, $host);
 

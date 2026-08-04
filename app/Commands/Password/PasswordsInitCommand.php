@@ -15,13 +15,14 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class PasswordsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVault, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVault, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'passwords:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Vaultwarden host.}
@@ -144,13 +145,15 @@ class PasswordsInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-vault.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Vaultwarden manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Vaultwarden manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'vaultwarden', 120),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Vaultwarden...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/vaultwarden -n {$ns} --timeout=120s",
-            130,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::PASSWORDS, $kubectl, $host);
 

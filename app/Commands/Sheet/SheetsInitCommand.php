@@ -16,13 +16,14 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class SheetsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSheet, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSheet, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'sheets:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -120,13 +121,15 @@ class SheetsInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-sheet.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Sheet (Teable) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Sheet (Teable) manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'sheet-teable', 300),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Sheet (Teable)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/sheet-teable -n {$ns} --timeout=300s",
-            310,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::SHEETS, $kubectl, $host);
 

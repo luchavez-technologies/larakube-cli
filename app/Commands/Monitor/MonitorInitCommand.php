@@ -84,32 +84,47 @@ class MonitorInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-monitoring.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying monitoring manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        // Multiple resources to verify per apply (prometheus/loki/ksm/grafana/
+        // promtail), so this can't use the single apply+rollout
+        // applyAndVerifyRollout() helper — every step below checks its real
+        // exit code via an explicit ->timeout() exceeding its own kubectl
+        // --timeout flag, or a rejected apply / stuck rollout prints ✔ and
+        // this command claims success regardless (confirmed live on
+        // Documenso, 2026-08-05 — same root cause as the missing-timeout
+        // ProcessTimedOutException crash found the same day).
+        $applied = $this->withSpin('Applying monitoring manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Prometheus...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/prometheus -n {$ns} --timeout=120s",
-            130,
-        ));
-        if ($withLogs) {
-            $this->withSpin('Waiting for Loki...', fn () => $this->runStreaming(
-                "{$kubectl} rollout status deploy/loki -n {$ns} --timeout=120s",
-                130,
-            ));
+        if (! $applied) {
+            $this->laraKubeError('Could not apply the monitoring manifest — see the output above.');
+
+            return 1;
         }
-        $this->withSpin('Waiting for kube-state-metrics...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/kube-state-metrics -n {$ns} --timeout=120s",
-            130,
-        ));
-        $this->withSpin('Waiting for Grafana...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/grafana -n {$ns} --timeout=120s",
-            130,
-        ));
-        if ($withLogs) {
-            $this->withSpin('Waiting for Promtail...', fn () => $this->runStreaming(
-                "{$kubectl} rollout status daemonset/promtail -n {$ns} --timeout=120s",
-                130,
-            ));
+
+        if (! $this->withSpin('Waiting for Prometheus...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/prometheus -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('prometheus never became Ready.');
+
+            return 1;
+        }
+        if ($withLogs && ! $this->withSpin('Waiting for Loki...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/loki -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('loki never became Ready.');
+
+            return 1;
+        }
+        if (! $this->withSpin('Waiting for kube-state-metrics...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/kube-state-metrics -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('kube-state-metrics never became Ready.');
+
+            return 1;
+        }
+        if (! $this->withSpin('Waiting for Grafana...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/grafana -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('grafana never became Ready.');
+
+            return 1;
+        }
+        if ($withLogs && ! $this->withSpin('Waiting for Promtail...', fn () => Process::timeout(130)->run("{$kubectl} rollout status daemonset/promtail -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('promtail never became Ready.');
+
+            return 1;
         }
 
         $this->registerDeployedTool(ClusterTool::MONITOR, $kubectl, $host);

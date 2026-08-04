@@ -14,6 +14,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -23,7 +24,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DeskInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'desk:init
         {environment?    : Environment this install targets — "local" (default) or cloud.}
@@ -106,15 +107,17 @@ class DeskInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-desk.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying FreeScout manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
-        @unlink($tmp);
-
         // FreeScout runs its first-boot migrations on start, which can take a
         // while — give the rollout generous headroom.
-        $this->withSpin('Waiting for FreeScout (first boot runs migrations)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/desk-freescout -n {$ns} --timeout=300s",
-            310,
-        ));
+        $rolledOut = $this->withSpin(
+            'Applying FreeScout manifests (first boot runs migrations)...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'desk-freescout', 300),
+        );
+        @unlink($tmp);
+
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::DESK, $kubectl, $host);
 

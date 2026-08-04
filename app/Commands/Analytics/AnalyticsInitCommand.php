@@ -15,13 +15,14 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class AnalyticsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithAnalytics, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithAnalytics, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'analytics:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -92,13 +93,15 @@ class AnalyticsInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-analytics.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Umami analytics manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Umami analytics manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'analytics-umami', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Umami...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/analytics-umami -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::ANALYTICS, $kubectl, $host);
 

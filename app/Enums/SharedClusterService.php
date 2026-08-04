@@ -54,6 +54,7 @@ enum SharedClusterService: string
             self::CRM => 'k8s.crm.ingress',
             self::DATA => 'k8s.data.ingress',
             self::RECORD => 'k8s.record.ingress',
+            self::DASHBOARD => 'k8s.dashboard.ingress',
         };
     }
 
@@ -126,7 +127,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD => false,
             default => true,
         };
     }
@@ -170,6 +171,7 @@ enum SharedClusterService: string
             self::CRM => 'Twenty',
             self::DATA => 'Directus',
             self::RECORD => 'Sendrec',
+            self::DASHBOARD => 'Headlamp Dashboard',
         };
     }
 
@@ -214,6 +216,7 @@ enum SharedClusterService: string
             self::CRM => 'deployment crm-twenty -n larakube-shared',
             self::DATA => 'deployment data-directus -n larakube-shared',
             self::RECORD => 'deployment record-sendrec -n larakube-shared',
+            self::DASHBOARD => 'deployment dashboard-headlamp -n larakube-shared',
         };
     }
 
@@ -322,6 +325,7 @@ enum SharedClusterService: string
             self::CRM => 'Refreshing Twenty (CRM) ingress...',
             self::DATA => 'Refreshing Directus (Data) ingress...',
             self::RECORD => 'Refreshing Sendrec (Screen Recording) ingress...',
+            self::DASHBOARD => 'Refreshing Headlamp (Dashboard) ingress...',
         };
     }
 
@@ -362,4 +366,5 @@ enum SharedClusterService: string
     case CRM = 'crm';
     case DATA = 'data';
     case RECORD = 'record';
+    case DASHBOARD = 'dashboard';
 }

@@ -112,34 +112,56 @@ class ErrorsInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-errors.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying GlitchTip manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        // Multiple resources to verify in sequence (db/cache/job/web/worker),
+        // so this can't use the single apply+rollout applyAndVerifyRollout()
+        // helper — but every step below still must check its real exit code,
+        // not discard it like the old runStreaming() calls did, or a
+        // rejected apply / stuck rollout prints ✔ and this command claims
+        // success regardless (confirmed live on Documenso, 2026-08-05). Every
+        // Process::run() below sets an explicit ->timeout() exceeding its own
+        // kubectl --timeout flag — Laravel's default PHP-level timeout is
+        // only 60s, which would otherwise throw a ProcessTimedOutException
+        // and crash this command before kubectl's own timeout ever fires
+        // (the exact same incident, same root cause).
+        $applied = $this->withSpin('Applying GlitchTip manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
         @unlink($tmp);
 
-        if ($noPlex) {
-            $this->withSpin('Waiting for local database...', fn () => $this->runStreaming(
-                "{$kubectl} rollout status deploy/glitchtip-db -n {$ns} --timeout=120s",
-                130,
-            ));
-            $this->withSpin('Waiting for local cache...', fn () => $this->runStreaming(
-                "{$kubectl} rollout status deploy/glitchtip-cache -n {$ns} --timeout=120s",
-                130,
-            ));
+        if (! $applied) {
+            $this->laraKubeError('Could not apply the GlitchTip manifest — see the output above.');
+
+            return 1;
         }
 
-        $this->withSpin('Waiting for database migrations...', fn () => $this->runStreaming(
-            "{$kubectl} wait --for=condition=complete job/glitchtip-db-migrations -n {$ns} --timeout=120s",
-            130,
-        ));
+        if ($noPlex) {
+            if (! $this->withSpin('Waiting for local database...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/glitchtip-db -n {$ns} --timeout=120s")->successful())) {
+                $this->laraKubeError('glitchtip-db never became Ready.');
 
-        $this->withSpin('Waiting for GlitchTip Web...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/glitchtip-web -n {$ns} --timeout=120s",
-            130,
-        ));
+                return 1;
+            }
+            if (! $this->withSpin('Waiting for local cache...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/glitchtip-cache -n {$ns} --timeout=120s")->successful())) {
+                $this->laraKubeError('glitchtip-cache never became Ready.');
 
-        $this->withSpin('Waiting for GlitchTip Worker...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/glitchtip-worker -n {$ns} --timeout=120s",
-            130,
-        ));
+                return 1;
+            }
+        }
+
+        if (! $this->withSpin('Waiting for database migrations...', fn () => Process::timeout(130)->run("{$kubectl} wait --for=condition=complete job/glitchtip-db-migrations -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('glitchtip-db-migrations never completed.');
+
+            return 1;
+        }
+
+        if (! $this->withSpin('Waiting for GlitchTip Web...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/glitchtip-web -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('glitchtip-web never became Ready.');
+
+            return 1;
+        }
+
+        if (! $this->withSpin('Waiting for GlitchTip Worker...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/glitchtip-worker -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('glitchtip-worker never became Ready.');
+
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::ERRORS, $kubectl, $host);
 

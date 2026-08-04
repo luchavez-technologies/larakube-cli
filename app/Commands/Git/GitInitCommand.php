@@ -20,6 +20,7 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -29,7 +30,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class GitInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     /**
      * Labels the Actions runner advertises, server-side. Kept in sync by hand
@@ -234,13 +235,15 @@ class GitInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-forgejo.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Forgejo core manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Forgejo core manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'forgejo', 120),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Forgejo rollout...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/forgejo -n {$ns} --timeout=120s",
-            130,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         // 2. CLI commands inside pod to create user and get tokens.
 
@@ -346,14 +349,29 @@ class GitInitCommand extends Command
         $tmpFinal = sys_get_temp_dir().'/larakube-forgejo-final.yaml';
         file_put_contents($tmpFinal, $manifestFinal);
 
-        $this->withSpin('Applying Forgejo Actions runner...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmpFinal}"));
+        // Explicit ->timeout() on both: Laravel's default PHP-level Process
+        // timeout is 60s, under kubectl's own --timeout flags below — without
+        // it a slow rollout throws a ProcessTimedOutException and crashes
+        // this command before kubectl's own timeout ever fires (confirmed
+        // live on Documenso, 2026-08-05).
+        $finalApplied = $this->withSpin(
+            'Applying Forgejo Actions runner...',
+            fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmpFinal} --request-timeout=60s")->successful(),
+        );
         @unlink($tmpFinal);
 
-        if ($registered) {
-            $this->withSpin('Waiting for Actions Runner...', fn () => $this->runStreaming(
-                "{$kubectl} rollout status deploy/forgejo-runner -n {$ns} --timeout=120s",
-                130,
-            ));
+        if (! $finalApplied) {
+            $this->laraKubeError('Could not apply the final Forgejo manifest — see the output above.');
+
+            return 1;
+        }
+
+        if ($registered && ! $this->withSpin('Waiting for Actions Runner...', fn () => Process::timeout(130)->run(
+            "{$kubectl} rollout status deploy/forgejo-runner -n {$ns} --timeout=120s",
+        )->successful())) {
+            $this->laraKubeError('forgejo-runner never became Ready.');
+
+            return 1;
         }
 
         // The forgejo-ssh Service is a LoadBalancer on 2222, but both the cloud

@@ -15,13 +15,14 @@ use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class InsightsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'insights:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -105,13 +106,15 @@ class InsightsInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-insights.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Insights (Metabase) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Insights (Metabase) manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'insights-metabase', 120),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Insights (Metabase)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/insights-metabase -n {$ns} --timeout=120s",
-            130,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::INSIGHTS, $kubectl, $host);
 
