@@ -170,7 +170,7 @@ test('resolveEnvironment inside a project binds the environment and returns no s
 
         expect($config)->not->toBeNull()
             ->and($config->getName())->toBe('myapp')
-            ->and($projectPath)->toBe($tempDir)
+            ->and(realpath($projectPath))->toBe(realpath($tempDir))
             ->and($environment)->toBe('production')
             ->and($standaloneName)->toBeNull();
     } finally {

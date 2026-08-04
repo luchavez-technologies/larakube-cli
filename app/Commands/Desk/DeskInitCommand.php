@@ -2,7 +2,6 @@
 
 namespace App\Commands\Desk;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
@@ -13,6 +12,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -23,7 +23,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DeskInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'desk:init
         {environment?    : Environment this install targets — "local" (default) or cloud.}
@@ -48,20 +48,11 @@ class DeskInitCommand extends Command
     {
         $this->resolveEngine();
         $env = $this->resolveEnvironment();
-        $host = $this->resolveDeskHost($env);
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $context = (string) $this->option('context') ?: null;
-        if (! $context && $config && $env !== 'local') {
-            $context = $this->environmentContextOrCurrent($config, $env);
-        }
-
+        $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->deskKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::DESK, ClusterTool::DESK, $env, $kubectl);
+
         $ns = $this->deskNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -125,6 +116,8 @@ class DeskInitCommand extends Command
             310,
         ));
 
+        $this->registerDeployedTool(ClusterTool::DESK, $kubectl, $host);
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ FreeScout help desk is live.');
         $this->newLine();
@@ -178,55 +171,8 @@ class DeskInitCommand extends Command
         return count($parts) > 2 ? implode('.', array_slice($parts, 1)) : $host;
     }
 
-    protected function resolveDeskHost(string $env): string
-    {
-        $service = SharedClusterService::DESK;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveDeskHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudDeskHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::DESK);
-    }
-
-    protected function promptForCloudDeskHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. desk.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

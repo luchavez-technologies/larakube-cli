@@ -31,6 +31,7 @@ enum ClusterTool: string
             self::SUPPORT => 'Customer Support (Chatwoot)',
             self::LINK => 'Link Management (Kutt)',
             self::CRM => 'CRM (Twenty)',
+            self::DATA => 'Headless CMS & Data API (Directus)',
             self::RECORD => 'Screen Recording & Sharing (Sendrec)',
         };
     }
@@ -41,6 +42,7 @@ enum ClusterTool: string
             self::ANALYTICS => 'Umami',
             self::CHAT => 'Matrix',
             self::CRM => 'Twenty',
+            self::DATA => 'Directus',
             self::DESK => 'FreeScout',
             self::DNS => 'ExternalDNS',
             self::DRIVE => 'oCIS',
@@ -80,6 +82,7 @@ enum ClusterTool: string
             self::ANALYTICS => SharedClusterService::ANALYTICS,
             self::CHAT => SharedClusterService::CHAT,
             self::CRM => SharedClusterService::CRM,
+            self::DATA => SharedClusterService::DATA,
             self::DESK => SharedClusterService::DESK,
             self::DNS => null,
             self::DRIVE => SharedClusterService::DRIVE,
@@ -164,9 +167,22 @@ enum ClusterTool: string
         return null;
     }
 
-    /** The tool that owns a given grantableRoles() key, or null if none claims it. */
+    /**
+     * The tool that owns a given grantableRoles() key, or null if none claims
+     * it. Per-app secrets grants (secrets:grant) mint dynamic role keys
+     * ("secrets-{app}-{environment}-{role}") that can't appear in SECRETS's
+     * static rbacRoles() map — the app name is arbitrary — but they live on
+     * the same RBAC project, so the "secrets-" prefix alone is enough to
+     * route them here. This is what lets sso:revoke's discovery/--role fast
+     * path find and revoke them too, without a second revoke command having
+     * to duplicate that machinery.
+     */
     public static function forGrantableRoleKey(string $roleKey): ?self
     {
+        if (str_starts_with($roleKey, 'secrets-')) {
+            return self::SECRETS;
+        }
+
         foreach (self::cases() as $tool) {
             if (array_key_exists($roleKey, $tool->grantableRoles())) {
                 return $tool;
@@ -531,6 +547,21 @@ enum ClusterTool: string
                     'user' => 'SMTP_USERNAME',
                     'password' => 'SMTP_PASSWORD',
                     'from' => 'EMAIL_FROM_ADDRESS',
+                ],
+            ],
+            self::DATA => [
+                'deployment' => 'data-directus',
+                'namespace' => $this->namespace(),
+                'secret' => 'data-smtp',
+                'static' => [
+                    'EMAIL_TRANSPORT' => 'smtp',
+                ],
+                'vars' => [
+                    'host' => 'EMAIL_SMTP_HOST',
+                    'port' => 'EMAIL_SMTP_PORT',
+                    'user' => 'EMAIL_SMTP_USER',
+                    'password' => 'EMAIL_SMTP_PASSWORD',
+                    'from' => 'EMAIL_FROM',
                 ],
             ],
             self::MONITOR => [
@@ -1023,6 +1054,27 @@ enum ClusterTool: string
                 'vars' => [],
                 'redirect_path' => '/v1/auth/oidc/oidc/callback',
             ],
+            self::DATA => [
+                'deployment' => 'data-directus',
+                'namespace' => $this->namespace(),
+                'secret' => 'data-oidc',
+                'static' => [
+                    'AUTH_PROVIDERS' => 'local,zitadel',
+                    'AUTH_ZITADEL_DRIVER' => 'openid',
+                    'AUTH_ZITADEL_SCOPE' => 'openid email profile',
+                    'AUTH_ZITADEL_IDENTIFIER_KEY' => 'email',
+                    'AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION' => 'true',
+                ],
+                'vars' => [
+                    'client_id' => 'AUTH_ZITADEL_CLIENT_ID',
+                    'client_secret' => 'AUTH_ZITADEL_CLIENT_SECRET',
+                    'issuer' => 'AUTH_ZITADEL_ISSUER',
+                    'auth_url' => 'AUTH_ZITADEL_AUTHORIZE_URL',
+                    'token_url' => 'AUTH_ZITADEL_ACCESS_URL',
+                    'userinfo_url' => 'AUTH_ZITADEL_PROFILE_URL',
+                ],
+                'redirect_path' => '/auth/login/zitadel/callback',
+            ],
             default => null,
         };
     }
@@ -1137,6 +1189,7 @@ enum ClusterTool: string
             self::ANALYTICS => 'analytics-umami',
             self::CHAT => 'chat-synapse',
             self::CRM => 'crm-twenty',
+            self::DATA => 'data-directus',
             self::DESK => 'desk-freescout',
             self::DRIVE => 'drive-ocis',
             self::ERRORS => 'glitchtip-web',
@@ -1213,6 +1266,7 @@ enum ClusterTool: string
     public function dbSecretRef(): ?array
     {
         return match ($this) {
+            self::DATA => ['namespace' => $this->namespace(), 'secret' => 'data-secrets', 'key' => 'db-password'],
             self::SIGN => ['namespace' => $this->namespace(), 'secret' => 'sign-documenso-secrets', 'key' => 'db-password'],
             self::RECORD => ['namespace' => $this->namespace(), 'secret' => 'record-sendrec-secrets', 'key' => 'db-password'],
             self::SSO => ['namespace' => $this->namespace(), 'secret' => 'sso-secrets', 'key' => 'db-password'],
@@ -1253,6 +1307,7 @@ enum ClusterTool: string
             self::ANALYTICS => ['umami'],
             self::CHAT => ['chat_matrix'],
             self::CRM => ['crm_twenty'],
+            self::DATA => ['data_directus'],
             self::DESK => ['freescout'],
             self::ERRORS => ['glitchtip'],
             self::FLOW => ['n8n', 'windmill'],
@@ -1277,6 +1332,8 @@ enum ClusterTool: string
     private function commonsBucketList(): array
     {
         return match ($this) {
+            self::CHAT => ['chat-media'],
+            self::DATA => ['data-storage'],
             self::DRIVE => ['drive-ocis'],
             self::GIT => ['forgejo-storage', 'forgejo-packages', 'forgejo-lfs'],
             self::MAIL => ['stalwart'],
@@ -1290,6 +1347,7 @@ enum ClusterTool: string
     case ANALYTICS = 'analytics';
     case CHAT = 'chat';
     case CRM = 'crm';
+    case DATA = 'data';
     case DESK = 'desk';
     case DNS = 'dns';
     case DRIVE = 'drive';

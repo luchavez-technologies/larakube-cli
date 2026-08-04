@@ -578,6 +578,35 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         && str_contains($process->command, 'OIDC_ENABLED'));
 });
 
+test('sso:wire registers a new OIDC client and wires it to Directus (data)', function () {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   1d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-data*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*set env deployment/data-directus*' => Process::result(output: 'deployment.apps/data-directus env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/data-directus restarted'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Registering Headless CMS & Data API (Directus) as an OIDC client in Zitadel')
+        ->expectsOutputToContain('Headless CMS & Data API (Directus) is wired to Zitadel SSO');
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
+        && $request['redirectUris'][0] === 'https://data.'.App\Data\GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-directus'));
+});
+
 test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', function () {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),

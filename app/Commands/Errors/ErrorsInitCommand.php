@@ -2,7 +2,6 @@
 
 namespace App\Commands\Errors;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
@@ -13,17 +12,15 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class ErrorsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'errors:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the GlitchTip host.}
@@ -48,6 +45,7 @@ class ErrorsInitCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->errorsKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::ERRORS, ClusterTool::ERRORS, $env, $kubectl);
         $ns = $this->errorsNamespace();
 
         $noPlex = (bool) $this->option('no-plex');
@@ -57,8 +55,6 @@ class ErrorsInitCommand extends Command
                 return 1;
             }
         }
-
-        $host = $this->resolveErrorsHost($env);
 
         // Read or generate database credentials
         $dbPassword = $this->readExistingDbPassword($kubectl, $ns);
@@ -181,62 +177,8 @@ class ErrorsInitCommand extends Command
     /**
      * Resolve the GlitchTip ingress host for this install.
      */
-    protected function resolveErrorsHost(string $env): string
-    {
-        $service = SharedClusterService::ERRORS;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveErrorsHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudErrorsHost($service, $env);
-    }
-
-    /**
-     * Decide which environment this install targets.
-     */
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::ERRORS);
-    }
-
-    /**
-     * Prompt for (and persist) a non-local GlitchTip host.
-     */
-    protected function promptForCloudErrorsHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. errors.example.com',
-            default: $default,
-            required: true,
-            hint: 'Point this DNS at the cluster and add TLS like any other ingress host.',
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

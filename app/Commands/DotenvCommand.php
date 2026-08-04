@@ -19,6 +19,7 @@ class DotenvCommand extends Command
     protected $signature = 'dotenv
         {environment? : The environment to compare — omit to pick from the project\'s envs}
         {--reveal : Print plaintext secret values (requires secret-read access on your context)}
+        {--strict : Exit 1 on any drift/missing key — for CI/preflight gates. Plex/OpenBao-rotated keys (expected to diverge from the file) never count}
         {--context= : Override the kube-context to compare against}';
 
     protected $description = 'Compare this project\'s .env.<environment> against the ConfigMap + Secret deployed to the cluster, and surface drift';
@@ -93,23 +94,9 @@ class DotenvCommand extends Command
             $this->laraKubeNewLine();
         }
 
-        return $this->compare($local, $cluster, $clusterSecret, $known, $namespace, $canReadSecrets, $reveal);
-    }
+        $excluded = $config->getPlexManagedKeys($env);
 
-    /**
-     * Would this key be stored in the Secret rather than the ConfigMap? Mirrors the
-     * split `cloud:deploy` applies (InteractsWithRemoteDeploy::splitEnvForK8s): a
-     * blueprint-managed secret, or a name that reads as sensitive. Pure.
-     *
-     * @param  array<int, string>  $knownSecrets
-     */
-    public function isSecretKey(string $key, array $knownSecrets): bool
-    {
-        return in_array($key, $knownSecrets, true)
-            || str_contains($key, 'PASSWORD')
-            || str_contains($key, 'SECRET')
-            || str_contains($key, 'KEY')
-            || str_contains($key, 'TOKEN');
+        return $this->compare($local, $cluster, $clusterSecret, $known, $namespace, $canReadSecrets, $reveal, (bool) $this->option('strict'), $excluded);
     }
 
     /**
@@ -136,8 +123,9 @@ class DotenvCommand extends Command
      * @param  array<string, string>  $cluster  merged config + secret from the cluster
      * @param  array<string, string>  $clusterSecret  keys that live in laravel-secrets
      * @param  array<int, string>  $known  blueprint-managed secret keys
+     * @param  array<int, string>  $excluded  Plex/OpenBao-managed keys — expected to diverge, never fail --strict
      */
-    protected function compare(array $local, array $cluster, array $clusterSecret, array $known, string $namespace, bool $canReadSecrets, bool $reveal): int
+    protected function compare(array $local, array $cluster, array $clusterSecret, array $known, string $namespace, bool $canReadSecrets, bool $reveal, bool $strict = false, array $excluded = []): int
     {
         $keys = array_unique(array_merge(array_keys($local), array_keys($cluster)));
         sort($keys);
@@ -149,12 +137,13 @@ class DotenvCommand extends Command
         }
 
         $rows = [];
-        $drift = $onlyLocal = $onlyCluster = $hidden = $maskedVisible = 0;
+        $drift = $onlyLocal = $onlyCluster = $hidden = $maskedVisible = $rotated = 0;
 
         foreach ($keys as $key) {
             $inLocal = array_key_exists($key, $local);
             $inCluster = array_key_exists($key, $cluster);
             $isSecret = $this->isSecretKey($key, $known) || array_key_exists($key, $clusterSecret);
+            $isExcluded = in_array($key, $excluded, true);
 
             // Secret we're not allowed to read: we can't see the cluster side, so
             // there's no honest comparison — surface the key, mask what we have.
@@ -170,13 +159,19 @@ class DotenvCommand extends Command
 
             if ($inLocal && $inCluster) {
                 $status = $localVal === $clusterVal ? 'in-sync' : 'drift';
-                $drift += $status === 'drift' ? 1 : 0;
+                if ($status === 'drift') {
+                    $isExcluded ? $rotated++ : $drift++;
+                }
             } elseif ($inLocal) {
                 $status = 'only local';
-                $onlyLocal++;
+                $isExcluded ? $rotated++ : $onlyLocal++;
             } else {
                 $status = 'only cluster';
-                $onlyCluster++;
+                $isExcluded ? $rotated++ : $onlyCluster++;
+            }
+
+            if ($isExcluded && $status !== 'in-sync') {
+                $status = 'rotated (excluded)';
             }
 
             if ($isSecret && ! $reveal) {
@@ -207,12 +202,20 @@ class DotenvCommand extends Command
             $this->line('  '.implode('  <fg=gray>·</>  ', $summary));
         }
 
+        if ($rotated > 0) {
+            $this->line("  <fg=gray>{$rotated} Plex/OpenBao-rotated key".($rotated === 1 ? '' : 's')." excluded from drift — the local file isn't the source of truth for ".($rotated === 1 ? 'it' : 'them').'.</>');
+        }
+
         if ($hidden > 0) {
             $this->laraKubeNewLine();
             $this->line("  <fg=yellow>Secret values are hidden — your context can't read Secrets in '{$namespace}'.</>");
             $this->line('  <fg=gray>Ask an admin for edit/admin access (`larakube cluster:grant --edit`) to compare them.</>');
         } elseif ($maskedVisible > 0 && ! $reveal) {
             $this->line('  <fg=gray>Secret values masked — re-run with --reveal to print them.</>');
+        }
+
+        if ($strict && ($drift > 0 || $onlyLocal > 0 || $onlyCluster > 0 || $hidden > 0)) {
+            return 1;
         }
 
         return 0;

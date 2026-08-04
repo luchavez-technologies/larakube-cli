@@ -2,7 +2,6 @@
 
 namespace App\Commands\Sign;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -15,18 +14,16 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSign;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class SignInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSign, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSign, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'sign:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -47,11 +44,11 @@ class SignInitCommand extends Command
     protected function deploySign(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveSignHost($env);
-
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->signKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::SIGN, ClusterTool::SIGN, $env, $kubectl);
+
         $ns = $this->signNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -184,6 +181,8 @@ class SignInitCommand extends Command
             190,
         ));
 
+        $this->registerDeployedTool(ClusterTool::SIGN, $kubectl, $host);
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Documenso signature stack is live.');
         $this->newLine();
@@ -194,55 +193,8 @@ class SignInitCommand extends Command
         return 0;
     }
 
-    protected function resolveSignHost(string $env): string
-    {
-        $service = SharedClusterService::SIGN;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveSignHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudSignHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::SIGN);
-    }
-
-    protected function promptForCloudSignHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. sign.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

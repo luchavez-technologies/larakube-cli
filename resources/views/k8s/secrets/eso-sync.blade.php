@@ -1,5 +1,6 @@
 @php
     $provider = $provider ?? 'openbao';
+    $prefix = ($prefix ?? '') !== '' ? $prefix.'/' : '';
 @endphp
 apiVersion: v1
 kind: Secret
@@ -39,6 +40,10 @@ spec:
   target:
     name: {{ $secretName }}
     creationPolicy: Owner
-  dataFrom:
-    - extract:
-        key: {{ $environmentSlug ?? 'production' }}
+  data:
+@foreach($keys as $key)
+    - secretKey: {{ $key }}
+      remoteRef:
+        key: {{ ($environmentSlug ?? 'production').'/'.$prefix.$key }}
+        property: value
+@endforeach

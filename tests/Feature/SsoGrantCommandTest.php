@@ -97,7 +97,7 @@ test('sso:grant errors when Zitadel is not installed', function () {
         ->expectsOutputToContain('Zitadel is not installed');
 });
 
-test('sso:grant errors when no Zitadel user matches the email', function () {
+test('sso:grant errors when Zitadel user cannot be resolved or created', function () {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -106,11 +106,12 @@ test('sso:grant errors when no Zitadel user matches the email', function () {
     Http::fake([
         '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
         '*/v2/users' => Http::response(['result' => []]),
+        '*/v2/users/human' => Http::response(null, 500),
     ]);
 
     $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-admin', '--email' => 'ghost@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(1)
-        ->expectsOutputToContain('No Zitadel user found');
+        ->expectsOutputToContain('Failed to resolve or create Zitadel user');
 });
 
 test('sso:grant creates a fresh UserGrant when the user holds none on the RBAC project yet', function () {

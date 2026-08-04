@@ -165,4 +165,28 @@ trait InteractsWithSsoGrants
 
         return select(label: 'Which role?', options: $roles, default: array_key_first($roles));
     }
+
+    /**
+     * Ensure a Zitadel user exists by email, offering to create & invite them if missing.
+     */
+    protected function ensureZitadelUserExists(string $ssoHost, string $pat, string $email, ?string $name = null, ?string $password = null): ?string
+    {
+        $userId = $this->zitadelFindUserByEmail($ssoHost, $pat, $email);
+        if ($userId !== null) {
+            return $userId;
+        }
+
+        $localPart = explode('@', $email)[0];
+        $displayName = $name ?: $localPart;
+        $initialPassword = $password ?: \Illuminate\Support\Str::password(24);
+
+        $createdId = $this->zitadelCreateUser($ssoHost, $pat, $email, $displayName, $initialPassword);
+        if ($createdId !== null) {
+            $this->laraKubeInfo("✅ Created new Zitadel SSO user account for '{$email}'.");
+            $this->line("  <fg=gray>Initial Password:</> <fg=yellow>{$initialPassword}</>");
+            $this->newLine();
+        }
+
+        return $createdId;
+    }
 }

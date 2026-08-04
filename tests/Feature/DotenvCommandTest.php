@@ -161,3 +161,48 @@ test('dotenv must be run inside a project', function () {
         ->assertExitCode(1)
         ->expectsOutputToContain('inside a LaraKube project');
 });
+
+test('dotenv --strict exits 1 on real drift', function () {
+    saveDotenvConfig($this->tempDir);
+    writeDotenv($this->tempDir, ['APP_URL' => 'https://local.test']);
+    fakeKubectl('yes', [], ['APP_URL' => 'https://prod.example']);
+
+    $this->artisan('dotenv', ['environment' => 'production', '--strict' => true])
+        ->assertExitCode(1)
+        ->expectsOutputToContain('drift');
+});
+
+test('dotenv --strict exits 0 when everything is in sync', function () {
+    saveDotenvConfig($this->tempDir);
+    writeDotenv($this->tempDir, ['APP_URL' => 'https://same.example']);
+    fakeKubectl('yes', [], ['APP_URL' => 'https://same.example']);
+
+    $this->artisan('dotenv', ['environment' => 'production', '--strict' => true])
+        ->assertExitCode(0);
+});
+
+test('dotenv --strict never fails on a Plex/OpenBao-rotated key even when it differs', function () {
+    $config = ConfigData::from([
+        'name' => 'dotenv-test',
+        'serverVariation' => 'fpm-nginx',
+        'phpVersion' => '8.5',
+        'database' => 'postgres',
+        'environments' => [
+            'local' => [],
+            'production' => ['plex' => ['postgres']],
+        ],
+    ]);
+    $config->setDatabase(DatabaseDriver::POSTGRESQL);
+    $config->setCloud('production', ['context' => 'fake-ctx']);
+    $config->setPath($this->tempDir);
+    $config->saveToFile($this->tempDir);
+
+    // Local file has a stale password; the cluster has the rotated one —
+    // exactly what OpenBao's static-role rotation produces over time.
+    writeDotenv($this->tempDir, ['DB_PASSWORD' => 'stale-local-password']);
+    fakeKubectl('yes', ['DB_PASSWORD' => 'rotated-cluster-password'], []);
+
+    $this->artisan('dotenv', ['environment' => 'production', '--strict' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('excluded from drift');
+});

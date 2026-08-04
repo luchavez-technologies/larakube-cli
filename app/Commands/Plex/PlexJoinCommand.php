@@ -340,13 +340,11 @@ class PlexJoinCommand extends Command
                     $this->pushClusterSecret($kubectl, 'DB_PASSWORD', $password, $env);
                 }
             }
-            // S3 keys are NOT synced into a Kubernetes Secret here — deliberately.
-            // The only mechanism available for a plain KV push (syncOpenBaoToNamespace,
-            // via eso-sync.blade.php's dataFrom.extract) reads EVERY key under
-            // secret/{env}/* flat, so pointing it at this tenant's laravel-secrets
-            // would leak every other tool's and tenant's secrets into this app's
-            // pod. .env.{env} (written below) is the real, safe, working delivery
-            // path for these until a properly tenant-scoped sync exists.
+            // S3 keys are NOT synced into a Kubernetes Secret here. A tenant-scoped
+            // sync now exists (syncOpenBaoToNamespace's $prefix param, added for
+            // dotenv:push), but wiring this tenant's S3 keys through it is a
+            // separate change from this one — .env.{env} (written below) remains
+            // the delivery path for these until that's done.
             if ($s3 !== null && isset($s3['service'])) {
                 $s3Prefix = strtoupper((string) $s3['service']);
                 $this->pushClusterSecret($kubectl, "{$s3Prefix}_KEY_ID", $s3['access'], $env);

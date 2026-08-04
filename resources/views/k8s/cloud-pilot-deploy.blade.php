@@ -38,23 +38,10 @@ jobs:
           # Robust resolution for KUBECONFIG
           FINAL_KUBE="{!! $secrets['k_env'] !!}"
 
-          # Robust resolution for ENV_FILE
-          FINAL_ENV="{!! $secrets['e_env'] !!}"
-
           if [ -z "$FINAL_KUBE" ]; then
             echo "::error::{{ $upperEnv }}_KUBECONFIG is missing! Run 'larakube cloud:configure:gha' locally."
             exit 1
           fi
-
-          if [ -z "$FINAL_ENV" ]; then
-            echo "::error::{{ $upperEnv }}_ENV_FILE_BASE64 is missing! Run 'larakube cloud:configure:gha' locally."
-            exit 1
-          fi
-
-          # Securely export using Heredoc to prevent truncation/mangling
-          echo "E_DATA<<EOF" >> $GITHUB_ENV
-          echo "$FINAL_ENV" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
           echo "✅ All secrets resolved successfully."
 @if(! $audit['skip'])
@@ -130,9 +117,9 @@ jobs:
 @endif
 @if($audit['withTests'])
 
-      - name: 🛡 Create .env file
+      - name: 🛡 Create .env file (public/build vars only)
         run: |
-          echo "$E_DATA" | base64 -d > .env
+          {!! $publicEnvScript !!}
 
       - name: 🧪 Application tests
         run: php artisan test
@@ -144,23 +131,9 @@ jobs:
 @endif
 @if(! $audit['withTests'])
 
-      - name: 🛡 Create .env file
+      - name: 🛡 Create .env file (public/build vars only)
         run: |
-          echo "$E_DATA" | base64 -d > .env
-@endif
-
-      - name: 💎 Inject VITE vars for asset baking
-        run: |
-          echo "VITE_APP_URL=https://{{ $config->getWebHost($environment) }}" >> .env
-          echo "VITE_ASSET_URL=https://{{ $config->getWebHost($environment) }}" >> .env
-@if($reverbHost = $config->getHost($environment, 'reverb'))
-@if($config->hasFeature(\App\Enums\LaravelFeature::REVERB))
-          echo "VITE_REVERB_HOST={{ $reverbHost }}" >> .env
-          echo "VITE_REVERB_PORT=443" >> .env
-          echo "VITE_REVERB_SCHEME=https" >> .env
-          REVERB_APP_KEY=$(grep -E '^REVERB_APP_KEY=' .env | head -1 | cut -d= -f2-)
-          echo "VITE_REVERB_APP_KEY=$REVERB_APP_KEY" >> .env
-@endif
+          {!! $publicEnvScript !!}
 @endif
 
       # ── Phase 2: Build locally (no push yet) ───────────────────────────
@@ -286,23 +259,9 @@ jobs:
         run: php artisan wayfinder:generate --with-form
 @endif
 
-      - name: 🛡 Create .env file
+      - name: 🛡 Create .env file (public/build vars only)
         run: |
-          echo "$E_DATA" | base64 -d > .env
-
-      - name: 💎 Inject VITE vars for asset baking
-        run: |
-          echo "VITE_APP_URL=https://{{ $config->getWebHost($environment) }}" >> .env
-          echo "VITE_ASSET_URL=https://{{ $config->getWebHost($environment) }}" >> .env
-@if($reverbHost = $config->getHost($environment, 'reverb'))
-@if($config->hasFeature(\App\Enums\LaravelFeature::REVERB))
-          echo "VITE_REVERB_HOST={{ $reverbHost }}" >> .env
-          echo "VITE_REVERB_PORT=443" >> .env
-          echo "VITE_REVERB_SCHEME=https" >> .env
-          REVERB_APP_KEY=$(grep -E '^REVERB_APP_KEY=' .env | head -1 | cut -d= -f2-)
-          echo "VITE_REVERB_APP_KEY=$REVERB_APP_KEY" >> .env
-@endif
-@endif
+          {!! $publicEnvScript !!}
 
       - name: 🔧 Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -337,24 +296,14 @@ jobs:
       - name: 🔍 Resolve & Verify Secrets
         run: |
           FINAL_KUBE="{!! $secrets['k_env'] !!}"
-          FINAL_ENV="{!! $secrets['e_env'] !!}"
 
           if [ -z "$FINAL_KUBE" ]; then
             echo "::error::{{ $upperEnv }}_KUBECONFIG is missing! Run 'larakube cloud:configure:gha' locally."
             exit 1
           fi
 
-          if [ -z "$FINAL_ENV" ]; then
-            echo "::error::{{ $upperEnv }}_ENV_FILE_BASE64 is missing! Run 'larakube cloud:configure:gha' locally."
-            exit 1
-          fi
-
           echo "K_DATA<<EOF" >> $GITHUB_ENV
           echo "$FINAL_KUBE" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-          echo "E_DATA<<EOF" >> $GITHUB_ENV
-          echo "$FINAL_ENV" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: 🕵️ Inspect Cluster Target
@@ -387,15 +336,27 @@ jobs:
           method: kubeconfig
           kubeconfig: {!! $gha['k_data'] !!}
 
-      - name: 🛡 Create .env file
+      - name: 🛡 Create .env file (public/build vars only)
         run: |
-          echo "$E_DATA" | base64 -d > .env
+          {!! $publicEnvScript !!}
+
+      - name: 🔒 Verify runtime secrets were pushed
+        run: |
+          # laravel-secrets now only ever comes from `larakube dotenv:push`, run
+          # from a developer's own machine — this workflow never holds runtime
+          # credentials, only the public/build subset above. Fail fast with a
+          # clear fix instead of letting every pod CrashLoop on a missing
+          # envFrom source a few minutes from now.
+          if ! kubectl get secret laravel-secrets -n {{ $namespace }} >/dev/null 2>&1; then
+            echo "::error::'laravel-secrets' is missing in '{{ $namespace }}'. Run 'larakube dotenv:push {{ $environment }}' from your machine before deploying."
+            exit 1
+          fi
 
       - name: 🏗 Prepare Manifests & Deploy
         run: |
-          # 1. Update ConfigMap/Secret
+          # 1. Update ConfigMap (public/build config only — runtime secrets are
+          #    dotenv:push's job, verified above, never this workflow's).
           kubectl create configmap laravel-config -n {{ $namespace }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
-          kubectl create secret generic laravel-secrets -n {{ $namespace }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
 
           # 2. Deploy via Kustomize. The namespace already exists (created at
           #    `cloud:configure:gha` time), and this runner uses a NAMESPACE-SCOPED

@@ -1,9 +1,76 @@
 # Plan: Stop Shipping Runtime Secrets to CI Providers (`dotenv:push` & `dotenv:diff`)
 
-**Status:** Finalized Plan / Ready for Implementation
+**Status:** ✅ Code complete (2026-08-04) — pending manual/cluster verification (see `plans/testing-checklist.md`, "Secrets Out of CI" section)
 **Created:** 2026-07-29
-**Updated:** 2026-08-03 (post grill-me gap analysis & user alignment)
+**Updated:** 2026-08-04 (implemented — see "✅ What actually shipped" below; several specifics changed from the design further down this doc)
 **Target Version:** LaraKube CLI v1.2.0
+
+---
+
+## ✅ What actually shipped (2026-08-04)
+
+Implemented end to end, `./php vendor/bin/pest` (1333 passing) + PHPStan clean.
+The design evolved during implementation — **this section is the source of
+truth; treat the rest of the document below as historical design rationale,
+not a literal spec of the shipped commands.**
+
+**Bigger win than originally scoped: zero `.env` content reaches CI, not just
+a shrunk public subset.** `cloud:configure:gha`/`:gitlab` now bake every
+public/build var as a literal `echo 'KEY=VALUE' >> .env` line directly into
+the generated workflow file, computed from the blueprint at generation time
+(`ConfiguresCloudEnvironment::buildPublicEnvScript()`). No `{ENV}_ENV_FILE_BASE64`,
+no shrunk `{ENV}_BUILD_ENV_BASE64` secret either — CI's only remaining
+env-shaped secret is `{ENV}_KUBECONFIG` (+ registry/VPN creds). Both `laravel-config`
+and Vite still get every public value they need; only runtime credentials
+are gone from CI, entirely.
+
+**Commands shipped, with different names/shapes than the original design:**
+
+| Shipped | Not built (superseded) | Why |
+| --- | --- | --- |
+| `dotenv:push [env] [--app=]` | `secrets:push` | `secrets:*` was already the OpenBao-lifecycle namespace (init/seal/wire/…); `dotenv:*` already owned local `.env` ops (`dotenv`, `dotenv:audit`) |
+| `dotenv:pull [env] [--app=]` | `secrets:pull` / `dotenv:pull` (plan used both names) | same reasoning, made consistent with `dotenv:push` |
+| `dotenv --strict` (new flag on the **existing** `dotenv` command) | `dotenv:diff` | the existing `dotenv` command already did the file-vs-cluster comparison almost exactly as specced; a new command would have duplicated it line for line. `--strict` just adds the exit-1-on-drift behavior, with Plex/OpenBao-rotated keys excluded from the failure count |
+| `secrets:grant` / `secrets:revoke` — per-app, per-environment, `developer`/`viewer` only | the plan's `--only=`/`--except=` multi-env, 3-tier `developer`/`viewer`/`admin` design | simplified to match the existing `sso:grant`/`sso:revoke` single-environment-positional convention; dropped the "admin, all envs for one app" tier — redundant with the existing global `openbao-admin` tier |
+
+**Deliberately NOT built** (present in the plan's "Onboarding" / "RBAC" /
+"Multi-Project Scoping" sections below, judged out of scope or already solved):
+- App-first OpenBao path restructuring (`secret/data/{app}/{environment}/...`). Shipped instead: `secret/data/{environment}/{app}/...` — the app segment is composed locally inside `dotenv:push`'s existing `pushClusterSecret()` call, zero changes to that trait method's signature or its ~40 other call sites.
+- `larakube clone`/`init` auto-prompting to run `secrets:pull` — not built; run it manually.
+- Per-tenant Zitadel dynamic role creation was **not** a new subsystem: `secrets:grant` mints a role key (`secrets-{app}-{environment}-{role}`) on the *existing* `LaraKube RBAC` Zitadel project via the *existing* `zitadelEnsureProjectRole()` primitive — same project `sso:grant`'s fixed `openbao-admin/operator/auditor` tiers already live on.
+
+**Drive-by fix (approved mid-implementation, unrelated to CI secrets):** the
+`ExternalSecret` CRD `syncOpenBaoToNamespace()` wrote (`eso-sync.blade.php`)
+was structurally broken — it used `dataFrom.extract.key: {environment}`,
+expecting one combined KV document at `secret/data/{environment}`, but
+`pushClusterSecret()` actually writes one KV entry **per key** at
+`secret/data/{environment}/{key}`. That extract could never find real data.
+Replaced with explicit per-key `data:` entries, and added an optional
+`$prefix` param (default `null`, zero behavior change for existing callers)
+so a sync can be scoped to one app's keys instead of pulling every flat key
+under an environment.
+
+**`sso:revoke`'s incident sweep already covers `secrets:grant` grants** — no
+second revoke system, no blind spot. `ClusterTool::forGrantableRoleKey()`
+routes any `secrets-`-prefixed role key to the RBAC project by prefix match
+(app names are arbitrary, so they can't be enumerated in `SECRETS::rbacRoles()`
+statically). One command (`sso:revoke`) can still wipe a compromised account's
+access completely, including per-app grants.
+
+**Files touched:** `app/Commands/DotenvPushCommand.php`, `DotenvPullCommand.php`
+(new), `app/Commands/Secrets/SecretsGrantCommand.php`, `SecretsRevokeCommand.php`
+(new), `app/Traits/InteractsWithAppSecretGrants.php` (new), `app/Commands/DotenvCommand.php`
+(`--strict`), `app/Data/ConfigData.php` (`getPlexManagedKeys()`), `app/Enums/ClusterTool.php`
+(`forGrantableRoleKey()` prefix match), `app/Traits/ConfiguresCloudEnvironment.php`
+(`buildPublicEnvScript()`, `uploadGhaSecrets()`/`uploadGitlabVariables()`/`generateGitlabPipeline()`
+rewritten), `app/Traits/ReadsEnvSources.php` (`isSecretKey()` shared), `app/Traits/SyncsClusterSecrets.php`
+(`readOpenBaoKeys()`, `$prefix` support), `resources/views/k8s/secrets/eso-sync.blade.php`,
+`resources/views/k8s/cloud-pilot-deploy.blade.php`, `cloud-pilot-deploy-gitlab.blade.php`,
+`app/Commands/Pipeline/PipelineTestCommand.php`, `app/Commands/Plex/PlexJoinCommand.php` (comment only).
+
+**Not yet verified against a real cluster** — every test fakes `Process`/`Http`.
+See `plans/testing-checklist.md`'s "Secrets Out of CI" section for the manual
+walkthrough before this ships in a release.
 
 ---
 
@@ -300,36 +367,64 @@ re-pushed from `.env.{env}` files into OpenBao via the `pushClusterSecret` /
 
 ## 📋 Implementation Tasks
 
-- [ ] Create `app/Commands/DotenvPushCommand.php` (`larakube dotenv:push [env]`)
+> ✅ All done 2026-08-04. Names/shapes changed from the original list below —
+> see "✅ What actually shipped" at the top of this document for the actual
+> commands and why. This list is kept as-written for history.
+
+- [x] ~~Create `app/Commands/DotenvPushCommand.php` (`larakube dotenv:push [env]`)~~ — shipped as designed
   - Parses `.env.{env}`
-  - Filters secret keys using `getSecretEnvironmentVariables()`
-  - If OpenBao present: calls `pushClusterSecret()`
-  - If OpenBao absent: executes direct K8s Secret apply for `laravel-secrets`
-- [ ] Create `app/Commands/DotenvDiffCommand.php` (`larakube dotenv:diff [env]`)
-  - Compares local `.env.{env}` keys against cluster Secret/ConfigMap
-  - Outputs a key-level drift table (`same / differs / missing in file / missing in cluster`) without printing values
-  - Exits non-zero (1) if divergent
-- [ ] Update `app/Traits/ConfiguresCloudEnvironment.php`:
-  - Modify `uploadGhaSecrets()` to upload `{$ENV}_BUILD_ENV_BASE64` containing public build variables only
-  - Remove production secret credentials from GitHub Secret payload
-- [ ] Update GHA Blade template (`resources/views/k8s/cloud-pilot-deploy.blade.php`):
-  - Consume `{$ENV}_BUILD_ENV_BASE64` for `docker build`
-  - Remove `kubectl create secret generic laravel-secrets --from-env-file=.env` line
-- [ ] Create Pest unit and feature tests:
-  - `tests/Feature/DotenvPushCommandTest.php`
-  - `tests/Feature/DotenvDiffCommandTest.php`
-- [ ] Format with `./php vendor/bin/pint` and verify PHPStan (0 errors)
+  - Filters secret keys using `getSecretEnvironmentVariables()` **plus** a name-heuristic fallback (`PASSWORD`/`SECRET`/`KEY`/`TOKEN` substring) — `APP_KEY` and third-party API keys aren't in any enum's secret list at all, so the enum set alone silently missed them
+  - If OpenBao present: calls `pushClusterSecret()`, app-scoped (`"{app}/{key}"`)
+  - If OpenBao absent: delegates to the existing `InteractsWithRemoteDeploy::syncRemoteEnv()` (already did per-key `laravel-config`/`laravel-secrets` writes — this task turned out to be exposing existing plumbing as a standalone command, not writing it from scratch)
+  - Actively excludes (not just warns about) Plex/OpenBao-managed keys from what gets pushed
+- [x] ~~Create `app/Commands/DotenvDiffCommand.php`~~ — **not built**; shipped as `dotenv --strict` on the existing `dotenv` command instead (see rationale above). Exit-1-on-drift, values never printed by default (existing `dotenv` behavior), Plex/OpenBao-rotated keys excluded from the failure count via new `ConfigData::getPlexManagedKeys()`.
+- [x] Update `app/Traits/ConfiguresCloudEnvironment.php`:
+  - ~~Modify `uploadGhaSecrets()` to upload `{$ENV}_BUILD_ENV_BASE64`~~ — **went further**: no env-blob secret upload at all (see zero-blob design above). `uploadGhaSecrets()`/`uploadGitlabVariables()` now only handle registry creds + the scoped kubeconfig; `buildPublicEnvScript()` renders public vars as literal workflow text instead.
+- [x] Update GHA Blade template (`resources/views/k8s/cloud-pilot-deploy.blade.php`) **and its GitLab twin** (not listed here originally, but Phase 1's own text called for both):
+  - ~~Consume `{$ENV}_BUILD_ENV_BASE64` for `docker build`~~ — consumes `$publicEnvScript` (literal, not a secret) instead
+  - Removed `kubectl create secret generic laravel-secrets --from-env-file=.env` from both templates
+  - Added: a preflight step in both templates that fails the job with a `dotenv:push`-naming fix-it message if `laravel-secrets` is missing (not in the original checklist, but required by "Definition of done" below)
+- [x] Create Pest unit and feature tests:
+  - `tests/Feature/DotenvPushCommandTest.php`, `DotenvPullCommandTest.php` (pull wasn't in the original checklist at all — added once it became clear it was genuinely new, not a duplicate)
+  - ~~`tests/Feature/DotenvDiffCommandTest.php`~~ — n/a, folded into `tests/Feature/DotenvCommandTest.php`'s `--strict` cases
+  - Plus `SecretsGrantCommandTest.php`, `SecretsRevokeCommandTest.php`, an `sso:revoke` case proving it discovers/revokes a `secrets:grant`-issued key, and `GhaWorkflowTest.php` updates for the zero-blob design
+- [x] Format with `./php vendor/bin/pint` and verify PHPStan (0 errors) — both clean, full suite 1333 passing
 
 ---
 
 ## ✅ Definition of done
 
-- No credential reported by `getSecretEnvironmentVariables()` is stored in any
-  CI provider secret.
-- `larakube dotenv:push {env}` creates/updates `laravel-secrets`, and
-  `cloud:deploy` refuses to proceed when it is absent.
-- `larakube dotenv:diff {env}` reports drift without printing values, and exits
-  non-zero when the file and the cluster disagree.
-- The workflow templates no longer create the runtime Secret from a file.
-- Existing single-node / no-backend installs keep working with no extra
+- [x] No credential reported by `getSecretEnvironmentVariables()` — or matching
+  the `PASSWORD`/`SECRET`/`KEY`/`TOKEN` name heuristic — is stored in any CI
+  provider secret. (Stronger than specced: **no env-derived secret of any
+  kind** is stored in CI at all, public or otherwise.)
+- [x] `larakube dotenv:push {env}` creates/updates `laravel-secrets`, and the
+  generated CI workflow (not `cloud:deploy` — see note below) refuses to
+  proceed when it is absent.
+- [x] `larakube dotenv --strict {env}` (not `dotenv:diff`) reports drift
+  without printing values, and exits non-zero when the file and the cluster
+  disagree.
+- [x] The workflow templates no longer create the runtime Secret from a file.
+- [x] Existing single-node / no-backend installs keep working with no extra
   components deployed, and never encounter the word "OpenBao".
+
+**Note on the `cloud:deploy` line above:** research during implementation
+found `cloud:deploy`'s own CLI path (`applyScopedDeploy()` → `syncRemoteEnv()`)
+already self-creates `laravel-secrets` from the local `.env` on every run —
+it was never actually exposed to the "missing Secret" ordering hazard the
+plan worried about. The **generated CI workflow** was the one place that
+hazard was real (once it stopped creating the Secret itself), so the preflight
+check lives there instead.
+
+**Known follow-up, not fixed as part of this plan:** `cloud:deploy`'s
+`syncRemoteEnv()` is not Plex/OpenBao-aware — unlike `dotenv:push`, it has no
+`getPlexManagedKeys()` exclusion. In the normal case this is harmless:
+`PlexJoinCommand` already omits `DB_PASSWORD` from the local file entirely
+once OpenBao owns it, and `kubectl apply` of a Secret manifest never deletes
+keys absent from the new manifest, so the OpenBao/ESO-managed value survives
+untouched. The gap only bites if a `DB_PASSWORD`-shaped key is *manually*
+present in the local file for a Plex-backed environment (stale, or added
+before joining Plex) — then a manual `cloud:deploy` would overwrite the live,
+rotated value with that stale one. Narrow blast radius (manual `cloud:deploy`
+only, not CI deploys, and only with a manually-reintroduced key), left as
+out of scope for this plan.

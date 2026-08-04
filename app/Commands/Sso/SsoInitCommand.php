@@ -2,7 +2,6 @@
 
 namespace App\Commands\Sso;
 
-use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -18,6 +17,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
@@ -29,7 +29,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'sso:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -52,10 +52,11 @@ class SsoInitCommand extends Command
     protected function deploySso(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveSsoHost($env);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->ssoKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::SSO, ClusterTool::SSO, $env, $kubectl);
+
         $ns = $this->ssoNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -308,55 +309,8 @@ class SsoInitCommand extends Command
         return true;
     }
 
-    protected function resolveSsoHost(string $env): string
-    {
-        $service = SharedClusterService::SSO;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveSsoHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudSsoHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::SSO);
-    }
-
-    protected function promptForCloudSsoHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. sso.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

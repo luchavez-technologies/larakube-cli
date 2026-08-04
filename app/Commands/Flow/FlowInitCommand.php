@@ -2,10 +2,8 @@
 
 namespace App\Commands\Flow;
 
-use App\Data\ConfigData;
-use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
-use App\Exceptions\MissingFlagException;
+use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -15,19 +13,19 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
-use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class FlowInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'flow:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -51,20 +49,11 @@ class FlowInitCommand extends Command
     {
         $engine = $this->resolveEngine();
         $env = $this->resolveEnvironment();
-        $host = $this->resolveFlowHost($env, $engine);
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $context = (string) $this->option('context') ?: null;
-        if (! $context && $config && $env !== 'local') {
-            $context = $this->environmentContextOrCurrent($config, $env);
-        }
-
+        $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->flowKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::FLOW, ClusterTool::FLOW, $env, $kubectl);
+
         $ns = $this->flowNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -162,6 +151,8 @@ class FlowInitCommand extends Command
             130,
         ));
 
+        $this->registerDeployedTool(ClusterTool::FLOW, $kubectl, $host);
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Flow ({$engineName}) stack is live.");
         $this->newLine();
@@ -170,69 +161,6 @@ class FlowInitCommand extends Command
         $this->newLine();
 
         return 0;
-    }
-
-    /**
-     * Resolve the host for THIS engine. n8n and windmill are distinct products
-     * under the "flow" group, so each gets its own host (n8n.tld / windmill.tld),
-     * stored under its own `flow-{engine}` key — never a shared flow.tld that
-     * would collide when both are installed. The derived host is only ever a
-     * suggestion: prompted (editable) the same way on local AND cloud, so the
-     * mental model doesn't change between them. --domain skips the prompt.
-     */
-    protected function resolveFlowHost(string $env, string $engine): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-        $key = "flow-{$engine}";
-        $engineName = $this->engineLabel($engine);
-
-        // --domain: a base domain (n8n.example.com) OR a full host, verbatim if
-        // it already starts with the engine prefix. Prefix with the ENGINE name.
-        $domain = trim((string) ($this->option('domain') ?? ''));
-        if ($domain !== '') {
-            $domain = preg_replace('#^https?://#', '', rtrim($domain, '/'));
-            $host = str_starts_with($domain, "{$engine}.") ? $domain : "{$engine}.{$domain}";
-
-            return $this->persistFlowHost($config, $projectPath, $env, $key, $host);
-        }
-
-        // Suggestion: a previously-saved host, else a clean per-engine default.
-        $existing = $config?->getEnvironment($env)?->hosts[$key] ?? null;
-        $baseDomain = $env === 'local'
-            ? GlobalConfigData::load()->getLocalTld()
-            : ($config?->getEnvironment($env)?->hosts['web'] ?? null);
-        $default = $existing ?? ($baseDomain ? "{$engine}.{$baseDomain}" : '');
-
-        if ($this->cannotPrompt()) {
-            if ($default === '') {
-                throw new MissingFlagException('domain', "the host {$engineName} should use", "larakube flow:init {$env} --engine={$engine} --domain=example.com");
-            }
-
-            return $this->persistFlowHost($config, $projectPath, $env, $key, $default);
-        }
-
-        $host = text(
-            label: "What host should {$engineName} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : "e.g. {$engine}.example.com",
-            default: $default,
-            required: true,
-        );
-
-        return $this->persistFlowHost($config, $projectPath, $env, $key, $host);
-    }
-
-    protected function persistFlowHost(?ConfigData $config, string $projectPath, string $env, string $key, string $host): string
-    {
-        if ($config) {
-            $config->setHost($env, $key, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$key} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 
     protected function engineLabel(string $engine): string

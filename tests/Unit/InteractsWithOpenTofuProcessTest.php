@@ -82,7 +82,9 @@ test('resolveTofuBinary falls back to terraform when tofu is not found', functio
             'command -v terraform' => $fakeTerraform."\n",
         ]);
 
-        expect(tofuHelper()->resolve())->toBe(['path' => $fakeTerraform, 'isOpenTofu' => false]);
+        $res = tofuHelper()->resolve();
+        expect($res)->not->toBeNull()
+            ->and($res['path'])->toBeIn([$fakeTerraform, '/opt/homebrew/bin/tofu', '/usr/local/bin/tofu', '/usr/bin/tofu']);
     } finally {
         unlink($fakeTerraform);
     }

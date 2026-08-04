@@ -45,8 +45,6 @@ function ghaViewData(array $overrides = []): array
     $secrets = array_merge([
         'k_env' => '${{ secrets.'.$upperEnv.'_KUBECONFIG }}',
         'k_base' => '${{ secrets.KUBECONFIG }}',
-        'e_env' => '${{ secrets.'.$upperEnv.'_ENV_FILE_BASE64 }}',
-        'e_base' => '${{ secrets.ENV_FILE_BASE64 }}',
         'vpn_key' => '${{ secrets.PRODUCTION_NETBIRD_SETUP_KEY }}',
     ], $overrides['secrets'] ?? []);
     unset($overrides['secrets']);
@@ -60,7 +58,6 @@ function ghaViewData(array $overrides = []): array
         'registry_host' => 'ghcr.io',
         'image_name' => '${{ github.repository }}',
         'k_data' => '${{ env.K_DATA }}',
-        'e_data' => '${{ env.E_DATA }}',
         'image_latest' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest',
         'image_sha' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ github.sha }}',
         'composer_cache_key' => "composer-\${{ hashFiles('composer.lock') }}",
@@ -71,6 +68,16 @@ function ghaViewData(array $overrides = []): array
     ], $overrides['gha'] ?? []);
     unset($overrides['gha']);
 
+    // Mirrors ConfiguresCloudEnvironment::buildPublicEnvScript() — one literal
+    // `echo 'KEY=VALUE' >> .env` line per public/build var, computed straight
+    // from the blueprint. No .env content is ever a workflow secret.
+    $publicEnv = $config->getAllPublicEnvironmentVariables($environment);
+    $publicEnvScript = implode("\n          ", array_map(
+        fn ($key, $value) => 'echo '.escapeshellarg("{$key}={$value}").' >> .env',
+        array_keys($publicEnv),
+        $publicEnv,
+    ));
+
     return array_merge([
         'config' => $config,
         'environment' => $environment,
@@ -80,6 +87,7 @@ function ghaViewData(array $overrides = []): array
         'podName' => 'web',
         'upperEnv' => $upperEnv,
         'vpnHost' => $vpnHost,
+        'publicEnvScript' => $publicEnvScript,
         'secrets' => $secrets,
         'gha' => $gha,
         'audit' => $audit,
@@ -91,7 +99,11 @@ test('GHA workflow generation uses correct literal injection syntax', function (
 
     // Verify Literal Injections
     expect($workflowContent)->toContain('FINAL_KUBE="${{ secrets.PRODUCTION_KUBECONFIG }}"');
-    expect($workflowContent)->toContain('FINAL_ENV="${{ secrets.PRODUCTION_ENV_FILE_BASE64 }}"');
+    // No .env content is ever a workflow secret — public/build vars are baked
+    // as literal `echo` lines instead (see the dedicated test below).
+    expect($workflowContent)
+        ->not->toContain('ENV_FILE_BASE64')
+        ->not->toContain('FINAL_ENV');
     expect($workflowContent)->toContain('REGISTRY_HOST: ghcr.io');
     expect($workflowContent)->toContain('IMAGE_NAME: ${{ github.repository }}');
     expect($workflowContent)->toContain('REGISTRY_PROVIDER: ghcr');
@@ -272,4 +284,27 @@ test('the workflow has no VPN step at all when the environment has no VPN', func
 
     expect($workflowContent)->not->toContain('Connect to NetBird VPN')
         ->not->toContain('netbird up');
+});
+
+test('the workflow bakes public env vars as literal echo lines, never a secret', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
+
+    expect($workflowContent)
+        ->toContain("echo 'APP_URL=")
+        ->toContain("echo 'ASSET_URL=")
+        ->not->toContain('ENV_FILE_BASE64')
+        ->not->toContain('E_DATA');
+});
+
+test('the deploy job refuses to proceed when laravel-secrets is missing, and never creates it', function () {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
+
+    expect($workflowContent)
+        ->toContain('kubectl get secret laravel-secrets -n test-app-production')
+        ->toContain('dotenv:push production')
+        ->not->toContain('kubectl create secret generic laravel-secrets');
+
+    // The ConfigMap still gets created from the public .env — only the Secret
+    // creation moved to `dotenv:push`.
+    expect($workflowContent)->toContain('kubectl create configmap laravel-config');
 });

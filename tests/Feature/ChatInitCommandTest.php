@@ -23,6 +23,10 @@ test('chat:init deploys matrix using plex commons postgres by default', function
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Matrix (Synapse + Element) manifests...')
         ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
+
+    Process::assertRan(function ($job) {
+        return str_contains($job->command, 'apply -f');
+    });
 });
 
 test('chat:init deploys standalone matrix when --no-plex is passed', function () {

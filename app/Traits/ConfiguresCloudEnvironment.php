@@ -5,7 +5,6 @@ namespace App\Traits;
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
-use App\Data\GlobalConfigData;
 use App\Enums\RegistryProvider;
 use Illuminate\Support\Facades\Process;
 
@@ -448,11 +447,10 @@ trait ConfiguresCloudEnvironment
             'podName' => $podName,
             'upperEnv' => $upperEnv,
             'vpnHost' => $vpnHost,
+            'publicEnvScript' => $this->buildPublicEnvScript($config, $environment),
             'secrets' => [
                 'k_env' => '${{ secrets.'.$upperEnv.'_KUBECONFIG }}',
                 'k_base' => '${{ secrets.KUBECONFIG }}',
-                'e_env' => '${{ secrets.'.$upperEnv.'_ENV_FILE_BASE64 }}',
-                'e_base' => '${{ secrets.ENV_FILE_BASE64 }}',
                 'vpn_key' => '${{ secrets.'.$upperEnv.'_NETBIRD_SETUP_KEY }}',
             ],
             'gha' => [
@@ -464,7 +462,6 @@ trait ConfiguresCloudEnvironment
                 'registry_host' => $registryHost,
                 'image_name' => $imageName,
                 'k_data' => '${{ env.K_DATA }}',
-                'e_data' => '${{ env.E_DATA }}',
                 // GitHub expressions must be passed as values (not hardcoded as
                 // literal text in the Blade), or Blade mangles the inner {{ }}.
                 'image_latest' => '${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest',
@@ -663,34 +660,15 @@ trait ConfiguresCloudEnvironment
     {
         $gh = $this->getGhCommand();
         $upperEnv = strtoupper($environment);
-        $envFile = ".env.{$environment}";
 
-        // Env file check.
-        if (! file_exists($projectPath.'/'.$envFile)) {
-            $this->laraKubeError("Crucial file '{$envFile}' is missing!");
-
-            return 1;
-        }
-
-        $envContent = (string) file_get_contents($projectPath.'/'.$envFile);
-        if (empty(trim($envContent))) {
-            $this->laraKubeError("File '{$envFile}' is empty! Cannot upload an empty environment.");
-
-            return 1;
-        }
-
-        // Local-URL scan — catches any remaining local values (localhost, 127.0.0.1)
-        // that the domain guard above didn't fix. Local TLD domains are already
-        // resolved by the domain guard that runs before this point.
-        if (! $this->confirmNoLocalUrls($envFile, $envContent)) {
-            return 1;
-        }
-
-        $base64Env = base64_encode($envContent);
-        $this->info('  📦 Env size: '.strlen($base64Env).' bytes (base64)');
-        $this->setGithubSecret($gh, "{$upperEnv}_ENV_FILE_BASE64", $base64Env, $repoFlag);
-
+        // No .env content of any kind is uploaded to GitHub — not even a
+        // public-only subset. The generated workflow bakes public/build
+        // values as literal `echo` lines (see configureGha()'s $publicEnv),
+        // computed straight from the blueprint at generation time; runtime
+        // credentials only ever reach the cluster via `dotenv:push`, run
+        // from this machine. See plans/active/secrets-out-of-ci.md.
         $config = $this->getProjectConfigObject($projectPath);
+
         $registry = $config->getRegistry($environment);
         if ($registry && $registry->provider !== RegistryProvider::GHCR) {
             $regUser = text(label: 'Registry Username for '.$registry->provider->label(), required: true);
@@ -702,7 +680,6 @@ trait ConfiguresCloudEnvironment
 
         // Mint + upload a namespace-scoped kubeconfig.
         $this->laraKubeInfo("Minting a namespace-scoped KUBECONFIG for {$environment}...");
-        $config = $this->getProjectConfigObject($projectPath);
         $adminContext = $this->environmentContextOrCurrent($config, $environment);
 
         if (! $adminContext) {
@@ -780,45 +757,24 @@ trait ConfiguresCloudEnvironment
         $this->info("  ✅ Secret '{$name}' uploaded successfully.");
     }
 
-    protected function confirmNoLocalUrls(string $envFile, string $envContent): bool
+    /**
+     * A shell script fragment — one `echo 'KEY=VALUE' >> .env` line per
+     * public/build variable, computed straight from the blueprint at
+     * generation time. Baked as literal text into the generated CI
+     * workflow (GHA + GitLab), same as today's hand-written VITE_APP_URL
+     * line — no secret, no CI variable, nothing "uploaded" at all, because
+     * none of these values were ever secret to begin with (VITE_* compiles
+     * into a public JS bundle regardless). Runtime credentials never take
+     * this path; only `dotenv:push` writes those, straight to the cluster.
+     */
+    protected function buildPublicEnvScript(ConfigData $config, string $environment, string $indent = '          '): string
     {
-        $localTldPatterns = [];
-        foreach (GlobalConfigData::ALLOWED_TLDS as $tld) {
-            $escaped = preg_quote($tld, '/');
-            $localTldPatterns["/\\.{$escaped}(\\/|:|$)/"] = ".{$tld} (local dev domain)";
+        $lines = [];
+        foreach ($config->getAllPublicEnvironmentVariables($environment) as $key => $value) {
+            $lines[] = 'echo '.escapeshellarg("{$key}={$value}").' >> .env';
         }
 
-        $localPatterns = array_merge($localTldPatterns, [
-            '/\blocalhost\b/' => 'localhost',
-            '/\b127\.0\.0\.1\b/' => '127.0.0.1',
-        ]);
-
-        $hits = [];
-        foreach (explode("\n", $envContent) as $line) {
-            $line = trim($line);
-            if ($line === '' || str_starts_with($line, '#')) {
-                continue;
-            }
-            [$key, $value] = array_pad(explode('=', $line, 2), 2, '');
-            foreach ($localPatterns as $pattern => $label) {
-                if (preg_match($pattern, $value)) {
-                    $hits[] = [$key, $value, $label];
-                    break;
-                }
-            }
-        }
-
-        if (empty($hits)) {
-            return true;
-        }
-
-        $this->laraKubeWarn("{$envFile} contains local-only URLs — these won't work in production:");
-        foreach ($hits as [$key, $value, $label]) {
-            $this->line("    <fg=yellow>{$key}</>=<fg=red>{$value}</> <fg=gray>({$label})</>");
-        }
-        $this->newLine();
-
-        return confirm('Upload anyway?', false);
+        return implode("\n{$indent}", $lines);
     }
 
     protected function runRemoteCommand(array $cloud, string $remoteCommand): int
@@ -900,7 +856,6 @@ trait ConfiguresCloudEnvironment
     protected function uploadGitlabVariables(string $projectPath, string $environment, string $projectPath2, bool $rotate): void
     {
         $upperEnv = strtoupper($environment);
-        $envFile = ".env.{$environment}";
 
         // Try glab CLI first
         $glabPath = $this->resolveGlabCommand();
@@ -931,20 +886,10 @@ trait ConfiguresCloudEnvironment
             $this->laraKubeWarn("No cluster context for '{$environment}' — skipping kubeconfig upload. Run `larakube cloud:init` first.");
         }
 
-        // Env file secret
-        $envFilePath = $projectPath.'/'.$envFile;
-        if (file_exists($envFilePath)) {
-            $envB64 = base64_encode((string) file_get_contents($envFilePath));
-
-            if ($glabPath) {
-                Process::run("{$glabPath} variable set {$upperEnv}_ENV_FILE_BASE64 ".escapeshellarg($envB64).' --masked --protected');
-                $this->line("  <fg=gray>Uploaded</> {$upperEnv}_ENV_FILE_BASE64");
-            } else {
-                $this->line("  <fg=yellow>{$upperEnv}_ENV_FILE_BASE64</> = <fg=gray>(base64 of {$envFile} — run: base64 {$envFile})</>");
-            }
-        } else {
-            $this->laraKubeWarn("{$envFile} not found — create it before uploading.");
-        }
+        // No .env content of any kind is uploaded to GitLab — not even a
+        // public-only subset. generateGitlabPipeline() bakes public/build
+        // values as literal `echo` lines instead; runtime credentials only
+        // ever reach the cluster via `dotenv:push`, run from this machine.
 
         // Upload registry secrets if using a non-native (non-GitLab) private registry
         $registry = $config->getRegistry($environment);
@@ -980,8 +925,6 @@ trait ConfiguresCloudEnvironment
             $registryHost = $registry?->getRegistryHost() ?? '$CI_REGISTRY';
             $imagePath = $registry?->image ?? '$CI_PROJECT_PATH';
 
-            $webHost = (string) $config->getWebHost($envName);
-
             $cloudEnvs[$envName] = [
                 'branch' => 'main',
                 'upperName' => strtoupper($envName),
@@ -994,7 +937,7 @@ trait ConfiguresCloudEnvironment
                 'imageSha' => $registryProvider === 'gitlab'
                     ? '$CI_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHA'
                     : "{$registryHost}/{$imagePath}:\$CI_COMMIT_SHA",
-                'webHost' => $webHost,
+                'publicEnvScript' => $this->buildPublicEnvScript($config, $envName, '      '),
             ];
         }
 

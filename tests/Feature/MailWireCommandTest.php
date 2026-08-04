@@ -35,3 +35,19 @@ test('mail:wire --tool=sso configures Zitadel SMTP via API', function () {
     $this->artisan('mail:wire local --tool=sso')
         ->expectsOutputToContain('Wired to Stalwart: Identity Provider / SSO (Zitadel)');
 });
+
+test('mail:wire local --tool=data configures Directus SMTP via deployment secret', function () {
+    Process::fake([
+        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
+        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*create secret generic mail-sender*' => Process::result(output: 'created'),
+        '*create secret generic data-smtp*' => Process::result(output: 'created'),
+        '*set env deployment/data-directus*' => Process::result(output: 'updated'),
+        '*rollout restart deployment/data-directus*' => Process::result(output: 'restarted'),
+    ]);
+
+    $this->artisan('mail:wire local --tool=data')
+        ->expectsOutputToContain('Wired to Stalwart: Headless CMS & Data API (Directus)');
+});

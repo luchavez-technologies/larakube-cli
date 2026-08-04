@@ -67,14 +67,70 @@ trait SyncsClusterSecrets
         string $secretName,
         string $environment = 'production',
         string $view = 'k8s.secrets.eso-sync',
+        ?string $prefix = null,
     ): bool {
-        return $this->syncOpenBaoToNamespace($kubectl, $ns, $secretName, $environment);
+        return $this->syncOpenBaoToNamespace($kubectl, $ns, $secretName, $environment, $prefix);
     }
 
     /**
-     * Directly sync secrets from OpenBao KV v2 into a native Kubernetes Secret.
+     * Read every leaf key/value OpenBao holds for an environment (optionally
+     * scoped under a $prefix "folder", e.g. an app name) via the flat KV v2
+     * push shape pushClusterSecret() writes — one secret per key at
+     * secret/data/{environment}/{prefix}/{key}, each holding a single
+     * `value` field. Returns plain (unencoded) values; null on any failure
+     * reaching the backend, [] when the path exists but is empty.
+     *
+     * @return array<string, string>|null
      */
-    protected function syncOpenBaoToNamespace(string $kubectl, string $ns, string $secretName, string $environment): bool
+    protected function readOpenBaoKeys(string $kubectl, string $environment, ?string $prefix = null): ?array
+    {
+        $ns = $this->secretsNamespace();
+        $token = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
+        if ($token === null) {
+            return null;
+        }
+
+        $listPath = $prefix !== null && $prefix !== ''
+            ? "/v1/secret/metadata/{$environment}/{$prefix}?list=true"
+            : "/v1/secret/metadata/{$environment}?list=true";
+
+        $keysResponse = $this->openBaoApi($kubectl, 'GET', $listPath, null, $token);
+        $keys = $keysResponse['data']['keys'] ?? [];
+
+        $data = [];
+        foreach ($keys as $key) {
+            $keyName = rtrim($key, '/');
+            // A nested "folder" entry (another app/prefix) — never descend
+            // into it here, or an unscoped read would merge unrelated
+            // apps'/tools' secrets together. Only leaf keys are read.
+            if (str_ends_with($key, '/')) {
+                continue;
+            }
+
+            $dataPath = $prefix !== null && $prefix !== ''
+                ? "/v1/secret/data/{$environment}/{$prefix}/{$keyName}"
+                : "/v1/secret/data/{$environment}/{$keyName}";
+
+            $valResponse = $this->openBaoApi($kubectl, 'GET', $dataPath, null, $token);
+            $val = $valResponse['data']['data']['value'] ?? null;
+
+            if ($val !== null) {
+                $data[$keyName] = $val;
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Directly sync secrets from OpenBao KV v2 into a native Kubernetes
+     * Secret, and wire an ExternalSecret CRD so ESO keeps it in sync going
+     * forward. $prefix scopes both the read and the ExternalSecret to one
+     * app/tool's keys under the environment — omitting it syncs every flat
+     * key under the environment (existing tool-secret callers' behavior,
+     * unchanged).
+     */
+    protected function syncOpenBaoToNamespace(string $kubectl, string $ns, string $secretName, string $environment, ?string $prefix = null): bool
     {
         $secretsNs = $this->secretsNamespace();
         $token = $this->readOpenBaoBootstrapSecret($kubectl, $secretsNs, 'root-token');
@@ -86,31 +142,18 @@ trait SyncsClusterSecrets
         // Ensure target namespace exists
         Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
-        // Read all keys from OpenBao for this environment
-        // We query OpenBao or sync native secret directly
-        // Fetch keys list:
-        $keysResponse = $this->openBaoApi($kubectl, 'GET', "/v1/secret/metadata/{$environment}?list=true", null, $token);
-        $keys = $keysResponse['data']['keys'] ?? [];
-
-        $secretData = [];
-
-        foreach ($keys as $key) {
-            $keyName = rtrim($key, '/');
-            $valResponse = $this->openBaoApi($kubectl, 'GET', "/v1/secret/data/{$environment}/{$keyName}", null, $token);
-            $val = $valResponse['data']['data']['value'] ?? null;
-
-            if ($val !== null) {
-                $secretData[$keyName] = base64_encode($val);
-            }
+        $secretValues = $this->readOpenBaoKeys($kubectl, $environment, $prefix);
+        if ($secretValues === null) {
+            return false;
         }
 
-        if (empty($secretData)) {
+        if (empty($secretValues)) {
             return true;
         }
 
         $lines = ['apiVersion: v1', 'kind: Secret', 'metadata:', "  name: {$secretName}", "  namespace: {$ns}", 'type: Opaque', 'data:'];
-        foreach ($secretData as $k => $v) {
-            $lines[] = "  {$k}: {$v}";
+        foreach ($secretValues as $k => $v) {
+            $lines[] = "  {$k}: ".base64_encode($v);
         }
 
         $yaml = implode("\n", $lines);
@@ -127,6 +170,8 @@ trait SyncsClusterSecrets
             'secretName' => $secretName,
             'token' => base64_encode($token),
             'environmentSlug' => $environment,
+            'prefix' => $prefix,
+            'keys' => array_keys($secretValues),
             'hostAPI' => "http://openbao-backend.{$secretsNs}.svc.cluster.local:8200",
         ])->render();
 

@@ -63,11 +63,8 @@ test('resolveIngressIp falls back to 127.0.0.1 when neither is available', funct
 });
 
 test('dnsmasqCoversKube is false when the platform-specific dnsmasq marker file is absent', function () {
-    // No /etc/resolver/<tld> (macOS) or /etc/dnsmasq.d/larakube.conf (Linux) in
-    // this sandbox, so this short-circuits before ever touching Process — a
-    // real positive-path assertion needs the actual marker file/dnsmasq
-    // config present, which is a real-machine smoke-test concern.
-    expect(hostsProcessHelper()->dnsmasqCovers('kube'))->toBeFalse();
+    $tld = 'nonexistent-tld-'.uniqid();
+    expect(hostsProcessHelper()->dnsmasqCovers($tld))->toBeFalse();
 });
 
 test('writeToEtcHosts stages content in a random tempnam path, not a hardcoded predictable one', function () {

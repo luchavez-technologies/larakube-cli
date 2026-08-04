@@ -123,15 +123,10 @@ class PipelineTestCommand extends Command
             $this->info("  ℹ️ No --job specified — running only the safe 'build' job to prevent accidental deploy.");
         }
 
-        // 4. Construct mock secrets
-        $envFile = getcwd().'/.env.'.$environment;
-        $base64Env = '';
-        if (file_exists($envFile)) {
-            $base64Env = base64_encode(file_get_contents($envFile));
-        } else {
-            $this->laraKubeWarn("Environment file '.env.{$environment}' not found. Secrets/env vars might not resolve correctly.");
-        }
-
+        // 4. Construct mock secrets. No .env content is a workflow secret
+        // anymore — public/build vars are baked as literal `echo` lines in
+        // the generated workflow itself, so the only secret `act` needs to
+        // resolve is KUBECONFIG.
         $config = $this->getProjectConfigObject(getcwd());
         $adminContext = $this->environmentContextOrCurrent($config, $environment);
         $namespace = $config->getName().'-'.$environment;
@@ -147,9 +142,7 @@ class PipelineTestCommand extends Command
 
         $upperEnv = strtoupper($environment);
         $secretsContent = implode("\n", [
-            "{$upperEnv}_ENV_FILE_BASE64={$base64Env}",
             "{$upperEnv}_KUBECONFIG={$kubeconfig}",
-            "ENV_FILE_BASE64={$base64Env}",
             "KUBECONFIG={$kubeconfig}",
         ]);
 

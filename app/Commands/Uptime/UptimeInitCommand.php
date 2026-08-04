@@ -2,7 +2,6 @@
 
 namespace App\Commands\Uptime;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
@@ -13,16 +12,14 @@ use App\Traits\InteractsWithTraefik;
 use App\Traits\InteractsWithUptime;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class UptimeInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'uptime:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Uptime Kuma host.}
@@ -47,7 +44,7 @@ class UptimeInitCommand extends Command
         $kubectl = $this->uptimeKubectl($context);
         $ns = $this->uptimeNamespace();
 
-        $host = $this->resolveUptimeHost($env);
+        $host = $this->resolveToolHost(SharedClusterService::UPTIME_KUMA, ClusterTool::UPTIME, $env, $kubectl);
 
         if ($env === 'local') {
             $config = $this->getProjectConfig(getcwd());
@@ -102,64 +99,10 @@ class UptimeInitCommand extends Command
     }
 
     /**
-     * Resolve the Uptime Kuma ingress host for this install.
-     */
-    protected function resolveUptimeHost(string $env): string
-    {
-        $service = SharedClusterService::UPTIME_KUMA;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveUptimeHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudUptimeHost($service, $env);
-    }
-
-    /**
      * Decide which environment this install targets.
      */
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::UPTIME);
-    }
-
-    /**
-     * Prompt for (and persist) a non-local Uptime Kuma host.
-     */
-    protected function promptForCloudUptimeHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. status.example.com',
-            default: $default,
-            required: true,
-            hint: 'Point this DNS at the cluster and add TLS like any other ingress host.',
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

@@ -69,6 +69,33 @@ test('sso:revoke --role skips the discovery picker entirely, resolving the ownin
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/roles/_search'));
 });
 
+test('sso:revoke --role resolves a dynamic secrets:grant-issued per-app role key too, with no --tool needed', function () {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+    ]);
+
+    Http::fake([
+        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
+        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
+        '*/management/v1/users/grants/_search' => Http::sequence()
+            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-my-app-local-developer']]]])
+            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => []]]]),
+        '*/management/v1/users/uid-1/grants/grant-1' => Http::response([]),
+    ]);
+
+    // secrets:grant mints role keys like "secrets-my-app-local-developer"
+    // dynamically — sso:revoke must still resolve which project it lives on
+    // (the RBAC project, same as the fixed openbao-* tiers) from the key
+    // alone, closing the incident-sweep blind spot a separate revoke system
+    // would otherwise create.
+    $this->artisan('sso:revoke', ['--role' => 'secrets-my-app-local-developer', '--email' => 'james@luchtech.dev', '--force' => true, '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Revoked [secrets-my-app-local-developer] from james@luchtech.dev');
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/roles/_search'));
+});
+
 test('sso:revoke reports nothing to do when the user holds no role-gated access', function () {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),

@@ -17,6 +17,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -28,7 +29,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class NotesInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithNotes, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithNotes, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     /** How Outline's OIDC credentials were resolved this run, for the summary. */
     protected string $oidcSource = 'existing';
@@ -52,10 +53,11 @@ class NotesInitCommand extends Command
     protected function deployNotes(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveNotesHost($env);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->notesKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::NOTES, ClusterTool::NOTES, $env, $kubectl);
+
         $ns = $this->notesNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -174,6 +176,8 @@ class NotesInitCommand extends Command
             "{$kubectl} rollout status deploy/notes-outline -n {$ns} --timeout=180s",
             190,
         ));
+
+        $this->registerDeployedTool(ClusterTool::NOTES, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Outline wiki stack is live.');
@@ -356,55 +360,8 @@ class NotesInitCommand extends Command
         ));
     }
 
-    protected function resolveNotesHost(string $env): string
-    {
-        $service = SharedClusterService::NOTES;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveNotesHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudNotesHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::NOTES);
-    }
-
-    protected function promptForCloudNotesHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. notes.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

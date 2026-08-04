@@ -78,4 +78,25 @@ trait ReadsEnvSources
 
         return $vars;
     }
+
+    /**
+     * Would this key be stored in the Secret rather than the ConfigMap? Two
+     * signals, ORed: it's in $knownSecrets (a driver/feature enum's
+     * getSecretEnvironmentVariables(), aggregated by
+     * ConfigData::getAllSecretEnvironmentVariables()), or its NAME reads as
+     * sensitive. The name check is load-bearing, not a backstop — APP_KEY
+     * and any third-party API key a user's own app defines (AIRTABLE_API_KEY,
+     * STRIPE_SECRET, …) are never emitted by any component's enum at all, so
+     * $knownSecrets alone would silently never classify them as secret. Pure.
+     *
+     * @param  array<int, string>  $knownSecrets
+     */
+    protected function isSecretKey(string $key, array $knownSecrets): bool
+    {
+        return in_array($key, $knownSecrets, true)
+            || str_contains($key, 'PASSWORD')
+            || str_contains($key, 'SECRET')
+            || str_contains($key, 'KEY')
+            || str_contains($key, 'TOKEN');
+    }
 }

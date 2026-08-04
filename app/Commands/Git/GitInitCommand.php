@@ -2,7 +2,6 @@
 
 namespace App\Commands\Git;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\CommonsSecret;
 use App\Enums\SharedClusterService;
@@ -17,6 +16,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesToolFirewallPorts;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
@@ -28,7 +28,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class GitInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     /**
      * Labels the Actions runner advertises, server-side. Kept in sync by hand
@@ -116,7 +116,7 @@ class GitInitCommand extends Command
             }
         }
 
-        $host = $this->resolveGitHost($env);
+        $host = $this->resolveToolHost(SharedClusterService::GITEA, ClusterTool::GIT, $env, $kubectl);
 
         // Read or generate password & secrets
         $adminPassword = $this->readExistingAdminPassword($kubectl, $ns);
@@ -502,59 +502,9 @@ class GitInitCommand extends Command
         return $this->readForgejoSecret($kubectl, $ns, 'password');
     }
 
-    /** Resolve the Gitea host for this environment */
-    protected function resolveGitHost(string $env): string
-    {
-        $service = SharedClusterService::GITEA;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveGitHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudGitHost($service, $env);
-    }
-
     /** Decide which environment this install targets */
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::GIT);
-    }
-
-    /** Prompt for (and persist) Gitea host */
-    protected function promptForCloudGitHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. git.example.com',
-            default: $default,
-            required: true,
-            hint: 'Point this DNS at the cluster and add TLS like any other ingress host.',
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

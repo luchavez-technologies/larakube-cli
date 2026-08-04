@@ -2,7 +2,6 @@
 
 namespace App\Commands\Password;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
@@ -13,18 +12,16 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithVault;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class PasswordsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVault, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVault, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'passwords:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Vaultwarden host.}
@@ -45,20 +42,10 @@ class PasswordsInitCommand extends Command
     protected function deployVault(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveVaultHost($env);
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $context = (string) $this->option('context') ?: null;
-        if (! $context && $config && $env !== 'local') {
-            $context = $this->environmentContextOrCurrent($config, $env);
-        }
-
+        $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->vaultKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::VAULT, ClusterTool::PASSWORDS, $env, $kubectl);
         $ns = $this->vaultNamespace();
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
@@ -165,6 +152,8 @@ class PasswordsInitCommand extends Command
             130,
         ));
 
+        $this->registerDeployedTool(ClusterTool::PASSWORDS, $kubectl, $host);
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Vaultwarden stack is live.');
         $this->newLine();
@@ -177,64 +166,10 @@ class PasswordsInitCommand extends Command
     }
 
     /**
-     * Resolve the Vaultwarden ingress host for this install.
-     */
-    protected function resolveVaultHost(string $env): string
-    {
-        $service = SharedClusterService::VAULT;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveVaultHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudVaultHost($service, $env);
-    }
-
-    /**
      * Decide which environment this install targets.
      */
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::PASSWORDS);
-    }
-
-    /**
-     * Prompt for (and persist) a non-local Vaultwarden host.
-     */
-    protected function promptForCloudVaultHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. vault.example.com',
-            default: $default,
-            required: true,
-            hint: 'Point this DNS at the cluster and add TLS like any other ingress host.',
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

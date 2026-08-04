@@ -4,8 +4,11 @@
 # Required CI/CD variables (set in GitLab → Settings → CI/CD → Variables):
 @foreach($cloudEnvs as $envName => $envMeta)
 #   {{ $envMeta['upperName'] }}_KUBECONFIG        (masked, base64-encoded kubeconfig)
-#   {{ $envMeta['upperName'] }}_ENV_FILE_BASE64   (masked, base64-encoded .env.{{ $envName }})
 @endforeach
+# No .env content of any kind is a CI/CD variable — public/build values are
+# baked as literal `echo` lines below (computed from your blueprint), and
+# runtime secrets only ever reach the cluster via `larakube dotenv:push`,
+# run from your own machine.
 
 stages:
   - build
@@ -36,10 +39,8 @@ build:{{ $envName }}:
 @endif
   script:
     - |
-      # Decode env file and inject Vite build vars
-      echo "${{ '{' }}{{ $envMeta['upperName'] }}_ENV_FILE_BASE64}" | base64 -d > .env
-      echo "VITE_APP_URL=https://{{ $envMeta['webHost'] }}" >> .env
-      echo "VITE_ASSET_URL=https://{{ $envMeta['webHost'] }}" >> .env
+      # Public/build vars only — computed from your blueprint, never a secret.
+      {!! $envMeta['publicEnvScript'] !!}
     - |
       # Build and push image (BuildKit --secret keeps .env out of layers)
       docker build \
@@ -73,13 +74,21 @@ deploy:{{ $envName }}:
         exit 1
       fi
 
-      # Write env file
-      echo "${{ '{' }}{{ $envMeta['upperName'] }}_ENV_FILE_BASE64}" | base64 -d > .env
+      # Public/build vars only — computed from your blueprint, never a secret.
+      {!! $envMeta['publicEnvScript'] !!}
 
-      # Sync env into ConfigMap / Secret
+      # laravel-secrets now only ever comes from `larakube dotenv:push`, run
+      # from a developer's own machine — this pipeline never holds runtime
+      # credentials, only the public/build vars above. Fail fast with a clear
+      # fix instead of letting every pod CrashLoop on a missing envFrom source.
+      if ! kubectl get secret laravel-secrets -n {{ $envMeta['namespace'] }} >/dev/null 2>&1; then
+        echo "'laravel-secrets' is missing in '{{ $envMeta['namespace'] }}'. Run 'larakube dotenv:push {{ $envName }}' from your machine before deploying."
+        exit 1
+      fi
+
+      # Sync public config into the ConfigMap (runtime secrets are
+      # dotenv:push's job, verified above, never this pipeline's).
       kubectl create configmap laravel-config \
-        -n {{ $envMeta['namespace'] }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
-      kubectl create secret generic laravel-secrets \
         -n {{ $envMeta['namespace'] }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
 
       # Deploy via Kustomize (strip Namespace doc — scoped credentials can't apply it)

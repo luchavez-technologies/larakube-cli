@@ -38,7 +38,7 @@ test('every shared service renders its manifest with the resolved host', functio
                 'plexNamespace' => 'larakube-system',
             ]);
         }
-        if (in_array($service, [SharedClusterService::FLOW, SharedClusterService::SHEET, SharedClusterService::INSIGHTS, SharedClusterService::DRIVE])) {
+        if (in_array($service, [SharedClusterService::FLOW, SharedClusterService::SHEET, SharedClusterService::INSIGHTS, SharedClusterService::DRIVE, SharedClusterService::DATA])) {
             $params = array_merge($params, [
                 'noPlex' => true,
                 'plexNamespace' => 'larakube-system',
@@ -102,6 +102,7 @@ test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, G
             SharedClusterService::LINK,
             SharedClusterService::CRM,
             SharedClusterService::RECORD,
+            SharedClusterService::DATA,
         ]);
 
         expect($service->isLocalOnly())->toBe($localOnly)

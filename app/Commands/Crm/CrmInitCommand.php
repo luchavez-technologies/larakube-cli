@@ -2,7 +2,6 @@
 
 namespace App\Commands\Crm;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -14,17 +13,15 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class CrmInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithCrm, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithCrm, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'crm:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -45,11 +42,10 @@ class CrmInitCommand extends Command
     protected function deployCrm(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveCrmHost($env);
-
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->crmKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::CRM, ClusterTool::CRM, $env, $kubectl);
         $ns = $this->crmNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -113,6 +109,8 @@ class CrmInitCommand extends Command
             190,
         ));
 
+        $this->registerDeployedTool(ClusterTool::CRM, $kubectl, $host);
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Twenty CRM stack is live.');
         $this->newLine();
@@ -124,55 +122,8 @@ class CrmInitCommand extends Command
         return 0;
     }
 
-    protected function resolveCrmHost(string $env): string
-    {
-        $service = SharedClusterService::CRM;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveCrmHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudCrmHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::CRM);
-    }
-
-    protected function promptForCloudCrmHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. crm.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

@@ -14,18 +14,16 @@ use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithStalwartApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class WebmailInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'webmail:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -48,7 +46,6 @@ class WebmailInitCommand extends Command
     protected function deployWebmail(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveWebmailHost($env);
 
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -58,6 +55,7 @@ class WebmailInitCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = $this->bulwarkKubectl($context);
         $ns = $this->bulwarkNamespace();
+        $host = $this->resolveToolHost(SharedClusterService::WEBMAIL, ClusterTool::WEBMAIL, $env, $kubectl);
         $vpnOnly = (bool) $this->option('vpn-only');
 
         // Bulwark is a client for Stalwart — refuse if there's no Stalwart to
@@ -186,55 +184,8 @@ class WebmailInitCommand extends Command
         return 0;
     }
 
-    protected function resolveWebmailHost(string $env): string
-    {
-        $service = SharedClusterService::WEBMAIL;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveBulwarkHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudWebmailHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::WEBMAIL);
-    }
-
-    protected function promptForCloudWebmailHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. webmail.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

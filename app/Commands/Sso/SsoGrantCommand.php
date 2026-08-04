@@ -55,9 +55,9 @@ class SsoGrantCommand extends Command
             return 1;
         }
 
-        $userId = $this->zitadelFindUserByEmail($ssoHost, $pat, $email);
+        $userId = $this->ensureZitadelUserExists($ssoHost, $pat, $email);
         if ($userId === null) {
-            $this->laraKubeError("No Zitadel user found for '{$email}'.");
+            $this->laraKubeError("Failed to resolve or create Zitadel user for '{$email}'.");
 
             return 1;
         }

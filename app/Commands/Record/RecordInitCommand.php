@@ -2,7 +2,6 @@
 
 namespace App\Commands\Record;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -15,18 +14,16 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithRecord;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class RecordInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithRecord, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithRecord, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'record:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -48,11 +45,11 @@ class RecordInitCommand extends Command
     protected function deployRecord(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveRecordHost($env);
-
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->recordKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::RECORD, ClusterTool::RECORD, $env, $kubectl);
+
         $ns = $this->recordNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -183,7 +180,7 @@ class RecordInitCommand extends Command
             190,
         ));
 
-        $this->registerTool($kubectl, ClusterTool::RECORD, ['host' => $host]);
+        $this->registerDeployedTool(ClusterTool::RECORD, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Sendrec async video platform stack is live.');
@@ -195,55 +192,8 @@ class RecordInitCommand extends Command
         return 0;
     }
 
-    protected function resolveRecordHost(string $env): string
-    {
-        $service = SharedClusterService::RECORD;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveRecordHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudRecordHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::RECORD);
-    }
-
-    protected function promptForCloudRecordHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. record.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

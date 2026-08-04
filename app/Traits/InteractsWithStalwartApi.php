@@ -464,6 +464,43 @@ trait InteractsWithStalwartApi
     }
 
     /**
+     * Trust Traefik's X-Forwarded-For header when Stalwart decides which IP
+     * to hold responsible for abuse/scan/auth-ban tracking (x:Security).
+     * Without this every request Stalwart sees arrives from Traefik's own
+     * pod IP — so one internet bot hitting a scan-bait path (e.g.
+     * /wp-login.php) permanently bans Traefik itself and takes mail down for
+     * every real user behind it. Confirmed live: this is exactly what was
+     * banning send.luchtech.dev's Traefik pod on 2026-08-03.
+     *
+     * Safe to trust unconditionally here specifically because Stalwart's
+     * HTTP listener has no hostPort and is unreachable from outside the
+     * cluster — only Traefik can ever be the peer setting this header on a
+     * request Stalwart receives, so nothing external can spoof it.
+     *
+     * `x:Http` is a singleton, same pattern as stalwartSetPermissiveCors().
+     * Unlike that CORS write, this reloads via the ReloadSettings action
+     * instead of requiring a Stalwart restart to take effect.
+     */
+    protected function stalwartTrustReverseProxy(string $kubectl, string $ns): bool
+    {
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:Http/set', ['update' => ['singleton' => [
+                'useXForwarded' => true,
+            ]]], 'c1'],
+        ]);
+
+        if (! array_key_exists('singleton', $responses[0][1]['updated'] ?? [])) {
+            return false;
+        }
+
+        $this->stalwartJmap($kubectl, $ns, [
+            ['x:Action/set', ['create' => ['r1' => ['@type' => 'ReloadSettings']]], 'c2'],
+        ]);
+
+        return true;
+    }
+
+    /**
      * Configured email domains (x:Domain — DNS/DKIM/TLS per domain). NOT
      * x:Tenant, which is Stalwart's unrelated multi-tenancy isolation concept;
      * querying that always came back empty even with real domains configured.

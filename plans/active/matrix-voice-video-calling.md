@@ -140,24 +140,45 @@ larakube chat:init production --domain=example.com
 
 ## 📋 Implementation Checklist
 
-- [ ] Create Coturn deployment template (`resources/views/k8s/tools/chat-coturn.blade.php`)
-- [ ] Create LiveKit SFU deployment template (`resources/views/k8s/tools/chat-livekit.blade.php`)
-- [ ] Update `resources/views/k8s/tools/chat-synapse.blade.php`:
-  - Inject `turn_shared_secret` and `turn_uris` into `homeserver.yaml` Secret
-  - Add `.well-known/matrix/server` delegation Traefik middleware
-  - Wire S3 media repository settings to `larakube-chat-media`
-- [ ] Update `InteractsWithChat.php` trait:
-  - Add `renderCoturnConfig()`, `renderLiveKitConfig()`
-  - Generate TURN and LiveKit API secrets on first init
-- [ ] Update Cinny client configuration template (`resources/views/k8s/tools/chat-cinny.blade.php`) to enable LiveKit call widgets
-- [ ] Create Pest feature tests (`tests/Feature/ChatVoiceVideoCallingTest.php`)
-- [ ] Run `./php vendor/bin/pint` and verify PHPStan (0 errors)
+## 📋 Actual Implementation Status & Deployed Architecture
+
+### Deployed Services in `matrix.blade.php`:
+1. **LiveKit SFU Server (`livekit/livekit-server:v1.8.0`)**: Runs on port `7880` and UDP RTC port `7882`. Configured via `chat-livekit-config` with a 32-character API secret requirement (`livekitApiSecret`).
+2. **LiveKit JWT Service (`ghcr.io/element-hq/lk-jwt-service:latest`)**: Runs on port `8080`, routed via Ingress path `/livekit/jwt`. Evaluates user Matrix room membership and issues signed JWT tokens for LiveKit spatial group calls.
+3. **Matrix MSC3401 Discovery**: Served by Cinny's Nginx at `/.well-known/matrix/client` with explicit `default_type application/json;` and `Access-Control-Allow-Origin *;` headers.
+4. **Coturn TURN/STUN (`coturn/coturn:4.6.3`)**: Handles peer-to-peer 1-on-1 WebRTC calls on port `3478`.
+5. **Synapse S3 Storage Provider (`initContainer`)**: Mounts `synapse-s3-storage-provider` to offload room media attachments to SeaweedFS/MinIO S3 storage (`chat-media` bucket).
 
 ---
 
-## ✅ Definition of Done
+## 🔐 Matrix Server & Room Administration Standard Operating Procedure (SOP)
 
-- `larakube chat:init` deploys Synapse, Cinny, Coturn, and LiveKit in `larakube-shared`.
-- 1-on-1 WebRTC audio/video calls succeed behind NATs via Coturn TURN relay.
-- Multi-party group video calls succeed seamlessly in Cinny web client via LiveKit SFU.
-- Re-running `chat:init` is idempotent and preserves TURN shared secrets.
+> [!CAUTION]
+> **Strict Zero-SQL Mutation Policy**:
+> Matrix Synapse computes cryptographic SHA-256 Event IDs for every state event (including `m.room.power_levels`). Direct `UPDATE` SQL mutations on `event_json` cause `DatabaseCorruptionError` because the stored Event ID no longer matches the calculated hash.
+> All room power level changes and user administration MUST be performed via Matrix Client/Server REST APIs.
+
+### Official API Workflow for Room Admin Elevation:
+1. Ensure the user has `admin = 1` in Synapse `users` table (Synapse Server Superadmin).
+2. Fetch an Admin Access Token or Session for the user.
+3. Send a standard Matrix Client API request to update room power levels:
+   `PUT /_matrix/client/v3/rooms/{roomId}/state/m.room.power_levels`
+   ```json
+   {
+     "users": {
+       "@james=40luchtech.dev:chat.luchtech.dev": 100,
+       "@admin=40luchtech.dev:chat.luchtech.dev": 100,
+       "@eman=40luchtech.dev:chat.luchtech.dev": 100
+     }
+   }
+   ```
+4. Synapse signs the state event, appends it to the room DAG, computes the new SHA-256 Event ID, and broadcasts the state update to all connected clients (`Cinny`).
+
+---
+
+## ✅ Verified & Battle-Tested
+
+- `chat:init` deploys all 5 Matrix pods (`chat-synapse`, `chat-cinny`, `chat-coturn`, `chat-livekit`, `chat-lk-jwt`) into `larakube-shared`.
+- `curl -i https://chat.luchtech.dev/.well-known/matrix/client` returns `HTTP/2 200` with `content-type: application/json`.
+- LiveKit JWT authentication endpoint `https://chat.luchtech.dev/livekit/jwt` is live and active.
+- Synapse `/sync` requests process with 0 corruption errors.

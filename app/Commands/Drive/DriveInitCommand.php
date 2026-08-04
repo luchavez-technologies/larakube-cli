@@ -2,7 +2,6 @@
 
 namespace App\Commands\Drive;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
@@ -14,18 +13,16 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsClusterSecrets;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class DriveInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ReadsClusterSecrets, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ReadsClusterSecrets, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'drive:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -34,6 +31,7 @@ class DriveInitCommand extends Command
         {--no-plex   : Bypass Plex Commons (SQLite/Local PVC instead of Postgres/S3)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--engine=   : The drive engine to deploy ("ocis")}
+        {--extensions= : Comma-separated web extensions to pre-install (e.g. "drawio,excalidraw")}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the oCIS cloud storage and sync stack into larakube-shared';
@@ -49,20 +47,11 @@ class DriveInitCommand extends Command
     {
         $this->resolveEngine();
         $env = $this->resolveEnvironment();
-        $host = $this->resolveDriveHost($env);
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $context = (string) $this->option('context') ?: null;
-        if (! $context && $config && $env !== 'local') {
-            $context = $this->environmentContextOrCurrent($config, $env);
-        }
-
+        $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->driveKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::DRIVE, $env, $kubectl);
+
         $ns = $this->driveNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -128,6 +117,8 @@ class DriveInitCommand extends Command
             }
         });
 
+        $extensions = $this->resolveExtensions();
+
         $manifest = view('k8s.drive.ocis', [
             'host' => $host,
             's3Creds' => $s3Creds,
@@ -136,6 +127,7 @@ class DriveInitCommand extends Command
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
+            'extensions' => $extensions,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-drive.yaml';
@@ -152,6 +144,8 @@ class DriveInitCommand extends Command
             130,
         ));
 
+        $this->registerDeployedTool(ClusterTool::DRIVE, $kubectl, $host);
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Drive ({$engineName}) stack is live.");
         $this->newLine();
@@ -163,56 +157,9 @@ class DriveInitCommand extends Command
         return 0;
     }
 
-    protected function resolveDriveHost(string $env): string
-    {
-        $service = SharedClusterService::DRIVE;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return $service->hostFor('kube');
-        }
-
-        return $this->promptForCloudDriveHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::DRIVE);
-    }
-
-    protected function promptForCloudDriveHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. drive.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 
     protected function resolveEngine(): string
@@ -224,6 +171,25 @@ class DriveInitCommand extends Command
         }
 
         return 'ocis';
+    }
+
+    protected function resolveExtensions(): array
+    {
+        $raw = strtolower((string) $this->option('extensions'));
+        if ($raw === '') {
+            return [];
+        }
+
+        $allowed = ['drawio', 'excalidraw'];
+        $extensions = array_filter(array_map('trim', explode(',', $raw)));
+        $invalid = array_diff($extensions, $allowed);
+
+        if ($invalid !== []) {
+            $this->laraKubeError('Unsupported extensions: '.implode(', ', $invalid).'. Supported: '.implode(', ', $allowed));
+            exit(1);
+        }
+
+        return array_values(array_unique($extensions));
     }
 
     protected function driveKubectl(?string $context): string

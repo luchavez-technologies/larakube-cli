@@ -122,6 +122,14 @@ class MailInitCommand extends Command
 
         $this->withSpin('Refreshing Traefik routing...', fn () => $this->restartTraefikIngress($kubectl));
 
+        // Stalwart must attribute abuse/scan/auth-ban tracking to the real
+        // client IP via Traefik's X-Forwarded-For, not Traefik's own pod IP —
+        // otherwise one bot hit on a scan-bait path permanently bans the
+        // reverse proxy itself and takes mail down for every real user
+        // behind it. Best-effort like the CORS write below: a miss here is
+        // recoverable via mail:check, not a broken deploy.
+        $this->stalwartTrustReverseProxy($kubectl, $ns);
+
         // NOTE: a `dkimManagement.algorithms` write used to sit here, meant to
         // stop Stalwart stamping both Ed25519 and RSA (the SES 554 duplicate
         // DKIM-Signature bounce). It never ran: it used the REST settings

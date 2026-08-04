@@ -2,7 +2,6 @@
 
 namespace App\Commands\Sheet;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -15,17 +14,15 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSheet;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class SheetsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSheet, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSheet, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'sheets:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -46,20 +43,11 @@ class SheetsInitCommand extends Command
     protected function deploySheet(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveSheetHost($env);
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $context = (string) $this->option('context') ?: null;
-        if (! $context && $config && $env !== 'local') {
-            $context = $this->environmentContextOrCurrent($config, $env);
-        }
-
+        $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->sheetKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::SHEET, ClusterTool::SHEETS, $env, $kubectl);
+
         $ns = $this->sheetNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -139,6 +127,8 @@ class SheetsInitCommand extends Command
             "{$kubectl} rollout status deploy/sheet-teable -n {$ns} --timeout=300s",
             310,
         ));
+
+        $this->registerDeployedTool(ClusterTool::SHEETS, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Sheet (Teable) stack is live.');
@@ -228,55 +218,8 @@ class SheetsInitCommand extends Command
         ];
     }
 
-    protected function resolveSheetHost(string $env): string
-    {
-        $service = SharedClusterService::SHEET;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveSheetHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudSheetHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::SHEETS);
-    }
-
-    protected function promptForCloudSheetHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. sheet.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

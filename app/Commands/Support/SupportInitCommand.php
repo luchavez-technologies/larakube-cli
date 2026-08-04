@@ -2,7 +2,6 @@
 
 namespace App\Commands\Support;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -14,17 +13,15 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSupport;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-
-use function Laravel\Prompts\text;
-
 use LaravelZero\Framework\Commands\Command;
 
 class SupportInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'support:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -45,11 +42,11 @@ class SupportInitCommand extends Command
     protected function deploySupport(): int
     {
         $env = $this->resolveEnvironment();
-        $host = $this->resolveSupportHost($env);
-
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->supportKubectl($context);
+        $host = $this->resolveToolHost(SharedClusterService::SUPPORT, ClusterTool::SUPPORT, $env, $kubectl);
+
         $ns = $this->supportNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -107,6 +104,8 @@ class SupportInitCommand extends Command
             190,
         ));
 
+        $this->registerDeployedTool(ClusterTool::SUPPORT, $kubectl, $host);
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Chatwoot support stack is live.');
         $this->newLine();
@@ -118,55 +117,8 @@ class SupportInitCommand extends Command
         return 0;
     }
 
-    protected function resolveSupportHost(string $env): string
-    {
-        $service = SharedClusterService::SUPPORT;
-
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $service->hostFor($domain);
-        }
-
-        if ($env === 'local') {
-            return (string) $this->resolveSupportHostReadOnly('local', null);
-        }
-
-        return $this->promptForCloudSupportHost($service, $env);
-    }
-
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::SUPPORT);
-    }
-
-    protected function promptForCloudSupportHost(SharedClusterService $service, string $env): string
-    {
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
-
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-        if ($existing) {
-            return $existing;
-        }
-
-        $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
-
-        $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
-            placeholder: $default !== '' ? $default : 'e.g. support.example.com',
-            default: $default,
-            required: true,
-        );
-
-        if ($config) {
-            $config->setHost($env, $service->value, $host);
-            $config->saveToFile($projectPath);
-            $this->laraKubeInfo("Saved {$service->label()} host for '{$env}' to .larakube.json");
-        }
-
-        return $host;
     }
 }

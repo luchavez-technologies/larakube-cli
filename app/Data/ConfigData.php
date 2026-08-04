@@ -1604,6 +1604,38 @@ class ConfigData extends Data
     }
 
     /**
+     * Key names a Plex-backed component would have contributed to
+     * getAllPublicEnvironmentVariables()/getAllSecretEnvironmentVariables()
+     * for this environment, had it not been skipped by the isPlexBacked()
+     * gate in both methods above. Plex/OpenBao owns these values (host,
+     * db/user/password) — the local .env is expected to diverge from
+     * whatever's live once a rotation happens, so callers comparing file vs.
+     * cluster (dotenv --strict) or deciding what's safe to push
+     * (dotenv:push) need to treat these as "not drift", not silently ignore
+     * them from the comparison entirely.
+     *
+     * @return array<int, string>
+     */
+    public function getPlexManagedKeys(string $environment): array
+    {
+        $keys = [];
+
+        foreach ($this->getComponents($environment) as $component) {
+            if ($component instanceof HasEnvironmentVariables
+                && ! ($component instanceof ServerVariation)
+                && $this->isPlexBacked($component, $environment)) {
+                $keys = array_merge(
+                    $keys,
+                    array_keys($component->getPublicEnvironmentVariables($this, $environment)),
+                    array_keys($component->getSecretEnvironmentVariables($this, $environment)),
+                );
+            }
+        }
+
+        return array_values(array_unique($keys));
+    }
+
+    /**
      * The .env KEY NAMES (not values) that `up` copies from .env into the
      * local ConfigMap — deliberately NOT gated by isPlexBacked(), unlike
      * getAllSecretEnvironmentVariables() above. That gate exists to stop
