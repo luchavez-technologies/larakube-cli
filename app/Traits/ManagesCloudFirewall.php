@@ -61,7 +61,7 @@ trait ManagesCloudFirewall
      * dedicated per-tool firewall. Returns false when no provider owns the IP —
      * the caller then relies on the host UFW alone.
      *
-     * @param  array<int, int>  $ports
+     * @param  array<int, array{ports: string, protocol: string}>  $ports  Already normalized — see ManagesToolFirewallPorts::normalizePortSpecs().
      */
     protected function ensureCloudFirewallPorts(string $tool, string $ip, array $ports): bool
     {

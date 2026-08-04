@@ -46,9 +46,9 @@ class DigitalOceanFirewallDriver implements CloudFirewallDriver
             return false;
         }
 
-        $inbound = array_map(fn (int $p) => [
-            'protocol' => 'tcp',
-            'ports' => (string) $p,
+        $inbound = array_map(fn (array $p) => [
+            'protocol' => $p['protocol'],
+            'ports' => $p['ports'],
             'sources' => ['addresses' => ['0.0.0.0/0', '::/0']],
         ], array_values($ports));
 

@@ -4,9 +4,13 @@ namespace App\Commands\Chat;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
+use App\Enums\SharedClusterService;
+use App\Traits\ManagesToolFirewallPorts;
 
 class ChatRemoveCommand extends AbstractToolRemoveCommand
 {
+    use ManagesToolFirewallPorts;
+
     public function __construct()
     {
         $this->signature = 'chat:remove
@@ -72,7 +76,7 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        return $this->removeResources(
+        $ok = $this->removeResources(
             'Removing Matrix (Synapse + Element) resources...',
             "{$kubectl} delete deployment/chat-synapse deployment/chat-cinny deployment/chat-synapse-db "
             .'service/chat-synapse service/chat-cinny service/chat-synapse-db '
@@ -80,5 +84,12 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
             .'pvc/chat-synapse-data pvc/chat-synapse-db-storage '
             ."secret/chat-secrets secret/chat-smtp secret/chat-oidc -n {$namespace} --ignore-not-found",
         );
+
+        // Reverse chat:init's port opening — Coturn/LiveKit are gone but their
+        // UDP/TCP ports being left open on the cloud firewall is real exposure
+        // with nothing behind it.
+        $this->closeToolPorts(SharedClusterService::CHAT, (string) $this->argument('environment'));
+
+        return $ok;
     }
 }

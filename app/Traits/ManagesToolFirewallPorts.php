@@ -48,13 +48,35 @@ trait ManagesToolFirewallPorts
     }
 
     /**
+     * Normalize a raw firewallPorts() entry into a structured spec: a bare int
+     * is a single TCP port (the common case); a "<port-or-range>/<protocol>"
+     * string carries its own protocol and, optionally, a "start-end" range —
+     * e.g. "3478/udp" or "49160-49179/udp".
+     *
+     * @param  array<int, int|string>  $raw
+     * @return array<int, array{ports: string, protocol: string}>
+     */
+    protected function normalizePortSpecs(array $raw): array
+    {
+        return array_map(function (int|string $spec): array {
+            if (is_int($spec)) {
+                return ['ports' => (string) $spec, 'protocol' => 'tcp'];
+            }
+
+            [$ports, $protocol] = explode('/', $spec, 2);
+
+            return ['ports' => $ports, 'protocol' => $protocol];
+        }, $raw);
+    }
+
+    /**
      * Open a tool's ports at the cloud edge and in the host UFW. Best-effort:
      * a failure never fails the install, it prints the manual fix — the tool
      * itself is already deployed and working by this point, just unreachable.
      */
     protected function openToolPorts(SharedClusterService $service, string $env): void
     {
-        $ports = $service->firewallPorts();
+        $ports = $this->normalizePortSpecs($service->firewallPorts());
         $cloud = $this->toolFirewallCloud($env);
 
         if ($ports === [] || $cloud === null) {
@@ -73,11 +95,15 @@ trait ManagesToolFirewallPorts
             return;
         }
 
-        $script = "set -e\n".collect($ports)->map(fn (int $p) => "ufw allow {$p}/tcp")->implode("\n")."\nufw reload";
+        // ufw's own range syntax uses ':' ("49160:49179/udp"), not the '-' DO's
+        // API expects ("49160-49179") — the only place the two need to diverge.
+        $script = "set -e\n".collect($ports)
+            ->map(fn (array $p) => 'ufw allow '.str_replace('-', ':', $p['ports']).'/'.$p['protocol'])
+            ->implode("\n")."\nufw reload";
 
         $this->laraKubeInfo($this->runHostUfw($cloud, $script)
             ? "Opened {$label} ports in the host UFW firewall."
-            : 'Could not open UFW over SSH — do it manually: ufw allow '.implode(',', $ports).'/tcp');
+            : 'Could not open UFW over SSH — do it manually: '.collect($ports)->map(fn (array $p) => $p['ports'].'/'.$p['protocol'])->implode(', '));
     }
 
     /**
@@ -87,7 +113,7 @@ trait ManagesToolFirewallPorts
      */
     protected function closeToolPorts(SharedClusterService $service, string $env): void
     {
-        $ports = $service->firewallPorts();
+        $ports = $this->normalizePortSpecs($service->firewallPorts());
         $cloud = $this->toolFirewallCloud($env);
 
         if ($ports === [] || $cloud === null) {
@@ -101,7 +127,7 @@ trait ManagesToolFirewallPorts
         }
 
         $script = collect($ports)
-            ->map(fn (int $p) => "ufw delete allow {$p}/tcp 2>/dev/null || true")
+            ->map(fn (array $p) => 'ufw delete allow '.str_replace('-', ':', $p['ports']).'/'.$p['protocol'].' 2>/dev/null || true')
             ->implode("\n")."\nufw reload || true";
 
         $this->runHostUfw($cloud, $script);

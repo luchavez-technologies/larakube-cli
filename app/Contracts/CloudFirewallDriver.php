@@ -23,11 +23,14 @@ interface CloudFirewallDriver
     public function findHostId(string $ip): ?string;
 
     /**
-     * Idempotently ensure the given TCP ports are open at the cloud edge for
+     * Idempotently ensure the given ports are open at the cloud edge for
      * $hostId, on a DEDICATED per-tool firewall/security-group — never the
      * provider's IaC-managed base firewall, so a later apply can't revert it.
      *
-     * @param  array<int, int>  $ports
+     * @param  array<int, array{ports: string, protocol: string}>  $ports  Already
+     *                                                                     normalized by ManagesToolFirewallPorts::normalizePortSpecs() —
+     *                                                                     'ports' is a single port or a "start-end" range, 'protocol' is
+     *                                                                     'tcp' or 'udp'.
      */
     public function openPorts(string $tool, string $hostId, array $ports): bool;
 

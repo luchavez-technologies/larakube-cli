@@ -52,6 +52,7 @@ enum SharedClusterService: string
             self::SUPPORT => 'k8s.support.ingress',
             self::LINK => 'k8s.link.ingress',
             self::CRM => 'k8s.crm.ingress',
+            self::DATA => 'k8s.data.ingress',
             self::RECORD => 'k8s.record.ingress',
         };
     }
@@ -125,7 +126,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::RECORD => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD => false,
             default => true,
         };
     }
@@ -167,6 +168,7 @@ enum SharedClusterService: string
             self::SUPPORT => 'Chatwoot',
             self::LINK => 'Kutt',
             self::CRM => 'Twenty',
+            self::DATA => 'Directus',
             self::RECORD => 'Sendrec',
         };
     }
@@ -210,18 +212,24 @@ enum SharedClusterService: string
             self::SUPPORT => 'deployment support-chatwoot -n larakube-shared',
             self::LINK => 'deployment link-kutt -n larakube-shared',
             self::CRM => 'deployment crm-twenty -n larakube-shared',
+            self::DATA => 'deployment data-directus -n larakube-shared',
             self::RECORD => 'deployment record-sendrec -n larakube-shared',
         };
     }
 
     /**
-     * L4 TCP ports this service needs opened at the cloud edge + host firewall
-     * on a single-node VPS (klipper binds them via hostPort, but the DO cloud
+     * L4 ports this service needs opened at the cloud edge + host firewall on a
+     * single-node VPS (klipper binds them via hostPort, but the DO cloud
      * firewall and UFW default-deny them). Empty = HTTP-only, rides Traefik on
      * 443 and needs nothing. Managed clusters (DOKS) expose L4 via a real cloud
      * LoadBalancer, so this only matters for the VPS/klipper path.
      *
-     * @return array<int, int>
+     * Each entry is either a bare int (single TCP port — the common case) or a
+     * "<port-or-range>/<protocol>" string for anything else, e.g. "3478/udp" or
+     * "49160-49179/udp" for a range. ManagesToolFirewallPorts normalizes both
+     * shapes before handing them to a CloudFirewallDriver / the host UFW.
+     *
+     * @return array<int, int|string>
      */
     public function firewallPorts(): array
     {
@@ -231,6 +239,11 @@ enum SharedClusterService: string
             // Deliberately not 22: that's the node's own sshd, and the LaraKube
             // hardening step allows it for admin access only.
             self::GITEA => [2222],
+            // Coturn's STUN/TURN listener (both transports) + its relay range,
+            // and LiveKit's single-port RTC mux. Keep this in lockstep with the
+            // port numbers hardcoded in resources/views/k8s/chat/matrix.blade.php
+            // (turnserver.conf's min-port/max-port, livekit.yaml's rtc.udp_port).
+            self::CHAT => [3478, '3478/udp', '49160-49179/udp', '7882/udp'],
             default => [],
         };
     }
@@ -307,6 +320,7 @@ enum SharedClusterService: string
             self::SUPPORT => 'Refreshing Chatwoot (Support) ingress...',
             self::LINK => 'Refreshing Kutt (Link) ingress...',
             self::CRM => 'Refreshing Twenty (CRM) ingress...',
+            self::DATA => 'Refreshing Directus (Data) ingress...',
             self::RECORD => 'Refreshing Sendrec (Screen Recording) ingress...',
         };
     }
@@ -346,5 +360,6 @@ enum SharedClusterService: string
     case SUPPORT = 'support';
     case LINK = 'link';
     case CRM = 'crm';
+    case DATA = 'data';
     case RECORD = 'record';
 }

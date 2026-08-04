@@ -14,6 +14,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesToolFirewallPorts;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
@@ -26,7 +27,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class ChatInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'chat:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -34,6 +35,7 @@ class ChatInitCommand extends Command
         {--domain=   : Base domain OR full host for Chat (example.com → prefix.example.com)}
         {--no-plex   : Bypass Plex Commons and bundle dedicated storage}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
+        {--no-host-port : Skip hostPort on Coturn/LiveKit — use on managed K8s with a real LoadBalancer}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the Team Chat stack (Matrix / Synapse) into larakube-shared';
@@ -63,7 +65,7 @@ class ChatInitCommand extends Command
         }
 
         if (! $noPlex) {
-            if (! $this->ensureCommons(['postgres'])) {
+            if (! $this->ensureCommons(['postgres', 'seaweedfs'])) {
                 return 1;
             }
         }
@@ -71,6 +73,8 @@ class ChatInitCommand extends Command
         $dbPassword = $this->readChatSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         $registrationSecret = $this->readChatSecret($kubectl, $ns, 'registration-secret') ?? Str::random(32);
         $turnSecret = $this->readChatSecret($kubectl, $ns, 'turn-secret') ?? Str::random(32);
+        $livekitApiKey = $this->readChatSecret($kubectl, $ns, 'livekit-api-key') ?? 'LK_'.Str::random(16);
+        $livekitApiSecret = $this->readChatSecret($kubectl, $ns, 'livekit-api-secret') ?? Str::random(32);
 
         $dbName = 'chat_matrix';
         $dbUser = 'chat_matrix';
@@ -79,18 +83,21 @@ class ChatInitCommand extends Command
             if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
                 return 1;
             }
+            $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, 'chat-media');
         }
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $registrationSecret, $turnSecret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $registrationSecret, $turnSecret, $livekitApiKey, $livekitApiSecret) {
             Process::run(
                 "{$kubectl} create secret generic chat-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=registration-secret='.escapeshellarg($registrationSecret).' '
                 .'--from-literal=turn-secret='.escapeshellarg($turnSecret).' '
+                .'--from-literal=livekit-api-key='.escapeshellarg($livekitApiKey).' '
+                .'--from-literal=livekit-api-secret='.escapeshellarg($livekitApiSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
         });
@@ -120,6 +127,9 @@ class ChatInitCommand extends Command
             'dbPassword' => $dbPassword,
             'registrationSecret' => $registrationSecret,
             'turnSecret' => $turnSecret,
+            'livekitApiKey' => $livekitApiKey,
+            'livekitApiSecret' => $livekitApiSecret,
+            'hostPort' => ! $this->option('no-host-port'),
             'smtp' => $smtp,
             'oidc' => $oidc,
         ])->render();
@@ -136,6 +146,11 @@ class ChatInitCommand extends Command
         ));
 
         $this->registerDeployedTool(ClusterTool::CHAT, $kubectl, $host);
+
+        // On a cloud VPS, punch Coturn's/LiveKit's raw UDP/TCP ports through
+        // both firewall layers (DO cloud edge + host UFW) — klipper binds them
+        // via hostPort, but both default-deny, so calls silently never connect.
+        $this->openToolPorts(SharedClusterService::CHAT, $env);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ {$engineLabel} is live.");
