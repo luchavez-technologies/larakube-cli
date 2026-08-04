@@ -91,10 +91,17 @@ class SignInitCommand extends Command
         }
         $s3Driver = StorageDriver::from($s3Service);
         $s3Bucket = 'sign-storage';
-        $s3Endpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$s3Driver->port()}";
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;
         }
+
+        // NEXT_PRIVATE_UPLOAD_ENDPOINT is Documenso's ONE S3 endpoint —
+        // Documenso has no separate internal/public split (unlike Teable or
+        // Sendrec), and its client bundle signs presigned upload/download
+        // URLs straight into the browser (NEXT_PUBLIC_UPLOAD_TRANSPORT=s3 is
+        // shipped client-side). Cluster-internal DNS here would make every
+        // document upload/view fail to resolve — must be the public endpoint.
+        $s3Endpoint = $this->resolveCommonsS3Endpoints($s3Driver, 'Documenso')['public'];
 
         $dbPassword = $this->readSignSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         $nextauthSecret = $this->readSignSecret($kubectl, $ns, 'nextauth-secret') ?? bin2hex(random_bytes(32));

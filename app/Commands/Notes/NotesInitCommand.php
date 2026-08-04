@@ -98,13 +98,23 @@ class NotesInitCommand extends Command
         $s3SecretKey = $creds['secret'];
         $s3Bucket = 'notes-storage';
         $driver = StorageDriver::from($s3Service);
-        // Outline's S3 client expects a full URL endpoint.
-        $scheme = in_array($s3Service, ['minio'], true) ? 'http' : 'http';
-        $s3Endpoint = "{$scheme}://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
 
         if (! $this->allocateStorageBucket($driver, $s3Bucket)) {
             return 1;
         }
+
+        // AWS_S3_UPLOAD_BUCKET_URL is Outline's ONE S3 endpoint config — it
+        // both drives the server's own S3 calls AND is signed into the
+        // presigned upload/download URLs handed straight to the browser. The
+        // cluster-internal DNS name a browser can never resolve, so this must
+        // be the public endpoint (see resolveCommonsS3Endpoints()) even
+        // though that means the server's own S3 calls now take the public
+        // route too — the alternative (Outline's AWS_S3_ACCELERATE_URL) only
+        // rewrites the hostname post-signing, which SeaweedFS's SigV4 check
+        // then rejects with SignatureDoesNotMatch unless the ingress rewrites
+        // the upstream Host header back to this internal name — extra
+        // infra-level fragility this single-endpoint swap avoids entirely.
+        $s3Endpoint = $this->resolveCommonsS3Endpoints($driver, 'Outline')['public'];
 
         // Stable secrets across re-runs — rotating these invalidates sessions.
         $dbPassword = $this->readNotesSecret($kubectl, $ns, 'db-password') ?? Str::random(24);

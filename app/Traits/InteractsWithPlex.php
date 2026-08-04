@@ -834,6 +834,42 @@ trait InteractsWithPlex
         return true;
     }
 
+    /**
+     * Resolve both S3 endpoints a tool may need for a Commons storage backend:
+     * `internal` (cluster-DNS, for the tool's own server-to-S3 calls) and
+     * `public` (the browser-reachable host, if the Commons was given one via
+     * `plex:init --s3-host=`). A tool that hands presigned URLs to the browser
+     * (upload forms, direct S3 downloads) MUST sign against `public` — signing
+     * against `internal` produces a URL no browser can resolve. `public` falls
+     * back to `internal` when no public host is configured, with a warning,
+     * so the install still completes rather than half-failing silently.
+     *
+     * Lifted from Teable's original resolveSheetStorage() — the first tool
+     * this bug was fixed for — so Notes/Sign/Record don't hand-roll it again.
+     *
+     * @return array{internal: string, public: string}
+     */
+    protected function resolveCommonsS3Endpoints(StorageDriver $driver, string $toolLabel): array
+    {
+        $s3Service = $driver->value;
+        $internalEndpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
+
+        $spec = $this->getCommonsSpec() ?? [];
+        $publicHost = $spec['services'][$s3Service]['host'] ?? null;
+        $publicEndpoint = $publicHost !== null && $publicHost !== ''
+            ? 'https://'.$publicHost
+            : $internalEndpoint;
+
+        if (! $publicHost) {
+            $this->laraKubeWarn(
+                "The Commons '{$s3Service}' has no public host, so {$toolLabel}'s attachment links will not "
+                .'resolve from a browser. Set one with `larakube plex:init --s3-host=files.example.com`.',
+            );
+        }
+
+        return ['internal' => $internalEndpoint, 'public' => $publicEndpoint];
+    }
+
     /** A `kubectl` prefix scoped to the resolved plex context (current when null). */
     protected function plexKubectl(): string
     {

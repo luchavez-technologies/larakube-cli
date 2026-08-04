@@ -45,6 +45,13 @@ spec:
               value: "postgres://outline:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/outline"
             - name: REDIS_URL
               value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
+            - name: REDIS_COLLABORATION_URL
+              value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
+            # Outline only forces 1 worker process when REDIS_COLLABORATION_URL
+            # is absent — since it's set above, pin this explicitly or throng
+            # forks one Node process per CPU core and OOMKills this 512Mi pod.
+            - name: WEB_CONCURRENCY
+              value: "1"
             - name: URL
               value: "https://{{ $host }}"
             - name: PORT

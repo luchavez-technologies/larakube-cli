@@ -42,6 +42,8 @@ spec:
                   key: jwt-secret
             - name: S3_ENDPOINT
               value: "{{ $s3Endpoint }}"
+            - name: S3_PUBLIC_ENDPOINT
+              value: "{{ $s3PublicEndpoint }}"
             - name: S3_ACCESS_KEY
               value: "{{ $s3AccessKey }}"
             - name: S3_SECRET_KEY

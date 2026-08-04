@@ -7,14 +7,17 @@
  * smoke test — this covers the simple read-only checks.
  */
 
+use App\Enums\StorageDriver;
 use App\Traits\InteractsWithPlex;
+use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 function plexProcessHelper(): object
 {
     return new class
     {
-        use InteractsWithPlex;
+        use InteractsWithPlex, LaraKubeOutput;
 
         public function reachable(): bool
         {
@@ -39,6 +42,12 @@ function plexProcessHelper(): object
         public function meiliKey(): ?string
         {
             return $this->readCommonsMeiliKey();
+        }
+
+        /** @return array{internal: string, public: string} */
+        public function endpoints(StorageDriver $driver, string $toolLabel): array
+        {
+            return $this->resolveCommonsS3Endpoints($driver, $toolLabel);
         }
     };
 }
@@ -107,4 +116,41 @@ test('readCommonsMeiliKey decodes the shared master key, or is null when absent'
 
     Process::fake(["{$kubectl} get secret plex-admin -n larakube-plex -o jsonpath='{.data.MEILI_MASTER_KEY}'" => Process::result(output: '', exitCode: 1)]);
     expect(plexProcessHelper()->meiliKey())->toBeNull();
+});
+
+test('resolveCommonsS3Endpoints signs against the Commons public host when one is configured', function () {
+    $spec = ['services' => ['seaweedfs' => ['enabled' => true, 'host' => 'files.example.com']]];
+    Process::fake([plexProcessKubectl()." get configmap plex-commons -n larakube-plex -o jsonpath='{.data.commons\\.json}'" => json_encode($spec)]);
+
+    $endpoints = plexProcessHelper()->endpoints(StorageDriver::SEAWEEDFS, 'TestTool');
+
+    expect($endpoints['public'])->toBe('https://files.example.com')
+        ->and($endpoints['internal'])->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
+});
+
+test('resolveCommonsS3Endpoints falls back to the internal endpoint and warns when no public host is set', function () {
+    $spec = ['services' => ['seaweedfs' => ['enabled' => true]]];
+    Process::fake([plexProcessKubectl()." get configmap plex-commons -n larakube-plex -o jsonpath='{.data.commons\\.json}'" => json_encode($spec)]);
+
+    $output = new BufferedOutput;
+    \Termwind\renderUsing($output);
+
+    $endpoints = plexProcessHelper()->endpoints(StorageDriver::SEAWEEDFS, 'TestTool');
+
+    expect($endpoints['public'])->toBe($endpoints['internal'])
+        ->and($endpoints['internal'])->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:8333')
+        ->and($output->fetch())
+        ->toContain("The Commons 'seaweedfs' has no public host")
+        ->toContain('TestTool')
+        ->toContain('plex:init --s3-host=');
+});
+
+test('resolveCommonsS3Endpoints uses the right port per storage driver', function () {
+    $spec = ['services' => ['minio' => ['enabled' => true, 'host' => 'files.example.com']]];
+    Process::fake([plexProcessKubectl()." get configmap plex-commons -n larakube-plex -o jsonpath='{.data.commons\\.json}'" => json_encode($spec)]);
+
+    $endpoints = plexProcessHelper()->endpoints(StorageDriver::MINIO, 'TestTool');
+
+    expect($endpoints['internal'])->toBe('http://minio.larakube-plex.svc.cluster.local:'.StorageDriver::MINIO->port())
+        ->and($endpoints['public'])->toBe('https://files.example.com');
 });

@@ -89,10 +89,18 @@ class RecordInitCommand extends Command
         }
         $s3Driver = StorageDriver::from($s3Service);
         $s3Bucket = 'record-storage';
-        $s3Endpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$s3Driver->port()}";
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;
         }
+
+        // Sendrec supports a distinct S3_PUBLIC_ENDPOINT for presigned
+        // upload/playback URLs it hands to the browser, separate from
+        // S3_ENDPOINT (its own server-to-S3 calls) — so unlike Outline/
+        // Documenso, the internal cluster-DNS endpoint stays in place and
+        // only the browser-facing one needs to be public.
+        $s3Endpoints = $this->resolveCommonsS3Endpoints($s3Driver, 'Sendrec');
+        $s3Endpoint = $s3Endpoints['internal'];
+        $s3PublicEndpoint = $s3Endpoints['public'];
 
         $dbPassword = $this->readRecordSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         $jwtSecret = $this->readRecordSecret($kubectl, $ns, 'jwt-secret') ?? bin2hex(random_bytes(32));
@@ -152,6 +160,7 @@ class RecordInitCommand extends Command
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             's3Endpoint' => $s3Endpoint,
+            's3PublicEndpoint' => $s3PublicEndpoint,
             's3Bucket' => $s3Bucket,
             's3AccessKey' => $s3Creds['access'],
             's3SecretKey' => $s3Creds['secret'],
