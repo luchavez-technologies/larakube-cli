@@ -12,6 +12,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSupport;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -21,12 +22,14 @@ use LaravelZero\Framework\Commands\Command;
 
 class SupportInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'support:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Support (example.com → prefix.example.com)}
+        {--app-name= : Custom branding name for Chatwoot (defaults to Support)}
+        {--logo-url= : Custom logo URL for Chatwoot}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
@@ -84,8 +87,12 @@ class SupportInitCommand extends Command
             Process::run($cmd);
         });
 
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::SUPPORT);
+
         $manifest = view('k8s.support.shared', [
             'host' => $host,
+            'appName' => $branding['appName'],
+            'logoUrl' => $branding['logoUrl'],
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',

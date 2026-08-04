@@ -19,6 +19,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -29,7 +30,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class NotesInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithNotes, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithNotes, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     /** How Outline's OIDC credentials were resolved this run, for the summary. */
     protected string $oidcSource = 'existing';
@@ -169,13 +170,15 @@ class NotesInitCommand extends Command
         $tmp = sys_get_temp_dir().'/larakube-notes.yaml';
         file_put_contents($tmp, $manifest);
 
-        $this->withSpin('Applying Outline wiki manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            'Applying Outline wiki manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'notes-outline', 180),
+        );
         @unlink($tmp);
 
-        $this->withSpin('Waiting for Outline...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/notes-outline -n {$ns} --timeout=180s",
-            190,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::NOTES, $kubectl, $host);
 

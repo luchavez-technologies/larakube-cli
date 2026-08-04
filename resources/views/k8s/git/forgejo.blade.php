@@ -89,6 +89,10 @@ spec:
                   name: forgejo
                   key: FORGEJO_DB_PASSWORD
 @endif
+@if($appName ?? null)
+            - name: FORGEJO__ui__APP_NAME
+              value: "{{ $appName }}"
+@endif
             - name: FORGEJO__security__INSTALL_LOCK
               value: "true"
             - name: FORGEJO__server__ROOT_URL

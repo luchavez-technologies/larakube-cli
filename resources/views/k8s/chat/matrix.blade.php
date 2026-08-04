@@ -491,6 +491,11 @@ data:
 
       location / {
         root /usr/share/nginx/html;
+@if(($appName ?? null) && $appName !== 'Chat')
+        sub_filter '<title>Cinny</title>' '<title>{{ $appName }}</title>';
+        sub_filter_once on;
+        sub_filter_types text/html;
+@endif
 
         rewrite ^/\.well-known/matrix/client$ /.well-known/matrix/client break;
         rewrite ^/config.json$ /config.json break;

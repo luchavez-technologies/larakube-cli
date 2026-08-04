@@ -40,6 +40,14 @@ spec:
                 secretKeyRef:
                   name: insights-secrets
                   key: encryption-key
+@if($appName ?? null)
+            - name: MB_SITE_NAME
+              value: "{{ $appName }}"
+@endif
+@if($logoUrl ?? null)
+            - name: MB_APPLICATION_LOGO_URL
+              value: "{{ $logoUrl }}"
+@endif
 @if($noPlex)
             - name: MB_DB_FILE
               value: /metabase-data/metabase.db

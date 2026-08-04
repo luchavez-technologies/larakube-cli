@@ -566,6 +566,14 @@ spec:
                   key: password
             - name: GF_SERVER_ROOT_URL
               value: "https://{{ $host }}"
+@if($appName ?? null)
+            - name: GF_BRANDING_APP_TITLE
+              value: "{{ $appName }}"
+@endif
+@if($logoUrl ?? null)
+            - name: GF_BRANDING_FAV_ICON
+              value: "{{ $logoUrl }}"
+@endif
             - name: GF_PATHS_PROVISIONING
               value: /etc/grafana/provisioning
           volumeMounts:

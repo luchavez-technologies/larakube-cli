@@ -17,13 +17,14 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 class SignInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSign, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSign, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'sign:init
         {environment? : Environment this install targets — "local" (default) or cloud.}

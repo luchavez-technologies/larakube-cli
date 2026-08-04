@@ -10,6 +10,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithMonitoring;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -21,12 +22,14 @@ use LaravelZero\Framework\Commands\Command;
 
 class MonitorInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'monitor:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Grafana host.}
         {--context=   : Target a specific kube-context (defaults to current context)}
         {--domain=    : Base domain OR full host for Grafana (example.com → grafana.example.com; grafana.example.com used as-is)}
+        {--app-name=  : Custom branding name for Grafana (defaults to Monitor)}
+        {--logo-url=  : Custom logo / favicon URL for Grafana}
         {--vpn-only   : Restrict access via NetBird VPN IP whitelisting}
         {--no-logs    : Skip deploying Loki + Promtail log aggregation (~300MB RAM saved)}
         {--with-logs  : Force deploying Loki + Promtail log aggregation}
@@ -59,6 +62,7 @@ class MonitorInitCommand extends Command
         $password = $this->resolveGrafanaPassword($kubectl, $ns);
 
         $vpnOnly = (bool) $this->option('vpn-only');
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::MONITOR);
 
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MONITOR, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
@@ -68,6 +72,8 @@ class MonitorInitCommand extends Command
 
         $manifest = view('k8s.monitoring.shared', [
             'host' => $host,
+            'appName' => $branding['appName'],
+            'logoUrl' => $branding['logoUrl'],
             'grafanaPassword' => $password,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),

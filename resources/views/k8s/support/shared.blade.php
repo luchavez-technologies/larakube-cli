@@ -52,6 +52,16 @@ spec:
               value: "true"
             - name: ENABLE_ACCOUNT_SIGNUP
               value: "false"
+@if($appName ?? null)
+            - name: INSTALLATION_NAME
+              value: "{{ $appName }}"
+            - name: BRAND_NAME
+              value: "{{ $appName }}"
+@endif
+@if($logoUrl ?? null)
+            - name: LOGO_URL
+              value: "{{ $logoUrl }}"
+@endif
             # SMTP Setup
             - name: SMTP_ADDRESS
               valueFrom:

@@ -86,6 +86,10 @@ spec:
                   key: secret-key
             - name: GLITCHTIP_DOMAIN
               value: "https://{{ $host }}"
+@if($appName ?? null)
+            - name: GLITCHTIP_INSTANCE_NAME
+              value: "{{ $appName }}"
+@endif
             - name: GLITCHTIP_ADMIN_EMAIL
               value: "admin@larakube.local"
             - name: GLITCHTIP_ADMIN_PASSWORD

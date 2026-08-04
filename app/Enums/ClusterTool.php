@@ -144,6 +144,27 @@ enum ClusterTool: string
     }
 
     /**
+     * Whitelabeling specification for tools that support custom branding (app name / logo)
+     * via environment variables, config keys, or Nginx sub_filter injection.
+     * null for tools with no env-var-driven whitelabeling support.
+     *
+     * @return array{app_name_key?: string, logo_url_key?: string, sub_filter?: bool}|null
+     */
+    public function whiteLabel(): ?array
+    {
+        return match ($this) {
+            self::CHAT => ['sub_filter' => true],
+            self::GIT => ['app_name_key' => 'FORGEJO__ui__APP_NAME'],
+            self::SUPPORT => ['app_name_key' => 'INSTALLATION_NAME', 'logo_url_key' => 'LOGO_URL'],
+            self::ERRORS => ['app_name_key' => 'GLITCHTIP_INSTANCE_NAME'],
+            self::LINK => ['app_name_key' => 'SITE_NAME'],
+            self::INSIGHTS => ['app_name_key' => 'MB_SITE_NAME', 'logo_url_key' => 'MB_APPLICATION_LOGO_URL'],
+            self::MONITOR => ['app_name_key' => 'GF_BRANDING_APP_TITLE', 'logo_url_key' => 'GF_BRANDING_FAV_ICON'],
+            default => null,
+        };
+    }
+
+    /**
      * The SharedClusterService this tool exposes over HTTP — the single source
      * for its hostname (hostFor/hostPrefix) and human label. This is what makes
      * a generic `{tool}:show` possible: the show command resolves the host from

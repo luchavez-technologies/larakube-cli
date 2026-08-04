@@ -15,6 +15,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesToolFirewallPorts;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -24,12 +25,14 @@ use LaravelZero\Framework\Commands\Command;
 
 class ChatInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'chat:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Chat (example.com → prefix.example.com)}
+        {--app-name= : Custom branding name for Cinny UI (defaults to Chat)}
+        {--logo-url= : Custom logo URL for Cinny UI}
         {--no-plex   : Bypass Plex Commons and bundle dedicated storage}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--no-host-port : Skip hostPort on Coturn/LiveKit — use on managed K8s with a real LoadBalancer}
@@ -107,9 +110,12 @@ class ChatInitCommand extends Command
         // Re-hydrate any wired mail / SSO values so a re-run does not erase them.
         $smtp = $this->readChatWiredSmtp($kubectl, $ns);
         $oidc = $this->readChatWiredOidc($kubectl, $ns);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::CHAT);
 
         $manifest = view('k8s.chat.matrix', [
             'host' => $host,
+            'appName' => $branding['appName'],
+            'logoUrl' => $branding['logoUrl'],
             'plexNamespace' => $this->plexNamespace(),
             'noPlex' => $noPlex,
             'vpnOnly' => $vpnOnly,

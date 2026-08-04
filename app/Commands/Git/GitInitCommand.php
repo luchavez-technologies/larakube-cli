@@ -15,6 +15,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesToolFirewallPorts;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -28,7 +29,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class GitInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     /**
      * Labels the Actions runner advertises, server-side. Kept in sync by hand
@@ -44,6 +45,8 @@ class GitInitCommand extends Command
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Forgejo host.}
         {--context=  : Target a specific kube-context (defaults to current context)}
         {--domain=   : Base domain OR full host for Forgejo (example.com → git.example.com; git.example.com used as-is)}
+        {--app-name= : Custom branding name for Forgejo (defaults to Git)}
+        {--logo-url= : Custom logo URL for Forgejo}
         {--admin-email= : Email for the Forgejo admin account (defaults to admin@<your domain>)}
         {--no-plex   : Bypass Plex Commons and use local PVC storage instead}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
@@ -193,6 +196,7 @@ class GitInitCommand extends Command
         }
 
         $vpnOnly = (bool) $this->option('vpn-only');
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::GIT);
 
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::GIT, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
@@ -203,6 +207,8 @@ class GitInitCommand extends Command
         // 1. Initial deployment with Gitea Core only (runner token placeholder)
         $manifest = view('k8s.git.forgejo', [
             'host' => $host,
+            'appName' => $branding['appName'],
+            'logoUrl' => $branding['logoUrl'],
             'adminPassword' => $adminPassword,
             'adminEmail' => $adminEmail,
             'dbPassword' => $dbPassword,

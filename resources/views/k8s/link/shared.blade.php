@@ -27,7 +27,7 @@ spec:
             - name: DEFAULT_DOMAIN
               value: "{{ $host }}"
             - name: SITE_NAME
-              value: "LaraKube Kutt"
+              value: "{{ $appName ?? 'LaraKube Kutt' }}"
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

@@ -11,6 +11,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithInsights;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -20,12 +21,14 @@ use LaravelZero\Framework\Commands\Command;
 
 class InsightsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'insights:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Insights (example.com → prefix.example.com)}
+        {--app-name= : Custom branding name for Metabase (defaults to Insights)}
+        {--logo-url= : Custom logo URL for Metabase}
         {--no-plex   : Bypass Plex Commons and deploy a dedicated database}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
@@ -85,8 +88,12 @@ class InsightsInitCommand extends Command
             );
         });
 
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::INSIGHTS);
+
         $manifest = view('k8s.insights.shared', [
             'host' => $host,
+            'appName' => $branding['appName'],
+            'logoUrl' => $branding['logoUrl'],
             'dbPassword' => $dbPassword,
             'plexNamespace' => $this->plexNamespace(),
             'noPlex' => $noPlex,

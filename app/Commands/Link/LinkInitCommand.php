@@ -12,6 +12,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithLink;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -21,12 +22,14 @@ use LaravelZero\Framework\Commands\Command;
 
 class LinkInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithLink, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithLink, InteractsWithPlex, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'link:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Link (example.com → prefix.example.com)}
+        {--app-name= : Custom branding name for Kutt (defaults to Links)}
+        {--logo-url= : Custom logo URL for Kutt}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG_DEFAULT_ON;
 
@@ -84,8 +87,12 @@ class LinkInitCommand extends Command
             Process::run($cmd);
         });
 
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::LINK);
+
         $manifest = view('k8s.link.shared', [
             'host' => $host,
+            'appName' => $branding['appName'],
+            'logoUrl' => $branding['logoUrl'],
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
