@@ -27,6 +27,21 @@ spec:
                 name: stalwart
                 port:
                   number: 8080
+@foreach($aliasHosts ?? [] as $aliasHost)
+    - host: {{ $aliasHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: stalwart
+                port:
+                  number: 8080
+@endforeach
   tls:
     - hosts:
         - {{ $host }}
+@foreach($aliasHosts ?? [] as $aliasHost)
+        - {{ $aliasHost }}
+@endforeach

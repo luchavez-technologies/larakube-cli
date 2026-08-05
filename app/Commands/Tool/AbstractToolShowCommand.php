@@ -106,13 +106,23 @@ abstract class AbstractToolShowCommand extends Command
     protected function rows(?string $host, string $env, string $kubectl): array
     {
         $tool = $this->tool();
+        $aliasHosts = $this->getToolAliasHosts($kubectl, $tool);
 
-        return [[
+        $rows = [[
             $tool->getLabel(),
             $host !== null
                 ? "https://{$host}"
                 : "<fg=gray>host not configured — run {$tool->initCommand()} {$env}</>",
         ]];
+
+        foreach ($aliasHosts as $aliasHost) {
+            $rows[] = [
+                "{$tool->getLabel()} (Alias)",
+                "https://{$aliasHost}",
+            ];
+        }
+
+        return $rows;
     }
 
     /** Hook for post-table guidance (first-login steps, credential hints). */

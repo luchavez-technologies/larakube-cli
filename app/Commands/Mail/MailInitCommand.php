@@ -38,6 +38,8 @@ class MailInitCommand extends Command
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Stalwart (example.com → prefix.example.com)}
+        {--alias=*    : Additional domain alias(es) to register on the Ingress}
+        {--instance=main : Named instance identifier (default: main)}
         {--vpn-only  : Restrict the admin UI via NetBird VPN IP whitelisting}
         {--host-port : Bind mail ports directly to the node (default on single-node k3s)}
         {--no-host-port : Skip hostPort — use on managed K8s with a real LoadBalancer}
@@ -102,8 +104,12 @@ class MailInitCommand extends Command
             );
         });
 
+        $instance = (string) ($this->option('instance') ?: 'main');
+        $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::MAIL, $instance);
+
         $manifest = view('k8s.mail.stalwart', [
             'host' => $host,
+            'aliasHosts' => $aliasHosts,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),

@@ -25,36 +25,36 @@ trait InteractsWithToolRegistry
         return is_array($decoded) ? $decoded : [];
     }
 
-    protected function isToolRegistered(string $kubectl, ClusterTool $tool): bool
+    protected function registryKey(ClusterTool $tool, string $instance = 'main'): string
+    {
+        return ($instance === '' || $instance === 'main') ? $tool->value : "{$tool->value}:{$instance}";
+    }
+
+    protected function isToolRegistered(string $kubectl, ClusterTool $tool, string $instance = 'main'): bool
     {
         $registry = $this->getRegisteredTools($kubectl);
 
-        return isset($registry[$tool->value]);
+        return isset($registry[$this->registryKey($tool, $instance)]);
     }
 
     /**
      * Record (or update) a tool in the cluster registry.
-     *
-     * MERGES into any existing entry rather than replacing it. The replacing
-     * version silently destroyed metadata: `{tool}:init` registers with its
-     * resolved host, then `tool:add` re-registered the same tool with no
-     * metadata moments later — wiping the host that had just been recorded.
-     * That is why `getToolHost()` so often came back null and `{tool}:show`
-     * could not find a URL.
-     *
-     * installed_at is preserved across re-registration (it means "first
-     * installed"); updated_at tracks the latest write.
      */
-    protected function registerTool(string $kubectl, ClusterTool $tool, array $metadata = []): bool
+    protected function registerTool(string $kubectl, ClusterTool $tool, array $metadata = [], string $instance = 'main'): bool
     {
         $registry = $this->getRegisteredTools($kubectl);
-        $existing = $registry[$tool->value] ?? [];
+        $key = $this->registryKey($tool, $instance);
+        $existing = $registry[$key] ?? [];
 
         // Never let an absent/empty value clobber a known one.
         $metadata = array_filter($metadata, fn ($v) => $v !== null && $v !== '');
 
-        $registry[$tool->value] = array_merge(
-            ['installed_at' => $existing['installed_at'] ?? time()],
+        $registry[$key] = array_merge(
+            [
+                'installed_at' => $existing['installed_at'] ?? time(),
+                'instance' => $instance,
+                'alias_hosts' => $existing['alias_hosts'] ?? [],
+            ],
             $existing,
             $metadata,
             ['updated_at' => time()],
@@ -63,22 +63,64 @@ trait InteractsWithToolRegistry
         return $this->saveToolRegistry($kubectl, $registry);
     }
 
-    protected function getToolHost(string $kubectl, ClusterTool $tool): ?string
+    protected function getToolHost(string $kubectl, ClusterTool $tool, string $instance = 'main'): ?string
     {
         $registry = $this->getRegisteredTools($kubectl);
 
-        return $registry[$tool->value]['host'] ?? null;
+        return $registry[$this->registryKey($tool, $instance)]['host'] ?? null;
     }
 
-    protected function unregisterTool(string $kubectl, ClusterTool $tool): bool
+    protected function getToolAliasHosts(string $kubectl, ClusterTool $tool, string $instance = 'main'): array
     {
         $registry = $this->getRegisteredTools($kubectl);
 
-        if (! isset($registry[$tool->value])) {
+        return $registry[$this->registryKey($tool, $instance)]['alias_hosts'] ?? [];
+    }
+
+    protected function addToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, string $instance = 'main'): bool
+    {
+        $registry = $this->getRegisteredTools($kubectl);
+        $key = $this->registryKey($tool, $instance);
+
+        if (! isset($registry[$key])) {
+            return false;
+        }
+
+        $existing = $registry[$key]['alias_hosts'] ?? [];
+        if (! in_array($aliasHost, $existing, true)) {
+            $existing[] = $aliasHost;
+        }
+
+        $registry[$key]['alias_hosts'] = array_values(array_unique($existing));
+
+        return $this->saveToolRegistry($kubectl, $registry);
+    }
+
+    protected function removeToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, string $instance = 'main'): bool
+    {
+        $registry = $this->getRegisteredTools($kubectl);
+        $key = $this->registryKey($tool, $instance);
+
+        if (! isset($registry[$key])) {
             return true;
         }
 
-        unset($registry[$tool->value]);
+        $existing = $registry[$key]['alias_hosts'] ?? [];
+        $registry[$key]['alias_hosts'] = array_values(array_filter($existing, fn ($h) => $h !== $aliasHost));
+
+        return $this->saveToolRegistry($kubectl, $registry);
+    }
+
+    protected function unregisterTool(string $kubectl, ClusterTool $tool, string $instance = 'main'): bool
+    {
+        $registry = $this->getRegisteredTools($kubectl);
+        $key = $this->registryKey($tool, $instance);
+
+        if (! isset($registry[$key])) {
+            return true;
+        }
+
+        unset($registry[$key]);
 
         return $this->saveToolRegistry($kubectl, $registry);
     }

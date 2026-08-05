@@ -65,6 +65,22 @@ trait ResolvesToolHost
         return $this->promptForCloudHost($service, $env, $config, $tool, $kubectl);
     }
 
+    protected function resolveToolAliasHosts(string $kubectl, ClusterTool $tool, string $instance = 'main'): array
+    {
+        $explicit = (array) ($this->option('alias') ?? []);
+        $recorded = method_exists($this, 'getToolAliasHosts') ? $this->getToolAliasHosts($kubectl, $tool, $instance) : [];
+
+        $all = array_values(array_unique(array_filter(array_merge($recorded, $explicit))));
+
+        if ($explicit !== [] && method_exists($this, 'addToolAliasHost')) {
+            foreach ($explicit as $aliasHost) {
+                $this->addToolAliasHost($kubectl, $tool, $aliasHost, $instance);
+            }
+        }
+
+        return $all;
+    }
+
     /**
      * Turn `--domain=` into this service's host.
      *

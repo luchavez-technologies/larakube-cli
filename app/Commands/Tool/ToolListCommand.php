@@ -64,6 +64,9 @@ class ToolListCommand extends Command
                 }
             }
 
+            $aliasHosts = $entry['alias_hosts'] ?? [];
+            $aliasSuffix = $aliasHosts !== [] ? ' (+'.count($aliasHosts).' alias)' : '';
+
             $rows[] = [
                 'tool' => $tool->value,
                 'icon' => $tool->icon(),
@@ -72,11 +75,9 @@ class ToolListCommand extends Command
                 'installed' => $installed,
                 'namespace' => $tool->namespace(),
                 'host' => $host,
-                'url' => $host !== null ? 'https://'.$host : null,
+                'alias_hosts' => $aliasHosts,
+                'url' => $host !== null ? 'https://'.$host.$aliasSuffix : null,
                 'installed_at' => $entry['installed_at'] ?? null,
-                // Cluster-tool static roles use the bare Commons DB name, no
-                // "tenant-" prefix (unlike Application Tenants) — matching
-                // every registerStaticRole() call site for tools.
                 'db_role' => $installed ? ($tool->commonsDatabases()[0] ?? null) : null,
             ];
         }

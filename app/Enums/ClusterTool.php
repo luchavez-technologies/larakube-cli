@@ -1199,36 +1199,30 @@ enum ClusterTool: string
      *
      * @return array<int, string>
      */
-    public function oidcRedirectUris(string $toolHost): array
+    public function oidcRedirectUris(string $toolHost, array $aliasHosts = []): array
     {
+        $allHosts = array_values(array_unique(array_merge([$toolHost], $aliasHosts)));
         $schema = $this->oidcEnv();
         if ($schema === null) {
             return [];
         }
 
         $basePath = $schema['redirect_path'];
+        $uris = [];
 
-        // OpenBao uses different callback paths for its UI and API
-        if ($this === self::SECRETS) {
-            return [
-                "https://{$toolHost}{$basePath}",
-                "https://{$toolHost}/ui/vault/auth/oidc/oidc/callback",
-            ];
+        foreach ($allHosts as $h) {
+            if ($this === self::SECRETS) {
+                $uris[] = "https://{$h}{$basePath}";
+                $uris[] = "https://{$h}/ui/vault/auth/oidc/oidc/callback";
+            } elseif ($this === self::DRIVE) {
+                $uris[] = "https://{$h}/oidc-callback.html";
+                $uris[] = "https://{$h}/oidc-silent-redirect.html";
+            } else {
+                $uris[] = "https://{$h}{$basePath}";
+            }
         }
 
-        // oCIS web does its token exchange on /oidc-callback.html AND renews
-        // expired tokens in the background through /oidc-silent-redirect.html
-        // (both served by the web service — verified live 2026-07-31). Missing
-        // either one fails the corresponding Zitadel request with a
-        // redirect_uri error.
-        if ($this === self::DRIVE) {
-            return [
-                "https://{$toolHost}/oidc-callback.html",
-                "https://{$toolHost}/oidc-silent-redirect.html",
-            ];
-        }
-
-        return ["https://{$toolHost}{$basePath}"];
+        return array_values(array_unique($uris));
     }
 
     /**
