@@ -34,7 +34,6 @@ class MailWireCommand extends Command
         {--context=     : Target a specific kube-context}
         {--sender=      : Sender/login address (default: noreply@<domain>)}
         {--app-password= : Stalwart application password for the sender}
-        {--remove       : Unwire SMTP mail settings from the target tool and restart it}
         {--forget       : Delete the cached sender credentials (mail-sender secret) and exit}';
 
     protected $description = 'Point a tool (n8n, …) at the Stalwart mail server for outbound email';
@@ -68,10 +67,6 @@ class MailWireCommand extends Command
         }
 
         $targets = $this->resolveTargets($kubectl);
-
-        if ($this->option('remove')) {
-            return $this->unwireTargets($kubectl, $targets, $env);
-        }
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
             $this->laraKubeError('Stalwart is not installed. Run `larakube mail:init` first.');

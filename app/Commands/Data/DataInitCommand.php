@@ -112,6 +112,13 @@ class DataInitCommand extends Command
             $this->pushClusterSecret($kubectl, 'DATA_DIRECTUS_S3_SECRET', $s3Secret, $env);
         }
 
+        // AUTH_PROVIDERS must list "zitadel" ONLY once sso:wire has actually
+        // registered it — Directus eagerly constructs an OpenIDAuthDriver for
+        // every listed provider at boot, and an empty client_id/issuer (the
+        // unwired state) crashes the whole process with "Invalid provider
+        // config" rather than degrading gracefully. Confirmed live 2026-08-05.
+        $ssoWired = $this->readClusterSecretKey($kubectl, $ns, 'data-oidc', 'AUTH_ZITADEL_CLIENT_ID') !== null;
+
         $manifest = view('k8s.data.shared', [
             'host' => $host,
             'plexNamespace' => $this->plexNamespace(),
@@ -119,6 +126,7 @@ class DataInitCommand extends Command
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'redisIndex' => $redisIndex,
+            'authProviders' => $ssoWired ? 'local,zitadel' : 'local',
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-data-directus.yaml';

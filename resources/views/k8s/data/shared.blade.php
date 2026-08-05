@@ -65,7 +65,13 @@ spec:
               value: "true"
             - name: CACHE_STORE
               value: "redis"
-            - name: CACHE_REDIS
+            # Directus 12's cache/system-cache/deployment-cache/lock-cache
+            # namespaces all read this single generic REDIS var, not a
+            # CACHE_REDIS override — that name is silently never read at all
+            # (confirmed against @directus/api/dist/cache.js), so every
+            # namespace fell back to ioredis's localhost default and every
+            # request paid a ~3.6s doomed-connection retry tax.
+            - name: REDIS
               value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
             - name: STORAGE_LOCATIONS
               value: "s3"
@@ -130,7 +136,7 @@ spec:
             # kubectl apply conflicts with sso:wire's live values (see
             # ClusterTool::DATA's oidcEnv()).
             - name: AUTH_PROVIDERS
-              value: "local,zitadel"
+              value: "{{ $authProviders }}"
             - name: AUTH_ZITADEL_DRIVER
               value: "openid"
             - name: AUTH_ZITADEL_CLIENT_ID

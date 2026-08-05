@@ -13,16 +13,16 @@ use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
 
-class VpnWireCommand extends Command
+class VpnUnwireCommand extends Command
 {
     use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput;
 
-    protected $signature = 'vpn:wire
-        {environment=local : Environment whose deployment to wire}
-        {--tool= : The tool to restrict to NetBird VPN peers only}
+    protected $signature = 'vpn:unwire
+        {environment=local : Environment whose deployment to unwire}
+        {--tool= : The tool whose VPN restriction should be lifted}
         {--context= : Target a specific kube-context}';
 
-    protected $description = "Restrict a tool's ingress to NetBird VPN peers only — creates the Traefik Middleware --vpn-only's annotation already references";
+    protected $description = "Lift a tool's VPN-only ingress restriction";
 
     public function handle(): int
     {
@@ -48,39 +48,39 @@ class VpnWireCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = $this->vpnWireKubectl($context);
 
-        return $this->wire($tool, $kubectl, $env);
+        return $this->unwire($tool, $target, $kubectl, $env);
     }
 
-    protected function wire(ClusterTool $tool, string $kubectl, string $env): int
+    protected function unwire(ClusterTool $tool, array $target, string $kubectl, string $env): int
     {
-        if (! $this->ensureVpnMiddleware($tool, $kubectl)) {
-            $this->laraKubeError('Failed to create the Middleware — check kubectl access to the cluster above and re-run.');
-
-            return 1;
-        }
-
-        // Re-apply the tool's own ingress WITH the vpn-only annotation now
-        // that the Middleware it references actually exists. Reuses the
-        // tool's own *:init instead of duplicating its ingress-render logic.
         $reapplied = $this->call("{$tool->value}:init", array_filter([
             'environment' => $env,
-            '--vpn-only' => true,
             '--no-interaction' => true,
             '--proxied' => $this->toolIngressIsProxied($kubectl, $tool) ? '1' : null,
         ]));
 
         if ($reapplied !== 0) {
-            $this->laraKubeError("Middleware created, but re-applying {$tool->getLabel()}'s ingress failed — run `larakube {$tool->value}:init {$env} --vpn-only` manually.");
+            $this->laraKubeError("Could not re-apply {$tool->getLabel()}'s ingress — aborting before touching the Middleware. Run `larakube {$tool->value}:init {$env}` manually, then retry.");
 
             return 1;
         }
 
-        $this->laraKubeInfo("✅ {$tool->getLabel()} is now restricted to NetBird VPN peers only.");
+        $ok = $this->removeResources(
+            "Removing VPN-only Middleware for {$tool->getLabel()}...",
+            "{$kubectl} delete middleware/{$target['name']} -n {$target['namespace']} --ignore-not-found",
+        );
+
+        if (! $ok) {
+            $this->laraKubeError('Failed to remove the Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
+
+        $this->laraKubeInfo("✅ {$tool->getLabel()} is reachable from anywhere again (VPN-only lifted).");
 
         return 0;
     }
 
-    /** Preserve the Cloudflare proxy mode when re-applying a tool's Ingress. */
     protected function toolIngressIsProxied(string $kubectl, ClusterTool $tool): bool
     {
         return str_contains(Process::run(
@@ -111,13 +111,12 @@ class VpnWireCommand extends Command
         }
 
         return ClusterTool::from(select(
-            label: 'Restrict which tool to VPN-only?',
+            label: 'Lift VPN-only restriction on which tool?',
             options: $options,
             scroll: count($options),
         ));
     }
 
-    /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */
     protected function vpnWireKubectl(?string $context = null): string
     {
         $context = (string) ($context ?? '');

@@ -32,8 +32,7 @@ class SsoWireCommand extends Command
         {--context= : Target a specific kube-context}
         {--project= : Zitadel project name to register the OIDC app under (default: LaraKube Shared Tools)}
         {--admin-email= : Email of the user to grant the tool\'s admin role to (tools with ssoAdminRoles(), e.g. drive)}
-        {--sso-only : Enforce SSO-only login and disable local password authentication}
-        {--remove   : Deregister the OIDC app and unset the tool\'s SSO env vars}';
+        {--sso-only : Enforce SSO-only login and disable local password authentication}';
 
     protected $description = 'Register a tool as an OIDC client in Zitadel and wire its login to SSO';
 
@@ -97,9 +96,7 @@ class SsoWireCommand extends Command
             return 1;
         }
 
-        return $this->option('remove')
-            ? $this->unwire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat)
-            : $this->wire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env);
+        return $this->wire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env);
     }
 
     protected function wire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env): int
@@ -994,7 +991,7 @@ class SsoWireCommand extends Command
         }
 
         return ClusterTool::from(select(
-            label: $this->option('remove') ? 'Unwire SSO from which tool?' : 'Wire which tool to Zitadel SSO?',
+            label: 'Wire which tool to Zitadel SSO?',
             options: $options,
             scroll: count($options),
         ));

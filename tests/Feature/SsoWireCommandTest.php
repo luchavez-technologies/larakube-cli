@@ -621,7 +621,7 @@ test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', fu
 
     Http::fake(['*/management/v1/projects/proj-1/apps/app-1' => Http::response([], 200)]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--remove' => true, '--no-interaction' => true])
+    $this->artisan('sso:unwire', ['--tool' => 'monitor', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 

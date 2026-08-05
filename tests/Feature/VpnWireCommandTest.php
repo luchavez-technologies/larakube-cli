@@ -43,7 +43,7 @@ test('vpn:wire --remove re-applies the ingress without the annotation, then dele
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('vpn:wire', ['--tool' => 'mail', '--remove' => true])
+    $this->artisan('vpn:unwire', ['--tool' => 'mail'])
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing VPN-only Middleware for Mail Server (Stalwart)')
         ->expectsOutputToContain('reachable from anywhere again');
