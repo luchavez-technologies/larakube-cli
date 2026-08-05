@@ -6,10 +6,10 @@ metadata:
 type: Opaque
 data:
 @if($oidc ?? null)
-  HEADLAMP_OIDC_IDP_ISSUER_URL: {{ base64_encode($oidc['issuer'] ?? '') }}
-  HEADLAMP_OIDC_CLIENT_ID: {{ base64_encode($oidc['client_id'] ?? '') }}
-  HEADLAMP_OIDC_CLIENT_SECRET: {{ base64_encode($oidc['client_secret'] ?? '') }}
-  HEADLAMP_OIDC_SCOPES: {{ base64_encode('openid profile email groups') }}
+  HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL: {{ base64_encode($oidc['issuer'] ?? '') }}
+  HEADLAMP_CONFIG_OIDC_CLIENT_ID: {{ base64_encode($oidc['client_id'] ?? '') }}
+  HEADLAMP_CONFIG_OIDC_CLIENT_SECRET: {{ base64_encode($oidc['client_secret'] ?? '') }}
+  HEADLAMP_CONFIG_OIDC_SCOPES: {{ base64_encode('openid profile email groups') }}
 @endif
 ---
 apiVersion: v1
@@ -58,7 +58,7 @@ spec:
             - "-plugins-dir=/headlamp/plugins"
             - "-in-cluster"
           ports:
-            - containerPort: 4686
+            - containerPort: 4466
               name: http
 @if($oidc ?? null)
           envFrom:
@@ -68,13 +68,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: 4686
+              port: 4466
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /
-              port: 4686
+              port: 4466
             initialDelaySeconds: 10
             periodSeconds: 10
 ---
@@ -88,7 +88,7 @@ spec:
     app: dashboard-headlamp
   ports:
     - protocol: TCP
-      port: 4686
-      targetPort: 4686
+      port: 4466
+      targetPort: 4466
 ---
 @include('k8s.dashboard.ingress')

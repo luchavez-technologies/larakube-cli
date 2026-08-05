@@ -37,6 +37,11 @@ trait InteractsWithNotes
         return $this->readClusterSecretKey($kubectl, $ns, 'notes-secrets', $key);
     }
 
+    protected function readNotesSecretKey(string $kubectl, string $ns, string $secretName, string $key): ?string
+    {
+        return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
+    }
+
     protected function resolveNotesHostReadOnly(string $env, ?ConfigData $config): ?string
     {
         $service = SharedClusterService::NOTES;

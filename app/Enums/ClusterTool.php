@@ -249,12 +249,7 @@ enum ClusterTool: string
      * Empty for tools with no Commons tenant (they bundle storage or are
      * stateless controllers).
      *
-     * @return list<string>
-     */
-    public function commonsDatabases(): array
-    {
-        return $this->commonsDatabaseList();
-    }
+
 
     /** The tool that owns a given Commons tenant, or null if none claims it. */
     public static function forCommonsTenant(string $tenant): ?self
@@ -730,6 +725,16 @@ enum ClusterTool: string
                 'grafana-editor' => 'Can create/edit dashboards and alerts',
                 'grafana-user' => 'Can log in to Grafana (Viewer role)',
             ],
+            // Single tier, not admin/viewer like the others above: Headlamp's
+            // ServiceAccount is bound to cluster-admin with no lesser role to
+            // offer (k8s.dashboard.headlamp.blade.php's ClusterRoleBinding),
+            // and it runs -in-cluster — every logged-in session shares that
+            // one ServiceAccount's token, so OIDC login is the ONLY gate
+            // between "authenticated Zitadel user" and full cluster-admin.
+            // Must never be open-to-org.
+            self::DASHBOARD => [
+                'dashboard-admin' => 'Full cluster-admin access via the Headlamp Kubernetes dashboard',
+            ],
             default => [],
         };
     }
@@ -1180,13 +1185,20 @@ enum ClusterTool: string
                 'deployment' => 'dashboard-headlamp',
                 'namespace' => $this->namespace(),
                 'secret' => 'dashboard-headlamp-oidc',
+                // Headlamp binds flags via koanf's env provider, which strips a
+                // HEADLAMP_CONFIG_ prefix before matching — e.g. -oidc-client-id
+                // reads HEADLAMP_CONFIG_OIDC_CLIENT_ID, not HEADLAMP_OIDC_CLIENT_ID.
+                // The unprefixed names silently no-op: Headlamp boots fine and
+                // just falls back to its plain token-paste login, with no error
+                // anywhere. Confirmed live 2026-08-06 by inspecting the binary's
+                // koanf struct tags and its HEADLAMP_CONFIG_ literal.
                 'static' => [
-                    'HEADLAMP_OIDC_SCOPES' => 'openid profile email groups',
+                    'HEADLAMP_CONFIG_OIDC_SCOPES' => 'openid profile email groups',
                 ],
                 'vars' => [
-                    'client_id' => 'HEADLAMP_OIDC_CLIENT_ID',
-                    'client_secret' => 'HEADLAMP_OIDC_CLIENT_SECRET',
-                    'issuer' => 'HEADLAMP_OIDC_IDP_ISSUER_URL',
+                    'client_id' => 'HEADLAMP_CONFIG_OIDC_CLIENT_ID',
+                    'client_secret' => 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET',
+                    'issuer' => 'HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL',
                 ],
                 'redirect_path' => '/oidc-callback',
             ],
@@ -1293,9 +1305,9 @@ enum ClusterTool: string
     /**
      * The canonical Kubernetes Deployment name for this tool.
      */
-    public function deploymentName(): string
+    public function deploymentName(?string $instance = null): string
     {
-        return match ($this) {
+        $base = match ($this) {
             self::ANALYTICS => 'analytics-umami',
             self::CHAT => 'chat-synapse',
             self::CRM => 'crm-twenty',
@@ -1324,6 +1336,8 @@ enum ClusterTool: string
             self::DNS => 'external-dns',
             self::DASHBOARD => 'dashboard-headlamp',
         };
+
+        return ($instance === null || $instance === '' || $instance === 'main') ? $base : "{$base}-{$instance}";
     }
 
     /**
@@ -1332,9 +1346,9 @@ enum ClusterTool: string
      *
      * @return array{namespace: string, secret: string}|null
      */
-    public function openbaoSyncConfig(): ?array
+    public function openbaoSyncConfig(?string $instance = null): ?array
     {
-        return match ($this) {
+        $config = match ($this) {
             self::MAIL => [
                 'namespace' => $this->namespace(),
                 'secret' => 'stalwart',
@@ -1363,6 +1377,14 @@ enum ClusterTool: string
             ],
             default => null,
         };
+
+        if ($config === null || $instance === null || $instance === '' || $instance === 'main') {
+            return $config;
+        }
+
+        $config['secret'] = "{$config['secret']}-{$instance}";
+
+        return $config;
     }
 
     /**
@@ -1374,9 +1396,9 @@ enum ClusterTool: string
      *
      * @return array{namespace: string, secret: string, key: string}|null
      */
-    public function dbSecretRef(): ?array
+    public function dbSecretRef(?string $instance = null): ?array
     {
-        return match ($this) {
+        $ref = match ($this) {
             self::DATA => ['namespace' => $this->namespace(), 'secret' => 'data-secrets', 'key' => 'db-password'],
             self::SIGN => ['namespace' => $this->namespace(), 'secret' => 'sign-documenso-secrets', 'key' => 'db-password'],
             self::RECORD => ['namespace' => $this->namespace(), 'secret' => 'record-sendrec-secrets', 'key' => 'db-password'],
@@ -1384,12 +1406,31 @@ enum ClusterTool: string
             self::LINK => ['namespace' => $this->namespace(), 'secret' => 'link-kutt-secrets', 'key' => 'db-password'],
             default => null,
         };
+
+        if ($ref === null || $instance === null || $instance === '' || $instance === 'main') {
+            return $ref;
+        }
+
+        $ref['secret'] = "{$ref['secret']}-{$instance}";
+
+        return $ref;
     }
 
     /** @return list<string> */
     public function commonsBuckets(): array
     {
         return $this->commonsBucketList();
+    }
+
+    /** @return list<string> */
+    public function commonsDatabases(?string $instance = null): array
+    {
+        $list = $this->commonsDatabaseList();
+        if ($instance === null || $instance === '' || $instance === 'main') {
+            return $list;
+        }
+
+        return array_map(fn (string $db) => "{$db}_{$instance}", $list);
     }
 
     /**

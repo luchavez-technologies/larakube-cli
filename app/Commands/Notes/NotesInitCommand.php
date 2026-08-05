@@ -39,6 +39,8 @@ class NotesInitCommand extends Command
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Outline (example.com → prefix.example.com)}
+        {--alias=*    : Additional domain alias(es) to register on the Ingress}
+        {--instance=main : Named instance identifier (default: main)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
@@ -99,7 +101,14 @@ class NotesInitCommand extends Command
 
         $s3AccessKey = $creds['access'];
         $s3SecretKey = $creds['secret'];
-        $s3Bucket = 'notes-storage';
+        $instance = (string) ($this->option('instance') ?: 'main');
+        $deploymentName = ClusterTool::NOTES->deploymentName($instance);
+        $secretName = $instance === 'main' ? 'notes-secrets' : "notes-secrets-{$instance}";
+        $oidcSecretName = $instance === 'main' ? 'notes-outline-oidc' : "notes-outline-oidc-{$instance}";
+        $dbName = ClusterTool::NOTES->commonsDatabases($instance)[0];
+        $s3Bucket = $instance === 'main' ? 'notes-storage' : "notes-storage-{$instance}";
+        $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::NOTES, $instance);
+
         $driver = StorageDriver::from($s3Service);
 
         if (! $this->allocateStorageBucket($driver, $s3Bucket)) {
@@ -108,27 +117,19 @@ class NotesInitCommand extends Command
 
         // AWS_S3_UPLOAD_BUCKET_URL is Outline's ONE S3 endpoint config — it
         // both drives the server's own S3 calls AND is signed into the
-        // presigned upload/download URLs handed straight to the browser. The
-        // cluster-internal DNS name a browser can never resolve, so this must
-        // be the public endpoint (see resolveCommonsS3Endpoints()) even
-        // though that means the server's own S3 calls now take the public
-        // route too — the alternative (Outline's AWS_S3_ACCELERATE_URL) only
-        // rewrites the hostname post-signing, which SeaweedFS's SigV4 check
-        // then rejects with SignatureDoesNotMatch unless the ingress rewrites
-        // the upstream Host header back to this internal name — extra
-        // infra-level fragility this single-endpoint swap avoids entirely.
+        // presigned upload/download URLs handed straight to the browser.
         $s3Endpoint = $this->resolveCommonsS3Endpoints($driver, 'Outline')['public'];
 
         // Stable secrets across re-runs — rotating these invalidates sessions.
-        $dbPassword = $this->readNotesSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-        $secretKey = $this->readNotesSecret($kubectl, $ns, 'secret-key') ?? bin2hex(random_bytes(32));
-        $utilsSecret = $this->readNotesSecret($kubectl, $ns, 'utils-secret') ?? bin2hex(random_bytes(32));
+        $dbPassword = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'db-password') ?? Str::random(24);
+        $secretKey = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'secret-key') ?? bin2hex(random_bytes(32));
+        $utilsSecret = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'utils-secret') ?? bin2hex(random_bytes(32));
 
-        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'outline', $dbPassword)) {
+        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
         }
 
-        $redisIndex = $this->allocateCommonsRedisIndex('outline');
+        $redisIndex = $this->allocateCommonsRedisIndex($dbName);
         if ($redisIndex === null) {
             $this->laraKubeError('The Commons Valkey has no free logical DB index (all 16 in use).');
 
@@ -139,9 +140,9 @@ class NotesInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey, $utilsSecret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $secretKey, $utilsSecret) {
             Process::run(
-                "{$kubectl} create secret generic notes-secrets -n {$ns} "
+                "{$kubectl} create secret generic {$secretName} -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=secret-key='.escapeshellarg($secretKey).' '
                 .'--from-literal=utils-secret='.escapeshellarg($utilsSecret).' '
@@ -150,12 +151,18 @@ class NotesInitCommand extends Command
         });
 
         // Outline requires at least one authentication provider to start.
-        if (! $this->ensureOidcSecret($kubectl, $ns, $env, $host)) {
+        if (! $this->ensureOidcSecret($kubectl, $ns, $env, $host, $instance, $oidcSecretName, $aliasHosts)) {
             return 1;
         }
 
         $manifest = view('k8s.notes.shared', [
             'host' => $host,
+            'aliasHosts' => $aliasHosts,
+            'deploymentName' => $deploymentName,
+            'secretName' => $secretName,
+            'oidcSecretName' => $oidcSecretName,
+            'dbUser' => $dbName,
+            'dbName' => $dbName,
             'plexNamespace' => $this->plexNamespace(),
             'redisIndex' => $redisIndex,
             'vpnOnly' => $vpnOnly,
@@ -167,12 +174,12 @@ class NotesInitCommand extends Command
             's3SecretKey' => $s3SecretKey,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-notes.yaml';
+        $tmp = sys_get_temp_dir()."/larakube-notes-{$instance}.yaml";
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Outline wiki manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'notes-outline', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
         );
         @unlink($tmp);
 
@@ -180,7 +187,11 @@ class NotesInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::NOTES, $kubectl, $host);
+        $this->registerTool($kubectl, ClusterTool::NOTES, [
+            'host' => $host,
+            'instance' => $instance,
+            'alias_hosts' => $aliasHosts,
+        ], $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Outline wiki stack is live.');
@@ -214,10 +225,10 @@ class NotesInitCommand extends Command
      * is what both the manifest's valueFrom and sso:wire's own convention use —
      * so a later `sso:wire notes` reuses this app instead of clashing.
      */
-    protected function ensureOidcSecret(string $kubectl, string $ns, string $env, string $host): bool
+    protected function ensureOidcSecret(string $kubectl, string $ns, string $env, string $host, string $instance = 'main', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = []): bool
     {
         // 1. Existing real credentials?
-        $existing = $this->readClusterSecretKey($kubectl, $ns, 'notes-outline-oidc', 'OIDC_CLIENT_ID');
+        $existing = $this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, 'OIDC_CLIENT_ID');
         if ($existing !== null && $existing !== 'pending') {
             $this->laraKubeInfo('Reusing existing OIDC credentials for Outline.');
 
@@ -226,7 +237,7 @@ class NotesInitCommand extends Command
 
         // 2. Zitadel installed → self-wire it (register app + write secret).
         if ($this->isSsoInstalled($kubectl, $this->ssoNamespace())) {
-            return $this->selfWireZitadel($kubectl, $ns, $env, $host);
+            return $this->selfWireZitadel($kubectl, $ns, $env, $host, $instance, $oidcSecretName, $aliasHosts);
         }
 
         // 3. External SSO — prompt for OIDC details.
@@ -258,7 +269,7 @@ class NotesInitCommand extends Command
         $tokenUrl = text(label: 'OIDC Token URL', placeholder: 'https:// provider.example.com/oauth/token', required: true);
         $userinfoUrl = text(label: 'OIDC UserInfo URL', placeholder: 'https:// provider.example.com/oidc/userinfo', required: true);
 
-        $this->writeNotesOidcSecret($kubectl, $ns, [
+        $this->writeNotesOidcSecret($kubectl, $ns, $oidcSecretName, [
             'OIDC_CLIENT_ID' => $clientId,
             'OIDC_CLIENT_SECRET' => $clientSecret,
             'OIDC_AUTH_URI' => $authUrl,
@@ -272,13 +283,7 @@ class NotesInitCommand extends Command
         return true;
     }
 
-    /**
-     * Register Outline as an OIDC client in Zitadel and persist both the app
-     * metadata (in the SSO namespace, in the shape sso:wire reads for reuse /
-     * `--remove`) and the Outline-facing OIDC secret — all before the Outline
-     * Deployment exists. This is what breaks the notes:init ⇄ sso:wire deadlock.
-     */
-    protected function selfWireZitadel(string $kubectl, string $ns, string $env, string $host): bool
+    protected function selfWireZitadel(string $kubectl, string $ns, string $env, string $host, string $instance = 'main', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = []): bool
     {
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -300,14 +305,15 @@ class NotesInitCommand extends Command
         }
 
         $tool = ClusterTool::NOTES;
+        $appName = $instance === 'main' ? $tool->productName() : "{$tool->productName()} ({$instance})";
         $registered = null;
-        $this->withSpin('Registering Outline as an OIDC client in Zitadel...', function () use (&$registered, $ssoHost, $pat, $tool, $host) {
+        $this->withSpin("Registering Outline ({$instance}) as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $tool, $host, $aliasHosts, $appName) {
             $projectId = $this->zitadelEnsureProject($ssoHost, $pat, 'LaraKube Shared Tools');
             if ($projectId === null) {
                 return;
             }
 
-            $app = $this->zitadelCreateOidcApp($ssoHost, $pat, $projectId, $tool->productName(), $tool->oidcRedirectUris($host));
+            $app = $this->zitadelCreateOidcApp($ssoHost, $pat, $projectId, $appName, $tool->oidcRedirectUris($host, $aliasHosts));
             if ($app === null) {
                 return;
             }
@@ -321,9 +327,10 @@ class NotesInitCommand extends Command
             return false;
         }
 
-        // App metadata for sso:wire reuse / `sso:wire notes --remove` later.
+        $ssoAppSecret = $instance === 'main' ? 'sso-app-notes' : "sso-app-notes-{$instance}";
+
         Process::run(
-            "{$kubectl} create secret generic sso-app-notes -n ".$this->ssoNamespace().' '
+            "{$kubectl} create secret generic {$ssoAppSecret} -n ".$this->ssoNamespace().' '
             .'--from-literal=project-id='.escapeshellarg($registered['projectId']).' '
             .'--from-literal=app-id='.escapeshellarg($registered['appId']).' '
             .'--from-literal=client-id='.escapeshellarg($registered['clientId']).' '
@@ -331,7 +338,7 @@ class NotesInitCommand extends Command
             ."--dry-run=client -o yaml | {$kubectl} apply -f -",
         );
 
-        $this->writeNotesOidcSecret($kubectl, $ns, [
+        $this->writeNotesOidcSecret($kubectl, $ns, $oidcSecretName, [
             'OIDC_CLIENT_ID' => $registered['clientId'],
             'OIDC_CLIENT_SECRET' => $registered['clientSecret'],
             'OIDC_AUTH_URI' => "https://{$ssoHost}/oauth/v2/authorize",
@@ -340,18 +347,12 @@ class NotesInitCommand extends Command
         ]);
 
         $this->oidcSource = 'zitadel';
-        $this->laraKubeInfo('✅ Registered Outline with Zitadel SSO.');
+        $this->laraKubeInfo("✅ Registered Outline ({$instance}) with Zitadel SSO.");
 
         return true;
     }
 
-    /**
-     * Create/replace the notes-outline-oidc secret. Keys are the Outline env-var
-     * names, matching the Deployment's valueFrom refs.
-     *
-     * @param  array<string, string>  $data
-     */
-    protected function writeNotesOidcSecret(string $kubectl, string $ns, array $data): void
+    protected function writeNotesOidcSecret(string $kubectl, string $ns, string $secretName, array $data): void
     {
         $literals = '';
         foreach ($data as $key => $value) {
@@ -359,7 +360,7 @@ class NotesInitCommand extends Command
         }
 
         $this->withSpin('Writing OIDC secret...', fn () => Process::run(
-            "{$kubectl} create secret generic notes-outline-oidc -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
+            "{$kubectl} create secret generic {$secretName} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
     }
 

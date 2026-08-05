@@ -18,6 +18,18 @@ test('every tool declares a namespace', function () {
     }
 });
 
+test('dashboard requires RBAC gating — its ServiceAccount is bound to cluster-admin with no lesser tier', function () {
+    // Regression guard for a real near-miss (2026-08-06): DASHBOARD had no
+    // rbacRoles(), so sso:wire would have registered it on the open-to-org
+    // "LaraKube Shared Tools" project instead of "LaraKube RBAC" — meaning
+    // ANY authenticated Zitadel org member could log into Headlamp and get
+    // full cluster-admin (it runs -in-cluster, sharing one ServiceAccount's
+    // token regardless of which user is logged in). Caught before sso:wire
+    // was ever run against it, not after.
+    expect(ClusterTool::DASHBOARD->requiresRbacGating())->toBeTrue()
+        ->and(ClusterTool::DASHBOARD->rbacRoles())->not->toBe([]);
+});
+
 test('only tools that own their namespace outright are torn down namespace-wide', function () {
     // A larakube-shared tool deleting its namespace would take every other
     // shared tool with it — this is the guard against exactly that.

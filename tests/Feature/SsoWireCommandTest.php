@@ -31,6 +31,74 @@ test('sso:wire errors when Zitadel is not installed', function () {
         ->expectsOutputToContain('Zitadel is not installed');
 });
 
+test('sso:wire resolves a cloud tool host from the cluster registry when .larakube.json has none', function () {
+    // Regression for a real live failure 2026-08-06: dashboard:init records
+    // Headlamp's host via ResolvesToolHost::promptForCloudHost(), which
+    // persists to the CLUSTER REGISTRY, not .larakube.json — the project
+    // file's `hosts` map never gets a `dashboard` entry at all. sso:wire's
+    // targetHost() only ever read .larakube.json, so it reported "No host is
+    // configured for Kubernetes Control Plane (Headlamp) or Zitadel" even
+    // though both :init commands had clearly already run. This fixture
+    // mirrors that exact state: .larakube.json knows about `sso` (an older
+    // tool, wired before the registry migration) but nothing about
+    // `dashboard`, whose host lives only in the registry.
+    $dir = sys_get_temp_dir().'/larakube-ssowire-test-'.uniqid();
+    mkdir($dir);
+    $cwd = getcwd();
+
+    try {
+        file_put_contents($dir.'/.larakube.json', json_encode([
+            'name' => 'luchtech',
+            'environments' => [
+                'production' => [
+                    'hosts' => ['sso' => 'sso.luchtech.dev'],
+                ],
+            ],
+        ]));
+        chdir($dir);
+
+        Process::fake([
+            '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+            '*get deployment dashboard-headlamp*' => Process::result(output: 'dashboard-headlamp   1/1   1   1   10d'),
+            '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+            '*get secret sso-app-dashboard*' => Process::result(output: ''),
+            '*get secret larakube-tools-registry*' => Process::result(
+                output: base64_encode((string) json_encode([
+                    'dashboard' => ['installed_at' => 111, 'host' => 'dashboard.luchtech.dev'],
+                ])),
+            ),
+            '*create secret generic*' => Process::result(output: 'secret created'),
+            '*set env deployment/dashboard-headlamp*' => Process::result(output: 'deployment.apps/dashboard-headlamp env updated'),
+            '*rollout restart*' => Process::result(output: 'deployment.apps/dashboard-headlamp restarted'),
+        ]);
+
+        Http::fake([
+            '*apps/_search' => Http::response(['result' => []]),
+            '*projects/_search' => Http::response(['result' => []]),
+            '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+            '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+            '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+            '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+            '*/management/v1/projects/proj-1/roles' => Http::response([]),
+            '*/management/v1/actions/_search' => Http::response(['result' => []]),
+            '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+            '*/management/v1/flows/2/trigger/*' => Http::response([]),
+        ]);
+
+        $this->artisan('sso:wire', ['environment' => 'production', '--tool' => 'dashboard', '--no-interaction' => true])
+            ->assertExitCode(0)
+            ->doesntExpectOutputToContain('No host is configured')
+            ->expectsOutputToContain('wired to Zitadel SSO');
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
+            && str_contains($request['redirectUris'][0] ?? '', 'dashboard.luchtech.dev'));
+    } finally {
+        chdir($cwd);
+        @unlink($dir.'/.larakube.json');
+        @rmdir($dir);
+    }
+});
+
 test('sso:wire registers a new OIDC client and wires it to Grafana', function () {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),

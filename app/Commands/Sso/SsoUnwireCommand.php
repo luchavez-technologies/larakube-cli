@@ -211,7 +211,7 @@ class SsoUnwireCommand extends Command
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
             ? ConfigData::loadFromFile($projectPath)
             : null;
-        $toolHost = $this->targetHost($tool, $env, $config);
+        $toolHost = $this->targetHost($tool, $env, $config, $kubectl);
 
         $ok = true;
         if ($toolHost !== null) {
@@ -248,7 +248,7 @@ class SsoUnwireCommand extends Command
         return 0;
     }
 
-    protected function targetHost(ClusterTool $tool, string $env, ?ConfigData $config): ?string
+    protected function targetHost(ClusterTool $tool, string $env, ?ConfigData $config, ?string $kubectl = null): ?string
     {
         $service = $tool->service();
         if ($service === null) {
@@ -257,6 +257,15 @@ class SsoUnwireCommand extends Command
 
         if ($env === 'local') {
             return $service->hostFor(\App\Data\GlobalConfigData::load()->getLocalTld());
+        }
+
+        // Same fallback as SsoWireCommand::targetHost() — newer :init commands
+        // record cloud hosts in the cluster registry, not .larakube.json.
+        if ($kubectl !== null) {
+            $registered = $this->resolveLiveToolHost($kubectl, $tool);
+            if ($registered !== null && $registered !== '') {
+                return $registered;
+            }
         }
 
         return $config?->getEnvironment($env)?->hosts[$service->value] ?? null;

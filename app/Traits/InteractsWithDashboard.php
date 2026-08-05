@@ -38,9 +38,9 @@ trait InteractsWithDashboard
 
     protected function readDashboardWiredOidc(string $kubectl, string $ns): ?array
     {
-        $issuer = $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', 'HEADLAMP_OIDC_IDP_ISSUER_URL');
-        $clientId = $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', 'HEADLAMP_OIDC_CLIENT_ID');
-        $clientSecret = $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', 'HEADLAMP_OIDC_CLIENT_SECRET');
+        $issuer = $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', 'HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL');
+        $clientId = $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', 'HEADLAMP_CONFIG_OIDC_CLIENT_ID');
+        $clientSecret = $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET');
 
         if (! $issuer || ! $clientId || ! $clientSecret) {
             return null;

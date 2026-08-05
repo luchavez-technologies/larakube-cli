@@ -26,7 +26,7 @@ spec:
               service:
                 name: dashboard-headlamp
                 port:
-                  number: 4686
+                  number: 4466
   tls:
     - hosts:
         - {{ $host }}

@@ -81,10 +81,13 @@ class SsoWireCommand extends Command
         }
 
         $ssoHost = $this->resolveSsoHostReadOnly($env, $config);
-        $toolHost = $this->targetHost($tool, $env, $config);
+        $toolHost = $this->targetHost($tool, $env, $config, $kubectl);
 
         if ($ssoHost === null || $toolHost === null) {
-            $this->laraKubeError("No host is configured for {$tool->getLabel()} or Zitadel in '{$env}' — run their :init commands first.");
+            $missing = $ssoHost === null && $toolHost === null
+                ? "{$tool->getLabel()} or Zitadel"
+                : ($ssoHost === null ? 'Zitadel' : $tool->getLabel());
+            $this->laraKubeError("No host is configured for {$missing} in '{$env}' — run its :init command first.");
 
             return 1;
         }
@@ -246,7 +249,7 @@ class SsoWireCommand extends Command
             $clientId = $registered['clientId'];
             $clientSecret = $registered['clientSecret'];
         } else {
-            $this->laraKubeInfo("Reusing {$tool->getLabel()}'s existing Zitadel OIDC client (pass --remove then re-wire to rotate it).");
+            $this->laraKubeInfo("Reusing {$tool->getLabel()}'s existing Zitadel OIDC client (run `sso:unwire` then re-wire to rotate it).");
         }
 
         $logical = [
@@ -686,7 +689,7 @@ class SsoWireCommand extends Command
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
             ? ConfigData::loadFromFile($projectPath)
             : null;
-        $toolHost = $this->targetHost($tool, $env, $config);
+        $toolHost = $this->targetHost($tool, $env, $config, $kubectl);
 
         $ok = true;
         if ($toolHost !== null) {
@@ -933,7 +936,7 @@ class SsoWireCommand extends Command
         return $ok;
     }
 
-    protected function targetHost(ClusterTool $tool, string $env, ?ConfigData $config): ?string
+    protected function targetHost(ClusterTool $tool, string $env, ?ConfigData $config, ?string $kubectl = null): ?string
     {
         // Every OIDC-capable tool resolves its host the same read-only way its
         // own resolve*HostReadOnly() does — through its SharedClusterService.
@@ -947,6 +950,20 @@ class SsoWireCommand extends Command
 
         if ($env === 'local') {
             return $service->hostFor(GlobalConfigData::load()->getLocalTld());
+        }
+
+        // ResolvesToolHost::promptForCloudHost() persists cloud tool hosts to
+        // the CLUSTER REGISTRY, not .larakube.json — dashboard:init never
+        // writes a project file at all. Check the registry (and, failing
+        // that, the tool's live Ingress) before falling back to the project
+        // file, or any tool onboarded after that migration is permanently
+        // unwireable: "No host is configured" even though its :init clearly
+        // ran and recorded one. Confirmed live 2026-08-06 (Headlamp).
+        if ($kubectl !== null) {
+            $registered = $this->resolveLiveToolHost($kubectl, $tool);
+            if ($registered !== null && $registered !== '') {
+                return $registered;
+            }
         }
 
         return $config?->getEnvironment($env)?->hosts[$service->value] ?? null;

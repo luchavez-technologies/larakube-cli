@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: notes-outline
+  name: {{ $deploymentName ?? 'notes-outline' }}
   namespace: larakube-shared
   labels:
-    app: notes-outline
+    app: {{ $deploymentName ?? 'notes-outline' }}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: notes-outline
+      app: {{ $deploymentName ?? 'notes-outline' }}
   template:
     metadata:
       labels:
-        app: notes-outline
+        app: {{ $deploymentName ?? 'notes-outline' }}
     spec:
       containers:
         - name: outline
@@ -29,20 +29,20 @@ spec:
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: notes-secrets
+                  name: {{ $secretName ?? 'notes-secrets' }}
                   key: secret-key
             - name: UTILS_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: notes-secrets
+                  name: {{ $secretName ?? 'notes-secrets' }}
                   key: utils-secret
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: notes-secrets
+                  name: {{ $secretName ?? 'notes-secrets' }}
                   key: db-password
             - name: DATABASE_URL
-              value: "postgres://outline:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/outline"
+              value: "postgres://{{ $dbUser ?? 'outline' }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName ?? 'outline' }}"
             - name: REDIS_URL
               value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
             - name: REDIS_COLLABORATION_URL
@@ -85,31 +85,31 @@ spec:
             - name: OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: notes-outline-oidc
+                  name: {{ $oidcSecretName ?? 'notes-outline-oidc' }}
                   key: OIDC_CLIENT_ID
                   optional: true
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: notes-outline-oidc
+                  name: {{ $oidcSecretName ?? 'notes-outline-oidc' }}
                   key: OIDC_CLIENT_SECRET
                   optional: true
             - name: OIDC_AUTH_URI
               valueFrom:
                 secretKeyRef:
-                  name: notes-outline-oidc
+                  name: {{ $oidcSecretName ?? 'notes-outline-oidc' }}
                   key: OIDC_AUTH_URI
                   optional: true
             - name: OIDC_TOKEN_URI
               valueFrom:
                 secretKeyRef:
-                  name: notes-outline-oidc
+                  name: {{ $oidcSecretName ?? 'notes-outline-oidc' }}
                   key: OIDC_TOKEN_URI
                   optional: true
             - name: OIDC_USERINFO_URI
               valueFrom:
                 secretKeyRef:
-                  name: notes-outline-oidc
+                  name: {{ $oidcSecretName ?? 'notes-outline-oidc' }}
                   key: OIDC_USERINFO_URI
                   optional: true
             - name: OIDC_DISPLAY_NAME
@@ -153,11 +153,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: notes
+  name: {{ $serviceName ?? 'notes' }}
   namespace: larakube-shared
 spec:
   selector:
-    app: notes-outline
+    app: {{ $deploymentName ?? 'notes-outline' }}
   ports:
     - protocol: TCP
       port: 80
