@@ -809,9 +809,15 @@ trait InteractsWithPlex
         $ns = $this->plexNamespace();
         $service = $driver->value;
         $cmd = $driver->commonsBucketCreateCommand($bucket);
+        $registry = $this->getRegistry();
+        $isReattach = isset($registry['tenants'][$bucket]['s3_bucket']);
+
+        $spinLabel = $isReattach
+            ? "Reattaching to existing object-storage bucket '{$bucket}' in the Commons..."
+            : "Creating object-storage bucket '{$bucket}' in the Commons...";
 
         $result = null;
-        $this->withSpin("Creating object-storage bucket '{$bucket}' in the Commons...", function () use ($ns, $service, $cmd, &$result) {
+        $this->withSpin($spinLabel, function () use ($ns, $service, $cmd, &$result) {
             $result = Process::run(
                 $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$service.' -- sh -c '.escapeshellarg($cmd),
             );
@@ -830,6 +836,10 @@ trait InteractsWithPlex
         }
 
         $this->registerTenantStorage($bucket, $driver);
+
+        if ($isReattach) {
+            $this->laraKubeInfo("✅ Reattached to existing object-storage bucket '{$bucket}'.");
+        }
 
         return true;
     }

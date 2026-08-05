@@ -64,6 +64,40 @@ test('dashboard manifest uses Headlamp\'s real listen port 4466, not 4686', func
         ->and(substr_count($manifest, '4466'))->toBe(6); // containerPort, 2 probes, Service port + targetPort, Ingress backend port
 });
 
+test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG_ prefix koanf actually reads', function () {
+    // Regression guard for a real incident (2026-08-06): the OIDC Secret keys
+    // (and ClusterTool::DASHBOARD->oidcEnv()'s vars/static, wired the same way
+    // by sso:wire) were named HEADLAMP_OIDC_* — Headlamp's koanf-based config
+    // loader strips a HEADLAMP_CONFIG_ prefix before matching its flag names
+    // (oidc-client-id etc.), so the unprefixed vars were silently ignored: no
+    // crash, no error, just the plain token-paste login screen forever.
+    $manifest = view('k8s.dashboard.headlamp', [
+        'host' => 'dashboard.example.test',
+        'appName' => 'Dashboard',
+        'logoUrl' => null,
+        'oidc' => ['issuer' => 'https://sso.example.test', 'client_id' => 'cid', 'client_secret' => 'csecret'],
+        'vpnOnly' => false,
+        'isLocal' => true,
+        'proxied' => false,
+    ])->render();
+
+    expect($manifest)->toContain('HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL')
+        ->and($manifest)->toContain('HEADLAMP_CONFIG_OIDC_CLIENT_ID')
+        ->and($manifest)->toContain('HEADLAMP_CONFIG_OIDC_CLIENT_SECRET')
+        ->and($manifest)->toContain('HEADLAMP_CONFIG_OIDC_SCOPES')
+        ->and($manifest)->not->toContain('HEADLAMP_OIDC_');
+
+    expect(App\Enums\ClusterTool::DASHBOARD->oidcEnv())
+        ->and(App\Enums\ClusterTool::DASHBOARD->oidcEnv()['vars'])->toBe([
+            'client_id' => 'HEADLAMP_CONFIG_OIDC_CLIENT_ID',
+            'client_secret' => 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET',
+            'issuer' => 'HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL',
+        ])
+        ->and(App\Enums\ClusterTool::DASHBOARD->oidcEnv()['static'])->toBe([
+            'HEADLAMP_CONFIG_OIDC_SCOPES' => 'openid profile email groups',
+        ]);
+});
+
 test('dashboard:remove deletes Headlamp resources', function () {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),

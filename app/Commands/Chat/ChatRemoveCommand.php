@@ -16,7 +16,8 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
         $this->signature = 'chat:remove
         {environment=local : Environment to remove Team Chat from}
         {--context=  : Target a specific kube-context}
-        {--keep-data : Leave the database and storage in place}
+        {--instance=main : Named instance identifier (default: main)}
+        {--purge     : Also destroy persistent data — drop the Plex Commons database. Irreversible.}
         {--force     : Skip the confirmation prompt}';
 
         parent::__construct();
@@ -34,8 +35,10 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
             "Deployments, Services, Ingresses and Secrets in {$this->tool()->namespace()}",
         ];
 
-        if (! $this->option('keep-data')) {
-            $lines[] = 'Plex Commons database: chat_matrix';
+        if ($this->option('purge')) {
+            $lines[] = 'Plex Commons database WILL BE DESTROYED: chat_matrix';
+        } else {
+            $lines[] = 'Persistent data (Plex Commons DB + S3 buckets) WILL BE PRESERVED.';
         }
 
         return $lines;
@@ -45,33 +48,6 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
         return $this->deploymentExists($kubectl, $namespace, 'chat-synapse-db');
-    }
-
-    protected function dropCommonsTenants(string $kubectl): bool
-    {
-        $database = 'chat_matrix';
-
-        if ($this->usesBundledStorage($kubectl, $this->tool()->namespace())) {
-            return true;
-        }
-
-        $plexNs = $this->plexNamespace();
-        $client = \App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminClient();
-
-        $sql = $this->buildDropTenantSql($database, $database);
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop_chat');
-        file_put_contents($tmp, $sql);
-
-        $ok = $this->removeResources(
-            "Dropping database '{$database}' from Plex Commons (if exists)...",
-            "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c "
-            .escapeshellarg($client).' < '.escapeshellarg($tmp),
-        );
-
-        $this->unregisterTenant($database);
-        @unlink($tmp);
-
-        return $ok;
     }
 
     protected function teardown(string $kubectl, string $namespace): bool

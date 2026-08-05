@@ -26,8 +26,8 @@ test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the sha
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete clusterrolebinding openbao-auth-delegator'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete deployment openbao-backend'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete pvc openbao-data'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret openbao-bootstrap'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete pvc openbao-data'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete secret openbao-bootstrap'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete namespace'));
 
     // The actual point of this test: deleting a CRD cascades to delete every
@@ -41,14 +41,14 @@ test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the sha
         || str_contains($process->command, 'external-secrets.io'));
 });
 
-test('secrets:remove --keep-data preserves the PVC and bootstrap secret', function () {
+test('secrets:remove --purge deletes the PVC and bootstrap secret', function () {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('secrets:remove', ['environment' => 'production', '--force' => true, '--keep-data' => true, '--no-interaction' => true])
+    $this->artisan('secrets:remove', ['environment' => 'production', '--force' => true, '--purge' => true, '--no-interaction' => true])
         ->assertExitCode(0);
 
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete pvc openbao-data'));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete secret openbao-bootstrap'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete pvc openbao-data'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret openbao-bootstrap'));
 });

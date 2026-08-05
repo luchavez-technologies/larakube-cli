@@ -14,7 +14,8 @@ class SecretsRemoveCommand extends AbstractToolRemoveCommand
     protected $signature = 'secrets:remove
         {environment=local  : Environment to remove the secrets engine from}
         {--context=         : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
-        {--keep-data        : Leave OpenBao storage in place — remove workloads only}
+        {--instance=main    : Named instance identifier (default: main)}
+        {--purge            : Also destroy persistent data — delete OpenBao PVC and bootstrap secret. Irreversible.}
         {--force            : Skip the confirmation prompt (required for non-interactive runs)}';
 
     protected $description = 'Remove OpenBao secrets manager and External Secrets Operator from a cluster';
@@ -26,10 +27,18 @@ class SecretsRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardownWarning(string $env): array
     {
-        return [
+        $lines = [
             "OpenBao Secrets Manager & External Secrets Operator will be REMOVED from '{$env}':",
             'OpenBao Deployment, Service, ConfigMap, Secrets, and ESO Controller in larakube-secrets',
         ];
+
+        if ($this->option('purge')) {
+            $lines[] = 'OpenBao persistent volume claim and bootstrap secret WILL BE DESTROYED.';
+        } else {
+            $lines[] = 'OpenBao storage PVC and secrets WILL BE PRESERVED.';
+        }
+
+        return $lines;
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
@@ -75,7 +84,7 @@ class SecretsRemoveCommand extends AbstractToolRemoveCommand
             "{$kubectl} delete clusterrolebinding openbao-auth-delegator --ignore-not-found",
         ) && $ok;
 
-        if (! $this->option('keep-data')) {
+        if ($this->option('purge')) {
             Process::run("{$kubectl} delete pvc openbao-data -n {$namespace} --ignore-not-found");
             Process::run("{$kubectl} delete secret openbao-bootstrap -n {$namespace} --ignore-not-found");
         }

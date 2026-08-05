@@ -44,7 +44,8 @@ abstract class AbstractToolRemoveCommand extends Command
             $this->signature = "{$tool->value}:remove
             {environment=local : Environment to remove ".$tool->getLabel()." from}
             {--context=  : Target a specific kube-context (defaults to the environment's saved cloud target)}
-            {--keep-data : Leave the Plex Commons database and storage in place — remove workloads only}
+            {--instance=main : Named instance identifier (default: main)}
+            {--purge     : Also destroy persistent data — drop the Plex Commons database and release the Redis index. Irreversible.}
             {--force     : Skip the confirmation prompt (required for non-interactive runs)}";
         }
 
@@ -59,6 +60,7 @@ abstract class AbstractToolRemoveCommand extends Command
 
         $tool = $this->tool();
         $env = (string) $this->argument('environment');
+        $instance = (string) ($this->option('instance') ?: 'main');
 
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         // InteractsWithPlex talks to the Commons through its own kubectl; point
@@ -70,6 +72,7 @@ abstract class AbstractToolRemoveCommand extends Command
         // an ambient $KUBECONFIG to a different cluster than the one we resolved.
         $kubectl = $this->contextKubectl($context);
         $namespace = $tool->namespace();
+        $isPurging = (bool) $this->option('purge');
 
         if (! $this->confirmDestructive($this->teardownWarning($env))) {
             return 0;
@@ -77,8 +80,8 @@ abstract class AbstractToolRemoveCommand extends Command
 
         $ok = true;
 
-        if (! $this->option('keep-data')) {
-            $ok = $this->dropCommonsTenants($kubectl) && $ok;
+        if ($isPurging) {
+            $ok = $this->dropCommonsTenants($kubectl, $instance) && $ok;
         }
 
         $ok = $this->teardown($kubectl, $namespace) && $ok;
@@ -92,9 +95,15 @@ abstract class AbstractToolRemoveCommand extends Command
             return 1;
         }
 
-        $this->unregisterTool($kubectl, $tool);
+        $this->unregisterTool($kubectl, $tool, $instance);
 
-        $this->laraKubeInfo("{$tool->getLabel()} removed from {$namespace} in '{$env}'.");
+        if ($isPurging) {
+            $this->laraKubeInfo("{$tool->getLabel()} removed from {$namespace} in '{$env}' (Commons database destroyed).");
+        } else {
+            $this->laraKubeInfo("{$tool->getLabel()} removed from {$namespace} in '{$env}'.");
+            $this->line('  <fg=gray>Note:</> Persistent data (Plex Commons DB + S3 buckets) was preserved.');
+            $this->line("  To restore, re-run <fg=blue>larakube {$tool->value}:init</>. To destroy data, re-run with <fg=yellow>--purge</>.");
+        }
 
         return 0;
     }
@@ -117,14 +126,17 @@ abstract class AbstractToolRemoveCommand extends Command
     protected function teardownWarning(string $env): array
     {
         $tool = $this->tool();
+        $isPurging = (bool) $this->option('purge');
 
         $lines = [
             "{$tool->getLabel()} will be REMOVED from '{$env}':",
             "Deployments, Services, Ingresses and Secrets in {$tool->namespace()}",
         ];
 
-        if (! $this->option('keep-data') && $tool->commonsDatabases() !== []) {
-            $lines[] = 'Plex Commons database(s): '.implode(', ', $tool->commonsDatabases());
+        if ($isPurging && $tool->commonsDatabases() !== []) {
+            $lines[] = 'Plex Commons database(s) WILL BE DESTROYED: '.implode(', ', $tool->commonsDatabases());
+        } else {
+            $lines[] = 'Persistent data (Plex Commons DB + S3 buckets) WILL BE PRESERVED.';
         }
 
         return $lines;
@@ -137,10 +149,10 @@ abstract class AbstractToolRemoveCommand extends Command
      * dropping a Commons database that this install never leased would destroy
      * a DIFFERENT tool's data if the names ever collided.
      */
-    protected function dropCommonsTenants(string $kubectl): bool
+    protected function dropCommonsTenants(string $kubectl, string $instance = 'main'): bool
     {
         $tool = $this->tool();
-        $databases = $tool->commonsDatabases();
+        $databases = $tool->commonsDatabases($instance);
 
         if ($databases === [] || $this->usesBundledStorage($kubectl, $tool->namespace())) {
             return true;
@@ -161,14 +173,6 @@ abstract class AbstractToolRemoveCommand extends Command
                 .escapeshellarg($client).' < '.escapeshellarg($tmp),
             ) && $ok;
 
-            // The role being dropped above is exactly what OpenBao's static
-            // role (if this tool ever ran secrets:wire or its own :init
-            // registered one) points at. Left registered, a later :init that
-            // recreates the role idempotently no-ops registerStaticRole()'s
-            // POST — OpenBao then keeps enforcing its stale cached password
-            // against the freshly-created Postgres user, silently reverting
-            // whatever the fresh install set. Confirmed live 2026-08-02 on
-            // Zitadel: came back up fine, desynced again ~40 minutes later.
             $this->deleteStaticRole($kubectl, $database);
 
             $this->unregisterTenant($database);
@@ -176,10 +180,11 @@ abstract class AbstractToolRemoveCommand extends Command
             @unlink($tmp);
         }
 
-        $this->unregisterTenant($tool->value);
+        $this->unregisterTenant($instance === 'main' ? $tool->value : "{$tool->value}_{$instance}");
 
         foreach ($tool->commonsRedisKeys() as $key) {
-            $this->releaseCommonsRedisIndex($key);
+            $redisTenant = $instance === 'main' ? $key : "{$key}_{$instance}";
+            $this->releaseCommonsRedisIndex($redisTenant);
         }
 
         return $ok;

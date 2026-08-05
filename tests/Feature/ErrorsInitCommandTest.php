@@ -51,14 +51,14 @@ test('errors:init deploys standalone glitchtip when --no-plex is passed', functi
         ->expectsOutputToContain('GlitchTip stack is live.');
 });
 
-test('errors:remove removes glitchtip resources and drops database from plex', function () {
+test('errors:remove --purge removes glitchtip resources and drops database from plex', function () {
     Process::fake([
         '*get secret*' => Process::result(output: base64_encode('postgres://glitchtip@postgres.larakube-plex...')),
         '*exec *' => Process::result(output: 'success'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('errors:remove local --force')
+    $this->artisan('errors:remove local --force --purge')
         ->assertExitCode(0)
         ->expectsOutputToContain('Dropping database \'glitchtip\' from Plex Commons')
         ->expectsOutputToContain('Removing GlitchTip resources...')

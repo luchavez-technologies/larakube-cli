@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('drive:remove skips the Commons drop and preserves drive-secrets', function () {
+test('drive:remove preserves the Commons database and drive-secrets by default', function () {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
@@ -18,15 +18,14 @@ test('drive:remove skips the Commons drop and preserves drive-secrets', function
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'secret/drive-secrets'));
 });
 
-test('drive:remove --keep-data removes workloads but leaves the Commons database and secrets alone', function () {
+test('drive:remove --purge removes workloads while preserving drive-secrets encryption keys', function () {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('drive:remove local --force --keep-data')
+    $this->artisan('drive:remove local --force --purge')
         ->assertExitCode(0)
-        ->doesntExpectOutputToContain('Dropping database')
         ->expectsOutputToContain('Removing Drive resources...');
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'secret/drive-secrets'));

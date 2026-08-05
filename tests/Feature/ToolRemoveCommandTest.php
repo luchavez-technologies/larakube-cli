@@ -31,7 +31,20 @@ test('every tool has a remove command and none of them still accept --remove on 
     }
 });
 
-test('flow:remove drops both engine databases and deletes the resources', function () {
+test('flow:remove preserves the Commons database by default', function () {
+    Process::fake([
+        '*get secret flow-secrets*' => Process::result(output: 'flow-secrets'),
+        '*delete *' => Process::result(output: 'deleted'),
+    ]);
+
+    $this->artisan('flow:remove local --force')
+        ->assertExitCode(0)
+        ->doesntExpectOutputToContain('Dropping database')
+        ->expectsOutputToContain('Removing Flow resources...')
+        ->expectsOutputToContain('Persistent data (Plex Commons DB + S3 buckets) was preserved.');
+});
+
+test('flow:remove --purge drops both engine databases and deletes the resources', function () {
     Process::fake([
         // A non-empty flow-secrets means this install leased a Commons tenant.
         '*get secret flow-secrets*' => Process::result(output: 'flow-secrets'),
@@ -39,36 +52,10 @@ test('flow:remove drops both engine databases and deletes the resources', functi
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('flow:remove local --force')
+    $this->artisan('flow:remove local --force --purge')
         ->assertExitCode(0)
         ->expectsOutputToContain("Dropping database 'n8n' from Plex Commons")
         ->expectsOutputToContain("Dropping database 'windmill' from Plex Commons")
-        ->expectsOutputToContain('Removing Flow resources...');
-});
-
-test('flow:remove skips the Commons drop for a bundled --no-plex install', function () {
-    Process::fake([
-        // No flow-secrets: the install bundled its own SQLite storage, so there
-        // is no Commons tenant — dropping one would hit a database this install
-        // never owned.
-        '*get secret flow-secrets*' => Process::result(output: '', exitCode: 1),
-        '*delete *' => Process::result(output: 'deleted'),
-    ]);
-
-    $this->artisan('flow:remove local --force')
-        ->assertExitCode(0)
-        ->doesntExpectOutputToContain('Dropping database');
-});
-
-test('--keep-data removes workloads but leaves the Commons database alone', function () {
-    Process::fake([
-        '*get secret flow-secrets*' => Process::result(output: 'flow-secrets'),
-        '*delete *' => Process::result(output: 'deleted'),
-    ]);
-
-    $this->artisan('flow:remove local --force --keep-data')
-        ->assertExitCode(0)
-        ->doesntExpectOutputToContain('Dropping database')
         ->expectsOutputToContain('Removing Flow resources...');
 });
 
