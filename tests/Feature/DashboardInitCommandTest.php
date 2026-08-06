@@ -98,17 +98,24 @@ test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG
         ]);
 });
 
-test('dashboard manifest binds cluster-admin to the impersonated dashboard-admin group, not just the ServiceAccount', function () {
+test('dashboard manifest binds cluster-admin to the OIDC-authenticated -dashboard-admin group, not just the ServiceAccount', function () {
     // Regression for a real live gap (2026-08-06): granting dashboard-admin
-    // via sso:grant did nothing on the cluster — Headlamp authorizes each
-    // API call via Kubernetes impersonation (Impersonate-User/-Group), so
-    // the K8s API server checks the IMPERSONATED identity's own bindings,
-    // not the calling ServiceAccount's. With no ClusterRoleBinding naming
-    // the "dashboard-admin" group, every request 403'd ("Lost connection to
-    // the cluster" in the UI) no matter what Zitadel said. This binding —
-    // paired with zitadelEnsureRbacAction() emitting the role key under the
-    // `groups` claim Headlamp forwards as Impersonate-Group — is what
-    // actually grants access.
+    // via sso:grant did nothing on the cluster. Root cause turned out to be
+    // TWO layered issues, both confirmed live:
+    //   1. Headlamp forwards the browser's bearer token straight through, no
+    //      impersonation — the API server's own native OIDC authenticator
+    //      (dashboard:trust) resolves the identity, so a ClusterRoleBinding
+    //      naming the plain "dashboard-admin" group is what's needed, not a
+    //      ServiceAccount-level grant.
+    //   2. dashboard:trust sets --oidc-groups-prefix=- (Kubernetes' own
+    //      documented "disable prefixing" sentinel), but this k3s version
+    //      doesn't honor it for groups the way it does for
+    //      --oidc-username-prefix=- (confirmed unprefixed via
+    //      SelfSubjectReview) — it prepends a literal "-" instead. A real
+    //      token's resolved groups are ["-openbao-admin", "-grafana-admin",
+    //      "-dashboard-admin"], confirmed via SelfSubjectReview and
+    //      SubjectAccessReview, so the binding must name "-dashboard-admin"
+    //      to actually match.
     $manifest = view('k8s.dashboard.headlamp', [
         'host' => 'dashboard.example.test',
         'appName' => 'Dashboard',
@@ -121,7 +128,7 @@ test('dashboard manifest binds cluster-admin to the impersonated dashboard-admin
 
     expect($manifest)->toContain('dashboard-oidc-admins')
         ->and($manifest)->toContain('kind: Group')
-        ->and($manifest)->toContain('name: dashboard-admin');
+        ->and($manifest)->toContain('name: -dashboard-admin');
 });
 
 test('dashboard:remove deletes Headlamp resources', function () {

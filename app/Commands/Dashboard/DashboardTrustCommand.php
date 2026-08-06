@@ -161,10 +161,17 @@ class DashboardTrustCommand extends Command
     }
 
     /**
-     * `oidc-username-prefix=-` / `oidc-groups-prefix=-` are what stop k3s from
-     * rewriting every identity to `https://sso.example.com#james@example.com` —
-     * without them NO existing ClusterRoleBinding (including
-     * dashboard-oidc-admins) would ever match, silently.
+     * `-` is Kubernetes' documented sentinel for "don't prefix" on both of
+     * these flags — but only oidc-username-prefix actually honors it on this
+     * k3s/kube-apiserver version. oidc-groups-prefix=- still prepends a
+     * literal "-" to every group in the token's `groups` claim instead of
+     * disabling prefixing, confirmed live 2026-08-06 via SelfSubjectReview
+     * (a real token resolved to groups ["-openbao-admin", "-dashboard-admin",
+     * ...], not the bare role keys). dashboard-oidc-admins
+     * (headlamp.blade.php) binds "-dashboard-admin" to match that reality,
+     * not the docs — if this flag's behavior is ever fixed upstream, that
+     * binding needs to drop the leading "-" in lockstep with whatever change
+     * lands here.
      */
     protected function desiredK3sConfig(string $ssoHost, string $clientId): string
     {

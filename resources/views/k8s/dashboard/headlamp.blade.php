@@ -31,17 +31,28 @@ subjects:
     name: dashboard-headlamp
     namespace: larakube-shared
 ---
-# Grants the OIDC-impersonated identity, not the ServiceAccount above, actual
-# cluster-admin. Headlamp authenticates its own API calls as the ServiceAccount
-# but sends them with Impersonate-User/-Group headers for the logged-in user,
-# so the API server authorizes each request as THAT identity — the
-# ServiceAccount's own cluster-admin binding only covers impersonation itself,
-# not what an impersonated user can do. "dashboard-admin" is the Zitadel
-# project role key (ClusterTool::DASHBOARD->rbacRoles()); sso:grant grants it
-# in Zitadel, and zitadelEnsureRbacAction() flattens it into this token's
-# `groups` claim, which Headlamp forwards as Impersonate-Group. Static and
-# unconditional — safe to apply whether or not OIDC is currently wired, since
-# the group name never appears in an impersonation header without it.
+# Grants the OIDC-authenticated identity, not the ServiceAccount above, actual
+# cluster-admin. Headlamp forwards the browser's bearer token straight through
+# to the API server unmodified (confirmed live — no impersonation involved);
+# the API server's own native OIDC authenticator (trusted via `dashboard:trust`,
+# --oidc-issuer-url/--oidc-client-id/--oidc-groups-claim=groups) is what turns
+# that token into an identity. The ServiceAccount's cluster-admin binding above
+# only lets Headlamp's own pod reach the API at all — it grants nothing to the
+# logged-in user.
+#
+# The "-" prefix on the group name is NOT a typo. "dashboard-admin" is the bare
+# Zitadel project role key (ClusterTool::DASHBOARD->rbacRoles()) that
+# zitadelEnsureRbacAction() flattens into the token's `groups` claim — but
+# `dashboard:trust` sets `--oidc-groups-prefix=-`, which per Kubernetes' own
+# docs should DISABLE prefixing (same sentinel that correctly leaves
+# --oidc-username-claim=email unprefixed, confirmed live). It doesn't: this
+# k3s/kube-apiserver version prepends a literal "-" to every group from the
+# claim instead of treating it as the disable sentinel. Confirmed
+# unambiguously via `SelfSubjectReview` and `SubjectAccessReview` 2026-08-06 —
+# a real token's resolved identity carries groups ["-openbao-admin",
+# "-grafana-admin", "-dashboard-admin"], and only "-dashboard-admin" (not the
+# bare key) matches an RBAC binding. Match reality here, not the docs, until
+# k3s's own prefix handling is fixed upstream.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -52,7 +63,7 @@ roleRef:
   name: cluster-admin
 subjects:
   - kind: Group
-    name: dashboard-admin
+    name: -dashboard-admin
     apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1
