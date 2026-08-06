@@ -14,7 +14,7 @@ trait InteractsWithToolRegistry
      */
     protected function getRegisteredTools(string $kubectl): array
     {
-        $json = $this->readClusterSecretKey($kubectl, 'larakube-shared', 'larakube-tools-registry', 'registry\.json');
+        $json = $this->readClusterSecretKey($kubectl, 'larakube-shared', 'larakube-tools-registry', 'registry.json');
 
         if ($json === null) {
             return [];
