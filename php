@@ -63,7 +63,9 @@ execute() {
             done
             php -d memory_limit=2G "${php_flags[@]}" "${final_args[@]}"
         elif [[ "$first_cmd" == "larakube" ]]; then
-             php -d memory_limit=2G "${php_flags[@]}" "$larakube_binary" "${cmd_args[@]:1}"
+            php -d memory_limit=2G "${php_flags[@]}" "$larakube_binary" "${cmd_args[@]:1}"
+        elif [[ "$first_cmd" == vendor/bin/* ]]; then
+            php -d memory_limit=2G "${php_flags[@]}" "${cmd_args[@]}"
         else
             "${cmd_args[@]}"
         fi
