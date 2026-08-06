@@ -54,16 +54,17 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
     {
         $ok = $this->removeResources(
             'Removing Matrix (Synapse + Element) resources...',
-            "{$kubectl} delete deployment/chat-synapse deployment/chat-cinny deployment/chat-synapse-db "
-            .'service/chat-synapse service/chat-cinny service/chat-synapse-db '
-            .'ingress/chat-ingress configmap/chat-synapse-config '
+            "{$kubectl} delete cronjob/chat-media-prune deployment/chat-synapse deployment/chat-cinny deployment/chat-synapse-db "
+            .'deployment/chat-coturn service/chat-synapse service/chat-cinny service/chat-synapse-db '
+            .'service/chat-coturn ingress/chat-ingress configmap/chat-synapse-config '
             .'pvc/chat-synapse-data pvc/chat-synapse-db-storage '
-            ."secret/chat-secrets secret/chat-smtp secret/chat-oidc -n {$namespace} --ignore-not-found",
+            .'secret/chat-secrets secret/chat-smtp secret/chat-oidc secret/chat-meet '
+            ."secret/chat-coturn-config -n {$namespace} --ignore-not-found",
         );
 
-        // Reverse chat:init's port opening — Coturn/LiveKit are gone but their
-        // UDP/TCP ports being left open on the cloud firewall is real exposure
-        // with nothing behind it.
+        // Reverse chat:init's port opening — Coturn is gone, but its UDP/TCP
+        // ports left open on the cloud firewall are real exposure with nothing
+        // behind them.
         $this->closeToolPorts(SharedClusterService::CHAT, (string) $this->argument('environment'));
 
         return $ok;

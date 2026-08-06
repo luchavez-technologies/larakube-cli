@@ -132,15 +132,39 @@ stringData:
     turn_user_lifetime: 86400000
     turn_allow_guests: false
 @endif
-@if($livekitApiKey ?? null)
+@if($meetJwtUrl ?? null)
     experimental_features:
       msc3401_enabled: true
       msc3266_enabled: true
-    well_known:
-      client:
-        "org.matrix.msc4143.rtc_foci":
-          - type: livekit
-            livekit_service_url: "https://{{ $host }}/livekit/jwt"
+      # Element Call registers a delayed "leave" event on join and keeps
+      # restarting it; without MSC4140 its membership manager cannot hold
+      # m.call.member alive and every client re-joins on a ~15s loop.
+      msc4140_enabled: true
+    # Required alongside msc4140_enabled — Synapse rejects every delayed event
+    # unless a max delay is configured, which reads to the client as "delayed
+    # events unsupported".
+    max_event_delay_duration: 24h
+    # A call generates far more state/delayed-event traffic than a chat message;
+    # at Synapse's defaults the membership refreshes get rate-limited and the
+    # call drops. Sized per Element Call's self-hosting guidance.
+    rc_message:
+      per_second: 0.5
+      burst_count: 30
+    rc_delayed_event_mgmt:
+      per_second: 1
+      burst_count: 20
+    # Points at the shared Meet tool's Matrix bridge, not at anything chat owns.
+    # Written by `meet:wire --tool=chat` and read back on re-run from the
+    # chat-meet Secret, same discipline as the SMTP/OIDC wiring below.
+    #
+    # The key is `extra_well_known_client_content` — NOT a `well_known: client:`
+    # block. Synapse silently ignores unknown top-level keys, so the wrong
+    # spelling serves a well-known with no focus and Element Call reports
+    # "Your homeserver does not support calling" with nothing in any log.
+    extra_well_known_client_content:
+      "org.matrix.msc4143.rtc_foci":
+        - type: livekit
+          livekit_service_url: "{{ $meetJwtUrl }}"
 @endif
 @if($s3Bucket ?? null)
     media_storage_providers:
@@ -150,7 +174,12 @@ stringData:
         store_synchronous: false
         config:
           bucket: "{{ $s3Bucket }}"
-          prefix: "media"
+          {{-- Trailing slash is load-bearing: s3_storage_provider composes keys
+               as `prefix + path` with no separator, so "media" yields
+               medialocal_content/… rather than a media/ folder. Changing this
+               orphans every existing object — it needs a re-upload under the
+               new prefix and a delete of the old keys, never an edit alone. --}}
+          prefix: "media/"
           endpoint_url: "{{ $s3Endpoint }}"
           access_key_id: "{{ $s3AccessKey }}"
           secret_access_key: "{{ $s3SecretKey }}"
@@ -228,6 +257,14 @@ spec:
       containers:
         - name: coturn
           image: coturn/coturn:4.6.3-alpine
+          {{-- No CPU limit: throttling a media relay shows up as call stutter.
+               Request reserves scheduling weight; memory stays bounded. --}}
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
           ports:
             - { containerPort: 3478, protocol: UDP, @if($hostPort ?? true)hostPort: 3478, @endif name: turn-udp }
             - { containerPort: 3478, protocol: TCP, @if($hostPort ?? true)hostPort: 3478, @endif name: turn-tcp }
@@ -268,146 +305,6 @@ spec:
 @endfor
   type: {{ ($hostPort ?? true) ? 'ClusterIP' : 'LoadBalancer' }}
 @endif
-@if($livekitApiKey ?? null)
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: chat-livekit-config
-  namespace: larakube-shared
-type: Opaque
-stringData:
-  livekit.yaml: |
-    port: 7880
-    rtc:
-      tcp_port: 7881
-      udp_port: 7882
-      use_external_ip: true
-    keys:
-      "{{ $livekitApiKey }}": "{{ $livekitApiSecret }}"
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: chat-livekit
-  namespace: larakube-shared
-  labels:
-    app: chat-livekit
-    app.kubernetes.io/part-of: chat
-spec:
-  replicas: 1
-  strategy:
-    type: Recreate
-  selector:
-    matchLabels:
-      app: chat-livekit
-  template:
-    metadata:
-      labels:
-        app: chat-livekit
-      annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $livekitApiKey.$livekitApiSecret.($turnSecret ?? '').$host.$__tplHash), 0, 16) }}"
-    spec:
-      containers:
-        - name: livekit
-          image: livekit/livekit-server:v1.8.0
-          args: ["--config", "/etc/livekit.yaml"]
-          ports:
-            - containerPort: 7880
-            - { containerPort: 7881, protocol: TCP, @if($hostPort ?? true)hostPort: 7881, @endif name: rtc-tcp }
-            - { containerPort: 7882, protocol: UDP, @if($hostPort ?? true)hostPort: 7882, @endif name: rtc-udp }
-          volumeMounts:
-            - name: config
-              mountPath: /etc/livekit.yaml
-              subPath: livekit.yaml
-      volumes:
-        - name: config
-          secret:
-            secretName: chat-livekit-config
----
-# Signaling only (WS/HTTP) — always ClusterIP, fronted by Traefik Ingress.
-apiVersion: v1
-kind: Service
-metadata:
-  name: chat-livekit
-  namespace: larakube-shared
-spec:
-  selector:
-    app: chat-livekit
-  ports:
-    - name: http
-      port: 7880
-      targetPort: 7880
-    - name: rtc-tcp
-      port: 7881
-      targetPort: 7881
----
-# RTC media (single-port UDP mux) — same hostPort/LoadBalancer toggle as Coturn.
-apiVersion: v1
-kind: Service
-metadata:
-  name: chat-livekit-rtc
-  namespace: larakube-shared
-spec:
-  selector:
-    app: chat-livekit
-  ports:
-    - name: rtc-udp
-      protocol: UDP
-      port: 7882
-      targetPort: 7882
-  type: {{ ($hostPort ?? true) ? 'ClusterIP' : 'LoadBalancer' }}
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: chat-lk-jwt
-  namespace: larakube-shared
-  labels:
-    app: chat-lk-jwt
-    app.kubernetes.io/part-of: chat
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: chat-lk-jwt
-  template:
-    metadata:
-      labels:
-        app: chat-lk-jwt
-    spec:
-      containers:
-        - name: lk-jwt
-          image: ghcr.io/element-hq/lk-jwt-service:latest
-          env:
-            - name: LIVEKIT_URL
-              # lk-jwt-service hands this exact value back to the browser as
-              # the room connection URL (not just using it for its own
-              # server-side room-management calls) — has to be the public,
-              # externally-reachable address, not cluster-internal DNS.
-              value: "wss://{{ $host }}/livekit"
-            - name: LIVEKIT_KEY
-              value: "{{ $livekitApiKey }}"
-            - name: LIVEKIT_SECRET
-              value: "{{ $livekitApiSecret }}"
-            - name: LIVEKIT_FULL_ACCESS_HOMESERVERS
-              value: "{{ $host }}"
-          ports:
-            - containerPort: 8080
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: chat-lk-jwt
-  namespace: larakube-shared
-spec:
-  selector:
-    app: chat-lk-jwt
-  ports:
-    - name: http
-      port: 8080
-      targetPort: 8080
-@endif
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -429,12 +326,15 @@ spec:
       labels:
         app: chat-synapse
       annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $dbPassword.$registrationSecret.($smtp['password'] ?? '').($oidc['client_secret'] ?? '').$__tplHash), 0, 16) }}"
+        {{-- $s3SecretKey is in the hash because homeserver.yaml bakes the Commons
+             S3 credentials in: without it a `plex:rotate` would write a new Secret
+             that this pod never picks up, and media offload would fail silently. --}}
+        larakube.io/config-checksum: "{{ substr(hash('sha256', $dbPassword.$registrationSecret.($smtp['password'] ?? '').($oidc['client_secret'] ?? '').($s3SecretKey ?? '').$__tplHash), 0, 16) }}"
     spec:
 @if($s3Bucket ?? null)
       initContainers:
         - name: install-s3-provider
-          image: matrixdotorg/synapse:v1.120.0
+          image: matrixdotorg/synapse:v1.158.0
           command: ["sh", "-c", "mkdir -p /data/site-packages && pip install --no-deps --no-cache-dir --target=/data/site-packages synapse-s3-storage-provider boto3 botocore humanize tqdm s3transfer jmespath"]
           volumeMounts:
             - name: data
@@ -442,12 +342,19 @@ spec:
 @endif
       containers:
         - name: synapse
-          image: matrixdotorg/synapse:v1.120.0
+          image: matrixdotorg/synapse:v1.158.0
 @if($s3Bucket ?? null)
           env:
             - name: PYTHONPATH
               value: "/data/site-packages"
 @endif
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 768Mi
+              cpu: 1000m
           ports:
             - containerPort: 8008
           volumeMounts:
@@ -522,20 +429,6 @@ data:
         "{{ $host }}"
       ]
     }
-@if($livekitApiKey ?? null)
-  client: |
-    {
-      "m.homeserver": {
-        "base_url": "https://{{ $host }}/"
-      },
-      "org.matrix.msc4143.rtc_foci": [
-        {
-          "type": "livekit",
-          "livekit_service_url": "https://{{ $host }}/livekit/jwt"
-        }
-      ]
-    }
-@endif
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -555,11 +448,18 @@ spec:
       labels:
         app: chat-cinny
       annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $host.($livekitApiKey ?? '').$__tplHash), 0, 16) }}"
+        larakube.io/config-checksum: "{{ substr(hash('sha256', $host.$__tplHash), 0, 16) }}"
     spec:
       containers:
         - name: cinny
           image: ghcr.io/cinnyapp/cinny:v4.12.3
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 128Mi
+              cpu: 200m
           ports:
             - containerPort: 80
           volumeMounts:
@@ -569,11 +469,6 @@ spec:
             - name: cinny-config
               mountPath: /app/config.json
               subPath: config.json
-@if($livekitApiKey ?? null)
-            - name: cinny-config
-              mountPath: /app/.well-known/matrix/client
-              subPath: client
-@endif
       volumes:
         - name: cinny-config
           configMap:
@@ -591,36 +486,6 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 80
-@if($livekitApiKey ?? null)
----
-# lk-jwt-service only implements POST /sfu/get at its own root — Element
-# Call always calls {livekit_service_url}/sfu/get, so whatever path prefix
-# routes to chat-lk-jwt has to be stripped before it reaches the pod.
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: chat-lk-jwt-stripprefix
-  namespace: larakube-shared
-spec:
-  stripPrefix:
-    prefixes:
-      - /livekit/jwt
----
-# LiveKit itself expects to be mounted at root (/twirp/... for the REST admin
-# API lk-jwt-service uses internally, /rtc for browser WS signaling) — same
-# problem as chat-lk-jwt above, just one level up. Chained after the /jwt
-# strip so /livekit/jwt/* is untouched here (already stripped, no longer
-# matches this prefix) and everything else under /livekit/* gets stripped.
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: chat-livekit-stripprefix
-  namespace: larakube-shared
-spec:
-  stripPrefix:
-    prefixes:
-      - /livekit
-@endif
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -636,12 +501,8 @@ metadata:
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 @endif
 @endunless
-@if(($vpnOnly ?? false) || ($livekitApiKey ?? null))
-    traefik.ingress.kubernetes.io/router.middlewares: "{{ collect([
-        ($vpnOnly ?? false) ? 'larakube-shared-chat-vpn-only@kubernetescrd' : null,
-        ($livekitApiKey ?? null) ? 'larakube-shared-chat-lk-jwt-stripprefix@kubernetescrd' : null,
-        ($livekitApiKey ?? null) ? 'larakube-shared-chat-livekit-stripprefix@kubernetescrd' : null,
-    ])->filter()->implode(',') }}"
+@if($vpnOnly ?? false)
+    traefik.ingress.kubernetes.io/router.middlewares: "larakube-shared-chat-vpn-only@kubernetescrd"
 @endif
 spec:
   rules:
@@ -662,29 +523,6 @@ spec:
                 name: chat-synapse
                 port:
                   number: 8008
-@if($livekitApiKey ?? null)
-          - path: /.well-known/matrix/client
-            pathType: Exact
-            backend:
-              service:
-                name: chat-cinny
-                port:
-                  number: 80
-          - path: /livekit/jwt
-            pathType: Prefix
-            backend:
-              service:
-                name: chat-lk-jwt
-                port:
-                  number: 8080
-          - path: /livekit
-            pathType: Prefix
-            backend:
-              service:
-                name: chat-livekit
-                port:
-                  number: 7880
-@endif
           - path: /.well-known/matrix
             pathType: Prefix
             backend:
@@ -702,3 +540,89 @@ spec:
   tls:
     - hosts:
         - {{ $host }}
+@if($s3Bucket ?? null)
+---
+# Media pruning. Without this the S3 offload COSTS storage instead of saving it:
+# Synapse always writes media to its own PVC first, and the storage provider
+# adds a second copy in SeaweedFS. Both PVCs are local-path directories on the
+# same block device, so every file is stored twice on one disk with no
+# durability gained. This job deletes the local copy once the file is safely in
+# S3 and has not been accessed for {{ $mediaRetention ?? '30d' }} — recent media
+# stays local and fast, everything colder lives once, in SeaweedFS.
+#
+# That is also what keeps chat-synapse-data (5Gi) from filling: total media can
+# exceed the PVC because only the working set is held locally.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: chat-media-prune
+  namespace: larakube-shared
+  labels:
+    app: chat-media-prune
+    app.kubernetes.io/part-of: chat
+spec:
+  schedule: "{{ $mediaPruneSchedule ?? '17 3 * * *' }}"
+  # Never overlap: two prunes sharing one sqlite cache corrupt each other's view
+  # of what has been uploaded.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: prune
+              image: matrixdotorg/synapse:v1.158.0
+              # Credentials come from homeserver.yaml, which already carries the
+              # Commons S3 keys — no second Secret to keep in sync or rotate.
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  mkdir -p /data/.media-prune && cd /data/.media-prune
+                  eval "$(PYTHONPATH=/data/site-packages python - <<'PY'
+                  import yaml, shlex
+                  c = yaml.safe_load(open("/data/homeserver.yaml"))["media_storage_providers"][0]["config"]
+                  print("export AWS_ACCESS_KEY_ID=%s" % shlex.quote(c["access_key_id"]))
+                  print("export AWS_SECRET_ACCESS_KEY=%s" % shlex.quote(c["secret_access_key"]))
+                  print("export AWS_DEFAULT_REGION=us-east-1")
+                  print("export LK_BUCKET=%s" % shlex.quote(c["bucket"]))
+                  print("export LK_ENDPOINT=%s" % shlex.quote(c["endpoint_url"]))
+                  print("export LK_PREFIX=%s" % shlex.quote(c["prefix"]))
+                  PY
+                  )"
+                  export PYTHONPATH=/data/site-packages
+                  B=/data/site-packages/bin/s3_media_upload
+                  python "$B" update-db {{ $mediaRetention ?? '30d' }} --homeserver-config-path /data/homeserver.yaml
+                  # --delete only removes a local file after its upload is
+                  # confirmed, so a failed upload can never lose the only copy.
+                  python "$B" --no-progress upload /data/media_store "$LK_BUCKET" \
+                    --prefix "$LK_PREFIX" --endpoint-url "$LK_ENDPOINT" --delete
+              resources:
+                requests:
+                  memory: 64Mi
+                  cpu: 50m
+                limits:
+                  memory: 256Mi
+                  cpu: 500m
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                - name: config
+                  mountPath: /data/homeserver.yaml
+                  subPath: homeserver.yaml
+          volumes:
+            # ReadWriteOnce, shared with chat-synapse. Fine while both land on
+            # one node; on a multi-node cluster this job must be pinned to
+            # Synapse's node or given its own ReadWriteMany volume.
+            - name: data
+              persistentVolumeClaim:
+                claimName: chat-synapse-data
+            - name: config
+              secret:
+                secretName: chat-synapse-config
+@endif

@@ -34,6 +34,7 @@ enum ClusterTool: string
             self::DATA => 'Headless CMS & Data API (Directus)',
             self::RECORD => 'Screen Recording & Sharing (Sendrec)',
             self::DASHBOARD => 'Kubernetes Control Plane (Headlamp)',
+            self::MEET => 'Video Meetings (LiveKit)',
         };
     }
 
@@ -67,6 +68,7 @@ enum ClusterTool: string
             self::VPN => 'NetBird',
             self::WEBMAIL => 'Bulwark',
             self::DASHBOARD => 'Headlamp',
+            self::MEET => 'LiveKit',
         };
     }
 
@@ -104,6 +106,7 @@ enum ClusterTool: string
             self::VPN => '🔑',
             self::WEBMAIL => '📬',
             self::DASHBOARD => '☸️',
+            self::MEET => '🎥',
         };
     }
 
@@ -144,6 +147,7 @@ enum ClusterTool: string
             self::VPN => 'VPN',
             self::WEBMAIL => 'Webmail',
             self::DASHBOARD => 'Dashboard',
+            self::MEET => 'Meet',
         };
     }
 
@@ -206,6 +210,7 @@ enum ClusterTool: string
             self::VPN => SharedClusterService::VPN,
             self::WEBMAIL => SharedClusterService::WEBMAIL,
             self::DASHBOARD => SharedClusterService::DASHBOARD,
+            self::MEET => SharedClusterService::MEET,
         };
     }
 
@@ -702,6 +707,20 @@ enum ClusterTool: string
      *
      * Sibling to a future hasVpnWire() for NetBird — same per-tool-policy shape.
      */
+    /**
+     * Whether this tool can be connected to the shared LiveKit SFU by
+     * `meet:wire`. Only Matrix today — it is the one tool with a bridge
+     * (lk-jwt-service) that translates its identity into LiveKit tokens.
+     * Laravel apps consume Meet through their project blueprint, not here.
+     */
+    public function hasMeetWire(): bool
+    {
+        return match ($this) {
+            self::CHAT => true,
+            default => false,
+        };
+    }
+
     public function hasSsoWire(): bool
     {
         return match ($this) {
@@ -1362,6 +1381,7 @@ enum ClusterTool: string
             self::WEBMAIL => 'webmail-bulwark',
             self::DNS => 'external-dns',
             self::DASHBOARD => 'dashboard-headlamp',
+            self::MEET => 'meet-livekit',
         };
 
         return ($instance === null || $instance === '' || $instance === 'main') ? $base : "{$base}-{$instance}";
@@ -1484,13 +1504,13 @@ enum ClusterTool: string
     }
 
     /** @return list<string> */
-    private function commonsDatabaseList(): array
+    private function commonsDatabaseList(?string $engine = null): array
     {
         return match ($this) {
             self::ANALYTICS => ['umami'],
             self::CHAT => ['chat_matrix'],
             self::CRM => ['crm_twenty'],
-            self::DATA => ['data_directus'],
+            self::DATA => $engine === 'pocketbase' ? [] : ['data_directus'],
             self::DESK => ['freescout'],
             self::ERRORS => ['glitchtip'],
             self::FLOW => ['n8n', 'windmill'],
@@ -1529,6 +1549,7 @@ enum ClusterTool: string
     }
     case ANALYTICS = 'analytics';
     case CHAT = 'chat';
+    case MEET = 'meet';
     case CRM = 'crm';
     case DATA = 'data';
     case DESK = 'desk';

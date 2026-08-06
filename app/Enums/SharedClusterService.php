@@ -55,6 +55,7 @@ enum SharedClusterService: string
             self::DATA => 'k8s.data.ingress',
             self::RECORD => 'k8s.record.ingress',
             self::DASHBOARD => 'k8s.dashboard.ingress',
+            self::MEET => 'k8s.meet.ingress',
         };
     }
 
@@ -68,6 +69,13 @@ enum SharedClusterService: string
                 'engine' => trim(\Illuminate\Support\Facades\Process::timeout(10)->run('kubectl get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
             ],
             self::DRIVE => ['engine' => 'ocis'],
+            // The Matrix bridge is a wiring artifact, not part of Meet itself —
+            // it only exists once `meet:wire --tool=chat` has run. Probe for it
+            // so a plain `up` reconcile re-renders the /jwt route it needs
+            // instead of dropping it. Same short-timeout degradation as FLOW.
+            self::MEET => [
+                'jwtWired' => trim(\Illuminate\Support\Facades\Process::timeout(10)->run('kubectl get deployment meet-lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
+            ],
             self::TASKS => [
                 'engine' => 'planka',
             ],
@@ -127,7 +135,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET => false,
             default => true,
         };
     }
@@ -172,6 +180,7 @@ enum SharedClusterService: string
             self::DATA => 'Directus',
             self::RECORD => 'Sendrec',
             self::DASHBOARD => 'Headlamp Dashboard',
+            self::MEET => 'LiveKit (Meet)',
         };
     }
 
@@ -217,6 +226,7 @@ enum SharedClusterService: string
             self::DATA => 'deployment data-directus -n larakube-shared',
             self::RECORD => 'deployment record-sendrec -n larakube-shared',
             self::DASHBOARD => 'deployment dashboard-headlamp -n larakube-shared',
+            self::MEET => 'deployment meet-livekit -n larakube-shared',
         };
     }
 
@@ -243,10 +253,15 @@ enum SharedClusterService: string
             // hardening step allows it for admin access only.
             self::GITEA => [2222],
             // Coturn's STUN/TURN listener (both transports) + its relay range,
-            // and LiveKit's single-port RTC mux. Keep this in lockstep with the
-            // port numbers hardcoded in resources/views/k8s/chat/matrix.blade.php
-            // (turnserver.conf's min-port/max-port, livekit.yaml's rtc.udp_port).
-            self::CHAT => [3478, '3478/udp', '49160-49179/udp', '7882/udp', 7881],
+            // backing Synapse's legacy 1:1 turn_uris. Keep this in lockstep with
+            // turnserver.conf's min-port/max-port in
+            // resources/views/k8s/chat/matrix.blade.php. The SFU's own ports
+            // belong to MEET below — chat no longer runs one.
+            self::CHAT => [3478, '3478/udp', '49160-49179/udp'],
+            // LiveKit's single-port RTC mux (UDP) and its TCP fallback for
+            // clients on networks that block UDP. Must match rtc.udp_port /
+            // rtc.tcp_port in resources/views/k8s/meet/livekit.blade.php.
+            self::MEET => [7881, '7882/udp'],
             default => [],
         };
     }
@@ -326,6 +341,7 @@ enum SharedClusterService: string
             self::DATA => 'Refreshing Directus (Data) ingress...',
             self::RECORD => 'Refreshing Sendrec (Screen Recording) ingress...',
             self::DASHBOARD => 'Refreshing Headlamp (Dashboard) ingress...',
+            self::MEET => 'Refreshing LiveKit (Meet) ingress...',
         };
     }
 
@@ -367,4 +383,5 @@ enum SharedClusterService: string
     case DATA = 'data';
     case RECORD = 'record';
     case DASHBOARD = 'dashboard';
+    case MEET = 'meet';
 }

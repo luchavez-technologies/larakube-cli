@@ -29,6 +29,32 @@ test('chat:init deploys matrix using plex commons postgres by default', function
     });
 });
 
+test('chat:init aborts when the Commons S3 credentials are missing', function () {
+    Process::fake([
+        // Specific patterns first — the S3 keys read empty while everything
+        // else on plex-admin resolves, so we fail on creds and nothing earlier.
+        '*plex-admin*S3_ACCESS_KEY*' => Process::result(output: ''),
+        '*plex-admin*S3_SECRET_KEY*' => Process::result(output: ''),
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => [
+                'postgres' => ['enabled' => true],
+                'seaweedfs' => ['enabled' => true],
+            ],
+        ]),
+        '*get secret plex-admin*' => base64_encode('test-cred'),
+        '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+    ]);
+
+    $this->artisan('chat:init local --no-interaction')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('Commons S3 credentials not found');
+});
+
 test('chat:init deploys standalone matrix when --no-plex is passed', function () {
     Process::fake([
         '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),

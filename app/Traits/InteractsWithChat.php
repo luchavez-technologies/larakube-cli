@@ -81,6 +81,73 @@ trait InteractsWithChat
     }
 
     /**
+     * The Meet bridge URL wired by `meet:wire --tool=chat`, or null when Matrix
+     * calling is not connected to a Meet install. Read back on every `chat:init`
+     * so a re-run does not silently un-wire calling — same discipline as the
+     * SMTP and OIDC read-backs either side of this.
+     */
+    protected function readChatWiredMeet(string $kubectl, string $ns): ?string
+    {
+        return $this->readClusterSecretKey($kubectl, $ns, 'chat-meet', 'jwt-url');
+    }
+
+    /**
+     * Replace Synapse's whole calling block in an already-rendered
+     * homeserver.yaml. `meet:wire` edits the live config in place rather than
+     * re-rendering the template, which needs inputs (db password, S3 keys) the
+     * wire command has no business reading.
+     *
+     * This must stay in lockstep with the `@if($meetJwtUrl)` block in
+     * resources/views/k8s/chat/matrix.blade.php — five top-level concerns, not
+     * just the focus URL. Writing only the focus would point Element Call at a
+     * working SFU while leaving MSC4140 off, which is the exact configuration
+     * that made every client rejoin on a ~15s loop.
+     *
+     * Passing null strips the block, which is what unwire wants.
+     */
+    protected function renderSynapseCalling(string $rawYaml, ?string $meetJwtUrl): string
+    {
+        // Same strip-then-append shape as renderSynapseConfig(): drop each
+        // top-level key and everything indented under it, then re-add.
+        $yaml = $rawYaml;
+        // 'well_known' is stripped but never written: it is NOT a Synapse option
+        // and only ever sat inert in older renders. Dropping it here keeps a
+        // re-wire from leaving a block that looks meaningful and is not.
+        foreach (['experimental_features', 'well_known', 'extra_well_known_client_content', 'rc_message', 'rc_delayed_event_mgmt'] as $key) {
+            $yaml = (string) preg_replace('/^[ \t]*'.$key.':\n(?:[ \t]+[^\n]*\n)*/m', '', $yaml);
+        }
+        $yaml = (string) preg_replace('/^[ \t]*max_event_delay_duration:[^\n]*\n/m', '', $yaml);
+        $yaml = rtrim($yaml);
+
+        if ($meetJwtUrl === null) {
+            return $yaml."\n";
+        }
+
+        $yaml .= "\nexperimental_features:\n";
+        $yaml .= "  msc3401_enabled: true\n";
+        $yaml .= "  msc3266_enabled: true\n";
+        $yaml .= "  msc4140_enabled: true\n";
+        // msc4140_enabled without a delay ceiling makes Synapse reject every
+        // delayed event, which reads to the client as "unsupported".
+        $yaml .= "max_event_delay_duration: 24h\n";
+        $yaml .= "rc_message:\n";
+        $yaml .= "  per_second: 0.5\n";
+        $yaml .= "  burst_count: 30\n";
+        $yaml .= "rc_delayed_event_mgmt:\n";
+        $yaml .= "  per_second: 1\n";
+        $yaml .= "  burst_count: 20\n";
+        // Must be `extra_well_known_client_content` — Synapse ignores unknown
+        // top-level keys, so a `well_known:` block serves a focus-less
+        // well-known and Element Call says the homeserver cannot call.
+        $yaml .= "extra_well_known_client_content:\n";
+        $yaml .= "  \"org.matrix.msc4143.rtc_foci\":\n";
+        $yaml .= "    - type: livekit\n";
+        $yaml .= '      livekit_service_url: "'.$meetJwtUrl."\"\n";
+
+        return $yaml;
+    }
+
+    /**
      * Read wired OIDC values from the `chat-oidc` Secret.
      *
      * Returns an array suitable for passing as `$oidc` to the matrix view, or
