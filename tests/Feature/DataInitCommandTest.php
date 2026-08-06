@@ -82,6 +82,7 @@ test('data:init returns a failing exit code and does not claim success when kube
 
     $this->artisan(DataInitCommand::class, [
         'environment' => 'local',
+        '--engine' => 'directus',
         '--no-interaction' => true,
     ])
         ->assertExitCode(1)
@@ -127,7 +128,7 @@ function fakeDataInitProcess(bool $ssoWired, ?string &$appliedManifest): void
         if (str_contains($cmd, 'apply -f')) {
             preg_match('/apply -f (\'[^\']*\'|"[^"]*"|\S+)/', $cmd, $m);
             $path = trim($m[1] ?? '', '\'"');
-            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-data-directus')) {
+            if ($path !== '' && file_exists($path) && (str_contains($path, 'larakube-data-directus') || str_contains($path, 'larakube-data-pocketbase') || str_contains($path, 'larakube-data'))) {
                 $appliedManifest = file_get_contents($path);
             }
 

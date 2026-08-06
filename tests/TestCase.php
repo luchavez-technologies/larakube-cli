@@ -4,6 +4,7 @@ namespace Tests;
 
 use App\State;
 use LaravelZero\Framework\Testing\TestCase as BaseTestCase;
+use Mockery;
 use Symfony\Component\Console\Output\NullOutput;
 use Termwind\Termwind;
 
@@ -35,5 +36,14 @@ abstract class TestCase extends BaseTestCase
         State::$lastError = null;
         State::$stdout = null;
         State::$registeredSecrets = [];
+    }
+
+    protected function tearDown(): void
+    {
+        if (class_exists(Mockery::class)) {
+            Mockery::close();
+        }
+
+        parent::tearDown();
     }
 }
