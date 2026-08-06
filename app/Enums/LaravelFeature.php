@@ -22,13 +22,14 @@ use App\Contracts\RequiresPhpExtensions;
 use App\Data\ConfigData;
 use App\Traits\DerivesHostsFromServices;
 use App\Traits\GeneratesProjectInfrastructure;
+use App\Traits\InteractsWithMeet;
 use App\Traits\ProvidesCommandOptions;
 use App\Traits\ProvidesSelectOptions;
 use BackedEnum;
 
 enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents, HasCommandOptions, HasComposerDependencies, HasDependencies, HasEnvironmentVariables, HasHiddenComponents, HasHosts, HasJsDependencies, HasKubernetesFiles, HasLabel, HasLifecycleHooks, HasPodName, HasPromptableHosts, HasReloadCommand, HasSelectOptions, RequiresPhpExtensions
 {
-    use DerivesHostsFromServices, GeneratesProjectInfrastructure, ProvidesCommandOptions, ProvidesSelectOptions;
+    use DerivesHostsFromServices, GeneratesProjectInfrastructure, InteractsWithMeet, ProvidesCommandOptions, ProvidesSelectOptions;
 
     public static function fromPodName(string $podName): ?self
     {
@@ -96,6 +97,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
             self::AI => 'Laravel AI',
             self::MCP => 'Laravel MCP',
             self::BOOST => 'Laravel Boost',
+            self::MEET => 'Video Meetings (LiveKit)',
         };
     }
 
@@ -175,6 +177,18 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
                 'INERTIA_SSR_ENABLED' => 'true',
                 'INERTIA_SSR_URL' => 'http://'.($config ? $config->getInternalFqdn($this, $environment) : 'node-ssr').':13714',
             ] : [],
+            // Meet is a SHARED cluster tool, so the host is meet.<global tld>,
+            // never meet.<project>.<tld> — getServiceHost() would wrongly scope
+            // it to the project. The real deployed host is read from the tool
+            // registry in onPostInstall(); this is the local-dev default.
+            self::MEET => [
+                'LIVEKIT_URL' => 'wss://meet.'.\App\Data\GlobalConfigData::load()->getLocalTld(),
+                // OSS LiveKit cannot restrict a key to a room, so isolation
+                // between apps sharing the SFU is this prefix and nothing else.
+                // Mint tokens only for rooms under it, and drop webhook events
+                // for rooms outside it. See docs/decisions/0009-*.md.
+                'LIVEKIT_ROOM_PREFIX' => ($config?->getName() ?? 'app').'-',
+            ],
             self::BOOST => [
                 'BOOST_PHP_EXECUTABLE_PATH' => '"larakube php"',
                 'BOOST_COMPOSER_EXECUTABLE_PATH' => '"larakube composer"',
@@ -194,6 +208,14 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
         return match ($this) {
             self::REVERB => [
                 'REVERB_APP_SECRET' => 'larakubesecret',
+            ],
+            // Placeholders only. The real pair is allocated per project in the
+            // meet-keys registry by onPostInstall(), which can reach the
+            // cluster; this method is called from render and test paths that
+            // must never do I/O.
+            self::MEET => [
+                'LIVEKIT_API_KEY' => '',
+                'LIVEKIT_API_SECRET' => '',
             ],
             default => [],
         };
@@ -277,6 +299,9 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
             self::REVERB => [
                 'laravel/reverb',
             ],
+            self::MEET => [
+                'agence104/livekit-server-sdk',
+            ],
             self::MCP => [
                 'laravel/mcp',
             ],
@@ -337,7 +362,13 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
 
     public function onPostInstall(string $projectPath, ?ConfigData $context = null): void
     {
-        $this->syncEnvFile($projectPath, $this->getEnvironmentVariables($context));
+        $values = $this->getEnvironmentVariables($context);
+
+        if ($this === self::MEET) {
+            $values = array_merge($values, $this->resolveMeetCredentials($context));
+        }
+
+        $this->syncEnvFile($projectPath, $values);
     }
 
     public function getPostInstallInstructions(?ConfigData $config = null): array
@@ -348,6 +379,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
 
         return match ($this) {
             self::AI => $this->getAiInstructions($config),
+            self::MEET => $this->getMeetInstructions($config),
             default => [],
         };
     }
@@ -526,6 +558,76 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
         return $manifests;
     }
 
+    /**
+     * Allocate this project's own LiveKit key pair from the shared meet-keys
+     * registry, and read the real deployed Meet host from the tool registry.
+     *
+     * Runs only from onPostInstall(), which is the single install-time hook —
+     * the env accessors themselves must stay I/O-free because they are called
+     * from render and test paths.
+     *
+     * Degrades to the declared placeholders when Meet is not installed: adding
+     * the feature to a project should never fail because a cluster is absent.
+     *
+     * @return array<string, string>
+     */
+    protected function resolveMeetCredentials(?ConfigData $context): array
+    {
+        $kubectl = $this->meetKubectl();
+        $ns = $this->meetNamespace();
+
+        if (! $this->isMeetInstalled($kubectl, $ns)) {
+            return [];
+        }
+
+        $consumer = 'app-'.($context?->getName() ?? 'app');
+        $registry = $this->readMeetKeys($kubectl, $ns);
+        $registry = $this->allocateMeetKey($registry, $consumer, ($context?->getName() ?? 'app').'-');
+        $registry = $this->writeMeetKeys($kubectl, $ns, $registry);
+
+        $values = [
+            'LIVEKIT_API_KEY' => $registry[$consumer]['key'],
+            'LIVEKIT_API_SECRET' => $registry[$consumer]['secret'],
+        ];
+
+        // Prefer the host Meet is actually serving over the local-dev guess.
+        $host = trim(\Illuminate\Support\Facades\Process::run(
+            "{$kubectl} get secret larakube-tools-registry -n {$ns} -o jsonpath=".escapeshellarg('{.data.registry\.json}'),
+        )->output());
+
+        if ($host !== '') {
+            $decoded = json_decode((string) base64_decode($host), true);
+            $meetHost = is_array($decoded) ? ($decoded['meet']['host'] ?? null) : null;
+
+            if (is_string($meetHost) && $meetHost !== '') {
+                $values['LIVEKIT_URL'] = "wss://{$meetHost}";
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function getMeetInstructions(ConfigData $config): array
+    {
+        $prefix = $config->getName().'-';
+
+        return [
+            'Mint a join token server-side with Agence104\LiveKit\AccessToken —',
+            "  scope every room name to \"{$prefix}…\" and refuse anything else.",
+            '',
+            'Two limits of the shared SFU, both by design in OSS LiveKit:',
+            '  · An API key is NOT restricted to a room. Any valid key can mint a',
+            "    token for any room, so \"{$prefix}\" is a convention your app must",
+            '    enforce — it is not enforced by the server.',
+            '  · Webhooks are signed with a single key and every event is sent to',
+            '    every registered URL. Drop events whose room falls outside your',
+            '    prefix, and expect to see other apps\' rooms if any are wired.',
+        ];
+    }
+
     protected function getAiInstructions(ConfigData $config): array
     {
         $hasPostgres = $config->getDatabase() === DatabaseDriver::POSTGRESQL ||
@@ -584,4 +686,5 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
     case AI = 'ai';
     case MCP = 'mcp';
     case BOOST = 'boost';
+    case MEET = 'meet';
 }

@@ -9,6 +9,7 @@ use App\Traits\InteractsWithMeet;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesMeetWireTarget;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
@@ -23,7 +24,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class MeetUnwireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMeet, InteractsWithToolRegistry, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMeet, InteractsWithToolRegistry, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesMeetWireTarget, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'meet:unwire
         {environment=local : Environment whose Meet wiring to remove}
