@@ -530,6 +530,7 @@ data:
         url: http://prometheus.larakube-shared.svc.cluster.local:9090
         isDefault: true
         editable: false
+        uid: prometheus
 @if($withLogs ?? true)
       - name: Loki
         type: loki
@@ -537,6 +538,8 @@ data:
         url: http://loki.larakube-shared.svc.cluster.local:3100
         editable: false
 @endif
+@include('k8s.monitoring.grafana-dashboards')
+@include('k8s.monitoring.grafana-alerting')
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -571,6 +574,10 @@ spec:
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources/
+            - name: dashboards
+              mountPath: /etc/grafana/provisioning/dashboards/
+            - name: alerting
+              mountPath: /etc/grafana/provisioning/alerting/
           readinessProbe:
             httpGet:
               path: /api/health
@@ -587,6 +594,12 @@ spec:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+        - name: alerting
+          configMap:
+            name: grafana-alerting
 ---
 apiVersion: v1
 kind: Service

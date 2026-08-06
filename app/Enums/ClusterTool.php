@@ -537,8 +537,16 @@ enum ClusterTool: string
                 'deployment' => 'grafana',
                 'namespace' => 'larakube-shared',
                 'secret' => 'grafana-smtp',
+                // Grafana's Go mailer supports STARTTLS only — it has no
+                // implicit-TLS handshake, so Stalwart's 465 submissions listener
+                // deadlocks every send (same trap as SendRec/record). Point it at
+                // Stalwart's 587 submission (STARTTLS) listener instead: pin the
+                // port and STARTTLS policy statically, and drop the `port` var so
+                // the 465 endpoint value is never applied to GF_SMTP_PORT.
                 'static' => [
                     'GF_SMTP_ENABLED' => 'true',
+                    'GF_SMTP_PORT' => '587',
+                    'GF_SMTP_STARTTLS_POLICY' => 'OpportunisticStartTLS',
                 ],
                 'vars' => [
                     'host' => 'GF_SMTP_HOST',

@@ -97,6 +97,9 @@ spec:
     metadata:
       labels:
         app: traefik
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
     spec:
       serviceAccountName: traefik-ingress-controller
       containers:
@@ -110,6 +113,9 @@ spec:
             - --entrypoints.web.http.redirections.entrypoint.scheme=https
             - --entrypoints.websecure.Address=:443
             - --entrypoints.websecure.http.tls=true
+            - --entrypoints.metrics.Address=:8082
+            - --metrics.prometheus=true
+            - --metrics.prometheus.entryPoint=metrics
             - --providers.kubernetesingress
             - --providers.file.directory=/config
             - --providers.file.watch=true
@@ -121,6 +127,8 @@ spec:
               containerPort: 443
             - name: admin
               containerPort: 8080
+            - name: metrics
+              containerPort: 8082
           volumeMounts:
             - name: config
               mountPath: /config

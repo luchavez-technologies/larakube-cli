@@ -353,11 +353,6 @@ class MailWireCommand extends Command
             'secure' => 'false',
         ];
 
-        // Grafana combines host & port into a single GF_SMTP_HOST=host:port
-        if ($tool === ClusterTool::MONITOR) {
-            $logical['host'] = $endpoint['host'].':'.$endpoint['port'];
-        }
-
         $literals = '';
         foreach ($schema['vars'] as $key => $envName) {
             if (isset($logical[$key])) {
