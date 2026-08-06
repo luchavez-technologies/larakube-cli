@@ -97,7 +97,11 @@ trait ManagesToolFirewallPorts
 
         // ufw's own range syntax uses ':' ("49160:49179/udp"), not the '-' DO's
         // API expects ("49160-49179") — the only place the two need to diverge.
-        $script = "set -e\n".collect($ports)
+        $sysctl = ($service === SharedClusterService::CHAT)
+            ? "sysctl -w net.core.rmem_max=5000000 && sysctl -w net.core.wmem_max=5000000\n"
+            : '';
+
+        $script = "set -e\n".$sysctl.collect($ports)
             ->map(fn (array $p) => 'ufw allow '.str_replace('-', ':', $p['ports']).'/'.$p['protocol'])
             ->implode("\n")."\nufw reload";
 

@@ -4,7 +4,6 @@ namespace App\Commands\Docs;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
-use App\Enums\FrontendStack;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
@@ -78,7 +77,7 @@ class DocsNewCommand extends Command
             name: $appName,
             path: $projectDir,
             framework: AppFramework::DOCUSAURUS,
-            frontend: FrontendStack::DOCUSAURUS,
+            frontend: null,
         );
 
         $this->saveProjectConfig($projectDir, $config);

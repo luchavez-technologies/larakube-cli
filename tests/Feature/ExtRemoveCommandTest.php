@@ -103,10 +103,14 @@ test('ext:remove prompts with select dropdown when no extension is passed and ad
         $command->setInput($input);
         $command->setOutput(new Illuminate\Console\OutputStyle($input, $output));
 
-        $code = $command->handle();
-        expect($code)->toBe(0);
+        try {
+            $code = $command->handle();
+            expect($code)->toBe(0);
 
-        $saved = ConfigData::loadFromFile($dir);
-        expect($saved->getAdditionalExtensions())->toBe(['imagick']);
+            $saved = ConfigData::loadFromFile($dir);
+            expect($saved->getAdditionalExtensions())->toBe(['imagick']);
+        } finally {
+            Laravel\Prompts\Prompt::interactive(false);
+        }
     });
 });

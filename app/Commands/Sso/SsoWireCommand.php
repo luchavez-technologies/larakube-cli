@@ -29,6 +29,7 @@ class SsoWireCommand extends Command
         {environment=local : Environment whose deployment to wire}
         {--tool= : The tool to wire to Zitadel}
         {--engine= : Specific engine to target ("matrix")}
+        {--instance= : Specific instance to target}
         {--context= : Target a specific kube-context}
         {--project= : Zitadel project name to register the OIDC app under (default: LaraKube Shared Tools)}
         {--admin-email= : Email of the user to grant the tool\'s admin role to (tools with ssoAdminRoles(), e.g. drive)}
@@ -62,7 +63,8 @@ class SsoWireCommand extends Command
         }
 
         $engine = $this->resolveToolEngine($kubectl, $tool);
-        $schema = $tool->oidcEnv($engine);
+        $instance = (string) ($this->option('instance') ?: 'main');
+        $schema = $tool->oidcEnv($engine, $instance);
         if ($schema === null) {
             return 1;
         }

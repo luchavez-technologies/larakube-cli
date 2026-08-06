@@ -27,9 +27,6 @@ enum FrontendStack: string implements HasCommandOptions, HasKubernetesFiles, Has
             self::VUE => 'Vue',
             self::SVELTE => 'Svelte',
             self::LIVEWIRE => 'Livewire',
-            self::ASTRO => 'Astro',
-            self::VITE => 'Vite',
-            self::DOCUSAURUS => 'Docusaurus',
         };
     }
 

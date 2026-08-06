@@ -154,6 +154,11 @@ fi
 INTERACTIVE="-i"
 [ -t 0 ] && INTERACTIVE="-it"
 
+# Test runners (pest/phpunit) must run in non-TTY mode (-i) so Docker pseudo-TTY channels do not hang in terminal
+if [[ "$*" == *"vendor/bin/pest"* || "$*" == *"phpunit"* ]]; then
+    INTERACTIVE="-i"
+fi
+
 # Pass GITHUB_TOKEN if it exists on the host
 ENV_ARGS=""
 if [ ! -z "$GITHUB_TOKEN" ]; then

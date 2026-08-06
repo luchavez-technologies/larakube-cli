@@ -64,9 +64,13 @@ trait ProvisionsK3sNode
         echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
     fi
 
-    echo "Enabling IP Forwarding..."
+    echo "Enabling IP Forwarding & WebRTC High-Throughput Socket Buffers..."
     sysctl -w net.ipv4.ip_forward=1
+    sysctl -w net.core.rmem_max=5000000
+    sysctl -w net.core.wmem_max=5000000
     grep -qxF 'net.ipv4.ip_forward=1' /etc/sysctl.conf || echo 'net.ipv4.ip_forward=1' | tee -a /etc/sysctl.conf
+    grep -qxF 'net.core.rmem_max=5000000' /etc/sysctl.conf || echo 'net.core.rmem_max=5000000' | tee -a /etc/sysctl.conf
+    grep -qxF 'net.core.wmem_max=5000000' /etc/sysctl.conf || echo 'net.core.wmem_max=5000000' | tee -a /etc/sysctl.conf
 
     echo "Installing K3s..."
     {$installK3s}

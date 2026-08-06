@@ -126,7 +126,7 @@ class DigitalOceanFirewallDriver implements CloudFirewallDriver
             .($body !== null ? ' --data '.escapeshellarg((string) json_encode($body)) : '')
             .' '.escapeshellarg("https://api.digitalocean.com/v2{$path}");
 
-        $out = Process::run($cmd)->output();
+        $out = Process::timeout(120)->run($cmd)->output();
         $nl = strrpos($out, "\n");
         if ($nl === false) {
             return [0, null];

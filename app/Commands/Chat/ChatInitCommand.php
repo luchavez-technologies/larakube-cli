@@ -133,6 +133,7 @@ class ChatInitCommand extends Command
             'livekitApiKey' => $livekitApiKey,
             'livekitApiSecret' => $livekitApiSecret,
             'hostPort' => ! $this->option('no-host-port'),
+            'externalIp' => $this->toolFirewallCloud($env)?->ip ?? gethostbyname($host),
             'smtp' => $smtp,
             'oidc' => $oidc,
         ])->render();

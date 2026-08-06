@@ -4,7 +4,6 @@ namespace App\Commands\Vite;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
-use App\Enums\FrontendStack;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
@@ -80,7 +79,7 @@ class ViteNewCommand extends Command
             name: $appName,
             path: $projectDir,
             framework: AppFramework::VITE,
-            frontend: FrontendStack::VITE,
+            frontend: null,
         );
 
         $this->saveProjectConfig($projectDir, $config);

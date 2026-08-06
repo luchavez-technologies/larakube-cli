@@ -416,7 +416,7 @@ enum ClusterTool: string
      *
      * @return array{deployment: string, namespace: string, secret: string, static?: array<string, string>, vars: array<string, string>}|null
      */
-    public function smtpEnv(?string $engine = null): ?array
+    public function smtpEnv(?string $engine = null, ?string $instance = null): ?array
     {
         return match ($this) {
             self::SHEETS => [
@@ -870,7 +870,7 @@ enum ClusterTool: string
      *
      * @return array{deployment: string, namespace: string, secret: string, static?: array<string, string>, vars: array<string, string>, redirect_path: string, public_client?: bool}|null
      */
-    public function oidcEnv(?string $engine = null): ?array
+    public function oidcEnv(?string $engine = null, ?string $instance = null): ?array
     {
         return match ($this) {
             self::MONITOR => [

@@ -199,6 +199,10 @@ stringData:
     total-quota=1200
     min-port=49160
     max-port=49179
+@if($externalIp ?? null)
+    external-ip={{ $externalIp }}
+    relay-ip={{ $externalIp }}
+@endif
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -279,14 +283,6 @@ stringData:
       tcp_port: 7881
       udp_port: 7882
       use_external_ip: true
-@if($turnSecret ?? null)
-    turn:
-      enabled: true
-      domain: "{{ $host }}"
-      tls_port: 3478
-      udp_port: 3478
-      secret: "{{ $turnSecret }}"
-@endif
     keys:
       "{{ $livekitApiKey }}": "{{ $livekitApiSecret }}"
 ---

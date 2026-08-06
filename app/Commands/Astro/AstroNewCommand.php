@@ -4,7 +4,6 @@ namespace App\Commands\Astro;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
-use App\Enums\FrontendStack;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
@@ -75,7 +74,7 @@ class AstroNewCommand extends Command
             name: $appName,
             path: $projectDir,
             framework: AppFramework::ASTRO,
-            frontend: FrontendStack::ASTRO,
+            frontend: null,
         );
 
         $this->saveProjectConfig($projectDir, $config);

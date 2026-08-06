@@ -76,7 +76,7 @@ test('env without --edit on an existing environment stays a no-op and points at 
 test('env --edit re-runs the wizard prefilled with current values and leaves them unchanged on accept', function () {
     saveEnvEditConfig($this->tempDir);
 
-    $this->artisan('env', ['name' => 'staging', '--edit' => true])
+    $this->artisan('env', ['name' => 'staging', '--edit' => true, '--no-interaction' => true])
         ->expectsOutputToContain("Editing environment 'staging'...")
         ->assertExitCode(0);
 
@@ -115,7 +115,7 @@ test('env --edit with an existing registry re-confirms it (default flips to true
     // GathersEnvironmentData::gatherEnvironmentData) precisely so this
     // doesn't silently skip past an existing registry — it re-confirms
     // and re-prompts provider/image (which is what "review" means here).
-    $this->artisan('env', ['name' => 'staging', '--edit' => true])
+    $this->artisan('env', ['name' => 'staging', '--edit' => true, '--no-interaction' => true])
         ->assertExitCode(0);
 
     $reloaded = ConfigData::loadFromFile($this->tempDir);

@@ -30,6 +30,7 @@ class MailWireCommand extends Command
         {environment=local : Environment whose mail server to target}
         {--tool= : The tool to wire to Stalwart}
         {--engine= : Specific engine to target ("matrix")}
+        {--instance= : Specific instance to target}
         {--all          : Wire every installed SMTP-capable tool}
         {--context=     : Target a specific kube-context}
         {--sender=      : Sender/login address (default: noreply@<domain>)}
@@ -328,7 +329,8 @@ class MailWireCommand extends Command
         }
 
         $engine = $this->resolveToolEngine($kubectl, $tool);
-        $schema = $tool->smtpEnv($engine);
+        $instance = (string) ($this->option('instance') ?: 'main');
+        $schema = $tool->smtpEnv($engine, $instance);
         if ($schema === null) {
             return false;
         }
