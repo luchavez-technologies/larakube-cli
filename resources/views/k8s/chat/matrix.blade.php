@@ -279,6 +279,14 @@ stringData:
       tcp_port: 7881
       udp_port: 7882
       use_external_ip: true
+@if($turnSecret ?? null)
+    turn:
+      enabled: true
+      domain: "{{ $host }}"
+      tls_port: 3478
+      udp_port: 3478
+      secret: "{{ $turnSecret }}"
+@endif
     keys:
       "{{ $livekitApiKey }}": "{{ $livekitApiSecret }}"
 ---
@@ -302,7 +310,7 @@ spec:
       labels:
         app: chat-livekit
       annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $livekitApiKey.$livekitApiSecret.$host.$__tplHash), 0, 16) }}"
+        larakube.io/config-checksum: "{{ substr(hash('sha256', $livekitApiKey.$livekitApiSecret.($turnSecret ?? '').$host.$__tplHash), 0, 16) }}"
     spec:
       containers:
         - name: livekit
@@ -310,6 +318,7 @@ spec:
           args: ["--config", "/etc/livekit.yaml"]
           ports:
             - containerPort: 7880
+            - { containerPort: 7881, protocol: TCP, @if($hostPort ?? true)hostPort: 7881, @endif name: rtc-tcp }
             - { containerPort: 7882, protocol: UDP, @if($hostPort ?? true)hostPort: 7882, @endif name: rtc-udp }
           volumeMounts:
             - name: config

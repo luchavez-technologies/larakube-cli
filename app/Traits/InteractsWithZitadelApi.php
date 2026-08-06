@@ -437,9 +437,25 @@ trait InteractsWithZitadelApi
      * login on 2026-07-30 (larakube_roles: ["openbao-admin"] appeared in the
      * id_token) — see plans/active/openbao-hardening.md.
      *
+     * Also emits the SAME array under the standard `groups` claim. Headlamp
+     * is the one tool in this system that doesn't do its own OIDC role
+     * check — it uses Kubernetes impersonation (Impersonate-User/-Group
+     * headers), which means the K8s API server itself, not Headlamp,
+     * authorizes each request against whatever ClusterRoleBindings name the
+     * impersonated user or group. `groups` is the claim Headlamp reads (it
+     * requests the `groups` scope — the DASHBOARD tool's oidcEnv()
+     * static block) to build Impersonate-Group. A static ClusterRoleBinding
+     * naming Group "dashboard-admin" (dashboard.headlamp.blade.php) is what
+     * actually turns that into cluster-admin — this Action only has to get
+     * the role key into the token. Root-caused live 2026-08-06: granting
+     * dashboard-admin in Zitadel alone did nothing, because no K8s-level
+     * binding existed for the impersonated identity at all — see
+     * project_larakube... memory / this session for the "Lost connection to
+     * the cluster" symptom that led here.
+     *
      * Fires for EVERY OIDC client in the org, not just RBAC-gated tools —
      * Zitadel Actions/Flows have no project or app scope. Harmless for tools
-     * that don't read the claim, but it does mean this touches every
+     * that don't read either claim, but it does mean this touches every
      * existing tool's login, so the script must degrade to a no-op (not an
      * error) for a user with zero grants.
      */
@@ -456,6 +472,7 @@ trait InteractsWithZitadelApi
             });
           });
           api.v1.claims.setClaim("larakube_roles", roles);
+          api.v1.claims.setClaim("groups", roles);
         }
         JS;
 
@@ -470,10 +487,12 @@ trait InteractsWithZitadelApi
         // ensureRbacGating() didn't check this method's return value).
         $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/management/v1/actions/_search", ['queries' => []]);
         $actionId = null;
+        $foundScript = null;
         if ($search->successful()) {
             foreach ($search->json('result', []) as $action) {
                 if (($action['name'] ?? null) === $name) {
                     $actionId = $action['id'];
+                    $foundScript = $action['script'] ?? null;
                     break;
                 }
             }
@@ -489,6 +508,18 @@ trait InteractsWithZitadelApi
                 return false;
             }
             $actionId = $create->json('id');
+        } elseif ($foundScript !== $script) {
+            // The Action already exists but predates the groups claim
+            // (added 2026-08-06) — push the new script instead of silently
+            // leaving the old one in place, same self-heal as
+            // zitadelEnsureOcisRolesAction().
+            $update = Http::withToken($pat)->timeout(15)->put(
+                "https://{$host}/management/v1/actions/{$actionId}",
+                ['name' => $name, 'script' => $script, 'fieldMask' => ['paths' => ['name', 'script']]],
+            );
+            if ($update->failed() && ! str_contains($update->body(), 'No Changes')) {
+                return false;
+            }
         }
 
         // Complement Token flow (type 2), Pre Userinfo creation (trigger 4)

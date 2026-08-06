@@ -29,10 +29,11 @@ test('data:init deploys Directus with Postgres, Redis, and SeaweedFS S3', functi
 
     $this->artisan(DataInitCommand::class, [
         'environment' => 'local',
+        '--engine' => 'directus',
         '--no-interaction' => true,
     ])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Directus Headless CMS stack is live')
+        ->expectsOutputToContain('Directus Data / Headless CMS stack is live')
         ->expectsOutputToContain('https://data.');
 });
 
@@ -44,6 +45,7 @@ test('data manifest wires the Commons Redis via the generic REDIS var, not CACHE
     // localhost default. Non-fatal (WARN, not ERROR) but every single HTTP
     // request paid a ~3.6s doomed-connection retry tax, confirmed live.
     $manifest = view('k8s.data.shared', [
+        'engine' => 'directus',
         'host' => 'data.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 4,
@@ -159,6 +161,7 @@ test('data:init omits zitadel from AUTH_PROVIDERS until sso:wire has actually re
 
     $this->artisan(DataInitCommand::class, [
         'environment' => 'local',
+        '--engine' => 'directus',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
@@ -172,6 +175,7 @@ test('data:init includes zitadel in AUTH_PROVIDERS once sso:wire has registered 
 
     $this->artisan(DataInitCommand::class, [
         'environment' => 'local',
+        '--engine' => 'directus',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 

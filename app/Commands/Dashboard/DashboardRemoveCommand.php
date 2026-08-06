@@ -23,7 +23,8 @@ class DashboardRemoveCommand extends AbstractToolRemoveCommand
             'Removing CNCF Headlamp Control Plane resources...',
             "{$kubectl} delete deployment/dashboard-headlamp service/dashboard-headlamp "
             .'ingress/dashboard secret/dashboard-headlamp-oidc serviceaccount/dashboard-headlamp '
-            ."clusterrolebinding/dashboard-headlamp-admin -n {$namespace} --ignore-not-found",
+            .'clusterrolebinding/dashboard-headlamp-admin clusterrolebinding/dashboard-oidc-admins '
+            ."-n {$namespace} --ignore-not-found",
         );
     }
 }

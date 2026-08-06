@@ -645,7 +645,21 @@ enum ClusterTool: string
                     'from' => 'EMAIL_FROM_ADDRESS',
                 ],
             ],
-            self::DATA => [
+            self::DATA => $engine === 'pocketbase' ? [
+                'deployment' => $this->deploymentName($instance, 'pocketbase'),
+                'namespace' => $this->namespace(),
+                'secret' => $instance && $instance !== 'main' ? "data-smtp-{$instance}" : 'data-smtp',
+                'static' => [
+                    'POCKETBASE_SMTP_ENABLED' => 'true',
+                ],
+                'vars' => [
+                    'host' => 'POCKETBASE_SMTP_HOST',
+                    'port' => 'POCKETBASE_SMTP_PORT',
+                    'user' => 'POCKETBASE_SMTP_USER',
+                    'password' => 'POCKETBASE_SMTP_PASS',
+                    'from' => 'POCKETBASE_SMTP_FROM',
+                ],
+            ] : [
                 'deployment' => 'data-directus',
                 'namespace' => $this->namespace(),
                 'secret' => 'data-smtp',
@@ -1160,7 +1174,20 @@ enum ClusterTool: string
                 'vars' => [],
                 'redirect_path' => '/v1/auth/oidc/oidc/callback',
             ],
-            self::DATA => [
+            self::DATA => $engine === 'pocketbase' ? [
+                'deployment' => $this->deploymentName($instance, 'pocketbase'),
+                'namespace' => $this->namespace(),
+                'secret' => $instance && $instance !== 'main' ? "data-oidc-{$instance}" : 'data-oidc',
+                'static' => [
+                    'POCKETBASE_OIDC_PROVIDERS' => 'zitadel',
+                ],
+                'vars' => [
+                    'client_id' => 'POCKETBASE_OIDC_CLIENT_ID',
+                    'client_secret' => 'POCKETBASE_OIDC_CLIENT_SECRET',
+                    'issuer' => 'POCKETBASE_OIDC_ISSUER',
+                ],
+                'redirect_path' => '/api/oauth2-callback',
+            ] : [
                 'deployment' => 'data-directus',
                 'namespace' => $this->namespace(),
                 'secret' => 'data-oidc',
@@ -1305,13 +1332,13 @@ enum ClusterTool: string
     /**
      * The canonical Kubernetes Deployment name for this tool.
      */
-    public function deploymentName(?string $instance = null): string
+    public function deploymentName(?string $instance = null, ?string $engine = null): string
     {
         $base = match ($this) {
             self::ANALYTICS => 'analytics-umami',
             self::CHAT => 'chat-synapse',
             self::CRM => 'crm-twenty',
-            self::DATA => 'data-directus',
+            self::DATA => $engine === 'pocketbase' ? 'data-pocketbase' : 'data-directus',
             self::DESK => 'desk-freescout',
             self::DRIVE => 'drive-ocis',
             self::ERRORS => 'glitchtip-web',
@@ -1396,8 +1423,12 @@ enum ClusterTool: string
      *
      * @return array{namespace: string, secret: string, key: string}|null
      */
-    public function dbSecretRef(?string $instance = null): ?array
+    public function dbSecretRef(?string $instance = null, ?string $engine = null): ?array
     {
+        if ($this === self::DATA && $engine === 'pocketbase') {
+            return null;
+        }
+
         $ref = match ($this) {
             self::DATA => ['namespace' => $this->namespace(), 'secret' => 'data-secrets', 'key' => 'db-password'],
             self::SIGN => ['namespace' => $this->namespace(), 'secret' => 'sign-documenso-secrets', 'key' => 'db-password'],
@@ -1423,9 +1454,9 @@ enum ClusterTool: string
     }
 
     /** @return list<string> */
-    public function commonsDatabases(?string $instance = null): array
+    public function commonsDatabases(?string $instance = null, ?string $engine = null): array
     {
-        $list = $this->commonsDatabaseList();
+        $list = $this->commonsDatabaseList($engine);
         if ($instance === null || $instance === '' || $instance === 'main') {
             return $list;
         }

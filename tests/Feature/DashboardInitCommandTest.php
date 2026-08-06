@@ -98,6 +98,32 @@ test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG
         ]);
 });
 
+test('dashboard manifest binds cluster-admin to the impersonated dashboard-admin group, not just the ServiceAccount', function () {
+    // Regression for a real live gap (2026-08-06): granting dashboard-admin
+    // via sso:grant did nothing on the cluster — Headlamp authorizes each
+    // API call via Kubernetes impersonation (Impersonate-User/-Group), so
+    // the K8s API server checks the IMPERSONATED identity's own bindings,
+    // not the calling ServiceAccount's. With no ClusterRoleBinding naming
+    // the "dashboard-admin" group, every request 403'd ("Lost connection to
+    // the cluster" in the UI) no matter what Zitadel said. This binding —
+    // paired with zitadelEnsureRbacAction() emitting the role key under the
+    // `groups` claim Headlamp forwards as Impersonate-Group — is what
+    // actually grants access.
+    $manifest = view('k8s.dashboard.headlamp', [
+        'host' => 'dashboard.example.test',
+        'appName' => 'Dashboard',
+        'logoUrl' => null,
+        'oidc' => null,
+        'vpnOnly' => false,
+        'isLocal' => true,
+        'proxied' => false,
+    ])->render();
+
+    expect($manifest)->toContain('dashboard-oidc-admins')
+        ->and($manifest)->toContain('kind: Group')
+        ->and($manifest)->toContain('name: dashboard-admin');
+});
+
 test('dashboard:remove deletes Headlamp resources', function () {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),

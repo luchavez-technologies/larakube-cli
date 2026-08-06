@@ -31,6 +31,30 @@ subjects:
     name: dashboard-headlamp
     namespace: larakube-shared
 ---
+# Grants the OIDC-impersonated identity, not the ServiceAccount above, actual
+# cluster-admin. Headlamp authenticates its own API calls as the ServiceAccount
+# but sends them with Impersonate-User/-Group headers for the logged-in user,
+# so the API server authorizes each request as THAT identity — the
+# ServiceAccount's own cluster-admin binding only covers impersonation itself,
+# not what an impersonated user can do. "dashboard-admin" is the Zitadel
+# project role key (ClusterTool::DASHBOARD->rbacRoles()); sso:grant grants it
+# in Zitadel, and zitadelEnsureRbacAction() flattens it into this token's
+# `groups` claim, which Headlamp forwards as Impersonate-Group. Static and
+# unconditional — safe to apply whether or not OIDC is currently wired, since
+# the group name never appears in an impersonation header without it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dashboard-oidc-admins
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: Group
+    name: dashboard-admin
+    apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

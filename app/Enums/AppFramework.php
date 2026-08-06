@@ -21,6 +21,9 @@ enum AppFramework: string implements HasLabel
             self::AXUM => 'Axum (Rust)',
             self::NESTJS => 'NestJS',
             self::ADONISJS => 'AdonisJS',
+            self::ASTRO => 'Astro',
+            self::VITE => 'Vite',
+            self::DOCUSAURUS => 'Docusaurus',
         };
     }
 
@@ -225,4 +228,7 @@ enum AppFramework: string implements HasLabel
     case AXUM = 'axum';
     case NESTJS = 'nestjs';
     case ADONISJS = 'adonisjs';
+    case ASTRO = 'astro';
+    case VITE = 'vite';
+    case DOCUSAURUS = 'docusaurus';
 }

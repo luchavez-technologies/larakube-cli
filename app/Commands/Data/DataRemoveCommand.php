@@ -22,10 +22,17 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
+        $instance = (string) ($this->option('instance') ?: 'main');
+        $secretName = $instance !== 'main' ? "data-secrets-{$instance}" : 'data-secrets';
+        $smtpSecret = $instance !== 'main' ? "data-smtp-{$instance}" : 'data-smtp';
+        $oidcSecret = $instance !== 'main' ? "data-oidc-{$instance}" : 'data-oidc';
+
         return $this->removeResources(
-            'Removing Directus resources...',
-            "{$kubectl} delete deployment/data-directus service/data ingress/data "
-            ."secret/data-secrets secret/data-smtp secret/data-oidc -n {$namespace} --ignore-not-found",
+            'Removing Data resources...',
+            "{$kubectl} delete deployment/data-directus deployment/data-directus-{$instance} "
+            ."deployment/data-pocketbase deployment/data-pocketbase-{$instance} "
+            ."service/data service/data-{$instance} ingress/data ingress/data-{$instance} "
+            ."secret/{$secretName} secret/{$smtpSecret} secret/{$oidcSecret} -n {$namespace} --ignore-not-found",
         );
     }
 }

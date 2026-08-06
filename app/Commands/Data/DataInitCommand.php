@@ -20,6 +20,9 @@ use App\Traits\SyncsClusterSecrets;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+
+use function Laravel\Prompts\select;
+
 use LaravelZero\Framework\Commands\Command;
 
 class DataInitCommand extends Command
@@ -28,12 +31,14 @@ class DataInitCommand extends Command
 
     protected $signature = 'data:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
+        {--engine=   : Target data engine — "pocketbase" (default) or "directus"}
+        {--instance=main : Named instance identifier for multi-instance deployments}
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Data (example.com → prefix.example.com)}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG_DEFAULT_ON;
 
-    protected $description = 'Deploy the Directus Headless CMS stack into larakube-shared';
+    protected $description = 'Deploy a Data / Headless CMS stack (PocketBase or Directus) into larakube-shared';
 
     public function handle(): int
     {
@@ -44,6 +49,8 @@ class DataInitCommand extends Command
 
     protected function deployData(): int
     {
+        $engine = $this->resolveEngine();
+        $instance = (string) ($this->option('instance') ?: 'main');
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
@@ -58,14 +65,12 @@ class DataInitCommand extends Command
             return 1;
         }
 
-        // Directus requires Postgres, Redis, and SeaweedFS (S3).
-        if (! $this->ensureCommons(['postgres', 'redis'])) {
-            return 1;
-        }
-
         $s3Creds = $this->readCommonsS3Credentials();
         $s3Key = $s3Creds['access'] ?? 'seaweedfs-access-key';
         $s3Secret = $s3Creds['secret'] ?? 'seaweedfs-secret-key';
+
+        $secretName = $instance !== 'main' ? "data-secrets-{$instance}" : 'data-secrets';
+        $deployName = ClusterTool::DATA->deploymentName($instance, $engine);
 
         $secret = $this->readDataSecret($kubectl, $ns, 'secret') ?? Str::uuid()->toString();
         $key = $this->readDataSecret($kubectl, $ns, 'key') ?? Str::uuid()->toString();
@@ -76,20 +81,52 @@ class DataInitCommand extends Command
         $domain = count($parts) > 2 ? implode('.', array_slice($parts, 1)) : $host;
         $adminEmail = $this->readDataSecret($kubectl, $ns, 'admin-email') ?? "admin@{$domain}";
 
-        $dbName = 'data_directus';
+        $bucket = ClusterTool::DATA->commonsBuckets($instance)[0] ?? 'data-storage';
 
-        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
-            return 1;
+        if ($engine === 'directus') {
+            if (! $this->ensureCommons(['postgres', 'redis'])) {
+                return 1;
+            }
+
+            $dbName = ClusterTool::DATA->commonsDatabases($instance, $engine)[0] ?? 'data_directus';
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
+                return 1;
+            }
+
+            $redisIndex = $this->allocateCommonsRedisIndex($dbName);
+        } else {
+            // PocketBase uses embedded SQLite, so no Postgres or Redis required
+            $dbName = 'SQLite (embedded)';
+            $redisIndex = null;
         }
 
-        $redisIndex = $this->allocateCommonsRedisIndex('data_directus');
+        $pvcName = $instance !== 'main' ? "data-pocketbase-pvc-{$instance}" : 'data-pocketbase-pvc';
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secret, $key, $dbPassword, $adminEmail, $adminPassword, $s3Key, $s3Secret) {
-            $cmd = "{$kubectl} create secret generic data-secrets -n {$ns} "
+        if ($engine === 'pocketbase') {
+            $this->withSpin("Ensuring PVC {$pvcName}...", function () use ($kubectl, $ns, $pvcName) {
+                $cmd = "{$kubectl} apply -f - <<EOF\n"
+                    ."apiVersion: v1\n"
+                    ."kind: PersistentVolumeClaim\n"
+                    ."metadata:\n"
+                    ."  name: {$pvcName}\n"
+                    ."  namespace: {$ns}\n"
+                    ."spec:\n"
+                    ."  accessModes:\n"
+                    ."    - ReadWriteOnce\n"
+                    ."  resources:\n"
+                    ."    requests:\n"
+                    ."      storage: 2Gi\n"
+                    .'EOF';
+                Process::run($cmd);
+            });
+        }
+
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $secret, $key, $dbPassword, $adminEmail, $adminPassword, $s3Key, $s3Secret) {
+            $cmd = "{$kubectl} create secret generic {$secretName} -n {$ns} "
                 .'--from-literal=secret='.escapeshellarg($secret).' '
                 .'--from-literal=key='.escapeshellarg($key).' '
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
@@ -103,38 +140,49 @@ class DataInitCommand extends Command
 
         // Store to OpenBao vault if available
         if ($this->secretsBackendAvailable($kubectl)) {
-            $this->pushClusterSecret($kubectl, 'DATA_DIRECTUS_SECRET', $secret, $env);
-            $this->pushClusterSecret($kubectl, 'DATA_DIRECTUS_KEY', $key, $env);
-            $this->pushClusterSecret($kubectl, 'DATA_DIRECTUS_DB_PASSWORD', $dbPassword, $env);
-            $this->pushClusterSecret($kubectl, 'DATA_DIRECTUS_ADMIN_EMAIL', $adminEmail, $env);
-            $this->pushClusterSecret($kubectl, 'DATA_DIRECTUS_ADMIN_PASSWORD', $adminPassword, $env);
-            $this->pushClusterSecret($kubectl, 'DATA_DIRECTUS_S3_KEY', $s3Key, $env);
-            $this->pushClusterSecret($kubectl, 'DATA_DIRECTUS_S3_SECRET', $s3Secret, $env);
+            $prefix = $engine === 'pocketbase' ? 'DATA_POCKETBASE' : 'DATA_DIRECTUS';
+            if ($instance !== 'main') {
+                $prefix .= '_'.strtoupper(str_replace('-', '_', $instance));
+            }
+
+            $this->pushClusterSecret($kubectl, "{$prefix}_SECRET", $secret, $env);
+            $this->pushClusterSecret($kubectl, "{$prefix}_KEY", $key, $env);
+            $this->pushClusterSecret($kubectl, "{$prefix}_ADMIN_EMAIL", $adminEmail, $env);
+            $this->pushClusterSecret($kubectl, "{$prefix}_ADMIN_PASSWORD", $adminPassword, $env);
+            $this->pushClusterSecret($kubectl, "{$prefix}_S3_KEY", $s3Key, $env);
+            $this->pushClusterSecret($kubectl, "{$prefix}_S3_SECRET", $s3Secret, $env);
+
+            if ($engine === 'directus') {
+                $this->pushClusterSecret($kubectl, "{$prefix}_DB_PASSWORD", $dbPassword, $env);
+            }
         }
 
-        // AUTH_PROVIDERS must list "zitadel" ONLY once sso:wire has actually
-        // registered it — Directus eagerly constructs an OpenIDAuthDriver for
-        // every listed provider at boot, and an empty client_id/issuer (the
-        // unwired state) crashes the whole process with "Invalid provider
-        // config" rather than degrading gracefully. Confirmed live 2026-08-05.
-        $ssoWired = $this->readClusterSecretKey($kubectl, $ns, 'data-oidc', 'AUTH_ZITADEL_CLIENT_ID') !== null;
+        $ssoWired = $this->readClusterSecretKey($kubectl, $ns, $instance !== 'main' ? "data-oidc-{$instance}" : 'data-oidc', $engine === 'pocketbase' ? 'POCKETBASE_OIDC_CLIENT_ID' : 'AUTH_ZITADEL_CLIENT_ID') !== null;
 
         $manifest = view('k8s.data.shared', [
+            'engine' => $engine,
+            'instance' => $instance,
+            'deployName' => $deployName,
+            'secretName' => $secretName,
+            'pvcName' => $pvcName,
             'host' => $host,
+            'namespace' => $ns,
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
-            'redisIndex' => $redisIndex,
+            'redisIndex' => $redisIndex ?? 0,
             'authProviders' => $ssoWired ? 'local,zitadel' : 'local',
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-data-directus.yaml';
+        $tmp = sys_get_temp_dir()."/larakube-{$deployName}.yaml";
         file_put_contents($tmp, $manifest);
 
+        $engineLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
+
         $rolledOut = $this->withSpin(
-            'Applying Directus manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'data-directus', 180),
+            "Applying {$engineLabel} manifests...",
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deployName, 180),
         );
         @unlink($tmp);
 
@@ -145,14 +193,18 @@ class DataInitCommand extends Command
         $this->registerDeployedTool(ClusterTool::DATA, $kubectl, $host);
 
         $this->laraKubeNewLine();
-        $this->laraKubeInfo('✅ Directus Headless CMS stack is live.');
+        $this->laraKubeInfo("✅ {$engineLabel} Data / Headless CMS stack is live.");
         $this->newLine();
         $this->line("  <fg=gray>Access URL:</>      <fg=blue>https://{$host}</>");
         $this->line("  <fg=gray>Admin Email:</>     <fg=blue>{$adminEmail}</>");
         $this->line("  <fg=gray>Admin Password:</>  <fg=yellow>{$adminPassword}</>");
-        $this->line("  <fg=gray>Database:</>        <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
-        $this->line("  <fg=gray>Redis DB:</>        <fg=blue>{$redisIndex}</>");
-        $this->line('  <fg=gray>Storage:</>         <fg=blue>SeaweedFS S3</> · Bucket <fg=blue>data-storage</>');
+        if ($engine === 'directus') {
+            $this->line("  <fg=gray>Database:</>        <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
+            $this->line("  <fg=gray>Redis DB:</>        <fg=blue>{$redisIndex}</>");
+        } else {
+            $this->line("  <fg=gray>Database:</>        <fg=blue>Embedded SQLite</> · PVC <fg=blue>{$pvcName}</>");
+        }
+        $this->line("  <fg=gray>Storage:</>         <fg=blue>SeaweedFS S3</> · Bucket <fg=blue>{$bucket}</>");
         $this->newLine();
 
         return 0;
@@ -161,5 +213,26 @@ class DataInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::DATA);
+    }
+
+    protected function resolveEngine(): string
+    {
+        $explicit = strtolower((string) $this->option('engine'));
+        if (in_array($explicit, ['pocketbase', 'directus'], true)) {
+            return $explicit;
+        }
+
+        if ($this->option('no-interaction') || $this->option('force')) {
+            return 'pocketbase';
+        }
+
+        return select(
+            label: 'Which Data / Headless CMS engine would you like to deploy?',
+            options: [
+                'pocketbase' => 'PocketBase — Ultra-lightweight, zero-paywall, self-contained SQLite backend (Recommended)',
+                'directus' => 'Directus — Full Postgres + Redis + S3 Headless CMS stack',
+            ],
+            default: 'pocketbase',
+        );
     }
 }

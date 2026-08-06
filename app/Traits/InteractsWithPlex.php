@@ -234,6 +234,23 @@ trait InteractsWithPlex
     }
 
     /**
+     * Check if a specific Plex Commons service is scaled to 0, and if so, auto-resume it (scale to 1).
+     */
+    public function ensurePlexServiceRunning(string $service, string $kubectl, string $namespace = 'larakube-plex'): bool
+    {
+        $deployName = "plex-{$service}";
+        $replicas = trim((string) Process::run("{$kubectl} get deployment/{$deployName} -n {$namespace} -o jsonpath='{.spec.replicas}' 2>/dev/null")->output());
+
+        if ($replicas === '0') {
+            Process::run("{$kubectl} scale deployment/{$deployName} --replicas=1 -n {$namespace}");
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Delete a self-hosted PVC, scaling its deployment to 0 first if the
      * delete doesn't complete immediately. A plain `kubectl delete pvc`
      * blocks indefinitely via the pvc-protection finalizer while a pod is

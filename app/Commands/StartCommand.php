@@ -2,8 +2,10 @@
 
 namespace App\Commands;
 
+use App\Contracts\PlexProvisionable;
 use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithEnvironments;
+use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
@@ -11,7 +13,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class StartCommand extends Command
 {
-    use HasConsoleInteraction, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput;
+    use HasConsoleInteraction, InteractsWithEnvironments, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
@@ -33,6 +35,25 @@ class StartCommand extends Command
 
         $environment = $this->argument('environment');
         $namespace = $this->getNamespace($environment);
+
+        // Auto-resume required Plex Commons services if paused
+        if ($config) {
+            $drivers = array_filter([
+                $config->getDatabase(),
+                $config->getCacheDriver(),
+                $config->getScoutDriver(),
+                $config->getObjectStorage(),
+            ]);
+
+            foreach ($drivers as $driver) {
+                if ($driver instanceof PlexProvisionable) {
+                    $service = $driver->commonsServiceName();
+                    if ($service) {
+                        $this->ensurePlexServiceRunning($service, 'kubectl');
+                    }
+                }
+            }
+        }
 
         $this->laraKubeInfo("Resuming services in '{$environment}'...");
 

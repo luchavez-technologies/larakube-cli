@@ -246,7 +246,7 @@ enum SharedClusterService: string
             // and LiveKit's single-port RTC mux. Keep this in lockstep with the
             // port numbers hardcoded in resources/views/k8s/chat/matrix.blade.php
             // (turnserver.conf's min-port/max-port, livekit.yaml's rtc.udp_port).
-            self::CHAT => [3478, '3478/udp', '49160-49179/udp', '7882/udp'],
+            self::CHAT => [3478, '3478/udp', '49160-49179/udp', '7882/udp', 7881],
             default => [],
         };
     }

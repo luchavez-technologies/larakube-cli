@@ -417,6 +417,52 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
         && ! str_contains($request->url(), '_search'));
 });
 
+test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups claim', function () {
+    // Regression for a real live gap (2026-08-06): granting dashboard-admin
+    // in Zitadel did nothing on the cluster, because Headlamp authorizes via
+    // Kubernetes impersonation (Impersonate-User/-Group), not its own OIDC
+    // role check — and flattenLaraKubeRoles only ever emitted larakube_roles,
+    // never the `groups` claim Headlamp forwards as Impersonate-Group. This
+    // asserts an EXISTING (pre-groups) Action gets its script updated in
+    // place, same self-heal as flattenOcisRoles above.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment dashboard-headlamp*' => Process::result(output: 'dashboard-headlamp   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-dashboard*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*set env deployment/dashboard-headlamp*' => Process::result(output: 'deployment.apps/dashboard-headlamp env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/dashboard-headlamp restarted'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
+            $key = data_get($request, 'queries.0.keyQuery.key', '');
+
+            return Http::response(['result' => [['key' => $key]]]);
+        },
+        '*/management/v1/actions/_search' => Http::response(['result' => [
+            ['id' => 'action-rbac', 'name' => 'flattenLaraKubeRoles', 'script' => 'function flattenLaraKubeRoles(ctx, api) { api.v1.claims.setClaim("larakube_roles", []); }'],
+        ]]),
+        '*/management/v1/actions/action-rbac' => Http::response([]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'dashboard', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('wired to Zitadel SSO');
+
+    Http::assertSent(fn ($request) => $request->method() === 'PUT'
+        && str_contains($request->url(), '/management/v1/actions/action-rbac')
+        && str_contains($request['script'], 'setClaim("groups", roles)')
+        && $request['fieldMask'] === ['paths' => ['name', 'script']]);
+});
+
 test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssertion', function () {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),

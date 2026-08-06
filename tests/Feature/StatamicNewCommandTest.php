@@ -5,7 +5,7 @@ use App\Enums\AppFramework;
 // ── AppFramework Enum Tests ──────────────────────────────────────────────────
 
 test('AppFramework has the expected cases', function () {
-    expect(AppFramework::cases())->toHaveCount(12);
+    expect(AppFramework::cases())->toHaveCount(15);
     expect(AppFramework::LARAVEL->value)->toBe('laravel');
     expect(AppFramework::STATAMIC->value)->toBe('statamic');
     expect(AppFramework::WORDPRESS->value)->toBe('wordpress');
