@@ -198,3 +198,81 @@ test('restore without a cluster or flags explains the recovery card', function (
         ->assertExitCode(1)
         ->expectsOutputToContain('backup-recovery.txt');
 });
+
+test('the R2 account id is read from the endpoint, not asked for again', function () {
+    $cmd = new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        public function id(string $e): ?string
+        {
+            return $this->r2AccountId($e);
+        }
+    };
+
+    expect($cmd->id('https://'.str_repeat('a', 32).'.r2.cloudflarestorage.com'))->toBe(str_repeat('a', 32))
+        // Not R2 — bucket creation does not apply.
+        ->and($cmd->id('https://s3.us-west-004.backblazeb2.com'))->toBeNull()
+        // Right host shape, but not a real account id.
+        ->and($cmd->id('https://nope.r2.cloudflarestorage.com'))->toBeNull();
+});
+
+test('creating a bucket that already exists is success, not an error', function () {
+    // Re-running backup:init against a configured destination is normal.
+    Illuminate\Support\Facades\Http::fake([
+        'api.cloudflare.com/*' => Illuminate\Support\Facades\Http::response([
+            'success' => false,
+            'errors' => [['code' => 10004, 'message' => 'The bucket you tried to create already exists.']],
+        ], 400),
+    ]);
+
+    $cmd = new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        /** @return array{ok: bool, message: string} */
+        public function make(): array
+        {
+            return $this->createR2Bucket(str_repeat('a', 32), 'b', 'tok');
+        }
+    };
+
+    expect($cmd->make()['ok'])->toBeTrue()
+        ->and($cmd->make()['message'])->toContain('already exists');
+});
+
+test('a token without R2 permission says exactly which scope is missing', function () {
+    Illuminate\Support\Facades\Http::fake([
+        'api.cloudflare.com/*' => Illuminate\Support\Facades\Http::response([
+            'success' => false,
+            'errors' => [['code' => 10000, 'message' => 'Authentication error']],
+        ], 403),
+    ]);
+
+    $cmd = new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        /** @return array{ok: bool, message: string} */
+        public function make(): array
+        {
+            return $this->createR2Bucket(str_repeat('a', 32), 'b', 'tok');
+        }
+    };
+
+    $result = $cmd->make();
+
+    expect($result['ok'])->toBeFalse()
+        ->and($result['message'])->toContain('Workers R2 Storage');
+});
+
+test('bucket creation is refused for non-R2 endpoints rather than failing obscurely', function () {
+    Process::fake(backupFakes());
+    Illuminate\Support\Facades\Http::fake();
+
+    $this->artisan('backup:init local --no-interaction --create-bucket '
+        .'--endpoint=https://s3.us-west-004.backblazeb2.com '
+        .'--bucket=b --access-key=k --secret-key=s --cloudflare-token=t')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('only supported for Cloudflare R2');
+});

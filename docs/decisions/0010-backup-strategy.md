@@ -67,6 +67,17 @@ R2 expects region `auto` (now the default), and from aws-cli 2.23 the client sen
 `x-amz-checksum-crc32` by default, which R2, B2 and MinIO reject with an opaque signature error.
 `AWS_REQUEST_CHECKSUM_CALCULATION=when_required` restores the older behaviour.
 
+`backup:init --create-bucket` provisions the bucket via the Cloudflare API, following
+`dns:init`'s token handling: prompted for with the exact scope needed
+(**Account · Workers R2 Storage · Edit**), used once, never persisted. The account ID is parsed
+out of the endpoint rather than asked for again. Creating a bucket that already exists is
+treated as success, since re-running `backup:init` is normal.
+
+**Minting the S3 access keys is deliberately NOT automated.** R2 derives them from an API token,
+so creating them programmatically needs a token that can create other tokens — an account-wide
+scope that can grant itself anything. That is a bad trade for saving a one-time dashboard visit,
+especially on a machine holding client data.
+
 ### Encrypted, and the passphrase must leave the machine
 
 Archives are AES-256 encrypted before upload; the destination is a third party's disk. The

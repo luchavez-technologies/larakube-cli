@@ -2,6 +2,7 @@
 
 namespace App\Commands\Backup;
 
+use App\Exceptions\MissingFlagException;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
@@ -33,6 +34,8 @@ class BackupInitCommand extends Command
         {--access-key= : Access key ID}
         {--secret-key= : Secret access key}
         {--region=auto : Region. Cloudflare R2 requires "auto"; most others accept it.}
+        {--cloudflare-token= : Cloudflare API token, to create the R2 bucket for you}
+        {--create-bucket : Create the bucket before configuring (Cloudflare R2 only)}
         {--context=    : Target a specific kube-context}';
 
     protected $description = 'Configure the off-site destination backups are shipped to';
@@ -79,6 +82,14 @@ class BackupInitCommand extends Command
             $this->laraKubeError('Bucket and credentials are all required.');
 
             return 1;
+        }
+
+        // Optional: create the bucket first. Only R2 — the account ID is already
+        // in the endpoint, so this asks for nothing the user has not supplied.
+        if ($this->option('create-bucket') || $this->option('cloudflare-token')) {
+            if (! $this->provisionR2Bucket($endpoint, $bucket)) {
+                return 1;
+            }
         }
 
         // Reuse an existing passphrase: regenerating it would orphan every
@@ -148,6 +159,66 @@ class BackupInitCommand extends Command
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * Create the destination bucket via the Cloudflare API.
+     *
+     * Mirrors dns:init's token handling: prompted for with the exact scope
+     * required, and never persisted — it is used for this one call and
+     * discarded. The backup itself authenticates with the S3 access keys, which
+     * are a different, narrower credential.
+     */
+    protected function provisionR2Bucket(string $endpoint, string $bucket): bool
+    {
+        $accountId = $this->r2AccountId($endpoint);
+
+        if ($accountId === null) {
+            $this->laraKubeError('Bucket creation is only supported for Cloudflare R2.');
+            $this->line('  <fg=gray>The endpoint must look like https://<account-id>.r2.cloudflarestorage.com.');
+            $this->line('  For other providers, create the bucket yourself and drop the flag.</>');
+
+            return false;
+        }
+
+        $token = (string) ($this->option('cloudflare-token') ?? '');
+
+        if ($token === '') {
+            if ($this->cannotPrompt()) {
+                throw new MissingFlagException(
+                    'cloudflare-token',
+                    'a Cloudflare API token that can create R2 buckets',
+                    'larakube backup:init production --create-bucket --cloudflare-token=…',
+                );
+            }
+
+            $this->newLine();
+            $this->info('Create a Cloudflare API token that can make R2 buckets:');
+            $this->line('  1. <fg=blue>https://dash.cloudflare.com/profile/api-tokens</>');
+            $this->line('  2. Create Token → Create Custom Token');
+            $this->line('  3. Permissions: <fg=yellow>Account</> · <fg=yellow>Workers R2 Storage</> · <fg=yellow>Edit</>');
+            $this->line('     <fg=gray>This is only used to create the bucket and is never stored. The');
+            $this->line('     backups themselves authenticate with the S3 keys below, which are a');
+            $this->line('     narrower credential.</>');
+            $this->newLine();
+
+            $token = (string) text(label: 'Cloudflare API token', required: true);
+        }
+
+        $result = ['ok' => false, 'message' => ''];
+        $this->withSpin("Creating R2 bucket '{$bucket}'...", function () use ($accountId, $bucket, $token, &$result) {
+            $result = $this->createR2Bucket($accountId, $bucket, $token);
+        });
+
+        if (! $result['ok']) {
+            $this->laraKubeError($result['message']);
+
+            return false;
+        }
+
+        $this->line("  <fg=gray>{$result['message']}</>");
+
+        return true;
     }
 
     /**

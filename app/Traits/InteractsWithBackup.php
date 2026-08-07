@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -134,6 +135,60 @@ trait InteractsWithBackup
             'AWS_REQUEST_CHECKSUM_CALCULATION' => 'when_required',
             'AWS_RESPONSE_CHECKSUM_VALIDATION' => 'when_required',
         ];
+    }
+
+    /**
+     * The Cloudflare account ID embedded in an R2 endpoint, or null when the
+     * endpoint is not R2. Saves asking for something the user already supplied:
+     * R2 endpoints are always https://<account-id>.r2.cloudflarestorage.com.
+     */
+    protected function r2AccountId(string $endpoint): ?string
+    {
+        $host = (string) parse_url($endpoint, PHP_URL_HOST);
+
+        if (! str_ends_with($host, '.r2.cloudflarestorage.com')) {
+            return null;
+        }
+
+        $id = strstr($host, '.', true);
+
+        return is_string($id) && preg_match('/^[0-9a-f]{32}$/', $id) === 1 ? $id : null;
+    }
+
+    /**
+     * Create an R2 bucket. Idempotent — an existing bucket is success, because
+     * re-running `backup:init` against a configured destination is normal.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    protected function createR2Bucket(string $accountId, string $bucket, string $token): array
+    {
+        $response = Http::withToken($token)
+            ->timeout(30)
+            ->post("https://api.cloudflare.com/client/v4/accounts/{$accountId}/r2/buckets", [
+                'name' => $bucket,
+            ]);
+
+        $body = $response->json();
+
+        if (($body['success'] ?? false) === true) {
+            return ['ok' => true, 'message' => "Created R2 bucket '{$bucket}'."];
+        }
+
+        $errors = $body['errors'] ?? [];
+        $codes = array_column($errors, 'code');
+        $text = implode('; ', array_filter(array_column($errors, 'message')));
+
+        // 10004 is R2's "bucket already exists". Not a failure for us.
+        if (in_array(10004, $codes, true) || str_contains(strtolower($text), 'already exists')) {
+            return ['ok' => true, 'message' => "R2 bucket '{$bucket}' already exists — reusing it."];
+        }
+
+        if ($response->status() === 403 || in_array(10000, $codes, true)) {
+            return ['ok' => false, 'message' => 'The token lacks R2 permission. It needs Account · Workers R2 Storage · Edit.'];
+        }
+
+        return ['ok' => false, 'message' => $text !== '' ? $text : "Cloudflare returned HTTP {$response->status()}."];
     }
 
     /**
