@@ -322,3 +322,113 @@ test('the recovery card appends and never destroys an older passphrase', functio
 
     @unlink($card);
 });
+
+test('backup:schedule refuses before a destination exists', function () {
+    // A nightly job with nowhere to upload fails silently every night, which is
+    // the worst shape a backup problem can take.
+    Process::fake(['*' => Process::result(output: '')]);
+
+    $this->artisan('backup:schedule local --no-interaction')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('No backup destination configured');
+});
+
+test('backup:schedule deploys the CronJob and names the exec permission', function () {
+    Process::fake(backupFakes(['*apply -f *' => Process::result(output: 'created')]));
+
+    $this->artisan('backup:schedule local --no-interaction')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Nightly backups scheduled')
+        // pods/exec is close to root in those pods; it must not be discoverable
+        // only by reading the manifest afterwards.
+        ->expectsOutputToContain('pods/exec');
+});
+
+test('the CronJob covers every volume in the inventory and no others', function () {
+    $volumes = (new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        /** @return array<int, array<string, string>> */
+        public function targets(): array
+        {
+            return $this->backupVolumeTargets();
+        }
+    })->targets();
+
+    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'volumes' => $volumes])->render();
+
+    // One source of truth: the schedule and backup:run must never disagree.
+    foreach ($volumes as $v) {
+        expect($manifest)->toContain("vol-{$v['name']}.tar.gz");
+    }
+
+    expect($manifest)->not->toContain('prometheus');
+});
+
+test('the CronJob refuses to upload a backup with no databases', function () {
+    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'volumes' => []])->render();
+
+    expect($manifest)->toContain('refusing to upload an empty backup')
+        // Same partial-backup guard as backup:run: an empty artifact is a
+        // failure even when the command that produced it exited 0.
+        ->and($manifest)->toContain('is empty')
+        ->and($manifest)->toContain('concurrencyPolicy: Forbid');
+});
+
+test('the CronJob encrypts before the upload container ever sees the data', function () {
+    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'volumes' => []])->render();
+    $docs = array_map(
+        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
+    );
+
+    $cron = collect($docs)->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob');
+    $spec = $cron['spec']['jobTemplate']['spec']['template']['spec'];
+
+    // Encryption happens in the init container; the uploader only ever handles
+    // the sealed artifact.
+    expect($spec['initContainers'][0]['command'][2])->toContain('openssl enc -aes-256-cbc')
+        ->and($spec['containers'][0]['command'][2])->not->toContain('openssl')
+        ->and($spec['containers'][0]['command'][2])->toContain('backup.enc')
+        // The R2/B2 checksum incompatibility applies in-cluster too.
+        ->and(collect($spec['containers'][0]['env'])->pluck('name'))
+        ->toContain('AWS_REQUEST_CHECKSUM_CALCULATION');
+});
+
+test('backup:unschedule is a no-op when nothing is scheduled', function () {
+    Process::fake(backupFakes(['*get cronjob*' => Process::result(output: '')]));
+
+    $this->artisan('backup:unschedule local --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('nothing to do');
+});
+
+test('backup:unschedule removes the exec grant, not just the job', function () {
+    Process::fake(backupFakes([
+        '*get cronjob*' => Process::result(output: 'larakube-backup  17 3 * * *'),
+        '*delete *' => Process::result(output: 'deleted'),
+    ]));
+
+    $this->artisan('backup:unschedule local --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Automated backups stopped');
+
+    // Leaving the RoleBinding and ClusterRole behind would keep a standing
+    // pods/exec grant with nothing using it.
+    Process::assertRan(fn ($job) => str_contains($job->command, 'rolebinding/larakube-backup'));
+    Process::assertRan(fn ($job) => str_contains($job->command, 'clusterrole/larakube-backup'));
+});
+
+test('backup:unschedule never touches existing backups or the destination', function () {
+    Process::fake(backupFakes([
+        '*get cronjob*' => Process::result(output: 'larakube-backup  17 3 * * *'),
+        '*delete *' => Process::result(output: 'deleted'),
+    ]));
+
+    $this->artisan('backup:unschedule local --force')->assertExitCode(0);
+
+    // "Stop taking new backups" must never mean "discard the old ones".
+    Process::assertNotRan(fn ($job) => str_contains($job->command, 'larakube-backup-config'));
+    Process::assertNotRan(fn ($job) => str_contains($job->command, 's3 rm'));
+});

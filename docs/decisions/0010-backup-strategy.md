@@ -100,15 +100,29 @@ for mild failures; the disaster this command exists for is the cluster being gon
 cluster, on the operator's machine — and says plainly that a further copy belongs somewhere that
 is neither. Not in Vaultwarden: that is on the same box.
 
-### Run from the operator's machine, not a CronJob
+### Two ways to run it, and scheduling is its own command
 
-A Pod would have to mount six ReadWriteOnce volumes owned by six different tools — workable only
-while everything is on one node, and it couples the backup to every tool's storage layout.
-Streaming through `kubectl exec` needs no mounts, no privileged pod, and no image carrying
-`pg_dump`, `tar` and an S3 client simultaneously.
+`backup:run` executes from the operator's machine; `backup:schedule` deploys a nightly CronJob.
+Both use the same inventory and the same destination Secret, so they cannot disagree.
 
-The cost is honest and stated: **backups only run when someone runs them.** Scheduling is a
-follow-up, and until it exists this is a manual control.
+Neither mounts the six ReadWriteOnce volumes a naive design would need — that pins the job to
+one node and couples it to every tool's storage layout. Both stream through `kubectl exec`
+instead, so `pg_dump` and `tar` run where the data already lives.
+
+For the CronJob that trade has a price: the job needs **`pods/exec`** in every namespace holding
+backed-up data, which is close to root inside those pods. It is bound by RoleBinding to only
+those namespaces, and `backup:schedule` prints the grant rather than leaving it to be discovered
+in a manifest. `backup:unschedule` removes the ClusterRole and RoleBindings, not just the
+CronJob — a standing exec grant with nothing using it is worse than no automation.
+
+The job encrypts in its init container, so the upload container only ever handles the sealed
+artifact.
+
+**Scheduling is a separate command, not a flag on `backup:init`.** Configuring a destination
+writes one Secret; scheduling puts a recurring workload and a permission grant into the cluster.
+Different blast radii, and it must be possible to stop scheduling without touching the
+destination. `backup:unschedule` is likewise a real command, and it never removes existing
+backups — "stop taking new ones" is not "discard the old ones".
 
 ### Partial backups fail loudly
 
