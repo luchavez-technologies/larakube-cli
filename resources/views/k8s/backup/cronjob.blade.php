@@ -85,10 +85,15 @@ spec:
             - name: work
               emptyDir: {}
           initContainers:
-            # Dump and encrypt. kubectl reaches each tool's own pod, so pg_dump
-            # and tar run where the data already is — this image needs neither.
+            # Dump. kubectl reaches each tool's own pod, so pg_dump and tar run
+            # where the data already is — this image needs neither.
+            #
+            # Not bitnami/kubectl: Bitnami withdrew their Docker Hub images in
+            # 2025 and the tag now 404s. alpine/k8s is maintained and carries a
+            # shell, which the official registry.k8s.io/kubectl (distroless)
+            # does not.
             - name: dump
-              image: bitnami/kubectl:1.31
+              image: alpine/k8s:1.34.1
               command:
                 - /bin/bash
                 - -c
@@ -124,10 +129,36 @@ spec:
                   [ "$(stat -c%s "vol-{{ $v['name'] }}.tar.gz")" -ge 50 ] || { echo "archive of {{ $v['name'] }} is empty" >&2; exit 1; }
 @endforeach
 
-                  echo "› encrypting"
-                  tar czf - db-*.sql.gz vol-*.tar.gz \
-                    | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "env:PASSPHRASE" -out backup.enc
+                  echo "› bundling"
+                  tar czf bundle.tar.gz db-*.sql.gz vol-*.tar.gz
                   rm -f db-*.sql.gz vol-*.tar.gz
+                  ls -lh bundle.tar.gz
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+              resources:
+                requests: { memory: 128Mi, cpu: 100m }
+                limits: { memory: 1Gi, cpu: 1000m }
+            # Encrypt. A separate stage only because no maintained image ships
+            # both kubectl and the openssl CLI — alpine/k8s has no openssl and
+            # amazon/aws-cli has neither. postgres is already running on this
+            # node, so it costs no extra pull.
+            #
+            # This is not an isolation boundary: every container here shares the
+            # same emptyDir, so the plaintext bundle is visible to all of them
+            # until this step replaces it. The boundary that matters is that
+            # nothing unencrypted is ever uploaded.
+            - name: encrypt
+              image: postgres:17.9
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  cd /work
+                  openssl enc -aes-256-cbc -pbkdf2 -salt -pass "env:PASSPHRASE" \
+                    -in bundle.tar.gz -out backup.enc
+                  rm -f bundle.tar.gz
                   ls -lh backup.enc
               env:
                 - name: PASSPHRASE
@@ -137,10 +168,10 @@ spec:
                 - name: work
                   mountPath: /work
               resources:
-                requests: { memory: 128Mi, cpu: 100m }
-                limits: { memory: 1Gi, cpu: 1000m }
+                requests: { memory: 64Mi, cpu: 100m }
+                limits: { memory: 512Mi, cpu: 1000m }
           containers:
-            # Upload only. Nothing unencrypted leaves the previous container.
+            # Upload only. The plaintext bundle no longer exists by this point.
             - name: upload
               image: amazon/aws-cli:2.27.22
               command:
@@ -149,7 +180,7 @@ spec:
                 - |
                   set -eu
                   KEY="larakube/$(date +%Y-%m-%d-%H%M%S).tar.gz.enc"
-                  aws --endpoint-url "$ENDPOINT" s3 cp /work/backup.enc "s3://$BUCKET/$KEY"
+                  aws --endpoint-url "$ENDPOINT" --no-progress s3 cp /work/backup.enc "s3://$BUCKET/$KEY"
                   echo "stored s3://$BUCKET/$KEY"
               env:
                 - name: ENDPOINT

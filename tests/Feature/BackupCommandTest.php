@@ -386,9 +386,13 @@ test('the CronJob encrypts before the upload container ever sees the data', func
     $cron = collect($docs)->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob');
     $spec = $cron['spec']['jobTemplate']['spec']['template']['spec'];
 
-    // Encryption happens in the init container; the uploader only ever handles
-    // the sealed artifact.
-    expect($spec['initContainers'][0]['command'][2])->toContain('openssl enc -aes-256-cbc')
+    // Encryption is its own init stage — no maintained image ships both kubectl
+    // and openssl. What matters is that the uploader never handles plaintext.
+    $stages = collect($spec['initContainers'])->pluck('command.2')->implode("\n");
+
+    expect($stages)->toContain('openssl enc -aes-256-cbc')
+        // The plaintext bundle is removed before the upload stage runs.
+        ->and($stages)->toContain('rm -f bundle.tar.gz')
         ->and($spec['containers'][0]['command'][2])->not->toContain('openssl')
         ->and($spec['containers'][0]['command'][2])->toContain('backup.enc')
         // The R2/B2 checksum incompatibility applies in-cluster too.
@@ -555,4 +559,35 @@ test('the backup and the media prune do not run at the same time', function () {
     $backupCron = $reflection->getConstant('DEFAULT_SCHEDULE');
 
     expect($pruneCron)->not->toBe($backupCron);
+});
+
+test('every image the backup job uses is one that still exists', function () {
+    // bitnami/kubectl:1.31 passed a server-side dry-run and then 404'd at pull
+    // time — Bitnami withdrew their Docker Hub images in 2025. Schema
+    // validation says nothing about whether an image can be fetched.
+    $manifest = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+    ])->render();
+
+    // Parsed, not grepped: the template explains in a comment why bitnami is
+    // not used, and a raw string match would trip over its own rationale.
+    $cron = collect(array_map(
+        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
+    ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')['spec']['jobTemplate']['spec']['template']['spec'];
+
+    $images = collect($cron['initContainers'])->merge($cron['containers'])->pluck('image');
+
+    expect($images)->toContain('alpine/k8s:1.34.1')
+        ->toContain('postgres:17.9')
+        ->toContain('amazon/aws-cli:2.27.22');
+
+    foreach ($images as $image) {
+        // Withdrawn from Docker Hub in 2025; and registry.k8s.io/kubectl is
+        // distroless, so a `sh -c` script cannot run in it.
+        expect($image)->not->toStartWith('bitnami/')
+            ->and($image)->not->toBe('registry.k8s.io/kubectl')
+            // An unpinned tag turns a working backup into a moving target.
+            ->and($image)->toContain(':');
+    }
 });
