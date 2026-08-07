@@ -226,9 +226,15 @@ class BackupInitCommand extends Command
     }
 
     /**
-     * Write the five values a bare-machine restore needs to a 0600 file in the
+     * Append the five values a bare-machine restore needs to a 0600 file in the
      * user's home directory. Returns the path, or null if it could not be
      * written — never fatal, since the destination itself is already stored.
+     *
+     * APPEND, never overwrite. A rebuilt cluster has no config to read, so
+     * `backup:init` mints a fresh passphrase — and overwriting here would
+     * destroy the only local copy of the old one, making every archive already
+     * in the bucket permanently unreadable. That failure would only surface
+     * during a recovery, which is the worst possible time to discover it.
      *
      * @param  array<string, string>  $config
      */
@@ -242,9 +248,22 @@ class BackupInitCommand extends Command
 
         $path = $dir.'/backup-recovery.txt';
 
-        $body = <<<TXT
-        LaraKube CLI — backup recovery card
-        Written {$this->now()}
+        // Already recorded verbatim? Nothing to add.
+        if (is_file($path) && str_contains((string) @file_get_contents($path), $config['passphrase'])) {
+            return $path;
+        }
+
+        $existing = is_file($path) ? (string) @file_get_contents($path) : '';
+        $header = $existing === ''
+            ? "LaraKube CLI — backup recovery cards\n"
+            ."Every entry ever issued is kept. Archives encrypted with an older\n"
+            ."passphrase can ONLY be read with that entry, so nothing is removed.\n"
+            : '';
+
+        $body = $header.<<<TXT
+
+        ────────────────────────────────────────────────────────────
+        Issued {$this->now()}
 
         Everything below is what `backup:restore` needs when there is no cluster
         left to read the destination from. Keep a copy somewhere that is not this
@@ -269,7 +288,7 @@ class BackupInitCommand extends Command
 
         TXT;
 
-        if (@file_put_contents($path, $body) === false) {
+        if (@file_put_contents($path, $body, FILE_APPEND) === false) {
             return null;
         }
 

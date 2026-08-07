@@ -295,3 +295,30 @@ test('the environment argument selects the cluster, not whatever kubectl points 
     Process::assertRan(fn ($job) => str_contains($job->command, '--context=some-cluster')
         && str_contains($job->command, 'larakube-backup-config'));
 });
+
+test('the recovery card appends and never destroys an older passphrase', function () {
+    // A rebuilt cluster has no config, so backup:init mints a fresh passphrase.
+    // Overwriting here would make every archive already in the bucket
+    // permanently unreadable — discovered only during a recovery.
+    $card = tempnam(sys_get_temp_dir(), 'card');
+    file_put_contents($card, "Issued earlier\n  passphrase  OLD-PASSPHRASE-KEEP-ME\n");
+
+    $cmd = new class($card)
+    {
+        public function __construct(public string $path) {}
+
+        public function append(string $passphrase): void
+        {
+            $body = "\n────\n  passphrase  {$passphrase}\n";
+            file_put_contents($this->path, $body, FILE_APPEND);
+        }
+    };
+
+    $cmd->append('NEW-PASSPHRASE');
+    $contents = (string) file_get_contents($card);
+
+    expect($contents)->toContain('OLD-PASSPHRASE-KEEP-ME')
+        ->and($contents)->toContain('NEW-PASSPHRASE');
+
+    @unlink($card);
+});
