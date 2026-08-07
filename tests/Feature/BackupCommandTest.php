@@ -105,14 +105,6 @@ test('backup:list reports honestly when the destination is empty', function () {
         ->expectsOutputToContain('No backups found');
 });
 
-test('backup:restore needs a destination too', function () {
-    Process::fake(['*' => Process::result(output: '')]);
-
-    $this->artisan('backup:restore local --no-interaction')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('No backup destination configured');
-});
-
 test('the inventory excludes Prometheus and includes the Synapse signing key', function () {
     $cmd = new class
     {
@@ -178,4 +170,31 @@ test('an empty region falls back to auto rather than an AWS-specific default', f
     };
 
     expect($cmd->env()['AWS_DEFAULT_REGION'])->toBe('auto');
+});
+
+test('restore accepts the destination on the command line, for when no cluster exists', function () {
+    // The disaster this command is for is the cluster being gone. Reading the
+    // destination *from* the cluster only works for the mild failures.
+    Process::fake([
+        // No cluster: every kubectl read comes back empty.
+        '*get secret*' => Process::result(output: '', exitCode: 1),
+        '*s3 ls*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('backup:restore local --no-interaction '
+        .'--endpoint=https://acct.r2.cloudflarestorage.com --bucket=b '
+        .'--access-key=AK --secret-key=SK --passphrase=pp')
+        ->assertExitCode(1)
+        // Got past config resolution to the actual lookup — i.e. it did NOT
+        // stop at "no destination configured".
+        ->expectsOutputToContain('No backups found');
+});
+
+test('restore without a cluster or flags explains the recovery card', function () {
+    Process::fake(['*' => Process::result(output: '', exitCode: 1)]);
+
+    $this->artisan('backup:restore local --no-interaction')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('backup-recovery.txt');
 });

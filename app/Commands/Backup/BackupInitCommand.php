@@ -111,6 +111,24 @@ class BackupInitCommand extends Command
         $this->line("  <fg=gray>Bucket:</>    <fg=blue>{$bucket}</>");
         $this->newLine();
 
+        // Everything needed to restore from a bare machine, written OFF the
+        // cluster. The k8s Secret above is useless in the disaster this exists
+        // for — it dies with the cluster, and so does OpenBao, which is itself
+        // inside the encrypted archive. This file is the way out of that loop.
+        $card = $this->writeRecoveryCard([
+            'endpoint' => $endpoint,
+            'bucket' => $bucket,
+            'access_key' => $accessKey,
+            'secret_key' => $secretKey,
+            'passphrase' => $passphrase,
+            'region' => (string) $this->option('region'),
+        ]);
+
+        if ($card !== null) {
+            $this->line("  <fg=gray>Recovery card:</> <fg=blue>{$card}</>");
+            $this->newLine();
+        }
+
         if ($isNew) {
             // The passphrase lives in a Secret on the very cluster these
             // backups exist to survive. If the cluster is gone, so is the only
@@ -130,5 +148,63 @@ class BackupInitCommand extends Command
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * Write the five values a bare-machine restore needs to a 0600 file in the
+     * user's home directory. Returns the path, or null if it could not be
+     * written — never fatal, since the destination itself is already stored.
+     *
+     * @param  array<string, string>  $config
+     */
+    protected function writeRecoveryCard(array $config): ?string
+    {
+        $dir = home_path('.larakube');
+
+        if (! is_dir($dir) && ! @mkdir($dir, 0700, true) && ! is_dir($dir)) {
+            return null;
+        }
+
+        $path = $dir.'/backup-recovery.txt';
+
+        $body = <<<TXT
+        LaraKube CLI — backup recovery card
+        Written {$this->now()}
+
+        Everything below is what `backup:restore` needs when there is no cluster
+        left to read the destination from. Keep a copy somewhere that is not this
+        machine and not that server — a password manager on another device, or
+        printed. Without the passphrase the archives are unreadable noise.
+
+          endpoint    {$config['endpoint']}
+          bucket      {$config['bucket']}
+          region      {$config['region']}
+          access key  {$config['access_key']}
+          secret key  {$config['secret_key']}
+          passphrase  {$config['passphrase']}
+
+        To restore from a machine with nothing else:
+
+          larakube backup:restore \\
+            --endpoint={$config['endpoint']} \\
+            --bucket={$config['bucket']} \\
+            --access-key={$config['access_key']} \\
+            --secret-key=<secret key above> \\
+            --passphrase=<passphrase above>
+
+        TXT;
+
+        if (@file_put_contents($path, $body) === false) {
+            return null;
+        }
+
+        @chmod($path, 0600);
+
+        return $path;
+    }
+
+    protected function now(): string
+    {
+        return date('Y-m-d H:i');
     }
 }

@@ -74,6 +74,21 @@ passphrase is stored in a Secret **on the cluster the backups exist to survive**
 `backup:init` prints it once and says plainly that a copy has to be kept elsewhere. Without that,
 a total-loss restore recovers an undecryptable file.
 
+### Backup credentials do NOT go into OpenBao
+
+OpenBao runs on the cluster these backups exist to protect, its 2.5 MB volume is on the same
+`/dev/vda1`, and `openbao-data` is itself **inside the archive**. Storing the destination or the
+passphrase there adds no durability for the only failure that matters, and creates a circular
+dependency: the key to the archive lives inside the archive.
+
+For the same reason `backup:restore` accepts `--endpoint`, `--bucket`, `--access-key`,
+`--secret-key` and `--passphrase` directly. Reading the destination *from* the cluster only works
+for mild failures; the disaster this command exists for is the cluster being gone.
+
+`backup:init` writes those five values to `~/.larakube/backup-recovery.txt` (0600) — off the
+cluster, on the operator's machine — and says plainly that a further copy belongs somewhere that
+is neither. Not in Vaultwarden: that is on the same box.
+
 ### Run from the operator's machine, not a CronJob
 
 A Pod would have to mount six ReadWriteOnce volumes owned by six different tools — workable only

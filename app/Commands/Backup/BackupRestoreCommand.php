@@ -29,6 +29,11 @@ class BackupRestoreCommand extends Command
     protected $signature = 'backup:restore
         {environment=local : Environment whose cluster to restore into}
         {--object=    : Which backup to use (defaults to the most recent)}
+        {--endpoint=  : Destination endpoint. Use when the cluster is gone.}
+        {--bucket=    : Destination bucket. Use when the cluster is gone.}
+        {--access-key= : Access key. Use when the cluster is gone.}
+        {--secret-key= : Secret key. Use when the cluster is gone.}
+        {--passphrase= : Decryption passphrase. Use when the cluster is gone.}
         {--database=  : Restore just this database, live. Destructive.}
         {--dry-run    : Download, decrypt and verify only. Default when --database is absent.}
         {--force      : Skip the confirmation prompt}
@@ -41,10 +46,20 @@ class BackupRestoreCommand extends Command
         $this->renderHeader();
 
         $kubectl = $this->backupKubectl((string) $this->option('context') ?: null);
-        $config = $this->readBackupConfig($kubectl, $this->backupNamespace());
+        $config = $this->resolveRestoreConfig($kubectl);
 
         if ($config === null) {
-            $this->laraKubeError('No backup destination configured. Run `larakube backup:init` first.');
+            $this->laraKubeError('No backup destination available.');
+            $this->newLine();
+            $this->line('  <fg=gray>Either run `larakube backup:init` on a live cluster, or — if the cluster');
+            $this->line('  is gone, which is what this command is for — pass the destination directly:</>');
+            $this->newLine();
+            $this->line('  <fg=blue>larakube backup:restore --endpoint=… --bucket=… \\</>');
+            $this->line('  <fg=blue>    --access-key=… --secret-key=… --passphrase=…</>');
+            $this->newLine();
+            $this->line('  <fg=gray>Those five values are in the recovery card `backup:init` wrote to');
+            $this->line('  ~/.larakube/backup-recovery.txt, and hopefully somewhere else too.</>');
+            $this->newLine();
 
             return 1;
         }
@@ -145,6 +160,34 @@ class BackupRestoreCommand extends Command
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * Destination for this restore.
+     *
+     * Flags win over the cluster, because the disaster this command exists for
+     * is the cluster being gone — reading the destination *from* the thing you
+     * are restoring only works for the mild failures.
+     *
+     * @return array{endpoint: string, bucket: string, access_key: string, secret_key: string, passphrase: string, region: string}|null
+     */
+    protected function resolveRestoreConfig(string $kubectl): ?array
+    {
+        $endpoint = (string) ($this->option('endpoint') ?? '');
+        $bucket = (string) ($this->option('bucket') ?? '');
+
+        if ($endpoint !== '' && $bucket !== '') {
+            return [
+                'endpoint' => $endpoint,
+                'bucket' => $bucket,
+                'access_key' => (string) ($this->option('access-key') ?? ''),
+                'secret_key' => (string) ($this->option('secret-key') ?? ''),
+                'passphrase' => (string) ($this->option('passphrase') ?? ''),
+                'region' => 'auto',
+            ];
+        }
+
+        return $this->readBackupConfig($kubectl, $this->backupNamespace());
     }
 
     /** @param array<string, string> $config */
