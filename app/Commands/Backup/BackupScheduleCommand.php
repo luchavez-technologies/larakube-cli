@@ -25,7 +25,8 @@ class BackupScheduleCommand extends Command
 
     protected $signature = 'backup:schedule
         {environment=local : Environment whose cluster to schedule backups on}
-        {--cron=17 3 * * * : Cron expression, cluster time}
+        {--cron=17 3 * * * : Cron expression, read in --timezone}
+        {--timezone= : IANA timezone the schedule is read in (defaults to yours). Needs Kubernetes >= 1.27.}
         {--context= : Target a specific kube-context}';
 
     protected $description = 'Deploy the nightly backup CronJob into the cluster';
@@ -48,10 +49,22 @@ class BackupScheduleCommand extends Command
         }
 
         $schedule = (string) $this->option('cron');
+        // Kubernetes reads a bare schedule in the controller-manager's
+        // timezone — UTC almost everywhere — so "3am" silently becomes 11am in
+        // Manila. Default to the operator's own zone and always show the result.
+        $timezone = (string) ($this->option('timezone') ?: $this->detectTimezone());
+
+        if (! in_array($timezone, timezone_identifiers_list(), true)) {
+            $this->laraKubeError("'{$timezone}' is not a known IANA timezone (e.g. Asia/Manila, Europe/London, UTC).");
+
+            return 1;
+        }
+
         $volumes = $this->backupVolumeTargets();
 
         $manifest = view('k8s.backup.cronjob', [
             'schedule' => $schedule,
+            'timezone' => $timezone,
             'volumes' => $volumes,
         ])->render();
 
@@ -73,8 +86,12 @@ class BackupScheduleCommand extends Command
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Nightly backups scheduled.');
         $this->newLine();
-        $this->line("  <fg=gray>Schedule:</>  <fg=blue>{$schedule}</> <fg=gray>(cluster time)</>");
+        $this->line('  <fg=gray>Runs at:</>   <fg=blue>'.$this->describeSchedule($schedule, $timezone).'</>');
+        $this->line("  <fg=gray>Cron:</>      <fg=blue>{$schedule}</>");
         $this->line('  <fg=gray>Covers:</>    <fg=blue>'.count($volumes).' volumes + every database</>');
+        $this->newLine();
+        $this->line('  <fg=gray>Backups read every database and archive several volumes, so pick an hour');
+        $this->line('  that is genuinely quiet for YOUR users — not just a low number.</>');
         $this->newLine();
 
         // Named explicitly rather than left in a manifest nobody reads: this is

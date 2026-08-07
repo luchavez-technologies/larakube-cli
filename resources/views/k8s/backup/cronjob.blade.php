@@ -61,6 +61,12 @@ metadata:
     app: larakube-backup
 spec:
   schedule: "{{ $schedule }}"
+  # Without this, Kubernetes interprets the schedule in the
+  # kube-controller-manager's timezone — UTC on essentially every cluster. A
+  # "3am" backup then lands mid-morning for anyone east of London, running
+  # pg_dump and a multi-megabyte upload straight through their business hours.
+  # Requires Kubernetes >= 1.27.
+  timeZone: "{{ $timezone }}"
   # Two concurrent backups would interleave dumps into one corrupt archive.
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
@@ -71,7 +77,7 @@ spec:
       template:
         metadata:
           annotations:
-            larakube.io/config-checksum: "{{ substr(hash('sha256', $schedule.$__tplHash.json_encode($volumes)), 0, 16) }}"
+            larakube.io/config-checksum: "{{ substr(hash('sha256', $schedule.$timezone.$__tplHash.json_encode($volumes)), 0, 16) }}"
         spec:
           restartPolicy: OnFailure
           serviceAccountName: larakube-backup

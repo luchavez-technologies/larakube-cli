@@ -2,6 +2,9 @@
 
 namespace App\Traits;
 
+use DateTimeImmutable;
+use DateTimeZone;
+use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
@@ -189,6 +192,55 @@ trait InteractsWithBackup
         }
 
         return ['ok' => false, 'message' => $text !== '' ? $text : "Cloudflare returned HTTP {$response->status()}."];
+    }
+
+    /**
+     * The operator's own timezone, for scheduling.
+     *
+     * Kubernetes reads a CronJob schedule in the controller-manager's timezone
+     * — UTC almost everywhere — so an unqualified "3am" is 11am in Manila and
+     * 8pm in Los Angeles. Defaulting to the machine running the command is the
+     * least surprising behaviour; the resolved zone is always printed.
+     */
+    protected function detectTimezone(): string
+    {
+        $link = @readlink('/etc/localtime');
+
+        if (is_string($link) && preg_match('#zoneinfo/(.+)$#', $link, $m) === 1) {
+            $zone = $m[1];
+
+            if (in_array($zone, timezone_identifiers_list(), true)) {
+                return $zone;
+            }
+        }
+
+        return 'UTC';
+    }
+
+    /**
+     * A human reading of when a cron expression next fires, for confirming the
+     * schedule means what the operator thinks. Handles only the common
+     * "minute hour * * *" shape; anything else is echoed back unchanged.
+     */
+    protected function describeSchedule(string $cron, string $timezone): string
+    {
+        $parts = preg_split('/\s+/', trim($cron)) ?: [];
+
+        if (count($parts) !== 5 || ! ctype_digit($parts[0]) || ! ctype_digit($parts[1])) {
+            return "{$cron} ({$timezone})";
+        }
+
+        $local = sprintf('%02d:%02d', (int) $parts[1], (int) $parts[0]);
+
+        try {
+            $utc = (new DateTimeImmutable("today {$local}", new DateTimeZone($timezone)))
+                ->setTimezone(new DateTimeZone('UTC'))
+                ->format('H:i');
+        } catch (Exception) {
+            return "{$cron} ({$timezone})";
+        }
+
+        return "{$local} {$timezone}  (= {$utc} UTC)";
     }
 
     /**

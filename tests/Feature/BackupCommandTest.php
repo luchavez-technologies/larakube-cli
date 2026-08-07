@@ -356,7 +356,7 @@ test('the CronJob covers every volume in the inventory and no others', function 
         }
     })->targets();
 
-    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'volumes' => $volumes])->render();
+    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => $volumes])->render();
 
     // One source of truth: the schedule and backup:run must never disagree.
     foreach ($volumes as $v) {
@@ -367,7 +367,7 @@ test('the CronJob covers every volume in the inventory and no others', function 
 });
 
 test('the CronJob refuses to upload a backup with no databases', function () {
-    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'volumes' => []])->render();
+    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => []])->render();
 
     expect($manifest)->toContain('refusing to upload an empty backup')
         // Same partial-backup guard as backup:run: an empty artifact is a
@@ -377,7 +377,7 @@ test('the CronJob refuses to upload a backup with no databases', function () {
 });
 
 test('the CronJob encrypts before the upload container ever sees the data', function () {
-    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'volumes' => []])->render();
+    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => []])->render();
     $docs = array_map(
         fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
         array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
@@ -431,4 +431,68 @@ test('backup:unschedule never touches existing backups or the destination', func
     // "Stop taking new backups" must never mean "discard the old ones".
     Process::assertNotRan(fn ($job) => str_contains($job->command, 'larakube-backup-config'));
     Process::assertNotRan(fn ($job) => str_contains($job->command, 's3 rm'));
+});
+
+test('the CronJob pins a timezone so a 3am schedule is not 11am somewhere', function () {
+    // Kubernetes reads a bare schedule in the controller-manager's timezone,
+    // which is UTC on essentially every cluster. Without timeZone, "17 3 * * *"
+    // fires at 11:17 in Manila — squarely in business hours, while pg_dump and
+    // a multi-megabyte upload run against a live cluster.
+    $manifest = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'Asia/Manila', 'volumes' => [],
+    ])->render();
+
+    $cron = collect(array_map(
+        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
+    ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob');
+
+    expect($cron['spec']['timeZone'])->toBe('Asia/Manila');
+});
+
+test('changing only the timezone still rolls the CronJob', function () {
+    $checksum = function (string $tz): string {
+        $manifest = view('k8s.backup.cronjob', [
+            'schedule' => '17 3 * * *', 'timezone' => $tz, 'volumes' => [],
+        ])->render();
+
+        $cron = collect(array_map(
+            fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+            array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
+        ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob');
+
+        return $cron['spec']['jobTemplate']['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
+    };
+
+    expect($checksum('Asia/Manila'))->not->toBe($checksum('UTC'));
+});
+
+test('the schedule is described in local time AND UTC, so it cannot be misread', function () {
+    $cmd = new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        public function describe(string $c, string $t): string
+        {
+            return $this->describeSchedule($c, $t);
+        }
+    };
+
+    // 03:17 in Manila is 19:17 UTC the previous day — the exact confusion this
+    // output exists to prevent.
+    expect($cmd->describe('17 3 * * *', 'Asia/Manila'))
+        ->toContain('03:17 Asia/Manila')
+        ->toContain('19:17 UTC')
+        // An expression we cannot read is echoed back rather than mis-described.
+        ->and($cmd->describe('*/5 * * * *', 'UTC'))->toContain('*/5 * * * *');
+});
+
+test('backup:schedule rejects a timezone Kubernetes would not accept', function () {
+    Process::fake(backupFakes(['*apply -f *' => Process::result(output: 'created')]));
+
+    $this->artisan('backup:schedule local --no-interaction --timezone=Mars/Olympus')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('not a known IANA timezone');
+
+    Process::assertNotRan(fn ($job) => str_contains($job->command, 'apply -f'));
 });

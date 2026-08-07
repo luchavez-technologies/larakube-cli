@@ -118,6 +118,13 @@ CronJob — a standing exec grant with nothing using it is worse than no automat
 The job encrypts in its init container, so the upload container only ever handles the sealed
 artifact.
 
+The schedule carries an explicit **`timeZone`**. Kubernetes reads a bare cron expression in the
+kube-controller-manager's timezone — UTC on essentially every cluster — so a well-meaning
+`17 3 * * *` fires at 11:17 in Manila, 12:17 in Sydney and 20:17 in Los Angeles: business hours,
+while `pg_dump` reads every database and tens of megabytes upload from a live cluster. It defaults
+to the operator's own zone, `backup:schedule` prints the time in that zone *and* in UTC, and an
+unknown zone is refused rather than silently accepted. Requires Kubernetes >= 1.27.
+
 **Scheduling is a separate command, not a flag on `backup:init`.** Configuring a destination
 writes one Secret; scheduling puts a recurring workload and a permission grant into the cluster.
 Different blast radii, and it must be possible to stop scheduling without touching the
