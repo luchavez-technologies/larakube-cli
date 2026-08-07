@@ -681,3 +681,41 @@ test('an unsupported Commons engine is refused rather than scheduled', function 
         ->and(App\Enums\DatabaseDriver::MYSQL->hasCommonsDumpCommand())->toBeTrue()
         ->and(App\Enums\DatabaseDriver::MARIADB->hasCommonsDumpCommand())->toBeTrue();
 });
+
+test('restore is engine-aware — it never assumes the Commons database is Postgres', function () {
+    // backup:run and backup:schedule were made engine-aware; backup:restore was
+    // missed and hardcoded `exec deploy/postgres -- psql -U postgres`. On a
+    // MySQL or MariaDB Commons that pipes a mysqldump into a pod that does not
+    // exist, so the one command you reach for during an incident is the one
+    // that never worked.
+    $expected = [
+        App\Enums\DatabaseDriver::POSTGRESQL->value => 'psql -U postgres -v ON_ERROR_STOP=1 -d chat_matrix',
+        App\Enums\DatabaseDriver::MYSQL->value => 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" chat_matrix',
+        App\Enums\DatabaseDriver::MARIADB->value => 'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" chat_matrix',
+    ];
+
+    foreach ($expected as $value => $command) {
+        expect(App\Enums\DatabaseDriver::from($value)->commonsAdminRestoreCommand('chat_matrix'))
+            ->toBe($command);
+    }
+
+    // Engines with no dump command must have no restore command either, so the
+    // command refuses instead of running something meaningless.
+    expect(App\Enums\DatabaseDriver::MONGODB->commonsAdminRestoreCommand('x'))->toBe('')
+        ->and(App\Enums\DatabaseDriver::SQLITE->commonsAdminRestoreCommand('x'))->toBe('');
+});
+
+test('the Postgres restore stops on the first error instead of exiting 0', function () {
+    // psql without ON_ERROR_STOP prints every error, keeps going, and still
+    // exits 0 — so a restore that populated nothing reports success, which is
+    // the worst possible outcome for this particular command.
+    expect(App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminRestoreCommand('chat_matrix'))
+        ->toContain('ON_ERROR_STOP=1');
+});
+
+test('dump and restore are inverses across every backup-capable engine', function () {
+    foreach (App\Enums\DatabaseDriver::cases() as $driver) {
+        expect($driver->commonsAdminRestoreCommand('db') !== '')
+            ->toBe($driver->hasCommonsDumpCommand(), "{$driver->value} can dump but not restore, or vice versa");
+    }
+});

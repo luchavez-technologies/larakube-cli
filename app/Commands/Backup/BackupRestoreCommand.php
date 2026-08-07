@@ -117,6 +117,16 @@ class BackupRestoreCommand extends Command
 
         $database = (string) ($this->option('database') ?? '');
 
+        // --dry-run has to win over --database. It reads as "prove it, safely",
+        // and combined with --force it would otherwise skip the one confirmation
+        // prompt and overwrite a live database — the opposite of what was asked.
+        if ($database !== '' && $this->option('dry-run')) {
+            $this->laraKubeWarn("--dry-run given, so '{$database}' was NOT restored. Drop --dry-run to restore it.");
+            $this->newLine();
+
+            return 0;
+        }
+
         if ($database === '') {
             $this->line('  <fg=gray>Restore one database:</> <fg=blue>larakube backup:restore --database=chat_matrix</>');
             $this->newLine();
@@ -139,6 +149,19 @@ class BackupRestoreCommand extends Command
             return 1;
         }
 
+        // The dump was written by whatever engine Commons actually runs, so the
+        // load has to be read off the same enum rather than assumed to be psql.
+        $driver = $this->commonsDatabaseDriver($kubectl);
+
+        if ($driver === null || $driver->commonsAdminRestoreCommand($database) === '') {
+            $this->laraKubeError('Could not determine a restore command for the Commons database engine.');
+            $this->line("  <fg=gray>The unpacked dump is at {$dump} — load it by hand.</>");
+
+            return 1;
+        }
+
+        $service = $driver->commonsServiceName();
+
         if (! $this->confirmDestructive([
             "Overwrite the live '{$database}' database with the copy from {$object}.",
             'Every change made since that backup will be lost.',
@@ -146,9 +169,9 @@ class BackupRestoreCommand extends Command
             return 1;
         }
 
-        $restored = $this->withSpin("Restoring {$database}...", fn () => Process::timeout(1800)->run(
-            'gunzip -c '.escapeshellarg($dump)." | {$kubectl} exec -i deploy/postgres -n larakube-plex -c postgres -- "
-            ."psql -U postgres -d {$database}",
+        $restored = $this->withSpin("Restoring {$database} into {$driver->value}...", fn () => Process::timeout(1800)->run(
+            'gunzip -c '.escapeshellarg($dump)." | {$kubectl} exec -i deploy/{$service} -n larakube-plex -c {$service} -- "
+            .'sh -c '.escapeshellarg($driver->commonsAdminRestoreCommand($database)),
         )->successful());
 
         if (! $restored) {

@@ -600,6 +600,29 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
     }
 
     /**
+     * The in-pod command that loads a SQL dump (piped on stdin) back into an
+     * existing Commons database, as the admin — the exact inverse of
+     * commonsBackupCommand(), which dumps as the admin too.
+     *
+     * Distinct from commonsRestoreCommand() above: that one connects as the
+     * tenant role so Postgres object ownership lands on the tenant, which is
+     * what plex:join needs. A backup dump is taken with --no-owner and restored
+     * by an operator during an incident, when the tenant password is exactly
+     * the sort of thing that may not be to hand.
+     */
+    public function commonsAdminRestoreCommand(string $db): string
+    {
+        return match ($this) {
+            // ON_ERROR_STOP is load-bearing: without it psql prints errors,
+            // continues, and still exits 0 — a failed restore reporting success.
+            self::POSTGRESQL => "psql -U postgres -v ON_ERROR_STOP=1 -d {$db}",
+            self::MYSQL => "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" {$db}",
+            self::MARIADB => "mariadb -uroot -p\"\$MYSQL_ROOT_PASSWORD\" {$db}",
+            default => '',
+        };
+    }
+
+    /**
      * The in-pod command that dumps a tenant database to stdout (the plex:leave
      * safety backup). $db is a sanitized identifier. Same sh -c invocation as
      * commonsAdminClient so the password env var expands in the pod.
