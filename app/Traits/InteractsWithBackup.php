@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\Process;
  * Prometheus alone is ~4x the size of everything irreplaceable put together,
  * and losing it costs you graphs, not business data.
  *
- * The destination is any S3-compatible endpoint (Backblaze B2, DigitalOcean
- * Spaces, AWS). It must NOT be the cluster's own SeaweedFS — that lives on the
+ * The destination is any S3-compatible endpoint (Cloudflare R2, Backblaze B2,
+ * DigitalOcean Spaces, AWS). It must NOT be the cluster's own SeaweedFS — that lives on the
  * same block device as everything it would be backing up, so a disk or droplet
  * loss takes the data and the backups together. See
  * docs/decisions/0010-backup-strategy.md.
@@ -106,7 +106,33 @@ trait InteractsWithBackup
             'access_key' => $read('access-key') ?? '',
             'secret_key' => $read('secret-key') ?? '',
             'passphrase' => $read('passphrase') ?? '',
-            'region' => $read('region') ?? 'us-east-1',
+            // "auto" is what R2 requires and what B2/Spaces tolerate, so it is
+            // the safest default for a destination we cannot introspect.
+            'region' => $read('region') ?? 'auto',
+        ];
+    }
+
+    /**
+     * Environment for every `aws` invocation against the destination.
+     *
+     * The two checksum settings are not optional. From aws-cli 2.23 the client
+     * sends `x-amz-checksum-crc32` on uploads by default, which Cloudflare R2,
+     * Backblaze B2 and MinIO reject — the failure surfaces as an opaque
+     * signature or "not implemented" error at the moment you most want the
+     * backup to work. `when_required` restores the pre-2.23 behaviour.
+     *
+     * @param  array<string, string>  $config
+     * @return array<string, string>
+     */
+    protected function backupAwsEnv(array $config): array
+    {
+        return [
+            'AWS_ACCESS_KEY_ID' => $config['access_key'],
+            'AWS_SECRET_ACCESS_KEY' => $config['secret_key'],
+            // R2 wants "auto"; anything else is provider-specific.
+            'AWS_DEFAULT_REGION' => $config['region'] !== '' ? $config['region'] : 'auto',
+            'AWS_REQUEST_CHECKSUM_CALCULATION' => 'when_required',
+            'AWS_RESPONSE_CHECKSUM_VALIDATION' => 'when_required',
         ];
     }
 

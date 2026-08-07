@@ -141,3 +141,41 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
         ->and($names)->toContain('openbao')
         ->and($names)->toContain('vaultwarden');
 });
+
+test('aws invocations disable the checksum that R2 and B2 reject', function () {
+    // From aws-cli 2.23 the client sends x-amz-checksum-crc32 by default, which
+    // Cloudflare R2, Backblaze B2 and MinIO reject. It surfaces as an opaque
+    // signature error at the exact moment you need the backup to work.
+    $cmd = new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        /** @return array<string, string> */
+        public function env(): array
+        {
+            return $this->backupAwsEnv([
+                'access_key' => 'AK', 'secret_key' => 'SK', 'region' => 'auto',
+            ]);
+        }
+    };
+
+    expect($cmd->env())
+        ->toHaveKey('AWS_REQUEST_CHECKSUM_CALCULATION', 'when_required')
+        ->toHaveKey('AWS_RESPONSE_CHECKSUM_VALIDATION', 'when_required')
+        ->toHaveKey('AWS_DEFAULT_REGION', 'auto');
+});
+
+test('an empty region falls back to auto rather than an AWS-specific default', function () {
+    $cmd = new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        /** @return array<string, string> */
+        public function env(): array
+        {
+            return $this->backupAwsEnv(['access_key' => 'AK', 'secret_key' => 'SK', 'region' => '']);
+        }
+    };
+
+    expect($cmd->env()['AWS_DEFAULT_REGION'])->toBe('auto');
+});

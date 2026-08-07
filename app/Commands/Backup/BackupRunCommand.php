@@ -134,14 +134,11 @@ class BackupRunCommand extends Command
         $size = $this->humanBytes($this->sizeOf($archive));
         $key = "larakube/{$stamp}.tar.gz.enc";
 
-        $uploaded = $this->withSpin("Uploading {$size} off-site...", fn () => Process::timeout(1800)->env([
-            'AWS_ACCESS_KEY_ID' => $config['access_key'],
-            'AWS_SECRET_ACCESS_KEY' => $config['secret_key'],
-            'AWS_DEFAULT_REGION' => $config['region'],
-        ])->run(
-            'aws --endpoint-url '.escapeshellarg($config['endpoint'])
-            .' s3 cp '.escapeshellarg($archive).' '.escapeshellarg("s3://{$config['bucket']}/{$key}"),
-        )->successful());
+        $uploaded = $this->withSpin("Uploading {$size} off-site...", fn () => Process::timeout(1800)
+            ->env($this->backupAwsEnv($config))->run(
+                'aws --endpoint-url '.escapeshellarg($config['endpoint'])
+                .' s3 cp '.escapeshellarg($archive).' '.escapeshellarg("s3://{$config['bucket']}/{$key}"),
+            )->successful());
 
         if ($this->option('keep-local')) {
             $dest = rtrim((string) $this->option('keep-local'), '/');

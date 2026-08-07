@@ -61,7 +61,7 @@ class BackupRestoreCommand extends Command
         mkdir($work, 0700, true);
         $archive = "{$work}/backup.enc";
 
-        $got = $this->withSpin("Downloading {$object}...", fn () => Process::timeout(1800)->env($this->awsEnv($config))->run(
+        $got = $this->withSpin("Downloading {$object}...", fn () => Process::timeout(1800)->env($this->backupAwsEnv($config))->run(
             'aws --endpoint-url '.escapeshellarg($config['endpoint'])
             .' s3 cp '.escapeshellarg("s3://{$config['bucket']}/{$object}").' '.escapeshellarg($archive),
         )->successful());
@@ -150,7 +150,7 @@ class BackupRestoreCommand extends Command
     /** @param array<string, string> $config */
     protected function latestObject(array $config): string
     {
-        $out = Process::timeout(120)->env($this->awsEnv($config))->run(
+        $out = Process::timeout(120)->env($this->backupAwsEnv($config))->run(
             'aws --endpoint-url '.escapeshellarg($config['endpoint'])
             .' s3 ls '.escapeshellarg("s3://{$config['bucket']}/larakube/"),
         )->output();
@@ -166,18 +166,5 @@ class BackupRestoreCommand extends Command
         sort($keys);
 
         return $keys === [] ? '' : (string) end($keys);
-    }
-
-    /**
-     * @param  array<string, string>  $config
-     * @return array<string, string>
-     */
-    protected function awsEnv(array $config): array
-    {
-        return [
-            'AWS_ACCESS_KEY_ID' => $config['access_key'],
-            'AWS_SECRET_ACCESS_KEY' => $config['secret_key'],
-            'AWS_DEFAULT_REGION' => $config['region'],
-        ];
     }
 }

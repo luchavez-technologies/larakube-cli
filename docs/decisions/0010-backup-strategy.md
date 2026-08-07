@@ -56,6 +56,17 @@ change — the failure mode of a static list is a database silently not backed u
 `127.0.0.1`. Not a warning — a refusal, because it is the mistake both prior plans made and it
 produces something that looks exactly like a working backup.
 
+### Cloudflare R2 is the default recommendation
+
+Any S3-compatible endpoint works. R2 fits this workload best: 10 GB free covers ~100 archives at
+this size, and **egress is free** — which matters because downloading a backup only ever happens
+on a day that is already going badly.
+
+Two provider quirks are handled in `backupAwsEnv()` rather than left as a debugging exercise:
+R2 expects region `auto` (now the default), and from aws-cli 2.23 the client sends
+`x-amz-checksum-crc32` by default, which R2, B2 and MinIO reject with an opaque signature error.
+`AWS_REQUEST_CHECKSUM_CALCULATION=when_required` restores the older behaviour.
+
 ### Encrypted, and the passphrase must leave the machine
 
 Archives are AES-256 encrypted before upload; the destination is a third party's disk. The

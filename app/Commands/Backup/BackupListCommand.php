@@ -35,11 +35,7 @@ class BackupListCommand extends Command
             return 1;
         }
 
-        $out = Process::timeout(120)->env([
-            'AWS_ACCESS_KEY_ID' => $config['access_key'],
-            'AWS_SECRET_ACCESS_KEY' => $config['secret_key'],
-            'AWS_DEFAULT_REGION' => $config['region'],
-        ])->run(
+        $out = Process::timeout(120)->env($this->backupAwsEnv($config))->run(
             'aws --endpoint-url '.escapeshellarg($config['endpoint'])
             .' s3 ls '.escapeshellarg("s3://{$config['bucket']}/larakube/"),
         )->output();

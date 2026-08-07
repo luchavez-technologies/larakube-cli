@@ -32,7 +32,7 @@ class BackupInitCommand extends Command
         {--bucket=     : Destination bucket}
         {--access-key= : Access key ID}
         {--secret-key= : Secret access key}
-        {--region=us-east-1 : Region, if your provider needs one}
+        {--region=auto : Region. Cloudflare R2 requires "auto"; most others accept it.}
         {--context=    : Target a specific kube-context}';
 
     protected $description = 'Configure the off-site destination backups are shipped to';
@@ -48,8 +48,8 @@ class BackupInitCommand extends Command
 
         $endpoint = (string) ($this->option('endpoint') ?: ($this->cannotPrompt() ? '' : text(
             label: 'S3-compatible endpoint for backups',
-            placeholder: 'https://s3.us-west-004.backblazeb2.com',
-            hint: 'Backblaze B2 or DigitalOcean Spaces. Must NOT be this cluster.',
+            placeholder: 'https://<account-id>.r2.cloudflarestorage.com',
+            hint: 'Cloudflare R2 (10GB free, no egress fees), Backblaze B2, or DO Spaces. Must NOT be this cluster.',
         )));
 
         if ($endpoint === '') {
