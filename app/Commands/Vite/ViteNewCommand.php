@@ -62,12 +62,13 @@ class ViteNewCommand extends Command
             $template .= '-ts';
         }
 
-        $this->withSpin("Scaffolding Vite ({$template}) application...", function () use ($appName, $template) {
+        $scaffolded = $this->withSpin("Scaffolding Vite ({$template}) application...", function () use ($appName, $template) {
             $cmd = "npx -y create-vite@latest {$appName} --template {$template}";
-            Process::run($cmd);
+
+            return Process::run($cmd)->successful();
         });
 
-        if (! is_dir($projectDir)) {
+        if (! $scaffolded || ! is_dir($projectDir)) {
             $this->laraKubeError('Vite scaffolding failed.');
 
             return 1;

@@ -18,6 +18,7 @@ use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
+use App\Traits\SchedulesCronJobs;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -25,7 +26,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class ChatInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, SchedulesCronJobs, StreamsProcessOutput;
 
     protected $signature = 'chat:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -145,6 +146,9 @@ class ChatInitCommand extends Command
             'turnSecret' => $turnSecret,
             'meetJwtUrl' => $meetJwtUrl,
             'mediaRetention' => (string) $this->option('media-retention') ?: '30d',
+            // Without this the prune's 02:41 is read as UTC — 10:41 in Manila,
+            // squarely in business hours. Same trap the backup CronJob hit.
+            'mediaPruneTimezone' => $this->detectTimezone(),
             'hostPort' => ! $this->option('no-host-port'),
             'externalIp' => $this->toolFirewallCloud($env)?->ip ?? gethostbyname($host),
             'smtp' => $smtp,

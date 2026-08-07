@@ -41,7 +41,7 @@ class DataWireCommand extends Command
         $engine = $this->resolveEngine();
         $instance = (string) ($this->option('instance') ?: 'main');
 
-        $host = $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl, $instance);
 
         if ($host === null) {
             $this->laraKubeError("No Data / Headless CMS host found for '{$env}'. Run `larakube data:init {$env}` first.");
@@ -59,14 +59,6 @@ class DataWireCommand extends Command
             "NEXT_PUBLIC_{$engineKey}_URL" => $dataUrl,
             "ASTRO_{$engineKey}_URL" => $dataUrl,
         ];
-
-        if ($engine === 'pocketbase') {
-            $envVars['VITE_POCKETBASE_URL'] = $dataUrl;
-            $envVars['PUBLIC_POCKETBASE_URL'] = $dataUrl;
-        } else {
-            $envVars['VITE_DIRECTUS_URL'] = $dataUrl;
-            $envVars['PUBLIC_DIRECTUS_URL'] = $dataUrl;
-        }
 
         $envFileName = $env === 'local' ? '.env' : ".env.{$env}";
         $envFilePath = "{$projectPath}/{$envFileName}";

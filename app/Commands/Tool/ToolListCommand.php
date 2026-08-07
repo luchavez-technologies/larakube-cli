@@ -111,10 +111,9 @@ class ToolListCommand extends Command
         }
 
         table(
-            ['', 'Tool', 'Service', 'What it is', 'URL', 'Rotation'],
+            ['', 'Service', 'What it is', 'URL', 'Rotation'],
             array_map(fn (array $r) => [
                 $r['installed'] ? '<fg=green>●</>' : '<fg=gray>○</>',
-                $r['icon'].' '.$r['tool'],
                 $r['brand'],
                 $r['label'],
                 $r['url'] ?? ($r['installed'] ? '<fg=gray>no host recorded</>' : '<fg=gray>—</>'),

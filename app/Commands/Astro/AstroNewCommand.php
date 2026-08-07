@@ -57,12 +57,13 @@ class AstroNewCommand extends Command
             $template = 'minimal';
         }
 
-        $this->withSpin("Scaffolding Astro ({$template}) application...", function () use ($appName, $template) {
+        $scaffolded = $this->withSpin("Scaffolding Astro ({$template}) application...", function () use ($appName, $template) {
             $cmd = "npx -y create-astro@latest {$appName} --template {$template} --yes --no-git";
-            Process::run($cmd);
+
+            return Process::run($cmd)->successful();
         });
 
-        if (! is_dir($projectDir)) {
+        if (! $scaffolded || ! is_dir($projectDir)) {
             $this->laraKubeError('Astro scaffolding failed.');
 
             return 1;

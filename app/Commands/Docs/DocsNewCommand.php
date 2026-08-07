@@ -60,12 +60,13 @@ class DocsNewCommand extends Command
 
         $tsFlag = $this->option('typescript') ? ' --typescript' : '';
 
-        $this->withSpin("Scaffolding Docusaurus ({$template}) site...", function () use ($appName, $template, $tsFlag) {
+        $scaffolded = $this->withSpin("Scaffolding Docusaurus ({$template}) site...", function () use ($appName, $template, $tsFlag) {
             $cmd = "npx -y create-docusaurus@latest {$appName} {$template}{$tsFlag}";
-            Process::run($cmd);
+
+            return Process::run($cmd)->successful();
         });
 
-        if (! is_dir($projectDir)) {
+        if (! $scaffolded || ! is_dir($projectDir)) {
             $this->laraKubeError('Docusaurus scaffolding failed.');
 
             return 1;

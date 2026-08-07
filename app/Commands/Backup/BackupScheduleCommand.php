@@ -7,6 +7,7 @@ use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\SchedulesCronJobs;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
@@ -25,7 +26,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class BackupScheduleCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive, SchedulesCronJobs, StreamsProcessOutput;
 
     /**
      * Off the hour on purpose — :00 and :30 are where every cron on earth

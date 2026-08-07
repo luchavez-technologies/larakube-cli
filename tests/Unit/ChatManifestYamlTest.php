@@ -23,6 +23,7 @@ function chatManifest(array $overrides = []): string
         'registrationSecret' => 'reg-secret',
         'turnSecret' => 'turn-secret',
         'meetJwtUrl' => 'https://meet.example.com/jwt',
+        'mediaPruneTimezone' => 'Asia/Manila',
         'hostPort' => true,
         'externalIp' => '203.0.113.10',
         'smtp' => null,
@@ -221,4 +222,17 @@ test('the media path pods carry no CPU limit — throttling a relay drops calls'
         expect($container['resources']['limits'] ?? [])->not->toHaveKey('cpu')
             ->and($container['resources']['requests']['cpu'] ?? null)->not->toBeNull();
     }
+});
+
+test('the media prune CronJob pins a timezone, like every other scheduled job', function () {
+    // Without timeZone, Kubernetes reads 02:41 in the controller-manager's zone
+    // — UTC almost everywhere — which is 10:41 in Manila. A maintenance job
+    // that deletes local media has no business running mid-morning.
+    $cron = collect(chatDocuments(chatManifest()))
+        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'CronJob');
+
+    expect($cron['spec']['timeZone'])->toBe('Asia/Manila')
+        // And it must not collide with the backup, which writes the same
+        // SeaweedFS volume this job uploads into.
+        ->and($cron['spec']['schedule'])->toBe('41 2 * * *');
 });

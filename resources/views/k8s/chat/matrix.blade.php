@@ -566,6 +566,10 @@ spec:
   # Running them together risks archiving that volume mid-write — and both are
   # I/O heavy on a single node. Change one, check the other.
   schedule: "{{ $mediaPruneSchedule ?? '41 2 * * *' }}"
+  # Kubernetes reads a bare schedule in the controller-manager's timezone, which
+  # is UTC almost everywhere — so without this, 02:41 lands mid-morning for most
+  # of the world. Requires Kubernetes >= 1.27.
+  timeZone: "{{ $mediaPruneTimezone ?? 'UTC' }}"
   # Never overlap: two prunes sharing one sqlite cache corrupt each other's view
   # of what has been uploaded.
   concurrencyPolicy: Forbid

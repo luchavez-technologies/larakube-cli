@@ -470,7 +470,9 @@ test('changing only the timezone still rolls the CronJob', function () {
 test('the schedule is described in local time AND UTC, so it cannot be misread', function () {
     $cmd = new class
     {
-        use App\Traits\InteractsWithBackup;
+        // Lives on SchedulesCronJobs now: every command that deploys a CronJob
+        // resolves timezones the same way, not just the backup one.
+        use App\Traits\SchedulesCronJobs;
 
         public function describe(string $c, string $t): string
         {

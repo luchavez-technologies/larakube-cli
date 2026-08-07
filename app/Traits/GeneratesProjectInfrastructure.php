@@ -355,24 +355,30 @@ trait GeneratesProjectInfrastructure
 
         // Base layer (environment-agnostic; rendered with the local command
         // context and the bare app namespace, matching prior behaviour).
-        foreach ($baseStubs as $stub) {
-            $renderStub($stub, 'local', $appName, 'k8s.'.str_replace(['/', '.yaml'], ['.', ''], $stub));
+        if (! $config->framework?->isStaticSpa()) {
+            foreach ($baseStubs as $stub) {
+                $renderStub($stub, 'local', $appName, 'k8s.'.str_replace(['/', '.yaml'], ['.', ''], $stub));
+            }
         }
 
         // Local overlay.
-        foreach ($localStubs as $stub) {
-            $renderStub($stub, 'local', $config->getNamespace('local'), 'k8s.'.str_replace(['/', '.yaml'], ['.', ''], $stub));
+        if (! $config->framework?->isStaticSpa()) {
+            foreach ($localStubs as $stub) {
+                $renderStub($stub, 'local', $config->getNamespace('local'), 'k8s.'.str_replace(['/', '.yaml'], ['.', ''], $stub));
+            }
         }
 
         // Cloud overlays — one directory per non-local environment. Namespace
         // is resolved per env (getNamespace), so a managed-cluster env can
         // land in an existing namespace instead of the derived {name}-{env}.
-        foreach ($cloudEnvs as $env) {
-            @mkdir("$k8sPath/overlays/$env", 0755, true);
-            foreach ($cloudStubFiles as $file) {
-                $stub = "overlays/$env/$file";
-                $viewName = 'k8s.overlays.production.'.str_replace('.yaml', '', $file);
-                $renderStub($stub, $env, $config->getNamespace($env), $viewName);
+        if (! $config->framework?->isStaticSpa()) {
+            foreach ($cloudEnvs as $env) {
+                @mkdir("$k8sPath/overlays/$env", 0755, true);
+                foreach ($cloudStubFiles as $file) {
+                    $stub = "overlays/$env/$file";
+                    $viewName = 'k8s.overlays.production.'.str_replace('.yaml', '', $file);
+                    $renderStub($stub, $env, $config->getNamespace($env), $viewName);
+                }
             }
         }
 
@@ -402,6 +408,32 @@ trait GeneratesProjectInfrastructure
 
             $renderStub("overlays/$env/reverb-ingress.yaml", $env, $config->getNamespace($env), 'k8s.overlays.production.reverb-ingress');
             $this->appendToKustomization($k8sPath, "overlays/$env", 'reverb-ingress.yaml');
+        }
+
+        // Render S3 Static SPA Ingress for static SPA frameworks (ASTRO, VITE, DOCUSAURUS)
+        if (in_array($config->framework, [\App\Enums\AppFramework::ASTRO, \App\Enums\AppFramework::VITE, \App\Enums\AppFramework::DOCUSAURUS], true)) {
+            $tld = $config->getLocalTld() ?? GlobalConfigData::load()->getLocalTld();
+            foreach (array_merge(['local'], $cloudEnvs) as $env) {
+                $host = $config->getHost($env) ?? "{$config->getId()}.{$tld}";
+                if ($host) {
+                    $ns = $config->getNamespace($env);
+                    $content = view('k8s.spa-s3-ingress', [
+                        'name' => $config->getId(),
+                        'namespace' => $ns,
+                        'host' => $host,
+                        's3ServiceName' => 'seaweedfs-s3',
+                        's3Port' => 8333,
+                        'isLocal' => $env === 'local',
+                    ])->render();
+
+                    $stub = $env === 'local' ? 'spa-ingress.yaml' : "overlays/{$env}/spa-ingress.yaml";
+                    $relPath = $env === 'local' ? '.infrastructure/k8s/spa-ingress.yaml' : ".infrastructure/k8s/overlays/{$env}/spa-ingress.yaml";
+                    $this->writeManagedManifest($config, "{$k8sPath}/{$stub}", $relPath, $content);
+
+                    $folder = $env === 'local' ? '' : "overlays/{$env}";
+                    $this->appendToKustomization($k8sPath, $folder, 'spa-ingress.yaml');
+                }
+            }
         }
 
         // App storage PVCs live in each environment's overlay (not base), so
