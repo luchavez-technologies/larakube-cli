@@ -148,9 +148,12 @@ commands printed instead.
 
 - Roughly $5/month of object storage covers this many times over.
 - No storage migration, no CSI driver, no DOKS.
-- **Not yet solved:** scheduling, retention/pruning, and a periodic automated restore drill. A
-  backup nobody has restored is a hypothesis; `backup:restore` makes testing cheap but nothing
-  yet forces it.
+- **Not yet solved: retention/pruning.** Nothing deletes old archives, so storage grows with
+  frequency — ~1.6 GB/month nightly, ~6.4 GB/month every six hours, against R2's 10 GB free tier.
+  `backup:schedule` projects this at the moment the frequency is chosen rather than leaving it to
+  be discovered in a billing email, but the projection is not a substitute for the feature.
+- **Not yet solved: an automated restore drill.** A backup nobody has restored is a hypothesis;
+  `backup:restore` makes testing cheap but nothing forces it.
 - Moving PVCs onto a DigitalOcean Block Storage volume would make droplet loss survivable at the
   infrastructure layer and is complementary — but it is still inside one DO account, so it does
   not replace this.

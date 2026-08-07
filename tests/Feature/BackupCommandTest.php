@@ -496,3 +496,35 @@ test('backup:schedule rejects a timezone Kubernetes would not accept', function 
 
     Process::assertNotRan(fn ($job) => str_contains($job->command, 'apply -f'));
 });
+
+test('an explicit --cron wins over the picker', function () {
+    Process::fake(backupFakes(['*apply -f *' => Process::result(output: 'created')]));
+
+    $this->artisan('backup:schedule local --no-interaction --cron="5 4 * * *" --timezone=UTC')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('04:05 UTC');
+});
+
+test('non-interactive falls back to a nightly default rather than refusing', function () {
+    // A cluster with no backups is worse than one backed up at a time nobody
+    // chose, so this defaults instead of throwing MissingFlagException.
+    Process::fake(backupFakes(['*apply -f *' => Process::result(output: 'created')]));
+
+    $this->artisan('backup:schedule local --no-interaction --timezone=UTC')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('03:17 UTC');
+});
+
+test('the projected storage is shown, because nothing prunes it yet', function () {
+    $method = new ReflectionMethod(App\Commands\Backup\BackupScheduleCommand::class, 'describeGrowth');
+    $method->setAccessible(true);
+    $cmd = new App\Commands\Backup\BackupScheduleCommand;
+
+    // R2's free tier is 10GB and there is no retention policy, so a six-hourly
+    // schedule quietly fills it in under two months.
+    expect($method->invoke($cmd, '17 3 * * *', 55))->toContain('~30 archives')
+        ->and($method->invoke($cmd, '17 */6 * * *', 55))->toContain('~120 archives')
+        ->and($method->invoke($cmd, '17 3 * * 0', 55))->toContain('~4 archives')
+        // An expression we cannot read gets no invented number.
+        ->and($method->invoke($cmd, 'nonsense', 55))->toBeNull();
+});
