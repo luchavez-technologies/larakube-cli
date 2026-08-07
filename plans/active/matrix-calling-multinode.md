@@ -1,8 +1,37 @@
 # Plan: Matrix Voice/Video Calling on Multi-Node Clusters (DOKS / EKS / AKS)
 
-**Status:** Active Plan / Design Decided, Untested on Real Multi-Node Cluster
+**Status:** Active — design still valid, but re-map the names before using it
 **Created:** 2026-08-04
-**Parent doc:** `plans/active/matrix-voice-video-calling.md`
+**Updated:** 2026-08-07 — LiveKit moved out of chat; two §1 claims corrected
+**Parent doc:** `plans/completed/matrix-voice-video-calling.md` (superseded)
+
+---
+
+## 0. Read this before §1 — what 2026-08-07 changed
+
+The multi-node problem and the LoadBalancer design below are **unchanged and still unbuilt**.
+The names and two of the claims are stale:
+
+| this doc says | now |
+| --- | --- |
+| `chat-livekit-rtc` Service | **`meet-livekit-rtc`**, in the `meet` tool |
+| `chat:init --no-host-port` | **`meet:init --no-host-port`** for the SFU; chat's flag now only covers Coturn |
+| LiveKit + Coturn are one problem | **two tools**: Coturn stays with chat (legacy 1:1 `turn_uris`), the SFU is `meet` |
+
+**§1 claim 1 is half wrong.** It says the well-known key was "fixed in both spots" — Synapse's
+`well_known.client` block and Cinny's mounted file. `well_known:` **is not a Synapse config
+option**; Synapse silently ignores unknown top-level keys, so only the Cinny copy ever worked.
+The correct key is `extra_well_known_client_content`. Removing the Cinny copy as a "duplicate"
+took calling down until that was found.
+
+**§4's "known gap" is closed.** LiveKit's TCP fallback `rtc.tcp_port: 7881` *is* now exposed —
+`SharedClusterService::MEET::firewallPorts()` returns `[7881, '7882/udp']` and both are opened on
+the DO firewall and host UFW.
+
+**New constraint this doc predates:** `hostPort` is exclusive per node, so a chat-embedded SFU and
+`meet-livekit` can never run on the same node. That is why the single-node changeover was a
+delete-then-deploy, not a parallel run — and it is an argument *for* the LoadBalancer path here,
+since LB Services have no such collision.
 
 ---
 
@@ -40,9 +69,12 @@ Fallback if LB-per-port-range turns out to be impractical/expensive on the targe
 
 ---
 
-## 4. Known gap not addressed by this pass
+## 4. Known gap not addressed by this pass — ✅ CLOSED 2026-08-07
 
-LiveKit's TCP fallback port (`rtc.tcp_port: 7881`, for clients whose network blocks UDP entirely) has never been exposed externally — no `hostPort`, not in the LB toggle either. Pre-existing, out of scope for the calling-notification bug and the two hostPort issues fixed here; flagging so it doesn't get lost. Same LB-toggle mechanism would apply if/when this gets picked up.
+~~LiveKit's TCP fallback port (`rtc.tcp_port: 7881`) has never been exposed externally.~~
+Now exposed via `SharedClusterService::MEET::firewallPorts()` (`[7881, '7882/udp']`), opened on
+both the DO cloud firewall and host UFW, and bound as a `hostPort` on `meet-livekit`. Still
+needs the LB-toggle treatment for multi-node, same as the UDP ports.
 
 ---
 
@@ -53,8 +85,8 @@ LiveKit's TCP fallback port (`rtc.tcp_port: 7881`, for clients whose network blo
 - [ ] `larakube chat:init {env} --context=... --no-host-port` — confirm it completes and `chat-coturn` / `chat-livekit-rtc` Services show `type: LoadBalancer` with an assigned `EXTERNAL-IP` (not `<pending>` — if stuck pending, that's the DO UDP-support question in §3 surfacing immediately).
 
 ### Signaling layer (should already work — same as single-node)
-- [ ] `curl -i https://chat.{domain}/.well-known/matrix/client` — confirm `org.matrix.msc4143.rtc_foci` array is present with the LB's public host, not a node IP.
-- [ ] `curl -i https://chat.{domain}/livekit/jwt` reachable.
+- [ ] `curl -i https://chat.{domain}/.well-known/matrix/client` — confirm `org.matrix.msc4143.rtc_foci` is present and points at `https://meet.{domain}/jwt`. This is served from Synapse's `extra_well_known_client_content`; an empty response here means the focus never reached the client, whatever homeserver.yaml contains.
+- [ ] `curl -i https://meet.{domain}/jwt/sfu/get` reachable (the bridge moved off the chat host).
 
 ### Media layer (the actual multi-node-specific risk)
 - [ ] Force Coturn's pod onto a *specific* node (`kubectl get pod -o wide`, or a temporary `nodeSelector`) and confirm from a client **on a different network** that TURN relay still works — this is the scenario `hostPort` would silently break and the LB toggle is meant to fix.

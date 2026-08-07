@@ -1,8 +1,31 @@
 # Plan: Matrix Voice & Video Calling Stack (Coturn TURN + LiveKit RTC)
 
-**Status:** Active Plan / Grounded in Codebase (`matrix.blade.php`)
+**Status:** ✅ SUPERSEDED 2026-08-07 — calling works; the architecture here no longer exists.
 **Created:** 2026-08-04
-**Target Version:** LaraKube CLI v1.2.0
+**Superseded:** 2026-08-07 (commits `ca50daa`, `c858fdb`)
+**Read instead:** `docs/decisions/0009-shared-livekit-and-per-consumer-keys.md`
+
+---
+
+## 0. What changed
+
+This plan describes LiveKit and Coturn living *inside* the chat stack on one shared
+`chat.example.com` host, against `synapse:v1.120.0`. None of that is true any more:
+
+- **LiveKit moved out into its own `meet` tool** at `meet.<domain>` — `meet:init` / `meet:wire` /
+  `meet:unwire` / `meet:remove` / `meet:show`. Chat no longer ships an SFU, and the two cannot
+  coexist on one node anyway: both bind hostPort 7881/7882, which are exclusive per node.
+- **The lk-jwt bridge belongs to the wiring**, deployed by `meet:wire --tool=chat` at
+  `meet.<domain>/jwt`. Chat's two stripPrefix middlewares are gone.
+- **Coturn stayed with chat** — it backs Synapse's legacy 1:1 `turn_uris`, unrelated to the SFU.
+- **Synapse is on v1.158.0**, with `msc4140_enabled`, `max_event_delay_duration` and raised
+  `rc_message` / `rc_delayed_event_mgmt` — none of which this plan knew it needed.
+- **The RTC focus is served via `extra_well_known_client_content`.** This plan's
+  `well_known: client:` shape is **not a Synapse option** and never took effect (see §0 of the
+  archived focus-selection plan).
+
+Still live and unbuilt from this plan's scope: multi-node UDP exposure, tracked separately in
+`plans/active/matrix-calling-multinode.md`.
 
 ---
 

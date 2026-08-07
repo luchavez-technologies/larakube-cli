@@ -1,8 +1,40 @@
 # Plan: MatrixRTC "oldest_membership" Reconnect Loop (Upstream, Not LaraKube's)
 
-**Status:** Active / Tracking Only — no fix available in LaraKube's control
+**Status:** ✅ RESOLVED 2026-08-07 — the diagnosis below was wrong. Kept for the correction.
 **Created:** 2026-08-04
-**Parent doc:** `plans/active/matrix-voice-video-calling.md`
+**Resolved:** 2026-08-07 (commit `ca50daa`)
+**Superseded by:** `docs/decisions/0009-shared-livekit-and-per-consumer-keys.md`
+
+---
+
+## 0. Resolution — this was NOT an upstream focus-selection bug
+
+The symptom in §1 is real and exactly reproduced. The root cause in §2 is not. It was two
+LaraKube-side problems, both fixable, both fixed:
+
+1. **livekit-server v1.8.0 against livekit-client 2.19.0.** The server logged
+   `unsupported datachannel added {"label":"_data_track"}` on every single join — Element Call's
+   RTC/E2EE signalling channel, silently dropped by a server three years behind the client.
+   Bumped to v1.13.5; the warning is now zero.
+2. **Synapse v1.120.0 with `org.matrix.msc4140: false`.** Without delayed events, Element Call's
+   membership manager cannot hold `m.call.member` alive. Enabling `msc4140_enabled` **plus**
+   `max_event_delay_duration` (Synapse rejects every delayed event without the ceiling) fixed it.
+   Live afterwards: **112 `POST …/delayed_events/…/restart`, all HTTP 200.**
+
+**Why §2 read as the cause.** The observation was correct — clients *were* re-PUTting their
+membership state on a heartbeat, flipping `origin_server_ts`. But that rewriting is what a client
+does *because* it has no delayed events to lean on. It was a symptom of the same root cause,
+mistaken for the mechanism. Once MSC4140 was enabled the clients stopped rewriting membership and
+started restarting a delayed event instead, and the cycling stopped — with
+`focus_selection: "oldest_membership"` completely unchanged.
+
+**Measured after the fix:** one `starting RTC session` per participant, held **332 seconds**
+through a real call. Before: 131 `CLIENT_REQUEST_LEAVE` on a ~15.6 s sawtooth.
+
+**Lesson worth keeping.** §3 ruled things out carefully and §5 listed what was "confirmed
+working" — but every one of those checks verified that *config contained the right value*, never
+that the system *behaved* correctly. Reading LiveKit's own version banner, or grepping its log
+for `WARN`, would have surfaced the skew immediately.
 
 ---
 
