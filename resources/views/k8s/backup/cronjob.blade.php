@@ -101,9 +101,9 @@ spec:
                   set -euo pipefail
                   cd /work
 
-                  echo "› databases"
-                  DBS=$(kubectl exec deploy/postgres -n larakube-plex -c postgres -- \
-                    psql -U postgres -tAc "select datname from pg_database where datistemplate = false and datname <> 'postgres'")
+                  echo "› databases ({{ $dbDriver }})"
+                  DBS=$(kubectl exec deploy/{{ $dbService }} -n larakube-plex -c {{ $dbService }} -- \
+                    sh -c {!! escapeshellarg($dbListCommand) !!})
 
                   if [ -z "$DBS" ]; then
                     echo "no databases found — refusing to upload an empty backup" >&2
@@ -114,8 +114,9 @@ spec:
                     db=$(echo "$db" | tr -d '\r')
                     [ -z "$db" ] && continue
                     echo "  $db"
-                    kubectl exec deploy/postgres -n larakube-plex -c postgres -- \
-                      pg_dump -U postgres --no-owner "$db" | gzip > "db-$db.sql.gz"
+                    CMD=$(printf '%s' {!! escapeshellarg($dbDumpTemplate) !!} | sed "s|__DB__|$db|g")
+                    kubectl exec deploy/{{ $dbService }} -n larakube-plex -c {{ $dbService }} -- \
+                      sh -c "$CMD" | gzip > "db-$db.sql.gz"
                     # A dump that exits 0 having written nothing is a real
                     # failure mode; treat a stub file as one.
                     [ "$(stat -c%s "db-$db.sql.gz")" -ge 100 ] || { echo "dump of $db is empty" >&2; exit 1; }
@@ -141,15 +142,18 @@ spec:
                 limits: { memory: 1Gi, cpu: 1000m }
             # Encrypt. A separate stage only because no maintained image ships
             # both kubectl and the openssl CLI — alpine/k8s has no openssl and
-            # amazon/aws-cli has neither. postgres is already running on this
-            # node, so it costs no extra pull.
+            # amazon/aws-cli has neither.
+            #
+            # Deliberately NOT the Commons database image: that would only be
+            # "already on the node" for whichever engine this cluster happens to
+            # run, and would need re-checking for openssl per driver.
             #
             # This is not an isolation boundary: every container here shares the
             # same emptyDir, so the plaintext bundle is visible to all of them
             # until this step replaces it. The boundary that matters is that
             # nothing unencrypted is ever uploaded.
             - name: encrypt
-              image: postgres:17.9
+              image: alpine/openssl:3.5.4
               command:
                 - /bin/sh
                 - -c

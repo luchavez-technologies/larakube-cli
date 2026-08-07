@@ -17,7 +17,16 @@ function backupFakes(array $overrides = []): array
 {
     $val = fn (string $v) => Process::result(output: base64_encode($v));
 
+    $commons = json_encode(['version' => 1, 'services' => [
+        'postgres' => ['enabled' => true],
+        'mysql' => ['enabled' => false],
+        'seaweedfs' => ['enabled' => true],
+    ]]);
+
     return array_merge([
+        // Driver detection reads this: the backup is engine-aware, not
+        // Postgres-shaped, so the Commons manifest has to be present.
+        '*configmap plex-commons*' => Process::result(output: $commons),
         '*larakube-backup-config*bucket*' => $val('off-site-bucket'),
         '*larakube-backup-config*endpoint*' => $val('https://s3.us-west-004.backblazeb2.com'),
         '*larakube-backup-config*access-key*' => $val('AK'),
@@ -356,7 +365,11 @@ test('the CronJob covers every volume in the inventory and no others', function 
         }
     })->targets();
 
-    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => $volumes])->render();
+    $manifest = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => $volumes,
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
+    ])->render();
 
     // One source of truth: the schedule and backup:run must never disagree.
     foreach ($volumes as $v) {
@@ -367,7 +380,11 @@ test('the CronJob covers every volume in the inventory and no others', function 
 });
 
 test('the CronJob refuses to upload a backup with no databases', function () {
-    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => []])->render();
+    $manifest = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
+    ])->render();
 
     expect($manifest)->toContain('refusing to upload an empty backup')
         // Same partial-backup guard as backup:run: an empty artifact is a
@@ -377,7 +394,11 @@ test('the CronJob refuses to upload a backup with no databases', function () {
 });
 
 test('the CronJob encrypts before the upload container ever sees the data', function () {
-    $manifest = view('k8s.backup.cronjob', ['schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => []])->render();
+    $manifest = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
+    ])->render();
     $docs = array_map(
         fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
         array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
@@ -444,6 +465,8 @@ test('the CronJob pins a timezone so a 3am schedule is not 11am somewhere', func
     // a multi-megabyte upload run against a live cluster.
     $manifest = view('k8s.backup.cronjob', [
         'schedule' => '17 3 * * *', 'timezone' => 'Asia/Manila', 'volumes' => [],
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
     ])->render();
 
     $cron = collect(array_map(
@@ -458,6 +481,8 @@ test('changing only the timezone still rolls the CronJob', function () {
     $checksum = function (string $tz): string {
         $manifest = view('k8s.backup.cronjob', [
             'schedule' => '17 3 * * *', 'timezone' => $tz, 'volumes' => [],
+            'dbDriver' => 'postgres', 'dbService' => 'postgres',
+            'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
         ])->render();
 
         $cron = collect(array_map(
@@ -567,6 +592,8 @@ test('every image the backup job uses is one that still exists', function () {
     // validation says nothing about whether an image can be fetched.
     $manifest = view('k8s.backup.cronjob', [
         'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
     ])->render();
 
     // Parsed, not grepped: the template explains in a comment why bitnami is
@@ -579,7 +606,9 @@ test('every image the backup job uses is one that still exists', function () {
     $images = collect($cron['initContainers'])->merge($cron['containers'])->pluck('image');
 
     expect($images)->toContain('alpine/k8s:1.34.1')
-        ->toContain('postgres:17.9')
+        // Not the Commons database image: that is only "already on the node"
+        // for whichever engine this cluster happens to run.
+        ->toContain('alpine/openssl:3.5.4')
         ->toContain('amazon/aws-cli:2.27.22');
 
     foreach ($images as $image) {
@@ -590,4 +619,66 @@ test('every image the backup job uses is one that still exists', function () {
             // An unpinned tag turns a working backup into a moving target.
             ->and($image)->toContain(':');
     }
+});
+
+test('the backup works on MySQL and MariaDB, not just PostgreSQL', function () {
+    // Postgres is the common Commons choice, not the only supported one. A
+    // backup that hardcodes psql/pg_dump silently does nothing on the others.
+    foreach ([App\Enums\DatabaseDriver::MYSQL, App\Enums\DatabaseDriver::MARIADB] as $driver) {
+        $manifest = view('k8s.backup.cronjob', [
+            'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+            'dbDriver' => $driver->value,
+            'dbService' => $driver->commonsServiceName(),
+            'dbListCommand' => $driver->commonsListDatabasesCommand(),
+            'dbDumpTemplate' => $driver->commonsBackupCommand('__DB__'),
+        ])->render();
+
+        $script = collect(array_map(
+            fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+            array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
+        ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')
+            ['spec']['jobTemplate']['spec']['template']['spec']['initContainers'][0]['command'][2];
+
+        expect($script)->toContain("deploy/{$driver->value}")
+            ->and($script)->not->toContain('pg_dump')
+            ->and($script)->not->toContain('deploy/postgres')
+            // Blade's {{ }} HTML-escapes; a shell script full of &quot; is dead.
+            ->and($script)->not->toContain('&quot;')
+            ->and($script)->not->toContain('&#039;')
+            // MySQL's own -p"$VAR" cannot survive another layer of double
+            // quotes, so the command is single-quoted and sed-substituted.
+            ->and($script)->toContain('-p"$MYSQL_ROOT_PASSWORD"');
+    }
+});
+
+test('the encrypt stage does not assume the Commons engine', function () {
+    // postgres:17.9 was chosen because it was "already on the node" — true only
+    // for a Postgres Commons, and it would need re-checking for openssl on each
+    // other engine.
+    $manifest = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+        'dbDriver' => 'mysql', 'dbService' => 'mysql',
+        'dbListCommand' => 'x', 'dbDumpTemplate' => 'y',
+    ])->render();
+
+    $spec = collect(array_map(
+        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
+    ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')['spec']['jobTemplate']['spec']['template']['spec'];
+
+    $encrypt = collect($spec['initContainers'])->firstWhere('name', 'encrypt');
+
+    expect($encrypt['image'])->not->toContain('postgres')
+        ->and($encrypt['image'])->not->toContain('mysql')
+        ->and($encrypt['image'])->toBe('alpine/openssl:3.5.4');
+});
+
+test('an unsupported Commons engine is refused rather than scheduled', function () {
+    // MongoDB and SQLite have no dump command; a nightly job that cannot dump
+    // anything would fail silently forever.
+    expect(App\Enums\DatabaseDriver::MONGODB->isBackupCapable())->toBeFalse()
+        ->and(App\Enums\DatabaseDriver::SQLITE->isBackupCapable())->toBeFalse()
+        ->and(App\Enums\DatabaseDriver::POSTGRESQL->isBackupCapable())->toBeTrue()
+        ->and(App\Enums\DatabaseDriver::MYSQL->isBackupCapable())->toBeTrue()
+        ->and(App\Enums\DatabaseDriver::MARIADB->isBackupCapable())->toBeTrue();
 });

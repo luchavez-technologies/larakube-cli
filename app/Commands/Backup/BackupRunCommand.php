@@ -71,19 +71,30 @@ class BackupRunCommand extends Command
 
         // 1. Databases. Dumped individually so a single tool can be restored
         //    without rolling back every other tool to the same moment.
-        $databases = $this->backupDatabases($kubectl);
+        $driver = $this->commonsDatabaseDriver($kubectl);
 
-        if ($databases === []) {
-            $this->laraKubeError('Found no databases to back up — is the Commons Postgres reachable?');
+        if ($driver === null) {
+            $this->laraKubeError('No backup-capable Commons database found. Supported: PostgreSQL, MySQL, MariaDB.');
 
             return 1;
         }
 
+        $databases = $this->backupDatabases($kubectl);
+
+        if ($databases === []) {
+            $this->laraKubeError("Found no databases to back up — is the Commons {$driver->value} reachable?");
+
+            return 1;
+        }
+
+        $service = $driver->commonsServiceName();
+
         foreach ($databases as $db) {
-            $this->withSpin("Dumping database {$db}...", function () use ($kubectl, $db, $work, &$failures) {
+            $this->withSpin("Dumping database {$db}...", function () use ($kubectl, $db, $work, $driver, $service, &$failures) {
                 $result = Process::timeout(600)->run(
-                    "{$kubectl} exec deploy/postgres -n larakube-plex -c postgres -- "
-                    ."pg_dump -U postgres --no-owner {$db} | gzip > ".escapeshellarg("{$work}/db-{$db}.sql.gz"),
+                    "{$kubectl} exec deploy/{$service} -n larakube-plex -c {$service} -- "
+                    .'sh -c '.escapeshellarg($driver->commonsBackupCommand($db))
+                    .' | gzip > '.escapeshellarg("{$work}/db-{$db}.sql.gz"),
                 );
 
                 if (! $result->successful() || $this->sizeOf("{$work}/db-{$db}.sql.gz") < 100) {

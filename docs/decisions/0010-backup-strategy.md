@@ -47,8 +47,29 @@ not business data. Synapse's volume is 51 MB of which 59 bytes are irreplaceable
 mirrored to object storage and `site-packages` is re-installed on every pod start.
 
 The inventory is an allow-list in `InteractsWithBackup::backupVolumeTargets()`. Databases are
-enumerated **live** from `pg_database`, so a newly installed tool is covered without a code
-change — the failure mode of a static list is a database silently not backed up.
+enumerated **live**, so a newly installed tool is covered without a code change — the failure
+mode of a static list is a database silently not backed up.
+
+### Engine-aware, not Postgres-shaped
+
+The Commons database can be PostgreSQL, MySQL or MariaDB. The first implementation hardcoded
+`deploy/postgres`, `psql` and `pg_dump`, which meant it simply did not work on two of the three
+supported engines — and `DatabaseDriver` already owned `commonsBackupCommand()`,
+`commonsAdminClient()` and `commonsServiceName()` for all of them.
+
+`commonsListDatabasesCommand()` and `isBackupCapable()` were added there rather than anywhere
+else, so the enum stays the single place that knows how to talk to each engine. The engine is
+detected from the `plex-commons` ConfigMap, and `backup:schedule` refuses to deploy against one
+it cannot dump (MongoDB, SQLite) rather than installing a job that fails silently every night.
+
+Two things this exposed, both caught by rendering rather than by review: Blade's `{{ }}`
+HTML-escapes, which turns a shell script into `&quot;` soup, so the command fragments need
+`{!! !!}`; and MySQL's `-p"$MYSQL_ROOT_PASSWORD"` cannot survive being wrapped in another layer
+of double quotes, so the dump command is rendered single-quoted with a `__DB__` placeholder that
+the job substitutes.
+
+The encrypt stage uses `alpine/openssl` rather than the Commons database image, which would only
+be "already on the node" for whichever engine a given cluster happens to run.
 
 ### Off-site is a hard requirement
 

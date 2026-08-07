@@ -610,6 +610,37 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
         };
     }
 
+    /**
+     * List every non-system database in the Commons pod, one per line.
+     *
+     * The companion to commonsBackupCommand(): a backup that knows how to dump
+     * a database but not how to find one is only useful on the driver whose
+     * catalogue query happens to be hardcoded.
+     */
+    public function commonsListDatabasesCommand(): string
+    {
+        // Nowdocs: these carry both quote styles and a literal $VAR the pod's
+        // shell must expand, so nothing here may be interpolated by PHP.
+        return match ($this) {
+            self::POSTGRESQL => <<<'SQL'
+                psql -U postgres -tAc "select datname from pg_database where datistemplate = false and datname <> 'postgres'"
+                SQL,
+            self::MYSQL => <<<'SQL'
+                mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B -e "select schema_name from information_schema.schemata where schema_name not in ('mysql','information_schema','performance_schema','sys')"
+                SQL,
+            self::MARIADB => <<<'SQL'
+                mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B -e "select schema_name from information_schema.schemata where schema_name not in ('mysql','information_schema','performance_schema','sys')"
+                SQL,
+            default => '',
+        };
+    }
+
+    /** Whether this driver can be dumped and restored by the backup commands. */
+    public function isBackupCapable(): bool
+    {
+        return $this->commonsBackupCommand('x') !== '' && $this->commonsListDatabasesCommand() !== '';
+    }
+
     public function commonsServiceName(): ?string
     {
         // The Commons service name IS the driver value — no remapping. SQLite is

@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\DatabaseDriver;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
@@ -70,17 +71,58 @@ trait InteractsWithBackup
     }
 
     /**
-     * Every non-template database in the Commons Postgres. Read live rather
-     * than hardcoded so a newly installed tool is covered without a code change
-     * — the failure mode of a static list is a database silently not backed up.
+     * Which database engine the Plex Commons is actually running.
+     *
+     * Read from the plex-commons ConfigMap rather than assumed: Postgres is the
+     * common choice but MySQL and MariaDB are equally supported, and a backup
+     * that only works on one of them is not a backup for the others.
+     */
+    protected function commonsDatabaseDriver(string $kubectl, string $plexNamespace = 'larakube-plex'): ?DatabaseDriver
+    {
+        $raw = Process::timeout(30)->run(
+            "{$kubectl} get configmap plex-commons -n {$plexNamespace} -o jsonpath=".escapeshellarg('{.data.commons\.json}'),
+        )->output();
+
+        $decoded = json_decode(trim($raw), true);
+        $services = is_array($decoded) ? ($decoded['services'] ?? []) : [];
+
+        foreach ($services as $name => $config) {
+            if (($config['enabled'] ?? false) !== true) {
+                continue;
+            }
+
+            $driver = DatabaseDriver::tryFrom((string) $name);
+
+            if ($driver !== null && $driver->isBackupCapable()) {
+                return $driver;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every non-system database in the Commons, whichever engine it runs.
+     *
+     * Read live rather than hardcoded so a newly installed tool is covered
+     * without a code change — the failure mode of a static list is a database
+     * silently not backed up.
      *
      * @return array<int, string>
      */
     protected function backupDatabases(string $kubectl, string $plexNamespace = 'larakube-plex'): array
     {
+        $driver = $this->commonsDatabaseDriver($kubectl, $plexNamespace);
+
+        if ($driver === null) {
+            return [];
+        }
+
+        $service = $driver->commonsServiceName();
+
         $out = Process::timeout(60)->run(
-            "{$kubectl} exec deploy/postgres -n {$plexNamespace} -c postgres -- "
-            ."psql -U postgres -tAc \"select datname from pg_database where datistemplate = false and datname <> 'postgres'\"",
+            "{$kubectl} exec deploy/{$service} -n {$plexNamespace} -c {$service} -- "
+            .'sh -c '.escapeshellarg($driver->commonsListDatabasesCommand()),
         )->output();
 
         return array_values(array_filter(array_map('trim', explode("\n", $out))));

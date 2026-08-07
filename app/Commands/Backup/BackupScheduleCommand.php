@@ -72,12 +72,31 @@ class BackupScheduleCommand extends Command
             return 1;
         }
 
+        // The CronJob bakes its dump commands in, so the engine has to be known
+        // at deploy time — and refused up front if it is one we cannot dump.
+        $driver = $this->commonsDatabaseDriver($kubectl);
+
+        if ($driver === null) {
+            $this->laraKubeError('No backup-capable Commons database found on this cluster.');
+            $this->line('  <fg=gray>PostgreSQL, MySQL and MariaDB can be dumped. Scheduling a job that');
+            $this->line('  cannot dump anything would fail silently every night.</>');
+
+            return 1;
+        }
+
         $volumes = $this->backupVolumeTargets();
 
         $manifest = view('k8s.backup.cronjob', [
             'schedule' => $schedule,
             'timezone' => $timezone,
             'volumes' => $volumes,
+            'dbDriver' => $driver->value,
+            'dbService' => $driver->commonsServiceName(),
+            'dbListCommand' => $driver->commonsListDatabasesCommand(),
+            // A placeholder, not "$db": the rendered command is single-quoted
+            // in the job script (MySQL's own -p"$VAR" makes another layer of
+            // double quotes impossible), so the name is substituted by sed.
+            'dbDumpTemplate' => $driver->commonsBackupCommand('__DB__'),
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-backup-cron.yaml';
@@ -100,7 +119,7 @@ class BackupScheduleCommand extends Command
         $this->newLine();
         $this->line('  <fg=gray>Runs at:</>   <fg=blue>'.$this->describeSchedule($schedule, $timezone).'</>');
         $this->line("  <fg=gray>Cron:</>      <fg=blue>{$schedule}</>");
-        $this->line('  <fg=gray>Covers:</>    <fg=blue>'.count($volumes).' volumes + every database</>');
+        $this->line('  <fg=gray>Covers:</>    <fg=blue>'.count($volumes)." volumes + every {$driver->value} database</>");
         $this->newLine();
         if (($growth = $this->describeGrowth($schedule)) !== null) {
             // No pruning exists yet, so every archive accumulates. R2's free
