@@ -1,5 +1,7 @@
 # speckit.plan: Portable — Complete Local Environment (trust + ingress + hosts)
 
+**Status:** ✅ BUILT — verified 2026-08-08: the `portable` command "Generate[s] a CLI-free larakube.sh wrapper (and optional guide) so teammates can run this project locally without installing LaraKube".
+
 ## 🎯 Objective
 
 Make the CLI-free `larakube.sh` wrapper capable of the **full** local dev

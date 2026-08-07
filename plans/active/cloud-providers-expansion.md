@@ -1,5 +1,7 @@
 # LaraKube Multi-Cloud Provider Expansion Plan (v2 - Enum Standard)
 
+**Status:** ⛔ NOT STARTED — confirmed 2026-08-08: there is no `CloudProvider` enum in `app/Enums/` at all, so Hetzner/Linode/AWS have no entry point. (Do not confuse with `ManagedProvider`, which covers managed-K8s overlays and does have EKS/GKE/AKS/CIVO/LKE.)
+
 This document outlines the architectural changes and implementation steps required to support **Hetzner**, **Linode**, and **AWS** directly out of the box in the `LaraKube CLI`, adhering strictly to the project's standard of using rich Enums and Traits.
 
 ## 1. Core Abstraction: The `CloudProvider` Enum

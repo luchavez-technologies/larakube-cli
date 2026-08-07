@@ -1,5 +1,7 @@
 # Plan: GitLab CI/CD support (CI-provider abstraction)
 
+**Status:** ✅ BUILT — verified 2026-08-08: GitLab CI generation lives in `InteractsWithPipelines` + `ConfiguresCloudEnvironment`, `RegistryProvider::GITLAB` is a case, and the entry point is now `cloud:configure {env} --only=ci` (the old `cloud:configure:gitlab` was folded in).
+
 ## 🎯 Objective
 
 Let LaraKube generate a **GitLab CI/CD pipeline** (`.gitlab-ci.yml`) as an

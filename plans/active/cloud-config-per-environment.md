@@ -1,5 +1,7 @@
 # Plan: Cloud config → per-environment
 
+**Status:** ✅ BUILT — verified 2026-08-08: cloud config lives in `EnvironmentData` per environment, exactly as proposed. See ADR 0007 for the committed-blueprint vs gitignored-local split.
+
 ## Motivation
 
 Today cloud connection config lives in a top-level `ConfigData::$cloud` map,

@@ -1,5 +1,7 @@
 # Plan: RBAC-scoped teammate access (cluster-native)
 
+**Status:** ✅ BUILT AND IN USE — verified 2026-08-08: `cluster:grant`, `cluster:revoke`, `cluster:users` all ship, and a real teammate ServiceAccount (`larakube-access/eman`) exists on `larakube-159.89.205.239`.
+
 ## 🎯 Objective
 
 Give each teammate their own **scoped** kube access — read-only, operate-one-app,

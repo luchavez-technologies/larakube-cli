@@ -1,5 +1,7 @@
 # speckit.plan: Per-Environment Deployment Strategy
 
+**Status:** ✅ BUILT — verified 2026-08-08: `ConfigData::getStrategy($env)` is per-environment and drives PVC access modes and the multi-node emptyDir swap.
+
 ## 🎯 Objective
 
 Let `strategy` (single-node vs multi-node-HA) vary per environment instead of

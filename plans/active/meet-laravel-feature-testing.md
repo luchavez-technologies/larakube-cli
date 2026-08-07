@@ -1,8 +1,6 @@
 # Plan: verify `LaravelFeature::MEET` against a real Laravel app
 
-**Status:** Active — code committed, never exercised
-**Created:** 2026-08-07
-**Commit:** `c858fdb` (`feat(Meet): add the MEET Laravel feature so apps can build on the shared SFU`)
+**Status:** ⛔ NOT STARTED — confirmed against the cluster 2026-08-08: the `meet-keys` registry on `larakube-159.89.205.239` holds exactly two consumers, `_system` (the placeholder that stops livekit-server rejecting an empty `keys:` block) and `chat` (roomPrefix `matrix-`). No Laravel app has ever been allocated a key, and both entries have `webhookUrl: null` — the webhook field is declared but no code path sets it.
 
 ---
 

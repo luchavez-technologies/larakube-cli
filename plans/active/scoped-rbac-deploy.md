@@ -1,5 +1,7 @@
 # Plan: Per-app per-environment scoped deploy credentials
 
+**Status:** ✅ BUILT — verified 2026-08-08: `cloud:deploy` dogfoods scoped RBAC and strips the Namespace doc; `InteractsWithScopedRbac` owns the ClusterRole + per-namespace RoleBinding. The k3s cluster-admin cert no longer goes to CI.
+
 ## 🎯 Objective
 
 Stop shipping the **k3s cluster-admin** cert to CI. Each `(app, environment)` pair

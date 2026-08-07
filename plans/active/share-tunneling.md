@@ -1,5 +1,7 @@
 # Plan: `larakube share` — Persistent Tunnel Deployments
 
+**Status:** ✅ BUILT — verified 2026-08-08: the ephemeral case (`share`) was already shipped when this was written; the persistent case now ships too as `cloud:configure:tunnel` (with `--remove`), backed by `TunnelProvider` (Cloudflare, Localtonet) and a `tunnel` field on `EnvironmentData`.
+
 ## Context
 
 There are two distinct tunneling use cases in LaraKube CLI today:

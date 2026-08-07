@@ -1,5 +1,7 @@
 # Plan: Server / node security hardening (stub)
 
+**Status:** ✅ BUILT — header called this a stub. Verified 2026-08-08: `cloud:harden` ships, described as "Harden an already-provisioned server (UFW firewall, fail2ban, key-only SSH) — safe to re-run any time".
+
 ## 🎯 Objective
 
 `cloud:provision` stands up a usable k3s node, but doesn't harden it. Capture the

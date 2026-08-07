@@ -1,5 +1,7 @@
 # Plan: Bare-minimum deploy to DigitalOcean Kubernetes (DOKS)
 
+**Status:** ✅ BUILT — verified 2026-08-08: `cloud:init:doks` ships, `ManagedProvider::DOKS` is a case, and `cloud:deploy` picks SSH-sideload vs registry-push automatically.
+
 ## 🎯 Objective
 
 Get a LaraKube app running on **DigitalOcean Kubernetes (DOKS)** — managed,

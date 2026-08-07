@@ -1,5 +1,7 @@
 # Plan: `vpn:wire` — the Traefik middleware `--vpn-only` has always been missing
 
+**Status:** ✅ BUILT — verified 2026-08-08: `vpn:wire` and `vpn:unwire` both ship.
+
 ## 🎯 Objective
 
 `vpn:wire <tool>` creates the Traefik `Middleware` CRD that every `--vpn-only`

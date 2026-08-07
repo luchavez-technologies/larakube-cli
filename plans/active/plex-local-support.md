@@ -1,5 +1,7 @@
 # Plan: Plex in Local Dev Environments
 
+**Status:** ✅ BUILT — verified 2026-08-08: `plex:init` takes an `{environment?}` argument documented as '"local" (default) or a cloud env'. The local guard this plan set out to remove is gone.
+
 ## Context
 
 `plex:init` and `plex:join` currently guard against `local` environments

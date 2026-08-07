@@ -1,5 +1,7 @@
 # Plan: Per-environment container registry
 
+**Status:** ✅ BUILT (v0.13.0) — verified 2026-08-08: `RegistryProvider` has GHCR/DOCKERHUB/GITLAB/GITEA and `cloud:configure {env} --only=registry` is the entry point.
+
 ## 🎯 Objective
 
 Let each environment publish its image to a **different container registry** —

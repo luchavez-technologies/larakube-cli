@@ -1,5 +1,7 @@
 # Plan: Omnichannel — post to (and chat from) LinkedIn / Facebook in one place
 
+**Status:** ⛔ NOT STARTED — confirmed 2026-08-08: no social/LinkedIn/Facebook command or `ClusterTool` case exists.
+
 ## 🎯 The ask
 
 The team runs a **LinkedIn Page** and a **Facebook Page** and wants one

@@ -1,6 +1,6 @@
 # Startup OS Tools Expansion (`design:init` Penpot & `api:init` Hoppscotch) Plan
 
-**Status:** Draft / Active (6 tools shipped; `design:init` & `api:init` in progress)
+**Status:** 🟡 PARTIAL — verified 2026-08-08. The shipped tools are real, but "`design:init` & `api:init` in progress" was not accurate: neither command exists in the CLI's 238-command surface, and neither has a `ClusterTool` case. They are ⛔ not started. Everything else here has landed.
 **Created:** 2026-07-29
 **Updated:** 2026-08-03 (post grill-me gap analysis)
 **Target Version:** LaraKube CLI v1.2.0

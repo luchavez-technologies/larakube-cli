@@ -4,9 +4,8 @@
 > commands. It turns the locked design in [`tenement-multi-tenant-node.md`](./tenement-multi-tenant-node.md)
 > into concrete commands, manifests, and a CI/CD story. Read that plan first for
 > the *why* and the security model; this doc is the *how*.
->
-> **Status:** design pass / spec. No code written yet. File paths below are where
-> code *should* go, cross-referenced to the existing subsystems they build on.
+
+**Status:** ✅ PHASES 1–3 BUILT — the header said "no code written yet", which is badly out of date. Verified 2026-08-08: `plex:init`, `plex:export`, `plex:join`, `plex:leave`, `plex:migrate`, `plex:rotate`, `plex:resources`, `plex:show`, `plex:start`, `plex:stop`, `plex:destroy`, `plex:remove` all ship, and Commons (`postgres`, `redis`, `seaweedfs`) has been Running on `larakube-159.89.205.239` for 22d. Deferred: Phase 3 fairness/limits, Phase 4 graduation/multi-node.
 
 ---
 

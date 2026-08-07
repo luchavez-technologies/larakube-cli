@@ -1,8 +1,6 @@
 # Plan: Configurable Cinny UI Branding & Matrix Synapse SSO Auto-Redirect (`chat:init` & `sso:wire`)
 
-> **Status:** Draft  
-> **Created:** 2026-08-05  
-> **Target Version:** LaraKube CLI v1.2.0
+**Status:** ✅ BUILT — header said "Draft". Verified 2026-08-08: `chat:init` takes `--app-name`/`--logo-url` and resolves them through `resolveToolBranding()`, and the `chat-oidc` Secret exists on `larakube-159.89.205.239`, so Cinny SSO is wired.
 
 ---
 

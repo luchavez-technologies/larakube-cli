@@ -1,8 +1,6 @@
 # Plan: Multi-Node & Managed Storage Strategy (DOKS / VPS / Multi-Node HA)
 
-**Status:** Active Plan Document
-**Created:** 2026-07-27
-**Updated:** 2026-07-29
+**Status:** 🟡 SUBSTANTIALLY BUILT — verified 2026-08-08: `cloud:externalize` and `cloud:init:nfs` both ship, and the NFS version-negotiation mount-hang has a fix (PV with `nfsvers=4.1`). Remaining work is the multi-node HA path, which this single VPS cannot exercise.
 
 ---
 

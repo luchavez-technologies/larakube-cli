@@ -1,5 +1,7 @@
 # Global Companions — Shared Cluster-Level Companion Apps
 
+**Status:** ✅ BUILT — verified 2026-08-08: `companion:add`/`list`/`remove`/`start`/`stop` ship against a shared `CompanionDriver` enum (Adminer, phpMyAdmin, pgAdmin, RedisInsight, Mongo Express). Per-project companions were removed.
+
 ## Goal
 
 Move companion apps (phpMyAdmin, RedisInsight, etc.) out of per-project namespaces and into `larakube-system` as shared cluster-level services — the same pattern as Traefik. One instance serves all local apps simultaneously.

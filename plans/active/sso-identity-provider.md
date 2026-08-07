@@ -1,5 +1,7 @@
 # Plan: Self-hosted identity provider (`sso:init`) + `mail:create` as the onboarding entry point
 
+**Status:** ✅ BUILT — verified 2026-08-08: `sso:init`/`sso:create`/`sso:grant`/`sso:revoke`/`sso:wire`/`sso:unwire` ship, `larakube-sso/sso-zitadel` is Running on `larakube-159.89.205.239` at `sso.luchtech.dev`, and `mail:create` exists as the onboarding entry point.
+
 ## 🎯 Objective
 
 `sso:init` — deploy **Zitadel** as a cluster-wide OIDC/SAML identity provider,

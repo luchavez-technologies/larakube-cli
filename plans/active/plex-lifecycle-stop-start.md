@@ -1,8 +1,6 @@
 # Plan: Plex Commons Lifecycle Management (`plex:stop`, `plex:start`, Auto-Resume)
 
-**Status:** Proposed Active Plan
-**Created:** 2026-08-06
-**Target Version:** LaraKube CLI v1.2.0
+**Status:** ✅ BUILT — header said "Proposed". Verified 2026-08-08: `plex:start` and `plex:stop` both ship.
 
 ---
 

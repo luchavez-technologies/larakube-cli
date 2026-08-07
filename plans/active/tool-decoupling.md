@@ -1,5 +1,7 @@
 # Decoupling Cluster Tools from Laravel Projects
 
+**Status:** ✅ BUILT — verified 2026-08-08: `tool:add` takes `{environment?}` and `--context`, so it is cluster-state driven and no longer requires a local `.larakube.json`.
+
 This plan addresses the need to make LaraKube's cluster tools (`tool:add`, `tool:remove`) environment-aware, completely decouple them from requiring a local `.larakube.json`, and make them strictly driven by Kubernetes Cluster State. 
 
 ## 1. Command Signatures (`tool:add`, `tool:remove`)

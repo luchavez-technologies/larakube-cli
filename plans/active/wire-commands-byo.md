@@ -1,5 +1,7 @@
 # Plan: `*:wire` commands should work with EXTERNAL backends, not only the bundled ones
 
+**Status:** ⛔ NOT STARTED — confirmed 2026-08-08: `mail:wire` still has no flag for an external SMTP host; every `*:wire` continues to assume the LaraKube-deployed backend.
+
 ## 🎯 Objective
 
 `mail:wire`, `vpn:wire`, and `sso:wire` each assume the LaraKube-deployed

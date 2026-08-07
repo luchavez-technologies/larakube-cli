@@ -1,5 +1,7 @@
 # Plan: ARM / edge (single-board) deploy tier
 
+**Status:** ⛔ NOT STARTED — confirmed 2026-08-08: `arm64` appears only in the bundle/k9s/update/remote-deploy paths (host-arch detection), never as an edge deploy tier.
+
 ## 🎯 Vision
 
 Single-board computers (Raspberry Pi 4/5 8GB, Orange Pi, etc.) are now powerful
