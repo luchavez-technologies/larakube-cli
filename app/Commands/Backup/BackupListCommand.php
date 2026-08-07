@@ -2,6 +2,7 @@
 
 namespace App\Commands\Backup;
 
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
@@ -14,7 +15,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class BackupListCommand extends Command
 {
-    use InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive;
+    use DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive;
 
     protected $signature = 'backup:list
         {environment=local : Environment whose backups to list}
@@ -26,7 +27,10 @@ class BackupListCommand extends Command
     {
         $this->renderHeader();
 
-        $kubectl = $this->backupKubectl((string) $this->option('context') ?: null);
+        $kubectl = $this->backupKubectl($this->resolveToolContext(
+            (string) $this->argument('environment'),
+            (string) $this->option('context') ?: null,
+        ));
         $config = $this->readBackupConfig($kubectl, $this->backupNamespace());
 
         if ($config === null) {

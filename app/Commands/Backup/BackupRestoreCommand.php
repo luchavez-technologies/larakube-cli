@@ -3,6 +3,7 @@
 namespace App\Commands\Backup;
 
 use App\Traits\ConfirmsDestructiveAction;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
@@ -24,7 +25,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class BackupRestoreCommand extends Command
 {
-    use ConfirmsDestructiveAction, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive;
 
     protected $signature = 'backup:restore
         {environment=local : Environment whose cluster to restore into}
@@ -45,7 +46,10 @@ class BackupRestoreCommand extends Command
     {
         $this->renderHeader();
 
-        $kubectl = $this->backupKubectl((string) $this->option('context') ?: null);
+        $kubectl = $this->backupKubectl($this->resolveToolContext(
+            (string) $this->argument('environment'),
+            (string) $this->option('context') ?: null,
+        ));
         $config = $this->resolveRestoreConfig($kubectl);
 
         if ($config === null) {

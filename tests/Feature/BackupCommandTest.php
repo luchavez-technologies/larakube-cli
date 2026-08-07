@@ -276,3 +276,22 @@ test('bucket creation is refused for non-R2 endpoints rather than failing obscur
         ->assertExitCode(1)
         ->expectsOutputToContain('only supported for Cloudflare R2');
 });
+
+test('the environment argument selects the cluster, not whatever kubectl points at', function () {
+    // backup:init production once wrote its config to the local orbstack
+    // cluster because the environment argument was ignored. A backup of the
+    // wrong cluster is the worst outcome: it looks exactly like a good one.
+    Process::fake(backupFakes([
+        '*create secret*' => Process::result(output: 'created'),
+        '*apply -f *' => Process::result(output: 'configured'),
+    ]));
+
+    $this->artisan('backup:init production --no-interaction --context=some-cluster '
+        .'--endpoint=https://acct.r2.cloudflarestorage.com '
+        .'--bucket=b --access-key=k --secret-key=s')
+        ->assertExitCode(0);
+
+    // Every kubectl call must carry the resolved context.
+    Process::assertRan(fn ($job) => str_contains($job->command, '--context=some-cluster')
+        && str_contains($job->command, 'larakube-backup-config'));
+});

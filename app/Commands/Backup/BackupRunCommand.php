@@ -2,6 +2,7 @@
 
 namespace App\Commands\Backup;
 
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
@@ -26,7 +27,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class BackupRunCommand extends Command
 {
-    use InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
+    use DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'backup:run
         {environment=local : Environment whose cluster to back up}
@@ -39,7 +40,10 @@ class BackupRunCommand extends Command
     {
         $this->renderHeader();
 
-        $context = (string) $this->option('context') ?: null;
+        $env = (string) $this->argument('environment');
+        // See BackupInitCommand: a backup taken against the wrong cluster is
+        // the worst possible outcome, because it looks exactly like a good one.
+        $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $kubectl = $this->backupKubectl($context);
         $ns = $this->backupNamespace();
 

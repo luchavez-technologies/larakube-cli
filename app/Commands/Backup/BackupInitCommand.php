@@ -3,6 +3,7 @@
 namespace App\Commands\Backup;
 
 use App\Exceptions\MissingFlagException;
+use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
@@ -25,7 +26,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class BackupInitCommand extends Command
 {
-    use InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment;
+    use DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment;
 
     protected $signature = 'backup:init
         {environment=local : Environment whose cluster to configure}
@@ -45,7 +46,10 @@ class BackupInitCommand extends Command
         $this->renderHeader();
 
         $env = (string) $this->argument('environment');
-        $context = (string) $this->option('context') ?: null;
+        // Resolve the environment to its cluster. Without this, `backup:init
+        // production` silently configured whatever kubectl happened to point
+        // at — and a backup of the wrong cluster reports success.
+        $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $kubectl = $this->backupKubectl($context);
         $ns = $this->backupNamespace();
 
