@@ -1,10 +1,11 @@
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: {{ $driver->getPodName($config) }}
 spec:
-  serviceName: {{ $driver->getPodName($config) }}
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: {{ $driver->getPodName($config) }}
@@ -16,6 +17,8 @@ spec:
       containers:
         - name: {{ $driver->getPodName($config) }}
           image: {{ $driver->getDockerImage($config) }}
+          ports:
+            - containerPort: {{ $driver->dbPort() }}
           env:
             - name: MONGO_INITDB_ROOT_USERNAME
               value: "{{ $driver->dbUsername() }}"
@@ -24,19 +27,23 @@ spec:
                 secretKeyRef:
                   name: laravel-secrets
                   key: DB_PASSWORD
-          ports:
-            - containerPort: {{ $driver->dbPort() }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ $driver->dbPort() }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: {{ $driver->dbPort() }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
           volumeMounts:
             - name: db-data
               mountPath: /data/db
-  volumeClaimTemplates:
-    - metadata:
-        name: db-data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 5Gi
+      volumes:
+        - name: db-data
+          persistentVolumeClaim:
+            claimName: {{ $config->getName() }}-{{ $driver->value }}-pvc
 ---
 apiVersion: v1
 kind: Service

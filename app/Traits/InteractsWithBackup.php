@@ -93,7 +93,7 @@ trait InteractsWithBackup
 
             $driver = DatabaseDriver::tryFrom((string) $name);
 
-            if ($driver !== null && $driver->isBackupCapable()) {
+            if ($driver !== null && $driver->hasCommonsDumpCommand()) {
                 return $driver;
             }
         }

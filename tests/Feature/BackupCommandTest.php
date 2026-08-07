@@ -636,8 +636,7 @@ test('the backup works on MySQL and MariaDB, not just PostgreSQL', function () {
         $script = collect(array_map(
             fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
             array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
-        ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')
-            ['spec']['jobTemplate']['spec']['template']['spec']['initContainers'][0]['command'][2];
+        ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')['spec']['jobTemplate']['spec']['template']['spec']['initContainers'][0]['command'][2];
 
         expect($script)->toContain("deploy/{$driver->value}")
             ->and($script)->not->toContain('pg_dump')
@@ -676,9 +675,9 @@ test('the encrypt stage does not assume the Commons engine', function () {
 test('an unsupported Commons engine is refused rather than scheduled', function () {
     // MongoDB and SQLite have no dump command; a nightly job that cannot dump
     // anything would fail silently forever.
-    expect(App\Enums\DatabaseDriver::MONGODB->isBackupCapable())->toBeFalse()
-        ->and(App\Enums\DatabaseDriver::SQLITE->isBackupCapable())->toBeFalse()
-        ->and(App\Enums\DatabaseDriver::POSTGRESQL->isBackupCapable())->toBeTrue()
-        ->and(App\Enums\DatabaseDriver::MYSQL->isBackupCapable())->toBeTrue()
-        ->and(App\Enums\DatabaseDriver::MARIADB->isBackupCapable())->toBeTrue();
+    expect(App\Enums\DatabaseDriver::MONGODB->hasCommonsDumpCommand())->toBeFalse()
+        ->and(App\Enums\DatabaseDriver::SQLITE->hasCommonsDumpCommand())->toBeFalse()
+        ->and(App\Enums\DatabaseDriver::POSTGRESQL->hasCommonsDumpCommand())->toBeTrue()
+        ->and(App\Enums\DatabaseDriver::MYSQL->hasCommonsDumpCommand())->toBeTrue()
+        ->and(App\Enums\DatabaseDriver::MARIADB->hasCommonsDumpCommand())->toBeTrue();
 });

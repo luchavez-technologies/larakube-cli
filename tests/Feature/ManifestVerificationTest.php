@@ -14,7 +14,7 @@ test('Databases: MySQL, MariaDB, PostgreSQL, and MongoDB generate correct manife
         ['driver' => DatabaseDriver::MYSQL, 'file' => 'base/mysql-deployment.yaml', 'port' => 3306],
         ['driver' => DatabaseDriver::MARIADB, 'file' => 'base/mariadb-deployment.yaml', 'port' => 3306],
         ['driver' => DatabaseDriver::POSTGRESQL, 'file' => 'base/postgres-deployment.yaml', 'port' => 5432],
-        ['driver' => DatabaseDriver::MONGODB, 'file' => 'base/mongodb-statefulset.yaml', 'port' => 27017],
+        ['driver' => DatabaseDriver::MONGODB, 'file' => 'base/mongodb-deployment.yaml', 'port' => 27017],
     ];
 
     foreach ($drivers as $meta) {
@@ -37,6 +37,44 @@ test('Databases: MySQL, MariaDB, PostgreSQL, and MongoDB generate correct manife
         $kustomization = $manifests['base/kustomization.yaml'];
         expect($kustomization['resources'])->toContain(basename($meta['file']));
     }
+});
+
+test('every database engine is a Deployment over a standalone PVC — no StatefulSets', function () {
+    // MongoDB was a StatefulSet with a volumeClaimTemplate, but nothing that
+    // justifies one was ever wired: replicas 1, no --replSet, and a plain
+    // ClusterIP Service instead of a headless one, so the stable per-pod DNS
+    // that is the whole point never resolved. What it did cost was real —
+    // a StatefulSet/Deployment branch in getManagedResources(), and PVCs that
+    // survive teardown under a generated name (db-data-mongodb-0).
+    foreach ([DatabaseDriver::MYSQL, DatabaseDriver::MARIADB, DatabaseDriver::POSTGRESQL, DatabaseDriver::MONGODB] as $driver) {
+        $config = new ConfigData(name: 'workload-test-'.$driver->value);
+        $config->setServerVariation(ServerVariation::FPM_NGINX);
+        $config->setPhpVersion(PhpVersion::PHP_8_5);
+        $config->setDatabase($driver);
+
+        $manifests = generateManifestsAsArray($config);
+        $workload = $manifests["base/{$driver->value}-deployment.yaml"][0];
+
+        expect($workload['kind'])->toBe('Deployment')
+            // Recreate is what gives a Deployment the at-most-one-pod guarantee
+            // that was the only genuine StatefulSet benefit at replicas: 1.
+            ->and($workload['spec']['strategy']['type'])->toBe('Recreate')
+            ->and($workload['spec'])->not->toHaveKey('volumeClaimTemplates')
+            ->and($workload['spec']['template']['spec']['volumes'][0]['persistentVolumeClaim']['claimName'])
+            ->toBe("{$config->getName()}-{$driver->value}-pvc");
+
+        // The claim the pod names has to be one the overlay actually creates.
+        $pvc = collect($manifests["overlays/local/{$driver->value}-volumes.yaml"])
+            ->firstWhere('kind', 'PersistentVolumeClaim');
+
+        expect($pvc['metadata']['name'])->toBe("{$config->getName()}-{$driver->value}-pvc");
+
+        expect($manifests['base/kustomization.yaml']['resources'])->toContain("{$driver->value}-deployment.yaml");
+        expect($manifests['overlays/local/kustomization.yaml']['resources'])->toContain("{$driver->value}-volumes.yaml");
+    }
+
+    expect(DatabaseDriver::MONGODB->getManagedResources(new ConfigData(name: 'mongo-managed'))[0]['kind'])
+        ->toBe('Deployment');
 });
 
 test('Caching: Redis and Memcached generate correct manifests', function () {

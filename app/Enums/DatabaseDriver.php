@@ -124,7 +124,7 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
             self::MYSQL => 'k8s.mysql.deployment',
             self::MARIADB => 'k8s.mariadb.deployment',
             self::POSTGRESQL => 'k8s.postgres.deployment',
-            self::MONGODB => 'k8s.mongodb.statefulset',
+            self::MONGODB => 'k8s.mongodb.deployment',
             self::SQLITE => null,
         };
     }
@@ -135,7 +135,7 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
             self::MYSQL => 'base/mysql-deployment.yaml',
             self::MARIADB => 'base/mariadb-deployment.yaml',
             self::POSTGRESQL => 'base/postgres-deployment.yaml',
-            self::MONGODB => 'base/mongodb-statefulset.yaml',
+            self::MONGODB => 'base/mongodb-deployment.yaml',
             self::SQLITE => null,
         };
     }
@@ -156,6 +156,7 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
             self::MYSQL => 'k8s.mysql.volumes',
             self::MARIADB => 'k8s.mariadb.volumes',
             self::POSTGRESQL => 'k8s.postgres.volumes',
+            self::MONGODB => 'k8s.mongodb.volumes',
             default => null,
         };
     }
@@ -166,6 +167,7 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
             self::MYSQL => 'mysql-volumes.yaml',
             self::MARIADB => 'mariadb-volumes.yaml',
             self::POSTGRESQL => 'postgres-volumes.yaml',
+            self::MONGODB => 'mongodb-volumes.yaml',
             default => null,
         };
     }
@@ -217,7 +219,9 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
                 'patches' => ['postgres-patch.yaml'],
             ],
             self::MONGODB => [
-                'base' => ['mongodb-statefulset.yaml'],
+                'base' => ['mongodb-deployment.yaml'],
+                'local' => ['mongodb-volumes.yaml'],
+                'cloud' => ['mongodb-volumes.yaml'],
             ],
             self::SQLITE => [],
         };
@@ -234,7 +238,7 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
         $name = $this->getPodName($config);
 
         return [
-            ['kind' => $this === self::MONGODB ? 'StatefulSet' : 'Deployment', 'name' => $name],
+            ['kind' => 'Deployment', 'name' => $name],
             ['kind' => 'Service', 'name' => $name],
         ];
     }
@@ -635,8 +639,14 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
         };
     }
 
-    /** Whether this driver can be dumped and restored by the backup commands. */
-    public function isBackupCapable(): bool
+    /**
+     * Whether this engine ships a Commons dump/list pair the backup job can run.
+     *
+     * Not a claim that the others are un-backupable: SQLite is a file the volume
+     * archive already captures, and MongoDB has mongodump. Neither is a Commons
+     * engine (see isPlexReady()), so neither has a command defined here.
+     */
+    public function hasCommonsDumpCommand(): bool
     {
         return $this->commonsBackupCommand('x') !== '' && $this->commonsListDatabasesCommand() !== '';
     }

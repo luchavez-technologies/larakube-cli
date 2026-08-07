@@ -57,7 +57,7 @@ The Commons database can be PostgreSQL, MySQL or MariaDB. The first implementati
 supported engines — and `DatabaseDriver` already owned `commonsBackupCommand()`,
 `commonsAdminClient()` and `commonsServiceName()` for all of them.
 
-`commonsListDatabasesCommand()` and `isBackupCapable()` were added there rather than anywhere
+`commonsListDatabasesCommand()` and `hasCommonsDumpCommand()` were added there rather than anywhere
 else, so the enum stays the single place that knows how to talk to each engine. The engine is
 detected from the `plex-commons` ConfigMap, and `backup:schedule` refuses to deploy against one
 it cannot dump (MongoDB, SQLite) rather than installing a job that fails silently every night.
