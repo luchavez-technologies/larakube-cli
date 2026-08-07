@@ -1,6 +1,6 @@
 # Plan: Cluster Observability — Loki + Prometheus + Grafana
 
-**Status:** 🟡 BUILT, PARTLY DEPLOYED — verified 2026-08-08: `monitor:init`/`monitor:show` ship and Prometheus + Grafana + kube-state-metrics are Running on `larakube-159.89.205.239` (`monitor.luchtech.dev`). Loki is templated in `k8s/monitoring/shared.blade.php` but is NOT running on this cluster — log aggregation is the remaining gap.
+**Status:** ✅ BUILT — verified 2026-08-08: `monitor:init`/`monitor:show` ship; Prometheus + Grafana + kube-state-metrics Running on `larakube-159.89.205.239` (`monitor.luchtech.dev`). Loki + Promtail are fully implemented too — Deployment, `loki-storage` PVC, Promtail DaemonSet, push endpoint and Grafana datasource — behind `--with-logs`/`--no-logs`, which defaults ON interactively and OFF non-interactively. They are absent from this cluster because logs were declined at install, not because anything is missing. `larakube monitor:init --with-logs` deploys them.
 
 > **Related:** [`monitoring-plex-storage.md`](monitoring-plex-storage.md) — queued
 > enhancement to reuse the Plex Commons object store for Loki chunks (auto-detected,
