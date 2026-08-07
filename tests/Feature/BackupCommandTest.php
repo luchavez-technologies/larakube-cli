@@ -528,3 +528,29 @@ test('the projected storage is shown, because nothing prunes it yet', function (
         // An expression we cannot read gets no invented number.
         ->and($method->invoke($cmd, 'nonsense', 55))->toBeNull();
 });
+
+test('the backup and the media prune do not run at the same time', function () {
+    // chat-media-prune uploads media INTO SeaweedFS; the backup tars
+    // SeaweedFS's data directory. Overlapping risks archiving that volume
+    // mid-write — and both are I/O heavy on a single node.
+    $chat = view('k8s.chat.matrix', [
+        'host' => 'chat.example.com', 'appName' => 'Chat', 'logoUrl' => '',
+        'plexNamespace' => 'larakube-plex', 'noPlex' => false, 'vpnOnly' => false,
+        'isLocal' => false, 'proxied' => false,
+        's3Endpoint' => 'http://sw:8333', 's3Bucket' => 'chat-media',
+        's3AccessKey' => 'k', 's3SecretKey' => 's',
+        'dbName' => 'd', 'dbUser' => 'u', 'dbPassword' => 'p',
+        'registrationSecret' => 'r', 'turnSecret' => 't', 'meetJwtUrl' => null,
+        'hostPort' => true, 'externalIp' => '1.2.3.4', 'smtp' => null, 'oidc' => null,
+    ])->render();
+
+    $pruneCron = collect(array_map(
+        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        array_values(array_filter(array_map('trim', preg_split('/^---$/m', $chat)), fn ($d) => $d !== '')),
+    ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')['spec']['schedule'];
+
+    $reflection = new ReflectionClass(App\Commands\Backup\BackupScheduleCommand::class);
+    $backupCron = $reflection->getConstant('DEFAULT_SCHEDULE');
+
+    expect($pruneCron)->not->toBe($backupCron);
+});

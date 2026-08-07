@@ -561,7 +561,11 @@ metadata:
     app: chat-media-prune
     app.kubernetes.io/part-of: chat
 spec:
-  schedule: "{{ $mediaPruneSchedule ?? '17 3 * * *' }}"
+  # 02:41, deliberately BEFORE the 03:17 backup and not overlapping it. This
+  # job uploads media to SeaweedFS; the backup tars SeaweedFS's data directory.
+  # Running them together risks archiving that volume mid-write — and both are
+  # I/O heavy on a single node. Change one, check the other.
+  schedule: "{{ $mediaPruneSchedule ?? '41 2 * * *' }}"
   # Never overlap: two prunes sharing one sqlite cache corrupt each other's view
   # of what has been uploaded.
   concurrencyPolicy: Forbid

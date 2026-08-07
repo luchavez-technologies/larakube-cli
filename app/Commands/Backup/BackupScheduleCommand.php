@@ -27,7 +27,11 @@ class BackupScheduleCommand extends Command
 {
     use DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive, StreamsProcessOutput;
 
-    /** Off the hour on purpose: every backup job in the world runs at 02:00. */
+    /**
+     * Off the hour on purpose — :00 and :30 are where every cron on earth
+     * lands — and after chat-media-prune's 02:41, which writes to SeaweedFS
+     * while this job archives SeaweedFS's data directory.
+     */
     protected const DEFAULT_SCHEDULE = '17 3 * * *';
 
     protected $signature = 'backup:schedule
