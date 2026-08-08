@@ -73,25 +73,32 @@ test('generateSanCertificates uses company CA when both cert and key are supplie
     $tmpDir = sys_get_temp_dir().'/larakube-ca-test-'.uniqid();
     mkdir($tmpDir, 0700, true);
 
-    // Generate a real company CA for the test
-    exec('openssl genrsa -out '.escapeshellarg("$tmpDir/company-ca.key").' 2048 2>/dev/null');
-    exec('openssl req -x509 -new -nodes -key '.escapeshellarg("$tmpDir/company-ca.key").' -sha256 -days 1 -out '.escapeshellarg("$tmpDir/company-ca.crt").' -subj "/CN=Test Company CA" 2>/dev/null');
+    // finally, not a trailing statement: a failing assertion below would skip
+    // the cleanup and leave real RSA private keys in the system temp directory,
+    // one fresh set per run, indefinitely.
+    try {
+        // Generate a real company CA for the test
+        exec('openssl genrsa -out '.escapeshellarg("$tmpDir/company-ca.key").' 2048 2>/dev/null');
+        exec('openssl req -x509 -new -nodes -key '.escapeshellarg("$tmpDir/company-ca.key").' -sha256 -days 1 -out '.escapeshellarg("$tmpDir/company-ca.crt").' -subj "/CN=Test Company CA" 2>/dev/null');
 
-    $result = $trait->generateSanCertificates(
-        domains: ['app.company.internal'],
-        outputDir: $tmpDir,
-        companyCaCrt: "$tmpDir/company-ca.crt",
-        companyCaKey: "$tmpDir/company-ca.key",
-    );
+        $result = $trait->generateSanCertificates(
+            domains: ['app.company.internal'],
+            outputDir: $tmpDir,
+            companyCaCrt: "$tmpDir/company-ca.crt",
+            companyCaKey: "$tmpDir/company-ca.key",
+        );
 
-    // ca_crt should point to the company cert, not a generated one
-    expect($result['ca_crt'])->toBe("$tmpDir/company-ca.crt")
-        ->and(file_exists($result['tls_crt']))->toBeTrue()
-        ->and(file_exists($result['tls_key']))->toBeTrue()
-        // No self-generated ca.key should exist in the output dir
-        ->and(file_exists("$tmpDir/ca.key"))->toBeFalse();
+        // ca_crt should point to the company cert, not a generated one
+        expect($result['ca_crt'])->toBe("$tmpDir/company-ca.crt")
+            ->and(file_exists($result['tls_crt']))->toBeTrue()
+            ->and(file_exists($result['tls_key']))->toBeTrue()
+            // No self-generated ca.key should exist in the output dir
+            ->and(file_exists("$tmpDir/ca.key"))->toBeFalse();
 
-    // Verify the server cert is signed by the company CA
-    exec('openssl verify -CAfile '.escapeshellarg("$tmpDir/company-ca.crt").' '.escapeshellarg($result['tls_crt']).' 2>&1', $output, $code);
-    expect($code)->toBe(0);
+        // Verify the server cert is signed by the company CA
+        exec('openssl verify -CAfile '.escapeshellarg("$tmpDir/company-ca.crt").' '.escapeshellarg($result['tls_crt']).' 2>&1', $output, $code);
+        expect($code)->toBe(0);
+    } finally {
+        exec('rm -rf '.escapeshellarg($tmpDir));
+    }
 });
