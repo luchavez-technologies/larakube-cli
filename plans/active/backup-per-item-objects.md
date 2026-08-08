@@ -1,7 +1,9 @@
 # Plan: back up per item, not as one archive
 
-**Status:** ⛔ proposed, not started. Written 2026-08-08 after the first real restore drill.
-Blocks nothing — the backup system works today. This is about what happens as it grows.
+**Status:** ✅ BUILT 2026-08-08, commit `5c9ac55`. Gate green (1533 tests, pint, phpstan).
+NOT yet exercised against a real destination — see "End-to-end test" at the bottom. The
+existing single-archive backups on R2 are unreadable by the new code by design (no migration
+path, per the no-one-time-migration rule); `backup:prune --apply` clears them.
 
 ## Why
 
@@ -153,3 +155,69 @@ correctly before trusting it.
 **Proven working:** volume restore (stop → mount claim in helper pod → untar → restart) ran
 end to end against `forgejo` and the helper pod cleaned up. The claim must be mounted at the
 same path the real pod uses — the archive's leading component is the mount point itself.
+
+---
+
+## End-to-end test (2026-08-08) — run this before trusting it
+
+Nothing below has been run. The gate is green and the restore paths it replaces were proven
+live on 2026-08-07, but the per-item layout itself has never touched R2.
+
+```bash
+cd cli && ./php vendor/bin/pint && ./build
+cd ../luchtech
+```
+
+**1. Take one in the new layout.**
+```bash
+larakube backup:run production
+```
+Expect `Stored: s3://luchtech-backups/larakube/<stamp>/` and a count of objects, not one
+archive. It uploads 19 objects then the manifest.
+
+**2. The old archives should now be invisible.**
+```bash
+larakube backup:list production
+```
+Expect exactly ONE row — the run from step 1. The three single-archive backups
+(`2026-08-07-182208`, `-200328`, `-202145`) are not in the new layout and must not appear.
+If they do, `listBackupRuns()`'s prefix regex is wrong.
+
+**3. The drill.**
+```bash
+larakube backup:restore production --deep
+```
+Expect `Every item downloads and decrypts — 19 objects`. This is the replacement for the old
+download-everything verification; if it passes, the archive is readable end to end.
+
+**4. The point of the whole change.**
+```bash
+larakube backup:restore production --database=forgejo
+```
+Watch the download line: it must read ~40KB, **not 55MB**. That single number is what this
+plan was for. Then re-verify ownership, which is the failure that looks like success:
+```bash
+kubectl --context=larakube-159.89.205.239 exec deploy/postgres -n larakube-plex -c postgres -- \
+  psql -U postgres -d forgejo -t -A -c \
+  "select tableowner, count(*) from pg_tables where schemaname='public' group by tableowner"
+```
+Expect `forgejo|130`. Anything owned by `postgres` means the SET ROLE preamble regressed.
+
+**5. Partial-run safety.** Start a `backup:run` and interrupt it mid-upload (Ctrl-C after a
+few objects). Then `larakube backup:list production` — the interrupted run must NOT be listed,
+and the command should warn that an incomplete backup exists.
+
+**6. Prune, showing first.**
+```bash
+larakube backup:prune production
+```
+Expect a table marking every row keep/delete, the three old single-archive entries flagged
+`no manifest`, and `Nothing was deleted`. Only then:
+```bash
+larakube backup:prune production --apply
+```
+
+**7. Re-schedule.** The CronJob still runs the OLD single-archive job — `cronjob.blade.php`
+was NOT converted in `5c9ac55`. Until it is, nightly backups keep writing the old layout and
+`backup:list` will not show them. Either convert it or re-run `backup:schedule` once it is.
+**This is the one loose end.**
