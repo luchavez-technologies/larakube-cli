@@ -801,3 +801,31 @@ test('backup:restore declares the flags the restore flow depends on', function (
         ->toContain('--keep')
         ->toContain('--dry-run');
 });
+
+test('the Postgres restore clears the schema and hands it back to the tenant role', function () {
+    // pg_dump --no-owner emits no DROP, so replaying into a populated database
+    // dies on the first CREATE TABLE. And objects belong to whoever creates
+    // them: restoring as the superuser would leave every table owned by
+    // postgres, and the app — which logs in as the tenant role — would get
+    // "permission denied" on its own data.
+    $preamble = App\Enums\DatabaseDriver::POSTGRESQL->commonsRestorePreamble('forgejo');
+
+    expect($preamble)
+        ->toContain('DROP SCHEMA IF EXISTS public CASCADE;')
+        ->toContain('CREATE SCHEMA public AUTHORIZATION "forgejo";')
+        ->toContain('SET ROLE "forgejo";');
+
+    // Order matters: dropping after SET ROLE would run as the tenant, and
+    // creating the schema before dropping it is a no-op.
+    expect(strpos($preamble, 'DROP SCHEMA'))->toBeLessThan(strpos($preamble, 'CREATE SCHEMA'))
+        ->and(strpos($preamble, 'CREATE SCHEMA'))->toBeLessThan(strpos($preamble, 'SET ROLE'));
+});
+
+test('MySQL and MariaDB need no restore preamble', function () {
+    // mysqldump emits DROP TABLE IF EXISTS by default, and their privileges are
+    // GRANT-based on the database rather than per-object ownership — so neither
+    // problem the Postgres preamble solves exists here.
+    expect(App\Enums\DatabaseDriver::MYSQL->commonsRestorePreamble('x'))->toBe('')
+        ->and(App\Enums\DatabaseDriver::MARIADB->commonsRestorePreamble('x'))->toBe('')
+        ->and(App\Enums\DatabaseDriver::MONGODB->commonsRestorePreamble('x'))->toBe('');
+});

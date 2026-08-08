@@ -600,6 +600,42 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
     }
 
     /**
+     * SQL prepended to a dump before it is replayed into an EXISTING database.
+     *
+     * Two problems, one preamble, Postgres only:
+     *
+     * 1. `pg_dump --no-owner` emits no DROP statements, so replaying it into a
+     *    populated database fails on the first CREATE TABLE ("already exists").
+     *    Clearing the schema is the only way to make an already-taken archive
+     *    restorable — adding --clean to the dump would only help future ones.
+     *
+     * 2. Objects are owned by whoever creates them, and Commons tenants own
+     *    their own schema (see postgresCommonsCreateSql). Restoring as the
+     *    superuser would leave every table owned by `postgres`, and the app —
+     *    which logs in as the tenant role — would get "permission denied" on
+     *    its own data. SET ROLE hands the session to the tenant for the rest of
+     *    the replay, without needing the tenant's password.
+     *
+     * MySQL and MariaDB need neither: mysqldump emits DROP TABLE IF EXISTS by
+     * default, and their privileges are GRANT-based on the database rather than
+     * per-object ownership.
+     *
+     * The database name IS the tenant role name — see postgresCommonsCreateSql.
+     */
+    public function commonsRestorePreamble(string $db): string
+    {
+        return match ($this) {
+            self::POSTGRESQL => implode("\n", [
+                'DROP SCHEMA IF EXISTS public CASCADE;',
+                "CREATE SCHEMA public AUTHORIZATION \"{$db}\";",
+                "SET ROLE \"{$db}\";",
+                '',
+            ]),
+            default => '',
+        };
+    }
+
+    /**
      * The in-pod command that loads a SQL dump (piped on stdin) back into an
      * existing Commons database, as the admin — the exact inverse of
      * commonsBackupCommand(), which dumps as the admin too.

@@ -11,7 +11,6 @@ use App\Traits\RequiresFlagsWhenNonInteractive;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\multiselect;
-use function Laravel\Prompts\table;
 
 use LaravelZero\Framework\Commands\Command;
 
@@ -119,18 +118,8 @@ class BackupRestoreCommand extends Command
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Backup verified — it downloads, decrypts and unpacks.');
         $this->newLine();
+        $this->line('  <fg=gray>Contains:</>  <fg=blue>'.count($dbs).'</> <fg=gray>databases,</> <fg=blue>'.count($vols).'</> <fg=gray>volumes</>');
         $this->line("  <fg=gray>Unpacked:</>  <fg=blue>{$work}</>");
-        $this->newLine();
-
-        // Sizes, not just counts: a 26MB database and a 4KB volume are both one
-        // line in a list, and knowing which is which is the difference between
-        // picking confidently and picking blind during an incident.
-        table(
-            ['', 'Name', 'Size'],
-            collect($dbs)->map(fn (array $i) => ['database', $i['name'], $this->humanBytes($i['size'])])
-                ->merge(collect($vols)->map(fn (array $i) => ['volume', $i['name'], $this->humanBytes($i['size'])]))
-                ->all(),
-        );
         $this->newLine();
 
         $database = (string) ($this->option('database') ?? '');
@@ -228,10 +217,10 @@ class BackupRestoreCommand extends Command
 
         $options = [];
         foreach ($dbs as $item) {
-            $options["database:{$item['name']}"] = "database  {$item['name']}  ({$this->humanBytes($item['size'])})";
+            $options["database:{$item['name']}"] = sprintf('database  %-22s %s', $item['name'], $this->humanBytes($item['size']));
         }
         foreach ($vols as $item) {
-            $options["volume:{$item['name']}"] = "volume    {$item['name']}  ({$this->humanBytes($item['size'])})";
+            $options["volume:{$item['name']}"] = sprintf('volume    %-22s %s', $item['name'], $this->humanBytes($item['size']));
         }
 
         if ($options === []) {
@@ -242,6 +231,9 @@ class BackupRestoreCommand extends Command
             label: 'Restore anything from this backup?',
             options: $options,
             default: [],
+            // The list IS the inventory now, so it must not scroll — a hidden
+            // row is the one you needed. Prompts defaults to 5.
+            scroll: max(10, count($options)),
             hint: 'Nothing is selected — press Enter to just verify and exit. Volumes scale their service down first.',
         );
 
@@ -321,9 +313,17 @@ class BackupRestoreCommand extends Command
         }
 
         $service = $driver->commonsServiceName();
+        $preamble = $driver->commonsRestorePreamble($database);
+
+        // The preamble has to reach psql on the SAME stdin as the dump — it
+        // clears the schema and hands the session to the tenant role, and both
+        // only hold for the connection that replays the dump.
+        $stream = $preamble === ''
+            ? 'gunzip -c '.escapeshellarg($dump)
+            : '{ printf %s '.escapeshellarg($preamble).'; gunzip -c '.escapeshellarg($dump).'; }';
 
         return $this->withSpin("Restoring database {$database} into {$driver->value}...", fn () => Process::timeout(1800)->run(
-            'gunzip -c '.escapeshellarg($dump)." | {$kubectl} exec -i deploy/{$service} -n larakube-plex -c {$service} -- "
+            "{$stream} | {$kubectl} exec -i deploy/{$service} -n larakube-plex -c {$service} -- "
             .'sh -c '.escapeshellarg($driver->commonsAdminRestoreCommand($database)),
         )->successful());
     }
