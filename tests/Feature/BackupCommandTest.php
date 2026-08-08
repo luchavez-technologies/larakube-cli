@@ -689,7 +689,7 @@ test('restore is engine-aware — it never assumes the Commons database is Postg
     // exist, so the one command you reach for during an incident is the one
     // that never worked.
     $expected = [
-        App\Enums\DatabaseDriver::POSTGRESQL->value => 'psql -U postgres -v ON_ERROR_STOP=1 -d chat_matrix',
+        App\Enums\DatabaseDriver::POSTGRESQL->value => 'psql -U postgres -v ON_ERROR_STOP=1 --single-transaction -d chat_matrix',
         App\Enums\DatabaseDriver::MYSQL->value => 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" chat_matrix',
         App\Enums\DatabaseDriver::MARIADB->value => 'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" chat_matrix',
     ];
@@ -828,4 +828,14 @@ test('MySQL and MariaDB need no restore preamble', function () {
     expect(App\Enums\DatabaseDriver::MYSQL->commonsRestorePreamble('x'))->toBe('')
         ->and(App\Enums\DatabaseDriver::MARIADB->commonsRestorePreamble('x'))->toBe('')
         ->and(App\Enums\DatabaseDriver::MONGODB->commonsRestorePreamble('x'))->toBe('');
+});
+
+test('a failed Postgres restore rolls back the schema drop', function () {
+    // The preamble DROPs the schema before the dump refills it. Without
+    // --single-transaction, psql autocommits each statement, so a failure
+    // halfway leaves an emptied database and no way back — the worst outcome
+    // for the one command you run during an incident.
+    expect(App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminRestoreCommand('forgejo'))
+        ->toContain('--single-transaction')
+        ->toContain('ON_ERROR_STOP=1');
 });

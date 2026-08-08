@@ -651,7 +651,13 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
         return match ($this) {
             // ON_ERROR_STOP is load-bearing: without it psql prints errors,
             // continues, and still exits 0 — a failed restore reporting success.
-            self::POSTGRESQL => "psql -U postgres -v ON_ERROR_STOP=1 -d {$db}",
+            //
+            // --single-transaction matters just as much, because the preamble
+            // DROPs the schema before the dump repopulates it. Statement-level
+            // autocommit would leave a failure halfway through as an emptied
+            // database with no way back; inside one transaction the DROP rolls
+            // back too, so a failed restore leaves the app exactly as it was.
+            self::POSTGRESQL => "psql -U postgres -v ON_ERROR_STOP=1 --single-transaction -d {$db}",
             self::MYSQL => "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" {$db}",
             self::MARIADB => "mariadb -uroot -p\"\$MYSQL_ROOT_PASSWORD\" {$db}",
             default => '',
