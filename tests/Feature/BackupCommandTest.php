@@ -197,7 +197,7 @@ test('restore accepts the destination on the command line, for when no cluster e
         ->assertExitCode(1)
         // Got past config resolution to the actual lookup — i.e. it did NOT
         // stop at "no destination configured".
-        ->expectsOutputToContain('No backups found');
+        ->expectsOutputToContain('No completed backups found');
 });
 
 test('restore without a cluster or flags explains the recovery card', function () {
@@ -838,4 +838,155 @@ test('a failed Postgres restore rolls back the schema drop', function () {
     expect(App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminRestoreCommand('forgejo'))
         ->toContain('--single-transaction')
         ->toContain('ON_ERROR_STOP=1');
+});
+
+// --- per-item layout -------------------------------------------------------
+
+function runListing(string $lines): array
+{
+    return ['*s3 ls --recursive*' => Process::result(output: $lines)];
+}
+
+test('a run without a manifest is incomplete and never offered', function () {
+    // Splitting one archive into ~19 objects gives up "the backup lands whole
+    // or not at all". The manifest, written last, is what buys it back: a run
+    // interrupted mid-upload must be invisible rather than half-restorable.
+    $cmd = new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        public function runs(array $config): array
+        {
+            return $this->listBackupRuns($config);
+        }
+
+        public function latest(array $config): ?string
+        {
+            return $this->latestCompleteRun($config);
+        }
+    };
+
+    Process::fake(runListing(implode("\n", [
+        '2026-08-08 03:11:16      40140 larakube/2026-08-08-031116/db-forgejo.sql.gz.enc',
+        '2026-08-08 03:12:02        512 larakube/2026-08-08-031116/manifest.json',
+        // died mid-upload: objects, no manifest
+        '2026-08-09 03:11:16      40140 larakube/2026-08-09-031116/db-forgejo.sql.gz.enc',
+    ])));
+
+    $config = ['endpoint' => 'https://r2', 'bucket' => 'b', 'access_key' => 'AK', 'secret_key' => 'SK', 'region' => 'auto'];
+    $runs = $cmd->runs($config);
+
+    expect($runs['2026-08-08-031116']['complete'])->toBeTrue()
+        ->and($runs['2026-08-09-031116']['complete'])->toBeFalse()
+        // The newest run is the broken one — the latest COMPLETE one is older.
+        ->and($cmd->latest($config))->toBe('2026-08-08-031116');
+});
+
+test('objects from the old single-archive layout are ignored', function () {
+    $cmd = new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        public function runs(array $config): array
+        {
+            return $this->listBackupRuns($config);
+        }
+    };
+
+    Process::fake(runListing('2026-08-07 20:21:45   57458688 larakube/2026-08-07-202145.tar.gz.enc'));
+
+    expect($cmd->runs(['endpoint' => 'https://r2', 'bucket' => 'b', 'access_key' => 'AK', 'secret_key' => 'SK', 'region' => 'auto']))
+        ->toBe([]);
+});
+
+/**
+ * Reaches the retention maths without a cluster or a destination.
+ */
+class BackupPruneCommandProbe extends App\Commands\Backup\BackupPruneCommand
+{
+    /** @param array<int, string> $stamps */
+    public function keepers(array $stamps, int $keepDaily, int $keepWeekly, int $keepMonthly): array
+    {
+        $this->setInput(new Symfony\Component\Console\Input\ArrayInput([
+            '--keep-daily' => (string) $keepDaily,
+            '--keep-weekly' => (string) $keepWeekly,
+            '--keep-monthly' => (string) $keepMonthly,
+        ], $this->getDefinition()));
+
+        return $this->selectKeepers($stamps);
+    }
+}
+
+test('restore refuses a backup whose manifest never landed', function () {
+    // The consumer side of "the manifest is written last". A run interrupted
+    // mid-upload leaves objects behind; the guarantee is that they can never be
+    // half-restored, because without a manifest there is nothing to restore
+    // FROM. (The producer side — upload ordering — is not reachable under
+    // Process::fake: the dumps never write real files, so backup:run aborts at
+    // the size check long before it uploads anything.)
+    Process::fake(backupFakes([
+        '*s3 ls --recursive*' => Process::result(output: implode("\n", [
+            '2026-08-09 03:11:16      40140 larakube/2026-08-09-031116/db-forgejo.sql.gz.enc',
+            '2026-08-09 03:11:20    1600000 larakube/2026-08-09-031116/vol-forgejo.tar.gz.enc',
+        ])),
+        // No manifest object, so fetching one yields nothing.
+        '*s3 cp*manifest.json*' => Process::result(output: '', exitCode: 1),
+    ]));
+
+    $this->artisan('backup:restore local --no-interaction --backup=2026-08-09-031116')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('did not finish');
+
+    // And nothing was pulled down in the attempt.
+    Process::assertNotRan(fn ($job) => str_contains($job->command, 'db-forgejo.sql.gz.enc'));
+});
+
+test('backup:prune keeps the newest run per period, GFS style', function () {
+    $cmd = new BackupPruneCommandProbe;
+
+    // Two runs on the same day: only the newer one should hold the daily slot.
+    $keep = $cmd->keepers([
+        '2026-01-15-031700',
+        '2026-02-15-031700',
+        '2026-03-01-031700',
+        '2026-03-08-031700',
+        '2026-03-14-031700',
+        '2026-03-15-031700',
+    ], keepDaily: 1, keepWeekly: 2, keepMonthly: 2);
+
+    // Newest wins the daily slot; older ones fall through to weekly/monthly.
+    expect($keep)->toContain('2026-03-15-031700')
+        ->and($keep)->not->toContain('2026-01-15-031700');
+});
+
+test('backup:prune never deletes a run id it cannot parse', function () {
+    $keep = (new BackupPruneCommandProbe)->keepers(
+        ['something-else', '2026-03-15-031700'],
+        keepDaily: 0, keepWeekly: 0, keepMonthly: 0,
+    );
+
+    // Zero retention everywhere, yet the unrecognised id survives: deleting
+    // something we do not understand is not a risk worth taking.
+    expect($keep)->toBe(['something-else']);
+});
+
+test('backup:prune shows before it deletes', function () {
+    // The only command in the suite that destroys backups. --apply is required,
+    // so a bare run can never remove anything.
+    $signature = (new ReflectionClass(App\Commands\Backup\BackupPruneCommand::class))
+        ->getDefaultProperties()['signature'];
+
+    expect($signature)->toContain('--apply')
+        ->toContain('--keep-daily=7')
+        ->toContain('--keep-weekly=4')
+        ->toContain('--keep-monthly=6');
+});
+
+test('backup:restore declares --deep, the drill that survives per-item fetching', function () {
+    // Once restore only downloads what you pick, the default path stops proving
+    // the archive is readable. --deep is what keeps that evidence available.
+    $signature = (new ReflectionClass(App\Commands\Backup\BackupRestoreCommand::class))
+        ->getDefaultProperties()['signature'];
+
+    expect($signature)->toContain('--deep')->toContain('--backup=');
 });

@@ -32,7 +32,8 @@ class BackupRestoreCommand extends Command
 
     protected $signature = 'backup:restore
         {environment=local : Environment whose cluster to restore into}
-        {--object=    : Which backup to use (defaults to the most recent)}
+        {--backup=    : Which backup to use, e.g. 2026-08-08-031116 (defaults to the most recent complete one)}
+        {--deep       : Download and decrypt EVERY item to prove the backup is readable. This is the drill.}
         {--endpoint=  : Destination endpoint. Use when the cluster is gone.}
         {--bucket=    : Destination bucket. Use when the cluster is gone.}
         {--access-key= : Access key. Use when the cluster is gone.}
@@ -73,57 +74,51 @@ class BackupRestoreCommand extends Command
             return 1;
         }
 
-        $object = (string) ($this->option('object') ?: $this->latestObject($config));
+        $stamp = (string) ($this->option('backup') ?: $this->latestCompleteRun($config));
 
-        if ($object === '') {
-            $this->laraKubeError('No backups found at the destination.');
-
-            return 1;
-        }
-
-        // date('His') alone repeats every 24h, and a second run landing in a
-        // populated dir would inflate the verification counts with the previous
-        // archive's files.
-        $work = sys_get_temp_dir().'/larakube-restore-'.date('Ymd-His').'-'.substr(bin2hex(random_bytes(3)), 0, 6);
-        mkdir($work, 0700, true);
-        $archive = "{$work}/backup.enc";
-
-        $got = $this->withSpin("Downloading {$object}...", fn () => Process::timeout(1800)->env($this->backupAwsEnv($config))->run(
-            'aws --endpoint-url '.escapeshellarg($config['endpoint'])
-            .' s3 cp '.escapeshellarg("s3://{$config['bucket']}/{$object}").' '.escapeshellarg($archive),
-        )->successful());
-
-        if (! $got) {
-            $this->laraKubeError('Download failed.');
+        if ($stamp === '') {
+            $this->laraKubeError('No completed backups found at the destination.');
+            $this->line('  <fg=gray>A run that died mid-upload writes no manifest and is never');
+            $this->line('  offered for restore. Check</> <fg=blue>larakube backup:list</><fg=gray>.</>');
 
             return 1;
         }
 
-        $opened = $this->withSpin('Decrypting...', fn () => Process::timeout(600)->run(
-            'openssl enc -d -aes-256-cbc -pbkdf2 -pass '.escapeshellarg("pass:{$config['passphrase']}")
-            .' -in '.escapeshellarg($archive).' | tar xzf - -C '.escapeshellarg($work),
-        )->successful());
+        // The manifest alone, not the data. This is the whole point of the
+        // per-item layout: the picker is built from a few hundred bytes, so
+        // restoring a 39KB database no longer downloads 55MB first.
+        $manifest = null;
+        $this->withSpin("Reading the manifest for {$stamp}...", function () use ($config, $stamp, &$manifest) {
+            $manifest = $this->fetchManifest($config, $stamp);
+        });
 
-        if (! $opened) {
-            $this->laraKubeError('Decryption failed — wrong passphrase, or the archive is damaged.');
-            $this->line('  <fg=gray>If this cluster was rebuilt, the passphrase in its Secret is a NEW one.');
-            $this->line('  You need the passphrase printed when backup:init first ran.</>');
+        if ($manifest === null) {
+            $this->laraKubeError("No readable manifest for '{$stamp}' — that backup did not finish.");
 
             return 1;
         }
 
-        $dbs = $this->inventory($work, 'db-', '.sql.gz');
-        $vols = $this->inventory($work, 'vol-', '.tar.gz');
+        $items = $manifest['items'];
+        $dbs = array_values(array_filter($items, fn (array $i) => $i['kind'] === 'database'));
+        $vols = array_values(array_filter($items, fn (array $i) => $i['kind'] === 'volume'));
 
         $this->laraKubeNewLine();
-        $this->laraKubeInfo('✅ Backup verified — it downloads, decrypts and unpacks.');
+        $this->laraKubeInfo("Backup {$stamp}");
         $this->newLine();
+        $this->line('  <fg=gray>Taken:</>     <fg=blue>'.($manifest['taken_at'] ?? 'unknown').'</>');
         $this->line('  <fg=gray>Contains:</>  <fg=blue>'.count($dbs).'</> <fg=gray>databases,</> <fg=blue>'.count($vols).'</> <fg=gray>volumes</>');
-        $this->line("  <fg=gray>Unpacked:</>  <fg=blue>{$work}</>");
         $this->newLine();
 
         $database = (string) ($this->option('database') ?? '');
         $volume = (string) ($this->option('volume') ?? '');
+
+        // --deep is the drill. Per-item restore means the default path no
+        // longer proves the archive is readable end to end, so verification has
+        // to become something you ask for — otherwise this layout silently
+        // removes the only evidence the backups work.
+        if ($this->option('deep')) {
+            return $this->verifyDeep($config, $stamp, $items);
+        }
 
         // --dry-run wins over every naming flag. It reads as "prove it, safely",
         // and combined with --force it would otherwise skip the one confirmation
@@ -131,68 +126,153 @@ class BackupRestoreCommand extends Command
         if ($this->option('dry-run')) {
             if ($database !== '' || $volume !== '') {
                 $this->laraKubeWarn('--dry-run given, so nothing was restored. Drop it to restore.');
-                $this->newLine();
             }
 
-            $this->cleanUp($work);
+            $this->line('  <fg=gray>Listing only — nothing was downloaded. To prove the data really');
+            $this->line('  restores, run</> <fg=blue>larakube backup:restore --deep</><fg=gray>.</>');
+            $this->newLine();
 
             return 0;
         }
 
-        // Nothing named: offer what is in the archive rather than making the
-        // operator re-run — a second run re-downloads and re-decrypts the whole
-        // archive, which is a slow thing to repeat mid-incident.
         if ($database === '' && $volume === '') {
             $picked = $this->offerRestoreTargets($dbs, $vols);
 
             if ($picked === []) {
-                $this->line('  <fg=gray>Nothing restored.</> <fg=gray>Name a target directly with</> <fg=blue>--database=</> <fg=gray>or</> <fg=blue>--volume=</><fg=gray>.</>');
+                $this->line('  <fg=gray>Nothing restored.</> <fg=gray>Name a target with</> <fg=blue>--database=</> <fg=gray>or</> <fg=blue>--volume=</><fg=gray>, or verify everything with</> <fg=blue>--deep</><fg=gray>.</>');
                 $this->newLine();
-                $this->cleanUp($work);
 
                 return 0;
             }
-
-            $exit = $this->restoreMany($kubectl, $work, $object, $picked);
-            $this->cleanUp($work, $exit !== 0);
-
-            return $exit;
+        } else {
+            $picked = [];
+            if ($database !== '') {
+                $picked[] = ['kind' => 'database', 'name' => $database];
+            }
+            if ($volume !== '') {
+                $picked[] = ['kind' => 'volume', 'name' => $volume];
+            }
         }
 
-        $picked = [];
-        if ($database !== '') {
-            $picked[] = ['kind' => 'database', 'name' => $database];
-        }
-        if ($volume !== '') {
-            $picked[] = ['kind' => 'volume', 'name' => $volume];
-        }
+        $work = $this->workDir();
+        $exit = $this->fetchItems($config, $stamp, $items, $picked, $work) === false
+            ? 1
+            : $this->restoreMany($kubectl, $work, $stamp, $picked);
 
-        $exit = $this->restoreMany($kubectl, $work, $object, $picked);
         $this->cleanUp($work, $exit !== 0);
 
         return $exit;
     }
 
     /**
-     * What the archive contains, with sizes.
+     * A private working directory for this run.
      *
-     * @return array<int, array{name: string, path: string, size: int}>
+     * date('His') alone repeats every 24h, and a second run landing in a
+     * populated dir would mix two backups' files together.
      */
-    protected function inventory(string $work, string $prefix, string $suffix): array
+    protected function workDir(): string
     {
-        $items = [];
+        $work = sys_get_temp_dir().'/larakube-restore-'.date('Ymd-His').'-'.substr(bin2hex(random_bytes(3)), 0, 6);
+        mkdir($work, 0700, true);
 
-        foreach (glob("{$work}/{$prefix}*{$suffix}") ?: [] as $path) {
-            $items[] = [
-                'name' => substr(basename($path), strlen($prefix), -strlen($suffix)),
-                'path' => $path,
-                'size' => $this->sizeOf($path),
-            ];
+        return $work;
+    }
+
+    /**
+     * Download and decrypt exactly the selected items.
+     *
+     * @param  array<string, string>  $config
+     * @param  array<int, array{kind: string, name: string, object: string, bytes: int}>  $items
+     * @param  array<int, array{kind: string, name: string}>  $picked
+     */
+    protected function fetchItems(array $config, string $stamp, array $items, array $picked, string $work): bool
+    {
+        foreach ($picked as $want) {
+            $item = collect($items)->first(
+                fn (array $i) => $i['kind'] === $want['kind'] && $i['name'] === $want['name'],
+            );
+
+            if ($item === null) {
+                $this->laraKubeError("Backup {$stamp} contains no {$want['kind']} '{$want['name']}'.");
+
+                return false;
+            }
+
+            if (! $this->fetchItem($config, $stamp, $item, $work)) {
+                $this->laraKubeError("Could not download or decrypt {$item['kind']} {$item['name']}.");
+
+                return false;
+            }
         }
 
-        usort($items, fn (array $a, array $b) => $b['size'] <=> $a['size']);
+        return true;
+    }
 
-        return $items;
+    /**
+     * One object: download, decrypt, land it where the restore code expects.
+     *
+     * @param  array<string, string>  $config
+     * @param  array{kind: string, name: string, object: string, bytes: int}  $item
+     */
+    protected function fetchItem(array $config, string $stamp, array $item, string $work): bool
+    {
+        $sealed = "{$work}/{$item['object']}";
+        // Strip the .enc the uploader added: everything downstream reads
+        // db-<name>.sql.gz / vol-<name>.tar.gz.
+        $plain = "{$work}/".substr($item['object'], 0, -4);
+        $key = $this->backupRunPrefix($stamp).$item['object'];
+        $size = $this->humanBytes($item['bytes']);
+
+        return $this->withSpin("Downloading {$item['name']} ({$size})...", fn () => Process::timeout(1800)
+            ->env($this->backupAwsEnv($config))->run(
+                'aws --endpoint-url '.escapeshellarg($config['endpoint'])
+                .' s3 cp '.escapeshellarg("s3://{$config['bucket']}/{$key}").' '.escapeshellarg($sealed),
+            )->successful() && Process::timeout(600)->run(
+                'openssl enc -d -aes-256-cbc -pbkdf2 -pass '.escapeshellarg("pass:{$config['passphrase']}")
+                .' -in '.escapeshellarg($sealed).' -out '.escapeshellarg($plain),
+            )->successful());
+    }
+
+    /**
+     * The drill: pull and decrypt every item, and say which ones failed.
+     *
+     * Reports per item rather than aborting on the first failure — during a
+     * verification you want the whole picture, not the first symptom.
+     *
+     * @param  array<string, string>  $config
+     * @param  array<int, array{kind: string, name: string, object: string, bytes: int}>  $items
+     */
+    protected function verifyDeep(array $config, string $stamp, array $items): int
+    {
+        $work = $this->workDir();
+        $failed = [];
+
+        foreach ($items as $item) {
+            if (! $this->fetchItem($config, $stamp, $item, $work)) {
+                $failed[] = "{$item['kind']} {$item['name']}";
+            }
+        }
+
+        $this->cleanUp($work);
+        $this->laraKubeNewLine();
+
+        if ($failed !== []) {
+            $this->laraKubeError('Verification FAILED for: '.implode(', ', $failed));
+            $this->newLine();
+            $this->line('  <fg=gray>These objects are named in the manifest but could not be downloaded');
+            $this->line('  or decrypted. This backup would not fully restore.</>');
+            $this->newLine();
+
+            return 1;
+        }
+
+        $this->laraKubeInfo('✅ Every item downloads and decrypts — '.count($items).' objects.');
+        $this->newLine();
+        $this->line('  <fg=gray>That proves the archive is readable. It does not prove the data is');
+        $this->line('  good — only an actual restore does that.</>');
+        $this->newLine();
+
+        return 0;
     }
 
     /**
@@ -201,8 +281,8 @@ class BackupRestoreCommand extends Command
      * Nothing is pre-selected on purpose: this prompt appears on the plain
      * verification path, so Enter has to be the answer that changes nothing.
      *
-     * @param  array<int, array{name: string, path: string, size: int}>  $dbs
-     * @param  array<int, array{name: string, path: string, size: int}>  $vols
+     * @param  array<int, array{kind: string, name: string, object: string, bytes: int}>  $dbs
+     * @param  array<int, array{kind: string, name: string, object: string, bytes: int}>  $vols
      * @return array<int, array{kind: string, name: string}>
      */
     protected function offerRestoreTargets(array $dbs, array $vols): array
@@ -215,12 +295,16 @@ class BackupRestoreCommand extends Command
             return [];
         }
 
+        $byLargest = fn (array $a, array $b) => $b['bytes'] <=> $a['bytes'];
+        usort($dbs, $byLargest);
+        usort($vols, $byLargest);
+
         $options = [];
         foreach ($dbs as $item) {
-            $options["database:{$item['name']}"] = sprintf('database  %-22s %s', $item['name'], $this->humanBytes($item['size']));
+            $options["database:{$item['name']}"] = sprintf('database  %-22s %s', $item['name'], $this->humanBytes($item['bytes']));
         }
         foreach ($vols as $item) {
-            $options["volume:{$item['name']}"] = sprintf('volume    %-22s %s', $item['name'], $this->humanBytes($item['size']));
+            $options["volume:{$item['name']}"] = sprintf('volume    %-22s %s', $item['name'], $this->humanBytes($item['bytes']));
         }
 
         if ($options === []) {
@@ -234,7 +318,7 @@ class BackupRestoreCommand extends Command
             // The list IS the inventory now, so it must not scroll — a hidden
             // row is the one you needed. Prompts defaults to 5.
             scroll: max(10, count($options)),
-            hint: 'Nothing is selected — press Enter to just verify and exit. Volumes scale their service down first.',
+            hint: 'Nothing is selected — press Enter to exit without downloading. Only what you pick is fetched. Volumes scale their service down first.',
         );
 
         return collect($selected)->map(function (string $key) {
@@ -483,26 +567,5 @@ class BackupRestoreCommand extends Command
         }
 
         return $this->readBackupConfig($kubectl, $this->backupNamespace());
-    }
-
-    /** @param array<string, string> $config */
-    protected function latestObject(array $config): string
-    {
-        $out = Process::timeout(120)->env($this->backupAwsEnv($config))->run(
-            'aws --endpoint-url '.escapeshellarg($config['endpoint'])
-            .' s3 ls '.escapeshellarg("s3://{$config['bucket']}/larakube/"),
-        )->output();
-
-        $keys = [];
-        foreach (array_filter(array_map('trim', explode("\n", $out))) as $line) {
-            $parts = preg_split('/\s+/', $line);
-            if (count($parts) >= 4) {
-                $keys[] = 'larakube/'.$parts[3];
-            }
-        }
-
-        sort($keys);
-
-        return $keys === [] ? '' : (string) end($keys);
     }
 }

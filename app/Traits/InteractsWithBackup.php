@@ -247,6 +247,122 @@ trait InteractsWithBackup
             || str_contains($endpoint, '127.0.0.1');
     }
 
+    /** Everything for one run lives under its own prefix. */
+    protected function backupRunPrefix(string $stamp): string
+    {
+        return "larakube/{$stamp}/";
+    }
+
+    /**
+     * The manifest is the commit marker, and it is written LAST.
+     *
+     * Splitting one archive into ~19 objects gives up the property that a
+     * backup either lands whole or not at all — a crash mid-upload leaves a
+     * prefix holding some of them. Treating a run as real only once its
+     * manifest exists restores that: an interrupted run is invisible to
+     * backup:list and refused by backup:restore.
+     *
+     * Do not "optimise" this into being written first.
+     */
+    protected function manifestKey(string $stamp): string
+    {
+        return $this->backupRunPrefix($stamp).'manifest.json';
+    }
+
+    /**
+     * Every run at the destination, from ONE listing.
+     *
+     * Deliberately not a request per prefix: the listing carries object sizes
+     * too, so `backup:list` and the restore picker can both be served without
+     * downloading anything.
+     *
+     * Runs without a manifest are returned with complete=false rather than
+     * hidden here — backup:prune needs to see them to clean them up.
+     *
+     * @param  array<string, string>  $config
+     * @return array<string, array{stamp: string, taken: string, bytes: int, objects: array<string, int>, complete: bool}>
+     */
+    protected function listBackupRuns(array $config): array
+    {
+        $out = Process::timeout(300)->env($this->backupAwsEnv($config))->run(
+            'aws --endpoint-url '.escapeshellarg($config['endpoint'])
+            .' s3 ls --recursive '.escapeshellarg("s3://{$config['bucket']}/larakube/"),
+        )->output();
+
+        $runs = [];
+
+        foreach (array_filter(array_map('trim', explode("\n", $out))) as $line) {
+            $parts = preg_split('/\s+/', $line, 4);
+
+            if ($parts === false || count($parts) < 4) {
+                continue;
+            }
+
+            [$date, $time, $bytes, $key] = $parts;
+
+            // larakube/<stamp>/<object>. Anything else is from the old
+            // single-archive layout, or something we did not write.
+            if (! preg_match('#^larakube/([^/]+)/(.+)$#', $key, $m)) {
+                continue;
+            }
+
+            [, $stamp, $object] = $m;
+
+            $runs[$stamp] ??= ['stamp' => $stamp, 'taken' => "{$date} {$time}", 'bytes' => 0, 'objects' => [], 'complete' => false];
+            $runs[$stamp]['objects'][$object] = (int) $bytes;
+            $runs[$stamp]['bytes'] += (int) $bytes;
+
+            if ($object === 'manifest.json') {
+                $runs[$stamp]['complete'] = true;
+                // The manifest is written last, so its timestamp is when the
+                // run finished — the honest "taken" time for a job that spans
+                // an hour.
+                $runs[$stamp]['taken'] = "{$date} {$time}";
+            }
+        }
+
+        ksort($runs);
+
+        return $runs;
+    }
+
+    /**
+     * The newest run that actually finished.
+     *
+     * @param  array<string, string>  $config
+     */
+    protected function latestCompleteRun(array $config): ?string
+    {
+        $complete = array_filter($this->listBackupRuns($config), fn (array $r) => $r['complete']);
+
+        return $complete === [] ? null : (string) array_key_last($complete);
+    }
+
+    /**
+     * Read one run's manifest.
+     *
+     * Unencrypted on purpose: it is the commit marker, so it has to be cheap to
+     * read, and `backup:list` should not need the passphrase. It holds names and
+     * sizes only — no data and no credentials — and the tool names it exposes
+     * are already visible in the cluster's DNS.
+     *
+     * @param  array<string, string>  $config
+     * @return array{version: int, taken_at: string, engine: string, items: array<int, array{kind: string, name: string, object: string, bytes: int}>}|null
+     */
+    protected function fetchManifest(array $config, string $stamp): ?array
+    {
+        $out = Process::timeout(120)->env($this->backupAwsEnv($config))->run(
+            'aws --endpoint-url '.escapeshellarg($config['endpoint'])
+            .' s3 cp '.escapeshellarg("s3://{$config['bucket']}/".$this->manifestKey($stamp)).' -',
+        )->output();
+
+        $decoded = json_decode(trim($out), true);
+
+        return is_array($decoded) && isset($decoded['items']) && is_array($decoded['items'])
+            ? $decoded
+            : null;
+    }
+
     /**
      * Size of a produced artifact, 0 when absent.
      *

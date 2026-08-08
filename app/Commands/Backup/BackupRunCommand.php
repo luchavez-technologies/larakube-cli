@@ -130,56 +130,115 @@ class BackupRunCommand extends Command
             return 1;
         }
 
-        // 3. One encrypted archive. AES-256 via a passphrase, because the
-        //    destination is a third party's disk.
-        $archive = sys_get_temp_dir()."/larakube-{$stamp}.tar.gz.enc";
+        // 3. One encrypted object per item, then the manifest LAST.
+        //
+        //    Per item rather than one archive because restores are per item:
+        //    recovering a 39KB database used to mean downloading the whole
+        //    55MB archive, and the object store dominates that number while
+        //    being the least likely thing to need a targeted restore.
+        $prefix = $this->backupRunPrefix($stamp);
+        $items = [];
+        $total = 0;
 
-        $sealed = $this->withSpin('Encrypting...', fn () => Process::timeout(600)->run(
-            'tar czf - -C '.escapeshellarg($work).' . | '
-            .'openssl enc -aes-256-cbc -pbkdf2 -salt -pass '.escapeshellarg("pass:{$config['passphrase']}")
-            .' -out '.escapeshellarg($archive),
-        )->successful());
+        foreach ($this->producedItems($work) as $item) {
+            $sealed = "{$work}/{$item['object']}";
 
-        if (! $sealed || ! file_exists($archive)) {
-            $this->laraKubeError('Encryption failed — nothing uploaded.');
+            $ok = $this->withSpin("Encrypting and uploading {$item['name']}...", fn () => Process::timeout(600)->run(
+                'openssl enc -aes-256-cbc -pbkdf2 -salt -pass '.escapeshellarg("pass:{$config['passphrase']}")
+                .' -in '.escapeshellarg($item['path']).' -out '.escapeshellarg($sealed),
+            )->successful() && Process::timeout(1800)->env($this->backupAwsEnv($config))->run(
+                'aws --endpoint-url '.escapeshellarg($config['endpoint'])
+                .' s3 cp '.escapeshellarg($sealed).' '.escapeshellarg("s3://{$config['bucket']}/{$prefix}{$item['object']}"),
+            )->successful());
 
-            return 1;
+            if (! $ok) {
+                // No manifest is written, so this prefix stays invisible to
+                // backup:list and backup:restore. `backup:prune` sweeps it up.
+                $this->laraKubeError("Failed to store {$item['kind']} {$item['name']} — this backup is incomplete and will not be listed.");
+                $this->line("  <fg=gray>Working files left at {$work} for inspection.</>");
+
+                return 1;
+            }
+
+            $bytes = $this->sizeOf($sealed);
+            $total += $bytes;
+            $items[] = [
+                'kind' => $item['kind'],
+                'name' => $item['name'],
+                'object' => $item['object'],
+                'bytes' => $bytes,
+            ];
         }
 
-        $size = $this->humanBytes($this->sizeOf($archive));
-        $key = "larakube/{$stamp}.tar.gz.enc";
+        $manifest = "{$work}/manifest.json";
+        file_put_contents($manifest, json_encode([
+            'version' => 1,
+            'taken_at' => gmdate('c'),
+            'engine' => $driver->value,
+            'items' => $items,
+        ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 
-        $uploaded = $this->withSpin("Uploading {$size} off-site...", fn () => Process::timeout(1800)
+        $committed = $this->withSpin('Committing the manifest...', fn () => Process::timeout(300)
             ->env($this->backupAwsEnv($config))->run(
                 'aws --endpoint-url '.escapeshellarg($config['endpoint'])
-                .' s3 cp '.escapeshellarg($archive).' '.escapeshellarg("s3://{$config['bucket']}/{$key}"),
+                .' s3 cp '.escapeshellarg($manifest).' '.escapeshellarg("s3://{$config['bucket']}/".$this->manifestKey($stamp)),
             )->successful());
 
         if ($this->option('keep-local')) {
             $dest = rtrim((string) $this->option('keep-local'), '/');
-            Process::run('cp '.escapeshellarg($archive).' '.escapeshellarg("{$dest}/"));
+            Process::run('cp -R '.escapeshellarg($work).'/. '.escapeshellarg("{$dest}/"));
         }
 
-        Process::run('rm -rf '.escapeshellarg($work).' '.escapeshellarg($archive));
+        Process::run('rm -rf '.escapeshellarg($work));
 
-        if (! $uploaded) {
-            $this->laraKubeError('Upload failed — the backup was NOT stored off-site.');
+        if (! $committed) {
+            $this->laraKubeError('The manifest failed to upload, so this backup does NOT count as taken.');
+            $this->line('  <fg=gray>Its objects are at the destination but unlisted. Re-run, then');
+            $this->line('  <fg=blue>larakube backup:prune</> <fg=gray>to clear the abandoned prefix.</>');
 
             return 1;
         }
+
+        $size = $this->humanBytes($total);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Backup complete and off-site.');
         $this->newLine();
         $this->line('  <fg=gray>Databases:</> <fg=blue>'.count($databases).'</>');
         $this->line('  <fg=gray>Volumes:</>   <fg=blue>'.count($this->backupVolumeTargets()).'</>');
-        $this->line("  <fg=gray>Size:</>      <fg=blue>{$size}</>");
-        $this->line("  <fg=gray>Stored:</>    <fg=blue>s3://{$config['bucket']}/{$key}</>");
+        $this->line("  <fg=gray>Size:</>      <fg=blue>{$size}</> <fg=gray>across ".count($items).' objects</>');
+        $this->line("  <fg=gray>Stored:</>    <fg=blue>s3://{$config['bucket']}/{$prefix}</>");
         $this->newLine();
         $this->line('  <fg=gray>A backup you have never restored is a hypothesis. Try one:</>');
-        $this->line('  <fg=blue>larakube backup:restore --dry-run</>');
+        $this->line('  <fg=blue>larakube backup:restore --deep</>');
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * The dumps and archives on disk, as manifest items.
+     *
+     * Reads the working directory rather than re-deriving from the inventory,
+     * so the manifest can only ever describe files that actually exist.
+     *
+     * @return array<int, array{kind: string, name: string, path: string, object: string}>
+     */
+    protected function producedItems(string $work): array
+    {
+        $items = [];
+
+        foreach ([['db-', '.sql.gz', 'database'], ['vol-', '.tar.gz', 'volume']] as [$prefix, $suffix, $kind]) {
+            foreach (glob("{$work}/{$prefix}*{$suffix}") ?: [] as $path) {
+                $items[] = [
+                    'kind' => $kind,
+                    'name' => substr(basename($path), strlen($prefix), -strlen($suffix)),
+                    'path' => $path,
+                    'object' => basename($path).'.enc',
+                ];
+            }
+        }
+
+        return $items;
     }
 }

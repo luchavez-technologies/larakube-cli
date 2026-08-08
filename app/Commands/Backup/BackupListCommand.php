@@ -7,7 +7,6 @@ use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
-use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
 
@@ -39,18 +38,18 @@ class BackupListCommand extends Command
             return 1;
         }
 
-        $out = Process::timeout(120)->env($this->backupAwsEnv($config))->run(
-            'aws --endpoint-url '.escapeshellarg($config['endpoint'])
-            .' s3 ls '.escapeshellarg("s3://{$config['bucket']}/larakube/"),
-        )->output();
+        $runs = $this->listBackupRuns($config);
+        $complete = array_filter($runs, fn (array $r) => $r['complete']);
+        $partial = count($runs) - count($complete);
 
         $rows = [];
-        foreach (array_filter(array_map('trim', explode("\n", $out))) as $line) {
-            $parts = preg_split('/\s+/', $line);
-            if (count($parts) < 4) {
-                continue;
-            }
-            $rows[] = ["{$parts[0]} {$parts[1]}", $this->humanBytes((int) $parts[2]), $parts[3]];
+        foreach (array_reverse($complete, true) as $run) {
+            $rows[] = [
+                $run['taken'],
+                $this->humanBytes($run['bytes']),
+                (string) (count($run['objects']) - 1).' objects',
+                $run['stamp'],
+            ];
         }
 
         if ($rows === []) {
@@ -64,24 +63,22 @@ class BackupListCommand extends Command
             return 0;
         }
 
-        table(['Taken', 'Size', 'Object'], array_reverse($rows));
+        table(['Taken', 'Size', 'Contents', 'Backup'], $rows);
 
         $this->newLine();
         $this->line('  <fg=gray>Destination:</> <fg=blue>'.$config['endpoint'].'/'.$config['bucket'].'</>');
+
+        if ($partial > 0) {
+            // Not an error: a run that died mid-upload leaves objects with no
+            // manifest, and refusing to list it is the point. Say so anyway,
+            // because otherwise it is storage nobody can see or account for.
+            $this->newLine();
+            $this->laraKubeWarn("{$partial} incomplete backup".($partial === 1 ? '' : 's').' at the destination (no manifest — never listed, never restorable).');
+            $this->line('  <fg=gray>Clear them with</> <fg=blue>larakube backup:prune</><fg=gray>.</>');
+        }
+
         $this->newLine();
 
         return 0;
-    }
-
-    protected function humanBytes(int $bytes): string
-    {
-        foreach (['B', 'KB', 'MB', 'GB'] as $unit) {
-            if ($bytes < 1024) {
-                return round($bytes, 1).$unit;
-            }
-            $bytes /= 1024;
-        }
-
-        return round($bytes, 1).'TB';
     }
 }
