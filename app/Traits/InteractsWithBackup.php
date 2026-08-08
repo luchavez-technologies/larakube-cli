@@ -246,4 +246,88 @@ trait InteractsWithBackup
             || str_contains($endpoint, 'localhost')
             || str_contains($endpoint, '127.0.0.1');
     }
+
+    /**
+     * Size of a produced artifact, 0 when absent.
+     *
+     * A command that exits 0 having written nothing is a real failure mode —
+     * `kubectl exec` can succeed while the pod's tar writes to a path that does
+     * not exist — so a missing file must read as "empty", not raise.
+     */
+    protected function sizeOf(string $path): int
+    {
+        return file_exists($path) ? (int) filesize($path) : 0;
+    }
+
+    protected function humanBytes(int $bytes): string
+    {
+        foreach (['B', 'KB', 'MB', 'GB'] as $unit) {
+            if ($bytes < 1024) {
+                return round($bytes, 1).$unit;
+            }
+            $bytes /= 1024;
+        }
+
+        return round($bytes, 1).'TB';
+    }
+
+    /**
+     * The PVC behind a backup target, and where its owning pod mounts it.
+     *
+     * Restoring a volume means writing into the claim while nothing else has it
+     * open, so the helper pod has to mount the claim at the SAME path the real
+     * pod uses. The archive was made with `tar -C dirname(path) basename(path)`,
+     * which captures the mount point itself as the leading component — extract
+     * anywhere else and you get /data/data/… instead of /data/….
+     *
+     * Longest-prefix wins because a pod can mount a Secret *inside* its data
+     * volume (chat-synapse mounts homeserver.yaml under /data), and only the
+     * PVC-backed mount is restorable.
+     *
+     * @param  array<string, string>  $target
+     * @return array{claim: string, mountPath: string}|null
+     */
+    protected function resolveVolumeClaim(string $kubectl, array $target): ?array
+    {
+        $raw = Process::timeout(60)->run(
+            "{$kubectl} get deploy {$target['deployment']} -n {$target['namespace']} -o json",
+        )->output();
+
+        $spec = json_decode(trim($raw), true);
+
+        if (! is_array($spec)) {
+            return null;
+        }
+
+        $pod = $spec['spec']['template']['spec'] ?? [];
+
+        $claims = [];
+        foreach ($pod['volumes'] ?? [] as $volume) {
+            if (($volume['persistentVolumeClaim']['claimName'] ?? '') !== '') {
+                $claims[$volume['name']] = $volume['persistentVolumeClaim']['claimName'];
+            }
+        }
+
+        $best = null;
+        foreach ($pod['containers'] ?? [] as $container) {
+            if (($container['name'] ?? '') !== $target['container']) {
+                continue;
+            }
+
+            foreach ($container['volumeMounts'] ?? [] as $mount) {
+                $path = (string) ($mount['mountPath'] ?? '');
+                $claim = $claims[$mount['name'] ?? ''] ?? null;
+
+                if ($claim === null || ! str_starts_with($target['path'].'/', rtrim($path, '/').'/')) {
+                    continue;
+                }
+
+                if ($best === null || strlen($path) > strlen($best['mountPath'])) {
+                    $best = ['claim' => $claim, 'mountPath' => $path];
+                }
+            }
+        }
+
+        return $best;
+    }
 }

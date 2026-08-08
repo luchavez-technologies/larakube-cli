@@ -182,28 +182,4 @@ class BackupRunCommand extends Command
 
         return 0;
     }
-
-    /**
-     * Size of a produced artifact, 0 when absent.
-     *
-     * A command that exits 0 having written nothing is a real failure mode —
-     * `kubectl exec` can succeed while the pod's tar writes to a path that does
-     * not exist — so a missing file must read as "empty", not raise.
-     */
-    protected function sizeOf(string $path): int
-    {
-        return file_exists($path) ? (int) filesize($path) : 0;
-    }
-
-    protected function humanBytes(int $bytes): string
-    {
-        foreach (['B', 'KB', 'MB', 'GB'] as $unit) {
-            if ($bytes < 1024) {
-                return round($bytes, 1).$unit;
-            }
-            $bytes /= 1024;
-        }
-
-        return round($bytes, 1).'TB';
-    }
 }

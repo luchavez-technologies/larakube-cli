@@ -719,3 +719,85 @@ test('dump and restore are inverses across every backup-capable engine', functio
             ->toBe($driver->hasCommonsDumpCommand(), "{$driver->value} can dump but not restore, or vice versa");
     }
 });
+
+test('the volume restore mounts the claim where the real pod mounts it', function () {
+    // The archive is made with `tar -C dirname(path) basename(path)`, so its
+    // leading component IS the mount point. Mount the claim anywhere else and
+    // extraction nests it a level too deep — /data/data/… instead of /data/….
+    Process::fake([
+        '*get deploy forgejo*-o json*' => Process::result(output: json_encode([
+            'spec' => ['template' => ['spec' => [
+                'containers' => [[
+                    'name' => 'forgejo',
+                    'volumeMounts' => [['name' => 'forgejo-data', 'mountPath' => '/data']],
+                ]],
+                'volumes' => [['name' => 'forgejo-data', 'persistentVolumeClaim' => ['claimName' => 'forgejo-data']]],
+            ]]],
+        ])),
+        '*' => Process::result(),
+    ]);
+
+    $resolved = (new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        public function resolve(string $kubectl, array $target): ?array
+        {
+            return $this->resolveVolumeClaim($kubectl, $target);
+        }
+    })->resolve('kubectl', [
+        'name' => 'forgejo', 'namespace' => 'larakube-shared',
+        'deployment' => 'forgejo', 'container' => 'forgejo', 'path' => '/data',
+    ]);
+
+    expect($resolved)->toBe(['claim' => 'forgejo-data', 'mountPath' => '/data']);
+});
+
+test('a Secret mounted inside the data volume never wins over the PVC', function () {
+    // chat-synapse mounts homeserver.yaml at /data/homeserver.yaml, inside the
+    // PVC's own /data. Only the PVC-backed mount can be restored into, so the
+    // longest-prefix match must still skip non-PVC mounts.
+    Process::fake([
+        '*get deploy chat-synapse*-o json*' => Process::result(output: json_encode([
+            'spec' => ['template' => ['spec' => [
+                'containers' => [[
+                    'name' => 'synapse',
+                    'volumeMounts' => [
+                        ['name' => 'data', 'mountPath' => '/data'],
+                        ['name' => 'config', 'mountPath' => '/data/homeserver.yaml'],
+                    ],
+                ]],
+                'volumes' => [
+                    ['name' => 'data', 'persistentVolumeClaim' => ['claimName' => 'chat-synapse-data']],
+                    ['name' => 'config', 'secret' => ['secretName' => 'chat-synapse-config']],
+                ],
+            ]]],
+        ])),
+        '*' => Process::result(),
+    ]);
+
+    $resolved = (new class
+    {
+        use App\Traits\InteractsWithBackup;
+
+        public function resolve(string $kubectl, array $target): ?array
+        {
+            return $this->resolveVolumeClaim($kubectl, $target);
+        }
+    })->resolve('kubectl', [
+        'name' => 'synapse-identity', 'namespace' => 'larakube-shared',
+        'deployment' => 'chat-synapse', 'container' => 'synapse',
+        'path' => '/data/chat.luchtech.dev.signing.key',
+    ]);
+
+    expect($resolved)->toBe(['claim' => 'chat-synapse-data', 'mountPath' => '/data']);
+});
+
+test('backup:restore declares the flags the restore flow depends on', function () {
+    $signature = (new ReflectionClass(App\Commands\Backup\BackupRestoreCommand::class))
+        ->getDefaultProperties()['signature'];
+
+    expect($signature)->toContain('--volume=')
+        ->toContain('--keep')
+        ->toContain('--dry-run');
+});
