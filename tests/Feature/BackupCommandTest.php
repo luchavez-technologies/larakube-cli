@@ -412,10 +412,11 @@ test('the CronJob encrypts before the upload container ever sees the data', func
     $stages = collect($spec['initContainers'])->pluck('command.2')->implode("\n");
 
     expect($stages)->toContain('openssl enc -aes-256-cbc')
-        // The plaintext bundle is removed before the upload stage runs.
-        ->and($stages)->toContain('rm -f bundle.tar.gz')
+        // Each plaintext dump is removed as soon as its encrypted copy exists,
+        // so nothing unencrypted survives into the upload stage.
+        ->and($stages)->toContain('rm -f "$f"')
         ->and($spec['containers'][0]['command'][2])->not->toContain('openssl')
-        ->and($spec['containers'][0]['command'][2])->toContain('backup.enc')
+        ->and($spec['containers'][0]['command'][2])->toContain('.enc')
         // The R2/B2 checksum incompatibility applies in-cluster too.
         ->and(collect($spec['containers'][0]['env'])->pluck('name'))
         ->toContain('AWS_REQUEST_CHECKSUM_CALCULATION');
@@ -989,4 +990,29 @@ test('backup:restore declares --deep, the drill that survives per-item fetching'
         ->getDefaultProperties()['signature'];
 
     expect($signature)->toContain('--deep')->toContain('--backup=');
+});
+
+test('the CronJob writes the same per-item layout the CLI does', function () {
+    // Two producers, one format. If the scheduled job kept bundling, every
+    // nightly backup would be invisible to backup:list and unreadable by
+    // backup:restore — you would have backups and no way to know.
+    $manifest = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
+    ])->render();
+
+    expect($manifest)
+        ->toContain('manifest.json')
+        // One stamp fixed at the start, shared by every stage — generating it
+        // at upload time would name the prefix an hour after its contents.
+        ->toContain('date +%Y-%m-%d-%H%M%S > STAMP')
+        ->toContain('PREFIX="larakube/$(cat STAMP)"')
+        // And no bundling anywhere.
+        ->not->toContain('bundle.tar.gz')
+        ->not->toContain('backup.enc');
+
+    // The manifest upload must be the last s3 cp in the script.
+    $last = strrpos($manifest, 's3 cp');
+    expect(substr($manifest, $last, 120))->toContain('manifest.json');
 });

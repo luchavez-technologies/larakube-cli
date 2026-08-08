@@ -217,7 +217,15 @@ Expect a table marking every row keep/delete, the three old single-archive entri
 larakube backup:prune production --apply
 ```
 
-**7. Re-schedule.** The CronJob still runs the OLD single-archive job — `cronjob.blade.php`
-was NOT converted in `5c9ac55`. Until it is, nightly backups keep writing the old layout and
-`backup:list` will not show them. Either convert it or re-run `backup:schedule` once it is.
-**This is the one loose end.**
+**7. Re-schedule — REQUIRED.** `cronjob.blade.php` was converted in a follow-up commit, but
+the CronJob already deployed on the cluster still carries the OLD bundling script. It is a
+baked-in manifest, not a mounted file, so it does not update itself:
+
+```bash
+larakube backup:schedule production
+```
+
+Until you do this, tonight's scheduled run writes the old single-archive layout, which
+`backup:list` will not show and `backup:restore` cannot read — backups that exist and are
+invisible. Confirm afterwards with `kubectl get cronjob larakube-backup -n larakube-shared
+-o yaml | grep -c manifest.json` (expect a non-zero count).

@@ -101,6 +101,12 @@ spec:
                   set -euo pipefail
                   cd /work
 
+                  # Every stage reads this. Generating the stamp at upload time
+                  # instead would name the prefix an hour after the dumps it
+                  # holds, and two stages could disagree about where they are.
+                  date +%Y-%m-%d-%H%M%S > STAMP
+                  echo "› backup $(cat STAMP)"
+
                   echo "› databases ({{ $dbDriver }})"
                   DBS=$(kubectl exec deploy/{{ $dbService }} -n larakube-plex -c {{ $dbService }} -- \
                     sh -c {!! escapeshellarg($dbListCommand) !!})
@@ -130,10 +136,7 @@ spec:
                   [ "$(stat -c%s "vol-{{ $v['name'] }}.tar.gz")" -ge 50 ] || { echo "archive of {{ $v['name'] }} is empty" >&2; exit 1; }
 @endforeach
 
-                  echo "› bundling"
-                  tar czf bundle.tar.gz db-*.sql.gz vol-*.tar.gz
-                  rm -f db-*.sql.gz vol-*.tar.gz
-                  ls -lh bundle.tar.gz
+                  ls -lh db-*.sql.gz vol-*.tar.gz
               volumeMounts:
                 - name: work
                   mountPath: /work
@@ -149,8 +152,8 @@ spec:
             # run, and would need re-checking for openssl per driver.
             #
             # This is not an isolation boundary: every container here shares the
-            # same emptyDir, so the plaintext bundle is visible to all of them
-            # until this step replaces it. The boundary that matters is that
+            # same emptyDir, so the plaintext dumps are visible to all of them
+            # until this step replaces them. The boundary that matters is that
             # nothing unencrypted is ever uploaded.
             - name: encrypt
               image: alpine/openssl:3.5.4
@@ -160,10 +163,13 @@ spec:
                 - |
                   set -eu
                   cd /work
-                  openssl enc -aes-256-cbc -pbkdf2 -salt -pass "env:PASSPHRASE" \
-                    -in bundle.tar.gz -out backup.enc
-                  rm -f bundle.tar.gz
-                  ls -lh backup.enc
+                  for f in db-*.sql.gz vol-*.tar.gz; do
+                    [ -e "$f" ] || continue
+                    openssl enc -aes-256-cbc -pbkdf2 -salt -pass "env:PASSPHRASE" \
+                      -in "$f" -out "$f.enc"
+                    rm -f "$f"
+                  done
+                  ls -lh ./*.enc
               env:
                 - name: PASSPHRASE
                   valueFrom:
@@ -175,7 +181,7 @@ spec:
                 requests: { memory: 64Mi, cpu: 100m }
                 limits: { memory: 512Mi, cpu: 1000m }
           containers:
-            # Upload only. The plaintext bundle no longer exists by this point.
+            # Upload only. No plaintext dump exists by this point.
             - name: upload
               image: amazon/aws-cli:2.27.22
               command:
@@ -183,9 +189,30 @@ spec:
                 - -c
                 - |
                   set -eu
-                  KEY="larakube/$(date +%Y-%m-%d-%H%M%S).tar.gz.enc"
-                  aws --endpoint-url "$ENDPOINT" --no-progress s3 cp /work/backup.enc "s3://$BUCKET/$KEY"
-                  echo "stored s3://$BUCKET/$KEY"
+                  cd /work
+                  PREFIX="larakube/$(cat STAMP)"
+                  ITEMS=""
+
+                  for f in ./*.enc; do
+                    f="${f#./}"
+                    base="${f%.enc}"
+                    case "$base" in
+                      db-*)  KIND=database; NAME="${base#db-}";  NAME="${NAME%.sql.gz}" ;;
+                      vol-*) KIND=volume;   NAME="${base#vol-}"; NAME="${NAME%.tar.gz}" ;;
+                      *) continue ;;
+                    esac
+                    aws --endpoint-url "$ENDPOINT" --no-progress s3 cp "$f" "s3://$BUCKET/$PREFIX/$f"
+                    ITEMS="$ITEMS{\"kind\":\"$KIND\",\"name\":\"$NAME\",\"object\":\"$f\",\"bytes\":$(stat -c%s "$f")},"
+                  done
+
+                  # LAST, and only if every object above landed: the manifest is
+                  # the commit marker. Without it this prefix is invisible to
+                  # backup:list and refused by backup:restore, which is exactly
+                  # what a half-uploaded backup should be.
+                  printf '{"version":1,"taken_at":"%s","engine":"%s","items":[%s]}' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "{{ $dbDriver }}" "${ITEMS%,}" > manifest.json
+                  aws --endpoint-url "$ENDPOINT" --no-progress s3 cp manifest.json "s3://$BUCKET/$PREFIX/manifest.json"
+                  echo "stored s3://$BUCKET/$PREFIX/ ($(echo "$ITEMS" | tr -cd ',' | wc -c) objects)"
               env:
                 - name: ENDPOINT
                   valueFrom:
