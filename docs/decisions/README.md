@@ -24,3 +24,8 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0006](0006-centralized-forwardauth-sso.md) | Centralized OAuth2-Proxy (ForwardAuth) for tools with no free native OIDC | Accepted |
 | [0007](0007-environment-context-resolution.md) | Environment → kube-context resolution is a single contract | Accepted |
 | [0008](0008-rbac-claim-flattening.md) | Role-gated SSO via a claim-flattening Zitadel Action | Accepted |
+| [0009](0009-shared-livekit-and-per-consumer-keys.md) | Shared LiveKit instance with per-consumer API keys | Accepted |
+| [0010](0010-backup-strategy.md) | Standardized backup and restore strategy | Accepted |
+| [0011](0011-dynamic-local-tld-resolution.md) | Local TLD is dynamic; hardcoding `.dev.test` is forbidden | Accepted |
+| [0012](0012-cluster-tool-registry-redesign.md) | Cluster tool registry: flat list, host-as-identity, no `--instance=` | Accepted |
+| [0013](0013-design-init-idempotent-flags.md) | Tool `:init`/`:wire` reconcile feature flags from truth, never union with history | Accepted |

@@ -31,20 +31,21 @@ enum ClusterTool: string
             self::SUPPORT => 'Customer Support (Chatwoot)',
             self::LINK => 'Link Management (Kutt)',
             self::CRM => 'CRM (Twenty)',
-            self::DATA => 'Headless CMS & Data API (Directus)',
+            self::DATA => 'Headless CMS & Data API (PocketBase or Directus)',
             self::RECORD => 'Screen Recording & Sharing (Sendrec)',
             self::DASHBOARD => 'Kubernetes Control Plane (Headlamp)',
             self::MEET => 'Video Meetings (LiveKit)',
+            self::DESIGN => 'Design & Prototyping (Penpot)',
         };
     }
 
-    public function productName(): string
+    public function productName(?string $engine = null): string
     {
         return match ($this) {
             self::ANALYTICS => 'Umami',
             self::CHAT => 'Matrix',
             self::CRM => 'Twenty',
-            self::DATA => 'Directus',
+            self::DATA => $engine === 'pocketbase' ? 'PocketBase' : 'Directus',
             self::DESK => 'FreeScout',
             self::DNS => 'ExternalDNS',
             self::DRIVE => 'oCIS',
@@ -69,6 +70,7 @@ enum ClusterTool: string
             self::WEBMAIL => 'Bulwark',
             self::DASHBOARD => 'Headlamp',
             self::MEET => 'LiveKit',
+            self::DESIGN => 'Penpot',
         };
     }
 
@@ -107,6 +109,7 @@ enum ClusterTool: string
             self::WEBMAIL => '📬',
             self::DASHBOARD => '☸️',
             self::MEET => '🎥',
+            self::DESIGN => '🎨',
         };
     }
 
@@ -114,7 +117,7 @@ enum ClusterTool: string
      * The operator-facing branded name shown in CLI output and Cinny/UI titles.
      * This is the static default — init commands may accept an --app-name flag
      * to override it and persist the custom value to the cluster registry under
-     * the 'brand_name' key, making it visible to `tool:list` and `tool:show`
+     * the 'brandName' key, making it visible to `tool:list` and `tool:show`
      * without any project file involvement.
      */
     public function brandName(): string
@@ -148,6 +151,7 @@ enum ClusterTool: string
             self::WEBMAIL => 'Webmail',
             self::DASHBOARD => 'Dashboard',
             self::MEET => 'Meet',
+            self::DESIGN => 'Design',
         };
     }
 
@@ -211,6 +215,7 @@ enum ClusterTool: string
             self::WEBMAIL => SharedClusterService::WEBMAIL,
             self::DASHBOARD => SharedClusterService::DASHBOARD,
             self::MEET => SharedClusterService::MEET,
+            self::DESIGN => SharedClusterService::DESIGN,
         };
     }
 
@@ -352,6 +357,7 @@ enum ClusterTool: string
     {
         return match ($this) {
             self::CHAT => ['matrix' => 'Matrix (Synapse + Element)'],
+            self::DATA => ['pocketbase' => 'PocketBase', 'directus' => 'Directus'],
             self::DRIVE => ['ocis' => 'oCIS'],
             self::FLOW => ['n8n' => 'n8n', 'windmill' => 'Windmill'],
             self::TASKS => ['planka' => 'Planka', 'plane' => 'Plane'],
@@ -421,6 +427,31 @@ enum ClusterTool: string
      *
      * @return array{deployment: string, namespace: string, secret: string, static?: array<string, string>, vars: array<string, string>}|null
      */
+    /**
+     * Feature flags this tool needs regardless of which (if any) integration
+     * gets wired — access tokens and MCP don't depend on SSO or SMTP, so
+     * :init seeds them directly rather than waiting on sso:wire/mail:wire to
+     * ever run. mail:wire's and sso:wire's own PENPOT_FLAGS defaults below
+     * fold this in too, so there's exactly one place these flag names are
+     * spelled. See docs/decisions/0013-design-init-idempotent-flags.md.
+     *
+     * @return list<string>
+     */
+    public function baselineFlags(): array
+    {
+        return match ($this) {
+            // `enable-mcp` deliberately excluded: Penpot's frontend image bakes
+            // in an nginx location block that proxies to an upstream literally
+            // named `penpot-mcp` — a 4th first-party MCP backend container we
+            // don't deploy. Without it nginx fails to start at all, crash-looping
+            // the ENTIRE frontend, not just MCP. Confirmed live 2026-08-10 —
+            // took down design.luchtech.dev. Re-add only once that companion
+            // container is actually deployed alongside backend/frontend/exporter.
+            self::DESIGN => ['enable-access-tokens'],
+            default => [],
+        };
+    }
+
     public function smtpEnv(?string $engine = null, ?string $instance = null): ?array
     {
         return match ($this) {
@@ -553,6 +584,26 @@ enum ClusterTool: string
                     'user' => 'NEXT_PRIVATE_SMTP_USERNAME',
                     'password' => 'NEXT_PRIVATE_SMTP_PASSWORD',
                     'from' => 'NEXT_PRIVATE_SMTP_FROM_ADDRESS',
+                ],
+            ],
+            self::DESIGN => [
+                'deployment' => 'design-penpot-backend',
+                'namespace' => $this->namespace(),
+                'secret' => 'design-penpot-smtp',
+                'static' => [
+                    // PENPOT_FLAGS is deliberately absent — MailWireCommand
+                    // reconciles it via ReconcilesPenpotFlags instead of the
+                    // generic static-var path. See
+                    // docs/decisions/0013-design-init-idempotent-flags.md.
+                    'PENPOT_SMTP_SSL' => 'true',
+                    'PENPOT_SMTP_TLS' => 'true',
+                ],
+                'vars' => [
+                    'host' => 'PENPOT_SMTP_HOST',
+                    'port' => 'PENPOT_SMTP_PORT',
+                    'user' => 'PENPOT_SMTP_USERNAME',
+                    'password' => 'PENPOT_SMTP_PASSWORD',
+                    'from' => 'PENPOT_SMTP_DEFAULT_FROM',
                 ],
             ],
             self::SUPPORT => [
@@ -842,6 +893,37 @@ enum ClusterTool: string
     }
 
     /**
+     * Whether more than one named `--instance` of this tool can coexist on
+     * one cluster. Two distinct reasons a tool is `false` here:
+     *
+     *  - A hard technical blocker: CHAT (Synapse TURN) and MEET (LiveKit SFU)
+     *    bind `hostPort` (3478 / 7881-7882) — a second instance collides on
+     *    the same node. GIT (Forgejo) exposes SSH via a fixed-port
+     *    `LoadBalancer` (2222), same collision risk on a single-node cluster.
+     *  - An architectural singleton: MAIL/SSO/SECRETS/MONITOR/VPN are each
+     *    "the one X for this cluster" that every other tool's mail:wire/
+     *    sso:wire/SyncsClusterSecrets/monitor:init assumes exists exactly
+     *    once. WEBMAIL is 1:1 bound to the one Stalwart. DASHBOARD is one
+     *    view into the one cluster. DNS already has its own multi-tenancy
+     *    scheme keyed by `--zone`, not this generic `--instance` mechanism.
+     *
+     * Default `true` (plain ClusterIP+Ingress HTTP app, Commons-backed or
+     * embedded-SQLite with a PVC-per-instance) so a newly added tool has to
+     * opt OUT deliberately rather than silently inherit a hostPort trap. Only
+     * DATA and NOTES actually have `--instance` wired into their `:init`
+     * today — `true` here means "no known blocker", not "already built".
+     */
+    public function supportsMultipleInstances(): bool
+    {
+        return match ($this) {
+            self::CHAT, self::MEET, self::GIT,
+            self::MAIL, self::SSO, self::SECRETS, self::MONITOR, self::VPN, self::WEBMAIL, self::DASHBOARD,
+            self::DNS => false,
+            default => true,
+        };
+    }
+
+    /**
      * True when this tool (for this engine) is configured by a mounted config
      * FILE and ignores environment variables entirely — so the `kubectl set env`
      * path that mail:wire and sso:wire use cannot reach it.
@@ -858,6 +940,25 @@ enum ClusterTool: string
     public function configuresViaConfigFile(?string $engine = null): bool
     {
         return $this === self::CHAT && ($engine ?? $this->defaultEngine()) === 'matrix';
+    }
+
+    /**
+     * A short operator-facing warning when this tool's SSO integration is real
+     * (oidcEnv() vars are genuinely read by the app) but gated behind a paid
+     * license even for self-hosted use. sso:wire still runs and prepares the
+     * wiring — so nothing needs to be redone once a license is bought — but
+     * login will not work until then, and the CLI needs to say so loudly
+     * rather than let a successful "wired" message imply a working login.
+     * Null when SSO just works.
+     */
+    public function ssoLicenseCaveat(?string $engine = null): ?string
+    {
+        return match (true) {
+            $this === self::DATA && ($engine ?? $this->defaultEngine()) !== 'pocketbase' => 'Directus v12 moved SSO/OIDC out of its free Core tier (MSCL license, June 2026) — a paid Team/Enterprise '
+                .'license (or their Open Innovation Grant) is required even self-hosted. This wiring is ready to go the '
+                .'moment you have one; login will not work until then.',
+            default => null,
+        };
     }
 
     /**
@@ -898,7 +999,7 @@ enum ClusterTool: string
                 'secret' => 'grafana-oidc',
                 'static' => [
                     'GF_AUTH_GENERIC_OAUTH_ENABLED' => 'true',
-                    'GF_AUTH_GENERIC_OAUTH_NAME' => 'Zitadel',
+                    'GF_AUTH_GENERIC_OAUTH_NAME' => 'Login with SSO',
                     'GF_AUTH_GENERIC_OAUTH_SCOPES' => 'openid profile email',
                     'GF_AUTH_GENERIC_OAUTH_USE_PKCE' => 'true',
                     // Gate login itself, not just the assigned role — least-
@@ -922,6 +1023,10 @@ enum ClusterTool: string
                     'GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH' => "contains(larakube_roles[*], 'grafana-admin') && 'Admin' || contains(larakube_roles[*], 'grafana-editor') && 'Editor' || contains(larakube_roles[*], 'grafana-user') && 'Viewer' || ''",
                     'GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT' => 'true',
                     'GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN' => 'false',
+                ],
+                'sso_only_vars' => [
+                    'GF_AUTH_DISABLE_LOGIN_FORM' => 'true',
+                    'GF_USERS_ALLOW_SIGN_UP' => 'false',
                 ],
                 'vars' => [
                     'client_id' => 'GF_AUTH_GENERIC_OAUTH_CLIENT_ID',
@@ -950,6 +1055,9 @@ enum ClusterTool: string
                     // audience"). Trust any Zitadel numeric id — issuer + token
                     // signature are still validated, so this is safe.
                     'SSO_AUDIENCE_TRUSTED' => '^[0-9]+$',
+                ],
+                'sso_only_vars' => [
+                    'SIGNUPS_ALLOWED' => 'false',
                 ],
                 'vars' => [
                     'client_id' => 'SSO_CLIENT_ID',
@@ -1077,6 +1185,9 @@ enum ClusterTool: string
                     // auto-provision users on first SSO login.
                     'NEXT_PUBLIC_DISABLE_OIDC_SIGNUP' => 'false',
                 ],
+                'sso_only_vars' => [
+                    'NEXT_PUBLIC_DISABLE_EMAIL_PASS_SIGNIN' => 'true',
+                ],
                 'vars' => [
                     'client_id' => 'NEXT_PRIVATE_OIDC_CLIENT_ID',
                     'client_secret' => 'NEXT_PRIVATE_OIDC_CLIENT_SECRET',
@@ -1086,17 +1197,43 @@ enum ClusterTool: string
                 ],
                 'redirect_path' => '/api/auth/callback/oidc',
             ],
+            self::DESIGN => [
+                'deployment' => 'design-penpot-backend',
+                'frontend_deployment' => 'design-penpot-frontend',
+                'namespace' => $this->namespace(),
+                'secret' => 'design-penpot-oidc',
+                'redirect_path' => '/api/auth/oidc/callback',
+                'static' => [
+                    // PENPOT_FLAGS is deliberately absent — SsoWireCommand::applyToolEnv
+                    // reconciles it via ReconcilesPenpotFlags instead of the generic
+                    // static-var path. See docs/decisions/0013-design-init-idempotent-flags.md.
+                    'PENPOT_OIDC_NAME' => 'Login with SSO',
+                ],
+                'vars' => [
+                    'client_id' => 'PENPOT_OIDC_CLIENT_ID',
+                    'client_secret' => 'PENPOT_OIDC_CLIENT_SECRET',
+                    'auth_url' => 'PENPOT_OIDC_AUTH_URI',
+                    'token_url' => 'PENPOT_OIDC_TOKEN_URI',
+                    'userinfo_url' => 'PENPOT_OIDC_USERINFO_URI',
+                    'issuer' => 'PENPOT_OIDC_BASE_URI',
+                ],
+            ],
             self::TASKS => [
                 'deployment' => 'tasks-planka',
                 'namespace' => $this->namespace(),
                 'secret' => 'tasks-planka-oidc',
-                'static' => [],
+                'static' => [
+                    'OIDC_NAME' => 'Login with SSO',
+                ],
+                'sso_only_vars' => [
+                    'ALLOW_REGISTRATION' => 'false',
+                ],
                 'vars' => [
                     'client_id' => 'OIDC_CLIENT_ID',
                     'client_secret' => 'OIDC_CLIENT_SECRET',
                     'issuer' => 'OIDC_ISSUER',
                 ],
-                'redirect_path' => '/api/auth/oidc/callback/', // Adjust if planka has a different callback
+                'redirect_path' => '/oidc-callback',
             ],
             self::LINK => [
                 // Kutt has native OIDC support (server/passport.js) driven by
@@ -1134,12 +1271,6 @@ enum ClusterTool: string
                 'deployment' => 'record-sendrec',
                 'namespace' => $this->namespace(),
                 'secret' => 'record-sendrec-oidc',
-                'static' => [],
-                'vars' => [
-                    'client_id' => 'OIDC_CLIENT_ID',
-                    'client_secret' => 'OIDC_CLIENT_SECRET',
-                    'issuer' => 'OIDC_ISSUER',
-                ],
                 'redirect_path' => '/oauth2/callback',
             ],
             self::CHAT => [
@@ -1213,9 +1344,14 @@ enum ClusterTool: string
                 'static' => [
                     'AUTH_PROVIDERS' => 'local,zitadel',
                     'AUTH_ZITADEL_DRIVER' => 'openid',
+                    'AUTH_ZITADEL_LABEL' => 'Login with SSO',
                     'AUTH_ZITADEL_SCOPE' => 'openid email profile',
                     'AUTH_ZITADEL_IDENTIFIER_KEY' => 'email',
                     'AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION' => 'true',
+                ],
+                'sso_only_vars' => [
+                    'AUTH_PROVIDERS' => 'zitadel',
+                    'AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION' => 'false',
                 ],
                 'vars' => [
                     'client_id' => 'AUTH_ZITADEL_CLIENT_ID',
@@ -1257,10 +1393,10 @@ enum ClusterTool: string
      *
      * @return array<int, string>
      */
-    public function oidcRedirectUris(string $toolHost, array $aliasHosts = []): array
+    public function oidcRedirectUris(string $toolHost, array $aliasHosts = [], ?string $engine = null): array
     {
         $allHosts = array_values(array_unique(array_merge([$toolHost], $aliasHosts)));
-        $schema = $this->oidcEnv();
+        $schema = $this->oidcEnv($engine);
         if ($schema === null) {
             return [];
         }
@@ -1343,6 +1479,7 @@ enum ClusterTool: string
             self::LINK => ['name' => 'link-vpn-only', 'namespace' => $this->namespace()],
             self::CRM => ['name' => 'crm-vpn-only', 'namespace' => $this->namespace()],
             self::RECORD => ['name' => 'record-vpn-only', 'namespace' => $this->namespace()],
+            self::DESIGN => ['name' => 'design-vpn-only', 'namespace' => $this->namespace()],
             self::DASHBOARD => ['name' => 'dashboard-vpn-only', 'namespace' => $this->namespace()],
             default => null,
         };
@@ -1382,9 +1519,38 @@ enum ClusterTool: string
             self::DNS => 'external-dns',
             self::DASHBOARD => 'dashboard-headlamp',
             self::MEET => 'meet-livekit',
+            self::DESIGN => 'design-penpot-backend',
         };
 
         return ($instance === null || $instance === '' || $instance === 'main') ? $base : "{$base}-{$instance}";
+    }
+
+    /**
+     * Derive a Kubernetes-resource-naming-safe instance slug from a host —
+     * the identifier every multi-instance tool's registry entry and
+     * deploymentName()/commonsDatabases()/commonsBuckets() suffix uses.
+     * 'main' for this tool's own bare-prefix host (e.g. "data.example.com"),
+     * matching every deployment made before instances existed. Otherwise the
+     * FULL host, not just its leftmost label — two different hosts that
+     * happen to share a leftmost label (blog.siteA.com vs blog.siteB.com)
+     * must never collide on the same Kubernetes Service name. Confirmed live
+     * 2026-08-09.
+     */
+    public function instanceSlugFromHost(string $host): string
+    {
+        $label = explode('.', $host)[0] ?? $host;
+        if ($label === $this->service()?->hostPrefix()) {
+            return 'main';
+        }
+
+        $slug = strtolower(str_replace('.', '-', $host));
+        $slug = trim((string) preg_replace('/[^a-z0-9-]/', '-', $slug), '-');
+
+        // K8s Service names are DNS-1035 labels, max 63 chars. The longest
+        // realistic prefix ("data-pocketbase-") is 17 chars — truncate+hash
+        // defensively past ~40 for the slug itself rather than let a
+        // pathologically long host make kubectl reject the apply.
+        return strlen($slug) > 40 ? substr($slug, 0, 32).'-'.substr(md5($slug), 0, 6) : $slug;
     }
 
     /**
@@ -1455,6 +1621,7 @@ enum ClusterTool: string
             self::RECORD => ['namespace' => $this->namespace(), 'secret' => 'record-sendrec-secrets', 'key' => 'db-password'],
             self::SSO => ['namespace' => $this->namespace(), 'secret' => 'sso-secrets', 'key' => 'db-password'],
             self::LINK => ['namespace' => $this->namespace(), 'secret' => 'link-kutt-secrets', 'key' => 'db-password'],
+            self::DESIGN => ['namespace' => $this->namespace(), 'secret' => 'design-penpot-db', 'key' => 'password'],
             default => null,
         };
 
@@ -1468,9 +1635,15 @@ enum ClusterTool: string
     }
 
     /** @return list<string> */
-    public function commonsBuckets(): array
+    /** @return list<string> */
+    public function commonsBuckets(?string $instance = null): array
     {
-        return $this->commonsBucketList();
+        $list = $this->commonsBucketList();
+        if ($instance === null || $instance === '' || $instance === 'main') {
+            return $list;
+        }
+
+        return array_map(fn (string $bucket) => "{$bucket}-{$instance}", $list);
     }
 
     /** @return list<string> */
@@ -1527,6 +1700,7 @@ enum ClusterTool: string
             self::SSO => ['zitadel'],
             self::SUPPORT => ['support_chatwoot'],
             self::TASKS => ['tasks_planka'],
+            self::DESIGN => ['penpot'],
             default => [],
         };
     }
@@ -1544,6 +1718,7 @@ enum ClusterTool: string
             self::RECORD => ['record-storage'],
             self::SHEETS => ['sheet-public', 'sheet-private'],
             self::SIGN => ['sign-storage'],
+            self::DESIGN => ['design-assets'],
             default => [],
         };
     }
@@ -1575,4 +1750,5 @@ enum ClusterTool: string
     case VPN = 'vpn';
     case WEBMAIL = 'webmail';
     case DASHBOARD = 'dashboard';
+    case DESIGN = 'design';
 }

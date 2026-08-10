@@ -1,5 +1,7 @@
 <?php
 
+use App\Commands\Sso\SsoWireCommand;
+use App\Data\GlobalConfigData;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
@@ -64,10 +66,11 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
             '*get secret sso-app-dashboard*' => Process::result(output: ''),
             '*get secret larakube-tools-registry*' => Process::result(
                 output: base64_encode((string) json_encode([
-                    'dashboard' => ['installed_at' => 111, 'host' => 'dashboard.luchtech.dev'],
+                    ['tool' => 'dashboard', 'instance' => 'main', 'installed_at' => '2026-08-01T00:00:00+00:00', 'host' => 'dashboard.luchtech.dev'],
                 ])),
             ),
             '*create secret generic*' => Process::result(output: 'secret created'),
+            '*apply -f*' => Process::result(output: 'ingress applied'),
             '*set env deployment/dashboard-headlamp*' => Process::result(output: 'deployment.apps/dashboard-headlamp env updated'),
             '*rollout restart*' => Process::result(output: 'deployment.apps/dashboard-headlamp restarted'),
         ]);
@@ -82,6 +85,7 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
             '*/management/v1/projects/proj-1/roles' => Http::response([]),
             '*/management/v1/actions/_search' => Http::response(['result' => []]),
             '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+            '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
             '*/management/v1/flows/2/trigger/*' => Http::response([]),
         ]);
 
@@ -123,6 +127,7 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
         '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
     ]);
 
@@ -132,7 +137,7 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
         ->expectsOutputToContain('wired to Zitadel SSO');
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['redirectUris'][0] === 'https://grafana.'.App\Data\GlobalConfigData::load()->getLocalTld().'/login/generic_oauth');
+        && $request['redirectUris'][0] === 'https://grafana.'.GlobalConfigData::load()->getLocalTld().'/login/generic_oauth');
 });
 
 test('sso:wire registers oCIS Drive as a public PKCE client with its real callback URIs', function () {
@@ -156,7 +161,8 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
         // Drive ships PROXY_ROLE_ASSIGNMENT_DRIVER=oidc, so sso:wire must
         // ensure the flattenOcisRoles Action is attached to the token flow
         // and the ocisAdmin role already exists on the shared project.
-        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => App\Commands\Sso\SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
         // projectRoleAssertion is what lets the Action see user grants at
         // runtime (the "no + New Space button" root cause) — a shared
@@ -169,7 +175,7 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
         },
     ]);
 
-    $tld = App\Data\GlobalConfigData::load()->getLocalTld();
+    $tld = GlobalConfigData::load()->getLocalTld();
 
     $this->artisan('sso:wire', ['--tool' => 'drive', '--no-interaction' => true])
         ->assertExitCode(0)
@@ -197,7 +203,7 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
 });
 
 test('sso:wire re-registers a Drive app whose Zitadel registration is stale (confidential, wrong redirect URI)', function () {
-    $tld = App\Data\GlobalConfigData::load()->getLocalTld();
+    $tld = GlobalConfigData::load()->getLocalTld();
 
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
@@ -221,7 +227,8 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
         '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         // The ocisRoles Action must be ensured (and found already attached),
         // and the ocisAdmin role must already exist on the shared project.
-        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => App\Commands\Sso\SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
         '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]),
         '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
@@ -250,7 +257,7 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
 });
 
 test('sso:wire re-registers a Drive app whose redirect URIs match but post-logout URIs are missing', function () {
-    $tld = App\Data\GlobalConfigData::load()->getLocalTld();
+    $tld = GlobalConfigData::load()->getLocalTld();
 
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
@@ -280,7 +287,8 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
             "https://drive.{$tld}/oidc-silent-redirect.html",
         ]]]]),
         '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
-        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => App\Commands\Sso\SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
         '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]),
         '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
@@ -323,6 +331,7 @@ test('sso:wire for Drive installs the ocisRoles claim Action and grants ocisAdmi
         // role does not exist yet either, so the wire creates it too.
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-ocis']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
         // Shared project without projectRoleAssertion — the wire must flip it
         // (without projectRoleCheck, which would lock out zero-role members).
@@ -393,6 +402,7 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
         '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => 'function flattenOcisRoles(ctx, api) { let roles = ["ocisUser"]; }']]]),
         '*/management/v1/actions/action-ocis' => Http::response([]),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
         '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]),
         '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
@@ -450,6 +460,7 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
             ['id' => 'action-rbac', 'name' => 'flattenLaraKubeRoles', 'script' => 'function flattenLaraKubeRoles(ctx, api) { api.v1.claims.setClaim("larakube_roles", []); }'],
         ]]),
         '*/management/v1/actions/action-rbac' => Http::response([]),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
     ]);
 
@@ -487,6 +498,7 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
         '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
     ]);
 
@@ -542,7 +554,7 @@ test('sso:wire reuses an already-registered OIDC client', function () {
 
     // Keyed on the APP id, not the client id. Zitadel's app endpoint 404s on a
     // client id, so faking that URL only ever agreed with the bug.
-    $tld = App\Data\GlobalConfigData::load()->getLocalTld();
+    $tld = GlobalConfigData::load()->getLocalTld();
     Http::fake([
         '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
         // The GET returns the registered app's current redirect URIs — the wire
@@ -557,6 +569,7 @@ test('sso:wire reuses an already-registered OIDC client', function () {
         '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
     ]);
 
@@ -595,6 +608,7 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
         '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
     ]);
 
@@ -684,7 +698,7 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         ->expectsOutputToContain('Link Management (Kutt) is wired to Zitadel SSO');
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['redirectUris'][0] === 'https://link.'.App\Data\GlobalConfigData::load()->getLocalTld().'/login/oidc');
+        && $request['redirectUris'][0] === 'https://link.'.GlobalConfigData::load()->getLocalTld().'/login/oidc');
 
     // Kutt is an open-to-org tool: wiring must patch the deployment with the
     // link-kutt-oidc secret and flip OIDC_ENABLED on — no RBAC roles.
@@ -712,13 +726,65 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
 
     $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Registering Headless CMS & Data API (Directus) as an OIDC client in Zitadel')
-        ->expectsOutputToContain('Headless CMS & Data API (Directus) is wired to Zitadel SSO');
+        ->expectsOutputToContain('Registering Headless CMS & Data API (PocketBase or Directus) as an OIDC client in Zitadel')
+        ->expectsOutputToContain('Headless CMS & Data API (PocketBase or Directus) is wired to Zitadel SSO');
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['redirectUris'][0] === 'https://data.'.App\Data\GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
+        && $request['redirectUris'][0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-directus'));
+});
+
+test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', function () {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
+        '*get deployment -n larakube-shared*' => Process::result(output: 'data-pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
+        '*get configmap larakube-registry*' => Process::result(output: json_encode([
+            'services' => [
+                'sso' => ['host' => 'sso.luchtech.dev'],
+                'data' => ['host' => 'pocket.luchtech.dev', 'engine' => 'pocketbase'],
+            ],
+        ])),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-data*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*set env deployment*' => Process::result(output: 'env updated'),
+        '*rollout restart*' => Process::result(output: 'restarted'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/apps/oidc' => Http::response(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+    ]);
+
+    $dir = sys_get_temp_dir().'/larakube-pb-ssowire-test-'.uniqid();
+    mkdir($dir);
+    $cwd = getcwd();
+
+    try {
+        file_put_contents($dir.'/.larakube.json', json_encode([
+            'name' => 'luchtech',
+            'environments' => [
+                'production' => [
+                    'hosts' => ['sso' => 'sso.luchtech.dev', 'data' => 'pocket.luchtech.dev'],
+                ],
+            ],
+        ]));
+        chdir($dir);
+
+        $this->artisan('sso:wire', ['environment' => 'production', '--tool' => 'data', '--engine' => 'pocketbase', '--no-interaction' => true])
+            ->assertExitCode(0)
+            ->expectsOutputToContain('Registering Headless CMS & Data API (PocketBase or Directus) as an OIDC client in Zitadel')
+            ->expectsOutputToContain('Headless CMS & Data API (PocketBase or Directus) is wired to Zitadel SSO');
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
+            && $request['redirectUris'][0] === 'https://pocket.luchtech.dev/api/oauth2-callback');
+    } finally {
+        chdir($cwd);
+    }
 });
 
 test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', function () {

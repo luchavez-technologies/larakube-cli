@@ -12,6 +12,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ReconcilesPenpotFlags;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -23,7 +24,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, SyncsClusterSecrets;
 
     protected $signature = 'sso:wire
         {environment=local : Environment whose deployment to wire}
@@ -63,7 +64,20 @@ class SsoWireCommand extends Command
         }
 
         $engine = $this->resolveToolEngine($kubectl, $tool);
-        $instance = (string) ($this->option('instance') ?: 'main');
+        $ssoHost = $this->resolveSsoHostReadOnly($env, $config, $kubectl);
+        $toolHost = $this->targetHost($tool, $env, $config, $kubectl);
+
+        if ($ssoHost === null || $toolHost === null) {
+            $missing = $ssoHost === null && $toolHost === null
+                ? "{$tool->getLabel()} or Zitadel"
+                : ($ssoHost === null ? 'Zitadel' : $tool->getLabel());
+            $this->laraKubeError("No host is configured for {$missing} in '{$env}' — run its :init command first.");
+
+            return 1;
+        }
+
+        $instanceOption = (string) $this->option('instance');
+        $instance = $instanceOption !== '' ? $instanceOption : $tool->instanceSlugFromHost($toolHost);
         $schema = $tool->oidcEnv($engine, $instance);
         if ($schema === null) {
             return 1;
@@ -76,20 +90,8 @@ class SsoWireCommand extends Command
         }
 
         if (! $this->deploymentExists($kubectl, $schema['namespace'], $schema['deployment'])) {
-            $label = $engine ? "{$tool->getLabel()} ({$engine})" : $tool->getLabel();
+            $label = $engine ? "{$tool->productName($engine)} ({$engine})" : $tool->getLabel();
             $this->laraKubeError("{$label} is not installed.");
-
-            return 1;
-        }
-
-        $ssoHost = $this->resolveSsoHostReadOnly($env, $config);
-        $toolHost = $this->targetHost($tool, $env, $config, $kubectl);
-
-        if ($ssoHost === null || $toolHost === null) {
-            $missing = $ssoHost === null && $toolHost === null
-                ? "{$tool->getLabel()} or Zitadel"
-                : ($ssoHost === null ? 'Zitadel' : $tool->getLabel());
-            $this->laraKubeError("No host is configured for {$missing} in '{$env}' — run its :init command first.");
 
             return 1;
         }
@@ -101,10 +103,10 @@ class SsoWireCommand extends Command
             return 1;
         }
 
-        return $this->wire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env);
+        return $this->wire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env, $engine);
     }
 
-    protected function wire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env): int
+    protected function wire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env, ?string $engine = null): int
     {
         // ForwardAuth tools have no native OIDC to configure — gating happens at
         // the ingress, so they never get a per-tool Zitadel app or env vars.
@@ -167,7 +169,7 @@ class SsoWireCommand extends Command
         $appExistsInZitadel = false;
         $registeredRedirectUris = null;
         $registeredPostLogoutRedirectUris = null;
-        if ($appId !== null && $projectId !== null) {
+        if ($appId !== null && $appId !== '' && $projectId !== null && $projectId !== '') {
             $checkApp = Http::withToken($pat)->timeout(10)->get("https://{$ssoHost}/management/v1/projects/{$projectId}/apps/{$appId}");
             if ($checkApp->successful()) {
                 $appExistsInZitadel = true;
@@ -184,7 +186,7 @@ class SsoWireCommand extends Command
         // /oidc-callback.html authorize request. Redirect URIs are the one
         // signal the app GET exposes (authMethodType is not returned), and
         // they are exactly what changed for drive, so compare them.
-        $desiredRedirectUris = $tool->oidcRedirectUris($toolHost);
+        $desiredRedirectUris = $tool->oidcRedirectUris($toolHost, [], $engine);
         $redirectUrisMatch = is_array($registeredRedirectUris)
             && count($desiredRedirectUris) === count($registeredRedirectUris)
             && array_diff($desiredRedirectUris, $registeredRedirectUris) === [];
@@ -206,18 +208,17 @@ class SsoWireCommand extends Command
         // require one.
         $publicClient = (bool) ($schema['public_client'] ?? false);
         $missingCredentials = $clientId === null || (! $publicClient && $clientSecret === null);
-
         if ($missingCredentials || ! $appExistsInZitadel || ! $redirectUrisMatch || ! $postLogoutRedirectUrisMatch) {
             $redirectUris = $desiredRedirectUris;
 
             $registered = null;
-            $this->withSpin("Registering {$tool->getLabel()} as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $projectName, $tool, $redirectUris, $publicClient, $desiredPostLogoutRedirectUris) {
+            $this->withSpin("Registering {$tool->getLabel()} as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $projectName, $tool, $redirectUris, $publicClient, $desiredPostLogoutRedirectUris, $engine) {
                 $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
                 if ($projectId === null) {
                     return;
                 }
 
-                $app = $this->zitadelCreateOidcApp($ssoHost, $pat, $projectId, $tool->productName(), $redirectUris, $publicClient, $desiredPostLogoutRedirectUris);
+                $app = $this->zitadelCreateOidcApp($ssoHost, $pat, $projectId, $tool->productName($engine), $redirectUris, $publicClient, $desiredPostLogoutRedirectUris);
                 if ($app === null) {
                     return;
                 }
@@ -543,7 +544,7 @@ class SsoWireCommand extends Command
             }
         }
 
-        $args = '--name zitadel --provider openidConnect '
+        $args = '--name '.escapeshellarg('Login with SSO').' --provider openidConnect '
             .'--key '.escapeshellarg($clientId).' '
             .'--secret '.escapeshellarg($clientSecret).' '
             .'--auto-discover-url '.escapeshellarg("https://{$ssoHost}/.well-known/openid-configuration");
@@ -890,7 +891,29 @@ class SsoWireCommand extends Command
      */
     protected function applyToolEnv(string $kubectl, array $schema, array $logical): bool
     {
+        $staticVars = $schema['static'] ?? [];
+        $isPenpot = $schema['deployment'] === 'design-penpot-backend';
+
+        // PENPOT_FLAGS is reconciled from scratch by ReconcilesPenpotFlags,
+        // not carried through the generic static-var plumbing below — see
+        // docs/decisions/0013-design-init-idempotent-flags.md.
+        $penpotFlags = null;
+        if ($isPenpot) {
+            unset($staticVars['PENPOT_FLAGS']);
+            $penpotFlags = $this->resolveDesignPenpotFlags(
+                $kubectl,
+                $schema['namespace'],
+                'design-penpot-oidc',
+                'design-penpot-smtp',
+                (bool) $this->option('sso-only'),
+                $schema['deployment'],
+            );
+        }
+
         $literals = '';
+        foreach ($staticVars as $envName => $value) {
+            $literals .= '--from-literal='.$envName.'='.escapeshellarg($value).' ';
+        }
         foreach ($schema['vars'] as $key => $envName) {
             if (isset($logical[$key])) {
                 $literals .= '--from-literal='.$envName.'='.escapeshellarg($logical[$key]).' ';
@@ -902,7 +925,7 @@ class SsoWireCommand extends Command
         $ns = $schema['namespace'];
 
         $ok = true;
-        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, &$ok) {
+        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotFlags, &$ok) {
             Process::run(
                 "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -911,15 +934,19 @@ class SsoWireCommand extends Command
             $ok = $set->successful();
 
             $staticVars = $schema['static'] ?? [];
+            unset($staticVars['PENPOT_FLAGS']);
             $unsetPairs = '';
 
             if ($this->option('sso-only') && ! empty($schema['sso_only_vars'])) {
                 $staticVars = array_merge($staticVars, $schema['sso_only_vars']);
             } elseif (! empty($schema['sso_only_vars'])) {
                 foreach ($schema['sso_only_vars'] as $k => $v) {
-                    $unsetPairs .= ' '.$k.'-';
+                    if (! isset($staticVars[$k])) {
+                        $unsetPairs .= ' '.$k.'-';
+                    }
                 }
             }
+            unset($staticVars['PENPOT_FLAGS']);
 
             if ($ok && (! empty($staticVars) || $unsetPairs !== '')) {
                 $pairs = '';
@@ -930,8 +957,19 @@ class SsoWireCommand extends Command
                 $ok = Process::run("{$kubectl} set env deployment/{$deployment} -n {$ns}{$pairs}")->successful();
             }
 
+            if ($ok && ! empty($schema['frontend_deployment'])) {
+                $ok = Process::run("{$kubectl} set env deployment/{$schema['frontend_deployment']} --from=secret/{$secret} -n {$ns}")->successful();
+                if ($ok) {
+                    Process::run("{$kubectl} rollout restart deployment/{$schema['frontend_deployment']} -n {$ns}");
+                }
+            }
+
             if ($ok) {
                 Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns}");
+            }
+
+            if ($ok && $isPenpot) {
+                $this->applyDesignPenpotFlags($kubectl, $ns, 'design-penpot-oidc', $penpotFlags, $deployment, $schema['frontend_deployment'] ?? 'design-penpot-frontend');
             }
         });
 
@@ -992,6 +1030,12 @@ class SsoWireCommand extends Command
                     return $this->deploymentExists($kubectl, 'larakube-shared', 'chat-synapse');
                 }
 
+                if ($t === ClusterTool::DATA) {
+                    return trim(Process::run(
+                        "{$kubectl} get deployment -n larakube-shared -l 'app.kubernetes.io/component=data' --no-headers --ignore-not-found",
+                    )->output()) !== '';
+                }
+
                 $schema = $t->oidcEnv();
 
                 return $schema !== null && $this->deploymentExists($kubectl, $schema['namespace'], $schema['deployment']);
@@ -1025,6 +1069,18 @@ class SsoWireCommand extends Command
 
         if ($tool === ClusterTool::CHAT) {
             return $this->deploymentExists($kubectl, 'larakube-shared', 'chat-synapse') ? 'matrix' : null;
+        }
+
+        if ($tool === ClusterTool::DATA) {
+            $deployments = trim(Process::run(
+                "{$kubectl} get deployment -n larakube-shared -l 'app.kubernetes.io/component=data' -o jsonpath='{.items[*].metadata.name}' --ignore-not-found",
+            )->output());
+
+            if (str_contains($deployments, 'pocketbase')) {
+                return 'pocketbase';
+            }
+
+            return 'directus';
         }
 
         return null;

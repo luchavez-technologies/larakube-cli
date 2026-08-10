@@ -1,3 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $deployName }}-hooks
+  namespace: {{ $namespace }}
+data:
+  onBootstrap.pb.js: |
+    onBootstrap((e) => {
+      e.next();
+      const settings = $app.settings();
+
+      if ($os.getenv("POCKETBASE_SMTP_ENABLED") === "true") {
+        settings.smtp.enabled = true;
+        settings.smtp.host = $os.getenv("POCKETBASE_SMTP_HOST");
+        settings.smtp.port = parseInt($os.getenv("POCKETBASE_SMTP_PORT") || "587", 10);
+        settings.smtp.username = $os.getenv("POCKETBASE_SMTP_USER");
+        settings.smtp.password = $os.getenv("POCKETBASE_SMTP_PASS");
+      }
+
+      const smtpFrom = $os.getenv("POCKETBASE_SMTP_FROM");
+      if (smtpFrom) {
+        settings.meta.senderAddress = smtpFrom;
+      }
+
+      const oidcClientId = $os.getenv("POCKETBASE_OIDC_CLIENT_ID");
+      if (oidcClientId) {
+        settings.oauth2.enabled = true;
+        const issuer = $os.getenv("POCKETBASE_OIDC_ISSUER");
+        const providers = settings.oauth2.providers.filter((p) => p.name !== "oidc");
+        providers.push({
+          name: "oidc",
+          clientId: oidcClientId,
+          clientSecret: $os.getenv("POCKETBASE_OIDC_CLIENT_SECRET"),
+          authURL: issuer + "/oauth/v2/authorize",
+          tokenURL: issuer + "/oauth/v2/token",
+          userInfoURL: issuer + "/oidc/v1/userinfo",
+          displayName: "Zitadel",
+        });
+        settings.oauth2.providers = providers;
+      }
+
+      $app.save(settings);
+    })
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,26 +66,19 @@ spec:
     spec:
       containers:
         - name: pocketbase
-          image: ghcr.io/pocketbase/pocketbase:0.23.1
+          # PocketBase has no official image — this is the community-maintained one.
+          image: ghcr.io/muchobien/pocketbase:0.39.10
           imagePullPolicy: IfNotPresent
-          command:
-            - /bin/sh
-            - -c
-            - |
-              if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
-                /pocketbase superuser upsert "$ADMIN_EMAIL" "$ADMIN_PASSWORD" --dir=/pb_data || true
-              fi
-              exec /pocketbase serve --http=0.0.0.0:8090 --dir=/pb_data
           ports:
             - containerPort: 8090
               name: http
           env:
-            - name: ADMIN_EMAIL
+            - name: PB_ADMIN_EMAIL
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: admin-email
-            - name: ADMIN_PASSWORD
+            - name: PB_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
@@ -59,6 +96,8 @@ spec:
           volumeMounts:
             - name: pb-data
               mountPath: /pb_data
+            - name: pb-hooks
+              mountPath: /pb_hooks
           resources:
             requests:
               cpu: 50m
@@ -82,6 +121,9 @@ spec:
         - name: pb-data
           persistentVolumeClaim:
             claimName: {{ $pvcName }}
+        - name: pb-hooks
+          configMap:
+            name: {{ $deployName }}-hooks
 ---
 apiVersion: v1
 kind: Service
@@ -107,12 +149,12 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    @if(!$isLocal)
+@if(!$isLocal)
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
-    @endif
-    @if($vpnOnly)
+@endif
+@if($vpnOnly)
     traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-vpn-only@kubernetescrd
-    @endif
+@endif
 spec:
   rules:
     - host: {{ $host }}
@@ -125,6 +167,21 @@ spec:
                 name: {{ $deployName }}
                 port:
                   number: 8090
+@foreach($aliasHosts ?? [] as $aliasHost)
+    - host: {{ $aliasHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $deployName }}
+                port:
+                  number: 8090
+@endforeach
   tls:
     - hosts:
         - {{ $host }}
+@foreach($aliasHosts ?? [] as $aliasHost)
+        - {{ $aliasHost }}
+@endforeach

@@ -11,6 +11,7 @@ use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ReconcilesPenpotFlags;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
@@ -24,7 +25,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailWireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, StreamsProcessOutput, SyncsClusterSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, RequiresFlagsWhenNonInteractive, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:wire
         {environment=local : Environment whose mail server to target}
@@ -75,7 +76,7 @@ class MailWireCommand extends Command
             return 1;
         }
 
-        $mailHost = $this->resolveMailHostReadOnly($env, $config);
+        $mailHost = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         if (! $mailHost) {
             $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube mail:init {$env}` first.");
 
@@ -355,7 +356,22 @@ class MailWireCommand extends Command
             $logical['host'] = $endpoint['host'].':'.$endpoint['port'];
         }
 
+        $staticVars = $schema['static'] ?? [];
+        $isPenpot = $deployment === 'design-penpot-backend';
+
+        // PENPOT_FLAGS is reconciled from scratch by ReconcilesPenpotFlags,
+        // not carried through the generic static-var plumbing below — see
+        // docs/decisions/0013-design-init-idempotent-flags.md.
+        $penpotFlags = null;
+        if ($isPenpot) {
+            unset($staticVars['PENPOT_FLAGS']);
+            $penpotFlags = $this->resolveDesignPenpotFlags($kubectl, $ns, 'design-penpot-oidc', 'design-penpot-smtp', null, $deployment);
+        }
+
         $literals = '';
+        foreach ($staticVars as $envName => $value) {
+            $literals .= '--from-literal='.$envName.'='.escapeshellarg($value).' ';
+        }
         foreach ($schema['vars'] as $key => $envName) {
             if (isset($logical[$key])) {
                 $literals .= '--from-literal='.$envName.'='.escapeshellarg($logical[$key]).' ';
@@ -366,7 +382,7 @@ class MailWireCommand extends Command
 
         $ok = true;
         $label = $engine ? "{$tool->getLabel()} ({$engine})" : $tool->getLabel();
-        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, &$ok) {
+        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $staticVars, $isPenpot, $penpotFlags, &$ok) {
             Process::run(
                 "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -374,9 +390,9 @@ class MailWireCommand extends Command
             $set = Process::run("{$kubectl} set env deployment/{$deployment} --from=secret/{$secret} -n {$ns}");
             $ok = $set->successful();
 
-            if ($ok && ! empty($schema['static'])) {
+            if ($ok && ! empty($staticVars)) {
                 $pairs = '';
-                foreach ($schema['static'] as $k => $v) {
+                foreach ($staticVars as $k => $v) {
                     $pairs .= ' '.$k.'='.escapeshellarg($v);
                 }
                 $ok = Process::run("{$kubectl} set env deployment/{$deployment} -n {$ns}{$pairs}")->successful();
@@ -384,6 +400,10 @@ class MailWireCommand extends Command
 
             if ($ok) {
                 Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns}");
+            }
+
+            if ($ok && $isPenpot) {
+                $this->applyDesignPenpotFlags($kubectl, $ns, 'design-penpot-oidc', $penpotFlags, $deployment, 'design-penpot-frontend');
             }
         });
 

@@ -1,0 +1,105 @@
+<?php
+
+use App\Commands\Design\DesignInitCommand;
+use App\Commands\Design\DesignRemoveCommand;
+use App\Commands\Design\DesignShowCommand;
+use Illuminate\Support\Facades\Process;
+
+function designCommonsSpec(?string $s3Host = null): array
+{
+    $seaweedfs = ['enabled' => true, 'port' => 8333];
+    if ($s3Host !== null) {
+        $seaweedfs['host'] = $s3Host;
+    }
+
+    return [
+        'services' => [
+            'postgres' => ['enabled' => true],
+            'redis' => ['enabled' => true],
+            'seaweedfs' => $seaweedfs,
+        ],
+    ];
+}
+
+function fakeDesignInitProcess(?string $s3Host = null, ?string &$appliedManifest = null, int $applyExitCode = 0): void
+{
+    $spec = designCommonsSpec($s3Host);
+
+    Process::fake(function ($process) use ($spec, &$appliedManifest, $applyExitCode) {
+        $cmd = $process->command;
+
+        if (str_contains($cmd, 'apply -f')) {
+            preg_match('/apply -f (\'[^\']*\'|"[^"]*"|\S+)/', $cmd, $m);
+            $path = trim($m[1] ?? '', '\'"');
+            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-design-penpot')) {
+                $appliedManifest = file_get_contents($path);
+            }
+
+            return Process::result(output: 'applied', exitCode: $applyExitCode);
+        }
+
+        return match (true) {
+            str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode($spec)),
+            str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
+            str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "design-penpot-backend" successfully rolled out'),
+            default => Process::result(output: ''),
+        };
+    });
+}
+
+test('design:init deploys Penpot stack into larakube-shared with Postgres, Redis, and S3 endpoints', function () {
+    $appliedManifest = null;
+    fakeDesignInitProcess('files.example.com', $appliedManifest);
+
+    $this->artisan(DesignInitCommand::class, [
+        'environment' => 'local',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    expect($appliedManifest)->not->toBeNull()
+        ->and($appliedManifest)->toContain('penpotapp/backend:2.17')
+        ->and($appliedManifest)->toContain('penpotapp/frontend:2.17')
+        ->and($appliedManifest)->toContain('PENPOT_DATABASE_USERNAME')
+        ->and($appliedManifest)->toContain('postgresql://postgres.larakube-plex.svc.cluster.local:5432/penpot')
+        ->and($appliedManifest)->toContain('redis://redis.larakube-plex.svc.cluster.local:6379/0')
+        ->and($appliedManifest)->toContain('https://files.example.com');
+});
+
+test('design:init includes penpot-exporter container when --with-exporter flag is set', function () {
+    $appliedManifest = null;
+    fakeDesignInitProcess('files.example.com', $appliedManifest);
+
+    $this->artisan(DesignInitCommand::class, [
+        'environment' => 'local',
+        '--with-exporter' => true,
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    expect($appliedManifest)->not->toBeNull()
+        ->and($appliedManifest)->toContain('penpotapp/exporter:2.17')
+        ->and($appliedManifest)->toContain('PENPOT_EXPORTER_URI');
+});
+
+test('design:show displays Penpot deployment access info', function () {
+    Process::fake([
+        '*' => Process::result(output: 'installed'),
+    ]);
+
+    $this->artisan(DesignShowCommand::class, [
+        'environment' => 'local',
+    ])->assertExitCode(0);
+});
+
+test('design:remove cleans up Penpot resources', function () {
+    Process::fake([
+        '*' => Process::result(output: 'deleted'),
+    ]);
+
+    $this->artisan(DesignRemoveCommand::class, [
+        'environment' => 'local',
+        '--force' => true,
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+});
