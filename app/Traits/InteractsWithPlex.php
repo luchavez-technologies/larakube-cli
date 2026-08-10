@@ -67,6 +67,14 @@ trait InteractsWithPlex
             'garage' => ['image' => StorageDriver::GARAGE->getDockerImage(),       'port' => StorageDriver::GARAGE->port(),         'storage' => '10Gi', 'memory' => '512Mi'],
         ];
 
+        // See plans/active/commons-connection-pooling.md. Pooling is an
+        // attribute of a database service, not a Commons service of its own —
+        // it only exists as a sub-key on the engines DatabaseDriver says
+        // support it, and defaults OFF: this normalizer runs on every
+        // plex:init/plex:resources call, so an on-by-default here would be a
+        // silent cutover, not the deliberate one the plan calls for.
+        $poolerDefault = ['enabled' => false, 'mode' => 'transaction', 'poolSize' => 20, 'maxClients' => 400];
+
         $given = $spec['services'] ?? [];
         $resolved = [];
 
@@ -78,6 +86,13 @@ trait InteractsWithPlex
             // says otherwise explicitly.
             $resolved[$name]['enabled'] = (bool) ($service['enabled']
                 ?? in_array($name, ['postgres', 'redis'], true));
+
+            $driver = DatabaseDriver::tryFrom($name);
+            if ($driver?->supportsPooling()) {
+                $givenPooler = is_array($service['pooler'] ?? null) ? $service['pooler'] : [];
+                $resolved[$name]['pooler'] = array_merge($poolerDefault, $givenPooler);
+                $resolved[$name]['pooler']['enabled'] = (bool) ($givenPooler['enabled'] ?? false);
+            }
         }
 
         return [

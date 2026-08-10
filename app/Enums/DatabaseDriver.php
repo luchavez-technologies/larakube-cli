@@ -742,6 +742,61 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
     }
 
     /**
+     * Whether this engine has a connection pooler wired into the Commons.
+     * See plans/active/commons-connection-pooling.md — MongoDB drivers pool
+     * client-side (max_connections isn't the same constraint there) and
+     * SQLite is a local file, so both are permanently false rather than a
+     * future TODO.
+     */
+    public function supportsPooling(): bool
+    {
+        return match ($this) {
+            self::POSTGRESQL => true,
+            // MySQL/MariaDB: ProxySQL is the pick (MaxScale is BSL — see
+            // oss-tools-licensing-audit.md), not wired until a MySQL/MariaDB
+            // Commons actually exists.
+            self::MYSQL, self::MARIADB, self::MONGODB, self::SQLITE => false,
+        };
+    }
+
+    public function poolerImage(): ?string
+    {
+        return match ($this) {
+            self::POSTGRESQL => 'edoburu/pgbouncer:v1.25.2-p0',
+            default => null,
+        };
+    }
+
+    public function poolerPort(): int
+    {
+        return match ($this) {
+            self::POSTGRESQL => 6432,
+            default => 0,
+        };
+    }
+
+    /**
+     * The Service name the pooler's own upstream connection (and any admin
+     * tooling that must bypass the pool) targets — never the tenant-facing
+     * `postgres` Service name, which the pooler occupies once enabled.
+     */
+    public function poolerPrimaryServiceName(): ?string
+    {
+        return match ($this) {
+            self::POSTGRESQL => 'postgres-primary',
+            default => null,
+        };
+    }
+
+    public function poolerConfigView(): ?string
+    {
+        return match ($this) {
+            self::POSTGRESQL => 'k8s.plex.pgbouncer-config',
+            default => null,
+        };
+    }
+
+    /**
      * Postgres: role first (the db is created OWNED BY it); the tenant owns its
      * database + the public schema so migrations can create tables (PG 15+ locks
      * `public` down for non-owners) — full per-tenant isolation, no shared grants.

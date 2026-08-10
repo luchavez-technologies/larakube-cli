@@ -90,3 +90,63 @@ test('normalize is idempotent so export → init --from is lossless', function (
 
     expect($p->normalizeCommonsSpec($once))->toEqual($once);
 });
+
+test('the pooler sub-key defaults off for Postgres and is absent from non-pooling services', function () {
+    $spec = plexSpec()->defaultCommonsSpec()['services'];
+
+    expect($spec['postgres']['pooler'])->toBe([
+        'enabled' => false,
+        'mode' => 'transaction',
+        'poolSize' => 20,
+        'maxClients' => 400,
+    ])
+        // Only Postgres is wired in phase 1 (see the plan) — MySQL/MariaDB's
+        // ProxySQL pooler doesn't exist yet, so DatabaseDriver::supportsPooling()
+        // is false for them and the normalizer must not invent the sub-key.
+        ->and($spec['mysql'])->not->toHaveKey('pooler')
+        ->and($spec['mariadb'])->not->toHaveKey('pooler')
+        // Redis/Meili/S3-alikes aren't DatabaseDriver cases at all — no pooler
+        // concept applies, so normalize must not invent the key for them.
+        ->and($spec['redis'])->not->toHaveKey('pooler')
+        ->and($spec['meilisearch'])->not->toHaveKey('pooler')
+        ->and($spec['seaweedfs'])->not->toHaveKey('pooler')
+        ->and($spec['minio'])->not->toHaveKey('pooler')
+        ->and($spec['garage'])->not->toHaveKey('pooler');
+});
+
+test('turning the pooler on in a partial spec is preserved, not defaulted back off', function () {
+    $p = plexSpec();
+
+    $spec = $p->normalizeCommonsSpec([
+        'services' => ['postgres' => ['pooler' => ['enabled' => true, 'poolSize' => 50]]],
+    ]);
+
+    expect($spec['services']['postgres']['pooler']['enabled'])->toBeTrue()
+        ->and($spec['services']['postgres']['pooler']['poolSize'])->toBe(50)
+        ->and($spec['services']['postgres']['pooler']['maxClients'])->toBe(400); // untouched default fills in
+
+    // Idempotent, same as the rest of the spec.
+    expect($p->normalizeCommonsSpec($spec))->toEqual($spec);
+});
+
+test('every DatabaseDriver case answers the pooler methods so a new engine cannot silently skip them', function () {
+    foreach (DatabaseDriver::cases() as $driver) {
+        expect($driver->supportsPooling())->toBeBool();
+
+        if ($driver->supportsPooling()) {
+            expect($driver->poolerImage())->toBeString()->not->toBe('')
+                ->and($driver->poolerPort())->toBeGreaterThan(0)
+                ->and($driver->poolerPrimaryServiceName())->toBeString()->not->toBe('');
+        } else {
+            expect($driver->poolerImage())->toBeNull()
+                ->and($driver->poolerPort())->toBe(0)
+                ->and($driver->poolerPrimaryServiceName())->toBeNull();
+        }
+    }
+});
+
+test('Postgres pooler image is pinned, never floating', function () {
+    expect(DatabaseDriver::POSTGRESQL->poolerImage())
+        ->toContain(':')
+        ->not->toEndWith(':latest');
+});

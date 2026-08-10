@@ -6,6 +6,7 @@
  * appear in the manifest.
  */
 
+use App\Enums\DatabaseDriver;
 use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use App\Traits\InteractsWithPlex;
@@ -146,4 +147,87 @@ test('Garage is disabled by default — no manifest at all without enabling it',
     $yaml = plexManifest(plexHelper()->defaultCommonsSpec());
 
     expect($yaml)->not->toContain('name: garage');
+});
+
+test('the pooler is off by default — the postgres Service still routes straight to the engine, no PgBouncer resources appear', function () {
+    // The whole point of gating on pooler.enabled: a cluster that has never
+    // turned this on must render byte-for-byte the same resource set as
+    // before the pooler existed, so re-running plex:init/plex:resources is a
+    // no-op for it.
+    $yaml = plexManifest(plexHelper()->defaultCommonsSpec());
+
+    expect($yaml)
+        ->not->toContain('name: pgbouncer')
+        ->not->toContain('name: postgres-primary');
+
+    $postgresService = collect(explode("\n---\n", $yaml))
+        ->first(fn ($doc) => str_contains($doc, 'kind: Service') && preg_match('/name: postgres\s*$/m', $doc));
+    expect($postgresService)->toContain('app: postgres');
+});
+
+test('enabling the pooler adds PgBouncer and a direct postgres-primary route, and repoints the postgres Service at it', function () {
+    $spec = plexHelper()->normalizeCommonsSpec(['services' => [
+        'postgres' => ['pooler' => ['enabled' => true, 'mode' => 'session', 'poolSize' => 15, 'maxClients' => 250]],
+    ]]);
+    $yaml = plexManifest($spec);
+
+    expect($yaml)
+        ->toContain('name: pgbouncer')
+        ->toContain('image: '.DatabaseDriver::POSTGRESQL->poolerImage())
+        ->toContain('name: postgres-primary')
+        // The pool knobs from the spec, not hardcoded literals.
+        ->toContain('POOL_MODE')
+        ->toContain('value: "session"')
+        ->toContain('value: "15"')
+        ->toContain('value: "250"')
+        // auth_query, never a static userlist — dynamic tenants per the plan.
+        ->toContain('AUTH_QUERY')
+        ->toContain('pg_shadow');
+
+    $docs = explode("\n---\n", $yaml);
+
+    $postgresService = collect($docs)->first(fn ($doc) => str_contains($doc, 'kind: Service') && preg_match('/name: postgres\s*$/m', $doc));
+    expect($postgresService)->toContain('app: pgbouncer');
+
+    $primaryService = collect($docs)->first(fn ($doc) => str_contains($doc, 'kind: Service') && str_contains($doc, 'name: postgres-primary'));
+    expect($primaryService)->toContain('app: postgres');
+
+    // The Postgres Deployment itself is untouched by pooling — kubectl
+    // exec-based admin paths (commonsAdminClient() et al.) target it by
+    // Deployment name, not the Service, so it must never be renamed.
+    expect($yaml)->toContain('name: postgres'."\n")->toContain('image: postgres:17.9');
+});
+
+test('the pooler config comes from the spec, not the target env, and the DB password is never inlined in plaintext', function () {
+    $spec = plexHelper()->normalizeCommonsSpec(['services' => ['postgres' => ['pooler' => ['enabled' => true]]]]);
+    $yaml = plexManifest($spec);
+
+    expect($yaml)
+        ->toContain('secretKeyRef')
+        ->toContain('name: plex-admin')
+        ->toContain('key: POSTGRES_PASSWORD')
+        // $(POSTGRES_PASSWORD) is Kubernetes' own env-var interpolation
+        // syntax, resolved by the kubelet — never a rendered plaintext value.
+        ->toContain('$(POSTGRES_PASSWORD)')
+        // Regression guard for the Blade @{{ escape trap: '@' immediately
+        // before '{{' silently prints literal template text instead of
+        // evaluating it.
+        ->not->toContain('{{ \App\Enums\DatabaseDriver')
+        ->toContain('@postgres-primary');
+});
+
+test('PgBouncer auth_type is scram-sha-256, matching Postgres 17s default password encryption', function () {
+    // Regression guard: shipped as `md5` first, which broke PgBouncer's own
+    // backend connection to Postgres with "cannot do SCRAM authentication:
+    // wrong password type" — every tenant failed to connect at once
+    // (confirmed live 2026-08-09, reverted within minutes). md5 and
+    // scram-sha-256 credentials aren't interchangeable: Postgres 17 stores
+    // (and pg_shadow.passwd returns, for auth_query) SCRAM verifiers by
+    // default, not md5 hashes.
+    $spec = plexHelper()->normalizeCommonsSpec(['services' => ['postgres' => ['pooler' => ['enabled' => true]]]]);
+    $yaml = plexManifest($spec);
+
+    expect($yaml)
+        ->toContain('value: "scram-sha-256"')
+        ->not->toContain('value: "md5"');
 });

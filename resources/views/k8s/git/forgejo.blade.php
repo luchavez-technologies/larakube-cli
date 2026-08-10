@@ -88,6 +88,20 @@ spec:
                 secretKeyRef:
                   name: forgejo
                   key: FORGEJO_DB_PASSWORD
+            {{-- Forgejo/Gitea defaults MAX_OPEN_CONNS to 0 (unlimited). Against
+                 a shared Commons Postgres with a small connection ceiling, a
+                 single restart can burst-open more connections than the
+                 cluster has room for, hit the SUPERUSER-reserved-slots error,
+                 crash, and restart into the same burst — a self-sustaining
+                 crash loop that also starves every other tenant. Capping it is
+                 a stopgap; plans/active/commons-connection-pooling.md is the
+                 real fix (a pooler in front of every tenant, not per-tool caps). --}}
+            - name: FORGEJO__database__MAX_OPEN_CONNS
+              value: "10"
+            - name: FORGEJO__database__MAX_IDLE_CONNS
+              value: "5"
+            - name: FORGEJO__database__CONN_MAX_LIFETIME
+              value: "3h"
 @endif
 @if($appName ?? null)
             - name: FORGEJO__ui__APP_NAME
@@ -299,22 +313,52 @@ spec:
             - name: runner-data
               mountPath: /data
       containers:
-        {{-- Actions jobs run in containers, so the runner needs a Docker daemon.
-             k3s runs containerd and has NO /var/run/docker.sock — a hostPath
-             mount would silently create an empty DIRECTORY and every job would
-             fail. dind sidecar over TLS, per upstream's Kubernetes example. --}}
-        - name: dind
-          image: docker.io/docker:{{ $dindVersion ?? '28.3.0' }}-dind
+        {{-- Actions jobs run in containers, so the runner needs a container
+             engine. k3s runs containerd and has NO /var/run/docker.sock — a
+             hostPath mount would silently create an empty DIRECTORY and every
+             job would fail. Rootless Podman sidecar (no dind, no privileged:
+             true) speaking Podman's Docker-API-compatible socket.
+
+             MUST run as the image's built-in `podman` user (uid 1000, gid
+             1000), not root: quay.io/podman/stable ships subuid/subgid ranges
+             for uid 1000 (`1:999`, `1001:64535`) specifically so that user can
+             go through Podman's real rootless path — unshare into a fresh
+             user+mount namespace via newuidmap/newgidmap (the setuid-root
+             helpers SETUID/SETGID exist for) and become "root" only inside
+             that namespace. Running the container as root skips that path
+             entirely and tries a raw bind-mount as real root instead, which
+             fails without CAP_SYS_ADMIN.
+
+             On Ubuntu 24.04+ nodes, `kernel.apparmor_restrict_unprivileged_userns=1`
+             (the node default here) ALSO blocks unshare(CLONE_NEWUSER) for
+             any process not covered by an AppArmor profile that allows
+             `userns,` — mediated separately from Linux capabilities, so
+             adding SYS_ADMIN alone does not clear it (confirmed live: the
+             identical "permission denied" bind-mount persisted with SYS_ADMIN
+             granted). k3s/containerd's default profile has no such rule, so
+             this container needs AppArmor unconfined — the capabilities above
+             are what actually keep it scoped once that MAC layer is out of
+             the way. /dev/fuse is for fuse-overlayfs, the storage driver
+             rootless mode uses. --}}
+        - name: podman
+          image: quay.io/podman/stable:v5.8.2
           securityContext:
-            privileged: true
-          env:
-            - name: DOCKER_TLS_CERTDIR
-              value: /certs
+            privileged: false
+            allowPrivilegeEscalation: true
+            appArmorProfile:
+              type: Unconfined
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              add: ["SETUID", "SETGID", "SYS_ADMIN"]
+          command: ["podman", "system", "service", "--time=0", "unix:///run/podman/podman.sock"]
           volumeMounts:
-            - name: docker-certs
-              mountPath: /certs
-            - name: docker-data
-              mountPath: /var/lib/docker
+            - name: podman-sock
+              mountPath: /run/podman
+            - name: podman-data
+              mountPath: /var/lib/containers
+            - name: fuse
+              mountPath: /dev/fuse
           resources:
             requests:
               memory: 256Mi
@@ -324,15 +368,11 @@ spec:
           command: ["forgejo-runner", "daemon", "--config", "/config/config.yml"]
           env:
             - name: DOCKER_HOST
-              value: tcp://localhost:2376
-            - name: DOCKER_CERT_PATH
-              value: /certs/client
-            - name: DOCKER_TLS_VERIFY
-              value: "1"
+              value: unix:///run/podman/podman.sock
           workingDir: /data
           volumeMounts:
-            - name: docker-certs
-              mountPath: /certs
+            - name: podman-sock
+              mountPath: /run/podman
             - name: runner-data
               mountPath: /data
             - name: tmp
@@ -347,10 +387,14 @@ spec:
         {{-- emptyDir, not a PVC: job images land on the node's ephemeral disk and
              are re-pulled after a restart. Swap for a PVC if the cache churn or
              the disk usage becomes a problem. --}}
-        - name: docker-certs
+        - name: podman-sock
           emptyDir: {}
-        - name: docker-data
+        - name: podman-data
           emptyDir: {}
+        - name: fuse
+          hostPath:
+            path: /dev/fuse
+            type: CharDevice
         - name: runner-data
           emptyDir: {}
         - name: tmp

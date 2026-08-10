@@ -110,10 +110,39 @@ spec:
           persistentVolumeClaim:
             claimName: postgres-data
 ---
+{{-- See plans/active/commons-connection-pooling.md. Tenants always connect to
+     `postgres.larakube-plex.svc.cluster.local` — that string is baked into
+     ~20 tools — so THIS Service is what moves when pooling turns on, not a
+     new hostname. The `postgres` Deployment/pod label above are untouched
+     either way: kubectl exec-based admin paths (commonsAdminClient() et al.)
+     target the Deployment by name, not the Service, so they already bypass
+     the pool with no code changes needed. --}}
+@php($pgPoolerEnabled = $spec['services']['postgres']['pooler']['enabled'] ?? false)
 apiVersion: v1
 kind: Service
 metadata:
   name: postgres
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+spec:
+  selector:
+    app: {{ $pgPoolerEnabled ? 'pgbouncer' : 'postgres' }}
+  ports:
+    - protocol: TCP
+      port: {{ $spec['services']['postgres']['port'] }}
+      targetPort: {{ $pgPoolerEnabled ? \App\Enums\DatabaseDriver::POSTGRESQL->poolerPort() : $spec['services']['postgres']['port'] }}
+  type: ClusterIP
+@if($pgPoolerEnabled)
+---
+{{-- Stable, always-direct route to the engine — for anything that must
+     bypass the pool over the network rather than via kubectl exec (nothing
+     needs this yet; it exists so the option doesn't require another
+     migration later). --}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ \App\Enums\DatabaseDriver::POSTGRESQL->poolerPrimaryServiceName() }}
   labels:
     larakube.io/managed-by: larakube
     larakube.io/component: plex
@@ -125,6 +154,108 @@ spec:
       port: {{ $spec['services']['postgres']['port'] }}
       targetPort: {{ $spec['services']['postgres']['port'] }}
   type: ClusterIP
+---
+{{-- edoburu/pgbouncer generates pgbouncer.ini from env vars at container
+     start — no config file/Secret to author or keep in sync. auth_query
+     (not userlist.txt) is what resolves per-TENANT client logins dynamically
+     against live pg_shadow, since tenants are created on the fly by
+     allocateDatabase() and a static file would need regenerating + a
+     restart on every plex:join/{tool}:init. userlist.txt still gets exactly
+     one entry, written automatically from DATABASE_URL: AUTH_USER's own
+     credential, which PgBouncer needs to open its OWN backend connections
+     to run auth_query in the first place — that entry is infrastructure the
+     image manages, not a tenant list we maintain. --}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      containers:
+        - name: pgbouncer
+          image: {{ \App\Enums\DatabaseDriver::POSTGRESQL->poolerImage() }}
+          ports:
+            - containerPort: {{ \App\Enums\DatabaseDriver::POSTGRESQL->poolerPort() }}
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plex-admin
+                  key: POSTGRES_PASSWORD
+            {{-- Trailing slash, no db name: DB_NAME parses empty, and the
+                 image falls back to `*` — every tenant database routes
+                 through this one entry rather than needing one per tenant. --}}
+            {{-- '@' immediately before '{{' is Blade's own escape sequence
+                 (@{{ prints a literal "{{" instead of evaluating it) — one
+                 expression sidesteps that trap instead of leaving the pooler
+                 pointed at un-interpolated template text. --}}
+            - name: DATABASE_URL
+              value: "postgresql://postgres:$(POSTGRES_PASSWORD){{ '@'.\App\Enums\DatabaseDriver::POSTGRESQL->poolerPrimaryServiceName().':'.$spec['services']['postgres']['port'] }}/"
+            - name: LISTEN_PORT
+              value: "{{ \App\Enums\DatabaseDriver::POSTGRESQL->poolerPort() }}"
+            {{-- Postgres 17 (this image) defaults to scram-sha-256 password
+                 encryption, not md5 — md5 here made PgBouncer's own backend
+                 connection (as AUTH_USER) fail with "cannot do SCRAM
+                 authentication: wrong password type", taking down every
+                 tenant at once (confirmed live 2026-08-09, reverted within
+                 minutes). scram-sha-256 also makes the image's entrypoint
+                 store AUTH_USER's raw password in userlist.txt instead of a
+                 pre-hashed md5 digest — required for it to complete either
+                 side of a SCRAM exchange (PgBouncer→Postgres for its own
+                 backend connection, and client→PgBouncer for auth_query'd
+                 tenants, whose pg_shadow.passwd is also SCRAM-format). --}}
+            - name: AUTH_TYPE
+              value: "scram-sha-256"
+            - name: AUTH_USER
+              value: "postgres"
+            - name: AUTH_QUERY
+              value: "SELECT usename, passwd FROM pg_shadow WHERE usename=$1"
+            - name: POOL_MODE
+              value: "{{ $spec['services']['postgres']['pooler']['mode'] }}"
+            - name: DEFAULT_POOL_SIZE
+              value: "{{ $spec['services']['postgres']['pooler']['poolSize'] }}"
+            - name: MAX_CLIENT_CONN
+              value: "{{ $spec['services']['postgres']['pooler']['maxClients'] }}"
+            {{-- Transaction mode drops session state between statements
+                 (SET, LISTEN/NOTIFY, temp tables) unless prepared statements
+                 are explicitly kept — see the plan's PgBouncer-specifics
+                 section. Left at 0 this silently breaks anything relying on
+                 protocol-level prepare. --}}
+            - name: MAX_PREPARED_STATEMENTS
+              value: "200"
+            - name: ADMIN_USERS
+              value: "postgres"
+          resources:
+            requests:
+              memory: "20Mi"
+              cpu: "25m"
+            limits:
+              memory: "64Mi"
+              cpu: "200m"
+          readinessProbe:
+            tcpSocket:
+              port: {{ \App\Enums\DatabaseDriver::POSTGRESQL->poolerPort() }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: {{ \App\Enums\DatabaseDriver::POSTGRESQL->poolerPort() }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+@endif
 @endif
 @foreach(['mysql', 'mariadb'] as $engine)
 @if(($spec['services'][$engine]['enabled'] ?? false))
