@@ -8,9 +8,11 @@ use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithSso;
+use App\Traits\InteractsWithToolRegistry;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesToolEngine;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
@@ -18,12 +20,12 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailUnwireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, StreamsProcessOutput, SyncsClusterSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:unwire
         {environment=local : Environment whose mail settings to unwire}
         {--tool= : The tool to unwire from Stalwart}
-        {--engine= : Specific engine to target ("matrix")}
+        {--engine= : Specific engine to target explicitly, skipping auto-detection (e.g. --engine=pocketbase)}
         {--all   : Unwire every installed SMTP-capable tool}
         {--context= : Target a specific kube-context}';
 
@@ -108,31 +110,13 @@ class MailUnwireCommand extends Command
 
     protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool
     {
-        $engine = $this->resolveToolEngine($kubectl, $tool);
+        $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, 'main', (string) ($this->option('engine') ?: '') ?: null) : null;
         $schema = $tool->smtpEnv($engine);
         if ($schema === null) {
             return false;
         }
 
         return trim(Process::run("{$kubectl} get deployment {$schema['deployment']} -n {$schema['namespace']} --no-headers --ignore-not-found")->output()) !== '';
-    }
-
-    protected function resolveToolEngine(string $kubectl, ClusterTool $tool): ?string
-    {
-        if ($tool !== ClusterTool::FLOW) {
-            return null;
-        }
-
-        $option = (string) ($this->option('engine') ?? '');
-        if ($option !== '') {
-            return $option;
-        }
-
-        if (trim(Process::run("{$kubectl} get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null")->output()) !== '') {
-            return 'windmill';
-        }
-
-        return 'n8n';
     }
 
     protected function unwireTargets(string $kubectl, array $targets, string $env): int
@@ -157,7 +141,7 @@ class MailUnwireCommand extends Command
                 continue;
             }
 
-            $engine = $this->resolveToolEngine($kubectl, $tool);
+            $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, 'main', (string) ($this->option('engine') ?: '') ?: null) : null;
 
             if ($tool->configuresViaConfigFile($engine)) {
                 if ($this->unwireSynapseSmtp($kubectl, $tool)) {
@@ -167,7 +151,11 @@ class MailUnwireCommand extends Command
                 continue;
             }
 
-            $schema = $tool->smtpEnv();
+            // Previously called with no $engine at all — for a multi-engine
+            // tool (DATA) this always resolved Directus's schema regardless
+            // of the engine just computed above, the same bug class as
+            // isToolInstalledForMail().
+            $schema = $tool->smtpEnv($engine);
             if ($schema === null) {
                 continue;
             }

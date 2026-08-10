@@ -11,18 +11,21 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolEngine;
+use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class SsoUnwireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:unwire
         {environment=local : Environment whose tool SSO to unwire}
         {--tool= : The tool to unwire from Zitadel SSO}
-        {--engine= : Specific engine to target ("matrix")}
+        {--engine= : Specific engine to target explicitly, skipping auto-detection (e.g. --engine=pocketbase)}
+        {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance}
         {--context= : Target a specific kube-context}
         {--project= : Zitadel project name (default: LaraKube Shared Tools)}';
 
@@ -48,8 +51,22 @@ class SsoUnwireCommand extends Command
             return 1;
         }
 
-        $engine = $this->resolveToolEngine($kubectl, $tool);
-        $schema = $tool->oidcEnv($engine);
+        $projectPath = getcwd();
+        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
+            ? ConfigData::loadFromFile($projectPath)
+            : null;
+
+        // Same --domain= = target instance's host resolution as sso:wire —
+        // omitting it unwires the tool's default instance, same as before
+        // --domain= existed.
+        $domainOption = (string) ($this->option('domain') ?: '');
+        $toolHost = $domainOption !== ''
+            ? $this->sanitizeDomainInput($domainOption)
+            : $this->targetHost($tool, $env, $config, $kubectl);
+        $instance = $toolHost !== null ? $tool->instanceSlugFromHost($toolHost) : 'main';
+
+        $engine = $this->resolveInstanceEngine($kubectl, $tool, $instance, $this->option('engine'));
+        $schema = $tool->oidcEnv($engine, $instance);
         if ($schema === null) {
             return 1;
         }
@@ -59,11 +76,6 @@ class SsoUnwireCommand extends Command
 
             return 1;
         }
-
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
 
         $ssoHost = $this->resolveSsoHostReadOnly($env, $config);
         $pat = $this->readSsoSecret($kubectl, $ssoNs, 'machine-pat');
@@ -110,24 +122,6 @@ class SsoUnwireCommand extends Command
         );
 
         return ClusterTool::from($selected);
-    }
-
-    protected function resolveToolEngine(string $kubectl, ClusterTool $tool): ?string
-    {
-        if ($tool !== ClusterTool::FLOW) {
-            return null;
-        }
-
-        $option = (string) ($this->option('engine') ?? '');
-        if ($option !== '') {
-            return $option;
-        }
-
-        if (trim(Process::run("{$kubectl} get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null")->output()) !== '') {
-            return 'windmill';
-        }
-
-        return 'n8n';
     }
 
     protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat): int

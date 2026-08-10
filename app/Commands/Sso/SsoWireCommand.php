@@ -13,6 +13,8 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReconcilesPenpotFlags;
+use App\Traits\ResolvesToolEngine;
+use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -24,13 +26,13 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:wire
         {environment=local : Environment whose deployment to wire}
         {--tool= : The tool to wire to Zitadel}
-        {--engine= : Specific engine to target ("matrix")}
-        {--instance= : Specific instance to target}
+        {--engine= : Specific engine to target explicitly, skipping auto-detection (e.g. --engine=pocketbase)}
+        {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance}
         {--context= : Target a specific kube-context}
         {--project= : Zitadel project name to register the OIDC app under (default: LaraKube Shared Tools)}
         {--admin-email= : Email of the user to grant the tool\'s admin role to (tools with ssoAdminRoles(), e.g. drive)}
@@ -63,9 +65,15 @@ class SsoWireCommand extends Command
             return 1;
         }
 
-        $engine = $this->resolveToolEngine($kubectl, $tool);
         $ssoHost = $this->resolveSsoHostReadOnly($env, $config, $kubectl);
-        $toolHost = $this->targetHost($tool, $env, $config, $kubectl);
+        // --domain= IS the target instance's host (ADR-0012's "host is the
+        // only identity") — it overrides the tool's own resolved default
+        // host rather than being a separate operator-invented name, so this
+        // can target any registered instance, not just the main one.
+        $domainOption = (string) ($this->option('domain') ?: '');
+        $toolHost = $domainOption !== ''
+            ? $this->sanitizeDomainInput($domainOption)
+            : $this->targetHost($tool, $env, $config, $kubectl);
 
         if ($ssoHost === null || $toolHost === null) {
             $missing = $ssoHost === null && $toolHost === null
@@ -76,8 +84,8 @@ class SsoWireCommand extends Command
             return 1;
         }
 
-        $instanceOption = (string) $this->option('instance');
-        $instance = $instanceOption !== '' ? $instanceOption : $tool->instanceSlugFromHost($toolHost);
+        $instance = $tool->instanceSlugFromHost($toolHost);
+        $engine = $this->resolveInstanceEngine($kubectl, $tool, $instance, $this->option('engine'));
         $schema = $tool->oidcEnv($engine, $instance);
         if ($schema === null) {
             return 1;
@@ -957,10 +965,13 @@ class SsoWireCommand extends Command
                 $ok = Process::run("{$kubectl} set env deployment/{$deployment} -n {$ns}{$pairs}")->successful();
             }
 
-            if ($ok && ! empty($schema['frontend_deployment'])) {
-                $ok = Process::run("{$kubectl} set env deployment/{$schema['frontend_deployment']} --from=secret/{$secret} -n {$ns}")->successful();
+            foreach ($schema['also_patch'] ?? [] as $secondaryDeployment) {
+                if (! $ok) {
+                    break;
+                }
+                $ok = Process::run("{$kubectl} set env deployment/{$secondaryDeployment} --from=secret/{$secret} -n {$ns}")->successful();
                 if ($ok) {
-                    Process::run("{$kubectl} rollout restart deployment/{$schema['frontend_deployment']} -n {$ns}");
+                    Process::run("{$kubectl} rollout restart deployment/{$secondaryDeployment} -n {$ns}");
                 }
             }
 
@@ -969,7 +980,7 @@ class SsoWireCommand extends Command
             }
 
             if ($ok && $isPenpot) {
-                $this->applyDesignPenpotFlags($kubectl, $ns, 'design-penpot-oidc', $penpotFlags, $deployment, $schema['frontend_deployment'] ?? 'design-penpot-frontend');
+                $this->applyDesignPenpotFlags($kubectl, $ns, 'design-penpot-oidc', $penpotFlags, $deployment, ...($schema['also_patch'] ?? ['design-penpot-frontend']));
             }
         });
 
@@ -1058,32 +1069,6 @@ class SsoWireCommand extends Command
             options: $options,
             scroll: count($options),
         ));
-    }
-
-    protected function resolveToolEngine(string $kubectl, ClusterTool $tool): ?string
-    {
-        $flag = $this->option('engine');
-        if ($flag !== null) {
-            return (string) $flag;
-        }
-
-        if ($tool === ClusterTool::CHAT) {
-            return $this->deploymentExists($kubectl, 'larakube-shared', 'chat-synapse') ? 'matrix' : null;
-        }
-
-        if ($tool === ClusterTool::DATA) {
-            $deployments = trim(Process::run(
-                "{$kubectl} get deployment -n larakube-shared -l 'app.kubernetes.io/component=data' -o jsonpath='{.items[*].metadata.name}' --ignore-not-found",
-            )->output());
-
-            if (str_contains($deployments, 'pocketbase')) {
-                return 'pocketbase';
-            }
-
-            return 'directus';
-        }
-
-        return null;
     }
 
     protected function deploymentExists(string $kubectl, string $ns, string $deployment): bool

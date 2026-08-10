@@ -84,7 +84,7 @@ class BackupScheduleCommand extends Command
             return 1;
         }
 
-        $volumes = $this->backupVolumeTargets();
+        $volumes = $this->backupVolumeTargets($kubectl);
 
         $manifest = view('k8s.backup.cronjob', [
             'schedule' => $schedule,

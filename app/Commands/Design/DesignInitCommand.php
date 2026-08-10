@@ -121,6 +121,13 @@ class DesignInitCommand extends Command
             return 1;
         }
 
+        $redisIndex = $this->allocateCommonsRedisIndex($dbName);
+        if ($redisIndex === null) {
+            $this->laraKubeError('The Commons Valkey has no free logical DB index (all 16 in use).');
+
+            return 1;
+        }
+
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
@@ -169,6 +176,7 @@ class DesignInitCommand extends Command
             'oidcSecretName' => $oidcSecretName,
             'dbUser' => $dbUser,
             'dbName' => $dbName,
+            'redisIndex' => $redisIndex,
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
             'withExporter' => $withExporter,

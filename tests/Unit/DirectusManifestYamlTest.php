@@ -10,7 +10,7 @@ function directusManifest(array $overrides = []): string
         'smtpSecretName' => 'data-smtp',
         'oidcSecretName' => 'data-oidc',
         'dbName' => 'data_directus',
-        'bucket' => 'data-storage',
+        'bucket' => 'data-directus-storage',
         'host' => 'data.example.com',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 0,
@@ -34,7 +34,7 @@ function directusDocuments(string $rendered): array
 }
 
 test('directus manifest renders as valid multi-document YAML for main and a named instance', function () {
-    foreach ([[], ['deployName' => 'data-directus-blog', 'secretName' => 'data-secrets-blog', 'smtpSecretName' => 'data-smtp-blog', 'oidcSecretName' => 'data-oidc-blog', 'dbName' => 'data_directus_blog', 'bucket' => 'data-storage-blog']] as $overrides) {
+    foreach ([[], ['deployName' => 'data-directus-blog', 'secretName' => 'data-secrets-blog', 'smtpSecretName' => 'data-smtp-blog', 'oidcSecretName' => 'data-oidc-blog', 'dbName' => 'data_directus_blog', 'bucket' => 'data-directus-storage-blog']] as $overrides) {
         $documents = directusDocuments(directusManifest($overrides));
 
         expect($documents)->not->toBeEmpty();
@@ -70,7 +70,7 @@ test('directus named instance gets distinct Deployment/Service/Ingress names, no
         'smtpSecretName' => 'data-smtp-blog',
         'oidcSecretName' => 'data-oidc-blog',
         'dbName' => 'data_directus_blog',
-        'bucket' => 'data-storage-blog',
+        'bucket' => 'data-directus-storage-blog',
     ]));
 
     $deployment = collect($documents)->firstWhere('kind', 'Deployment');
@@ -88,12 +88,12 @@ test('directus named instance gets distinct Deployment/Service/Ingress names, no
         'smtpSecretName' => 'data-smtp-blog',
         'oidcSecretName' => 'data-oidc-blog',
         'dbName' => 'data_directus_blog',
-        'bucket' => 'data-storage-blog',
+        'bucket' => 'data-directus-storage-blog',
     ]);
     expect($rendered)
         ->toContain('data-secrets-blog')
         ->toContain('data-smtp-blog')
         ->toContain('data-oidc-blog')
         ->toContain('data_directus_blog')
-        ->toContain('data-storage-blog');
+        ->toContain('data-directus-storage-blog');
 });

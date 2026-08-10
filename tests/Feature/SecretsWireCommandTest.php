@@ -273,6 +273,67 @@ test('secrets:wire rejects Drive (oCIS has no Commons database password to rotat
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/drive'));
 });
 
+test('secrets:wire --tool=data --engine=pocketbase reports no wireable database instead of grabbing Directus\'s secret ref', function () {
+    // Regression test for the concrete bug this overhaul exists to fix:
+    // dbSecretRef()/commonsDatabases() called with NO engine used to always
+    // resolve to Directus's shape (the guard only fires for an EXPLICIT
+    // 'pocketbase' engine) — so a PocketBase-only instance previously got
+    // handed Directus's db-password secret ref/tenant name.
+    Process::fake([
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase'),
+        '*port-forward*' => Process::result(output: ''),
+        '*' => Process::result(),
+    ]);
+
+    Http::fake([
+        'localhost:*' => Http::sequence()
+            ->push(['data' => ['database/' => ['type' => 'database']]])
+            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    ]);
+
+    $this->artisan('secrets:wire local --tool=data --engine=pocketbase --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('is not installed (or has no wireable Commons database) at this instance');
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/data_directus'));
+});
+
+test('secrets:wire --tool=data never trusts a stale registry engine hint over what is actually live', function () {
+    // Same bug, from the other direction: with no --engine= flag, a stale
+    // registry entry (still says 'directus' after a switch to pocketbase)
+    // must NOT be trusted blindly — resolveInstanceEngine() confirms the
+    // hint against a live Deployment first, and falls back to live-probing
+    // every engine when it doesn't check out, exactly like
+    // DataRemoveCommand's existing "registry is a hint, not authoritative"
+    // discipline.
+    Process::fake(array_merge(fakeSyncedExternalSecret(), [
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ['tool' => 'data', 'host' => 'data.example.com', 'instance' => 'main', 'engine' => 'directus'],
+        ]))),
+        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase'),
+        '*get deployment data-directus*' => Process::result(output: '', exitCode: 1),
+        '*get secret data-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*port-forward*' => Process::result(output: ''),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout restart*' => Process::result(output: 'restarted'),
+        '*' => Process::result(),
+    ]));
+
+    Http::fake([
+        'localhost:*' => Http::sequence()
+            ->push(['data' => ['database/' => ['type' => 'database']]])
+            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    ]);
+
+    // The registry says 'directus', but only data-pocketbase is actually
+    // live — resolveInstanceEngine() must not trust the stale hint.
+    $this->artisan('secrets:wire local --tool=data --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('is not installed (or has no wireable Commons database) at this instance');
+});
+
 test('secrets:wire requires --tool or --all when it cannot prompt', function () {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),

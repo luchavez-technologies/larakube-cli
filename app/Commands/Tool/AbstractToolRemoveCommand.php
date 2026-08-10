@@ -235,4 +235,27 @@ abstract class AbstractToolRemoveCommand extends Command
             "{$kubectl} get deployment {$deployment} -n {$namespace} --no-headers --ignore-not-found",
         )->output()) !== '';
     }
+
+    /**
+     * Build a single `kubectl delete` command deleting every component's
+     * Deployment plus its declared companion resources — the generic form
+     * of what compound tools' teardown() used to hand-copy independently of
+     * the Blade manifest that actually deploys them. Every resource carries
+     * `--ignore-not-found`, so a component that doesn't exist for this
+     * install (e.g. a --no-plex-only bundled component on a Plex-backed
+     * install) is silently skipped rather than needing its own condition
+     * here — same discipline the hand-written strings this replaces relied on.
+     */
+    protected function teardownComponentsCommand(string $kubectl, string $namespace, string $instance = 'main'): string
+    {
+        $refs = [];
+        foreach ($this->tool()->components($instance) as $component) {
+            $refs[] = "deployment/{$component->deployment}";
+            foreach ($component->resources as $resource) {
+                $refs[] = "{$resource['kind']}/{$resource['name']}";
+            }
+        }
+
+        return "{$kubectl} delete ".implode(' ', $refs)." -n {$namespace} --ignore-not-found";
+    }
 }

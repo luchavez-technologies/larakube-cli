@@ -807,3 +807,80 @@ test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', fu
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/proj-1/apps/app-1') && $request->method() === 'DELETE');
 });
+
+test('sso:wire resolves the main DATA instance\'s own engine, not contaminated by a second instance\'s', function () {
+    // Regression test: the OLD resolveToolEngine() queried ALL data
+    // Deployments in the namespace by label selector with no instance
+    // scoping, so a second PocketBase instance's Deployment name containing
+    // "pocketbase" would make sso:wire wrongly conclude the MAIN
+    // (Directus) instance was PocketBase too. The new instance-scoped
+    // resolution checks data-directus (main) specifically, never confused
+    // by a second data-pocketbase-blog-example-com Deployment coexisting.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
+        '*get deployment data-pocketbase-blog-example-com*' => Process::result(output: 'data-pocketbase-blog-example-com   1/1   1   1   1d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-data*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*set env deployment/data-directus*' => Process::result(output: 'deployment.apps/data-directus env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/data-directus restarted'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('is wired to Zitadel SSO');
+
+    // Directus's schema, not PocketBase's — proves the main instance's own
+    // engine was resolved, not the OTHER instance's.
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
+        && $request['redirectUris'][0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-directus'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/data-pocketbase'));
+});
+
+test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC secret (also_patch)', function () {
+    // Regression test for the ClusterTool component refactor: DESIGN's
+    // oidcEnv() used to carry a one-off 'frontend_deployment' key that only
+    // this tool had; it's now the general 'also_patch' list derived from
+    // components() with sharesPrimarySecret: true. This proves the
+    // frontend deployment still gets `set env --from=secret` + a rollout
+    // restart, exactly like the old special case did.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment design-penpot-backend*' => Process::result(output: 'design-penpot-backend   1/1   1   1   10d'),
+        '*get deployment design-penpot-frontend*' => Process::result(output: 'design-penpot-frontend   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-design*' => Process::result(output: ''),
+        '*get secret design-penpot-oidc*' => Process::result(output: ''),
+        '*get secret design-penpot-smtp*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*set env deployment/design-penpot-backend*' => Process::result(output: 'deployment.apps/design-penpot-backend env updated'),
+        '*set env deployment/design-penpot-frontend*' => Process::result(output: 'deployment.apps/design-penpot-frontend env updated'),
+        '*rollout restart*' => Process::result(output: 'restarted'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-design', 'clientId' => 'cid-design', 'clientSecret' => 'csecret-design']),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'design', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Design & Prototyping (Penpot) is wired to Zitadel SSO');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/design-penpot-backend')
+        && str_contains($process->command, '--from=secret/design-penpot-oidc'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/design-penpot-frontend')
+        && str_contains($process->command, '--from=secret/design-penpot-oidc'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/design-penpot-frontend'));
+});

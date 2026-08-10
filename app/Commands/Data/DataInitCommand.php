@@ -101,7 +101,12 @@ class DataInitCommand extends Command
         $domain = count($parts) > 2 ? implode('.', array_slice($parts, 1)) : $host;
         $adminEmail = $this->readDataSecret($kubectl, $ns, 'admin-email', $instance) ?? "admin@{$domain}";
 
-        $bucket = ClusterTool::DATA->commonsBuckets($instance)[0] ?? 'data-storage';
+        // PocketBase owns no Commons bucket — its storage is a PVC (embedded
+        // SQLite + local disk), not S3 — so $bucket is only ever meaningful
+        // for Directus. Resolving it via the engine-aware commonsBuckets()
+        // rather than a bare fallback avoids it silently defaulting to
+        // Directus's bucket name if this were ever read for PocketBase.
+        $bucket = null;
 
         if ($engine === 'directus') {
             if (! $this->ensureCommons(['postgres', 'redis', 'seaweedfs'])) {
@@ -115,6 +120,7 @@ class DataInitCommand extends Command
 
             $redisIndex = $this->allocateCommonsRedisIndex($dbName);
 
+            $bucket = ClusterTool::DATA->commonsBuckets($instance, $engine)[0] ?? 'data-directus-storage';
             if (! $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, $bucket)) {
                 return 1;
             }

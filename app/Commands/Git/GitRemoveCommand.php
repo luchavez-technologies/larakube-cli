@@ -29,12 +29,7 @@ class GitRemoveCommand extends AbstractToolRemoveCommand
     {
         $ok = $this->removeResources(
             'Removing Forgejo resources...',
-            "{$kubectl} delete deployment/forgejo deployment/forgejo-runner "
-            // The Ingress is named `forgejo`, not `forgejo-http` — the old list
-            // said `ingress/gitea-http`, which never matched anything and left
-            // the Ingress behind on every teardown.
-            .'service/forgejo-http service/forgejo-ssh ingress/forgejo '
-            ."pvc/forgejo-data secret/forgejo-admin -n {$namespace} --ignore-not-found",
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance()),
         );
 
         Process::run("{$kubectl} delete middleware/forgejo-vpn-only -n {$namespace} --ignore-not-found 2>/dev/null");

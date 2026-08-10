@@ -24,8 +24,7 @@ class DesignRemoveCommand extends AbstractToolRemoveCommand
     {
         return $this->removeResources(
             'Removing Penpot resources...',
-            "{$kubectl} delete deployment/design-penpot-backend deployment/design-penpot-frontend deployment/design-penpot-exporter service/design service/design-backend service/design-exporter ingress/design "
-            ."secret/design-penpot-db secret/design-penpot-smtp secret/design-penpot-oidc -n {$namespace} --ignore-not-found",
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance()),
         );
     }
 }

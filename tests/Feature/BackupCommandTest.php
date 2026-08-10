@@ -42,6 +42,17 @@ function backupFakes(array $overrides = []): array
         '*larakube-backup-config*secret-key*' => $val('SK'),
         '*larakube-backup-config*passphrase*' => $val('test-passphrase'),
         '*larakube-backup-config*region*' => $val('us-east-1'),
+        // Dynamic PVC discovery (backupVolumeTargets()) — a realistic live
+        // cluster shape so every existing test's expectations (Prometheus
+        // excluded, Synapse signing key included, etc.) still hold under the
+        // new discovery mechanism, not the old hardcoded array.
+        '*get namespace -o jsonpath*' => Process::result(output: 'larakube-shared larakube-vault larakube-secrets larakube-sso larakube-vpn larakube-plex'),
+        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo forgejo-runner drive-ocis stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana prometheus-server loki'),
+        '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'vaultwarden'),
+        '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
+        '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),
+        '*get deployment -n larakube-vpn -o jsonpath*' => Process::result(output: 'netbird-management'),
+        '*get deployment -n larakube-plex -o jsonpath*' => Process::result(output: 'seaweedfs postgres'),
     ], $overrides, ['*' => Process::result(output: '')]);
 }
 
@@ -124,6 +135,8 @@ test('backup:list reports honestly when the destination is empty', function () {
 });
 
 test('the inventory excludes Prometheus and includes the Synapse signing key', function () {
+    Process::fake(backupFakes());
+
     $cmd = new class
     {
         use InteractsWithBackup;
@@ -131,7 +144,7 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
         /** @return array<int, array<string, string>> */
         public function targets(): array
         {
-            return $this->backupVolumeTargets();
+            return $this->backupVolumeTargets('kubectl');
         }
     };
 
@@ -149,7 +162,46 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
         // The object store holds chat media, git LFS, notes, signed documents.
         ->and($names)->toContain('seaweedfs')
         ->and($names)->toContain('openbao')
-        ->and($names)->toContain('vaultwarden');
+        ->and($names)->toContain('vaultwarden')
+        // The other two legacy names (see InteractsWithBackup::LEGACY_VOLUME_NAMES)
+        // — a backup taken before dynamic discovery must still restore under
+        // these exact names.
+        ->and($names)->toContain('forgejo')
+        ->and($names)->toContain('drive-ocis');
+
+    // Only Synapse's own component is covered — its sibling Deployments
+    // (Cinny, Coturn, the bundled --no-plex Postgres) never opted in, so
+    // their bulk/rebuildable data stays excluded even though they're live
+    // Deployments discovery sees just as clearly as Synapse itself.
+    expect($names)->not->toContain('chat-cinny')
+        ->and($names)->not->toContain('chat-coturn')
+        ->and($names)->not->toContain('chat-db');
+});
+
+test('a tool with no legacy name gets the derived {tool}-{component} format', function () {
+    // DRIVE's component key is "app" — its legacy name ("drive-ocis") is
+    // preserved via the map, but a hypothetical future backup-worthy
+    // component with no legacy entry must still get a stable, predictable
+    // name rather than an empty or null one.
+    Process::fake(backupFakes());
+
+    $cmd = new class
+    {
+        use InteractsWithBackup;
+
+        public function targets(): array
+        {
+            return $this->backupVolumeTargets('kubectl');
+        }
+    };
+
+    // SECRETS's component key is "app" and IS in the legacy map ("openbao")
+    // — confirms the map takes priority over the derived format for a name
+    // that predates it, rather than both existing side by side under two
+    // different names for the same component.
+    $names = array_column($cmd->targets(), 'name');
+    expect($names)->toContain('openbao')
+        ->and($names)->not->toContain('secrets-app');
 });
 
 test('aws invocations disable the checksum that R2 and B2 reject', function () {
@@ -363,6 +415,8 @@ test('backup:schedule deploys the CronJob and names the exec permission', functi
 });
 
 test('the CronJob covers every volume in the inventory and no others', function () {
+    Process::fake(backupFakes());
+
     $volumes = (new class
     {
         use InteractsWithBackup;
@@ -370,7 +424,7 @@ test('the CronJob covers every volume in the inventory and no others', function 
         /** @return array<int, array<string, string>> */
         public function targets(): array
         {
-            return $this->backupVolumeTargets();
+            return $this->backupVolumeTargets('kubectl');
         }
     })->targets();
 

@@ -434,7 +434,7 @@ class BackupRestoreCommand extends Command
             return false;
         }
 
-        $target = collect($this->backupVolumeTargets())->firstWhere('name', $name);
+        $target = collect($this->backupVolumeTargets($kubectl))->firstWhere('name', $name);
 
         if ($target === null) {
             $this->laraKubeError("'{$name}' is not a known volume target on this cluster.");

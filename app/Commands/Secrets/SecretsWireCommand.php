@@ -6,7 +6,9 @@ use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
@@ -18,12 +20,14 @@ use LaravelZero\Framework\Commands\Command;
 
 class SecretsWireCommand extends Command
 {
-    use DeploysClusterTool, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput, SyncsClusterSecrets;
+    use DeploysClusterTool, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'secrets:wire
         {environment=local : Environment whose deployment(s) to wire}
         {--tool=                : The tool whose Commons DB password OpenBao should take over rotating}
-        {--all                  : Wire every installed, DB-rotatable tool}
+        {--domain=              : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance. Ignored with --all}
+        {--engine=              : Specific engine to target explicitly, skipping auto-detection (e.g. --engine=pocketbase)}
+        {--all                  : Wire every installed, DB-rotatable tool (each at its default instance)}
         {--context=             : Target a specific kube-context}
         {--rotation-period=168h : How often OpenBao rotates the password (default: 7 days)}
         {--force                : Skip the confirmation prompt}';
@@ -59,12 +63,18 @@ class SecretsWireCommand extends Command
             return 1;
         }
 
-        $targets = $this->resolveTargets($kubectl);
+        // --domain= only ever targets ONE specific tool's instance — --all
+        // wires every capable tool at its own default ('main') instance, the
+        // same as before --domain= existed.
+        $domain = (string) ($this->option('domain') ?: '');
+        $instance = $domain === '' ? 'main' : ClusterTool::SECRETS->instanceSlugFromHost($this->sanitizeDomainInput($domain));
+
+        $targets = $this->resolveTargets($kubectl, $instance);
         if ($targets === []) {
             return 1;
         }
 
-        $label = count($targets) === 1 ? $targets[0]->getLabel() : count($targets).' tool(s)';
+        $label = count($targets) === 1 ? $targets[0][0]->getLabel() : count($targets).' tool(s)';
         if (! $this->option('force') && ! confirm(
             label: "Hand {$label}'s DB password to OpenBao, rotating it every {$rotationPeriod}?",
             default: true,
@@ -73,24 +83,47 @@ class SecretsWireCommand extends Command
         }
 
         $ok = true;
-        foreach ($targets as $tool) {
-            $ok = $this->wireTool($kubectl, $tool, $rotationPeriod) && $ok;
+        foreach ($targets as [$tool, $targetInstance, $engine]) {
+            $ok = $this->wireTool($kubectl, $tool, $targetInstance, $engine, $rotationPeriod) && $ok;
         }
 
         return $ok ? 0 : 1;
     }
 
-    /** @return list<ClusterTool> */
-    protected function resolveTargets(string $kubectl): array
+    /**
+     * Resolve which tool(s) to wire, each already paired with the instance
+     * and (for multi-engine tools) the LIVE engine to target — never a
+     * guessed default, so a PocketBase-only `data` instance is never handed
+     * Directus's dbSecretRef()/commonsDatabases() by this command again
+     * (the concrete bug this resolution replaces).
+     *
+     * @return list<array{0: ClusterTool, 1: string, 2: ?string}>
+     */
+    protected function resolveTargets(string $kubectl, string $instance): array
     {
         $capable = array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
 
-        $installed = array_values(array_filter(
-            $capable,
-            fn (ClusterTool $t) => $this->deploymentExists($kubectl, $t->namespace(), $t->deploymentName()),
-        ));
+        $resolve = function (ClusterTool $t, string $forInstance) use ($kubectl): ?array {
+            $engine = $t->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $t, $forInstance, (string) ($this->option('engine') ?: '') ?: null) : null;
+            if ($t->dbSecretRef($forInstance, $engine) === null) {
+                return null;
+            }
+            if (! $this->deploymentExists($kubectl, $t->namespace(), $t->deploymentName($forInstance, $engine))) {
+                return null;
+            }
+
+            return [$t, $forInstance, $engine];
+        };
 
         if ($this->option('all')) {
+            $installed = [];
+            foreach ($capable as $t) {
+                $resolved = $resolve($t, 'main');
+                if ($resolved !== null) {
+                    $installed[] = $resolved;
+                }
+            }
+
             if ($installed === []) {
                 $this->laraKubeWarn('No DB-rotatable tools are installed.');
             }
@@ -106,13 +139,23 @@ class SecretsWireCommand extends Command
 
                 return [];
             }
-            if (! $this->deploymentExists($kubectl, $tool->namespace(), $tool->deploymentName())) {
-                $this->laraKubeError("{$tool->getLabel()} is not installed.");
+
+            $resolved = $resolve($tool, $instance);
+            if ($resolved === null) {
+                $this->laraKubeError("{$tool->getLabel()} is not installed (or has no wireable Commons database) at this instance.");
 
                 return [];
             }
 
-            return [$tool];
+            return [$resolved];
+        }
+
+        $installed = [];
+        foreach ($capable as $t) {
+            $resolved = $resolve($t, $instance);
+            if ($resolved !== null) {
+                $installed[] = $resolved;
+            }
         }
 
         if ($installed === []) {
@@ -122,8 +165,8 @@ class SecretsWireCommand extends Command
         }
 
         $options = [];
-        foreach ($installed as $tool) {
-            $options[$tool->value] = $tool->getLabel();
+        foreach ($installed as [$t]) {
+            $options[$t->value] = $t->getLabel();
         }
 
         $chosen = $this->flagOrPrompt(
@@ -133,20 +176,21 @@ class SecretsWireCommand extends Command
             '--tool='.array_key_first($options),
         );
 
-        $tool = ClusterTool::tryFrom($chosen);
-        if ($tool === null || ! isset($options[$chosen])) {
-            $this->laraKubeError("'{$chosen}' does not have a Commons database password OpenBao can rotate.");
-
-            return [];
+        foreach ($installed as $resolved) {
+            if ($resolved[0]->value === $chosen) {
+                return [$resolved];
+            }
         }
 
-        return [$tool];
+        $this->laraKubeError("'{$chosen}' does not have a Commons database password OpenBao can rotate.");
+
+        return [];
     }
 
-    protected function wireTool(string $kubectl, ClusterTool $tool, string $rotationPeriod): bool
+    protected function wireTool(string $kubectl, ClusterTool $tool, string $instance, ?string $engine, string $rotationPeriod): bool
     {
-        $ref = $tool->dbSecretRef();
-        $tenant = $tool->commonsDatabases()[0] ?? null;
+        $ref = $tool->dbSecretRef($instance, $engine);
+        $tenant = $tool->commonsDatabases($instance, $engine)[0] ?? null;
 
         if ($ref === null || $tenant === null) {
             $this->laraKubeError("{$tool->getLabel()} has no wireable Commons database.");
@@ -224,7 +268,7 @@ class SecretsWireCommand extends Command
         }
 
         $this->withSpin("Restarting {$tool->getLabel()} to pick up the OpenBao-managed password...", fn () => Process::run(
-            "{$kubectl} rollout restart deployment/{$tool->deploymentName()} -n {$ref['namespace']}",
+            "{$kubectl} rollout restart deployment/{$tool->deploymentName($instance, $engine)} -n {$ref['namespace']}",
         ));
 
         $this->laraKubeInfo("✅ {$tool->getLabel()}'s DB password is now rotated by OpenBao every {$rotationPeriod}.");

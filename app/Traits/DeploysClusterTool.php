@@ -93,9 +93,9 @@ trait DeploysClusterTool
      * can never drift apart. A no-op (returns true) for tools with no
      * vpnMiddlewareTarget().
      */
-    protected function ensureVpnMiddleware(ClusterTool $tool, string $kubectl): bool
+    protected function ensureVpnMiddleware(ClusterTool $tool, string $kubectl, string $instance = 'main'): bool
     {
-        $target = $tool->vpnMiddlewareTarget();
+        $target = $tool->vpnMiddlewareTarget($instance);
         if ($target === null) {
             return true;
         }

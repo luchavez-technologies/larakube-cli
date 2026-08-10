@@ -43,7 +43,7 @@ spec:
             - name: PENPOT_DATABASE_URI
               value: "postgresql://postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}"
             - name: PENPOT_REDIS_URI
-              value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/0"
+              value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
             - name: PENPOT_ASSETS_STORAGE_BACKEND
               value: "assets-s3"
             - name: PENPOT_OBJECTS_STORAGE_BACKEND
@@ -268,7 +268,7 @@ spec:
             - name: PENPOT_PUBLIC_URI
               value: "https://{{ $host }}"
             - name: PENPOT_REDIS_URI
-              value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/0"
+              value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
 ---
 apiVersion: v1
 kind: Service

@@ -2,8 +2,92 @@
 
 namespace App\Enums;
 
-enum ClusterTool: string
+use App\Contracts\ClusterToolVendor;
+use App\Contracts\ConfiguresViaConfigFile;
+use App\Contracts\HasBaselineFlags;
+use App\Contracts\HasClusterSecretDbKey;
+use App\Contracts\HasCommonsBuckets;
+use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasCommonsRedisKeys;
+use App\Contracts\HasDbSecretRef;
+use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasMeetBridge;
+use App\Contracts\HasOidcWiring;
+use App\Contracts\HasOpenbaoSync;
+use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasSsoLicenseCaveat;
+use App\Contracts\HasWhiteLabel;
+use App\Contracts\HasWorkloadComponents;
+use App\Contracts\UsesCliOidc;
+use App\Contracts\UsesForwardAuth;
+use App\Data\ClusterToolComponentData;
+use App\Vendors\AnalyticsTool;
+use App\Vendors\CrmTool;
+use App\Vendors\DashboardTool;
+use App\Vendors\DnsTool;
+use App\Vendors\DriveTool;
+use App\Vendors\ErrorTool;
+use App\Vendors\InsightTool;
+use App\Vendors\LinkTool;
+use App\Vendors\MailTool;
+use App\Vendors\MeetTool;
+use App\Vendors\MonitorTool;
+use App\Vendors\NoteTool;
+use App\Vendors\PasswordTool;
+use App\Vendors\RecordTool;
+use App\Vendors\SecretTool;
+use App\Vendors\SheetTool;
+use App\Vendors\SignTool;
+use App\Vendors\SsoTool;
+use App\Vendors\SupportTool;
+use App\Vendors\UptimeTool;
+use App\Vendors\VpnTool;
+use App\Vendors\WebmailTool;
+use LogicException;
+
+enum ClusterTool: string implements HasWorkloadComponents
 {
+    /**
+     * The vendor backing this category — an enum case for a multi-vendor
+     * category (DATA, FLOW, GIT, CHAT, DESIGN, TASKS, DESK), a plain class
+     * instance for a single-vendor one (the other 22 categories). Total
+     * over all 29 cases — every category has exactly one vendor.
+     */
+    public function vendor(?string $engine = null): ClusterToolVendor
+    {
+        return match ($this) {
+            self::DATA => DataTool::tryFrom((string) $engine) ?? DataTool::DIRECTUS,
+            self::FLOW => FlowTool::tryFrom((string) $engine) ?? FlowTool::N8N,
+            self::GIT => GitForgeTool::FORGEJO,
+            self::CHAT => ChatTool::MATRIX,
+            self::DESIGN => DesignTool::PENPOT,
+            self::TASKS => TaskTool::PLANKA,
+            self::DESK => DeskTool::FREESCOUT,
+            self::MAIL => new MailTool,
+            self::SECRETS => new SecretTool,
+            self::DRIVE => new DriveTool,
+            self::PASSWORDS => new PasswordTool,
+            self::SIGN => new SignTool,
+            self::RECORD => new RecordTool,
+            self::SSO => new SsoTool,
+            self::LINK => new LinkTool,
+            self::WEBMAIL => new WebmailTool,
+            self::NOTES => new NoteTool,
+            self::SHEETS => new SheetTool,
+            self::MONITOR => new MonitorTool,
+            self::CRM => new CrmTool,
+            self::SUPPORT => new SupportTool,
+            self::INSIGHTS => new InsightTool,
+            self::ERRORS => new ErrorTool,
+            self::ANALYTICS => new AnalyticsTool,
+            self::MEET => new MeetTool,
+            self::DNS => new DnsTool,
+            self::UPTIME => new UptimeTool,
+            self::VPN => new VpnTool,
+            self::DASHBOARD => new DashboardTool,
+        };
+    }
+
     public function getLabel(): string
     {
         return match ($this) {
@@ -26,7 +110,7 @@ enum ClusterTool: string
             self::NOTES => 'Team Wiki & Knowledge Base (Outline)',
             self::DRIVE => 'Cloud Storage & Sync (oCIS)',
             self::ANALYTICS => 'Web Analytics (Umami)',
-            self::TASKS => 'Project Management (Plane or Planka)',
+            self::TASKS => 'Project Management (Planka)',
             self::SIGN => 'Document Signing (Documenso)',
             self::SUPPORT => 'Customer Support (Chatwoot)',
             self::LINK => 'Link Management (Kutt)',
@@ -41,37 +125,7 @@ enum ClusterTool: string
 
     public function productName(?string $engine = null): string
     {
-        return match ($this) {
-            self::ANALYTICS => 'Umami',
-            self::CHAT => 'Matrix',
-            self::CRM => 'Twenty',
-            self::DATA => $engine === 'pocketbase' ? 'PocketBase' : 'Directus',
-            self::DESK => 'FreeScout',
-            self::DNS => 'ExternalDNS',
-            self::DRIVE => 'oCIS',
-            self::ERRORS => 'GlitchTip',
-            self::FLOW => 'n8n',
-            self::GIT => 'Forgejo',
-            self::INSIGHTS => 'Metabase',
-            self::LINK => 'Kutt',
-            self::MAIL => 'Stalwart',
-            self::MONITOR => 'Grafana',
-            self::NOTES => 'Outline',
-            self::PASSWORDS => 'Vaultwarden',
-            self::RECORD => 'Sendrec',
-            self::SECRETS => 'OpenBao',
-            self::SHEETS => 'Teable',
-            self::SIGN => 'Documenso',
-            self::SSO => 'Zitadel',
-            self::SUPPORT => 'Chatwoot',
-            self::TASKS => 'Plane',
-            self::UPTIME => 'Uptime Kuma',
-            self::VPN => 'NetBird',
-            self::WEBMAIL => 'Bulwark',
-            self::DASHBOARD => 'Headlamp',
-            self::MEET => 'LiveKit',
-            self::DESIGN => 'Penpot',
-        };
+        return $this->vendor($engine)->getLabel() ?? $this->value;
     }
 
     /**
@@ -164,16 +218,12 @@ enum ClusterTool: string
      */
     public function whiteLabel(): ?array
     {
-        return match ($this) {
-            self::CHAT => ['sub_filter' => true],
-            self::GIT => ['app_name_key' => 'FORGEJO__ui__APP_NAME'],
-            self::SUPPORT => ['app_name_key' => 'INSTALLATION_NAME', 'logo_url_key' => 'LOGO_URL'],
-            self::ERRORS => ['app_name_key' => 'GLITCHTIP_INSTANCE_NAME'],
-            self::LINK => ['app_name_key' => 'SITE_NAME'],
-            self::INSIGHTS => ['app_name_key' => 'MB_SITE_NAME', 'logo_url_key' => 'MB_APPLICATION_LOGO_URL'],
-            self::MONITOR => ['app_name_key' => 'GF_BRANDING_APP_TITLE', 'logo_url_key' => 'GF_BRANDING_FAV_ICON'],
-            default => null,
-        };
+        $vendor = $this->vendor();
+        if ($vendor instanceof HasWhiteLabel) {
+            return $vendor->whiteLabel();
+        }
+
+        return null;
     }
 
     /**
@@ -274,6 +324,51 @@ enum ClusterTool: string
     }
 
     /**
+     * Which tool + component owns a given live Deployment name, across every
+     * engine variant this tool has — used by dynamic PVC backup discovery to
+     * decide whether a Deployment is backup-worthy without a hardcoded list.
+     * null when nothing claims it (Prometheus, or any other unmanaged
+     * Deployment) — the reverse lookup itself IS the exclusion mechanism.
+     *
+     * Exact matches are checked across every tool/component/engine BEFORE any
+     * instance-suffix (prefix) match is considered, so a genuinely different
+     * component whose name happens to prefix-match another tool's (e.g.
+     * "forgejo-runner" starting with "forgejo-") is never mistaken for an
+     * instance-suffixed copy of it.
+     *
+     * @return array{tool: self, component: ClusterToolComponentData}|null
+     */
+    public static function forDeployment(string $deploymentName): ?array
+    {
+        foreach (self::cases() as $tool) {
+            foreach ($tool->engineCandidates() as $engine) {
+                foreach ($tool->components(engine: $engine) as $component) {
+                    if ($component->deployment === $deploymentName) {
+                        return ['tool' => $tool, 'component' => $component];
+                    }
+                }
+            }
+        }
+
+        $best = null;
+        foreach (self::cases() as $tool) {
+            foreach ($tool->engineCandidates() as $engine) {
+                foreach ($tool->components(engine: $engine) as $component) {
+                    if (! str_starts_with($deploymentName, "{$component->deployment}-")) {
+                        continue;
+                    }
+
+                    if ($best === null || strlen($component->deployment) > strlen($best['component']->deployment)) {
+                        $best = ['tool' => $tool, 'component' => $component];
+                    }
+                }
+            }
+        }
+
+        return $best;
+    }
+
+    /**
      * The tool that owns a given grantableRoles() key, or null if none claims
      * it. Per-app secrets grants (secrets:grant) mint dynamic role keys
      * ("secrets-{app}-{environment}-{role}") that can't appear in SECRETS's
@@ -314,12 +409,12 @@ enum ClusterTool: string
      */
     public function clusterSecretDbKey(string $tenant): string
     {
-        return match ($this) {
-            self::MAIL => 'STALWART_STORE_PASSWORD',
-            self::RECORD => 'RECORD_DB_PASSWORD',
-            self::SIGN => 'SIGN_DB_PASSWORD',
-            default => self::tenantKey($tenant),
-        };
+        $vendor = $this->vendor();
+        if ($vendor instanceof HasClusterSecretDbKey) {
+            return $vendor->clusterSecretDbKey($tenant);
+        }
+
+        return self::tenantKey($tenant);
     }
 
     /** `record_sendrec` → `RECORD_SENDREC_DB_PASSWORD`. */
@@ -337,12 +432,12 @@ enum ClusterTool: string
      */
     public function commonsRedisKeys(): array
     {
-        return match ($this) {
-            self::GIT => ['forgejo'],
-            self::NOTES => ['outline'],
-            self::SHEETS => ['teable'],
-            default => [],
-        };
+        $vendor = $this->vendor();
+        if ($vendor instanceof HasCommonsRedisKeys) {
+            return $vendor->commonsRedisKeys();
+        }
+
+        return [];
     }
 
     /**
@@ -360,7 +455,7 @@ enum ClusterTool: string
             self::DATA => ['pocketbase' => 'PocketBase', 'directus' => 'Directus'],
             self::DRIVE => ['ocis' => 'oCIS'],
             self::FLOW => ['n8n' => 'n8n', 'windmill' => 'Windmill'],
-            self::TASKS => ['planka' => 'Planka', 'plane' => 'Plane'],
+            self::TASKS => ['planka' => 'Planka'],
             self::DESK => ['freescout' => 'FreeScout'],
             default => [],
         };
@@ -439,313 +534,21 @@ enum ClusterTool: string
      */
     public function baselineFlags(): array
     {
-        return match ($this) {
-            // `enable-mcp` deliberately excluded: Penpot's frontend image bakes
-            // in an nginx location block that proxies to an upstream literally
-            // named `penpot-mcp` — a 4th first-party MCP backend container we
-            // don't deploy. Without it nginx fails to start at all, crash-looping
-            // the ENTIRE frontend, not just MCP. Confirmed live 2026-08-10 —
-            // took down design.luchtech.dev. Re-add only once that companion
-            // container is actually deployed alongside backend/frontend/exporter.
-            self::DESIGN => ['enable-access-tokens'],
-            default => [],
-        };
+        $vendor = $this->vendor();
+
+        return $vendor instanceof HasBaselineFlags ? $vendor->baselineFlags() : [];
     }
 
     public function smtpEnv(?string $engine = null, ?string $instance = null): ?array
     {
-        return match ($this) {
-            self::SHEETS => [
-                'deployment' => 'sheet-teable',
-                'namespace' => $this->namespace(),
-                'secret' => 'sheet-teable-smtp',
-                'static' => [
-                    'BACKEND_MAIL_SECURE' => 'true',
-                ],
-                'vars' => [
-                    'host' => 'BACKEND_MAIL_HOST',
-                    'port' => 'BACKEND_MAIL_PORT',
-                    'user' => 'BACKEND_MAIL_AUTH_USER',
-                    'password' => 'BACKEND_MAIL_AUTH_PASS',
-                    'from' => 'BACKEND_MAIL_SENDER',
-                ],
-            ],
-            self::FLOW => [
-                'deployment' => 'flow-n8n',
-                'namespace' => $this->namespace(),
-                'secret' => 'flow-n8n-smtp',
-                'static' => [
-                    'N8N_EMAIL_MODE' => 'smtp',
-                    'N8N_SMTP_SSL' => 'true',
-                    'N8N_SMTP_STARTTLS' => 'false',
-                ],
-                'vars' => [
-                    'host' => 'N8N_SMTP_HOST',
-                    'port' => 'N8N_SMTP_PORT',
-                    'user' => 'N8N_SMTP_USER',
-                    'password' => 'N8N_SMTP_PASS',
-                    'from' => 'N8N_SMTP_SENDER',
-                ],
-            ],
-            self::PASSWORDS => [
-                'deployment' => 'vaultwarden',
-                'namespace' => $this->namespace(),
-                'secret' => 'vaultwarden-smtp',
-                'static' => [
-                    'SMTP_SECURITY' => 'force_tls',
-                ],
-                'vars' => [
-                    'host' => 'SMTP_HOST',
-                    'port' => 'SMTP_PORT',
-                    'user' => 'SMTP_USERNAME',
-                    'password' => 'SMTP_PASSWORD',
-                    'from' => 'SMTP_FROM',
-                ],
-            ],
-            self::CHAT => [
-                'deployment' => 'chat-synapse',
-                'namespace' => $this->namespace(),
-                'secret' => 'chat-smtp',
-                'static' => [],
-                'vars' => [
-                    'host' => 'host',
-                    'port' => 'port',
-                    'user' => 'user',
-                    'password' => 'password',
-                    'from' => 'from',
-                ],
-            ],
-            self::NOTES => [
-                'deployment' => 'notes-outline',
-                'namespace' => $this->namespace(),
-                'secret' => 'notes-outline-smtp',
-                // Stalwart submissions is port 465 (implicit TLS). Outline
-                // defaults SMTP_SECURE to true, but pin it so the 465 intent
-                // survives any future default change.
-                'static' => [
-                    'SMTP_SECURE' => 'true',
-                ],
-                'vars' => [
-                    'host' => 'SMTP_HOST',
-                    'port' => 'SMTP_PORT',
-                    'user' => 'SMTP_USERNAME',
-                    'password' => 'SMTP_PASSWORD',
-                    'from' => 'SMTP_FROM_EMAIL',
-                ],
-            ],
-            self::DRIVE => [
-                // oCIS is the canonical drive engine, so mail:wire targets it.
-                // Its notifications service reads NOTIFICATIONS_SMTP_*; ssltls is
-                // implicit TLS for Stalwart's port 465 (starttls|ssltls|none).
-                'deployment' => 'drive-ocis',
-                'namespace' => $this->namespace(),
-                'secret' => 'drive-ocis-smtp',
-                'static' => [
-                    'NOTIFICATIONS_SMTP_ENCRYPTION' => 'ssltls',
-                    'NOTIFICATIONS_SMTP_AUTHENTICATION' => 'login',
-                ],
-                'vars' => [
-                    'host' => 'NOTIFICATIONS_SMTP_HOST',
-                    'port' => 'NOTIFICATIONS_SMTP_PORT',
-                    'user' => 'NOTIFICATIONS_SMTP_USERNAME',
-                    'password' => 'NOTIFICATIONS_SMTP_PASSWORD',
-                    'from' => 'NOTIFICATIONS_SMTP_SENDER',
-                ],
-            ],
-            self::TASKS => [
-                'deployment' => 'tasks-planka',
-                'namespace' => $this->namespace(),
-                'secret' => 'tasks-planka-smtp',
-                'static' => [
-                    'SMTP_SECURE' => 'true',
-                ],
-                'vars' => [
-                    'host' => 'SMTP_HOST',
-                    'port' => 'SMTP_PORT',
-                    'user' => 'SMTP_USER',
-                    'password' => 'SMTP_PASSWORD',
-                    'from' => 'SMTP_FROM',
-                ],
-            ],
-            self::SIGN => [
-                'deployment' => 'sign-documenso',
-                'namespace' => $this->namespace(),
-                'secret' => 'sign-documenso-smtp',
-                'static' => [
-                    'NEXT_PRIVATE_SMTP_TRANSPORT' => 'smtp-auth',
-                    // mail:wire targets Stalwart's submissions port 465 (implicit
-                    // TLS), so Documenso's nodemailer transport must use SSL —
-                    // secure=false on 465 never negotiates TLS and mail fails.
-                    'NEXT_PRIVATE_SMTP_SECURE' => 'true',
-                ],
-                'vars' => [
-                    'host' => 'NEXT_PRIVATE_SMTP_HOST',
-                    'port' => 'NEXT_PRIVATE_SMTP_PORT',
-                    'user' => 'NEXT_PRIVATE_SMTP_USERNAME',
-                    'password' => 'NEXT_PRIVATE_SMTP_PASSWORD',
-                    'from' => 'NEXT_PRIVATE_SMTP_FROM_ADDRESS',
-                ],
-            ],
-            self::DESIGN => [
-                'deployment' => 'design-penpot-backend',
-                'namespace' => $this->namespace(),
-                'secret' => 'design-penpot-smtp',
-                'static' => [
-                    // PENPOT_FLAGS is deliberately absent — MailWireCommand
-                    // reconciles it via ReconcilesPenpotFlags instead of the
-                    // generic static-var path. See
-                    // docs/decisions/0013-design-init-idempotent-flags.md.
-                    'PENPOT_SMTP_SSL' => 'true',
-                    'PENPOT_SMTP_TLS' => 'true',
-                ],
-                'vars' => [
-                    'host' => 'PENPOT_SMTP_HOST',
-                    'port' => 'PENPOT_SMTP_PORT',
-                    'user' => 'PENPOT_SMTP_USERNAME',
-                    'password' => 'PENPOT_SMTP_PASSWORD',
-                    'from' => 'PENPOT_SMTP_DEFAULT_FROM',
-                ],
-            ],
-            self::SUPPORT => [
-                'deployment' => 'support-chatwoot',
-                'namespace' => $this->namespace(),
-                'secret' => 'support-chatwoot-smtp',
-                'static' => [
-                    'SMTP_ENABLE_STARTTLS_AUTO' => 'true',
-                ],
-                'vars' => [
-                    'host' => 'SMTP_ADDRESS',
-                    'port' => 'SMTP_PORT',
-                    'user' => 'SMTP_USERNAME',
-                    'password' => 'SMTP_PASSWORD',
-                    'from' => 'MAILER_SENDER_EMAIL',
-                ],
-            ],
-            self::LINK => [
-                'deployment' => 'link-kutt',
-                'namespace' => $this->namespace(),
-                'secret' => 'link-kutt-smtp',
-                'static' => [
-                    'MAIL_ENABLED' => 'true',
-                    'MAIL_SECURE' => 'true',
-                ],
-                'vars' => [
-                    'host' => 'MAIL_HOST',
-                    'port' => 'MAIL_PORT',
-                    'user' => 'MAIL_USER',
-                    'password' => 'MAIL_PASSWORD',
-                    'from' => 'MAIL_FROM',
-                ],
-            ],
-            self::CRM => [
-                'deployment' => 'crm-twenty',
-                'namespace' => $this->namespace(),
-                'secret' => 'crm-twenty-smtp',
-                'static' => [
-                    'EMAIL_DRIVER' => 'smtp',
-                ],
-                'vars' => [
-                    'host' => 'EMAIL_SMTP_HOST',
-                    'port' => 'EMAIL_SMTP_PORT',
-                    'user' => 'EMAIL_SMTP_USER',
-                    'password' => 'EMAIL_SMTP_PASSWORD',
-                    'from' => 'EMAIL_FROM_ADDRESS',
-                ],
-            ],
-            self::GIT => [
-                // Forgejo is entirely env-configurable via FORGEJO__<section>__<KEY>;
-                // its entrypoint folds them into app.ini on every boot. Keys are
-                // the 1.18+ mailer names (PROTOCOL/SMTP_ADDR replaced the old
-                // MAILER_TYPE/HOST). `smtps` = implicit TLS, which is Stalwart's
-                // 465 submissions listener.
-                'deployment' => 'forgejo',
-                'namespace' => $this->namespace(),
-                'secret' => 'forgejo-smtp',
-                'static' => [
-                    'FORGEJO__mailer__ENABLED' => 'true',
-                    'FORGEJO__mailer__PROTOCOL' => 'smtps',
-                ],
-                'vars' => [
-                    'host' => 'FORGEJO__mailer__SMTP_ADDR',
-                    'port' => 'FORGEJO__mailer__SMTP_PORT',
-                    'user' => 'FORGEJO__mailer__USER',
-                    'password' => 'FORGEJO__mailer__PASSWD',
-                    'from' => 'FORGEJO__mailer__FROM',
-                ],
-            ],
-            self::RECORD => [
-                'deployment' => 'record-sendrec',
-                'namespace' => $this->namespace(),
-                'secret' => 'record-sendrec-smtp',
-                // SendRec defaults to STARTTLS, which deadlocks on Stalwart's
-                // 465 (implicit TLS) listener: plaintext EHLO vs a waiting TLS
-                // handshake, 30s read timeout. Stalwart exposes no 587 listener,
-                // so the CLIENT must do implicit TLS.
-                //
-                // The value for that is `tls`, NOT `implicit`. SendRec coerces
-                // any unrecognised value back to starttls with only a startup
-                // warning — `implicit` shipped here and silently reinstated the
-                // very deadlock it was meant to fix. Confirmed from the pod:
-                //   WARN "unrecognized SMTP_TLS value; falling back to starttls" value=implicit
-                // Accepted values are starttls | tls | auto | none.
-                'static' => [
-                    'SMTP_TLS' => 'tls',
-                ],
-                'vars' => [
-                    'host' => 'SMTP_HOST',
-                    'port' => 'SMTP_PORT',
-                    // NOT SMTP_USER / SMTP_PASS / SMTP_FROM — those matched only
-                    // as substrings; the real names are these.
-                    'user' => 'SMTP_USERNAME',
-                    'password' => 'SMTP_PASSWORD',
-                    'from' => 'EMAIL_FROM_ADDRESS',
-                ],
-            ],
-            self::DATA => $engine === 'pocketbase' ? [
-                'deployment' => $this->deploymentName($instance, 'pocketbase'),
-                'namespace' => $this->namespace(),
-                'secret' => $instance && $instance !== 'main' ? "data-smtp-{$instance}" : 'data-smtp',
-                'static' => [
-                    'POCKETBASE_SMTP_ENABLED' => 'true',
-                ],
-                'vars' => [
-                    'host' => 'POCKETBASE_SMTP_HOST',
-                    'port' => 'POCKETBASE_SMTP_PORT',
-                    'user' => 'POCKETBASE_SMTP_USER',
-                    'password' => 'POCKETBASE_SMTP_PASS',
-                    'from' => 'POCKETBASE_SMTP_FROM',
-                ],
-            ] : [
-                'deployment' => 'data-directus',
-                'namespace' => $this->namespace(),
-                'secret' => 'data-smtp',
-                'static' => [
-                    'EMAIL_TRANSPORT' => 'smtp',
-                ],
-                'vars' => [
-                    'host' => 'EMAIL_SMTP_HOST',
-                    'port' => 'EMAIL_SMTP_PORT',
-                    'user' => 'EMAIL_SMTP_USER',
-                    'password' => 'EMAIL_SMTP_PASSWORD',
-                    'from' => 'EMAIL_FROM',
-                ],
-            ],
-            self::MONITOR => [
-                'deployment' => 'grafana',
-                'namespace' => $this->namespace(),
-                'secret' => 'grafana-smtp',
-                'static' => [
-                    'GF_SMTP_ENABLED' => 'true',
-                ],
-                'vars' => [
-                    'host' => 'GF_SMTP_HOST',
-                    'user' => 'GF_SMTP_USER',
-                    'password' => 'GF_SMTP_PASSWORD',
-                    'from' => 'GF_SMTP_FROM_ADDRESS',
-                ],
-            ],
-            default => null,
-        };
+        $vendor = $this->vendor($engine);
+        if ($vendor instanceof HasSmtpWiring) {
+            $schema = $vendor->smtpEnv($instance);
+
+            return $schema === null ? null : ['namespace' => $this->namespace()] + $schema;
+        }
+
+        return null;
     }
 
     /**
@@ -766,10 +569,7 @@ enum ClusterTool: string
      */
     public function hasMeetWire(): bool
     {
-        return match ($this) {
-            self::CHAT => true,
-            default => false,
-        };
+        return $this->vendor() instanceof HasMeetBridge;
     }
 
     public function hasSsoWire(): bool
@@ -886,10 +686,7 @@ enum ClusterTool: string
      */
     public function usesForwardAuth(): bool
     {
-        return match ($this) {
-            self::RECORD => true,
-            default => false,
-        };
+        return $this->vendor() instanceof UsesForwardAuth;
     }
 
     /**
@@ -939,7 +736,7 @@ enum ClusterTool: string
      */
     public function configuresViaConfigFile(?string $engine = null): bool
     {
-        return $this === self::CHAT && ($engine ?? $this->defaultEngine()) === 'matrix';
+        return $this->vendor($engine) instanceof ConfiguresViaConfigFile;
     }
 
     /**
@@ -953,12 +750,18 @@ enum ClusterTool: string
      */
     public function ssoLicenseCaveat(?string $engine = null): ?string
     {
-        return match (true) {
-            $this === self::DATA && ($engine ?? $this->defaultEngine()) !== 'pocketbase' => 'Directus v12 moved SSO/OIDC out of its free Core tier (MSCL license, June 2026) — a paid Team/Enterprise '
-                .'license (or their Open Innovation Grant) is required even self-hosted. This wiring is ready to go the '
-                .'moment you have one; login will not work until then.',
-            default => null,
-        };
+        if ($this !== self::DATA) {
+            return null;
+        }
+
+        // Unlike vendor()'s tryFrom()-then-Directus-fallback (which treats
+        // an unspecified engine as "not pocketbase"), a null $engine here
+        // means "caller didn't resolve one" and defaults to DATA's actual
+        // default engine (pocketbase) — preserving the original's
+        // `$engine ?? $this->defaultEngine()` semantics exactly.
+        $vendor = DataTool::tryFrom($engine ?? $this->defaultEngine() ?? '') ?? DataTool::DIRECTUS;
+
+        return $vendor instanceof HasSsoLicenseCaveat ? $vendor->ssoLicenseCaveat() : null;
     }
 
     /**
@@ -969,10 +772,7 @@ enum ClusterTool: string
      */
     public function usesCliOidc(): bool
     {
-        return match ($this) {
-            self::GIT => true,
-            default => false,
-        };
+        return $this->vendor() instanceof UsesCliOidc;
     }
 
     /**
@@ -988,404 +788,18 @@ enum ClusterTool: string
      * Field names verified against each project's own docs, not a live
      * instance — treat as one notch less certain than smtpEnv().
      *
-     * @return array{deployment: string, namespace: string, secret: string, static?: array<string, string>, vars: array<string, string>, redirect_path: string, public_client?: bool}|null
+     * @return array{deployment: string, namespace: string, secret: string, static?: array<string, string>, vars: array<string, string>, redirect_path: string, public_client?: bool, also_patch?: list<string>}|null
      */
     public function oidcEnv(?string $engine = null, ?string $instance = null): ?array
     {
-        return match ($this) {
-            self::MONITOR => [
-                'deployment' => 'grafana',
-                'namespace' => $this->namespace(),
-                'secret' => 'grafana-oidc',
-                'static' => [
-                    'GF_AUTH_GENERIC_OAUTH_ENABLED' => 'true',
-                    'GF_AUTH_GENERIC_OAUTH_NAME' => 'Login with SSO',
-                    'GF_AUTH_GENERIC_OAUTH_SCOPES' => 'openid profile email',
-                    'GF_AUTH_GENERIC_OAUTH_USE_PKCE' => 'true',
-                    // Gate login itself, not just the assigned role — least-
-                    // privilege default (per audit: Grafana has no non-admin
-                    // "gate at the door" of its own, unlike OpenBao's
-                    // bound_claims). larakube_roles is the flattened claim
-                    // ensureRbacGating()/zitadelEnsureRbacAction() maintain;
-                    // Zitadel's native roles claim is a nested object
-                    // Grafana's role_attribute_path (JMESPath) can't read.
-                    // Priority order matters — first true branch wins, so
-                    // admin is checked before editor before user. The ''
-                    // fallback + STRICT deny-on-no-match was verified live
-                    // 2026-07-30 (real login, no role → "IdP did not return
-                    // a role attribute", not a silent Viewer fallback).
-                    // 'Admin' here is Grafana's ORG admin (can manage this
-                    // org's users/datasources/plugins), not the separate
-                    // server-wide GrafanaAdmin superadmin flag — that one's
-                    // gated by ALLOW_ASSIGN_GRAFANA_ADMIN below, which stays
-                    // false: nothing here should ever request it, since a
-                    // single-org deployment has no cross-org admin need.
-                    'GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH' => "contains(larakube_roles[*], 'grafana-admin') && 'Admin' || contains(larakube_roles[*], 'grafana-editor') && 'Editor' || contains(larakube_roles[*], 'grafana-user') && 'Viewer' || ''",
-                    'GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT' => 'true',
-                    'GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN' => 'false',
-                ],
-                'sso_only_vars' => [
-                    'GF_AUTH_DISABLE_LOGIN_FORM' => 'true',
-                    'GF_USERS_ALLOW_SIGN_UP' => 'false',
-                ],
-                'vars' => [
-                    'client_id' => 'GF_AUTH_GENERIC_OAUTH_CLIENT_ID',
-                    'client_secret' => 'GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET',
-                    'auth_url' => 'GF_AUTH_GENERIC_OAUTH_AUTH_URL',
-                    'token_url' => 'GF_AUTH_GENERIC_OAUTH_TOKEN_URL',
-                    'userinfo_url' => 'GF_AUTH_GENERIC_OAUTH_API_URL',
-                ],
-                // Grafana derives its own callback from GF_SERVER_ROOT_URL — this
-                // is the fixed suffix sso:wire appends to the tool's own host when
-                // registering the redirect URI with Zitadel.
-                'redirect_path' => '/login/generic_oauth',
-            ],
-            self::PASSWORDS => [
-                'deployment' => 'vaultwarden',
-                'namespace' => $this->namespace(),
-                'secret' => 'vaultwarden-oidc',
-                'static' => [
-                    'SSO_ENABLED' => 'true',
-                    'SSO_PKCE' => 'true',
-                    'SSO_SCOPES' => 'email profile',
-                    'SSO_SIGNUPS_MATCH_EMAIL' => 'true',
-                    // Zitadel includes extra audiences (project id, etc.) in the
-                    // id_token beyond the client_id. Vaultwarden trusts only the
-                    // client_id by default and rejects the rest ("not a trusted
-                    // audience"). Trust any Zitadel numeric id — issuer + token
-                    // signature are still validated, so this is safe.
-                    'SSO_AUDIENCE_TRUSTED' => '^[0-9]+$',
-                ],
-                'sso_only_vars' => [
-                    'SIGNUPS_ALLOWED' => 'false',
-                ],
-                'vars' => [
-                    'client_id' => 'SSO_CLIENT_ID',
-                    'client_secret' => 'SSO_CLIENT_SECRET',
-                    // Vaultwarden's SSO_AUTHORITY is the OIDC issuer (its own
-                    // .well-known/openid-configuration is discovered from this),
-                    // not a raw host — Zitadel's issuer IS its external host.
-                    'issuer' => 'SSO_AUTHORITY',
-                ],
-                'redirect_path' => '/identity/connect/oidc-signin',
-            ],
-            self::GIT => [
-                // CLI-wired (usesCliOidc): Forgejo keeps login sources in its DB,
-                // so there are no env `vars` to set — sso:wire execs
-                // `forgejo admin auth add-oauth` instead. The callback path is
-                // /user/oauth2/<source name>/callback, and sso:wire names the
-                // source `zitadel`.
-                'deployment' => 'forgejo',
-                'namespace' => $this->namespace(),
-                'secret' => 'forgejo-oidc',
-                'static' => [],
-                'vars' => [],
-                'redirect_path' => '/user/oauth2/zitadel/callback',
-            ],
-            self::NOTES => [
-                'deployment' => 'notes-outline',
-                'namespace' => $this->namespace(),
-                'secret' => 'notes-outline-oidc',
-                'static' => [
-                    'FORCE_HTTPS' => 'true',
-                ],
-                'vars' => [
-                    'client_id' => 'OIDC_CLIENT_ID',
-                    'client_secret' => 'OIDC_CLIENT_SECRET',
-                    'auth_url' => 'OIDC_AUTH_URI',
-                    'token_url' => 'OIDC_TOKEN_URI',
-                    'userinfo_url' => 'OIDC_USERINFO_URI',
-                ],
-                'redirect_path' => '/auth/oidc.callback',
-            ],
-            self::DRIVE => [
-                'deployment' => 'drive-ocis',
-                'namespace' => $this->namespace(),
-                'secret' => 'drive-ocis-oidc',
-                // oCIS web is a browser SPA doing the full authorize+token
-                // exchange in-page with PKCE — the served config.json's
-                // openIdConnect block carries NO client_secret (verified live
-                // 2026-07-31). Registering it as a confidential client like
-                // Grafana/Vaultwarden makes Zitadel demand client auth at the
-                // token endpoint the browser can't provide (invalid_client on
-                // every login); a public client is what oCIS's own web client
-                // assumes. sso:wire must then not push a client secret either.
-                'public_client' => true,
-                'static' => [
-                    'PROXY_AUTOPROVISION_ACCOUNTS' => 'true',
-                    // Resolve SSO users by their email claim. oCIS looks the
-                    // value up against the attribute named by PROXY_USER_CS3_CLAIM
-                    // (default "username"), so leaving that at its default would
-                    // query username == <email> and never match an autoprovisioned
-                    // account (which is minted with preferred_username as its
-                    // username). "mail" makes resolution self-consistent.
-                    'PROXY_USER_OIDC_CLAIM' => 'email',
-                    'PROXY_USER_CS3_CLAIM' => 'mail',
-                    // OIDC role assignment. This used to be "default": the oidc
-                    // driver locks a user out if their token carries no role claim
-                    // matching the built-in mapping (ocisAdmin/ocisSpaceAdmin/
-                    // ocisUser/ocisGuest), and Zitadel's native roles claim is a
-                    // nested object, never a flat list, so the Keycloak-style oidc
-                    // example can't be copied verbatim. That gap is closed on the
-                    // Zitadel side instead: sso:wire installs an org-wide Action
-                    // ("flattenOcisRoles") that ALWAYS emits a flat top-level
-                    // `ocisRoles` claim — ["ocisAdmin"] / ["ocisSpaceAdmin"] when
-                    // the user holds the drive ocisAdmin/ocisSpaceAdmin role on
-                    // the shared project (admin outranks spaceadmin), otherwise
-                    // ["ocisUser"]. That no-match guarantee is what makes
-                    // driver=oidc safe here: oCIS re-asserts the role from the
-                    // claim on EVERY login (dynamic promote/demote — a manual
-                    // admin-settings role edit would be overwritten), and a user
-                    // with zero grants still lands on ocisUser instead of being
-                    // denied. The claim maps through oCIS's built-in default
-                    // mapping (ocisAdmin->admin, ocisSpaceAdmin->spaceadmin,
-                    // ocisUser->user), so no role-mapping yaml is needed.
-                    'PROXY_ROLE_ASSIGNMENT_DRIVER' => 'oidc',
-                    'PROXY_ROLE_ASSIGNMENT_OIDC_CLAIM' => 'ocisRoles',
-                    // Desktop/iOS/Android clients discover the OIDC provider at
-                    // drive.<host>/.well-known/openid-configuration; without this
-                    // rewrite they'd hit oCIS's builtin discovery instead of
-                    // Zitadel's. Matches the canonical Keycloak external-IDP
-                    // deployment example.
-                    'PROXY_OIDC_REWRITE_WELLKNOWN' => 'true',
-                    // Zitadel issues opaque (non-JWT) access tokens by default,
-                    // so oCIS's default jwt verify rejects every API call with
-                    // "token contains an invalid number of segments" -> 401 ->
-                    // oCIS web's "Not logged in" error page (verified live
-                    // 2026-08-01 in the proxy log after a successful Zitadel
-                    // login). oCIS 8.0.6's PROXY_OIDC_ACCESS_TOKEN_VERIFY_METHOD
-                    // accepts only "none" or "jwt"; "none" validates the access
-                    // token against the IdP's userinfo endpoint server-side
-                    // (Zitadel /oidc/v1/userinfo), which is the supported method
-                    // for opaque tokens. PROXY_OIDC_SKIP_USER_INFO must stay
-                    // unset: it is incompatible with "none".
-                    'PROXY_OIDC_ACCESS_TOKEN_VERIFY_METHOD' => 'none',
-                ],
-                'vars' => [
-                    'client_id' => 'WEB_OIDC_CLIENT_ID',
-                    'client_secret' => 'OCIS_OIDC_CLIENT_SECRET',
-                    'issuer' => 'OCIS_OIDC_ISSUER',
-                ],
-                // oCIS web's real OIDC callback page, not the tool root. The
-                // root used to be registered here, which made Zitadel 400 the
-                // authorize request with "redirect_uri not allowed" (verified
-                // live: /oauth/v2/authorize 400s for /oidc-callback.html but
-                // 302s for /). OwnCloud web also renews tokens via its own
-                // silent-redirect page — see oidcRedirectUris().
-                'redirect_path' => '/oidc-callback.html',
-            ],
-            self::SIGN => [
-                'deployment' => 'sign-documenso',
-                'namespace' => $this->namespace(),
-                'secret' => 'sign-documenso-oidc',
-                'static' => [
-                    'NEXT_PUBLIC_DISABLE_OIDC_SIGNIN' => 'false',
-                    // v2 has no NEXT_PRIVATE_OIDC_ALLOW_SIGNUP; the real control
-                    // is NEXT_PUBLIC_DISABLE_OIDC_SIGNUP (inverted). false =
-                    // auto-provision users on first SSO login.
-                    'NEXT_PUBLIC_DISABLE_OIDC_SIGNUP' => 'false',
-                ],
-                'sso_only_vars' => [
-                    'NEXT_PUBLIC_DISABLE_EMAIL_PASS_SIGNIN' => 'true',
-                ],
-                'vars' => [
-                    'client_id' => 'NEXT_PRIVATE_OIDC_CLIENT_ID',
-                    'client_secret' => 'NEXT_PRIVATE_OIDC_CLIENT_SECRET',
-                    // Documenso feeds this to NextAuth's `wellKnown`, which wants
-                    // the full discovery URL, not the issuer base.
-                    'well_known' => 'NEXT_PRIVATE_OIDC_WELL_KNOWN',
-                ],
-                'redirect_path' => '/api/auth/callback/oidc',
-            ],
-            self::DESIGN => [
-                'deployment' => 'design-penpot-backend',
-                'frontend_deployment' => 'design-penpot-frontend',
-                'namespace' => $this->namespace(),
-                'secret' => 'design-penpot-oidc',
-                'redirect_path' => '/api/auth/oidc/callback',
-                'static' => [
-                    // PENPOT_FLAGS is deliberately absent — SsoWireCommand::applyToolEnv
-                    // reconciles it via ReconcilesPenpotFlags instead of the generic
-                    // static-var path. See docs/decisions/0013-design-init-idempotent-flags.md.
-                    'PENPOT_OIDC_NAME' => 'Login with SSO',
-                ],
-                'vars' => [
-                    'client_id' => 'PENPOT_OIDC_CLIENT_ID',
-                    'client_secret' => 'PENPOT_OIDC_CLIENT_SECRET',
-                    'auth_url' => 'PENPOT_OIDC_AUTH_URI',
-                    'token_url' => 'PENPOT_OIDC_TOKEN_URI',
-                    'userinfo_url' => 'PENPOT_OIDC_USERINFO_URI',
-                    'issuer' => 'PENPOT_OIDC_BASE_URI',
-                ],
-            ],
-            self::TASKS => [
-                'deployment' => 'tasks-planka',
-                'namespace' => $this->namespace(),
-                'secret' => 'tasks-planka-oidc',
-                'static' => [
-                    'OIDC_NAME' => 'Login with SSO',
-                ],
-                'sso_only_vars' => [
-                    'ALLOW_REGISTRATION' => 'false',
-                ],
-                'vars' => [
-                    'client_id' => 'OIDC_CLIENT_ID',
-                    'client_secret' => 'OIDC_CLIENT_SECRET',
-                    'issuer' => 'OIDC_ISSUER',
-                ],
-                'redirect_path' => '/oidc-callback',
-            ],
-            self::LINK => [
-                // Kutt has native OIDC support (server/passport.js) driven by
-                // plain env vars — OIDC_ENABLED plus the standard trio. The
-                // manifest already mounts the link-kutt-oidc secret, so this
-                // case is what makes `sso:wire link` work end-to-end. Verified
-                // against thedevs-network/kutt docs: redirect path is
-                // /login/oidc, and OIDC_SCOPE defaults to "openid profile
-                // email" (matches Zitadel's default scopes).
-                'deployment' => 'link-kutt',
-                'namespace' => $this->namespace(),
-                'secret' => 'link-kutt-oidc',
-                'static' => [
-                    'OIDC_ENABLED' => 'true',
-                ],
-                'vars' => [
-                    'client_id' => 'OIDC_CLIENT_ID',
-                    'client_secret' => 'OIDC_CLIENT_SECRET',
-                    'issuer' => 'OIDC_ISSUER',
-                ],
-                'redirect_path' => '/login/oidc',
-            ],
-            // SendRec has NO generic OIDC provider of its own — it hardcodes
-            // Google/Microsoft/GitHub (GOOGLE_CLIENT_ID, MICROSOFT_CLIENT_ID,
-            // GITHUB_SSO_CLIENT_ID; callback /api/auth/sso/{provider}/callback),
-            // so Zitadel can never be an in-app login here. That is why it is a
-            // FORWARDAUTH tool (ADR 0006): sso:wire gates it at Traefik via the
-            // shared SSO proxy and deliberately sets nothing on the pod. The
-            // redirect_path below is the PROXY's callback on auth.<domain>, not
-            // a SendRec route, and the vars are unused on this path — do not
-            // "fix" them to match SendRec, and do not expect an SSO button on
-            // its login screen: the gate authorises access, the app still keeps
-            // its own accounts.
-            self::RECORD => [
-                'deployment' => 'record-sendrec',
-                'namespace' => $this->namespace(),
-                'secret' => 'record-sendrec-oidc',
-                'redirect_path' => '/oauth2/callback',
-            ],
-            self::CHAT => [
-                'deployment' => 'chat-synapse',
-                'namespace' => $this->namespace(),
-                'secret' => 'chat-oidc',
-                'static' => [
-                    'SYNAPSE_OIDC_ENABLED' => 'true',
-                ],
-                'vars' => [
-                    'client_id' => 'SYNAPSE_OIDC_CLIENT_ID',
-                    'client_secret' => 'SYNAPSE_OIDC_CLIENT_SECRET',
-                    'issuer' => 'SYNAPSE_OIDC_ISSUER',
-                ],
-                'redirect_path' => '/_synapse/client/oidc/callback',
-            ],
-            self::SHEETS => [
-                'deployment' => 'sheet-teable',
-                'namespace' => $this->namespace(),
-                'secret' => 'sheet-teable-oidc',
-                'static' => [
-                    'SOCIAL_AUTH_PROVIDERS' => 'oidc',
-                    // Without the email scope the IdP returns no email claim,
-                    // Teable's strategy reads emails?.[0].value as undefined and
-                    // every login dies at the callback with a 401 "No email
-                    // provided from OIDC" — which looks like a Zitadel problem
-                    // but is this variable missing. passport adds `openid`
-                    // itself, so the two below are what Teable's docs specify.
-                    'BACKEND_OIDC_OTHER' => '{"scope":["email","profile"]}',
-                ],
-                'vars' => [
-                    'client_id' => 'BACKEND_OIDC_CLIENT_ID',
-                    'client_secret' => 'BACKEND_OIDC_CLIENT_SECRET',
-                    'issuer' => 'BACKEND_OIDC_ISSUER',
-                    'auth_url' => 'BACKEND_OIDC_AUTHORIZATION_URL',
-                    'token_url' => 'BACKEND_OIDC_TOKEN_URL',
-                    'userinfo_url' => 'BACKEND_OIDC_USER_INFO_URL',
-                    'callback_url' => 'BACKEND_OIDC_CALLBACK_URL',
-                ],
-                // Verified against the running container's route map and
-                // Teable's OIDC docs: auth mounts at /api/auth and NOTHING in
-                // Teable sits under /api/v1. A wrong path here surfaces as a
-                // redirect_uri error that reads like a Zitadel misconfiguration.
-                'redirect_path' => '/api/auth/oidc/callback',
-            ],
-            self::SECRETS => [
-                'deployment' => 'openbao-backend',
-                'namespace' => $this->namespace(),
-                'secret' => 'openbao-oidc',
-                'static' => [],
-                'vars' => [],
-                'redirect_path' => '/v1/auth/oidc/oidc/callback',
-            ],
-            self::DATA => $engine === 'pocketbase' ? [
-                'deployment' => $this->deploymentName($instance, 'pocketbase'),
-                'namespace' => $this->namespace(),
-                'secret' => $instance && $instance !== 'main' ? "data-oidc-{$instance}" : 'data-oidc',
-                'static' => [
-                    'POCKETBASE_OIDC_PROVIDERS' => 'zitadel',
-                ],
-                'vars' => [
-                    'client_id' => 'POCKETBASE_OIDC_CLIENT_ID',
-                    'client_secret' => 'POCKETBASE_OIDC_CLIENT_SECRET',
-                    'issuer' => 'POCKETBASE_OIDC_ISSUER',
-                ],
-                'redirect_path' => '/api/oauth2-callback',
-            ] : [
-                'deployment' => 'data-directus',
-                'namespace' => $this->namespace(),
-                'secret' => 'data-oidc',
-                'static' => [
-                    'AUTH_PROVIDERS' => 'local,zitadel',
-                    'AUTH_ZITADEL_DRIVER' => 'openid',
-                    'AUTH_ZITADEL_LABEL' => 'Login with SSO',
-                    'AUTH_ZITADEL_SCOPE' => 'openid email profile',
-                    'AUTH_ZITADEL_IDENTIFIER_KEY' => 'email',
-                    'AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION' => 'true',
-                ],
-                'sso_only_vars' => [
-                    'AUTH_PROVIDERS' => 'zitadel',
-                    'AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION' => 'false',
-                ],
-                'vars' => [
-                    'client_id' => 'AUTH_ZITADEL_CLIENT_ID',
-                    'client_secret' => 'AUTH_ZITADEL_CLIENT_SECRET',
-                    'issuer' => 'AUTH_ZITADEL_ISSUER',
-                    'auth_url' => 'AUTH_ZITADEL_AUTHORIZE_URL',
-                    'token_url' => 'AUTH_ZITADEL_ACCESS_URL',
-                    'userinfo_url' => 'AUTH_ZITADEL_PROFILE_URL',
-                ],
-                'redirect_path' => '/auth/login/zitadel/callback',
-            ],
-            self::DASHBOARD => [
-                'deployment' => 'dashboard-headlamp',
-                'namespace' => $this->namespace(),
-                'secret' => 'dashboard-headlamp-oidc',
-                // Headlamp binds flags via koanf's env provider, which strips a
-                // HEADLAMP_CONFIG_ prefix before matching — e.g. -oidc-client-id
-                // reads HEADLAMP_CONFIG_OIDC_CLIENT_ID, not HEADLAMP_OIDC_CLIENT_ID.
-                // The unprefixed names silently no-op: Headlamp boots fine and
-                // just falls back to its plain token-paste login, with no error
-                // anywhere. Confirmed live 2026-08-06 by inspecting the binary's
-                // koanf struct tags and its HEADLAMP_CONFIG_ literal.
-                'static' => [
-                    'HEADLAMP_CONFIG_OIDC_SCOPES' => 'openid profile email groups',
-                ],
-                'vars' => [
-                    'client_id' => 'HEADLAMP_CONFIG_OIDC_CLIENT_ID',
-                    'client_secret' => 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET',
-                    'issuer' => 'HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL',
-                ],
-                'redirect_path' => '/oidc-callback',
-            ],
-            default => null,
-        };
+        $vendor = $this->vendor($engine);
+        if ($vendor instanceof HasOidcWiring) {
+            $schema = $vendor->oidcEnv($instance);
+
+            return $schema === null ? null : ['namespace' => $this->namespace(), 'also_patch' => $this->alsoPatchDeployments($instance, $engine)] + $schema;
+        }
+
+        return null;
     }
 
     /**
@@ -1452,77 +866,102 @@ enum ClusterTool: string
      *
      * @return array{name: string, namespace: string}|null
      */
-    public function vpnMiddlewareTarget(): ?array
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        return match ($this) {
-            self::FLOW => ['name' => 'flow-vpn-only', 'namespace' => $this->namespace()],
-            self::SHEETS => ['name' => 'sheet-vpn-only', 'namespace' => $this->namespace()],
-            self::PASSWORDS => ['name' => 'vault-vpn-only', 'namespace' => $this->namespace()],
-            self::MONITOR => ['name' => 'grafana-vpn-only', 'namespace' => $this->namespace()],
-            self::SECRETS => ['name' => 'openbao-vpn-only', 'namespace' => $this->namespace()],
-            self::ERRORS => ['name' => 'glitchtip-web-vpn-only', 'namespace' => $this->namespace()],
-            self::UPTIME => ['name' => 'uptime-kuma-vpn-only', 'namespace' => $this->namespace()],
-            self::GIT => ['name' => 'forgejo-vpn-only', 'namespace' => $this->namespace()],
-            self::INSIGHTS => ['name' => 'insights-vpn-only', 'namespace' => $this->namespace()],
-            self::MAIL => ['name' => 'mail-vpn-only', 'namespace' => $this->namespace()],
-            self::DESK => ['name' => 'desk-vpn-only', 'namespace' => $this->namespace()],
-            self::CHAT => ['name' => 'chat-vpn-only', 'namespace' => $this->namespace()],
-            self::SSO => ['name' => 'sso-vpn-only', 'namespace' => $this->namespace()],
-            self::WEBMAIL => ['name' => 'webmail-vpn-only', 'namespace' => $this->namespace()],
-            self::NOTES => ['name' => 'notes-vpn-only', 'namespace' => $this->namespace()],
-            self::DRIVE => ['name' => 'drive-vpn-only', 'namespace' => $this->namespace()],
-            self::ANALYTICS => ['name' => 'analytics-vpn-only', 'namespace' => $this->namespace()],
-            self::TASKS => ['name' => 'tasks-vpn-only', 'namespace' => $this->namespace()],
+        $target = $this->vpnMiddlewareTargetBase();
+        if ($target === null || $instance === null || $instance === '' || $instance === 'main') {
+            return $target;
+        }
 
-            self::SIGN => ['name' => 'sign-vpn-only', 'namespace' => $this->namespace()],
-            self::SUPPORT => ['name' => 'support-vpn-only', 'namespace' => $this->namespace()],
-            self::LINK => ['name' => 'link-vpn-only', 'namespace' => $this->namespace()],
-            self::CRM => ['name' => 'crm-vpn-only', 'namespace' => $this->namespace()],
-            self::RECORD => ['name' => 'record-vpn-only', 'namespace' => $this->namespace()],
-            self::DESIGN => ['name' => 'design-vpn-only', 'namespace' => $this->namespace()],
-            self::DASHBOARD => ['name' => 'dashboard-vpn-only', 'namespace' => $this->namespace()],
-            default => null,
-        };
+        $target['name'] = "{$target['name']}-{$instance}";
+
+        return $target;
     }
 
     /**
-     * The canonical Kubernetes Deployment name for this tool.
+     * The canonical Kubernetes Deployment name for this tool's PRIMARY
+     * component. Delegates to components() so compound tools (CHAT, GIT,
+     * DESIGN) and single-Deployment tools share one derivation.
      */
     public function deploymentName(?string $instance = null, ?string $engine = null): string
     {
-        $base = match ($this) {
-            self::ANALYTICS => 'analytics-umami',
-            self::CHAT => 'chat-synapse',
-            self::CRM => 'crm-twenty',
-            self::DATA => $engine === 'pocketbase' ? 'data-pocketbase' : 'data-directus',
-            self::DESK => 'desk-freescout',
-            self::DRIVE => 'drive-ocis',
-            self::ERRORS => 'glitchtip-web',
-            self::FLOW => 'flow-n8n',
-            self::GIT => 'forgejo',
-            self::INSIGHTS => 'insights-metabase',
-            self::LINK => 'link-kutt',
-            self::MAIL => 'stalwart',
-            self::MONITOR => 'grafana',
-            self::NOTES => 'notes-outline',
-            self::PASSWORDS => 'vaultwarden',
-            self::RECORD => 'record-sendrec',
-            self::SECRETS => 'openbao-backend',
-            self::SHEETS => 'sheet-teable',
-            self::SIGN => 'sign-documenso',
-            self::SSO => 'sso-zitadel',
-            self::SUPPORT => 'support-chatwoot',
-            self::TASKS => 'tasks-planka',
-            self::UPTIME => 'uptime-kuma',
-            self::VPN => 'netbird-management',
-            self::WEBMAIL => 'webmail-bulwark',
-            self::DNS => 'external-dns',
-            self::DASHBOARD => 'dashboard-headlamp',
-            self::MEET => 'meet-livekit',
-            self::DESIGN => 'design-penpot-backend',
-        };
+        return $this->primaryComponent($instance, $engine)->deployment;
+    }
 
-        return ($instance === null || $instance === '' || $instance === 'main') ? $base : "{$base}-{$instance}";
+    /**
+     * This tool's sub-deployments, fully resolved for the given
+     * instance/engine — exactly one PRIMARY, zero or more INGRESS/WORKER/
+     * DATABASE. ~26 of 29 tools return exactly one PRIMARY component; CHAT,
+     * GIT, and DESIGN return several, built from the same deployment names
+     * their Blade manifests and (formerly hand-copied) teardown() resource
+     * lists already used. `backupVolume`/`backupPath` are populated only
+     * for the components InteractsWithBackup's hardcoded allow-list already
+     * covers today (SECRETS, GIT, DRIVE, PASSWORDS, MAIL, CHAT's synapse
+     * signing key) — every other component defaults to `backupVolume:
+     * false` until a future backup-discovery pass audits it, so switching
+     * backup discovery over to this representation cannot silently start
+     * (or stop) backing up something no one has verified yet.
+     *
+     * @return list<ClusterToolComponentData>
+     */
+    public function components(?string $instance = null, ?string $engine = null): array
+    {
+        $vendor = $this->vendor($engine);
+        if ($vendor instanceof HasWorkloadComponents) {
+            return $vendor->components($instance, $engine);
+        }
+
+        if (! $vendor instanceof HasDeploymentBaseName) {
+            throw new LogicException("{$this->value} vendor implements neither HasWorkloadComponents nor HasDeploymentBaseName.");
+        }
+
+        $base = $vendor->baseDeploymentName();
+        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+
+        return [
+            new ClusterToolComponentData(key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name($base)),
+        ];
+    }
+
+    /** The tool's PRIMARY component — the app-logic deployment every non-compound-aware call site already assumed was the only one. */
+    public function primaryComponent(?string $instance = null, ?string $engine = null): ClusterToolComponentData
+    {
+        foreach ($this->components($instance, $engine) as $component) {
+            if ($component->role === ClusterToolComponentRole::PRIMARY) {
+                return $component;
+            }
+        }
+
+        throw new LogicException("{$this->value} declares no PRIMARY component — every tool must have exactly one.");
+    }
+
+    /** A specific named component, or null if this tool has none by that key. */
+    public function componentByKey(string $key, ?string $instance = null, ?string $engine = null): ?ClusterToolComponentData
+    {
+        foreach ($this->components($instance, $engine) as $component) {
+            if ($component->key === $key) {
+                return $component;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Deployments that must also be patched with the PRIMARY component's
+     * oidc/smtp secret — the general form of Penpot's frontend needing the
+     * same OIDC client as its backend, so a future compound tool with a
+     * secondary component needing the primary's credentials needs zero new
+     * wire-command code, just a `sharesPrimarySecret: true` component.
+     *
+     * @return list<string>
+     */
+    public function alsoPatchDeployments(?string $instance = null, ?string $engine = null): array
+    {
+        return array_values(array_map(
+            fn (ClusterToolComponentData $component) => $component->deployment,
+            array_filter($this->components($instance, $engine), fn (ClusterToolComponentData $component) => $component->sharesPrimarySecret),
+        ));
     }
 
     /**
@@ -1561,43 +1000,20 @@ enum ClusterTool: string
      */
     public function openbaoSyncConfig(?string $instance = null): ?array
     {
-        $config = match ($this) {
-            self::MAIL => [
-                'namespace' => $this->namespace(),
-                'secret' => 'stalwart',
-                'keys' => [
-                    'STALWART_STORE_PASSWORD',
-                    'STALWART_S3_KEY_ID',
-                    'STALWART_S3_SECRET_KEY',
-                    'STALWART_MAIL_PASSWORD',
-                    'STALWART_MAIL_SENDER',
-                    'STALWART_CLOUDFLARE_TOKEN',
-                ],
-            ],
-            self::GIT => [
-                'namespace' => $this->namespace(),
-                'secret' => 'forgejo',
-                'keys' => [
-                    'FORGEJO_DB_PASSWORD',
-                ],
-            ],
-            self::PASSWORDS => [
-                'namespace' => $this->namespace(),
-                'secret' => 'vaultwarden-secrets',
-                'keys' => [
-                    'VAULTWARDEN_DATABASE_URL',
-                ],
-            ],
-            default => null,
-        };
+        $vendor = $this->vendor();
+        if ($vendor instanceof HasOpenbaoSync) {
+            $config = ['namespace' => $this->namespace()] + $vendor->openbaoSyncConfig();
 
-        if ($config === null || $instance === null || $instance === '' || $instance === 'main') {
+            if ($instance === null || $instance === '' || $instance === 'main') {
+                return $config;
+            }
+
+            $config['secret'] = "{$config['secret']}-{$instance}";
+
             return $config;
         }
 
-        $config['secret'] = "{$config['secret']}-{$instance}";
-
-        return $config;
+        return null;
     }
 
     /**
@@ -1611,34 +1027,30 @@ enum ClusterTool: string
      */
     public function dbSecretRef(?string $instance = null, ?string $engine = null): ?array
     {
-        if ($this === self::DATA && $engine === 'pocketbase') {
-            return null;
-        }
+        $vendor = $this->vendor($engine);
+        if ($vendor instanceof HasDbSecretRef) {
+            $ref = $vendor->dbSecretRef();
+            if ($ref === null) {
+                return null;
+            }
 
-        $ref = match ($this) {
-            self::DATA => ['namespace' => $this->namespace(), 'secret' => 'data-secrets', 'key' => 'db-password'],
-            self::SIGN => ['namespace' => $this->namespace(), 'secret' => 'sign-documenso-secrets', 'key' => 'db-password'],
-            self::RECORD => ['namespace' => $this->namespace(), 'secret' => 'record-sendrec-secrets', 'key' => 'db-password'],
-            self::SSO => ['namespace' => $this->namespace(), 'secret' => 'sso-secrets', 'key' => 'db-password'],
-            self::LINK => ['namespace' => $this->namespace(), 'secret' => 'link-kutt-secrets', 'key' => 'db-password'],
-            self::DESIGN => ['namespace' => $this->namespace(), 'secret' => 'design-penpot-db', 'key' => 'password'],
-            default => null,
-        };
+            $ref = ['namespace' => $this->namespace()] + $ref;
+            if ($instance === null || $instance === '' || $instance === 'main') {
+                return $ref;
+            }
 
-        if ($ref === null || $instance === null || $instance === '' || $instance === 'main') {
+            $ref['secret'] = "{$ref['secret']}-{$instance}";
+
             return $ref;
         }
 
-        $ref['secret'] = "{$ref['secret']}-{$instance}";
-
-        return $ref;
+        return null;
     }
 
     /** @return list<string> */
-    /** @return list<string> */
-    public function commonsBuckets(?string $instance = null): array
+    public function commonsBuckets(?string $instance = null, ?string $engine = null): array
     {
-        $list = $this->commonsBucketList();
+        $list = $this->commonsBucketList($engine);
         if ($instance === null || $instance === '' || $instance === 'main') {
             return $list;
         }
@@ -1676,51 +1088,84 @@ enum ClusterTool: string
         return null;
     }
 
-    /** @return list<string> */
-    private function commonsDatabaseList(?string $engine = null): array
+    /**
+     * Every engine slug worth checking components() against — every real
+     * engine for a multi-engine tool, or [null] (the single "no engine"
+     * case) for everything else. Shared by forDeployment()'s exhaustive scan.
+     *
+     * @return list<string|null>
+     */
+    private function engineCandidates(): array
+    {
+        $engines = array_keys($this->engines());
+
+        return $engines !== [] ? $engines : [null];
+    }
+
+    /** @return array{name: string, namespace: string}|null */
+    private function vpnMiddlewareTargetBase(): ?array
     {
         return match ($this) {
-            self::ANALYTICS => ['umami'],
-            self::CHAT => ['chat_matrix'],
-            self::CRM => ['crm_twenty'],
-            self::DATA => $engine === 'pocketbase' ? [] : ['data_directus'],
-            self::DESK => ['freescout'],
-            self::ERRORS => ['glitchtip'],
-            self::FLOW => ['n8n', 'windmill'],
-            self::GIT => ['forgejo'],
-            self::INSIGHTS => ['metabase'],
-            self::LINK => ['link_kutt'],
-            self::NOTES => ['outline'],
-            self::MAIL => ['stalwart'],
-            self::PASSWORDS => ['vaultwarden'],
-            self::RECORD => ['record_sendrec'],
-            self::SECRETS => [],
-            self::SHEETS => ['teable'],
-            self::SIGN => ['sign_documenso'],
-            self::SSO => ['zitadel'],
-            self::SUPPORT => ['support_chatwoot'],
-            self::TASKS => ['tasks_planka'],
-            self::DESIGN => ['penpot'],
-            default => [],
+            self::FLOW => ['name' => 'flow-vpn-only', 'namespace' => $this->namespace()],
+            self::SHEETS => ['name' => 'sheet-vpn-only', 'namespace' => $this->namespace()],
+            self::PASSWORDS => ['name' => 'vault-vpn-only', 'namespace' => $this->namespace()],
+            self::MONITOR => ['name' => 'grafana-vpn-only', 'namespace' => $this->namespace()],
+            self::SECRETS => ['name' => 'openbao-vpn-only', 'namespace' => $this->namespace()],
+            self::ERRORS => ['name' => 'glitchtip-web-vpn-only', 'namespace' => $this->namespace()],
+            self::UPTIME => ['name' => 'uptime-kuma-vpn-only', 'namespace' => $this->namespace()],
+            self::GIT => ['name' => 'forgejo-vpn-only', 'namespace' => $this->namespace()],
+            self::INSIGHTS => ['name' => 'insights-vpn-only', 'namespace' => $this->namespace()],
+            self::MAIL => ['name' => 'mail-vpn-only', 'namespace' => $this->namespace()],
+            self::DESK => ['name' => 'desk-vpn-only', 'namespace' => $this->namespace()],
+            self::CHAT => ['name' => 'chat-vpn-only', 'namespace' => $this->namespace()],
+            self::SSO => ['name' => 'sso-vpn-only', 'namespace' => $this->namespace()],
+            self::WEBMAIL => ['name' => 'webmail-vpn-only', 'namespace' => $this->namespace()],
+            self::NOTES => ['name' => 'notes-vpn-only', 'namespace' => $this->namespace()],
+            self::DRIVE => ['name' => 'drive-vpn-only', 'namespace' => $this->namespace()],
+            self::ANALYTICS => ['name' => 'analytics-vpn-only', 'namespace' => $this->namespace()],
+            self::TASKS => ['name' => 'tasks-vpn-only', 'namespace' => $this->namespace()],
+
+            self::SIGN => ['name' => 'sign-vpn-only', 'namespace' => $this->namespace()],
+            self::SUPPORT => ['name' => 'support-vpn-only', 'namespace' => $this->namespace()],
+            self::LINK => ['name' => 'link-vpn-only', 'namespace' => $this->namespace()],
+            self::CRM => ['name' => 'crm-vpn-only', 'namespace' => $this->namespace()],
+            self::RECORD => ['name' => 'record-vpn-only', 'namespace' => $this->namespace()],
+            self::DESIGN => ['name' => 'design-vpn-only', 'namespace' => $this->namespace()],
+            self::DASHBOARD => ['name' => 'dashboard-vpn-only', 'namespace' => $this->namespace()],
+            default => null,
         };
     }
 
     /** @return list<string> */
-    private function commonsBucketList(): array
+    private function commonsDatabaseList(?string $engine = null): array
     {
-        return match ($this) {
-            self::CHAT => ['chat-media'],
-            self::DATA => ['data-storage'],
-            self::DRIVE => ['drive-ocis'],
-            self::GIT => ['forgejo-storage', 'forgejo-packages', 'forgejo-lfs'],
-            self::MAIL => ['stalwart'],
-            self::NOTES => ['notes-storage'],
-            self::RECORD => ['record-storage'],
-            self::SHEETS => ['sheet-public', 'sheet-private'],
-            self::SIGN => ['sign-storage'],
-            self::DESIGN => ['design-assets'],
-            default => [],
-        };
+        // FLOW with no resolved engine must report BOTH n8n and windmill
+        // tenants — teardown calls this with no $engine to drop whichever
+        // engine's tenant DB exists, guaranteeing a clean slate after an
+        // engine switch (see FlowInitCommand::removeFlow()). This has to
+        // run before the generic vendor() dispatch below, which would
+        // otherwise default a null $engine to N8N's list alone.
+        if ($this === self::FLOW && $engine === null) {
+            return array_merge(...array_map(fn (FlowTool $c) => $c->commonsDatabaseList(), FlowTool::cases()));
+        }
+
+        $vendor = $this->vendor($engine);
+        if ($vendor instanceof HasCommonsDatabases) {
+            return $vendor->commonsDatabaseList();
+        }
+
+        return [];
+    }
+
+    /** @return list<string> */
+    private function commonsBucketList(?string $engine = null): array
+    {
+        $vendor = $this->vendor($engine);
+        if ($vendor instanceof HasCommonsBuckets) {
+            return $vendor->commonsBucketList();
+        }
+
+        return [];
     }
     case ANALYTICS = 'analytics';
     case CHAT = 'chat';

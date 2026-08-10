@@ -59,7 +59,7 @@ class BackupUnscheduleCommand extends Command
             return 0;
         }
 
-        $namespaces = collect($this->backupVolumeTargets())
+        $namespaces = collect($this->backupVolumeTargets($kubectl))
             ->pluck('namespace')->push('larakube-plex')->unique()->sort();
 
         $ok = $this->withSpin('Removing the backup CronJob...', function () use ($kubectl, $ns, $namespaces) {

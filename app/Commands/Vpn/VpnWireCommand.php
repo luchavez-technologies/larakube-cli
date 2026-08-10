@@ -7,6 +7,7 @@ use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
@@ -15,11 +16,12 @@ use LaravelZero\Framework\Commands\Command;
 
 class VpnWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput, ResolvesToolHost;
 
     protected $signature = 'vpn:wire
         {environment=local : Environment whose deployment to wire}
         {--tool= : The tool to restrict to NetBird VPN peers only}
+        {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance}
         {--context= : Target a specific kube-context}';
 
     protected $description = "Restrict a tool's ingress to NetBird VPN peers only — creates the Traefik Middleware --vpn-only's annotation already references";
@@ -30,6 +32,15 @@ class VpnWireCommand extends Command
 
         $tool = $this->resolveTool();
         if ($tool === null) {
+            return 1;
+        }
+
+        $domain = (string) ($this->option('domain') ?: '');
+        $instance = $domain === '' ? 'main' : $tool->instanceSlugFromHost($this->sanitizeDomainInput($domain));
+
+        if ($instance !== 'main' && ! $tool->supportsMultipleInstances()) {
+            $this->laraKubeError("{$tool->getLabel()} does not support multiple instances — omit --domain to target its single installation.");
+
             return 1;
         }
 
@@ -48,10 +59,10 @@ class VpnWireCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = $this->vpnWireKubectl($context);
 
-        return $this->wire($tool, $kubectl, $env);
+        return $this->wire($tool, $kubectl, $env, $domain);
     }
 
-    protected function wire(ClusterTool $tool, string $kubectl, string $env): int
+    protected function wire(ClusterTool $tool, string $kubectl, string $env, string $domain = ''): int
     {
         if (! $this->ensureVpnMiddleware($tool, $kubectl)) {
             $this->laraKubeError('Failed to create the Middleware — check kubectl access to the cluster above and re-run.');
@@ -62,8 +73,11 @@ class VpnWireCommand extends Command
         // Re-apply the tool's own ingress WITH the vpn-only annotation now
         // that the Middleware it references actually exists. Reuses the
         // tool's own *:init instead of duplicating its ingress-render logic.
+        // --domain is passed through so a non-default instance's ingress is
+        // the one re-applied, not always the tool's main installation.
         $reapplied = $this->call("{$tool->value}:init", array_filter([
             'environment' => $env,
+            '--domain' => $domain !== '' ? $domain : null,
             '--vpn-only' => true,
             '--no-interaction' => true,
             '--proxied' => $this->toolIngressIsProxied($kubectl, $tool) ? '1' : null,

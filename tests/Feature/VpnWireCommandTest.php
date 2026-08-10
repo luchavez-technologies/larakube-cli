@@ -34,6 +34,53 @@ test('vpn:wire creates the Middleware and re-applies the ingress with --vpn-only
         ->expectsOutputToContain('restricted to NetBird VPN peers only');
 });
 
+test('vpn:wire --domain= passes the domain through to the re-applied {tool}:init call', function () {
+    // Regression test for the ADR-0012 gap: vpn:wire used to always
+    // re-apply the tool's DEFAULT instance's ingress, regardless of which
+    // instance's Deployment was actually being restricted — a --domain=
+    // targeting a non-default instance would silently re-apply the wrong
+    // one's ingress. Captures the args passed to $this->call() instead of
+    // actually invoking notes:init (which has its own heavy dependencies).
+    $command = new class extends App\Commands\Vpn\VpnWireCommand
+    {
+        public array $calledWith = [];
+
+        public function call($command, array $arguments = []): int
+        {
+            $this->calledWith = ['command' => $command, 'arguments' => $arguments];
+
+            return 0;
+        }
+
+        public function testWire(App\Enums\ClusterTool $tool, string $kubectl, string $env, string $domain = ''): int
+        {
+            return $this->wire($tool, $kubectl, $env, $domain);
+        }
+    };
+    $command->setLaravel(app());
+    $command->setOutput(new Illuminate\Console\OutputStyle(
+        new Symfony\Component\Console\Input\ArrayInput([]),
+        new Symfony\Component\Console\Output\NullOutput,
+    ));
+
+    Process::fake([
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*get ingress *' => Process::result(output: ''),
+    ]);
+
+    $command->testWire(App\Enums\ClusterTool::NOTES, 'kubectl', 'local', 'blog.example.com');
+
+    expect($command->calledWith['command'])->toBe('notes:init')
+        ->and($command->calledWith['arguments']['--domain'])->toBe('blog.example.com');
+});
+
+test('vpn:wire rejects --domain on a tool that does not support multiple instances', function () {
+    $this->artisan('vpn:wire', ['--tool' => 'mail', '--domain' => 'blog.example.com'])
+        ->assertExitCode(1)
+        ->expectsOutputToContain('does not support multiple instances');
+});
+
 test('vpn:wire --remove re-applies the ingress without the annotation, then deletes the Middleware', function () {
     Process::fake([
         '*get secret mail-secrets*' => Process::result(output: '', exitCode: 1),

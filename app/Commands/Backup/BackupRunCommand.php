@@ -104,7 +104,9 @@ class BackupRunCommand extends Command
         }
 
         // 2. Volumes whose contents cannot be rebuilt from anything else.
-        foreach ($this->backupVolumeTargets() as $target) {
+        $volumeTargets = $this->backupVolumeTargets($kubectl);
+
+        foreach ($volumeTargets as $target) {
             $this->withSpin("Archiving {$target['name']}...", function () use ($kubectl, $target, $work, &$failures) {
                 $dir = dirname($target['path']);
                 $base = basename($target['path']);
@@ -205,7 +207,7 @@ class BackupRunCommand extends Command
         $this->laraKubeInfo('✅ Backup complete and off-site.');
         $this->newLine();
         $this->line('  <fg=gray>Databases:</> <fg=blue>'.count($databases).'</>');
-        $this->line('  <fg=gray>Volumes:</>   <fg=blue>'.count($this->backupVolumeTargets()).'</>');
+        $this->line('  <fg=gray>Volumes:</>   <fg=blue>'.count($volumeTargets).'</>');
         $this->line("  <fg=gray>Size:</>      <fg=blue>{$size}</> <fg=gray>across ".count($items).' objects</>');
         $this->line("  <fg=gray>Stored:</>    <fg=blue>s3://{$config['bucket']}/{$prefix}</>");
         $this->newLine();
