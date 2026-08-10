@@ -4,10 +4,13 @@ use App\Commands\Vpn\VpnJoinCommand;
 use App\Data\CloudData;
 use App\Data\ConfigData;
 use App\State;
+use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Process;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 /**
- * @return array{0: VpnJoinCommand, 1: Symfony\Component\Console\Output\BufferedOutput}
+ * @return array{0: VpnJoinCommand, 1: BufferedOutput}
  */
 function vpnJoinRunner(string $environment = 'local'): array
 {
@@ -23,12 +26,12 @@ function vpnJoinRunner(string $environment = 'local'): array
         }
     };
 
-    $input = new Symfony\Component\Console\Input\ArrayInput(['environment' => $environment]);
+    $input = new ArrayInput(['environment' => $environment]);
     $input->bind($command->getDefinition());
-    $output = new Symfony\Component\Console\Output\BufferedOutput;
+    $output = new BufferedOutput;
 
     $command->setInput($input);
-    $command->setOutput(new Illuminate\Console\OutputStyle($input, $output));
+    $command->setOutput(new OutputStyle($input, $output));
 
     return [$command, $output];
 }

@@ -174,7 +174,7 @@ trait InteractsWithChat
             'issuer' => $issuer,
             'client_id' => $read('client-id') ?? '',
             'client_secret' => $read('client-secret') ?? '',
-            'name' => $read('name') ?? 'Zitadel',
+            'name' => $read('name') ?? 'Login with SSO',
         ];
     }
 

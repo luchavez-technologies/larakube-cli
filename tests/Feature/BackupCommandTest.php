@@ -1,6 +1,15 @@
 <?php
 
+use App\Commands\Backup\BackupPruneCommand;
+use App\Commands\Backup\BackupRestoreCommand;
+use App\Commands\Backup\BackupScheduleCommand;
+use App\Enums\DatabaseDriver;
+use App\Traits\InteractsWithBackup;
+use App\Traits\SchedulesCronJobs;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Yaml\Yaml;
 
 function backupConfigJson(): string
 {
@@ -117,7 +126,7 @@ test('backup:list reports honestly when the destination is empty', function () {
 test('the inventory excludes Prometheus and includes the Synapse signing key', function () {
     $cmd = new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         /** @return array<int, array<string, string>> */
         public function targets(): array
@@ -149,7 +158,7 @@ test('aws invocations disable the checksum that R2 and B2 reject', function () {
     // signature error at the exact moment you need the backup to work.
     $cmd = new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         /** @return array<string, string> */
         public function env(): array
@@ -169,7 +178,7 @@ test('aws invocations disable the checksum that R2 and B2 reject', function () {
 test('an empty region falls back to auto rather than an AWS-specific default', function () {
     $cmd = new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         /** @return array<string, string> */
         public function env(): array
@@ -211,7 +220,7 @@ test('restore without a cluster or flags explains the recovery card', function (
 test('the R2 account id is read from the endpoint, not asked for again', function () {
     $cmd = new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         public function id(string $e): ?string
         {
@@ -228,8 +237,8 @@ test('the R2 account id is read from the endpoint, not asked for again', functio
 
 test('creating a bucket that already exists is success, not an error', function () {
     // Re-running backup:init against a configured destination is normal.
-    Illuminate\Support\Facades\Http::fake([
-        'api.cloudflare.com/*' => Illuminate\Support\Facades\Http::response([
+    Http::fake([
+        'api.cloudflare.com/*' => Http::response([
             'success' => false,
             'errors' => [['code' => 10004, 'message' => 'The bucket you tried to create already exists.']],
         ], 400),
@@ -237,7 +246,7 @@ test('creating a bucket that already exists is success, not an error', function 
 
     $cmd = new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         /** @return array{ok: bool, message: string} */
         public function make(): array
@@ -251,8 +260,8 @@ test('creating a bucket that already exists is success, not an error', function 
 });
 
 test('a token without R2 permission says exactly which scope is missing', function () {
-    Illuminate\Support\Facades\Http::fake([
-        'api.cloudflare.com/*' => Illuminate\Support\Facades\Http::response([
+    Http::fake([
+        'api.cloudflare.com/*' => Http::response([
             'success' => false,
             'errors' => [['code' => 10000, 'message' => 'Authentication error']],
         ], 403),
@@ -260,7 +269,7 @@ test('a token without R2 permission says exactly which scope is missing', functi
 
     $cmd = new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         /** @return array{ok: bool, message: string} */
         public function make(): array
@@ -277,7 +286,7 @@ test('a token without R2 permission says exactly which scope is missing', functi
 
 test('bucket creation is refused for non-R2 endpoints rather than failing obscurely', function () {
     Process::fake(backupFakes());
-    Illuminate\Support\Facades\Http::fake();
+    Http::fake();
 
     $this->artisan('backup:init local --no-interaction --create-bucket '
         .'--endpoint=https://s3.us-west-004.backblazeb2.com '
@@ -356,7 +365,7 @@ test('backup:schedule deploys the CronJob and names the exec permission', functi
 test('the CronJob covers every volume in the inventory and no others', function () {
     $volumes = (new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         /** @return array<int, array<string, string>> */
         public function targets(): array
@@ -400,7 +409,7 @@ test('the CronJob encrypts before the upload container ever sees the data', func
         'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
     ])->render();
     $docs = array_map(
-        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        fn (string $d) => Yaml::parse($d),
         array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
     );
 
@@ -471,7 +480,7 @@ test('the CronJob pins a timezone so a 3am schedule is not 11am somewhere', func
     ])->render();
 
     $cron = collect(array_map(
-        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        fn (string $d) => Yaml::parse($d),
         array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
     ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob');
 
@@ -487,7 +496,7 @@ test('changing only the timezone still rolls the CronJob', function () {
         ])->render();
 
         $cron = collect(array_map(
-            fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+            fn (string $d) => Yaml::parse($d),
             array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
         ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob');
 
@@ -502,7 +511,7 @@ test('the schedule is described in local time AND UTC, so it cannot be misread',
     {
         // Lives on SchedulesCronJobs now: every command that deploys a CronJob
         // resolves timezones the same way, not just the backup one.
-        use App\Traits\SchedulesCronJobs;
+        use SchedulesCronJobs;
 
         public function describe(string $c, string $t): string
         {
@@ -548,9 +557,9 @@ test('non-interactive falls back to a nightly default rather than refusing', fun
 });
 
 test('the projected storage is shown, because nothing prunes it yet', function () {
-    $method = new ReflectionMethod(App\Commands\Backup\BackupScheduleCommand::class, 'describeGrowth');
+    $method = new ReflectionMethod(BackupScheduleCommand::class, 'describeGrowth');
     $method->setAccessible(true);
-    $cmd = new App\Commands\Backup\BackupScheduleCommand;
+    $cmd = new BackupScheduleCommand;
 
     // R2's free tier is 10GB and there is no retention policy, so a six-hourly
     // schedule quietly fills it in under two months.
@@ -577,11 +586,11 @@ test('the backup and the media prune do not run at the same time', function () {
     ])->render();
 
     $pruneCron = collect(array_map(
-        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        fn (string $d) => Yaml::parse($d),
         array_values(array_filter(array_map('trim', preg_split('/^---$/m', $chat)), fn ($d) => $d !== '')),
     ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')['spec']['schedule'];
 
-    $reflection = new ReflectionClass(App\Commands\Backup\BackupScheduleCommand::class);
+    $reflection = new ReflectionClass(BackupScheduleCommand::class);
     $backupCron = $reflection->getConstant('DEFAULT_SCHEDULE');
 
     expect($pruneCron)->not->toBe($backupCron);
@@ -600,7 +609,7 @@ test('every image the backup job uses is one that still exists', function () {
     // Parsed, not grepped: the template explains in a comment why bitnami is
     // not used, and a raw string match would trip over its own rationale.
     $cron = collect(array_map(
-        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        fn (string $d) => Yaml::parse($d),
         array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
     ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')['spec']['jobTemplate']['spec']['template']['spec'];
 
@@ -625,7 +634,7 @@ test('every image the backup job uses is one that still exists', function () {
 test('the backup works on MySQL and MariaDB, not just PostgreSQL', function () {
     // Postgres is the common Commons choice, not the only supported one. A
     // backup that hardcodes psql/pg_dump silently does nothing on the others.
-    foreach ([App\Enums\DatabaseDriver::MYSQL, App\Enums\DatabaseDriver::MARIADB] as $driver) {
+    foreach ([DatabaseDriver::MYSQL, DatabaseDriver::MARIADB] as $driver) {
         $manifest = view('k8s.backup.cronjob', [
             'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
             'dbDriver' => $driver->value,
@@ -635,7 +644,7 @@ test('the backup works on MySQL and MariaDB, not just PostgreSQL', function () {
         ])->render();
 
         $script = collect(array_map(
-            fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+            fn (string $d) => Yaml::parse($d),
             array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
         ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')['spec']['jobTemplate']['spec']['template']['spec']['initContainers'][0]['command'][2];
 
@@ -662,7 +671,7 @@ test('the encrypt stage does not assume the Commons engine', function () {
     ])->render();
 
     $spec = collect(array_map(
-        fn (string $d) => Symfony\Component\Yaml\Yaml::parse($d),
+        fn (string $d) => Yaml::parse($d),
         array_values(array_filter(array_map('trim', preg_split('/^---$/m', $manifest)), fn ($d) => $d !== '')),
     ))->first(fn (array $d) => ($d['kind'] ?? null) === 'CronJob')['spec']['jobTemplate']['spec']['template']['spec'];
 
@@ -676,11 +685,11 @@ test('the encrypt stage does not assume the Commons engine', function () {
 test('an unsupported Commons engine is refused rather than scheduled', function () {
     // MongoDB and SQLite have no dump command; a nightly job that cannot dump
     // anything would fail silently forever.
-    expect(App\Enums\DatabaseDriver::MONGODB->hasCommonsDumpCommand())->toBeFalse()
-        ->and(App\Enums\DatabaseDriver::SQLITE->hasCommonsDumpCommand())->toBeFalse()
-        ->and(App\Enums\DatabaseDriver::POSTGRESQL->hasCommonsDumpCommand())->toBeTrue()
-        ->and(App\Enums\DatabaseDriver::MYSQL->hasCommonsDumpCommand())->toBeTrue()
-        ->and(App\Enums\DatabaseDriver::MARIADB->hasCommonsDumpCommand())->toBeTrue();
+    expect(DatabaseDriver::MONGODB->hasCommonsDumpCommand())->toBeFalse()
+        ->and(DatabaseDriver::SQLITE->hasCommonsDumpCommand())->toBeFalse()
+        ->and(DatabaseDriver::POSTGRESQL->hasCommonsDumpCommand())->toBeTrue()
+        ->and(DatabaseDriver::MYSQL->hasCommonsDumpCommand())->toBeTrue()
+        ->and(DatabaseDriver::MARIADB->hasCommonsDumpCommand())->toBeTrue();
 });
 
 test('restore is engine-aware — it never assumes the Commons database is Postgres', function () {
@@ -690,32 +699,32 @@ test('restore is engine-aware — it never assumes the Commons database is Postg
     // exist, so the one command you reach for during an incident is the one
     // that never worked.
     $expected = [
-        App\Enums\DatabaseDriver::POSTGRESQL->value => 'psql -U postgres -v ON_ERROR_STOP=1 --single-transaction -d chat_matrix',
-        App\Enums\DatabaseDriver::MYSQL->value => 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" chat_matrix',
-        App\Enums\DatabaseDriver::MARIADB->value => 'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" chat_matrix',
+        DatabaseDriver::POSTGRESQL->value => 'psql -U postgres -v ON_ERROR_STOP=1 --single-transaction -d chat_matrix',
+        DatabaseDriver::MYSQL->value => 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" chat_matrix',
+        DatabaseDriver::MARIADB->value => 'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" chat_matrix',
     ];
 
     foreach ($expected as $value => $command) {
-        expect(App\Enums\DatabaseDriver::from($value)->commonsAdminRestoreCommand('chat_matrix'))
+        expect(DatabaseDriver::from($value)->commonsAdminRestoreCommand('chat_matrix'))
             ->toBe($command);
     }
 
     // Engines with no dump command must have no restore command either, so the
     // command refuses instead of running something meaningless.
-    expect(App\Enums\DatabaseDriver::MONGODB->commonsAdminRestoreCommand('x'))->toBe('')
-        ->and(App\Enums\DatabaseDriver::SQLITE->commonsAdminRestoreCommand('x'))->toBe('');
+    expect(DatabaseDriver::MONGODB->commonsAdminRestoreCommand('x'))->toBe('')
+        ->and(DatabaseDriver::SQLITE->commonsAdminRestoreCommand('x'))->toBe('');
 });
 
 test('the Postgres restore stops on the first error instead of exiting 0', function () {
     // psql without ON_ERROR_STOP prints every error, keeps going, and still
     // exits 0 — so a restore that populated nothing reports success, which is
     // the worst possible outcome for this particular command.
-    expect(App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminRestoreCommand('chat_matrix'))
+    expect(DatabaseDriver::POSTGRESQL->commonsAdminRestoreCommand('chat_matrix'))
         ->toContain('ON_ERROR_STOP=1');
 });
 
 test('dump and restore are inverses across every backup-capable engine', function () {
-    foreach (App\Enums\DatabaseDriver::cases() as $driver) {
+    foreach (DatabaseDriver::cases() as $driver) {
         expect($driver->commonsAdminRestoreCommand('db') !== '')
             ->toBe($driver->hasCommonsDumpCommand(), "{$driver->value} can dump but not restore, or vice versa");
     }
@@ -740,7 +749,7 @@ test('the volume restore mounts the claim where the real pod mounts it', functio
 
     $resolved = (new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         public function resolve(string $kubectl, array $target): ?array
         {
@@ -779,7 +788,7 @@ test('a Secret mounted inside the data volume never wins over the PVC', function
 
     $resolved = (new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         public function resolve(string $kubectl, array $target): ?array
         {
@@ -795,7 +804,7 @@ test('a Secret mounted inside the data volume never wins over the PVC', function
 });
 
 test('backup:restore declares the flags the restore flow depends on', function () {
-    $signature = (new ReflectionClass(App\Commands\Backup\BackupRestoreCommand::class))
+    $signature = (new ReflectionClass(BackupRestoreCommand::class))
         ->getDefaultProperties()['signature'];
 
     expect($signature)->toContain('--volume=')
@@ -809,7 +818,7 @@ test('the Postgres restore clears the schema and hands it back to the tenant rol
     // them: restoring as the superuser would leave every table owned by
     // postgres, and the app — which logs in as the tenant role — would get
     // "permission denied" on its own data.
-    $preamble = App\Enums\DatabaseDriver::POSTGRESQL->commonsRestorePreamble('forgejo');
+    $preamble = DatabaseDriver::POSTGRESQL->commonsRestorePreamble('forgejo');
 
     expect($preamble)
         ->toContain('DROP SCHEMA IF EXISTS public CASCADE;')
@@ -826,9 +835,9 @@ test('MySQL and MariaDB need no restore preamble', function () {
     // mysqldump emits DROP TABLE IF EXISTS by default, and their privileges are
     // GRANT-based on the database rather than per-object ownership — so neither
     // problem the Postgres preamble solves exists here.
-    expect(App\Enums\DatabaseDriver::MYSQL->commonsRestorePreamble('x'))->toBe('')
-        ->and(App\Enums\DatabaseDriver::MARIADB->commonsRestorePreamble('x'))->toBe('')
-        ->and(App\Enums\DatabaseDriver::MONGODB->commonsRestorePreamble('x'))->toBe('');
+    expect(DatabaseDriver::MYSQL->commonsRestorePreamble('x'))->toBe('')
+        ->and(DatabaseDriver::MARIADB->commonsRestorePreamble('x'))->toBe('')
+        ->and(DatabaseDriver::MONGODB->commonsRestorePreamble('x'))->toBe('');
 });
 
 test('a failed Postgres restore rolls back the schema drop', function () {
@@ -836,7 +845,7 @@ test('a failed Postgres restore rolls back the schema drop', function () {
     // --single-transaction, psql autocommits each statement, so a failure
     // halfway leaves an emptied database and no way back — the worst outcome
     // for the one command you run during an incident.
-    expect(App\Enums\DatabaseDriver::POSTGRESQL->commonsAdminRestoreCommand('forgejo'))
+    expect(DatabaseDriver::POSTGRESQL->commonsAdminRestoreCommand('forgejo'))
         ->toContain('--single-transaction')
         ->toContain('ON_ERROR_STOP=1');
 });
@@ -854,7 +863,7 @@ test('a run without a manifest is incomplete and never offered', function () {
     // interrupted mid-upload must be invisible rather than half-restorable.
     $cmd = new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         public function runs(array $config): array
         {
@@ -886,7 +895,7 @@ test('a run without a manifest is incomplete and never offered', function () {
 test('objects from the old single-archive layout are ignored', function () {
     $cmd = new class
     {
-        use App\Traits\InteractsWithBackup;
+        use InteractsWithBackup;
 
         public function runs(array $config): array
         {
@@ -903,12 +912,12 @@ test('objects from the old single-archive layout are ignored', function () {
 /**
  * Reaches the retention maths without a cluster or a destination.
  */
-class BackupPruneCommandProbe extends App\Commands\Backup\BackupPruneCommand
+class BackupPruneCommandProbe extends BackupPruneCommand
 {
     /** @param array<int, string> $stamps */
     public function keepers(array $stamps, int $keepDaily, int $keepWeekly, int $keepMonthly): array
     {
-        $this->setInput(new Symfony\Component\Console\Input\ArrayInput([
+        $this->setInput(new ArrayInput([
             '--keep-daily' => (string) $keepDaily,
             '--keep-weekly' => (string) $keepWeekly,
             '--keep-monthly' => (string) $keepMonthly,
@@ -974,7 +983,7 @@ test('backup:prune never deletes a run id it cannot parse', function () {
 test('backup:prune shows before it deletes', function () {
     // The only command in the suite that destroys backups. --apply is required,
     // so a bare run can never remove anything.
-    $signature = (new ReflectionClass(App\Commands\Backup\BackupPruneCommand::class))
+    $signature = (new ReflectionClass(BackupPruneCommand::class))
         ->getDefaultProperties()['signature'];
 
     expect($signature)->toContain('--apply')
@@ -986,7 +995,7 @@ test('backup:prune shows before it deletes', function () {
 test('backup:restore declares --deep, the drill that survives per-item fetching', function () {
     // Once restore only downloads what you pick, the default path stops proving
     // the archive is readable. --deep is what keeps that evidence available.
-    $signature = (new ReflectionClass(App\Commands\Backup\BackupRestoreCommand::class))
+    $signature = (new ReflectionClass(BackupRestoreCommand::class))
         ->getDefaultProperties()['signature'];
 
     expect($signature)->toContain('--deep')->toContain('--backup=');

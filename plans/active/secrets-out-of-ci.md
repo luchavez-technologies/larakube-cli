@@ -1,6 +1,6 @@
 # Plan: Stop Shipping Runtime Secrets to CI Providers (`dotenv:push` & `dotenv:diff`)
 
-**Status:** ✅ Code complete (2026-08-04) — pending manual/cluster verification (see `plans/testing-checklist.md`, "Secrets Out of CI" section)
+**Status:** ✅ Code complete (2026-08-04) — pending manual/cluster verification (see `plans/active/secrets-out-of-ci-testing.md`, its dedicated test plan)
 **Created:** 2026-07-29
 **Updated:** 2026-08-04 (implemented — see "✅ What actually shipped" below; several specifics changed from the design further down this doc)
 **Target Version:** LaraKube CLI v1.2.0
@@ -69,8 +69,12 @@ rewritten), `app/Traits/ReadsEnvSources.php` (`isSecretKey()` shared), `app/Trai
 `app/Commands/Pipeline/PipelineTestCommand.php`, `app/Commands/Plex/PlexJoinCommand.php` (comment only).
 
 **Not yet verified against a real cluster** — every test fakes `Process`/`Http`.
-See `plans/testing-checklist.md`'s "Secrets Out of CI" section for the manual
-walkthrough before this ships in a release.
+See `plans/active/secrets-out-of-ci-testing.md` for the manual walkthrough
+before this ships in a release.
+
+**Docs not started.** `plans/active/secrets-out-of-ci-docs.md` has the
+concrete task list — one existing page (`docs/docs/deployment/github-actions.md`)
+still actively describes the old, now-wrong design.
 
 ---
 

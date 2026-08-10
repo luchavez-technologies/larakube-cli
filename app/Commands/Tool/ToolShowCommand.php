@@ -79,9 +79,9 @@ class ToolShowCommand extends Command
             return $tool;
         }
 
-        $registry = $this->getRegisteredTools($kubectl);
+        $installedTools = array_values(array_unique(array_column($this->getRegisteredTools($kubectl), 'tool')));
 
-        if ($registry === []) {
+        if ($installedTools === []) {
             $this->laraKubeInfo('No tools are installed on this cluster.');
             $this->line('  <fg=gray>Install one with</> <fg=blue>larakube tool:add</><fg=gray>.</>');
 
@@ -92,13 +92,13 @@ class ToolShowCommand extends Command
             throw new MissingFlagException(
                 'tool',
                 'which tool to show',
-                'larakube tool:show production --tool='.array_key_first($registry),
+                'larakube tool:show production --tool='.$installedTools[0],
             );
         }
 
         $options = [];
         foreach (ClusterTool::cases() as $tool) {
-            if (isset($registry[$tool->value])) {
+            if (in_array($tool->value, $installedTools, true)) {
                 $options[$tool->value] = $tool->getLabel();
             }
         }

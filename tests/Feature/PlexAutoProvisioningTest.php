@@ -3,6 +3,7 @@
 use App\Enums\AppFramework;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Traits\SupportedDriversTrait;
 
 it('correctly maps supported database drivers for AppFramework', function () {
     expect(AppFramework::LARAVEL->supportedDatabaseDrivers())
@@ -19,7 +20,7 @@ it('correctly maps supported database drivers for AppFramework', function () {
 it('correctly maps supported database drivers for ClusterTool', function () {
     $traitObject = new class
     {
-        use App\Traits\SupportedDriversTrait;
+        use SupportedDriversTrait;
     };
 
     expect($traitObject->getSupportedDatabaseDrivers(ClusterTool::CHAT))

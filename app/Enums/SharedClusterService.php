@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use Illuminate\Support\Facades\Process;
+
 /**
  * The cluster-wide, TLD-carrying shared services that live OUTSIDE any project's
  * namespace and are reconciled together on every local `up`. Each case owns
@@ -56,6 +58,7 @@ enum SharedClusterService: string
             self::RECORD => 'k8s.record.ingress',
             self::DASHBOARD => 'k8s.dashboard.ingress',
             self::MEET => 'k8s.meet.ingress',
+            self::DESIGN => 'k8s.design.ingress',
         };
     }
 
@@ -66,7 +69,7 @@ enum SharedClusterService: string
             // current kube-context is slow/unreachable this degrades to the
             // default engine instead of blocking (default Process timeout is 60s).
             self::FLOW => [
-                'engine' => trim(\Illuminate\Support\Facades\Process::timeout(10)->run('kubectl get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
+                'engine' => trim(Process::timeout(10)->run('kubectl get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
             ],
             self::DRIVE => ['engine' => 'ocis'],
             // The Matrix bridge is a wiring artifact, not part of Meet itself —
@@ -74,7 +77,7 @@ enum SharedClusterService: string
             // so a plain `up` reconcile re-renders the /jwt route it needs
             // instead of dropping it. Same short-timeout degradation as FLOW.
             self::MEET => [
-                'jwtWired' => trim(\Illuminate\Support\Facades\Process::timeout(10)->run('kubectl get deployment meet-lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
+                'jwtWired' => trim(Process::timeout(10)->run('kubectl get deployment meet-lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
             ],
             self::TASKS => [
                 'engine' => 'planka',
@@ -110,10 +113,19 @@ enum SharedClusterService: string
      * Build this service's full ingress host from a resolved cluster domain.
      * The caller owns domain resolution (local TLD vs the env's real domain from
      * EnvironmentData.hosts) so the enum stays free of project/cluster context.
+     *
+     * $instance dash-suffixes the prefix for a non-main named instance (e.g.
+     * "data-blog.example.com"), mirroring the only other prefix-derivation
+     * convention in the codebase (ConfigData::getSharedServiceHost()'s
+     * dash-joined web-host fallback, ToolAliasCommand's resource-name suffix).
      */
-    public function hostFor(string $domain): string
+    public function hostFor(string $domain, ?string $instance = null): string
     {
         $prefix = $this->hostPrefix();
+        if ($instance !== null && $instance !== '' && $instance !== 'main') {
+            $prefix = "{$prefix}-{$instance}";
+        }
+
         if ($prefix !== '' && str_starts_with($domain, "{$prefix}.")) {
             return $domain;
         }
@@ -135,7 +147,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN => false,
             default => true,
         };
     }
@@ -181,6 +193,7 @@ enum SharedClusterService: string
             self::RECORD => 'Sendrec',
             self::DASHBOARD => 'Headlamp Dashboard',
             self::MEET => 'LiveKit (Meet)',
+            self::DESIGN => 'Penpot (Design)',
         };
     }
 
@@ -227,6 +240,7 @@ enum SharedClusterService: string
             self::RECORD => 'deployment record-sendrec -n larakube-shared',
             self::DASHBOARD => 'deployment dashboard-headlamp -n larakube-shared',
             self::MEET => 'deployment meet-livekit -n larakube-shared',
+            self::DESIGN => 'deployment design-penpot-backend -n larakube-shared',
         };
     }
 
@@ -342,6 +356,7 @@ enum SharedClusterService: string
             self::RECORD => 'Refreshing Sendrec (Screen Recording) ingress...',
             self::DASHBOARD => 'Refreshing Headlamp (Dashboard) ingress...',
             self::MEET => 'Refreshing LiveKit (Meet) ingress...',
+            self::DESIGN => 'Refreshing Penpot (Design) ingress...',
         };
     }
 
@@ -384,4 +399,5 @@ enum SharedClusterService: string
     case RECORD = 'record';
     case DASHBOARD = 'dashboard';
     case MEET = 'meet';
+    case DESIGN = 'design';
 }

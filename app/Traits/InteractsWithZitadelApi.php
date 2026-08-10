@@ -529,16 +529,48 @@ trait InteractsWithZitadelApi
         // A resend with the same actionIds 400s with "No Changes" — that's
         // success, not a failure, so it's treated as such below.
         foreach ([4, 5] as $trigger) {
-            $set = Http::withToken($pat)->timeout(15)->post(
-                "https://{$host}/management/v1/flows/2/trigger/{$trigger}",
-                ['actionIds' => [$actionId]],
-            );
-            if ($set->failed() && ! str_contains($set->body(), 'No Changes')) {
+            if (! $this->zitadelAttachActionToFlowTrigger($host, $pat, 2, $trigger, $actionId)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * Attach an action ID to a specific flow trigger type without wiping out
+     * other actions already attached to that trigger.
+     */
+    protected function zitadelAttachActionToFlowTrigger(string $host, string $pat, int $flowType, int $triggerType, string $actionId): bool
+    {
+        $response = Http::withToken($pat)->timeout(15)->get("https://{$host}/management/v1/flows/{$flowType}");
+        $existingActionIds = [];
+
+        if ($response->successful()) {
+            $triggerActions = $response->json('flow.triggerActions', []);
+            foreach ($triggerActions as $ta) {
+                if ((int) ($ta['triggerType']['id'] ?? 0) === $triggerType) {
+                    foreach ($ta['actions'] ?? [] as $act) {
+                        if (! empty($act['id'])) {
+                            $existingActionIds[] = (string) $act['id'];
+                        }
+                    }
+                }
+            }
+        }
+
+        if (in_array($actionId, $existingActionIds, true)) {
+            return true;
+        }
+
+        $allActionIds = array_values(array_unique(array_merge($existingActionIds, [$actionId])));
+
+        $set = Http::withToken($pat)->timeout(15)->post(
+            "https://{$host}/management/v1/flows/{$flowType}/trigger/{$triggerType}",
+            ['actionIds' => $allActionIds],
+        );
+
+        return $set->successful() || str_contains($set->body(), 'No Changes');
     }
 
     /**
@@ -610,11 +642,7 @@ trait InteractsWithZitadelApi
         }
 
         foreach ([4, 5] as $trigger) {
-            $set = Http::withToken($pat)->timeout(15)->post(
-                "https://{$host}/management/v1/flows/2/trigger/{$trigger}",
-                ['actionIds' => [$actionId]],
-            );
-            if ($set->failed() && ! str_contains($set->body(), 'No Changes')) {
+            if (! $this->zitadelAttachActionToFlowTrigger($host, $pat, 2, $trigger, $actionId)) {
                 return false;
             }
         }

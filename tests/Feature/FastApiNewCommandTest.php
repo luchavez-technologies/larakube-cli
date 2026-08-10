@@ -1,9 +1,11 @@
 <?php
 
+use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
+use Illuminate\Contracts\Console\Kernel;
 
 // ── fastapi:new Command Tests ──────────────────────────────────────────────────
 
@@ -14,7 +16,7 @@ test('fastapi:new command is registered and has correct signature', function () 
 });
 
 test('fastapi:new command has --fast option', function () {
-    $kernel = app(Illuminate\Contracts\Console\Kernel::class);
+    $kernel = app(Kernel::class);
     $commands = $kernel->all();
 
     expect($commands)->toHaveKey('fastapi:new');
@@ -54,7 +56,7 @@ test('FastAPI StorageDriver: MinIO, SeaweedFS, Garage are valid', function () {
 // ── FastAPI ConfigData Integration ─────────────────────────────────────────────
 
 test('ConfigData accepts AppFramework::FASTAPI framework', function () {
-    $config = new App\Data\ConfigData;
+    $config = new ConfigData;
     $config->framework = AppFramework::FASTAPI;
 
     expect($config->framework)->toBe(AppFramework::FASTAPI);

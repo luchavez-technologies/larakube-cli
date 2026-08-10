@@ -2,13 +2,14 @@
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Traits\InteractsWithVpn;
 use Illuminate\Support\Facades\Process;
 
 function vpnReader(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithVpn;
+        use InteractsWithVpn;
 
         public function host(string $env, ?ConfigData $config): ?string
         {

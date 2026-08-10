@@ -2,13 +2,14 @@
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Traits\InteractsWithSecrets;
 use Illuminate\Support\Facades\Process;
 
 function secretsReader(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithSecrets;
+        use InteractsWithSecrets;
 
         public function host(string $env, ?ConfigData $config): ?string
         {

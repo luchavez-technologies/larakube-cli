@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
@@ -29,7 +30,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 abstract class AbstractToolShowCommand extends Command
 {
-    use DeploysClusterTool, LaraKubeOutput;
+    use DeploysClusterTool, LaraKubeOutput, ResolvesToolHost;
 
     public function __construct()
     {
@@ -38,6 +39,7 @@ abstract class AbstractToolShowCommand extends Command
         $this->signature = "{$tool->value}:show
         {environment=local : Environment to show ".$tool->getLabel()." access for}
         {--context= : Target a specific kube-context (defaults to the environment's saved cloud target)}
+        {--domain=  : The instance's host, to target a specific one (e.g. --domain=blog.example.com), or \"all\" to list every registered instance}
         {--json     : Emit one machine-readable JSON object on stdout instead of a table}";
 
         $this->description = "Show how to reach {$tool->getLabel()}";
@@ -58,19 +60,33 @@ abstract class AbstractToolShowCommand extends Command
         // Pins KUBECONFIG to ~/.kube/config, same as every tool's own helper.
         $kubectl = $this->contextKubectl($context);
 
+        $domain = (string) ($this->option('domain') ?: '');
+
+        // --domain=all only means something for a tool that can actually
+        // have more than one — for everything else it's the same single
+        // result omitting --domain already gives, not a pointless one-row list.
+        if ($domain === 'all' && $tool->supportsMultipleInstances()) {
+            return $this->handleAllInstances($tool, $env, $kubectl);
+        }
+
+        $instance = $domain === '' || $domain === 'all' ? 'main' : $tool->instanceSlugFromHost($this->sanitizeDomainInput($domain));
+
         // The registry is a convenience index, NOT the source of truth: only a
         // handful of {tool}:init commands ever call registerDeployedTool(), so
         // trusting it alone reported long-running installs as "not installed"
         // (sso:show said Zitadel was missing while sso-zitadel had been up for
-        // days). Fall back to asking the cluster itself.
-        $installed = $this->isToolRegistered($kubectl, $tool)
-            || $this->isToolPresentOnCluster($kubectl, $tool);
-        $host = $this->resolveHost($tool, $env, $kubectl);
-        $rows = $this->rows($host, $env, $kubectl);
+        // days). Fall back to asking the cluster itself. isToolPresentOnCluster()
+        // has no instance concept — it's a coarse "does this tool exist at all"
+        // probe, which is the correct fallback only for the main instance.
+        $installed = $this->isToolRegistered($kubectl, $tool, $instance)
+            || ($instance === 'main' && $this->isToolPresentOnCluster($kubectl, $tool));
+        $host = $this->resolveHost($tool, $env, $kubectl, $instance);
+        $rows = $this->rows($host, $env, $kubectl, $instance);
 
         if ($this->option('json')) {
             $this->line((string) json_encode([
                 'tool' => $tool->value,
+                'instance' => $instance,
                 'environment' => $env,
                 'installed' => $installed,
                 'namespace' => $tool->namespace(),
@@ -90,7 +106,52 @@ abstract class AbstractToolShowCommand extends Command
 
         table(['Component', 'Access'], $rows);
 
-        $this->afterTable($host, $env);
+        $this->afterTable($host, $env, $instance);
+
+        return 0;
+    }
+
+    /**
+     * `--instance=all`: one summary row per registered instance instead of
+     * the detailed single-instance table — afterTable()'s post-login guidance
+     * is written for one instance's detail, not a list, so it's skipped here.
+     */
+    protected function handleAllInstances(ClusterTool $tool, string $env, string $kubectl): int
+    {
+        $instances = $this->getToolInstances($kubectl, $tool);
+
+        if ($instances === []) {
+            if ($this->option('json')) {
+                $this->line((string) json_encode(['tool' => $tool->value, 'environment' => $env, 'instances' => []], JSON_PRETTY_PRINT));
+
+                return 1;
+            }
+
+            $this->warn("  No instances of {$tool->getLabel()} are registered in '{$env}'.");
+            $this->line("  Run <fg=yellow>larakube {$tool->initCommand()} {$env}</> to deploy one.");
+
+            return 1;
+        }
+
+        $rows = [];
+        $summary = [];
+        foreach ($instances as $instance) {
+            $host = $this->resolveHost($tool, $env, $kubectl, $instance);
+            $rows[] = [$instance, $host !== null ? "https://{$host}" : '<fg=gray>host not configured</>'];
+            $summary[] = ['instance' => $instance, 'host' => $host, 'url' => $host !== null ? "https://{$host}" : null];
+        }
+
+        if ($this->option('json')) {
+            $this->line((string) json_encode([
+                'tool' => $tool->value,
+                'environment' => $env,
+                'instances' => $summary,
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return 0;
+        }
+
+        table(['Instance', 'Access'], $rows);
 
         return 0;
     }
@@ -103,10 +164,10 @@ abstract class AbstractToolShowCommand extends Command
      *
      * @return list<list<string>>
      */
-    protected function rows(?string $host, string $env, string $kubectl): array
+    protected function rows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
     {
         $tool = $this->tool();
-        $aliasHosts = $this->getToolAliasHosts($kubectl, $tool);
+        $aliasHosts = $this->getToolAliasHosts($kubectl, $tool, $instance);
 
         $rows = [[
             $tool->getLabel(),
@@ -126,16 +187,16 @@ abstract class AbstractToolShowCommand extends Command
     }
 
     /** Hook for post-table guidance (first-login steps, credential hints). */
-    protected function afterTable(?string $host, string $env): void {}
+    protected function afterTable(?string $host, string $env, string $instance = 'main'): void {}
 
     /**
      * Registry first (what was actually deployed), then .larakube.json, then
      * the conventional derivation. Deliberately never prompts — `:show` is a
      * read-only inspection command and must be safe to pipe.
      */
-    protected function resolveHost(ClusterTool $tool, string $env, string $kubectl): ?string
+    protected function resolveHost(ClusterTool $tool, string $env, string $kubectl, string $instance = 'main'): ?string
     {
-        $stored = $this->getToolHost($kubectl, $tool);
+        $stored = $this->getToolHost($kubectl, $tool, $instance);
         if ($stored !== null && $stored !== '') {
             return $stored;
         }
@@ -154,14 +215,15 @@ abstract class AbstractToolShowCommand extends Command
             return null;
         }
 
-        $pinned = $config->getEnvironment($env)?->hosts[$service->value] ?? null;
+        // .larakube.json's pinned host has no per-instance dimension.
+        $pinned = $instance === 'main' ? ($config->getEnvironment($env)?->hosts[$service->value] ?? null) : null;
         if ($pinned !== null && $pinned !== '') {
             return $pinned;
         }
 
         $webHost = $config->getEnvironment($env)?->hosts['web'] ?? null;
 
-        return $webHost ? $config->getSharedServiceHost($service, $env) : null;
+        return $webHost ? $config->getSharedServiceHost($service, $env, $instance) : null;
     }
 
     /** Read one Secret key from the cluster — for tools that show bootstrap credentials. */

@@ -2,13 +2,14 @@
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Traits\InteractsWithMonitoring;
 use Illuminate\Support\Facades\Process;
 
 function monitoringReader(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithMonitoring;
+        use InteractsWithMonitoring;
 
         public function host(string $env, ?ConfigData $config): ?string
         {

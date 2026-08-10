@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Support\Facades\Artisan;
+
 test('pipeline:list prints warning when no workflows exist', function () {
     $tempDir = sys_get_temp_dir().'/larakube-pipe-list-'.uniqid();
     mkdir($tempDir, 0755, true);
@@ -38,10 +40,10 @@ test('pipeline:list lists discovered workflows in a table', function () {
     chdir($tempDir);
 
     try {
-        $exitCode = Illuminate\Support\Facades\Artisan::call('pipeline:list');
+        $exitCode = Artisan::call('pipeline:list');
         expect($exitCode)->toBe(0);
 
-        $output = Illuminate\Support\Facades\Artisan::output();
+        $output = Artisan::output();
         expect($output)->toContain('GitHub Actions')
             ->and($output)->toContain('.github/workflows')
             ->and($output)->toContain('production')

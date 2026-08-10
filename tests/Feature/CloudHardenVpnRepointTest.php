@@ -1,8 +1,13 @@
 <?php
 
 use App\Commands\Cloud\CloudHardenCommand;
+use App\Data\CloudData;
+use App\Data\ConfigData;
+use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 function cloudHardenRunner(): object
 {
@@ -22,11 +27,11 @@ function cloudHardenRunner(): object
         protected function pollDelay(): void {}
     };
 
-    $input = new Symfony\Component\Console\Input\ArrayInput([]);
+    $input = new ArrayInput([]);
     $input->bind($command->getDefinition());
-    $output = new Symfony\Component\Console\Output\BufferedOutput;
+    $output = new BufferedOutput;
     $command->setInput($input);
-    $command->setOutput(new Illuminate\Console\OutputStyle($input, $output));
+    $command->setOutput(new OutputStyle($input, $output));
 
     return $command;
 }
@@ -106,12 +111,12 @@ test('preferredSshIp prefers the recorded overlay IP once cloud:harden has set o
     chdir($dir);
 
     try {
-        $config = App\Data\ConfigData::from([
+        $config = ConfigData::from([
             'name' => 'harden-test',
             'database' => 'sqlite',
             'environments' => ['local' => [], 'production' => []],
         ]);
-        $config->setCloud('production', new App\Data\CloudData(ip: '1.2.3.4', vpnIp: '100.86.159.244'));
+        $config->setCloud('production', new CloudData(ip: '1.2.3.4', vpnIp: '100.86.159.244'));
         $config->saveToFile($dir);
 
         expect(cloudHardenRunner()->sshIpFor('production', '1.2.3.4'))->toBe('100.86.159.244');

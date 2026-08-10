@@ -7,6 +7,7 @@
  * destroy/init calls are left to a real droplet smoke test.
  */
 
+use App\Data\GlobalConfigData;
 use App\State;
 use App\Traits\InteractsWithOpenTofu;
 use Illuminate\Support\Facades\Process;
@@ -148,7 +149,7 @@ test('LARAKUBE_TOFU_PASSPHRASE overrides the global-config passphrase and is nev
 
         expect($hcl)->toContain('passphrase = "orchestrator-supplied-passphrase"')
             // Nothing minted into the (test-HOME) global config.
-            ->and(App\Data\GlobalConfigData::load()->getTofuPassphrase('mystack'))->toBeNull();
+            ->and(GlobalConfigData::load()->getTofuPassphrase('mystack'))->toBeNull();
     } finally {
         putenv('LARAKUBE_TOFU_PASSPHRASE');
     }

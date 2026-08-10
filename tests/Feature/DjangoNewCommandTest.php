@@ -1,9 +1,11 @@
 <?php
 
+use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
+use Illuminate\Contracts\Console\Kernel;
 
 // ── django:new Command Tests ──────────────────────────────────────────────────
 
@@ -14,7 +16,7 @@ test('django:new command is registered and has correct signature', function () {
 });
 
 test('django:new command has --fast option', function () {
-    $kernel = app(Illuminate\Contracts\Console\Kernel::class);
+    $kernel = app(Kernel::class);
     $commands = $kernel->all();
 
     expect($commands)->toHaveKey('django:new');
@@ -54,7 +56,7 @@ test('Django StorageDriver: MinIO, SeaweedFS, Garage are valid', function () {
 // ── Django ConfigData Integration ─────────────────────────────────────────────
 
 test('ConfigData accepts AppFramework::DJANGO framework', function () {
-    $config = new App\Data\ConfigData;
+    $config = new ConfigData;
     $config->framework = AppFramework::DJANGO;
 
     expect($config->framework)->toBe(AppFramework::DJANGO);

@@ -125,9 +125,9 @@ Both Penpot and Hoppscotch send emails (team invites, password resets, notificat
 ```php
 // Penpot smtpEnv
 self::DESIGN => [
-    'deployment' => 'penpot-backend',
-    'namespace' => 'larakube-shared',
-    'secret' => 'penpot-smtp',
+    'deployment' => 'design-penpot-backend',
+    'namespace' => $this->namespace(),
+    'secret' => 'design-penpot-smtp',
     'vars' => [
         'host' => 'PENPOT_SMTP_DEFAULT_FROM',
         'port' => 'PENPOT_SMTP_SERVER_PORT',
@@ -153,11 +153,70 @@ Executing `larakube mail:wire design` or `larakube mail:wire api` automatically 
 
 ---
 
-## 🔐 OpenBao & Secrets Prioritization Standard
+## 🪪 Identity & SSO Wiring (`sso:wire`) Integration
+
+Penpot Community Edition includes native OIDC SSO. `ClusterTool::DESIGN` defines `oidcEnv()`:
+
+```php
+self::DESIGN => [
+    'deployment' => 'design-penpot-backend',
+    'namespace' => $this->namespace(),
+    'secret' => 'design-penpot-oidc',
+    'redirect_path' => '/api/auth/oauth/zitadel/callback',
+    'static' => [
+        'PENPOT_FLAGS' => 'enable-login-with-oidc',
+        'PENPOT_OIDC_NAME' => 'Zitadel SSO',
+    ],
+    'vars' => [
+        'client_id' => 'PENPOT_OIDC_CLIENT_ID',
+        'client_secret' => 'PENPOT_OIDC_CLIENT_SECRET',
+        'auth_url' => 'PENPOT_OIDC_AUTH_URI',
+        'token_url' => 'PENPOT_OIDC_TOKEN_URI',
+        'userinfo_url' => 'PENPOT_OIDC_USERINFO_URI',
+        'issuer' => 'PENPOT_OIDC_BASE_URI',
+    ],
+],
+```
+
+Executing `larakube sso:wire production --tool=design` registers a dedicated OIDC app in Zitadel and updates `deployment/design-penpot-backend`.
+
+---
+
+## 🔐 OpenBao & Secrets Rotation (`secrets:wire`) Integration
 
 Per the **OpenBao Secrets Prioritization Standard**:
-1. When OpenBao is bootstrapped, `design:init` and `api:init` register static database role credentials (`PENPOT_DB_PASSWORD`, `HOPPSCOTCH_DB_PASSWORD`).
-2. Database passwords are auto-rotated into OpenBao and synced to `larakube-shared` via ExternalSecret controller.
+1. When OpenBao is bootstrapped, `design:init` registers static database role credentials (`penpot` role in `plex-postgres`).
+2. `ClusterTool::DESIGN->dbSecretRef()` returns `['secret' => 'design-penpot-db', 'namespace' => 'larakube-shared', 'key' => 'password']`.
+3. Executing `larakube secrets:wire production --tool=design` hands database password rotation over to OpenBao (7-day automatic rotation via ExternalSecret controller).
+
+---
+
+## 🔑 VPN Restrictions (`vpn:wire`) Integration
+
+`ClusterTool::DESIGN->vpnMiddlewareTarget()` returns `'design'`. Executing `larakube vpn:wire production --tool=design` attaches Traefik NetBird IP allowlist middleware to `design.{domain}`.
+
+---
+
+## 🌐 Multi-Domain & Multi-Instance Architecture
+
+- **Multi-Domain**: Resolved dynamically via `SharedClusterService::DESIGN` with `hostPrefix() => 'design'`, rendering `design.{domain}` (e.g. `design.dev.test` or `design.example.com`).
+- **Multi-Instance**: Enabled via `supportsMultipleInstances() => true`. Passing `--instance=team2` creates:
+  - Ingress: `design-team2.{domain}`
+  - Deployments: `design-penpot-backend-team2`, `design-penpot-frontend-team2`
+  - Postgres DB: `penpot_team2`
+  - S3 Bucket: `design-assets-team2`
+
+---
+
+## 📊 Memory & Resource Usage Breakdown
+
+| Service / Workload | Runtime Component | RAM Usage | Notes |
+|--------------------|-------------------|-----------|-------|
+| `penpot-backend` | Clojure JVM (Java 21) | ~350 MB – 450 MB | Core API & real-time WS sync engine |
+| `penpot-frontend` | Nginx SPA Container | ~15 MB – 25 MB | Static bundle web server |
+| `penpot-exporter` (optional) | Node.js + Playwright | ~150 MB – 250 MB | Headless PDF/PNG export worker |
+| **Total Workload Footprint** | | **~365 MB – 725 MB** | Base ~400MB without exporter |
+| **Plex Commons Infrastructure** | Postgres, Redis, SeaweedFS | 0 MB additional | Shared instance reuse |
 
 ---
 
@@ -167,6 +226,7 @@ Per the **OpenBao Secrets Prioritization Standard**:
 |------|---------|-------|-----|-------|
 | `design` | Penpot Backend | `penpotapp/backend` | `2.17` | Clojure JVM backend |
 | `design` | Penpot Frontend | `penpotapp/frontend` | `2.17` | Nginx SPA frontend |
+| `design` | Penpot Exporter | `penpotapp/exporter` | `2.17` | Optional SVG/PDF exporter |
 | `api` | Hoppscotch | `hoppscotch/hoppscotch` | `2026.7.0` | Unified web UI + backend |
 
 ---
@@ -176,8 +236,12 @@ Per the **OpenBao Secrets Prioritization Standard**:
 - [ ] Add `ClusterTool::DESIGN = 'design'` and `SharedClusterService::DESIGN = 'design'`
 - [ ] Add `ClusterTool::API = 'api'` and `SharedClusterService::API = 'api'`
 - [ ] Add `commonsDatabases()` entries: `penpot` for `DESIGN`, `hoppscotch` for `API`
+- [ ] Implement `app/Traits/InteractsWithDesign.php`
 - [ ] Implement `app/Commands/Design/DesignInitCommand.php` (`larakube design:init`)
+- [ ] Implement `app/Commands/Design/DesignShowCommand.php` (`larakube design:show`)
+- [ ] Implement `app/Commands/Design/DesignRemoveCommand.php` (`larakube design:remove`)
 - [ ] Implement `app/Commands/Api/ApiInitCommand.php` (`larakube api:init`)
-- [ ] Create Blade templates for `k8s.design.*` and `k8s.api.*`
+- [ ] Create Blade templates for `k8s.design.*` (`backend`, `frontend`, `ingress`, `exporter`)
 - [ ] Create Pest feature tests: `tests/Feature/DesignInitCommandTest.php` and `tests/Feature/ApiInitCommandTest.php`
 - [ ] Format with `./php vendor/bin/pint` and verify PHPStan (0 errors)
+

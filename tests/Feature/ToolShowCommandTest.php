@@ -50,10 +50,10 @@ test('show exits non-zero and points at init when the tool is not installed', fu
 
 test('--json emits a machine-readable object instead of a table', function () {
     Process::fake([
-        // The registry Secret holds base64'd JSON keyed by tool slug.
+        // The registry Secret holds base64'd JSON — a flat list across every tool/instance.
         '*larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                'notes' => ['installed_at' => 1, 'host' => 'notes.example.com'],
+                ['tool' => 'notes', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.example.com'],
             ])),
         ),
         '*' => Process::result(output: ''),

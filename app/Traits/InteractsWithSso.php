@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Process;
  */
 trait InteractsWithSso
 {
-    use ReadsClusterSecrets, ResolvesEnvironmentContext;
+    use InteractsWithToolRegistry, ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /** The namespace the SSO stack lives in — dedicated, not larakube-shared. */
     protected function ssoNamespace(): string
@@ -57,12 +57,19 @@ trait InteractsWithSso
      * back to the project config on disk so the answer depends on the
      * environment, not on which caller happened to thread the config through.
      */
-    protected function resolveSsoHostReadOnly(string $env, ?ConfigData $config): ?string
+    protected function resolveSsoHostReadOnly(string $env, ?ConfigData $config, ?string $kubectl = null): ?string
     {
         $service = SharedClusterService::SSO;
 
         if ($env === 'local') {
             return $service->hostFor(GlobalConfigData::load()->getLocalTld());
+        }
+
+        if ($kubectl !== null) {
+            $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::SSO);
+            if ($registered !== null && $registered !== '') {
+                return $registered;
+            }
         }
 
         $config ??= file_exists(getcwd().'/'.ConfigData::CONFIG_FILE)

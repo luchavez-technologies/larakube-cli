@@ -2,7 +2,9 @@
 
 namespace App\Traits;
 
+use App\Data\InstanceData;
 use App\Enums\ClusterTool;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithToolRegistry
@@ -10,7 +12,11 @@ trait InteractsWithToolRegistry
     use ReadsClusterSecrets;
 
     /**
-     * @return array<string, array>
+     * One flat, self-describing list across every tool and every instance —
+     * each entry carries its own `tool` field rather than being nested under
+     * a tool-name key, so "all instances of X" is a filter, not a lookup.
+     *
+     * @return list<array<string, mixed>>
      */
     protected function getRegisteredTools(string $kubectl): array
     {
@@ -22,120 +28,184 @@ trait InteractsWithToolRegistry
 
         $decoded = json_decode($json, true);
 
-        return is_array($decoded) ? $decoded : [];
+        return is_array($decoded) ? array_values($decoded) : [];
     }
 
-    protected function registryKey(ClusterTool $tool, string $instance = 'main'): string
+    /**
+     * Every instance identifier of $tool currently registered.
+     *
+     * @return list<string>
+     */
+    protected function getToolInstances(string $kubectl, ClusterTool $tool): array
     {
-        return ($instance === '' || $instance === 'main') ? $tool->value : "{$tool->value}:{$instance}";
+        $entries = array_filter($this->getRegisteredTools($kubectl), fn ($e) => ($e['tool'] ?? null) === $tool->value);
+
+        return array_values(array_column($entries, 'instance'));
+    }
+
+    protected function findToolInstanceEntry(string $kubectl, ClusterTool $tool, string $instance = 'main'): ?array
+    {
+        foreach ($this->getRegisteredTools($kubectl) as $entry) {
+            if (($entry['tool'] ?? null) === $tool->value && ($entry['instance'] ?? 'main') === $instance) {
+                return $entry;
+            }
+        }
+
+        return null;
+    }
+
+    /** DATA's lookup path — its real identity is the host, not an operator-typed instance name. */
+    protected function findToolInstanceEntryByHost(string $kubectl, ClusterTool $tool, string $host): ?array
+    {
+        foreach ($this->getRegisteredTools($kubectl) as $entry) {
+            if (($entry['tool'] ?? null) === $tool->value && ($entry['host'] ?? null) === $host) {
+                return $entry;
+            }
+        }
+
+        return null;
     }
 
     protected function isToolRegistered(string $kubectl, ClusterTool $tool, string $instance = 'main'): bool
     {
-        $registry = $this->getRegisteredTools($kubectl);
-
-        return isset($registry[$this->registryKey($tool, $instance)]);
+        return $this->findToolInstanceEntry($kubectl, $tool, $instance) !== null;
     }
 
     /**
-     * Record (or update) a tool in the cluster registry.
+     * Record (or update) a tool instance in the cluster registry.
      */
     protected function registerTool(string $kubectl, ClusterTool $tool, array $metadata = [], string $instance = 'main'): bool
     {
-        $registry = $this->getRegisteredTools($kubectl);
-        $key = $this->registryKey($tool, $instance);
-        $existing = $registry[$key] ?? [];
-
+        $list = $this->getRegisteredTools($kubectl);
         // Never let an absent/empty value clobber a known one.
         $metadata = array_filter($metadata, fn ($v) => $v !== null && $v !== '');
+        $now = Carbon::now()->toIso8601String();
 
-        $registry[$key] = array_merge(
-            [
-                'installed_at' => $existing['installed_at'] ?? time(),
-                'instance' => $instance,
-                'alias_hosts' => $existing['alias_hosts'] ?? [],
-            ],
-            $existing,
-            $metadata,
-            ['updated_at' => time()],
-        );
+        $found = false;
+        foreach ($list as &$entry) {
+            if (($entry['tool'] ?? null) === $tool->value && ($entry['instance'] ?? 'main') === $instance) {
+                $entry = array_merge($entry, $metadata, ['updatedAt' => $now]);
+                $found = true;
+                break;
+            }
+        }
+        unset($entry);
 
-        return $this->saveToolRegistry($kubectl, $registry);
+        if (! $found) {
+            $list[] = array_merge(
+                ['tool' => $tool->value, 'instance' => $instance, 'aliases' => [], 'installedAt' => $now],
+                $metadata,
+                ['updatedAt' => $now],
+            );
+        }
+
+        return $this->saveToolRegistry($kubectl, $list);
+    }
+
+    protected function getToolInstanceData(string $kubectl, ClusterTool $tool, string $instance = 'main'): ?InstanceData
+    {
+        $entry = $this->findToolInstanceEntry($kubectl, $tool, $instance);
+
+        return $entry === null ? null : InstanceData::from($entry);
+    }
+
+    /** @return list<InstanceData> */
+    protected function getAllToolInstanceData(string $kubectl, ClusterTool $tool): array
+    {
+        $entries = array_filter($this->getRegisteredTools($kubectl), fn ($e) => ($e['tool'] ?? null) === $tool->value);
+
+        return array_values(array_map(fn (array $e) => InstanceData::from($e), $entries));
     }
 
     protected function getToolHost(string $kubectl, ClusterTool $tool, string $instance = 'main'): ?string
     {
-        $registry = $this->getRegisteredTools($kubectl);
-
-        return $registry[$this->registryKey($tool, $instance)]['host'] ?? null;
+        return $this->findToolInstanceEntry($kubectl, $tool, $instance)['host'] ?? null;
     }
 
     protected function getToolAliasHosts(string $kubectl, ClusterTool $tool, string $instance = 'main'): array
     {
-        $registry = $this->getRegisteredTools($kubectl);
-
-        return $registry[$this->registryKey($tool, $instance)]['alias_hosts'] ?? [];
+        return $this->findToolInstanceEntry($kubectl, $tool, $instance)['aliases'] ?? [];
     }
 
     protected function addToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, string $instance = 'main'): bool
     {
-        $registry = $this->getRegisteredTools($kubectl);
-        $key = $this->registryKey($tool, $instance);
+        $list = $this->getRegisteredTools($kubectl);
 
-        if (! isset($registry[$key])) {
-            return false;
+        $found = false;
+        foreach ($list as &$entry) {
+            if (($entry['tool'] ?? null) === $tool->value && ($entry['instance'] ?? 'main') === $instance) {
+                $existing = $entry['aliases'] ?? [];
+                if (! in_array($aliasHost, $existing, true)) {
+                    $existing[] = $aliasHost;
+                }
+                $entry['aliases'] = array_values(array_unique($existing));
+                $found = true;
+                break;
+            }
         }
+        unset($entry);
 
-        $existing = $registry[$key]['alias_hosts'] ?? [];
-        if (! in_array($aliasHost, $existing, true)) {
-            $existing[] = $aliasHost;
-        }
-
-        $registry[$key]['alias_hosts'] = array_values(array_unique($existing));
-
-        return $this->saveToolRegistry($kubectl, $registry);
+        return $found && $this->saveToolRegistry($kubectl, $list);
     }
 
     protected function removeToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, string $instance = 'main'): bool
     {
-        $registry = $this->getRegisteredTools($kubectl);
-        $key = $this->registryKey($tool, $instance);
+        $list = $this->getRegisteredTools($kubectl);
 
-        if (! isset($registry[$key])) {
+        $found = false;
+        foreach ($list as &$entry) {
+            if (($entry['tool'] ?? null) === $tool->value && ($entry['instance'] ?? 'main') === $instance) {
+                $existing = $entry['aliases'] ?? [];
+                $entry['aliases'] = array_values(array_filter($existing, fn ($h) => $h !== $aliasHost));
+                $found = true;
+                break;
+            }
+        }
+        unset($entry);
+
+        if (! $found) {
             return true;
         }
 
-        $existing = $registry[$key]['alias_hosts'] ?? [];
-        $registry[$key]['alias_hosts'] = array_values(array_filter($existing, fn ($h) => $h !== $aliasHost));
-
-        return $this->saveToolRegistry($kubectl, $registry);
+        return $this->saveToolRegistry($kubectl, $list);
     }
 
     protected function unregisterTool(string $kubectl, ClusterTool $tool, string $instance = 'main'): bool
     {
-        $registry = $this->getRegisteredTools($kubectl);
-        $key = $this->registryKey($tool, $instance);
+        $list = $this->getRegisteredTools($kubectl);
+        $filtered = array_values(array_filter(
+            $list,
+            fn ($e) => ! (($e['tool'] ?? null) === $tool->value && ($e['instance'] ?? 'main') === $instance),
+        ));
 
-        if (! isset($registry[$key])) {
+        if (count($filtered) === count($list)) {
             return true;
         }
 
-        unset($registry[$key]);
-
-        return $this->saveToolRegistry($kubectl, $registry);
+        return $this->saveToolRegistry($kubectl, $filtered);
     }
 
+    /**
+     * Write via a temp file + `--from-file`, matching ConfigData::backupToCluster()'s
+     * established pattern rather than an inline `--from-literal=<escaped-json>` —
+     * avoids inline-shell-argument length/escaping concerns for what can now be
+     * a large blob (every tool's every instance in one list).
+     */
     protected function saveToolRegistry(string $kubectl, array $registry): bool
     {
         Process::run("{$kubectl} create namespace larakube-shared --dry-run=client -o yaml | {$kubectl} apply -f -");
 
-        $json = json_encode($registry);
+        $tmpFile = tempnam(sys_get_temp_dir(), 'larakube-registry');
+        file_put_contents($tmpFile, json_encode(array_values($registry)));
 
         $cmd = "{$kubectl} create secret generic larakube-tools-registry -n larakube-shared "
-            .'--from-literal=registry.json='.escapeshellarg($json).' '
+            ."--from-file=registry.json={$tmpFile} "
             ."--dry-run=client -o yaml | {$kubectl} apply -f -";
 
-        return Process::run($cmd)->successful();
+        $result = Process::run($cmd)->successful();
+        @unlink($tmpFile);
+
+        return $result;
     }
 
     /**
@@ -161,15 +231,18 @@ trait InteractsWithToolRegistry
      * Resolve the host for an installed tool by checking the registry first,
      * then probing live cluster Ingress resources if not registered or missing a host.
      */
-    protected function resolveLiveToolHost(string $kubectl, ClusterTool $tool): ?string
+    protected function resolveLiveToolHost(string $kubectl, ClusterTool $tool, string $instance = 'main'): ?string
     {
-        $registeredHost = $this->getToolHost($kubectl, $tool);
+        $registeredHost = $this->getToolHost($kubectl, $tool, $instance);
         if ($registeredHost !== null && $registeredHost !== '') {
             return $registeredHost;
         }
 
         $namespaces = array_unique([$tool->namespace(), 'larakube-shared']);
         $prefix = $tool->service()?->hostPrefix() ?? $tool->value;
+        if ($instance !== '' && $instance !== 'main') {
+            $prefix = "{$prefix}-{$instance}";
+        }
 
         foreach ($namespaces as $ns) {
             $hostsStr = trim(Process::run("{$kubectl} get ingress -n {$ns} -o jsonpath='{.items[*].spec.rules[*].host}' 2>/dev/null")->output());
@@ -185,7 +258,7 @@ trait InteractsWithToolRegistry
                 }
             }
 
-            if (count($hosts) === 1 && $ns !== 'larakube-shared') {
+            if ($instance === 'main' && count($hosts) === 1 && $ns !== 'larakube-shared') {
                 return reset($hosts) ?: null;
             }
         }

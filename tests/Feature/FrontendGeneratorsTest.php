@@ -3,6 +3,10 @@
 use App\Commands\Astro\AstroNewCommand;
 use App\Commands\Docs\DocsNewCommand;
 use App\Commands\Vite\ViteNewCommand;
+use App\Data\ConfigData;
+use App\Enums\AppFramework;
+use App\Traits\GeneratesProjectInfrastructure;
+use Illuminate\Support\Facades\Process;
 
 test('vite:new, astro:new, docs:new, and data:wire commands are registered', function () {
     $this->artisan('list --no-interaction')
@@ -42,11 +46,11 @@ test('vite:new scaffolds project and generates .larakube.json blueprint', functi
     $oldCwd = getcwd();
 
     try {
-        Illuminate\Support\Facades\Process::fake([
+        Process::fake([
             '*create-vite*' => function ($process) use ($tempDir) {
                 mkdir("{$tempDir}/my-vite-app", 0755, true);
 
-                return Illuminate\Support\Facades\Process::result(output: 'Scaffolded');
+                return Process::result(output: 'Scaffolded');
             },
         ]);
 
@@ -57,7 +61,7 @@ test('vite:new scaffolds project and generates .larakube.json blueprint', functi
             ->expectsOutputToContain('Scaffolding complete! Created Vite (react-ts) app in my-vite-app/');
 
         expect(file_exists("{$tempDir}/my-vite-app/.larakube.json"))->toBeTrue();
-        $config = App\Data\ConfigData::loadFromFile("{$tempDir}/my-vite-app");
+        $config = ConfigData::loadFromFile("{$tempDir}/my-vite-app");
         expect($config->framework->value)->toBe('vite');
     } finally {
         chdir($oldCwd);
@@ -71,11 +75,11 @@ test('astro:new scaffolds project and generates .larakube.json blueprint', funct
     $oldCwd = getcwd();
 
     try {
-        Illuminate\Support\Facades\Process::fake([
+        Process::fake([
             '*create-astro*' => function ($process) use ($tempDir) {
                 mkdir("{$tempDir}/my-astro-app", 0755, true);
 
-                return Illuminate\Support\Facades\Process::result(output: 'Scaffolded');
+                return Process::result(output: 'Scaffolded');
             },
         ]);
 
@@ -86,7 +90,7 @@ test('astro:new scaffolds project and generates .larakube.json blueprint', funct
             ->expectsOutputToContain('Scaffolding complete! Created Astro (minimal) site in my-astro-app/');
 
         expect(file_exists("{$tempDir}/my-astro-app/.larakube.json"))->toBeTrue();
-        $config = App\Data\ConfigData::loadFromFile("{$tempDir}/my-astro-app");
+        $config = ConfigData::loadFromFile("{$tempDir}/my-astro-app");
         expect($config->framework->value)->toBe('astro');
     } finally {
         chdir($oldCwd);
@@ -100,11 +104,11 @@ test('docs:new scaffolds project and generates .larakube.json blueprint', functi
     $oldCwd = getcwd();
 
     try {
-        Illuminate\Support\Facades\Process::fake([
+        Process::fake([
             '*create-docusaurus*' => function ($process) use ($tempDir) {
                 mkdir("{$tempDir}/my-docs-app", 0755, true);
 
-                return Illuminate\Support\Facades\Process::result(output: 'Scaffolded');
+                return Process::result(output: 'Scaffolded');
             },
         ]);
 
@@ -115,7 +119,7 @@ test('docs:new scaffolds project and generates .larakube.json blueprint', functi
             ->expectsOutputToContain('Scaffolding complete! Created Docusaurus documentation site in my-docs-app/');
 
         expect(file_exists("{$tempDir}/my-docs-app/.larakube.json"))->toBeTrue();
-        $config = App\Data\ConfigData::loadFromFile("{$tempDir}/my-docs-app");
+        $config = ConfigData::loadFromFile("{$tempDir}/my-docs-app");
         expect($config->framework->value)->toBe('docusaurus');
     } finally {
         chdir($oldCwd);
@@ -127,19 +131,19 @@ test('generateK8sManifests renders spa-s3-ingress for SPA frameworks', function 
     $tempDir = sys_get_temp_dir().'/test-spa-ingress-'.uniqid();
     mkdir($tempDir, 0755, true);
 
-    $config = new App\Data\ConfigData(
+    $config = new ConfigData(
         id: 'spa-test',
         name: 'spa-test',
         path: $tempDir,
-        framework: App\Enums\AppFramework::VITE,
+        framework: AppFramework::VITE,
         frontend: null,
     );
 
     $traitHolder = new class
     {
-        use App\Traits\GeneratesProjectInfrastructure;
+        use GeneratesProjectInfrastructure;
 
-        public function testGenerate(App\Data\ConfigData $config): void
+        public function testGenerate(ConfigData $config): void
         {
             $this->generateK8sManifests($config);
         }

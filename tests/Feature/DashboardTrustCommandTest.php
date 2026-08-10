@@ -1,10 +1,15 @@
 <?php
 
+use App\Commands\Dashboard\DashboardTrustCommand;
 use App\Data\CloudData;
 use App\Data\ConfigData;
+use Illuminate\Console\OutputStyle;
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 function dashboardTrustProjectDir(array $cloud, string $env = 'production'): string
 {
@@ -130,9 +135,11 @@ test('dashboard:trust writes the config and restarts k3s when the OIDC trust is 
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-app-dashboard*' => Process::result(output: base64_encode('cid-1')),
         "*'echo success'" => Process::result(output: "success\n"),
-        '*larakube@1.2.3.4*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: ''),
-        '*larakube@1.2.3.4*systemctl restart k3s*' => Process::result(exitCode: 0),
+        '*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: ''),
         '*get --raw=/livez*' => Process::result(output: 'ok', exitCode: 0),
+        fn (PendingProcess $process) => str_contains($process->command, 'systemctl restart k3s')
+            ? Process::result(output: "ok\n", exitCode: 0)
+            : null,
     ]);
 
     withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function () {
@@ -168,7 +175,7 @@ test('dashboard:trust cancels cleanly when the operator declines the restart', f
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-app-dashboard*' => Process::result(output: base64_encode('cid-1')),
         "*'echo success'" => Process::result(output: "success\n"),
-        '*larakube@1.2.3.4*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: ''),
+        '*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: ''),
     ]);
 
     $dir = dashboardTrustProjectDir(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22]);
@@ -182,13 +189,13 @@ test('dashboard:trust cancels cleanly when the operator declines the restart', f
         // not through artisan()'s Kernel::configurePrompts() fallbacks.
         Prompt::fake(['n', Key::ENTER]);
 
-        $command = app(App\Commands\Dashboard\DashboardTrustCommand::class);
-        $input = new Symfony\Component\Console\Input\ArrayInput(['environment' => 'production']);
+        $command = app(DashboardTrustCommand::class);
+        $input = new ArrayInput(['environment' => 'production']);
         $input->bind($command->getDefinition());
         $input->setInteractive(true);
-        $output = new Symfony\Component\Console\Output\BufferedOutput;
+        $output = new BufferedOutput;
         $command->setInput($input);
-        $command->setOutput(new Illuminate\Console\OutputStyle($input, $output));
+        $command->setOutput(new OutputStyle($input, $output));
         \Termwind\renderUsing($output);
 
         $exitCode = $command->handle();

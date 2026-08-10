@@ -1,5 +1,7 @@
 <?php
 
+use App\Commands\Secrets\SecretsWireCommand;
+use App\Exceptions\MissingFlagException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
@@ -143,7 +145,7 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
 });
 
 test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND a fresh refreshTime', function () {
-    $command = new class extends App\Commands\Secrets\SecretsWireCommand
+    $command = new class extends SecretsWireCommand
     {
         public function wait(string $kubectl, string $ns, string $name, ?string $before, int $timeout): bool
         {
@@ -288,4 +290,4 @@ test('secrets:wire requires --tool or --all when it cannot prompt', function () 
     ]);
 
     $this->artisan('secrets:wire local --no-interaction')->run();
-})->throws(App\Exceptions\MissingFlagException::class, 'Missing required --tool');
+})->throws(MissingFlagException::class, 'Missing required --tool');

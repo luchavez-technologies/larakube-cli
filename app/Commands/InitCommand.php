@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Contracts\HasArtisanCommands;
 use App\Contracts\HasLifecycleHooks;
+use App\Enums\AppFramework;
 use App\Traits\CheckPrerequisites;
 use App\Traits\DiffsProjectConfig;
 use App\Traits\GathersInfrastructureConfig;
@@ -90,7 +91,7 @@ class InitCommand extends Command
         $config = $this->gatherConfig($config, forcePrompts: $isReinit);
         $config->setPath(getcwd());
         if ($config->framework === null) {
-            $config->framework = \App\Enums\AppFramework::detect(getcwd());
+            $config->framework = AppFramework::detect(getcwd());
         }
 
         $name = Str::slug(basename($config->getPath()));

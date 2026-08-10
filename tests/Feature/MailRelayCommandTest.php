@@ -1,6 +1,14 @@
 <?php
 
+use App\Commands\Mail\MailRelayCommand;
+use App\Traits\InteractsWithMail;
+use App\Traits\InteractsWithStalwartApi;
+use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Process;
+use Laravel\Prompts\Key;
+use Laravel\Prompts\Prompt;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 test('mail:relay is registered', function () {
     $this->artisan('list')
@@ -101,18 +109,18 @@ test('mail:relay shows onboarding + pricing before prompting for fresh credentia
         },
     ]);
 
-    Laravel\Prompts\Prompt::fake([
-        'u', Laravel\Prompts\Key::ENTER, // username
-        'k', Laravel\Prompts\Key::ENTER, // api-key
+    Prompt::fake([
+        'u', Key::ENTER, // username
+        'k', Key::ENTER, // api-key
     ]);
 
-    $command = app(App\Commands\Mail\MailRelayCommand::class);
-    $input = new Symfony\Component\Console\Input\ArrayInput(['--provider' => 'brevo']);
+    $command = app(MailRelayCommand::class);
+    $input = new ArrayInput(['--provider' => 'brevo']);
     $input->bind($command->getDefinition());
     $input->setInteractive(true);
-    $output = new Symfony\Component\Console\Output\BufferedOutput;
+    $output = new BufferedOutput;
     $command->setInput($input);
-    $command->setOutput(new Illuminate\Console\OutputStyle($input, $output));
+    $command->setOutput(new OutputStyle($input, $output));
 
     $exitCode = $command->handle();
 
@@ -221,8 +229,8 @@ test('stalwartSetOutboundRoute sets outbound strategy route', function () {
 
     $trait = new class
     {
-        use App\Traits\InteractsWithMail;
-        use App\Traits\InteractsWithStalwartApi;
+        use InteractsWithMail;
+        use InteractsWithStalwartApi;
 
         public function setRoute(string $kubectl, string $ns, string $routeName): bool
         {
@@ -269,8 +277,8 @@ function captureRoutePatch(array $existingMatch, string $routeName, string $exis
 
     $trait = new class
     {
-        use App\Traits\InteractsWithMail;
-        use App\Traits\InteractsWithStalwartApi;
+        use InteractsWithMail;
+        use InteractsWithStalwartApi;
 
         public function setRoute(string $kubectl, string $ns, string $routeName): bool
         {

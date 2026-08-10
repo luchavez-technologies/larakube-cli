@@ -1,9 +1,17 @@
 <?php
 
+use App\Commands\Mail\MailPasswordCommand;
+use App\Traits\InteractsWithMail;
+use App\Traits\InteractsWithStalwartApi;
+use Illuminate\Console\OutputStyle;
+use Illuminate\Process\FakeProcessSequence;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 test('mail:accounts is registered', function () {
     $this->artisan('list')
@@ -48,8 +56,8 @@ test('mail:accounts lists accounts', function () {
         },
     ]);
 
-    $exitCode = Illuminate\Support\Facades\Artisan::call('mail:accounts');
-    $output = Illuminate\Support\Facades\Artisan::output();
+    $exitCode = Artisan::call('mail:accounts');
+    $output = Artisan::output();
 
     expect($exitCode)->toBe(0);
     expect($output)->toContain('admin@example.com');
@@ -133,7 +141,7 @@ test('mail:delete deletes account by email', function () {
         },
     ]);
 
-    $exitCode = Illuminate\Support\Facades\Artisan::call('mail:delete', ['--email' => 'admin@example.com', '--force' => true]);
+    $exitCode = Artisan::call('mail:delete', ['--email' => 'admin@example.com', '--force' => true]);
 
     expect($exitCode)->toBe(0);
 });
@@ -280,13 +288,13 @@ test('mail:password without --force asks for confirmation and cancels on decline
 
     Prompt::fake([Key::ENTER]); // accept confirm()'s default, which is No
 
-    $command = app(App\Commands\Mail\MailPasswordCommand::class);
-    $input = new Symfony\Component\Console\Input\ArrayInput(['--email' => 'alice@example.com', '--password' => 'Whatever!123']);
+    $command = app(MailPasswordCommand::class);
+    $input = new ArrayInput(['--email' => 'alice@example.com', '--password' => 'Whatever!123']);
     $input->bind($command->getDefinition());
     $input->setInteractive(true);
-    $output = new Symfony\Component\Console\Output\BufferedOutput;
+    $output = new BufferedOutput;
     $command->setInput($input);
-    $command->setOutput(new Illuminate\Console\OutputStyle($input, $output));
+    $command->setOutput(new OutputStyle($input, $output));
 
     $exitCode = $command->handle();
 
@@ -322,7 +330,7 @@ test('mail:quota sets quota', function () {
         },
     ]);
 
-    $exitCode = Illuminate\Support\Facades\Artisan::call('mail:quota', ['--email' => 'alice@example.com', '--quota' => '10']);
+    $exitCode = Artisan::call('mail:quota', ['--email' => 'alice@example.com', '--quota' => '10']);
 
     expect($exitCode)->toBe(0);
 });
@@ -749,7 +757,7 @@ test('the store hint warns that switching stores empties the directory', functio
  *
  * @param  list<array{id: string, type: string, stage: string}>  $signatures
  */
-function dkimJmapSequence(array $signatures): Illuminate\Process\FakeProcessSequence
+function dkimJmapSequence(array $signatures): FakeProcessSequence
 {
     $ids = array_map(fn (array $s) => $s['id'], $signatures);
 
@@ -879,8 +887,8 @@ function apiKeyHarness(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithMail;
-        use App\Traits\InteractsWithStalwartApi;
+        use InteractsWithMail;
+        use InteractsWithStalwartApi;
 
         public function ensure(string $kubectl, string $ns): ?string
         {

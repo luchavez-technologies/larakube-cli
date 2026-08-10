@@ -8,16 +8,19 @@
  * host, since the method's behavior doesn't depend on which command calls it.
  */
 
+use App\Commands\Plex\PlexInitCommand;
 use App\Data\ConfigData;
+use Illuminate\Console\OutputStyle;
 use Laravel\Prompts\Prompt;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 Prompt::interactive(false);
 
 function plexInitCommand(array $arguments = []): object
 {
-    $command = new class extends App\Commands\Plex\PlexInitCommand
+    $command = new class extends PlexInitCommand
     {
         public function callResolvePlexEnvironment(?ConfigData $config): string
         {
@@ -34,7 +37,7 @@ function plexInitCommand(array $arguments = []): object
     $input = new ArrayInput($arguments);
     $input->bind($definition);
     $command->setInput($input);
-    $command->setOutput(new Illuminate\Console\OutputStyle($input, new Symfony\Component\Console\Output\BufferedOutput));
+    $command->setOutput(new OutputStyle($input, new BufferedOutput));
 
     return $command;
 }

@@ -9,6 +9,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
@@ -34,7 +35,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 abstract class AbstractToolRemoveCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolHost, SyncsClusterSecrets;
 
     public function __construct()
     {
@@ -44,7 +45,7 @@ abstract class AbstractToolRemoveCommand extends Command
             $this->signature = "{$tool->value}:remove
             {environment=local : Environment to remove ".$tool->getLabel()." from}
             {--context=  : Target a specific kube-context (defaults to the environment's saved cloud target)}
-            {--instance=main : Named instance identifier (default: main)}
+            {--domain=   : The instance's host, to target a specific one (e.g. --domain=blog.example.com). Omit for the default instance}
             {--purge     : Also destroy persistent data — drop the Plex Commons database and release the Redis index. Irreversible.}
             {--force     : Skip the confirmation prompt (required for non-interactive runs)}";
         }
@@ -60,7 +61,17 @@ abstract class AbstractToolRemoveCommand extends Command
 
         $tool = $this->tool();
         $env = (string) $this->argument('environment');
-        $instance = (string) ($this->option('instance') ?: 'main');
+        $instance = $this->resolveInstance();
+
+        if ($instance !== 'main' && ! $tool->supportsMultipleInstances()) {
+            $this->laraKubeError(
+                "{$tool->getLabel()} does not support multiple instances — ".
+                '--domain would silently do nothing (or worse, a misleading partial removal) since its '.
+                'teardown targets fixed resource names. Omit --domain to remove the single installation.',
+            );
+
+            return 1;
+        }
 
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         // InteractsWithPlex talks to the Commons through its own kubectl; point
@@ -110,6 +121,22 @@ abstract class AbstractToolRemoveCommand extends Command
 
     /** The tool this command tears down. */
     abstract protected function tool(): ClusterTool;
+
+    /**
+     * Which instance to remove. --domain empty → 'main'; given → the same
+     * host-derived slug data:init/{tool}:init would have computed for it, so
+     * every step that needs the instance (the multi-instance guard above,
+     * dropCommonsTenants(), teardown(), unregisterTool()) picks it up
+     * automatically through this one seam. DataRemoveCommand overrides this
+     * to look the entry up by host instead — its registry lookup key isn't
+     * the slug, it's the host itself.
+     */
+    protected function resolveInstance(): string
+    {
+        $domain = (string) ($this->option('domain') ?: '');
+
+        return $domain === '' ? 'main' : $this->tool()->instanceSlugFromHost($this->sanitizeDomainInput($domain));
+    }
 
     /**
      * Delete this tool's Kubernetes resources. Return false on any failed step

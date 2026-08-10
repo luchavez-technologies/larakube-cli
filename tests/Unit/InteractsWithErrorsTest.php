@@ -2,13 +2,14 @@
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Traits\InteractsWithErrors;
 use Illuminate\Support\Facades\Process;
 
 function errorsReader(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithErrors;
+        use InteractsWithErrors;
 
         public function host(string $env, ?ConfigData $config): ?string
         {

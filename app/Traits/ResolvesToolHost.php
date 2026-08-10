@@ -34,14 +34,16 @@ trait ResolvesToolHost
         ClusterTool $tool,
         string $env,
         ?string $kubectl = null,
+        string $instance = 'main',
+        ?string $labelOverride = null,
     ): string {
         $domain = (string) ($this->option('domain') ?? '');
         if ($domain !== '') {
-            return $this->hostFromDomainOption($service, $domain);
+            return $this->hostFromDomainOption($service, $domain, $instance);
         }
 
         if ($env === 'local') {
-            return $service->hostFor(GlobalConfigData::load()->getLocalTld());
+            return $service->hostFor(GlobalConfigData::load()->getLocalTld(), $instance);
         }
 
         // The CLUSTER is the compass for shared tools. A tool is cluster
@@ -50,7 +52,7 @@ trait ResolvesToolHost
         // machine that has never cloned any of them. So a host recorded by a
         // previous deploy wins over anything in a project file.
         if ($kubectl !== null && method_exists($this, 'getToolHost')) {
-            $recorded = $this->getToolHost($kubectl, $tool);
+            $recorded = $this->getToolHost($kubectl, $tool, $instance);
             if ($recorded !== null && $recorded !== '') {
                 return $recorded;
             }
@@ -59,10 +61,10 @@ trait ResolvesToolHost
         $config = $this->resolveProjectConfig();
 
         if ($this->option('no-interaction')) {
-            return $this->resolveNonInteractiveHost($service, $tool, $env, $config, $kubectl);
+            return $this->resolveNonInteractiveHost($service, $tool, $env, $config, $kubectl, $instance);
         }
 
-        return $this->promptForCloudHost($service, $env, $config, $tool, $kubectl);
+        return $this->promptForCloudHost($service, $env, $config, $tool, $kubectl, $instance, $labelOverride);
     }
 
     protected function resolveToolAliasHosts(string $kubectl, ClusterTool $tool, string $instance = 'main'): array
@@ -95,7 +97,7 @@ trait ResolvesToolHost
      * pasted scheme, trailing slash or stray dots are tolerated too, because
      * every one of those is a thing an operator will paste from a browser bar.
      */
-    protected function hostFromDomainOption(SharedClusterService $service, string $domain): string
+    protected function hostFromDomainOption(SharedClusterService $service, string $domain, string $instance = 'main'): string
     {
         // Strip anything copied from a URL: scheme, path, port, surrounding dots.
         $domain = strtolower(trim($domain));
@@ -104,13 +106,36 @@ trait ResolvesToolHost
         $domain = trim($domain, ". \t");
 
         $prefix = $service->hostPrefix();
+        if ($instance !== '' && $instance !== 'main') {
+            $prefix = "{$prefix}-{$instance}";
+        }
 
-        // Already the full host for THIS service — don't prefix it twice.
+        // Already the full host for THIS service (+instance) — don't prefix it twice.
         if ($prefix !== '' && str_starts_with($domain, $prefix.'.')) {
             return $domain;
         }
 
-        return $service->hostFor($domain);
+        return $service->hostFor($domain, $instance);
+    }
+
+    /**
+     * The alternative reading of --domain=, for commands where it means "this
+     * literal host, and therefore which instance" (AbstractToolRemoveCommand,
+     * AbstractToolShowCommand, ToolAliasCommand, DataInitCommand, NotesInitCommand)
+     * rather than hostFromDomainOption()'s "base domain, guess the prefix".
+     * Deliberately does NOT auto-prefix — a value already meaning a specific
+     * instance's host would get silently mangled by hostFor()'s prefixing
+     * logic (which always assumes the bare-prefix/'main' case), which is
+     * exactly what made per-instance targeting impossible before this existed.
+     * Same URL-paste cleanup as hostFromDomainOption() (scheme/path/port/dots).
+     */
+    protected function sanitizeDomainInput(string $domain): string
+    {
+        $domain = strtolower(trim($domain));
+        $domain = (string) preg_replace('#^[a-z]+://#', '', $domain);
+        $domain = (string) preg_replace('#[/:].*$#', '', $domain);
+
+        return trim($domain, ". \t");
     }
 
     protected function resolveProjectConfig(): ?ConfigData
@@ -128,6 +153,7 @@ trait ResolvesToolHost
         string $env,
         ?ConfigData $config,
         ?string $kubectl = null,
+        string $instance = 'main',
     ): string {
         // The cluster registry is checked by the caller before we get here, so
         // a stored host has already won. What's left is derivation: a tool host
@@ -138,7 +164,7 @@ trait ResolvesToolHost
         // tool state lives on the cluster, full stop.
         $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
         if ($config && $webHost) {
-            return $config->getSharedServiceHost($service, $env);
+            return $config->getSharedServiceHost($service, $env, $instance);
         }
 
         throw new RuntimeException(
@@ -153,21 +179,29 @@ trait ResolvesToolHost
         ?ConfigData $config = null,
         ?ClusterTool $tool = null,
         ?string $kubectl = null,
+        string $instance = 'main',
+        ?string $labelOverride = null,
     ): string {
         if ($config === null) {
             $config = $this->resolveProjectConfig();
         }
 
-        $existing = $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
+        // The project-pinned host is main-only — .larakube.json has no
+        // per-instance dimension, so reusing it for a named instance would
+        // just recreate the exact host collision this parameter exists to
+        // avoid.
+        $existing = $instance === 'main' ? ($config?->getEnvironment($env)?->hosts[$service->value] ?? null) : null;
         if ($existing) {
             return $existing;
         }
 
         $webHost = $config?->getEnvironment($env)?->hosts['web'] ?? null;
-        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env) : '';
+        $default = ($config && $webHost) ? $config->getSharedServiceHost($service, $env, $instance) : '';
+
+        $label = $labelOverride ?? $service->label();
 
         $host = text(
-            label: "What host should {$service->label()} use in '{$env}'?",
+            label: "What host should {$label} use in '{$env}'?",
             placeholder: $default !== '' ? $default : "e.g. {$service->hostPrefix()}.example.com",
             default: $default,
             required: true,
@@ -181,7 +215,7 @@ trait ResolvesToolHost
         // is already known. registerTool() merges, so this is safe to call
         // before {tool}:init records the rest of its metadata.
         if ($tool !== null && $kubectl !== null && method_exists($this, 'registerTool')) {
-            $this->registerTool($kubectl, $tool, ['host' => $host]);
+            $this->registerTool($kubectl, $tool, ['host' => $host], $instance);
             $this->laraKubeInfo("Recorded the {$service->label()} host on the cluster.");
         }
 

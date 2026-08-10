@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\CloudData;
 use App\Data\ConfigData;
+use App\Enums\LaravelFeature;
 use App\Enums\RegistryProvider;
 use Illuminate\Support\Facades\Process;
 
@@ -141,7 +142,7 @@ trait InteractsWithRemoteDeploy
         ];
 
         $reverbHost = $config->getHost($environment, 'reverb');
-        if ($reverbHost && $config->hasFeature(\App\Enums\LaravelFeature::REVERB, $environment)) {
+        if ($reverbHost && $config->hasFeature(LaravelFeature::REVERB, $environment)) {
             $args['VITE_REVERB_HOST'] = $reverbHost;
             $args['VITE_REVERB_PORT'] = '443';
             $args['VITE_REVERB_SCHEME'] = 'https';

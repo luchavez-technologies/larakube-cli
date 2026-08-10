@@ -1,10 +1,12 @@
 <?php
 
+use App\Traits\InteractsWithKustomize;
+
 function kustomizeHarness(?string $bin): object
 {
     return new class($bin)
     {
-        use App\Traits\InteractsWithKustomize;
+        use InteractsWithKustomize;
 
         public function __construct(private ?string $bin) {}
 

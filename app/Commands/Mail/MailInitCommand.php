@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
+use App\Enums\StorageDriver;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -297,7 +298,7 @@ class MailInitCommand extends Command
         // Auto-allocate S3 bucket 'stalwart' if S3 backend is enabled
         foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
             if (in_array($candidate, $services, true)) {
-                $storageDriver = \App\Enums\StorageDriver::tryFrom($candidate);
+                $storageDriver = StorageDriver::tryFrom($candidate);
                 if ($storageDriver !== null) {
                     $this->allocateStorageBucket($storageDriver, 'stalwart');
                 }

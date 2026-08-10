@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\MissingFlagException;
 use Illuminate\Support\Facades\Process;
 
 function meetWireFakes(array $overrides = []): array
@@ -16,8 +17,8 @@ function meetWireFakes(array $overrides = []): array
         '*get deployment meet-lk-jwt*' => Process::result(output: ''),
         '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            'meet' => ['host' => 'meet.example.com', 'instance' => 'main'],
-            'chat' => ['host' => 'chat.example.com', 'instance' => 'main'],
+            ['tool' => 'meet', 'host' => 'meet.example.com', 'instance' => 'main'],
+            ['tool' => 'chat', 'host' => 'chat.example.com', 'instance' => 'main'],
         ]))),
         '*get secret chat-synapse-config*' => Process::result(output: $homeserver),
         '*create secret*' => Process::result(output: 'secret created'),
@@ -57,7 +58,7 @@ test('meet:wire demands --tool by name when it cannot prompt', function () {
     Process::fake(meetWireFakes());
 
     $this->artisan('meet:wire local --no-interaction')->run();
-})->throws(App\Exceptions\MissingFlagException::class, 'Missing required --tool');
+})->throws(MissingFlagException::class, 'Missing required --tool');
 
 test('meet:wire deploys the bridge and points Synapse at it', function () {
     Process::fake(meetWireFakes());

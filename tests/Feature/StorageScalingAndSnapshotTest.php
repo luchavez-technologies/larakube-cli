@@ -1,9 +1,11 @@
 <?php
 
+use Illuminate\Contracts\Console\Kernel;
+
 // ── cloud:scale --storage Test ────────────────────────────────────────────────
 
 test('cloud:scale command accepts --storage option', function () {
-    $kernel = app(Illuminate\Contracts\Console\Kernel::class);
+    $kernel = app(Kernel::class);
     $commands = $kernel->all();
 
     expect($commands)->toHaveKey('cloud:scale');

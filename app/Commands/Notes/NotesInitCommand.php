@@ -38,9 +38,8 @@ class NotesInitCommand extends Command
     protected $signature = 'notes:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Outline (example.com → prefix.example.com)}
-        {--alias=*    : Additional domain alias(es) to register on the Ingress}
-        {--instance=main : Named instance identifier (default: main)}
+        {--domain=   : Base domain OR full host for Outline (example.com → prefix.example.com). Omit to target/update the default instance; pass a different host to deploy an ADDITIONAL instance there — the host you give IS its identity}
+        {--alias=*    : Additional domain alias(es) to register on this instance\'s Ingress}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
@@ -59,7 +58,17 @@ class NotesInitCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->notesKubectl($context);
-        $host = $this->resolveToolHost(SharedClusterService::NOTES, ClusterTool::NOTES, $env, $kubectl);
+
+        // --domain here means "this exact host" (see ResolvesToolHost::sanitizeDomainInput()
+        // — no auto-prefixing), so it can double as the instance identifier.
+        // No --domain given → target/update the default instance instead; any
+        // OTHER host IS a different instance, by construction — same
+        // convention as data:init.
+        $domainOption = trim((string) ($this->option('domain') ?? ''));
+        $host = $domainOption !== ''
+            ? $this->sanitizeDomainInput($domainOption)
+            : $this->resolveToolHost(SharedClusterService::NOTES, ClusterTool::NOTES, $env, $kubectl, 'main');
+        $instance = ClusterTool::NOTES->instanceSlugFromHost($host);
 
         $ns = $this->notesNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -101,8 +110,14 @@ class NotesInitCommand extends Command
 
         $s3AccessKey = $creds['access'];
         $s3SecretKey = $creds['secret'];
-        $instance = (string) ($this->option('instance') ?: 'main');
         $deploymentName = ClusterTool::NOTES->deploymentName($instance);
+        // The manifest's Service/Ingress default to the bare 'notes' name when
+        // this isn't passed — fine for main, but a second instance applying
+        // that same default would silently steal main's Service selector and
+        // Ingress host rule instead of getting its own. Every other
+        // multi-instance tool (data, chat, ...) already suffixes its
+        // Service/Ingress name by instance; Outline just never did.
+        $serviceName = $instance === 'main' ? 'notes' : "notes-{$instance}";
         $secretName = $instance === 'main' ? 'notes-secrets' : "notes-secrets-{$instance}";
         $oidcSecretName = $instance === 'main' ? 'notes-outline-oidc' : "notes-outline-oidc-{$instance}";
         $dbName = ClusterTool::NOTES->commonsDatabases($instance)[0];
@@ -159,6 +174,7 @@ class NotesInitCommand extends Command
             'host' => $host,
             'aliasHosts' => $aliasHosts,
             'deploymentName' => $deploymentName,
+            'serviceName' => $serviceName,
             'secretName' => $secretName,
             'oidcSecretName' => $oidcSecretName,
             'dbUser' => $dbName,
@@ -189,8 +205,7 @@ class NotesInitCommand extends Command
 
         $this->registerTool($kubectl, ClusterTool::NOTES, [
             'host' => $host,
-            'instance' => $instance,
-            'alias_hosts' => $aliasHosts,
+            'aliases' => $aliasHosts,
         ], $instance);
 
         $this->laraKubeNewLine();

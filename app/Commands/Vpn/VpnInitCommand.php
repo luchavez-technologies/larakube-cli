@@ -5,6 +5,7 @@ namespace App\Commands\Vpn;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\State;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -15,6 +16,7 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\VerifiesKubernetesRollout;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
@@ -210,8 +212,8 @@ class VpnInitCommand extends Command
                         'pat_expire_in' => 365,
                     ]);
                     break;
-                } catch (\Illuminate\Http\Client\ConnectionException $e) {
-                    if ($attempt === $maxAttempts || \App\State::$isTesting) {
+                } catch (ConnectionException $e) {
+                    if ($attempt === $maxAttempts || State::$isTesting) {
                         $this->laraKubeWarn('Could not reach NetBird management after multiple attempts — run `larakube vpn:init` again once the endpoint is reachable.');
 
                         return;
@@ -264,7 +266,7 @@ class VpnInitCommand extends Command
      */
     protected function waitForTls(string $host): void
     {
-        if (\App\State::$isTesting) {
+        if (State::$isTesting) {
             return;
         }
 

@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: data
+  name: {{ $ingressName ?? 'data' }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -24,9 +24,24 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: data
+                name: {{ $serviceName ?? 'data' }}
                 port:
                   number: 80
+@foreach($aliasHosts ?? [] as $aliasHost)
+    - host: {{ $aliasHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $serviceName ?? 'data' }}
+                port:
+                  number: 80
+@endforeach
   tls:
     - hosts:
         - {{ $host }}
+@foreach($aliasHosts ?? [] as $aliasHost)
+        - {{ $aliasHost }}
+@endforeach

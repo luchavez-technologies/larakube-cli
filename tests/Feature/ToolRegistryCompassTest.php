@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ClusterTool;
+use App\Traits\InteractsWithToolRegistry;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Process;
 
@@ -9,9 +10,19 @@ use Illuminate\Support\Facades\Process;
  * cluster tools. These tools are cluster infrastructure with no relationship to
  * whichever Laravel project you happen to be standing in.
  */
-function registrySecret(array $tools): string
+function registrySecret(array $flatList): string
 {
-    return base64_encode((string) json_encode($tools));
+    return base64_encode((string) json_encode($flatList));
+}
+
+/** Extract the JSON body a `saveToolRegistry()` write handed to `--from-file=registry.json=<tmpfile>`, before the trait unlinks it. */
+function capturedRegistryEntries(string $command): ?array
+{
+    if (! preg_match('/--from-file=registry\.json=(\S+)/', $command, $m)) {
+        return null;
+    }
+
+    return json_decode(file_get_contents($m[1]), true);
 }
 
 /** Exercise the registry trait directly, with a controllable fake cluster. */
@@ -19,7 +30,7 @@ function registryProbe(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithToolRegistry;
+        use InteractsWithToolRegistry;
 
         public function add(string $kubectl, ClusterTool $tool, array $meta = []): bool
         {
@@ -42,12 +53,12 @@ test('re-registering a tool never wipes metadata a previous write recorded', fun
 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
-            output: registrySecret(['flow' => ['installed_at' => 111, 'host' => 'flow.example.com']]),
+            output: registrySecret([['tool' => 'flow', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'flow.example.com']]),
         ),
         '*' => function ($process) use (&$saved) {
-            $cmd = is_string($process->command) ? $process->command : implode(' ', (array) $process->command);
-            if (str_contains($cmd, 'registry.json')) {
-                $saved = $cmd;
+            $entries = capturedRegistryEntries($process->command);
+            if ($entries !== null) {
+                $saved = $entries;
             }
 
             return Process::result(output: 'applied');
@@ -57,63 +68,46 @@ test('re-registering a tool never wipes metadata a previous write recorded', fun
     // Re-register with NO metadata, exactly as tool:add does.
     registryProbe()->add('kubectl', ClusterTool::FLOW);
 
-    expect($saved)->not->toBeNull('the registry was never written')
-        ->and($saved)->toContain('flow.example.com');
+    expect($saved)->not->toBeNull('the registry was never written');
+    $flowEntry = collect($saved)->firstWhere('tool', 'flow');
+    expect($flowEntry['host'])->toBe('flow.example.com');
 });
 
-test('installed_at survives re-registration but updated_at moves', function () {
+test('installedAt survives re-registration but updatedAt moves', function () {
+    $saved = null;
+
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
-            output: registrySecret(['flow' => ['installed_at' => 111, 'host' => 'flow.example.com']]),
+            output: registrySecret([['tool' => 'flow', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'flow.example.com']]),
         ),
-        '*' => Process::result(output: 'applied'),
+        '*' => function ($process) use (&$saved) {
+            $entries = capturedRegistryEntries($process->command);
+            if ($entries !== null) {
+                $saved = $entries;
+            }
+
+            return Process::result(output: 'applied');
+        },
     ]);
 
-    $probe = new class
-    {
-        use App\Traits\InteractsWithToolRegistry;
+    registryProbe()->add('kubectl', ClusterTool::FLOW, ['host' => 'flow.example.com']);
 
-        public array $written = [];
-
-        public function build(string $kubectl, ClusterTool $tool, array $meta): array
-        {
-            $registry = $this->getRegisteredTools($kubectl);
-            $existing = $registry[$tool->value] ?? [];
-            $meta = array_filter($meta, fn ($v) => $v !== null && $v !== '');
-
-            return array_merge(
-                ['installed_at' => $existing['installed_at'] ?? time()],
-                $existing,
-                $meta,
-                ['updated_at' => time()],
-            );
-        }
-    };
-
-    $entry = $probe->build('kubectl', ClusterTool::FLOW, []);
-
-    expect($entry['installed_at'])->toBe(111)
-        ->and($entry['host'])->toBe('flow.example.com')
-        ->and($entry['updated_at'])->toBeGreaterThan(111);
+    $flowEntry = collect($saved)->firstWhere('tool', 'flow');
+    expect($flowEntry['installedAt'])->toBe('2026-08-01T00:00:00+00:00')
+        ->and($flowEntry['host'])->toBe('flow.example.com')
+        ->and($flowEntry['updatedAt'])->not->toBe('2026-08-01T00:00:00+00:00');
 });
 
 test('an empty host in metadata cannot overwrite a known one', function () {
-    Process::fake([
-        '*get secret larakube-tools-registry*' => Process::result(
-            output: registrySecret(['flow' => ['installed_at' => 1, 'host' => 'flow.example.com']]),
-        ),
-        '*' => Process::result(output: 'applied'),
-    ]);
-
     $saved = null;
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
-            output: registrySecret(['flow' => ['installed_at' => 1, 'host' => 'flow.example.com']]),
+            output: registrySecret([['tool' => 'flow', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'flow.example.com']]),
         ),
         '*' => function ($process) use (&$saved) {
-            $cmd = is_string($process->command) ? $process->command : implode(' ', (array) $process->command);
-            if (str_contains($cmd, 'registry.json')) {
-                $saved = $cmd;
+            $entries = capturedRegistryEntries($process->command);
+            if ($entries !== null) {
+                $saved = $entries;
             }
 
             return Process::result(output: 'applied');
@@ -122,7 +116,8 @@ test('an empty host in metadata cannot overwrite a known one', function () {
 
     registryProbe()->add('kubectl', ClusterTool::FLOW, ['host' => '']);
 
-    expect($saved)->toContain('flow.example.com');
+    $flowEntry = collect($saved)->firstWhere('tool', 'flow');
+    expect($flowEntry['host'])->toBe('flow.example.com');
 });
 
 test('tool:remove proxies to {tool}:remove, not the deleted --remove flag', function () {
@@ -143,7 +138,10 @@ test('tool:list and tool:show exist and read the cluster, not a project file', f
     foreach (['ToolListCommand', 'ToolShowCommand'] as $class) {
         $source = (string) file_get_contents(base_path("app/Commands/Tool/{$class}.php"));
 
-        expect($source)->toContain('getRegisteredTools')
+        // Either the raw list reader or the per-instance lookup built on top of
+        // it — both go through InteractsWithToolRegistry, never ConfigData.
+        expect(str_contains($source, 'getRegisteredTools') || str_contains($source, 'findToolInstanceEntry'))
+            ->toBeTrue("{$class} must read tool state via InteractsWithToolRegistry")
             ->and(str_contains($source, 'ConfigData'))
             ->toBeFalse("{$class} must not read the project blueprint for tool state");
     }

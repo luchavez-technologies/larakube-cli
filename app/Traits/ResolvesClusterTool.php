@@ -39,11 +39,11 @@ trait ResolvesClusterTool
             return $tools;
         }
 
-        $registry = $this->getRegisteredTools($kubectl);
+        $installedTools = array_unique(array_column($this->getRegisteredTools($kubectl), 'tool'));
         $options = [];
 
         foreach (ClusterTool::cases() as $tool) {
-            $isInstalled = isset($registry[$tool->value]);
+            $isInstalled = in_array($tool->value, $installedTools, true);
 
             if ($actionHint === 'install' && $isInstalled) {
                 continue;

@@ -11,13 +11,13 @@ use function Laravel\Prompts\text;
  *
  * Fallback priority for brand name:
  *   1. --app-name flag (if explicitly passed)
- *   2. Cluster tool registry (`brand_name` stored in `larakube-tools-registry`)
+ *   2. Cluster tool registry (`brandName` stored in `larakube-tools-registry`)
  *   3. Interactive prompt (only when running interactively AND tool has whiteLabel() spec)
  *   4. ClusterTool::brandName() (static default)
  *
  * Fallback priority for logo URL:
  *   1. --logo-url flag (if explicitly passed)
- *   2. Cluster tool registry (`logo_url` stored in `larakube-tools-registry`)
+ *   2. Cluster tool registry (`logoUrl` stored in `larakube-tools-registry`)
  *   3. null (no logo URL override)
  */
 trait ResolvesToolBranding
@@ -33,13 +33,13 @@ trait ResolvesToolBranding
         $flagAppName = (string) ($this->option('app-name') ?? '');
         $flagLogoUrl = (string) ($this->option('logo-url') ?? '');
 
-        // Fetch stored registry entry if available
-        $registered = ($kubectl !== null && method_exists($this, 'getRegisteredTools'))
-            ? ($this->getRegisteredTools($kubectl)[$tool->value] ?? [])
+        // Fetch stored registry entry (main instance) if available
+        $registered = ($kubectl !== null && method_exists($this, 'findToolInstanceEntry'))
+            ? ($this->findToolInstanceEntry($kubectl, $tool) ?? [])
             : [];
 
-        $storedAppName = $registered['brand_name'] ?? null;
-        $storedLogoUrl = $registered['logo_url'] ?? null;
+        $storedAppName = $registered['brandName'] ?? null;
+        $storedLogoUrl = $registered['logoUrl'] ?? null;
 
         // Determine final appName
         $appName = match (true) {
@@ -73,10 +73,10 @@ trait ResolvesToolBranding
         if ($kubectl !== null && method_exists($this, 'registerTool')) {
             $updates = [];
             if ($appName !== $tool->brandName() || $storedAppName !== null) {
-                $updates['brand_name'] = $appName;
+                $updates['brandName'] = $appName;
             }
             if ($logoUrl !== null) {
-                $updates['logo_url'] = $logoUrl;
+                $updates['logoUrl'] = $logoUrl;
             }
             if ($updates !== []) {
                 $this->registerTool($kubectl, $tool, $updates);

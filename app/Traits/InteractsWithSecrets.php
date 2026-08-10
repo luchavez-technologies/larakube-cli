@@ -9,6 +9,7 @@ use App\Enums\SecretsBackend;
 use App\Enums\SharedClusterService;
 use Illuminate\Contracts\Process\InvokedProcess;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Process\FakeInvokedProcess;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -128,7 +129,7 @@ trait InteractsWithSecrets
             // timeout on a dead port-forward buys nothing, and in tests (where
             // the process is faked and no port ever opens) it would otherwise
             // stall every call for the whole timeout.
-            if ($tunnel instanceof \Illuminate\Process\FakeInvokedProcess) {
+            if ($tunnel instanceof FakeInvokedProcess) {
                 return true;
             }
 

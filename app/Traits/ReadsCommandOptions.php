@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Symfony\Component\Console\Input\InputInterface;
+
 /**
  * option() tolerant of an unbound console input. Trait methods shared across
  * commands (and harness tests that instantiate a command directly or compose
@@ -16,7 +18,7 @@ trait ReadsCommandOptions
     {
         $input = property_exists($this, 'input') ? $this->input : null;
 
-        if (! $input instanceof \Symfony\Component\Console\Input\InputInterface) {
+        if (! $input instanceof InputInterface) {
             return null;
         }
 

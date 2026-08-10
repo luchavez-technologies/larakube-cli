@@ -138,3 +138,88 @@ test('deploymentName() matches the actual Deployment name each tool\'s own manif
     expect(ClusterTool::ERRORS->deploymentName())->toBe('glitchtip-web');
     expect(ClusterTool::VPN->deploymentName())->toBe('netbird-management');
 });
+
+test('planka OIDC redirect path matches its real callback route', function () {
+    // Regression guard: this was '/api/auth/oidc/callback/' for a long time,
+    // which is not a route Planka exposes — its actual OIDC callback is
+    // '/oidc-callback' (confirmed against Planka's own docs). sso:wire would
+    // register a Zitadel redirect URI that 404s on every login attempt.
+    expect(ClusterTool::TASKS->oidcEnv()['redirect_path'])->toBe('/oidc-callback');
+});
+
+test('directus SSO carries a license caveat, pocketbase does not', function () {
+    // Directus v12 moved SSO/OIDC out of its free Core tier (MSCL license,
+    // June 2026) — the wiring is real (oidcEnv() vars are genuinely read by
+    // Directus), but login won't work without a paid license even
+    // self-hosted. sso:wire must still run and warn, not refuse.
+    expect(ClusterTool::DATA->ssoLicenseCaveat('directus'))->not->toBeNull()
+        ->and(ClusterTool::DATA->ssoLicenseCaveat('directus'))->toContain('paid')
+        ->and(ClusterTool::DATA->ssoLicenseCaveat('pocketbase'))->toBeNull();
+});
+
+test('only DATA carries an SSO license caveat', function () {
+    // Confirms the full 2026-08 SSO audit's conclusion: every other tool's
+    // oidcEnv() is either free (Grafana, Vaultwarden, Outline, Documenso,
+    // Kutt, Teable, oCIS, Forgejo) or has no license-gated integration at
+    // all (Sendrec is ForwardAuth-gated, not a caveat case). A new caveat
+    // showing up here unexpectedly means this test needs updating alongside
+    // whatever tool just grew a paywalled SSO tier.
+    foreach (ClusterTool::cases() as $tool) {
+        if ($tool === ClusterTool::DATA) {
+            continue;
+        }
+
+        expect($tool->ssoLicenseCaveat())->toBeNull();
+    }
+});
+
+test('supportsMultipleInstances() pins the 2026-08 multi-instance capability audit', function () {
+    // CHAT/MEET bind hostPort (TURN, LiveKit SFU) — a second instance
+    // collides on the same node. GIT exposes SSH via a fixed-port
+    // LoadBalancer — same collision risk. MAIL/SSO/SECRETS/MONITOR/VPN/
+    // WEBMAIL/DASHBOARD are architectural singletons every other tool's
+    // wiring assumes exists exactly once. DNS has its own --zone-based
+    // multi-tenancy, not this generic mechanism. A tool moving in or out of
+    // this list is a deliberate capability change, not drift — this test
+    // exists so that change has to touch this file too.
+    $expectedFalse = [
+        ClusterTool::CHAT, ClusterTool::MEET, ClusterTool::GIT,
+        ClusterTool::MAIL, ClusterTool::SSO, ClusterTool::SECRETS, ClusterTool::MONITOR, ClusterTool::VPN,
+        ClusterTool::WEBMAIL, ClusterTool::DASHBOARD, ClusterTool::DNS,
+    ];
+
+    foreach (ClusterTool::cases() as $tool) {
+        $expected = ! in_array($tool, $expectedFalse, true);
+        expect($tool->supportsMultipleInstances())
+            ->toBe($expected, "supportsMultipleInstances() for {$tool->value} should be ".($expected ? 'true' : 'false'));
+    }
+});
+
+test('instanceSlugFromHost() derives main for the tool\'s own bare-prefix host', function () {
+    expect(ClusterTool::DATA->instanceSlugFromHost('data.example.com'))->toBe('main')
+        ->and(ClusterTool::DATA->instanceSlugFromHost('data.luchtech.dev'))->toBe('main');
+});
+
+test('instanceSlugFromHost() never collides on the leftmost label — the incident this method exists to prevent', function () {
+    // The old DATA-specific derivation used ONLY the leftmost label
+    // ("blog.example.com" -> "blog"), so two different hosts sharing that
+    // label collided on the same Kubernetes resource name. The generic
+    // replacement must hash the FULL host instead.
+    $siteA = ClusterTool::DATA->instanceSlugFromHost('blog.example.com');
+    $siteB = ClusterTool::DATA->instanceSlugFromHost('blog.other.com');
+
+    expect($siteA)->not->toBe($siteB)
+        ->and($siteA)->not->toBe('blog')
+        ->and($siteB)->not->toBe('blog');
+});
+
+test('instanceSlugFromHost() is deterministic and Kubernetes-resource-name-safe', function () {
+    $host = 'a-very-long-subdomain-that-goes-on-and-on.example.com';
+
+    $first = ClusterTool::DATA->instanceSlugFromHost($host);
+    $second = ClusterTool::DATA->instanceSlugFromHost($host);
+
+    expect($first)->toBe($second)
+        ->and(strlen($first))->toBeLessThanOrEqual(40)
+        ->and($first)->toMatch('/^[a-z0-9-]+$/');
+});

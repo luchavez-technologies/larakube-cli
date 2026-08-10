@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
 
@@ -178,7 +179,7 @@ trait InteractsWithSsoGrants
 
         $localPart = explode('@', $email)[0];
         $displayName = $name ?: $localPart;
-        $initialPassword = $password ?: \Illuminate\Support\Str::password(24);
+        $initialPassword = $password ?: Str::password(24);
 
         $createdId = $this->zitadelCreateUser($ssoHost, $pat, $email, $displayName, $initialPassword);
         if ($createdId !== null) {

@@ -1,5 +1,6 @@
 <?php
 
+use App\Data\GlobalConfigData;
 use Illuminate\Support\Facades\Process;
 
 function uptimeInProject(array $config, callable $fn): void
@@ -45,7 +46,7 @@ test('uptime:show displays the recommended monitors guide when installed', funct
     ];
 
     uptimeInProject($config, function () {
-        $tld = App\Data\GlobalConfigData::load()->getLocalTld();
+        $tld = GlobalConfigData::load()->getLocalTld();
         $expectedHost = "demo.{$tld}";
 
         $this->artisan('uptime:show local')

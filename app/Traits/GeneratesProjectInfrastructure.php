@@ -6,6 +6,7 @@ use App\Contracts\HasKubernetesFiles;
 use App\Contracts\RemovableWhenManaged;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\AppFramework;
 use App\Enums\Blueprint;
 use App\Enums\DeploymentStrategy;
 use App\Enums\LaravelFeature;
@@ -411,7 +412,7 @@ trait GeneratesProjectInfrastructure
         }
 
         // Render S3 Static SPA Ingress for static SPA frameworks (ASTRO, VITE, DOCUSAURUS)
-        if (in_array($config->framework, [\App\Enums\AppFramework::ASTRO, \App\Enums\AppFramework::VITE, \App\Enums\AppFramework::DOCUSAURUS], true)) {
+        if (in_array($config->framework, [AppFramework::ASTRO, AppFramework::VITE, AppFramework::DOCUSAURUS], true)) {
             $tld = $config->getLocalTld() ?? GlobalConfigData::load()->getLocalTld();
             foreach (array_merge(['local'], $cloudEnvs) as $env) {
                 $host = $config->getHost($env) ?? "{$config->getId()}.{$tld}";

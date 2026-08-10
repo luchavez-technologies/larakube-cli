@@ -1,6 +1,13 @@
 <?php
 
+use App\Commands\Companion\CompanionAddCommand;
+use App\Commands\Companion\CompanionRemoveCommand;
+use App\Commands\Companion\CompanionStartCommand;
+use App\Commands\Companion\CompanionStopCommand;
+use App\Commands\UpCommand;
+use App\Data\ConfigData;
 use App\Enums\CompanionDriver;
+use Illuminate\Support\Facades\View;
 
 test('installable() returns all companions', function () {
     $installable = CompanionDriver::installable();
@@ -37,13 +44,13 @@ test('pgAdmin env has default credentials', function () {
 });
 
 test('companion:add command definition has companion argument', function () {
-    $cmd = new App\Commands\Companion\CompanionAddCommand;
+    $cmd = new CompanionAddCommand;
 
     expect($cmd->getDefinition()->hasArgument('companion'))->toBeTrue();
 });
 
 test('companion:remove command definition has optional companion argument and force option', function () {
-    $cmd = new App\Commands\Companion\CompanionRemoveCommand;
+    $cmd = new CompanionRemoveCommand;
     $argument = $cmd->getDefinition()->getArgument('companion');
 
     expect($cmd->getDefinition()->hasArgument('companion'))->toBeTrue()
@@ -52,7 +59,7 @@ test('companion:remove command definition has optional companion argument and fo
 });
 
 test('companion:stop and companion:start have an optional companion argument', function () {
-    foreach ([App\Commands\Companion\CompanionStopCommand::class, App\Commands\Companion\CompanionStartCommand::class] as $class) {
+    foreach ([CompanionStopCommand::class, CompanionStartCommand::class] as $class) {
         $cmd = new $class;
 
         expect($cmd->getDefinition()->hasArgument('companion'))->toBeTrue("{$class} is missing the companion argument")
@@ -95,7 +102,7 @@ test('getUrl returns https with tld', function () {
 });
 
 test('ManagesCompanions methods are callable on UpCommand', function () {
-    $cmd = new App\Commands\UpCommand;
+    $cmd = new UpCommand;
 
     expect(method_exists($cmd, 'refreshPhpMyAdminServers'))->toBeTrue()
         ->and(method_exists($cmd, 'showCompanionAccess'))->toBeTrue();
@@ -107,9 +114,9 @@ test('companion ingress renders on the explicitly passed TLD, not the shared boo
     // process, the shared value is stale. deployCompanion() passes a freshly-loaded
     // localTld, which must override the share — here we simulate a stale share (kube)
     // and assert an explicit override (test) wins, so the ingress follows the new TLD.
-    Illuminate\Support\Facades\View::share('localTld', 'kube');
+    View::share('localTld', 'kube');
 
-    $yaml = Illuminate\Support\Facades\View::make('k8s.companion.global', [
+    $yaml = View::make('k8s.companion.global', [
         'companion' => CompanionDriver::PHPMYADMIN,
         'localTld' => 'test',
     ])->render();
@@ -128,7 +135,7 @@ test('shared Mailpit blade template exists and contains larakube-shared namespac
 });
 
 test('recommendedFor() leads with pgAdmin then Adminer for a Postgres project', function () {
-    $config = App\Data\ConfigData::from(['name' => 'demo', 'database' => 'postgres']);
+    $config = ConfigData::from(['name' => 'demo', 'database' => 'postgres']);
 
     $recommended = array_map(fn ($c) => $c->value, CompanionDriver::recommendedFor($config));
 
@@ -136,21 +143,21 @@ test('recommendedFor() leads with pgAdmin then Adminer for a Postgres project', 
 });
 
 test('recommendedFor() leads with phpMyAdmin then Adminer for a MySQL project', function () {
-    $config = App\Data\ConfigData::from(['name' => 'demo', 'database' => 'mysql']);
+    $config = ConfigData::from(['name' => 'demo', 'database' => 'mysql']);
 
     expect(array_map(fn ($c) => $c->value, CompanionDriver::recommendedFor($config)))
         ->toBe(['phpmyadmin', 'adminer']);
 });
 
 test('recommendedFor() adds RedisInsight when the project caches with Redis', function () {
-    $config = App\Data\ConfigData::from(['name' => 'demo', 'database' => 'postgres', 'cacheDriver' => 'redis']);
+    $config = ConfigData::from(['name' => 'demo', 'database' => 'postgres', 'cacheDriver' => 'redis']);
 
     expect(array_map(fn ($c) => $c->value, CompanionDriver::recommendedFor($config)))
         ->toBe(['pgadmin', 'adminer', 'redisinsight']);
 });
 
 test('recommendedFor() returns nothing for a SQLite-only project', function () {
-    $config = App\Data\ConfigData::from(['name' => 'demo', 'database' => 'sqlite']);
+    $config = ConfigData::from(['name' => 'demo', 'database' => 'sqlite']);
 
     expect(CompanionDriver::recommendedFor($config))->toBe([]);
 });

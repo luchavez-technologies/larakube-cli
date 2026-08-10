@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Contracts\Console\Kernel;
+
 test('clone command is registered and accepts shorthand repo URLs', function () {
     $this->artisan('clone --help')
         ->assertExitCode(0)
@@ -7,7 +9,7 @@ test('clone command is registered and accepts shorthand repo URLs', function () 
 });
 
 test('clone command signature has directory and provider options', function () {
-    $kernel = app(Illuminate\Contracts\Console\Kernel::class);
+    $kernel = app(Kernel::class);
     $commands = $kernel->all();
 
     expect($commands)->toHaveKey('clone');

@@ -1,5 +1,7 @@
 <?php
 
+use App\Traits\InteractsWithMeet;
+use Illuminate\Support\Facades\Process;
 use Symfony\Component\Yaml\Yaml;
 
 /** @param array<string, array<string, mixed>> $consumers */
@@ -65,12 +67,12 @@ test('livekit-server refuses to boot on an empty keys map, so a persisted regist
     // last meet:unwire would otherwise CrashLoopBackOff the SFU.
     $command = new class
     {
-        use App\Traits\InteractsWithMeet;
+        use InteractsWithMeet;
 
         /** @return array<string, mixed> */
         public function seed(array $registry): array
         {
-            Illuminate\Support\Facades\Process::fake();
+            Process::fake();
 
             return $this->writeMeetKeys('kubectl', 'larakube-shared', $registry);
         }

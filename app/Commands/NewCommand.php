@@ -21,6 +21,7 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithDynamicOptions;
+use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Console\Scheduling\Schedule;
@@ -37,7 +38,7 @@ use Symfony\Component\Console\Input\InputOption;
 
 class NewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * Native `laravel new` options (installer v5.x), declared here so Symfony
@@ -91,7 +92,8 @@ class NewCommand extends Command
      * @var string
      */
     protected $signature = 'new {name? : The name of the app}
-                            {--fast : Skip the LaraKube wizard and use ideal defaults}';
+                            {--fast : Skip the LaraKube wizard and use ideal defaults}
+                            {--no-plex : Skip Plex Commons auto-provisioning and use self-hosted databases}';
 
     /**
      * The console command description.
@@ -106,6 +108,7 @@ class NewCommand extends Command
     public function handle(): int
     {
         $this->renderHeader();
+        $this->plexContext = null;
 
         $projectPath = getcwd();
 
@@ -171,13 +174,27 @@ class NewCommand extends Command
 
         $this->laraKubeInfo("Scaffolding architectural masterpiece: $appName...");
 
+        // Auto-provision Plex Commons database for the app (unless SQLite or --no-plex)
+        $plexCredentials = null;
+        if (! $this->option('no-plex')) {
+            $plexCredentials = $this->ensurePlexProvisionedForApp($config);
+        }
+
         // Run "laravel new" command
-        $this->runLaravelNew($inputName, $config);
+        $this->runLaravelNew($inputName, $config, $plexCredentials);
 
         if (! is_dir($projectPath)) {
             $this->laraKubeError('Failed to create Laravel application.');
 
             return 1;
+        }
+
+        // If Plex provisioned successfully, mark the local environment as Plex-backed
+        // so manifest generation emits delete-patches (not self-hosted Deployments)
+        // for the database and any other Plex-joined services.
+        if ($plexCredentials !== null) {
+            $config->addEnvironment('local');
+            $config->environments['local']->plex = array_unique(array_merge($config->environments['local']->plex, $plexCredentials['services']));
         }
 
         $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config) {
@@ -204,6 +221,12 @@ class NewCommand extends Command
         ]);
 
         $this->newLine();
+        if (confirm('Would you like to start your application now with `larakube up`?', true)) {
+            chdir($projectPath);
+
+            return $this->call('up');
+        }
+
         info('First, start your application:');
         $this->line("  cd {$appName} && larakube up");
         $this->newLine();
@@ -257,7 +280,7 @@ class NewCommand extends Command
         }
     }
 
-    protected function runLaravelNew($inputName, ConfigData $config): void
+    protected function runLaravelNew($inputName, ConfigData $config, ?array $plexCredentials = null): void
     {
         $appName = $config->getName();
         $projectPath = $config->getPath();
@@ -271,7 +294,7 @@ class NewCommand extends Command
 
         // Skip LaraKube-specific flags (Dynamic from Enums)
         $larakubeFlags = array_merge(
-            ['fast', 'force', 'no-interaction'],
+            ['fast', 'force', 'no-interaction', 'no-plex'],
             Blueprint::getCommandOptions(),
             ServerVariation::getCommandOptions(),
             OperatingSystem::getCommandOptions(),
@@ -312,21 +335,16 @@ class NewCommand extends Command
         // This will be taken care of by the orchestration process
         $extraArgs[] = '--no-boost';
 
-        // Set database flag to match chosen driver (pgsql, mysql, mariadb, or sqlite)
-        $dbDriver = match ($config->getDatabase()) {
-            DatabaseDriver::POSTGRESQL => 'pgsql',
-            DatabaseDriver::MYSQL => 'mysql',
-            DatabaseDriver::MARIADB => 'mariadb',
-            default => 'sqlite',
-        };
-        $extraArgs[] = "--database={$dbDriver}";
+        // Always scaffold with sqlite first to ensure offline installer migrations succeed;
+        // LaraKube pre-provisions Plex database/redis/S3 and reconfigures .env during orchestration.
+        $extraArgs[] = '--database=sqlite';
 
         $extraFlags = implode(' ', $extraArgs);
 
         $pkgCommand = $this->getNodeInstallationCommand($image);
         $baseDir = dirname($projectPath);
 
-        $cmd = "docker run --rm -it --add-host=host.docker.internal:host-gateway -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false -e DB_HOST=host.docker.internal --user root $image ".
+        $cmd = "docker run --rm -it -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false --user root $image ".
                "sh -c '$pkgCommand && composer config -g bin-dir /usr/local/bin && composer global require laravel/installer && laravel new $appName $extraFlags'";
 
         passthru($cmd);

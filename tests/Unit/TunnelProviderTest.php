@@ -1,5 +1,7 @@
 <?php
 
+use App\Commands\Cloud\CloudConfigureTunnelCommand;
+use App\Data\EnvironmentData;
 use App\Data\TunnelData;
 use App\Enums\TunnelProvider;
 
@@ -34,7 +36,7 @@ test('TunnelData round-trips through spatie data', function () {
 });
 
 test('cloud:configure:tunnel command has remove option', function () {
-    $cmd = new App\Commands\Cloud\CloudConfigureTunnelCommand;
+    $cmd = new CloudConfigureTunnelCommand;
 
     expect($cmd->getDefinition()->hasOption('remove'))->toBeTrue()
         ->and($cmd->getDefinition()->hasOption('provider'))->toBeTrue()
@@ -42,7 +44,7 @@ test('cloud:configure:tunnel command has remove option', function () {
 });
 
 test('EnvironmentData tunnel field defaults to null', function () {
-    $env = new App\Data\EnvironmentData;
+    $env = new EnvironmentData;
 
     expect($env->tunnel)->toBeNull();
 });

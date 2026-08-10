@@ -2,6 +2,8 @@
 
 namespace App;
 
+use Illuminate\Console\OutputStyle;
+
 class State
 {
     public static bool $headerRendered = false;
@@ -45,5 +47,5 @@ class State
      * The command's original stdout, captured before enableJsonMode() reroutes
      * $this->output to stderr — jsonOutput() writes the final result here.
      */
-    public static ?\Illuminate\Console\OutputStyle $stdout = null;
+    public static ?OutputStyle $stdout = null;
 }

@@ -2,6 +2,7 @@
 
 use App\Data\ConfigData;
 use App\Enums\LaravelFeature;
+use Illuminate\Support\Facades\Process;
 
 function meetFeatureConfig(string $name = 'speeddating'): ConfigData
 {
@@ -38,11 +39,11 @@ test('each project gets its own room prefix', function () {
 test('the env accessors never touch the cluster — they are called from render paths', function () {
     // A cluster read here would make every render and test hit kubectl. The
     // real key pair is allocated in onPostInstall() instead.
-    Illuminate\Support\Facades\Process::fake();
+    Process::fake();
 
     LaravelFeature::MEET->getEnvironmentVariables(meetFeatureConfig());
 
-    Illuminate\Support\Facades\Process::assertNothingRan();
+    Process::assertNothingRan();
 });
 
 test('credentials are declared but left empty for onPostInstall to fill', function () {
@@ -71,8 +72,8 @@ test('other features are unaffected by the meet case', function () {
 test('adding meet to a project does not fail when Meet is not installed', function () {
     // `larakube add meet` must work offline / before meet:init. Falling back to
     // the declared placeholders is correct; blowing up is not.
-    Illuminate\Support\Facades\Process::fake([
-        '*get deployment meet-livekit*' => Illuminate\Support\Facades\Process::result(output: ''),
+    Process::fake([
+        '*get deployment meet-livekit*' => Process::result(output: ''),
     ]);
 
     $method = new ReflectionMethod(LaravelFeature::MEET, 'resolveMeetCredentials');
@@ -86,14 +87,14 @@ test('when Meet is installed the project gets its own consumer key', function ()
         'key' => 'LK_system', 'secret' => 's', 'roomPrefix' => 'system-', 'webhookUrl' => null,
     ]]);
 
-    Illuminate\Support\Facades\Process::fake([
-        '*get deployment meet-livekit*' => Illuminate\Support\Facades\Process::result(output: 'meet-livekit 1/1'),
-        '*get secret meet-keys*' => Illuminate\Support\Facades\Process::result(output: base64_encode($registry)),
-        '*get secret larakube-tools-registry*' => Illuminate\Support\Facades\Process::result(
-            output: base64_encode(json_encode(['meet' => ['host' => 'meet.example.com']])),
+    Process::fake([
+        '*get deployment meet-livekit*' => Process::result(output: 'meet-livekit 1/1'),
+        '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode(json_encode([['tool' => 'meet', 'instance' => 'main', 'host' => 'meet.example.com']])),
         ),
-        '*create secret*' => Illuminate\Support\Facades\Process::result(output: 'applied'),
-        '*apply -f *' => Illuminate\Support\Facades\Process::result(output: 'applied'),
+        '*create secret*' => Process::result(output: 'applied'),
+        '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
     $method = new ReflectionMethod(LaravelFeature::MEET, 'resolveMeetCredentials');

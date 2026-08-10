@@ -2,13 +2,14 @@
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Traits\InteractsWithGitForge;
 use Illuminate\Support\Facades\Process;
 
 function gitReader(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithGitForge;
+        use InteractsWithGitForge;
 
         public function host(string $env, ?ConfigData $config): ?string
         {

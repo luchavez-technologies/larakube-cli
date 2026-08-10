@@ -1,9 +1,12 @@
 <?php
 
+use App\Commands\Nextjs\NextjsNewCommand;
+use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\SearchDriver;
+use Illuminate\Contracts\Console\Kernel;
 
 // ── nextjs:new Command Tests ─────────────────────────────────────────────────
 
@@ -14,7 +17,7 @@ test('nextjs:new command is registered and has correct signature', function () {
 });
 
 test('nextjs:new command has --fast option', function () {
-    $kernel = app(Illuminate\Contracts\Console\Kernel::class);
+    $kernel = app(Kernel::class);
     $commands = $kernel->all();
 
     expect($commands)->toHaveKey('nextjs:new');
@@ -72,7 +75,7 @@ test('Next.js SearchDriver matrix: Meilisearch and Typesense are valid, database
 // ── Next.js ConfigData Integration ───────────────────────────────────────────
 
 test('ConfigData accepts AppFramework::NEXTJS and mandatory Redis cache', function () {
-    $config = new App\Data\ConfigData;
+    $config = new ConfigData;
     $config->framework = AppFramework::NEXTJS;
     $config->cacheDriver = CacheDriver::REDIS;
 
@@ -97,7 +100,7 @@ export default nextConfig;
 TS;
     file_put_contents("$dir/next.config.ts", $original);
 
-    $command = new App\Commands\Nextjs\NextjsNewCommand;
+    $command = new NextjsNewCommand;
 
     // Use reflection to call the protected method
     $ref = new ReflectionClass($command);
@@ -117,7 +120,7 @@ test('NextjsNewCommand::generateHealthRoute creates the route file', function ()
     $dir = sys_get_temp_dir().'/larakube-test-nextjs-health-'.uniqid();
     mkdir("$dir/app", 0o755, true);
 
-    $command = new App\Commands\Nextjs\NextjsNewCommand;
+    $command = new NextjsNewCommand;
 
     $ref = new ReflectionClass($command);
     $method = $ref->getMethod('generateHealthRoute');
@@ -140,7 +143,7 @@ test('NextjsNewCommand::generateCacheHandler creates cache-handler.mjs', functio
     $dir = sys_get_temp_dir().'/larakube-test-nextjs-cache-'.uniqid();
     mkdir($dir, 0o755, true);
 
-    $command = new App\Commands\Nextjs\NextjsNewCommand;
+    $command = new NextjsNewCommand;
 
     $ref = new ReflectionClass($command);
     $method = $ref->getMethod('generateCacheHandler');

@@ -1,9 +1,11 @@
 <?php
 
+use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
+use Illuminate\Contracts\Console\Kernel;
 
 // ── nestjs:new Command Tests ──────────────────────────────────────────────────
 
@@ -14,7 +16,7 @@ test('nestjs:new command is registered and has correct signature', function () {
 });
 
 test('nestjs:new command has --fast option', function () {
-    $kernel = app(Illuminate\Contracts\Console\Kernel::class);
+    $kernel = app(Kernel::class);
     $commands = $kernel->all();
 
     expect($commands)->toHaveKey('nestjs:new');
@@ -54,7 +56,7 @@ test('NestJS StorageDriver: MinIO, SeaweedFS, Garage are valid', function () {
 // ── NestJS ConfigData Integration ─────────────────────────────────────────────
 
 test('ConfigData accepts AppFramework::NESTJS framework', function () {
-    $config = new App\Data\ConfigData;
+    $config = new ConfigData;
     $config->framework = AppFramework::NESTJS;
 
     expect($config->framework)->toBe(AppFramework::NESTJS);

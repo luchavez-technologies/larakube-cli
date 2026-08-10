@@ -14,12 +14,14 @@ use App\Traits\GathersInfrastructureConfig;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithDocker;
+use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
@@ -28,14 +30,15 @@ use Random\RandomException;
 
 class StatamicNewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.
      */
     protected $signature = 'statamic:new
                             {name? : The name of the Statamic site}
-                            {--fast : Skip wizard and use ideal defaults}';
+                            {--fast : Skip wizard and use ideal defaults}
+                            {--no-plex : Skip Plex Commons auto-provisioning and use self-hosted databases}';
 
     /**
      * The console command description.
@@ -50,6 +53,7 @@ class StatamicNewCommand extends Command
     public function handle(): int
     {
         $this->renderHeader();
+        $this->plexContext = null;
 
         $projectPath = getcwd();
 
@@ -163,13 +167,25 @@ class StatamicNewCommand extends Command
 
         $this->laraKubeInfo("Scaffolding Statamic: $appName...");
 
+        // Auto-provision Plex Commons database for the app (unless SQLite or --no-plex)
+        $plexCredentials = null;
+        if (! $this->option('no-plex')) {
+            $plexCredentials = $this->ensurePlexProvisionedForApp($config);
+        }
+
         // 6. Run composer create-project inside Docker
-        $this->runStatamicNew($appName, $config, $projectPath);
+        $this->runStatamicNew($appName, $config, $projectPath, $plexCredentials);
 
         if (! is_dir($projectDir)) {
             $this->laraKubeError('Failed to create Statamic application.');
 
             return 1;
+        }
+
+        // If Plex provisioned successfully, mark the local environment as Plex-backed
+        if ($plexCredentials !== null) {
+            $config->addEnvironment('local');
+            $config->environments['local']->plex = array_unique(array_merge($config->environments['local']->plex, $plexCredentials['services']));
         }
 
         // 7. Generate K8s manifests
@@ -179,6 +195,12 @@ class StatamicNewCommand extends Command
 
         $this->laraKubeInfo("✅ Statamic project '$appName' created successfully!");
         $this->newLine();
+        if (confirm('Would you like to start your Statamic application now with `larakube up`?', true)) {
+            chdir($projectDir);
+
+            return $this->call('up');
+        }
+
         $this->line('  <fg=gray>To start your Statamic application:</>');
         $this->line("  <fg=yellow>cd $appName && larakube up</>");
         $this->newLine();
@@ -196,7 +218,7 @@ class StatamicNewCommand extends Command
      * Scaffold a Statamic project using `composer create-project statamic/statamic`
      * inside an SSU Docker container (mirrors NewCommand::runLaravelNew pattern).
      */
-    protected function runStatamicNew(string $appName, ConfigData $config, string $baseDir): void
+    protected function runStatamicNew(string $appName, ConfigData $config, string $baseDir, ?array $plexCredentials = null): void
     {
         $uid = $this->hostUid();
         $gid = $this->hostGid();

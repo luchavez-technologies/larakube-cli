@@ -75,6 +75,22 @@ test('hostFor combines the host prefix with the given cluster domain', function 
         ->and(SharedClusterService::TRAEFIK_DASHBOARD->hostFor('localhost'))->toBe('traefik.localhost');
 });
 
+test('hostFor dash-suffixes the prefix for a named instance, and leaves main unchanged', function () {
+    // The only prefix-derivation convention this codebase already has
+    // (ConfigData::getSharedServiceHost()'s web-host fallback,
+    // ToolAliasCommand's resource-name suffix) is dash-joined — mirrored
+    // here so a second Data/Notes instance gets a host, not a collision.
+    expect(SharedClusterService::DATA->hostFor('example.com', 'blog'))->toBe('data-blog.example.com')
+        ->and(SharedClusterService::DATA->hostFor('example.com', 'main'))->toBe('data.example.com')
+        ->and(SharedClusterService::DATA->hostFor('example.com'))->toBe('data.example.com')
+        ->and(SharedClusterService::DATA->hostFor('example.com', null))->toBe('data.example.com')
+        ->and(SharedClusterService::DATA->hostFor('example.com', ''))->toBe('data.example.com');
+
+    // Already-prefixed-for-this-instance input is used verbatim, same as the
+    // existing no-instance double-prefixing guard.
+    expect(SharedClusterService::DATA->hostFor('data-blog.example.com', 'blog'))->toBe('data-blog.example.com');
+});
+
 test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Gitea, Flow, Sheet, Insights, Mail, Desk, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function () {
     foreach (SharedClusterService::cases() as $service) {
         $localOnly = ! in_array($service, [
@@ -105,6 +121,7 @@ test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, G
             SharedClusterService::DATA,
             SharedClusterService::DASHBOARD,
             SharedClusterService::MEET,
+            SharedClusterService::DESIGN,
         ]);
 
         expect($service->isLocalOnly())->toBe($localOnly)

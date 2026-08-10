@@ -7,6 +7,7 @@ use App\Data\ConfigData;
 use App\State;
 use Exception;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
@@ -92,7 +93,7 @@ trait LaraKubeOutput
 
         if (! $checkedAt || $checkedAt->diffInHours(now()) > 24) {
             try {
-                $response = \Illuminate\Support\Facades\Http::timeout(1)->get('https://api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest');
+                $response = Http::timeout(1)->get('https://api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest');
                 if ($response->successful()) {
                     $latestVersion = $response->json('tag_name');
                     $config->latestVersion = $latestVersion;

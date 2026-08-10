@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AppFramework;
+use Illuminate\Contracts\Console\Kernel;
 
 // ── AppFramework Enum Tests ──────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ test('statamic:new command is registered and has correct signature', function ()
 });
 
 test('statamic:new command has --fast option', function () {
-    $kernel = app(Illuminate\Contracts\Console\Kernel::class);
+    $kernel = app(Kernel::class);
     $commands = $kernel->all();
 
     expect($commands)->toHaveKey('statamic:new');

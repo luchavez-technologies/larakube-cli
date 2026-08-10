@@ -5,16 +5,17 @@ namespace App\Commands\Secrets;
 use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
+use App\Traits\InteractsWithSecrets;
 use Illuminate\Support\Facades\Process;
 
 class SecretsRemoveCommand extends AbstractToolRemoveCommand
 {
-    use \App\Traits\InteractsWithSecrets;
+    use InteractsWithSecrets;
 
     protected $signature = 'secrets:remove
         {environment=local  : Environment to remove the secrets engine from}
         {--context=         : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
-        {--instance=main    : Named instance identifier (default: main)}
+        {--domain=          : Not supported — the secrets engine has a single instance}
         {--purge            : Also destroy persistent data — delete OpenBao PVC and bootstrap secret. Irreversible.}
         {--force            : Skip the confirmation prompt (required for non-interactive runs)}';
 

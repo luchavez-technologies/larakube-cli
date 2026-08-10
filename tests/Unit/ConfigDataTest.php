@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Data\GlobalConfigData;
 use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
@@ -316,7 +317,7 @@ class ConfigDataTest extends TestCase
 
         // Shared cluster hosts are name-less and follow the GLOBAL dev TLD, not
         // the project's localTld override (they're shared across all projects).
-        $globalTld = \App\Data\GlobalConfigData::load()->getLocalTld();
+        $globalTld = GlobalConfigData::load()->getLocalTld();
         $host = $config->getSharedServiceHost(SharedClusterService::GRAFANA, 'local');
 
         $this->assertSame("grafana.{$globalTld}", $host);

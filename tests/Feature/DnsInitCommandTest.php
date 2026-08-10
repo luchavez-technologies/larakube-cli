@@ -1,5 +1,7 @@
 <?php
 
+use App\Exceptions\MissingFlagException;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -38,13 +40,13 @@ test('dns:init requires a zone rather than defaulting to every zone', function (
     Process::fake(dnsFakes());
 
     $this->artisan('dns:init prod --cloudflare-token=t --no-interaction --force')->run();
-})->throws(App\Exceptions\MissingFlagException::class, 'Missing required --zone');
+})->throws(MissingFlagException::class, 'Missing required --zone');
 
 test('dns:init requires a token it can scope to that zone', function () {
     Process::fake(dnsFakes());
 
     $this->artisan('dns:init prod --zone=example.com --no-interaction --force')->run();
-})->throws(App\Exceptions\MissingFlagException::class, 'Missing required --cloudflare-token');
+})->throws(MissingFlagException::class, 'Missing required --cloudflare-token');
 
 test('dns:init confines the instance to one zone and gives it a cluster-unique owner', function () {
     $applied = null;
@@ -201,8 +203,8 @@ test('dns:list surfaces the owner id, which is how zone conflicts are diagnosed'
 
     // Via --json: the table renderer does not write through the console output
     // capture, and the owner id is the value that actually matters here.
-    $exit = Illuminate\Support\Facades\Artisan::call('dns:list prod --json');
-    $payload = json_decode(Illuminate\Support\Facades\Artisan::output(), true);
+    $exit = Artisan::call('dns:list prod --json');
+    $payload = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0)
         ->and($payload[0]['zone'])->toBe('example.com')

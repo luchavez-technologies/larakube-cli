@@ -103,7 +103,13 @@ enum AppFramework: string implements HasLabel
             self::NEXTJS => '/api/health',
             self::SPRINGBOOT => '/actuator/health',
             self::DJANGO, self::FASTAPI, self::DOTNET, self::GIN, self::AXUM, self::NESTJS, self::ADONISJS => '/healthz',
+            self::ASTRO, self::VITE, self::DOCUSAURUS => '/',
         };
+    }
+
+    public function isStaticSpa(): bool
+    {
+        return in_array($this, [self::ASTRO, self::VITE, self::DOCUSAURUS], true);
     }
 
     /**
@@ -122,6 +128,7 @@ enum AppFramework: string implements HasLabel
             self::DOTNET => 'dotnet',
             self::GIN => 'go run .',
             self::AXUM => 'cargo run',
+            self::ASTRO, self::VITE, self::DOCUSAURUS => 'npm run dev',
         };
     }
 

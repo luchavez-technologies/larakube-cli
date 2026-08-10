@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)', function () {
@@ -15,12 +16,12 @@ test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)
 });
 
 test('mail:wire --tool=sso configures Zitadel SMTP via API', function () {
-    Illuminate\Support\Facades\Http::fake(function ($request) {
+    Http::fake(function ($request) {
         if (str_contains($request->url(), '_activate')) {
-            return Illuminate\Support\Facades\Http::response([], 200);
+            return Http::response([], 200);
         }
 
-        return Illuminate\Support\Facades\Http::response(['id' => 'smtp-123'], 200);
+        return Http::response(['id' => 'smtp-123'], 200);
     });
 
     Process::fake([
@@ -49,5 +50,23 @@ test('mail:wire local --tool=data configures Directus SMTP via deployment secret
     ]);
 
     $this->artisan('mail:wire local --tool=data')
-        ->expectsOutputToContain('Wired to Stalwart: Headless CMS & Data API (Directus)');
+        ->expectsOutputToContain('Wired to Stalwart: Headless CMS & Data API (PocketBase or Directus)');
+});
+
+test('mail:wire local --tool=design configures Penpot SMTP via deployment secret', function () {
+    Process::fake([
+        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
+        '*get deployment design-penpot-backend*' => Process::result(output: 'design-penpot-backend   1/1   1   1   10d'),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*create secret generic mail-sender*' => Process::result(output: 'created'),
+        '*create secret generic design-penpot-smtp*' => Process::result(output: 'created'),
+        '*set env deployment/design-penpot-backend*' => Process::result(output: 'updated'),
+        '*rollout restart deployment/design-penpot-backend*' => Process::result(output: 'restarted'),
+    ]);
+
+    $this->artisan('mail:wire local --tool=design')
+        ->expectsOutputToContain('Wired to Stalwart: Design & Prototyping (Penpot)');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'PENPOT_SMTP_HOST'));
 });

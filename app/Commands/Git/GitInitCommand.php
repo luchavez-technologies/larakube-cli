@@ -4,6 +4,7 @@ namespace App\Commands\Git;
 
 use App\Enums\ClusterTool;
 use App\Enums\CommonsSecret;
+use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
 use App\Traits\ConfirmsDestructiveAction;
@@ -141,7 +142,7 @@ class GitInitCommand extends Command
             if (! $this->ensureCommons(['postgres', 'redis'])) {
                 return 1;
             }
-            if (! $this->allocateDatabase(\App\Enums\DatabaseDriver::POSTGRESQL, 'forgejo', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'forgejo', $dbPassword)) {
                 return 1;
             }
 
@@ -378,6 +379,14 @@ class GitInitCommand extends Command
         // firewall and the host UFW default-deny it — without this, `git clone
         // ssh://…` hangs against a Service that looks perfectly healthy.
         $this->openToolPorts(SharedClusterService::GITEA, $env);
+
+        // Forgejo never registered itself here — the only registry write it
+        // ever got was an incidental side effect of resolveToolBranding()
+        // saving a custom --app-name/--logo-url, which only fires when one
+        // was actually passed. Every plain `git:init` left the tool entirely
+        // absent from the registry: no host, so tool:list/tool:show and any
+        // `git:` -domain targeting had nothing to find.
+        $this->registerDeployedTool(ClusterTool::GIT, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Forgejo forge and Actions runner are live.');

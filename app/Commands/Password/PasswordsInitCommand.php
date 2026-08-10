@@ -3,6 +3,7 @@
 namespace App\Commands\Password;
 
 use App\Enums\ClusterTool;
+use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
@@ -64,7 +65,7 @@ class PasswordsInitCommand extends Command
         $plexNs = $this->plexNamespace();
 
         if ($this->ensureCommons(['postgres'])) {
-            $driver = \App\Enums\DatabaseDriver::POSTGRESQL;
+            $driver = DatabaseDriver::POSTGRESQL;
             if ($this->allocateDatabase($driver, 'vaultwarden', $dbPassword)) {
                 $databaseUrl = "postgresql://vaultwarden:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/vaultwarden";
             }

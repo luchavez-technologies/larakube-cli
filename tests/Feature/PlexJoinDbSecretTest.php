@@ -1,7 +1,11 @@
 <?php
 
+use App\Commands\Plex\PlexJoinCommand;
 use App\Data\ConfigData;
+use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Process;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 function cleanupTestDir(string $dir): void
 {
@@ -15,7 +19,7 @@ function cleanupTestDir(string $dir): void
 
 function plexJoinCommand(): object
 {
-    $command = new class extends App\Commands\Plex\PlexJoinCommand
+    $command = new class extends PlexJoinCommand
     {
         public function callWireTenantDbSecret(string $kubectl, string $namespace, string $tenant): bool
         {
@@ -43,10 +47,10 @@ function plexJoinCommand(): object
         }
     };
 
-    $input = new Symfony\Component\Console\Input\ArrayInput([]);
+    $input = new ArrayInput([]);
     $input->bind($command->getDefinition());
     $command->setInput($input);
-    $command->setOutput(new Illuminate\Console\OutputStyle($input, new Symfony\Component\Console\Output\BufferedOutput));
+    $command->setOutput(new OutputStyle($input, new BufferedOutput));
 
     return $command;
 }

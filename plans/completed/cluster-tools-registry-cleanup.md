@@ -1,8 +1,31 @@
 # Plan: Cluster Tools Registry & `.larakube.json` Cleanup (`*InitCommand` Refactor)
 
-> **Status:** Draft  
+> **Status:** ✅ BUILT — fully verified 2026-08-09  
 > **Created:** 2026-08-05  
 > **Target Version:** LaraKube CLI v1.2.0
+
+## Verification (2026-08-09)
+
+Both halves of this plan's goal are confirmed done, across all 25
+`*InitCommand`s listed below:
+
+1. **`registerDeployedTool()` invoked on successful deployment** — confirmed
+   for 24/25 directly; **only `GitInitCommand` was missing it** — its sole
+   registry write was an incidental side effect of `resolveToolBranding()`
+   saving a custom `--app-name`/`--logo-url`, which only fires when one was
+   actually passed, so a plain `git:init` left Forgejo entirely absent from
+   the registry (no host, so `tool:list`/`tool:show git` and any
+   `--domain=`-targeting had nothing to find). Fixed by adding an explicit
+   `registerDeployedTool()` call — see
+   [ADR 0012](../../docs/decisions/0012-cluster-tool-registry-redesign.md).
+2. **No `.larakube.json` mutations remain** — grepped all 25 for
+   `setHost`/`saveToFile`/`promptForCloud...Host` outside of
+   `resolveToolHost()` itself: zero hits. Every command already uses
+   `ResolvesToolHost::resolveToolHost()`/`promptForCloudHost()` exclusively.
+
+Nothing left to do here. The live `larakube-tools-registry` Secret was also
+hand-transformed to the new flat/camelCase shape the same day (see ADR 0012
+and `project_tool_registry_redesign.md` in memory).
 
 ---
 

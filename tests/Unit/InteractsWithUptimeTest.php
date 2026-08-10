@@ -2,13 +2,14 @@
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Traits\InteractsWithUptime;
 use Illuminate\Support\Facades\Process;
 
 function uptimeReader(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithUptime;
+        use InteractsWithUptime;
 
         public function host(string $env, ?ConfigData $config): ?string
         {

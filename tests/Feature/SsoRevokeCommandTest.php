@@ -1,9 +1,13 @@
 <?php
 
+use App\Commands\Sso\SsoRevokeCommand;
+use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 test('sso:revoke is registered', function () {
     $this->artisan('list --no-interaction')
@@ -206,13 +210,13 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on the shared pro
     // terminal isn't clobbered by the Kernel's configurePrompts() fallbacks.
     Prompt::fake([Key::DOWN, Key::SPACE, Key::ENTER]);
 
-    $command = app(App\Commands\Sso\SsoRevokeCommand::class);
-    $input = new Symfony\Component\Console\Input\ArrayInput(['--email' => 'admin@luchtech.dev', '--force' => true]);
+    $command = app(SsoRevokeCommand::class);
+    $input = new ArrayInput(['--email' => 'admin@luchtech.dev', '--force' => true]);
     $input->bind($command->getDefinition());
     $input->setInteractive(true);
-    $output = new Symfony\Component\Console\Output\BufferedOutput;
+    $output = new BufferedOutput;
     $command->setInput($input);
-    $command->setOutput(new Illuminate\Console\OutputStyle($input, $output));
+    $command->setOutput(new OutputStyle($input, $output));
     \Termwind\renderUsing($output);
 
     $exitCode = $command->handle();

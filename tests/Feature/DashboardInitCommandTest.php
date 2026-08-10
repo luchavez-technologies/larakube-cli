@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ClusterTool;
 use App\Traits\InteractsWithToolRegistry;
 use Illuminate\Support\Facades\Process;
 
@@ -87,13 +88,13 @@ test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG
         ->and($manifest)->toContain('HEADLAMP_CONFIG_OIDC_SCOPES')
         ->and($manifest)->not->toContain('HEADLAMP_OIDC_');
 
-    expect(App\Enums\ClusterTool::DASHBOARD->oidcEnv())
-        ->and(App\Enums\ClusterTool::DASHBOARD->oidcEnv()['vars'])->toBe([
+    expect(ClusterTool::DASHBOARD->oidcEnv())
+        ->and(ClusterTool::DASHBOARD->oidcEnv()['vars'])->toBe([
             'client_id' => 'HEADLAMP_CONFIG_OIDC_CLIENT_ID',
             'client_secret' => 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET',
             'issuer' => 'HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL',
         ])
-        ->and(App\Enums\ClusterTool::DASHBOARD->oidcEnv()['static'])->toBe([
+        ->and(ClusterTool::DASHBOARD->oidcEnv()['static'])->toBe([
             'HEADLAMP_CONFIG_OIDC_SCOPES' => 'openid profile email groups',
         ]);
 });

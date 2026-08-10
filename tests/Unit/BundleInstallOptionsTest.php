@@ -2,6 +2,7 @@
 
 use App\Commands\Bundle\BundleBuildCommand;
 use App\Commands\Bundle\BundleInstallCommand;
+use App\Traits\GeneratesOfflineCertificates;
 
 test('bundle:install --skip-images is a valueless boolean flag', function () {
     $option = (new BundleInstallCommand)->getDefinition()->getOption('skip-images');
@@ -67,7 +68,7 @@ test('caMode derivation logic', function () {
 test('generateSanCertificates uses company CA when both cert and key are supplied', function () {
     $trait = new class
     {
-        use App\Traits\GeneratesOfflineCertificates;
+        use GeneratesOfflineCertificates;
     };
 
     $tmpDir = sys_get_temp_dir().'/larakube-ca-test-'.uniqid();

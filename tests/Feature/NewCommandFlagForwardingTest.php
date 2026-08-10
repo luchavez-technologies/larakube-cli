@@ -12,6 +12,7 @@
  */
 
 use App\Commands\NewCommand;
+use App\Data\ConfigData;
 use App\Enums\PackageManager;
 use App\Enums\ServerVariation;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -73,7 +74,7 @@ test('--fast defaults build a config without crashing alongside installer flags'
             $this->input = new ArrayInput($options, $this->getDefinition());
         }
 
-        public function config(): App\Data\ConfigData
+        public function config(): ConfigData
         {
             return $this->buildConfigFromFlags();
         }

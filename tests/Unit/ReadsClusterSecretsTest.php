@@ -1,12 +1,13 @@
 <?php
 
+use App\Traits\ReadsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 
 function secretReader(): object
 {
     return new class
     {
-        use App\Traits\ReadsClusterSecrets;
+        use ReadsClusterSecrets;
 
         public function read(string $secret, string $key): ?string
         {

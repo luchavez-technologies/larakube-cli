@@ -2,13 +2,14 @@
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Traits\InteractsWithVault;
 use Illuminate\Support\Facades\Process;
 
 function vaultReader(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithVault;
+        use InteractsWithVault;
 
         public function host(string $env, ?ConfigData $config): ?string
         {

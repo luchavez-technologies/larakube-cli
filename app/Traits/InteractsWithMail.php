@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
@@ -78,9 +79,16 @@ trait InteractsWithMail
     }
 
     /** Read-only Stalwart host for the given environment. */
-    protected function resolveMailHostReadOnly(string $env, ?ConfigData $config): ?string
+    protected function resolveMailHostReadOnly(string $env, ?ConfigData $config, ?string $kubectl = null): ?string
     {
         $service = SharedClusterService::MAIL;
+
+        if ($kubectl !== null) {
+            $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::MAIL);
+            if ($registered !== null && $registered !== '') {
+                return $registered;
+            }
+        }
 
         if ($env === 'local') {
             return $service->hostFor(GlobalConfigData::load()->getLocalTld());

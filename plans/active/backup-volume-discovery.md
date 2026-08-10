@@ -3,6 +3,11 @@
 **Status:** ⛔ proposed, not started. Written 2026-08-09, out of the question "how does this fare
 with multi-instance cluster tools?" Answer: databases cope, volumes do not.
 
+**Revised 2026-08-10 — read "Coupling to ClusterTool" first.** ADR 0012 landed after this plan
+was written and removed `--instance=` entirely in favour of host-as-identity. The findings
+below still stand; the multi-instance *reasoning* was written against the old model and has an
+open question marked for whoever owns the registry rearchitecture.
+
 ## The asymmetry
 
 The backup inventory has two halves that behave differently, and only one of them is right.
@@ -12,10 +17,14 @@ instance of a tool gets its own database and is picked up automatically — nobo
 anything, nothing is forgotten.
 
 **Volumes are declared.** `backupVolumeTargets()` (`app/Traits/InteractsWithBackup.php`) is a
-hardcoded allow-list of 7 entries keyed to *bare* deployment names — `drive-ocis`, `forgejo`,
-`vaultwarden`. But `ClusterTool::deploymentName()` suffixes instances, so a second Drive is
-`drive-ocis-team2`. That matches nothing in the list, and **nothing reports the miss**,
-because a list cannot notice an entry it never had.
+hardcoded allow-list of 7 entries keyed to literal deployment names — `drive-ocis`, `forgejo`,
+`vaultwarden`. A second instance of any of those runs under a *different* deployment name
+(whatever the registry generates — see "Coupling to `ClusterTool`" for why this plan no longer
+asserts which). That matches nothing in the list, and **nothing reports the miss**, because a
+list cannot notice an entry it never had.
+
+This is the durable form of the argument: it holds regardless of how instances are named,
+which is exactly why the fix should not depend on predicting names either.
 
 The failure mode is the one that matters most here: silent, and only discovered during a
 restore.
@@ -47,11 +56,47 @@ Two gaps today, neither caused by instances:
 - **`webmail-storage`** is live and in use by `webmail-bulwark`. 36K, low stakes, but undeclared
   either way.
 
-Latent instance exposure: of the tools that *have* volumes here, only DRIVE and PASSWORDS
-return `supportsMultipleInstances() === true`. CHAT, GIT and MAIL are `false` (hostPort and
-fixed-port LoadBalancer collisions), so they cannot have a second instance to miss. The two
-tools with `--instance` actually wired — DATA and NOTES — keep their data in Commons Postgres
-and SeaweedFS, both covered. So no live data is missing because of instances *yet*.
+Latent instance exposure — **stated against the pre-ADR-0012 model; re-derive before relying
+on it.** At the time of writing, of the tools with volumes here only DRIVE and PASSWORDS
+allowed a second instance; CHAT, GIT and MAIL were blocked by hostPort and fixed-port
+LoadBalancer collisions. The two tools with instances actually wired (DATA, NOTES) kept their
+data in Commons Postgres and SeaweedFS, both covered — so no live data was missing because of
+instances. ADR 0012 changed how instances are identified, so which tools can multiply, and
+under what names, needs re-checking. The two concrete PVC gaps above are unaffected: neither
+has anything to do with instances.
+
+## Coupling to `ClusterTool` (verified 2026-08-10)
+
+**The implementation has none.** `grep` for the `ClusterTool` enum across
+`app/Traits/InteractsWithBackup.php` and every `app/Commands/Backup/*.php` returns **zero
+hits**. The `DeploysClusterTool` those commands `use` is a trait of spinner/output helpers,
+not the enum — an easy thing to misread.
+
+`backupVolumeTargets()` is a literal array of raw strings:
+
+```php
+['name' => 'forgejo', 'namespace' => 'larakube-shared',
+ 'deployment' => 'forgejo', 'container' => 'forgejo', 'path' => '/data'],
+```
+
+So the backup does not break when `ClusterTool` is rearchitected. It also does not *benefit*
+— which is the actual problem. It has no idea what a tool or an instance is, and cannot learn
+about one that was added.
+
+**What this plan got wrong.** It argued the multi-instance gap through
+`ClusterTool::deploymentName()` suffixing an `--instance` slug (`drive-ocis-team2`) and
+through `supportsMultipleInstances()`. ADR 0012 (accepted 2026-08-09) deletes `--instance=`:
+the host is the only identity, the registry is a flat list, and instance identity derives from
+the full host rather than a separately-typed name. The *shape* of the gap is unchanged — a
+hardcoded list of deployment names cannot match a second instance's deployment, whatever that
+deployment ends up being called — but the specific names and the mechanism are now wrong.
+
+> **OPEN — for whoever owns the registry rearchitecture.** Under host-as-identity, what is a
+> second instance's Deployment (and therefore PVC) actually named? Fill that in here, then
+> re-derive which tools with volumes can have more than one instance. The discovery design
+> below is deliberately independent of the answer — it enumerates PVCs and resolves each to
+> its owning workload, so it never needs to predict a name. That independence is the point,
+> and is worth keeping whatever the registry settles on.
 
 ## The change: invert the list
 

@@ -1,5 +1,7 @@
 <?php
 
+use App\Exceptions\MissingFlagException;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use Illuminate\Contracts\Console\Kernel;
 
 /**
@@ -108,7 +110,7 @@ test('cannotPrompt is true under --no-interaction so the picker guards fire', fu
     // a hang instead of an error.
     $probe = new class
     {
-        use App\Traits\RequiresFlagsWhenNonInteractive;
+        use RequiresFlagsWhenNonInteractive;
 
         public function __construct(private array $options = ['no-interaction' => true]) {}
 
@@ -130,7 +132,7 @@ test('cannotPrompt is true under --no-interaction so the picker guards fire', fu
 
     expect($probe->check())->toBeTrue();
     expect(fn () => $probe->guarded())
-        ->toThrow(App\Exceptions\MissingFlagException::class, 'Missing required --email');
+        ->toThrow(MissingFlagException::class, 'Missing required --email');
 });
 
 test('every guarded picker sits behind a cannotPrompt check', function () {

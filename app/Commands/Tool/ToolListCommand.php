@@ -43,12 +43,11 @@ class ToolListCommand extends Command
 
         [$env, $kubectl] = $this->resolveStandaloneEnvironmentAndKubectl();
 
-        $registry = $this->getRegisteredTools($kubectl);
         $onlyInstalled = (bool) $this->option('installed');
 
         $rows = [];
         foreach (ClusterTool::cases() as $tool) {
-            $entry = $registry[$tool->value] ?? null;
+            $entry = $this->findToolInstanceEntry($kubectl, $tool);
             $isPresent = $this->isToolPresentOnCluster($kubectl, $tool);
             $installed = $entry !== null || $isPresent;
 
@@ -64,7 +63,7 @@ class ToolListCommand extends Command
                 }
             }
 
-            $aliasHosts = $entry['alias_hosts'] ?? [];
+            $aliasHosts = $entry['aliases'] ?? [];
             $aliasSuffix = $aliasHosts !== [] ? ' (+'.count($aliasHosts).' alias)' : '';
 
             $rows[] = [
@@ -75,9 +74,9 @@ class ToolListCommand extends Command
                 'installed' => $installed,
                 'namespace' => $tool->namespace(),
                 'host' => $host,
-                'alias_hosts' => $aliasHosts,
+                'aliases' => $aliasHosts,
                 'url' => $host !== null ? 'https://'.$host.$aliasSuffix : null,
-                'installed_at' => $entry['installed_at'] ?? null,
+                'installedAt' => $entry['installedAt'] ?? null,
                 'db_role' => $installed ? ($tool->commonsDatabases()[0] ?? null) : null,
             ];
         }

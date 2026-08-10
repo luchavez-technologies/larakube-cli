@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: data-directus
+  name: {{ $deployName }}
   namespace: larakube-shared
   labels:
-    app: data-directus
+    app: {{ $deployName }}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: data-directus
+      app: {{ $deployName }}
   template:
     metadata:
       labels:
-        app: data-directus
+        app: {{ $deployName }}
     spec:
       containers:
         - name: directus
@@ -29,22 +29,22 @@ spec:
             - name: SECRET
               valueFrom:
                 secretKeyRef:
-                  name: data-secrets
+                  name: {{ $secretName }}
                   key: secret
             - name: KEY
               valueFrom:
                 secretKeyRef:
-                  name: data-secrets
+                  name: {{ $secretName }}
                   key: key
             - name: ADMIN_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: data-secrets
+                  name: {{ $secretName }}
                   key: admin-email
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: data-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: DB_CLIENT
               value: "pg"
@@ -53,13 +53,13 @@ spec:
             - name: DB_PORT
               value: "5432"
             - name: DB_DATABASE
-              value: "data_directus"
+              value: "{{ $dbName }}"
             - name: DB_USER
-              value: "data_directus"
+              value: "{{ $dbName }}"
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: data-secrets
+                  name: {{ $secretName }}
                   key: db-password
             - name: CACHE_ENABLED
               value: "true"
@@ -74,15 +74,15 @@ spec:
             - name: STORAGE_S3_KEY
               valueFrom:
                 secretKeyRef:
-                  name: data-secrets
+                  name: {{ $secretName }}
                   key: s3-key
             - name: STORAGE_S3_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: data-secrets
+                  name: {{ $secretName }}
                   key: s3-secret
             - name: STORAGE_S3_BUCKET
-              value: "data-storage"
+              value: "{{ $bucket }}"
             - name: STORAGE_S3_ENDPOINT
               value: "http://seaweedfs.{{ $plexNamespace }}.svc.cluster.local:8333"
             - name: STORAGE_S3_FORCE_PATH_STYLE
@@ -92,31 +92,31 @@ spec:
             - name: EMAIL_SMTP_HOST
               valueFrom:
                 secretKeyRef:
-                  name: data-smtp
+                  name: {{ $smtpSecretName }}
                   key: EMAIL_SMTP_HOST
                   optional: true
             - name: EMAIL_SMTP_PORT
               valueFrom:
                 secretKeyRef:
-                  name: data-smtp
+                  name: {{ $smtpSecretName }}
                   key: EMAIL_SMTP_PORT
                   optional: true
             - name: EMAIL_SMTP_USER
               valueFrom:
                 secretKeyRef:
-                  name: data-smtp
+                  name: {{ $smtpSecretName }}
                   key: EMAIL_SMTP_USER
                   optional: true
             - name: EMAIL_SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: data-smtp
+                  name: {{ $smtpSecretName }}
                   key: EMAIL_SMTP_PASSWORD
                   optional: true
             - name: EMAIL_FROM
               valueFrom:
                 secretKeyRef:
-                  name: data-smtp
+                  name: {{ $smtpSecretName }}
                   key: EMAIL_FROM
                   optional: true
             - name: AUTH_PROVIDERS
@@ -126,37 +126,37 @@ spec:
             - name: AUTH_ZITADEL_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: data-oidc
+                  name: {{ $oidcSecretName }}
                   key: AUTH_ZITADEL_CLIENT_ID
                   optional: true
             - name: AUTH_ZITADEL_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: data-oidc
+                  name: {{ $oidcSecretName }}
                   key: AUTH_ZITADEL_CLIENT_SECRET
                   optional: true
             - name: AUTH_ZITADEL_ISSUER
               valueFrom:
                 secretKeyRef:
-                  name: data-oidc
+                  name: {{ $oidcSecretName }}
                   key: AUTH_ZITADEL_ISSUER
                   optional: true
             - name: AUTH_ZITADEL_AUTHORIZE_URL
               valueFrom:
                 secretKeyRef:
-                  name: data-oidc
+                  name: {{ $oidcSecretName }}
                   key: AUTH_ZITADEL_AUTHORIZE_URL
                   optional: true
             - name: AUTH_ZITADEL_ACCESS_URL
               valueFrom:
                 secretKeyRef:
-                  name: data-oidc
+                  name: {{ $oidcSecretName }}
                   key: AUTH_ZITADEL_ACCESS_URL
                   optional: true
             - name: AUTH_ZITADEL_PROFILE_URL
               valueFrom:
                 secretKeyRef:
-                  name: data-oidc
+                  name: {{ $oidcSecretName }}
                   key: AUTH_ZITADEL_PROFILE_URL
                   optional: true
             - name: AUTH_ZITADEL_SCOPE
@@ -198,15 +198,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: data
+  name: {{ $deployName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: data-directus
+    app: {{ $deployName }}
   ports:
     - protocol: TCP
       port: 80
       targetPort: 8055
   type: ClusterIP
 ---
-@include('k8s.data.ingress')
+@include('k8s.data.ingress', ['ingressName' => $deployName, 'serviceName' => $deployName])

@@ -8,18 +8,19 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class ToolAliasCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithSso, InteractsWithToolRegistry, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithSso, InteractsWithToolRegistry, LaraKubeOutput, ResolvesToolHost;
 
     protected $signature = 'tool:alias
         {tool : The tool to add or remove an Ingress domain alias for (e.g. mail, git, sso)}
-        {domain : Additional domain alias to register (e.g. send.next.site)}
+        {alias : Additional domain alias to register (e.g. send.next.site)}
         {--remove : Remove the specified domain alias instead of adding it}
-        {--instance=main : Named instance identifier (default: main)}
+        {--domain= : The target instance\'s host, for a tool with more than one (e.g. --domain=blog.example.com). Omit for the default instance}
         {--context= : Target a specific kube-context}';
 
     protected $description = 'Add or remove a secondary domain alias for a deployed cluster tool';
@@ -36,10 +37,7 @@ class ToolAliasCommand extends Command
             return 1;
         }
 
-        $aliasDomain = strtolower(trim((string) $this->argument('domain')));
-        $aliasDomain = (string) preg_replace('#^[a-z]+://#', '', $aliasDomain);
-        $aliasDomain = (string) preg_replace('#[/:].*$#', '', $aliasDomain);
-        $aliasDomain = trim($aliasDomain, ". \t");
+        $aliasDomain = $this->sanitizeDomainInput((string) $this->argument('alias'));
 
         if ($aliasDomain === '') {
             $this->laraKubeError('A valid alias domain is required.');
@@ -47,7 +45,17 @@ class ToolAliasCommand extends Command
             return 1;
         }
 
-        $instance = (string) ($this->option('instance') ?: 'main');
+        $targetDomain = (string) ($this->option('domain') ?: '');
+        $instance = $targetDomain === '' ? 'main' : $tool->instanceSlugFromHost($this->sanitizeDomainInput($targetDomain));
+
+        if ($instance !== 'main' && ! $tool->supportsMultipleInstances()) {
+            $this->laraKubeError(
+                "{$tool->getLabel()} does not support multiple instances — omit --domain to target the single installation.",
+            );
+
+            return 1;
+        }
+
         $context = (string) ($this->option('context') ?: null);
         $kubectl = $this->ssoKubectl($context);
 

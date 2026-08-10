@@ -3,6 +3,7 @@
 namespace App\Commands\Flow;
 
 use App\Enums\ClusterTool;
+use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
@@ -52,7 +53,7 @@ class FlowInitCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->flowKubectl($context);
-        $host = $this->resolveToolHost(SharedClusterService::FLOW, ClusterTool::FLOW, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::FLOW, ClusterTool::FLOW, $env, $kubectl, 'main', $this->engineLabel($engine));
 
         $ns = $this->flowNamespace();
         $noPlex = (bool) $this->option('no-plex');
@@ -88,7 +89,7 @@ class FlowInitCommand extends Command
         $encryptionKey = $this->readFlowEncryptionKey($kubectl, $ns) ?? Str::random(32);
 
         if (! $noPlex) {
-            $driver = \App\Enums\DatabaseDriver::POSTGRESQL;
+            $driver = DatabaseDriver::POSTGRESQL;
 
             if (! $this->allocateDatabase($driver, $engine, $dbPassword)) {
                 return 1;

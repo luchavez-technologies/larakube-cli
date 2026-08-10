@@ -1,5 +1,6 @@
 <?php
 
+use App\Commands\Plex\PlexRotateCommand;
 use App\Enums\CommonsSecret;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -241,7 +242,7 @@ test('warningLines previews exactly which tenants db rotation will touch, before
     // Regression guard: production got "too many, I'm scared" 2026-08-02 —
     // a bare plex:rotate rotated 11 tools in one run with nothing shown
     // beforehand except the credential KIND ("Tenant database"), not who.
-    $command = new class extends App\Commands\Plex\PlexRotateCommand
+    $command = new class extends PlexRotateCommand
     {
         public function callWarningLines(array $kinds, ?array $tenants): array
         {

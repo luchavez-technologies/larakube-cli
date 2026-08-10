@@ -3,6 +3,7 @@
 namespace App\Commands\Desk;
 
 use App\Enums\ClusterTool;
+use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
@@ -75,7 +76,7 @@ class DeskInitCommand extends Command
         $adminEmail = $this->readDeskSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
 
         if (! $noPlex) {
-            if (! $this->allocateDatabase(\App\Enums\DatabaseDriver::POSTGRESQL, 'freescout', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'freescout', $dbPassword)) {
                 return 1;
             }
         }
@@ -119,7 +120,7 @@ class DeskInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::DESK, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::DESK, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ FreeScout help desk is live.');

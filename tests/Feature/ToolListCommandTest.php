@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
@@ -15,8 +16,8 @@ test('tool:list detects tools live on the cluster even if missing from registry 
         '*' => Process::result(output: ''),
     ]);
 
-    $exit = Illuminate\Support\Facades\Artisan::call('tool:list local --json');
-    $output = json_decode(Illuminate\Support\Facades\Artisan::output(), true);
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0);
     $mailRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'mail'))[0] ?? null;
@@ -34,7 +35,7 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                'mail' => ['installed_at' => 1700000000, 'host' => 'send.luchtech.dev'],
+                ['tool' => 'mail', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
             ])),
         ),
         '*get deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
@@ -51,8 +52,8 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
         return Http::response([], 204);
     });
 
-    $exit = Illuminate\Support\Facades\Artisan::call('tool:list local --json');
-    $output = json_decode(Illuminate\Support\Facades\Artisan::output(), true);
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0);
     $mailRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'mail'))[0] ?? null;
@@ -72,14 +73,14 @@ test('tool:list --installed filters out uninstalled tools', function () {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                'mail' => ['installed_at' => 1700000000, 'host' => 'send.luchtech.dev'],
+                ['tool' => 'mail', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
             ])),
         ),
         '*' => Process::result(output: ''),
     ]);
 
-    $exit = Illuminate\Support\Facades\Artisan::call('tool:list local --installed --json');
-    $output = json_decode(Illuminate\Support\Facades\Artisan::output(), true);
+    $exit = Artisan::call('tool:list local --installed --json');
+    $output = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0);
     $tools = array_column($output, 'tool');

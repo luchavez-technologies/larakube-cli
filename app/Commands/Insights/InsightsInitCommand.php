@@ -3,6 +3,7 @@
 namespace App\Commands\Insights;
 
 use App\Enums\ClusterTool;
+use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
@@ -71,7 +72,7 @@ class InsightsInitCommand extends Command
         $encryptionKey = $this->readInsightsEncryptionKey($kubectl, $ns) ?? Str::random(64);
 
         if (! $noPlex) {
-            if (! $this->allocateDatabase(\App\Enums\DatabaseDriver::POSTGRESQL, 'metabase', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'metabase', $dbPassword)) {
                 return 1;
             }
         }

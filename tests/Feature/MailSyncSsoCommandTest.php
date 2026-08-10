@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 test('mail:sync-sso imports existing stalwart accounts into zitadel sso', function () {
@@ -37,8 +38,8 @@ test('mail:sync-sso imports existing stalwart accounts into zitadel sso', functi
         ]),
     ]);
 
-    Illuminate\Support\Facades\Http::fake([
-        '*' => Illuminate\Support\Facades\Http::response(['userId' => 'user-123'], 200),
+    Http::fake([
+        '*' => Http::response(['userId' => 'user-123'], 200),
     ]);
 
     $this->artisan('mail:sync-sso local')

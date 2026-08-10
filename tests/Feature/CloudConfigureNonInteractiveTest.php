@@ -19,6 +19,7 @@ use App\Data\ConfigData;
 use App\Data\RegistryData;
 use App\Enums\IngressController;
 use App\Enums\RegistryProvider;
+use App\State;
 use Laravel\Prompts\Prompt;
 use Symfony\Component\Console\Input\ArrayInput;
 
@@ -180,5 +181,5 @@ test('cloud:configure --only=registry with a bad flag exits 1 with a clear error
         '--no-interaction' => true,
     ])->assertExitCode(1);
 
-    expect(App\State::$lastError)->toContain("Invalid --registry-provider 'bogus'");
+    expect(State::$lastError)->toContain("Invalid --registry-provider 'bogus'");
 });

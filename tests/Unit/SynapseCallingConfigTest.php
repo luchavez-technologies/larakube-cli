@@ -1,12 +1,13 @@
 <?php
 
+use App\Traits\InteractsWithChat;
 use Symfony\Component\Yaml\Yaml;
 
 function callingRenderer(): object
 {
     return new class
     {
-        use App\Traits\InteractsWithChat;
+        use InteractsWithChat;
 
         public function render(string $yaml, ?string $url): string
         {

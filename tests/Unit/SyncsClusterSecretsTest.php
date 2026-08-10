@@ -1,5 +1,7 @@
 <?php
 
+use App\Traits\LaraKubeOutput;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
@@ -7,8 +9,8 @@ function syncsClusterSecrets(): object
 {
     return new class
     {
-        use App\Traits\LaraKubeOutput;
-        use App\Traits\SyncsClusterSecrets;
+        use LaraKubeOutput;
+        use SyncsClusterSecrets;
 
         public function engineMounted(string $kubectl): bool
         {

@@ -1,9 +1,11 @@
 <?php
 
+use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
+use Illuminate\Contracts\Console\Kernel;
 
 // ── wordpress:new Command Tests ──────────────────────────────────────────────
 
@@ -14,7 +16,7 @@ test('wordpress:new command is registered and has correct signature', function (
 });
 
 test('wordpress:new command has --fast option', function () {
-    $kernel = app(Illuminate\Contracts\Console\Kernel::class);
+    $kernel = app(Kernel::class);
     $commands = $kernel->all();
 
     expect($commands)->toHaveKey('wordpress:new');
@@ -69,7 +71,7 @@ test('WordPress StorageDriver: all S3-compatible drivers are valid (mandatory)',
 // ── WordPress ConfigData Integration ─────────────────────────────────────────
 
 test('ConfigData accepts AppFramework::WORDPRESS framework', function () {
-    $config = new App\Data\ConfigData;
+    $config = new ConfigData;
     $config->framework = AppFramework::WORDPRESS;
 
     expect($config->framework)->toBe(AppFramework::WORDPRESS);

@@ -3,6 +3,7 @@
 namespace App\Commands\Errors;
 
 use App\Enums\ClusterTool;
+use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
@@ -67,7 +68,7 @@ class ErrorsInitCommand extends Command
 
         // Allocate database and user on Plex PostgreSQL
         if (! $noPlex) {
-            if (! $this->allocateDatabase(\App\Enums\DatabaseDriver::POSTGRESQL, 'glitchtip', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'glitchtip', $dbPassword)) {
                 return 1;
             }
         }

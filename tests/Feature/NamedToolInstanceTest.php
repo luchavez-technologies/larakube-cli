@@ -18,11 +18,13 @@ test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support name
 });
 
 test('notes:init deploys a named multi-instance with isolated DB and secrets', function () {
+    // A bare, dot-less --domain so ClusterTool::instanceSlugFromHost() derives
+    // exactly 'sister' (no dots to dash-ify) — keeps every fixture below
+    // (notes-secrets-sister, notes-outline-sister, ...) matching the slug the
+    // command actually computes now that the instance IS the host, not a
+    // separately-typed --instance flag.
     $registryJson = json_encode([
-        'sso' => [
-            'host' => 'sso.kube',
-            'installed_at' => 1700000000,
-        ],
+        ['tool' => 'sso', 'instance' => 'main', 'host' => 'sso.kube', 'installedAt' => '2026-08-01T00:00:00+00:00'],
     ]);
 
     Http::fake([
@@ -51,7 +53,7 @@ test('notes:init deploys a named multi-instance with isolated DB and secrets', f
         '*' => Process::result(output: 'success'),
     ]);
 
-    $this->artisan('notes:init', ['environment' => 'local', '--instance' => 'sister', '--force' => true])
+    $this->artisan('notes:init', ['environment' => 'local', '--domain' => 'sister', '--force' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('Outline wiki stack is live');
 });

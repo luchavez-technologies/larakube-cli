@@ -20,12 +20,14 @@ use App\Contracts\HasReloadCommand;
 use App\Contracts\HasSelectOptions;
 use App\Contracts\RequiresPhpExtensions;
 use App\Data\ConfigData;
+use App\Data\GlobalConfigData;
 use App\Traits\DerivesHostsFromServices;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithMeet;
 use App\Traits\ProvidesCommandOptions;
 use App\Traits\ProvidesSelectOptions;
 use BackedEnum;
+use Illuminate\Support\Facades\Process;
 
 enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents, HasCommandOptions, HasComposerDependencies, HasDependencies, HasEnvironmentVariables, HasHiddenComponents, HasHosts, HasJsDependencies, HasKubernetesFiles, HasLabel, HasLifecycleHooks, HasPodName, HasPromptableHosts, HasReloadCommand, HasSelectOptions, RequiresPhpExtensions
 {
@@ -182,7 +184,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
             // it to the project. The real deployed host is read from the tool
             // registry in onPostInstall(); this is the local-dev default.
             self::MEET => [
-                'LIVEKIT_URL' => 'wss://meet.'.\App\Data\GlobalConfigData::load()->getLocalTld(),
+                'LIVEKIT_URL' => 'wss://meet.'.GlobalConfigData::load()->getLocalTld(),
                 // OSS LiveKit cannot restrict a key to a room, so isolation
                 // between apps sharing the SFU is this prefix and nothing else.
                 // Mint tokens only for rooms under it, and drop webhook events
@@ -591,13 +593,22 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
         ];
 
         // Prefer the host Meet is actually serving over the local-dev guess.
-        $host = trim(\Illuminate\Support\Facades\Process::run(
+        $host = trim(Process::run(
             "{$kubectl} get secret larakube-tools-registry -n {$ns} -o jsonpath=".escapeshellarg('{.data.registry\.json}'),
         )->output());
 
         if ($host !== '') {
             $decoded = json_decode((string) base64_decode($host), true);
-            $meetHost = is_array($decoded) ? ($decoded['meet']['host'] ?? null) : null;
+            $meetHost = null;
+
+            if (is_array($decoded)) {
+                foreach ($decoded as $entry) {
+                    if (($entry['tool'] ?? null) === 'meet' && ($entry['instance'] ?? 'main') === 'main') {
+                        $meetHost = $entry['host'] ?? null;
+                        break;
+                    }
+                }
+            }
 
             if (is_string($meetHost) && $meetHost !== '') {
                 $values['LIVEKIT_URL'] = "wss://{$meetHost}";

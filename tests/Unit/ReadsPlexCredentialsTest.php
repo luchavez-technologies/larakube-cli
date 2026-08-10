@@ -2,12 +2,13 @@
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Traits\ReadsPlexCredentials;
 
 function plexCredReader(): object
 {
     return new class
     {
-        use App\Traits\ReadsPlexCredentials;
+        use ReadsPlexCredentials;
 
         public function read(ConfigData $config, string $path, string $env): array
         {

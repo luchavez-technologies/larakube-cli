@@ -1,5 +1,7 @@
 <?php
 
+use App\Traits\InteractsWithIngressProxy;
+use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 
 test('link:init deploys Kutt using the Commons postgres and redis', function () {
@@ -98,9 +100,9 @@ test('link ingress proxies through Cloudflare on cloud deploys when proxied, so 
 });
 
 test('resolveProxied honors the --proxied flag value and always yields false on local', function (mixed $raw, bool $expected) {
-    $cmd = new class($raw) extends Illuminate\Console\Command
+    $cmd = new class($raw) extends Command
     {
-        use App\Traits\InteractsWithIngressProxy;
+        use InteractsWithIngressProxy;
 
         protected $signature = 'trait-test';
 

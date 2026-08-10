@@ -21,9 +21,9 @@ class MeetShowCommand extends AbstractToolShowCommand
      *
      * @return array<int, array<int, string>>
      */
-    protected function rows(?string $host, string $env, string $kubectl): array
+    protected function rows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
     {
-        $rows = parent::rows($host, $env, $kubectl);
+        $rows = parent::rows($host, $env, $kubectl, $instance);
 
         if ($host !== null) {
             $rows[] = ['Signaling', "wss://{$host}"];

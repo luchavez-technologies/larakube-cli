@@ -1,9 +1,10 @@
 <?php
 
+use App\Commands\ShareCommand;
 use App\Data\GlobalConfigData;
 
 test('share command has stop, token, and reset options', function () {
-    $cmd = new App\Commands\ShareCommand;
+    $cmd = new ShareCommand;
 
     expect($cmd->getDefinition()->hasOption('stop'))->toBeTrue()
         ->and($cmd->getDefinition()->hasOption('token'))->toBeTrue()

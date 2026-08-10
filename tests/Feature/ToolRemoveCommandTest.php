@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ClusterTool;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Process;
 test('tool:remove takes the environment as its only positional', function () {
     foreach (ClusterTool::cases() as $tool) {
         $definition = $this->app
-            ->make(Illuminate\Contracts\Console\Kernel::class)
+            ->make(Kernel::class)
             ->all()[$tool->removeCommand()]
             ->getDefinition();
 
@@ -21,7 +22,7 @@ test('tool:remove takes the environment as its only positional', function () {
 });
 
 test('every tool has a remove command and none of them still accept --remove on init', function () {
-    $commands = $this->app->make(Illuminate\Contracts\Console\Kernel::class)->all();
+    $commands = $this->app->make(Kernel::class)->all();
 
     foreach (ClusterTool::cases() as $tool) {
         expect($commands)->toHaveKey($tool->removeCommand());
@@ -97,4 +98,25 @@ test('mail:remove closes the firewall ports it opened', function () {
     // A mail server that's gone but whose SMTP ports stay open is a real
     // exposure, so teardown must reach the firewall too.
     $this->artisan('mail:remove local --force')->assertExitCode(0);
+});
+
+test('--domain on a single-instance tool errors instead of silently no-opping', function () {
+    // sso:remove/mail:remove/etc. inherit --domain from the shared base
+    // unconditionally, but SSO/MAIL's teardown targets fixed resource names
+    // — --domain=foo.example.com would do nothing (or a misleading partial
+    // removal) rather than what it implies. supportsMultipleInstances()
+    // guards this for every tool where it's false, not just these two.
+    $this->artisan('sso:remove local --domain=foo.example.com --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('does not support multiple instances');
+
+    $this->artisan('mail:remove local --domain=foo.example.com --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('does not support multiple instances');
+});
+
+test('omitting --domain is always allowed, even for single-instance tools', function () {
+    Process::fake(['*' => Process::result(output: '')]);
+
+    $this->artisan('sso:remove local --force')->assertExitCode(0);
 });

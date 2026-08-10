@@ -1,5 +1,7 @@
 <?php
 
+use App\Commands\Sso\SsoInitCommand;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 test('sso:init deploys zitadel using plex commons postgres by default', function () {
@@ -64,8 +66,8 @@ test('sso:remove aborts when the namespace delete fails', function () {
 });
 
 test('sso:init registers zitadel as a static role when the OpenBao DB engine is mounted', function () {
-    Illuminate\Support\Facades\Http::fake([
-        'localhost:*' => Illuminate\Support\Facades\Http::response([], 204),
+    Http::fake([
+        'localhost:*' => Http::response([], 204),
     ]);
 
     Process::fake([
@@ -109,8 +111,8 @@ test('sso:init falls back to KV push when the OpenBao DB engine is not mounted',
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    Illuminate\Support\Facades\Http::fake([
-        'localhost:*' => Illuminate\Support\Facades\Http::response([
+    Http::fake([
+        'localhost:*' => Http::response([
             'data' => [
                 'secret/' => ['type' => 'kv'],
             ],
@@ -124,7 +126,7 @@ test('sso:init falls back to KV push when the OpenBao DB engine is not mounted',
 });
 
 test('generated Zitadel admin password always satisfies the default complexity policy', function () {
-    $cmd = app(App\Commands\Sso\SsoInitCommand::class);
+    $cmd = app(SsoInitCommand::class);
 
     $generate = new ReflectionMethod($cmd, 'generateZitadelAdminPassword');
     $generate->setAccessible(true);
@@ -143,11 +145,11 @@ test('generated Zitadel admin password always satisfies the default complexity p
 });
 
 test('sso:init wires Zitadel outbound email to Stalwart when the sender is cached', function () {
-    Illuminate\Support\Facades\Http::fake([
+    Http::fake([
         // The public-host readiness poll must succeed so wiring proceeds.
-        '*/.well-known/openid-configuration' => Illuminate\Support\Facades\Http::response(['issuer' => 'https://sso.test'], 200),
-        '*/admin/v1/email/smtp' => Illuminate\Support\Facades\Http::response(['id' => 'smtp-1']),
-        '*/admin/v1/email/smtp-1/_activate' => Illuminate\Support\Facades\Http::response([], 200),
+        '*/.well-known/openid-configuration' => Http::response(['issuer' => 'https://sso.test'], 200),
+        '*/admin/v1/email/smtp' => Http::response(['id' => 'smtp-1']),
+        '*/admin/v1/email/smtp-1/_activate' => Http::response([], 200),
     ]);
 
     Process::fake([

@@ -109,6 +109,27 @@ test('notes:init falls back to the internal S3 endpoint when the Commons has no 
         ->and($appliedManifest)->toContain('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
 });
 
+test('notes:init scopes the Service/Ingress name by instance so a second instance cannot steal main\'s', function () {
+    // Regression guard: the manifest's Service/Ingress default to the bare
+    // 'notes' name when serviceName isn't passed. notes:init never passed
+    // it, so deploying a SECOND instance would kubectl-apply straight over
+    // main's Service selector and Ingress host rule instead of getting its
+    // own — the exact class of collision this whole --domain= pass exists
+    // to prevent, just missed for Outline specifically.
+    $appliedManifest = null;
+    fakeNotesInitProcess('files.example.com', $appliedManifest);
+
+    $this->artisan(NotesInitCommand::class, [
+        'environment' => 'local',
+        '--domain' => 'blog.example.com',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    expect($appliedManifest)->not->toBeNull()
+        ->and($appliedManifest)->toContain('name: notes-blog-example-com')
+        ->and($appliedManifest)->not->toContain("name: notes\n");
+});
+
 test('notes:init returns a failing exit code and does not claim success when kubectl apply is rejected', function () {
     // Regression guard: withSpin()'s success check is `!== false`, and the
     // old runStreaming() call returned an int exit code — never `=== false`

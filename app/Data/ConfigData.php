@@ -18,6 +18,7 @@ use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
 use App\Enums\PackageManager;
 use App\Enums\PhpVersion;
+use App\Enums\RegistryProvider;
 use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\SharedClusterService;
@@ -712,9 +713,9 @@ class ConfigData extends Data
         $registry = $this->getRegistry($environment);
         if ($registry) {
             return match ($registry->provider) {
-                \App\Enums\RegistryProvider::GITEA => 'gitea-login',
-                \App\Enums\RegistryProvider::DOCKERHUB => 'dockerhub-login',
-                \App\Enums\RegistryProvider::GITLAB => 'gitlab-login',
+                RegistryProvider::GITEA => 'gitea-login',
+                RegistryProvider::DOCKERHUB => 'dockerhub-login',
+                RegistryProvider::GITLAB => 'gitlab-login',
                 default => 'ghcr-login',
             };
         }
@@ -1500,23 +1501,25 @@ class ConfigData extends Data
      *      as getServiceHost; e.g. grafana-app.example.com until overridden).
      *   4. Fallback → {prefix}.{global TLD}.
      */
-    public function getSharedServiceHost(SharedClusterService $service, string $environment = 'local'): string
+    public function getSharedServiceHost(SharedClusterService $service, string $environment = 'local', string $instance = 'main'): string
     {
         $envData = $this->getEnvironment($environment);
 
-        if ($envData && isset($envData->hosts[$service->value])) {
+        if ($instance === 'main' && $envData && isset($envData->hosts[$service->value])) {
             return $envData->hosts[$service->value];
         }
 
         if ($environment === 'local') {
-            return $service->hostFor(GlobalConfigData::load()->getLocalTld());
+            return $service->hostFor(GlobalConfigData::load()->getLocalTld(), $instance);
         }
 
         if ($envData && isset($envData->hosts['web'])) {
-            return "{$service->hostPrefix()}-{$envData->hosts['web']}";
+            $suffix = $instance !== 'main' ? "-{$instance}" : '';
+
+            return "{$service->hostPrefix()}{$suffix}-{$envData->hosts['web']}";
         }
 
-        return $service->hostFor(GlobalConfigData::load()->getLocalTld());
+        return $service->hostFor(GlobalConfigData::load()->getLocalTld(), $instance);
     }
 
     public function getPhpImage(bool $isCli = false): string

@@ -3,6 +3,7 @@
 use App\Commands\Data\DataInitCommand;
 use App\Commands\Data\DataRemoveCommand;
 use App\Commands\Data\DataShowCommand;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 
 test('data:init, data:show, and data:remove are registered', function () {
@@ -23,6 +24,7 @@ test('data:init deploys Directus with Postgres, Redis, and SeaweedFS S3', functi
         '*create secret*' => Process::result(output: 'secret created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*exec*deploy/postgres*' => Process::result(output: 'CREATE DATABASE'),
+        '*exec*deploy/seaweedfs*' => Process::result(output: 'bucket created'),
         '*apply*' => Process::result(output: 'deployment.apps/data-directus created'),
         '*rollout status*' => Process::result(output: 'deployment "data-directus" successfully rolled out'),
     ]);
@@ -46,6 +48,12 @@ test('data manifest wires the Commons Redis via the generic REDIS var, not CACHE
     // request paid a ~3.6s doomed-connection retry tax, confirmed live.
     $manifest = view('k8s.data.shared', [
         'engine' => 'directus',
+        'deployName' => 'data-directus',
+        'secretName' => 'data-secrets',
+        'smtpSecretName' => 'data-smtp',
+        'oidcSecretName' => 'data-oidc',
+        'dbName' => 'data_directus',
+        'bucket' => 'data-storage',
         'host' => 'data.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 4,
@@ -97,6 +105,12 @@ test('data manifest declares the mail:wire/sso:wire static keys as literals, not
     // of the live literal value already set, and the two are mutually
     // exclusive (the exact bug confirmed live on Documenso, 2026-08-05).
     $manifest = view('k8s.data.shared', [
+        'deployName' => 'data-directus',
+        'secretName' => 'data-secrets',
+        'smtpSecretName' => 'data-smtp',
+        'oidcSecretName' => 'data-oidc',
+        'dbName' => 'data_directus',
+        'bucket' => 'data-storage',
         'host' => 'data.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 3,
@@ -195,6 +209,55 @@ test('data:show displays status table for Directus', function () {
         ->assertExitCode(0);
 });
 
+test('data:show displays which engine the instance runs, read from the registry', function () {
+    $registry = json_encode([
+        ['tool' => 'data', 'instance' => 'main', 'host' => 'data.example.test', 'aliases' => [], 'engine' => 'directus'],
+    ]);
+
+    Process::fake([
+        '*larakube-tools-registry*' => Process::result(output: base64_encode($registry)),
+        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    // table() output doesn't reliably split across expectsOutputToContain()'s
+    // per-doWrite-call matching — asserted on the raw buffer instead, same as
+    // ToolShowCommandTest's --json case.
+    $exit = Artisan::call('data:show local');
+    $output = Artisan::output();
+
+    expect($exit)->toBe(0)
+        ->and($output)->toContain('Engine')
+        ->and($output)->toContain('Directus');
+});
+
+test('data:show --domain=all lists every registered instance', function () {
+    $registry = json_encode([
+        ['tool' => 'data', 'instance' => 'main', 'host' => 'data.example.test', 'aliases' => []],
+        ['tool' => 'data', 'instance' => 'blog', 'host' => 'data-blog.example.test', 'aliases' => []],
+    ]);
+
+    Process::fake([
+        '*larakube-tools-registry*' => Process::result(output: base64_encode($registry)),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('data:show local --domain=all')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('data-blog.example.test');
+});
+
+test('data:show --domain=all on a single-instance tool behaves like the default instance', function () {
+    // SSO can never have a second instance — --domain=all must not try to
+    // enumerate a registry that was never meant to hold more than one entry.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('sso:show local --domain=all')->assertExitCode(0);
+});
+
 test('data:remove tears down Directus stack', function () {
     Process::fake([
         '*data-secrets*' => Process::result(output: 'data-secrets'),
@@ -209,4 +272,60 @@ test('data:remove tears down Directus stack', function () {
         '--force' => true,
     ])
         ->assertExitCode(0);
+});
+
+test('data:init switching engine on the same instance tears down the other engine first', function () {
+    // A "data" instance runs one engine's Deployment at a time — running
+    // --engine=pocketbase against an instance that already has Directus
+    // deployed is a swap, not coexistence. --force bypasses the confirm
+    // prompt, but the other engine's resources for THIS instance must still
+    // go before the new manifest applies, or the two collide on the
+    // instance's Service/Ingress names.
+    Process::fake([
+        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
+        '*get deployment data-pocketbase*' => Process::result(output: ''),
+        '*create namespace*' => Process::result(output: 'created'),
+        '*get secret*' => Process::result(output: ''),
+        '*delete*' => Process::result(output: 'deleted'),
+        '*apply*' => Process::result(output: 'created'),
+        '*rollout status*' => Process::result(output: 'successfully rolled out'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    // --force skips confirmDestructive()'s prompt AND its warning text (same
+    // as every other destructive command in this codebase) — so what proves
+    // the swap happened is the actual delete command, not printed output.
+    $this->artisan('data:init local --engine=pocketbase --force')
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
+        && str_contains($process->command, 'deployment/data-directus')
+        && str_contains($process->command, 'service/data-directus')
+        && str_contains($process->command, 'ingress/data-directus'));
+});
+
+test('data:init does not touch a different instance\'s resources when switching engine', function () {
+    // The swap teardown is scoped to $otherDeployName only. Main runs
+    // Directus (data-directus exists); deploying a SEPARATE instance (via
+    // --domain=blog.example.com, whose full-host-derived slug is
+    // "blog-example-com" — see ClusterTool::instanceSlugFromHost()) as
+    // pocketbase must never delete main's Directus —
+    // deploymentName('blog-example-com', 'directus') is
+    // data-directus-blog-example-com, a distinct name that doesn't exist.
+    Process::fake([
+        '*get deployment data-directus-blog-example-com*' => Process::result(output: ''),
+        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
+        '*get deployment data-pocketbase*' => Process::result(output: ''),
+        '*create namespace*' => Process::result(output: 'created'),
+        '*get secret*' => Process::result(output: ''),
+        '*apply*' => Process::result(output: 'created'),
+        '*rollout status*' => Process::result(output: 'successfully rolled out'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('data:init local --engine=pocketbase --domain=blog.example.com --force')
+        ->assertExitCode(0);
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete')
+        && str_contains($process->command, 'deployment/data-directus'));
 });

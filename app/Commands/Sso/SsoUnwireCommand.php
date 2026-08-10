@@ -3,6 +3,7 @@
 namespace App\Commands\Sso;
 
 use App\Data\ConfigData;
+use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithChat;
@@ -256,7 +257,7 @@ class SsoUnwireCommand extends Command
         }
 
         if ($env === 'local') {
-            return $service->hostFor(\App\Data\GlobalConfigData::load()->getLocalTld());
+            return $service->hostFor(GlobalConfigData::load()->getLocalTld());
         }
 
         // Same fallback as SsoWireCommand::targetHost() — newer :init commands

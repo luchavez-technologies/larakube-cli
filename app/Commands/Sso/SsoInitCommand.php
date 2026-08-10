@@ -187,7 +187,7 @@ class SsoInitCommand extends Command
 
         $machinePatCaptured = $this->captureMachinePat($kubectl, $ns);
 
-        $this->registerDeployedTool(ClusterTool::SSO, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::SSO, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Zitadel is live.');
