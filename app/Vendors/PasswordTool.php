@@ -4,6 +4,7 @@ namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasSmtpWiring;
@@ -12,11 +13,20 @@ use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the PASSWORDS category — 'Password Manager'. Only Vaultwarden. */
-final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWorkloadComponents
+final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
         return 'Vaultwarden';
+    }
+
+    public function dbSecretRef(): ?array
+    {
+        return [
+            'secret' => 'vaultwarden-secrets',
+            'key' => 'VAULTWARDEN_DATABASE_URL',
+            'template' => 'postgresql://vaultwarden:{{ .password }}@postgres.larakube-plex.svc.cluster.local:5432/vaultwarden',
+        ];
     }
 
     public function components(?string $instance = null, ?string $engine = null): array

@@ -10,7 +10,7 @@ spec:
     kind: ClusterSecretStore
   target:
     name: {{ $secretName }}
-    creationPolicy: Owner
+    creationPolicy: Merge
   data:
 @foreach($keys as $key)
     - secretKey: {{ $key }}

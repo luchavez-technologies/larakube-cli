@@ -6,17 +6,26 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasClusterSecretDbKey;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the MAIL category — 'Mail Server'. Only Stalwart. */
-final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasOpenbaoSync, HasWorkloadComponents
+final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasWorkloadComponents
 {
     public function getLabel(): string
     {
         return 'Stalwart';
+    }
+
+    public function dbSecretRef(): ?array
+    {
+        return [
+            'secret' => 'stalwart',
+            'key' => 'STALWART_STORE_PASSWORD',
+        ];
     }
 
     public function components(?string $instance = null, ?string $engine = null): array

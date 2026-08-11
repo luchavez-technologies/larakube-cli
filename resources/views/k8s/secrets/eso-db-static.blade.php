@@ -29,7 +29,11 @@ spec:
 @if(isset($usernameKey))
         {{ $usernameKey }}: "@{{ .username }}"
 @endif
+@if(isset($passwordTemplate))
+        {{ $passwordKey }}: "{{ $passwordTemplate }}"
+@else
         {{ $passwordKey ?? 'DB_PASSWORD' }}: "@{{ .password }}"
+@endif
   dataFrom:
   - sourceRef:
       generatorRef:

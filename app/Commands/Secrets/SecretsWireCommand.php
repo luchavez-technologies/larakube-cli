@@ -235,6 +235,7 @@ class SecretsWireCommand extends Command
                 'secretName' => $ref['secret'],
                 'roleName' => $tenant,
                 'passwordKey' => $ref['key'],
+                'passwordTemplate' => $ref['template'] ?? null,
             ])->render();
 
             $tmp = sys_get_temp_dir().'/larakube-eso-db-static-'.$tenant.'.yaml';

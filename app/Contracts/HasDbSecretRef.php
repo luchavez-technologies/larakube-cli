@@ -16,7 +16,7 @@ interface HasDbSecretRef
      * instance suffix on 'secret' (also applied by ClusterTool, unchanged
      * from today's post-match logic).
      *
-     * @return array{secret: string, key: string}|null
+     * @return array{secret: string, key: string, template?: string}|null
      */
     public function dbSecretRef(): ?array;
 }

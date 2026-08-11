@@ -352,3 +352,65 @@ test('secrets:wire requires --tool or --all when it cannot prompt', function () 
 
     $this->artisan('secrets:wire local --no-interaction')->run();
 })->throws(MissingFlagException::class, 'Missing required --tool');
+
+test('secrets:wire --tool=mail registers a static role for stalwart and restarts stalwart deployment', function () {
+    Process::fake(array_merge(fakeSyncedExternalSecret(), [
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret stalwart*' => Process::result(output: base64_encode('store-pw')),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart'),
+        '*port-forward*' => Process::result(output: ''),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout restart*' => Process::result(output: 'restarted'),
+        '*' => Process::result(),
+    ]));
+
+    Http::fake([
+        'localhost:*' => Http::sequence()
+            ->push(['data' => ['database/' => ['type' => 'database']]])
+            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
+            ->push([]),
+    ]);
+
+    $this->artisan('secrets:wire local --tool=mail --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("Mail Server (Stalwart)'s DB password is now rotated by OpenBao every 168h");
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/stalwart')
+        && ($request['username'] ?? null) === 'stalwart'
+        && ($request['db_name'] ?? null) === 'plex-postgres');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret stalwart-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/stalwart'));
+});
+
+test('secrets:wire --tool=passwords registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function () {
+    Process::fake(array_merge(fakeSyncedExternalSecret(), [
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret vaultwarden-secrets*' => Process::result(output: base64_encode('postgresql://vaultwarden:pw@postgres:5432/vaultwarden')),
+        '*get deployment vaultwarden*' => Process::result(output: 'vaultwarden'),
+        '*port-forward*' => Process::result(output: ''),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout restart*' => Process::result(output: 'restarted'),
+        '*' => Process::result(),
+    ]));
+
+    Http::fake([
+        'localhost:*' => Http::sequence()
+            ->push(['data' => ['database/' => ['type' => 'database']]])
+            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
+            ->push([]),
+    ]);
+
+    $this->artisan('secrets:wire local --tool=passwords --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("Password Manager (Vaultwarden)'s DB password is now rotated by OpenBao every 168h");
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/vaultwarden')
+        && ($request['username'] ?? null) === 'vaultwarden'
+        && ($request['db_name'] ?? null) === 'plex-postgres');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret vaultwarden-secrets-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vaultwarden'));
+});
