@@ -57,7 +57,7 @@ trait InteractsWithPlex
         // uses, so the Commons never drifts from the project defaults (e.g. Meili's
         // version stays in lockstep with SearchDriver instead of a stale literal).
         $defaults = [
-            'postgres' => ['image' => DatabaseDriver::POSTGRESQL->getDockerImage(), 'port' => DatabaseDriver::POSTGRESQL->dbPort(), 'storage' => '10Gi', 'memory' => '1Gi'],
+            'postgres' => ['image' => DatabaseDriver::POSTGRESQL->getDockerImage(), 'port' => DatabaseDriver::POSTGRESQL->dbPort(), 'storage' => '10Gi', 'memory' => '1Gi', 'maxConnections' => 200],
             'mysql' => ['image' => DatabaseDriver::MYSQL->getDockerImage(),       'port' => DatabaseDriver::MYSQL->dbPort(),       'storage' => '10Gi', 'memory' => '1Gi'],
             'mariadb' => ['image' => DatabaseDriver::MARIADB->getDockerImage(),     'port' => DatabaseDriver::MARIADB->dbPort(),     'storage' => '10Gi', 'memory' => '1Gi'],
             'redis' => ['image' => CacheDriver::REDIS->getDockerImage(),          'port' => CacheDriver::REDIS->dbPort(),                               'memory' => '128Mi'],

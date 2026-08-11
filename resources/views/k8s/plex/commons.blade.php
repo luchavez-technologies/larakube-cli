@@ -54,6 +54,15 @@ spec:
       containers:
         - name: postgres
           image: {{ $spec['services']['postgres']['image'] }}
+          # Shared DB serving every tenant + tool — the default 100 connection
+          # slots get exhausted by a handful of pools (penpot alone idles ~60),
+          # which surfaces as spurious "remaining connection slots are reserved
+          # for roles with the SUPERUSER attribute" 500s in tenants. Driven by
+          # the spec so a re-init keeps the ceiling; pair with a raised memory
+          # limit, since each backend takes a few MB.
+          args:
+            - "-c"
+            - "max_connections={{ $spec['services']['postgres']['maxConnections'] }}"
           ports:
             - containerPort: {{ $spec['services']['postgres']['port'] }}
           env:

@@ -621,7 +621,7 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
     {
         return match ($this) {
             self::MYSQL, self::MARIADB => 'prom/mysqld-exporter:v0.15.1',
-            self::POSTGRESQL => 'prometheuscommunity/postgres-exporter:v0.15.0',
+            self::POSTGRESQL => 'prometheuscommunity/postgres-exporter:v0.19.1',
             default => null,
         };
     }

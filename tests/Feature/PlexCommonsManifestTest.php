@@ -43,6 +43,22 @@ test('the default Commons manifest has Postgres + Redis, embeds the spec, and om
         ->not->toContain('name: meilisearch');
 });
 
+test('the shared postgres bumps max_connections past the stock 100 and is spec-driven', function () {
+    $yaml = plexManifest(plexHelper()->defaultCommonsSpec());
+
+    // Stock postgres caps at 100 slots; a Commons serving every tenant's DB
+    // pool exhausted them (see commons.blade.php). The default and override
+    // must both flow through the spec, not a stale literal.
+    expect($yaml)
+        ->toContain('max_connections=200')
+        ->not->toContain('max_connections=100');
+
+    $yaml = plexManifest(plexHelper()->normalizeCommonsSpec(['services' => [
+        'postgres' => ['enabled' => true, 'maxConnections' => 300],
+    ]]));
+    expect($yaml)->toContain('max_connections=300');
+});
+
 test('enabling Meilisearch adds it to the manifest', function () {
     $spec = plexHelper()->normalizeCommonsSpec(['services' => ['meilisearch' => ['enabled' => true]]]);
     $yaml = plexManifest($spec);
