@@ -172,8 +172,8 @@ class ToolListCommand extends Command
             } elseif (! $installed) {
                 $r['vpn'] = '—';
             } else {
-                $mwName = $vpnTarget['middlewareName'] ?? 'larakube-vpn-mesh';
-                $mwNs = $vpnTarget['namespace'] ?? 'larakube-shared';
+                $mwName = $vpnTarget['name'];
+                $mwNs = $vpnTarget['namespace'];
                 $wired = trim(Process::run("{$kubectl} get middleware {$mwName} -n {$mwNs} --no-headers --ignore-not-found")->output()) !== '';
                 $r['vpn'] = $wired ? 'mesh' : 'public';
             }

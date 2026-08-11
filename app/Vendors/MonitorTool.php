@@ -115,13 +115,11 @@ final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, Has
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'grafana' : "grafana-{$instance}";
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'grafana-vpn-only' : "grafana-vpn-only-{$instance}";
 
         return [
-            'deployment' => $deployment,
-            'secret' => 'grafana-admin',
-            'middlewareName' => 'larakube-vpn-mesh',
-            'namespace' => 'larakube-monitoring',
+            'name' => $name,
+            'namespace' => 'larakube-shared',
         ];
     }
 

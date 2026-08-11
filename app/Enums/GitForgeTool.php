@@ -149,12 +149,10 @@ enum GitForgeTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCo
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'forgejo' : "forgejo-{$instance}";
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'forgejo-vpn-only' : "forgejo-vpn-only-{$instance}";
 
         return [
-            'deployment' => $deployment,
-            'secret' => 'forgejo-admin',
-            'middlewareName' => 'larakube-vpn-mesh',
+            'name' => $name,
             'namespace' => 'larakube-shared',
         ];
     }

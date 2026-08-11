@@ -124,13 +124,11 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'vaultwarden' : "vaultwarden-{$instance}";
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'vault-vpn-only' : "vault-vpn-only-{$instance}";
 
         return [
-            'deployment' => $deployment,
-            'secret' => 'vault-admin',
-            'middlewareName' => 'larakube-vpn-mesh',
-            'namespace' => 'larakube-vault',
+            'name' => $name,
+            'namespace' => 'larakube-shared',
         ];
     }
 

@@ -92,13 +92,11 @@ final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'stalwart' : "stalwart-{$instance}";
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'mail-vpn-only' : "mail-vpn-only-{$instance}";
 
         return [
-            'deployment' => $deployment,
-            'secret' => 'stalwart',
-            'middlewareName' => 'larakube-vpn-mesh',
-            'namespace' => 'larakube-mail',
+            'name' => $name,
+            'namespace' => 'larakube-shared',
         ];
     }
 
