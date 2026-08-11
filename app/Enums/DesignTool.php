@@ -9,12 +9,13 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 
 /** The vendor enum backing ClusterTool::DESIGN — 'Design & Prototyping'. Only Penpot today. */
-enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasSmtpWiring, HasWorkloadComponents
+enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -141,6 +142,14 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
         // took down design.luchtech.dev. Re-add only once that companion
         // container is actually deployed alongside backend/frontend/exporter.
         return ['enable-access-tokens'];
+    }
+
+    public function openbaoSyncConfig(): array
+    {
+        return [
+            'secret' => 'design-penpot-db',
+            'keys' => ['DESIGN_DB_PASSWORD'],
+        ];
     }
     case PENPOT = 'penpot';
 }
