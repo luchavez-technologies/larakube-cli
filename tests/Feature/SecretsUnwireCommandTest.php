@@ -29,3 +29,20 @@ test('secrets:unwire errors when OpenBao is not deployed', function () {
         ->assertExitCode(1)
         ->expectsOutputToContain('OpenBao is not deployed on this cluster');
 });
+
+test('secrets:unwire supports unwiring git, notes, sheets, and chat tools', function () {
+    foreach (['git' => 'forgejo', 'notes' => 'notes-secrets', 'sheets' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
+        Process::fake([
+            '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-token')),
+            "*get secret {$secretName}*" => Process::result(output: 'found'),
+            '*exec deploy/openbao-backend*' => Process::result(output: '{"data":{"rotation_period":"86400s"}}'),
+            '*delete externalsecret*' => Process::result(output: 'deleted'),
+            '*delete vaultdynamicsecret*' => Process::result(output: 'deleted'),
+            '*bao delete database/static-roles*' => Process::result(output: 'deleted'),
+        ]);
+
+        $this->artisan("secrets:unwire local --tool={$toolSlug} --force")
+            ->assertExitCode(0)
+            ->expectsOutputToContain('DB password is now static');
+    }
+});
