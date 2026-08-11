@@ -9,6 +9,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesEnvironmentContext;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
@@ -19,7 +20,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SecretsUnwireCommand extends Command
 {
-    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, RequiresFlagsWhenNonInteractive, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesEnvironmentContext, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'secrets:unwire
         {environment=local : Environment whose secrets to unwire}
