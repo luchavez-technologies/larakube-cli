@@ -6,6 +6,7 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
+use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasSmtpWiring;
@@ -15,11 +16,19 @@ use App\Contracts\UsesCliOidc;
 use App\Data\ClusterToolComponentData;
 
 /** The vendor enum backing ClusterTool::GIT — 'Git Forge & CI/CD'. Only Forgejo today; a future alternative would add a case here. */
-enum GitForgeTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWhiteLabel, HasWorkloadComponents, UsesCliOidc
+enum GitForgeTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWhiteLabel, HasWorkloadComponents, UsesCliOidc
 {
     public function getLabel(): string
     {
         return 'Forgejo';
+    }
+
+    public function dbSecretRef(): ?array
+    {
+        return [
+            'secret' => 'forgejo',
+            'key' => 'FORGEJO_DB_PASSWORD',
+        ];
     }
 
     public function components(?string $instance = null, ?string $engine = null): array

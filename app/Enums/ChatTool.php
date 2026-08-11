@@ -6,19 +6,29 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\ConfiguresViaConfigFile;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasMeetBridge;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 
 /** The vendor enum backing ClusterTool::CHAT — 'Team Chat'. Only Matrix today. */
-enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasMeetBridge, HasOidcWiring, HasSmtpWiring, HasWhiteLabel, HasWorkloadComponents
+enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasMeetBridge, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWhiteLabel, HasWorkloadComponents
 {
     public function getLabel(): string
     {
         return 'Matrix';
+    }
+
+    public function dbSecretRef(): ?array
+    {
+        return [
+            'secret' => 'chat-secrets',
+            'key' => 'db-password',
+        ];
     }
 
     public function components(?string $instance = null, ?string $engine = null): array
@@ -124,6 +134,14 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
     public function whiteLabel(): array
     {
         return ['sub_filter' => true];
+    }
+
+    public function openbaoSyncConfig(): array
+    {
+        return [
+            'secret' => 'chat-secrets',
+            'keys' => ['CHAT_MATRIX_DB_PASSWORD'],
+        ];
     }
     case MATRIX = 'matrix';
 }

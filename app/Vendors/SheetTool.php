@@ -6,16 +6,27 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
+use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasSmtpWiring;
 
 /** The single vendor backing the SHEETS category — 'Spreadsheet Database'. Only Teable. */
-final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring
+final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring
 {
     public function getLabel(): string
     {
         return 'Teable';
+    }
+
+    public function dbSecretRef(): ?array
+    {
+        return [
+            'secret' => 'sheet-secrets',
+            'key' => 'database-url',
+            'template' => 'postgresql://teable:{{ .password }}@postgres.larakube-plex.svc.cluster.local:5432/teable',
+        ];
     }
 
     public function baseDeploymentName(): string
@@ -86,5 +97,13 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     public function commonsRedisKeys(): array
     {
         return ['teable'];
+    }
+
+    public function openbaoSyncConfig(): array
+    {
+        return [
+            'secret' => 'sheet-secrets',
+            'keys' => ['TEABLE_DB_PASSWORD'],
+        ];
     }
 }

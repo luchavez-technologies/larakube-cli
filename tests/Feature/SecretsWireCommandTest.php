@@ -414,3 +414,9 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret vaultwarden-secrets-db'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vaultwarden'));
 });
+
+test('secrets:wire supports git, notes, sheets, and chat tools', function () {
+    foreach (['git' => 'forgejo', 'notes' => 'notes-secrets', 'sheets' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
+        expect(\App\Enums\ClusterTool::from($toolSlug)->dbSecretRef())->not->toBeNull();
+    }
+});

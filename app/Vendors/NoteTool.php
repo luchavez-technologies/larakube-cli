@@ -6,16 +6,26 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
+use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasSmtpWiring;
 
 /** The single vendor backing the NOTES category — 'Team Wiki & Knowledge Base'. Only Outline. */
-final class NoteTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring
+final class NoteTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring
 {
     public function getLabel(): string
     {
         return 'Outline';
+    }
+
+    public function dbSecretRef(): ?array
+    {
+        return [
+            'secret' => 'notes-secrets',
+            'key' => 'db-password',
+        ];
     }
 
     public function baseDeploymentName(): string
@@ -76,5 +86,13 @@ final class NoteTool implements ClusterToolVendor, HasCommonsBuckets, HasCommons
     public function commonsRedisKeys(): array
     {
         return ['outline'];
+    }
+
+    public function openbaoSyncConfig(): array
+    {
+        return [
+            'secret' => 'notes-secrets',
+            'keys' => ['OUTLINE_DB_PASSWORD'],
+        ];
     }
 }
