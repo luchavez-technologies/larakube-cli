@@ -183,6 +183,13 @@ abstract class AbstractToolShowCommand extends Command
             ];
         }
 
+        $vendor = $tool->vendor();
+        if ($vendor instanceof \App\Contracts\HasToolAccessDetails) {
+            foreach ($vendor->toolAccessRows($host, $env, $kubectl, $instance) as $r) {
+                $rows[] = $r;
+            }
+        }
+
         return $rows;
     }
 

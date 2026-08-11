@@ -5,11 +5,15 @@ namespace App\Vendors;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasPresenceProbe;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasToolAccessDetails;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
+use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the MONITOR category — 'Monitoring Stack'. Only Grafana. */
-final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring, HasWhiteLabel
+final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, HasOidcWiring, HasPresenceProbe, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel
 {
     public function getLabel(): string
     {
@@ -92,5 +96,39 @@ final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, Has
     public function whiteLabel(): array
     {
         return ['app_name_key' => 'GF_BRANDING_APP_TITLE', 'logo_url_key' => 'GF_BRANDING_FAV_ICON'];
+    }
+
+    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    {
+        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-monitoring' : "larakube-monitoring-{$instance}";
+        $passVal = trim(Process::run(
+            "{$kubectl} get secret grafana-admin -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
+        )->output());
+        $decodedPass = $passVal !== '' ? (base64_decode($passVal, true) ?: '<unknown>') : '<unknown>';
+
+        return [
+            ['Grafana Login', "admin / {$decodedPass}"],
+            ['Prometheus', "http://prometheus.{$ns}.svc.cluster.local:9090 (in-cluster)"],
+            ['Loki', "http://loki.{$ns}.svc.cluster.local:3100 (in-cluster)"],
+        ];
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'grafana' : "grafana-{$instance}";
+
+        return [
+            'deployment' => $deployment,
+            'secret' => 'grafana-admin',
+            'middlewareName' => 'larakube-vpn-mesh',
+            'namespace' => 'larakube-monitoring',
+        ];
+    }
+
+    public function presenceProbe(?string $instance = null): ?string
+    {
+        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'grafana' : "grafana-{$instance}";
+
+        return "deployment/{$deployment} -n larakube-monitoring";
     }
 }

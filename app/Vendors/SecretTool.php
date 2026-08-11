@@ -5,12 +5,15 @@ namespace App\Vendors;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasPresenceProbe;
+use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
+use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the SECRETS category — 'Secrets Manager'. Only OpenBao. */
-final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOidcWiring, HasWorkloadComponents
+final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOidcWiring, HasPresenceProbe, HasToolAccessDetails, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -44,5 +47,30 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
     public function commonsDatabaseList(): array
     {
         return [];
+    }
+
+    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    {
+        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-secrets' : "larakube-secrets-{$instance}";
+        $tokenVal = trim(Process::run(
+            "{$kubectl} get secret openbao-bootstrap -n {$ns} -o jsonpath='{.data.root-token}' --ignore-not-found",
+        )->output());
+        $decodedToken = $tokenVal !== '' ? (base64_decode($tokenVal, true) ?: '<unknown>') : null;
+
+        $rows = [
+            ['Secrets Engine', 'OpenBao (KV v2)'],
+        ];
+        if ($decodedToken !== null) {
+            $rows[] = ['Root Token', $decodedToken];
+        }
+
+        return $rows;
+    }
+
+    public function presenceProbe(?string $instance = null): ?string
+    {
+        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'openbao-backend' : "openbao-backend-{$instance}";
+
+        return "deployment/{$deployment} -n larakube-secrets";
     }
 }

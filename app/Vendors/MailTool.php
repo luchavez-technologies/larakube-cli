@@ -8,12 +8,16 @@ use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOpenbaoSync;
+use App\Contracts\HasPresenceProbe;
+use App\Contracts\HasToolAccessDetails;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
+use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the MAIL category — 'Mail Server'. Only Stalwart. */
-final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasWorkloadComponents
+final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -68,5 +72,40 @@ final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
     public function clusterSecretDbKey(string $tenant): string
     {
         return 'STALWART_STORE_PASSWORD';
+    }
+
+    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    {
+        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-mail' : "larakube-mail-{$instance}";
+        $passVal = trim(Process::run(
+            "{$kubectl} get secret stalwart -n {$ns} -o jsonpath='{.data.admin-password}' --ignore-not-found",
+        )->output());
+        $decodedPass = $passVal !== '' ? (base64_decode($passVal, true) ?: '<unknown>') : '<unknown>';
+
+        return [
+            ['Admin URL', $host ? "https://{$host}/admin" : '<unknown>'],
+            ['Admin Login', "admin / {$decodedPass}"],
+            ['IMAP', $host ? "{$host}:993 (SSL/TLS)" : '<unknown>'],
+            ['SMTP', $host ? "{$host}:465 (SSL/TLS)" : '<unknown>'],
+        ];
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'stalwart' : "stalwart-{$instance}";
+
+        return [
+            'deployment' => $deployment,
+            'secret' => 'stalwart',
+            'middlewareName' => 'larakube-vpn-mesh',
+            'namespace' => 'larakube-mail',
+        ];
+    }
+
+    public function presenceProbe(?string $instance = null): ?string
+    {
+        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'stalwart' : "stalwart-{$instance}";
+
+        return "deployment/{$deployment} -n larakube-mail";
     }
 }

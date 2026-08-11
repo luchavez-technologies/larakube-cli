@@ -66,7 +66,30 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
     // no per-row port-forward for something that can never have a schedule.
     $dnsRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'dns'))[0] ?? null;
     expect($dnsRow['db_role'])->toBeNull()
-        ->and($dnsRow['rotation'])->toBeNull();
+        ->and($dnsRow['rotation'])->toBe('N/A');
+});
+
+test('tool:list lists multiple registered instances of a tool as separate rows', function () {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'notes', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'notes', 'instance' => 'docs', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'wiki.luchtech.dev'],
+            ])),
+        ),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0);
+    $notesRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'notes'));
+    expect($notesRows)->toHaveCount(2)
+        ->and($notesRows[0]['instance'])->toBe('main')
+        ->and($notesRows[0]['brand'])->toBe('Notes')
+        ->and($notesRows[1]['instance'])->toBe('docs')
+        ->and($notesRows[1]['brand'])->toBe('Notes [docs]');
 });
 
 test('tool:list --installed filters out uninstalled tools', function () {

@@ -2,11 +2,17 @@
 
 namespace App\Commands\Tool;
 
+use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasDbSecretRef;
+use App\Contracts\HasOidcWiring;
+use App\Contracts\HasSmtpWiring;
+use App\Contracts\UsesForwardAuth;
 use App\Enums\ClusterTool;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesStandaloneEnvironment;
 use App\Traits\SyncsClusterSecrets;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
 
@@ -44,57 +50,137 @@ class ToolListCommand extends Command
         [$env, $kubectl] = $this->resolveStandaloneEnvironmentAndKubectl();
 
         $onlyInstalled = (bool) $this->option('installed');
+        $registered = $this->getRegisteredTools($kubectl);
 
         $rows = [];
         foreach (ClusterTool::cases() as $tool) {
-            $entry = $this->findToolInstanceEntry($kubectl, $tool);
-            $isPresent = $this->isToolPresentOnCluster($kubectl, $tool);
-            $installed = $entry !== null || $isPresent;
+            $vendor = $tool->vendor();
+            $instances = array_values(array_filter(
+                $registered,
+                fn ($e) => ($e['tool'] ?? null) === $tool->value,
+            ));
 
-            if ($onlyInstalled && ! $installed) {
-                continue;
-            }
-
-            $host = $entry['host'] ?? null;
-            if ($installed && ($host === null || $host === '')) {
-                $host = $this->resolveLiveToolHost($kubectl, $tool);
-                if ($host !== null && $host !== '') {
-                    $this->registerTool($kubectl, $tool, ['host' => $host]);
+            if ($instances === []) {
+                $isPresent = $this->isToolPresentOnCluster($kubectl, $tool);
+                $instances = [['tool' => $tool->value, 'instance' => 'main', 'installed' => $isPresent]];
+            } else {
+                foreach ($instances as &$inst) {
+                    $inst['installed'] = true;
                 }
+                unset($inst);
             }
 
-            $aliasHosts = $entry['aliases'] ?? [];
-            $aliasSuffix = $aliasHosts !== [] ? ' (+'.count($aliasHosts).' alias)' : '';
+            foreach ($instances as $entry) {
+                $instance = $entry['instance'] ?? 'main';
+                $installed = (bool) ($entry['installed'] ?? true);
 
-            $rows[] = [
-                'tool' => $tool->value,
-                'icon' => $tool->icon(),
-                'brand' => $tool->brandName(),
-                'label' => $tool->getLabel(),
-                'installed' => $installed,
-                'namespace' => $tool->namespace(),
-                'host' => $host,
-                'aliases' => $aliasHosts,
-                'url' => $host !== null ? 'https://'.$host.$aliasSuffix : null,
-                'installedAt' => $entry['installedAt'] ?? null,
-                'db_role' => $installed ? ($tool->commonsDatabases()[0] ?? null) : null,
-            ];
+                if ($onlyInstalled && ! $installed) {
+                    continue;
+                }
+
+                $host = $entry['host'] ?? null;
+                if ($installed && ($host === null || $host === '')) {
+                    $host = $this->resolveLiveToolHost($kubectl, $tool, $instance);
+                    if ($host !== null && $host !== '') {
+                        $this->registerTool($kubectl, $tool, ['host' => $host], $instance);
+                    }
+                }
+
+                $aliasHosts = $entry['aliases'] ?? [];
+                $aliasSuffix = $aliasHosts !== [] ? ' (+'.count($aliasHosts).' alias)' : '';
+
+                $serviceLabel = $tool->brandName();
+                if ($instance !== 'main') {
+                    $serviceLabel .= " [{$instance}]";
+                }
+
+                $rows[] = [
+                    'tool' => $tool->value,
+                    'instance' => $instance,
+                    'icon' => $tool->icon(),
+                    'brand' => $serviceLabel,
+                    'label' => $tool->getLabel(),
+                    'installed' => $installed,
+                    'namespace' => $tool->namespace(),
+                    'host' => $host,
+                    'aliases' => $aliasHosts,
+                    'url' => $host !== null ? 'https://'.$host.$aliasSuffix : null,
+                    'installedAt' => $entry['installedAt'] ?? null,
+                    'vendor' => $vendor,
+                ];
+            }
         }
 
-        // One readiness check up front, only if some installed row actually
-        // has a Commons DB to report on — same reasoning as plex:show: a
-        // cluster without OpenBao (or with nothing DB-backed installed)
-        // shouldn't pay for a port-forward it can never use.
-        $openBaoReady = collect($rows)->contains(fn ($r) => $r['db_role'] !== null)
+        // Readiness checks up front
+        $openBaoReady = collect($rows)->contains(fn ($r) => $r['installed'] && $r['vendor'] instanceof HasDbSecretRef)
             ? $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())
             : false;
 
-        foreach ($rows as &$row) {
-            $row['rotation'] = $row['db_role'] === null
-                ? null
-                : $this->rotationCell($openBaoReady, $openBaoReady ? $this->staticRoleExists($kubectl, $row['db_role']) : null);
+        foreach ($rows as &$r) {
+            /** @var ClusterToolVendor $vendor */
+            $vendor = $r['vendor'];
+            $installed = $r['installed'];
+            $instance = $r['instance'];
+            $toolEnum = ClusterTool::from($r['tool']);
+            $ns = $toolEnum->namespace();
+
+            // 1. Mail (SMTP)
+            if (! ($vendor instanceof HasSmtpWiring) || $vendor->smtpEnv($instance) === null) {
+                $r['mail'] = 'N/A';
+            } elseif (! $installed) {
+                $r['mail'] = '—';
+            } else {
+                $smtpSecret = $vendor->smtpEnv($instance)['secret'] ?? "{$r['tool']}-smtp";
+                $wired = trim(Process::run("{$kubectl} get secret {$smtpSecret} -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+                $r['mail'] = $wired ? 'wired' : 'unwired';
+            }
+
+            // 2. SSO (OIDC / ForwardAuth)
+            $isOidc = $vendor instanceof HasOidcWiring && $vendor->oidcEnv($instance) !== null;
+            $isFwdAuth = $vendor instanceof UsesForwardAuth;
+            if (! $isOidc && ! $isFwdAuth) {
+                $r['sso'] = 'N/A';
+            } elseif (! $installed) {
+                $r['sso'] = '—';
+            } else {
+                if ($isOidc) {
+                    $oidcSecret = $vendor->oidcEnv($instance)['secret'] ?? "{$r['tool']}-oidc";
+                    $wired = trim(Process::run("{$kubectl} get secret {$oidcSecret} -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+                } else {
+                    $wired = trim(Process::run("{$kubectl} get middleware sso-proxy-auth -n larakube-shared --no-headers --ignore-not-found")->output()) !== '';
+                }
+                $r['sso'] = $wired ? 'wired' : 'unwired';
+            }
+
+            // 3. Rotation (OpenBao DB static role)
+            $dbRole = ($vendor instanceof HasDbSecretRef && $vendor->dbSecretRef() !== null) ? ($toolEnum->commonsDatabases($instance)[0] ?? null) : null;
+            $r['db_role'] = $dbRole;
+
+            if (! ($vendor instanceof HasDbSecretRef) || $vendor->dbSecretRef() === null) {
+                $r['rotation'] = 'N/A';
+            } elseif (! $installed) {
+                $r['rotation'] = '—';
+            } else {
+                $wired = ($dbRole !== null && $openBaoReady) ? $this->staticRoleExists($kubectl, $dbRole) : null;
+                $r['rotation'] = $this->rotationCell($openBaoReady, $wired);
+            }
+
+            // 4. VPN (NetBird mesh)
+            $vpnTarget = $toolEnum->vpnMiddlewareTarget($instance);
+            if ($vpnTarget === null) {
+                $r['vpn'] = 'N/A';
+            } elseif (! $installed) {
+                $r['vpn'] = '—';
+            } else {
+                $mwName = $vpnTarget['middlewareName'] ?? 'larakube-vpn-mesh';
+                $mwNs = $vpnTarget['namespace'] ?? 'larakube-shared';
+                $wired = trim(Process::run("{$kubectl} get middleware {$mwName} -n {$mwNs} --no-headers --ignore-not-found")->output()) !== '';
+                $r['vpn'] = $wired ? 'mesh' : 'public';
+            }
+
+            unset($r['vendor']);
         }
-        unset($row);
+        unset($r);
 
         if ($this->option('json')) {
             $this->line((string) json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -109,14 +195,25 @@ class ToolListCommand extends Command
             return 0;
         }
 
+        $color = fn (string $v) => match ($v) {
+            'wired', 'OpenBao', 'mesh' => "<fg=green>{$v}</>",
+            'unwired', 'public', 'manual (.env)' => "<fg=gray>{$v}</>",
+            'unreachable' => "<fg=yellow>{$v}</>",
+            'N/A', '—' => "<fg=gray>{$v}</>",
+            default => $v,
+        };
+
         table(
-            ['', 'Service', 'What it is', 'URL', 'Rotation'],
+            ['', 'Service', 'What it is', 'URL', 'Mail', 'SSO', 'Rotation', 'VPN'],
             array_map(fn (array $r) => [
                 $r['installed'] ? '<fg=green>●</>' : '<fg=gray>○</>',
                 $r['brand'],
                 $r['label'],
                 $r['url'] ?? ($r['installed'] ? '<fg=gray>no host recorded</>' : '<fg=gray>—</>'),
-                $r['rotation'] ?? '<fg=gray>—</>',
+                $color((string) $r['mail']),
+                $color((string) $r['sso']),
+                $color((string) $r['rotation']),
+                $color((string) $r['vpn']),
             ], $rows),
         );
 
@@ -130,24 +227,16 @@ class ToolListCommand extends Command
         return 0;
     }
 
-    /**
-     * Compact rotation status for a table cell — the short form of
-     * plex:show's rotationStatusLine(). $wired is null, not just false, when
-     * OpenBao is bootstrapped but this specific check couldn't be confirmed
-     * (sealed/unreachable) — never collapse that into "not wired".
-     */
     private function rotationCell(bool $openBaoReady, ?bool $wired): string
     {
         if (! $openBaoReady) {
-            return '<fg=gray>manual (.env)</>';
+            return 'manual (.env)';
         }
 
         if ($wired === null) {
-            return '<fg=yellow>unreachable</>';
+            return 'unreachable';
         }
 
-        return $wired
-            ? '<fg=green>OpenBao</>'
-            : '<fg=gray>manual (.env)</>';
+        return $wired ? 'OpenBao' : 'manual (.env)';
     }
 }

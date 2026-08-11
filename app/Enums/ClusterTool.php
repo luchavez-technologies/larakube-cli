@@ -868,6 +868,11 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
+        $vendor = $this->vendor();
+        if ($vendor instanceof \App\Contracts\HasVpnWiring) {
+            return $vendor->vpnMiddlewareTarget($instance);
+        }
+
         $target = $this->vpnMiddlewareTargetBase();
         if ($target === null || $instance === null || $instance === '' || $instance === 'main') {
             return $target;
@@ -876,6 +881,16 @@ enum ClusterTool: string implements HasWorkloadComponents
         $target['name'] = "{$target['name']}-{$instance}";
 
         return $target;
+    }
+
+    public function presenceProbe(?string $instance = null): ?string
+    {
+        $vendor = $this->vendor();
+        if ($vendor instanceof \App\Contracts\HasPresenceProbe) {
+            return $vendor->presenceProbe($instance);
+        }
+
+        return $this->service()?->presenceProbe();
     }
 
     /**

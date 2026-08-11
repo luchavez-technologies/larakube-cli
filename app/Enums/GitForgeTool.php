@@ -9,14 +9,18 @@ use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
+use App\Contracts\HasPresenceProbe;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasToolAccessDetails;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Contracts\UsesCliOidc;
 use App\Data\ClusterToolComponentData;
+use Illuminate\Support\Facades\Process;
 
 /** The vendor enum backing ClusterTool::GIT — 'Git Forge & CI/CD'. Only Forgejo today; a future alternative would add a case here. */
-enum GitForgeTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWhiteLabel, HasWorkloadComponents, UsesCliOidc
+enum GitForgeTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents, UsesCliOidc
 {
     public function getLabel(): string
     {
@@ -125,6 +129,41 @@ enum GitForgeTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCo
     public function whiteLabel(): array
     {
         return ['app_name_key' => 'FORGEJO__ui__APP_NAME'];
+    }
+
+    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    {
+        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-shared' : "larakube-shared-{$instance}";
+        $adminPassword = trim(Process::run(
+            "{$kubectl} get secret forgejo-admin -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
+        )->output());
+        $decodedPass = $adminPassword !== '' ? (base64_decode($adminPassword, true) ?: '<unknown>') : '<unknown>';
+
+        return [
+            ['SSH Host', $host ? "git@{$host}" : '<unknown>'],
+            ['Admin Username', 'larakube'],
+            ['Admin Email', 'admin@larakube.local'],
+            ['Admin Password', $decodedPass],
+        ];
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'forgejo' : "forgejo-{$instance}";
+
+        return [
+            'deployment' => $deployment,
+            'secret' => 'forgejo-admin',
+            'middlewareName' => 'larakube-vpn-mesh',
+            'namespace' => 'larakube-shared',
+        ];
+    }
+
+    public function presenceProbe(?string $instance = null): ?string
+    {
+        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'forgejo' : "forgejo-{$instance}";
+
+        return "deployment/{$deployment} -n larakube-shared";
     }
     case FORGEJO = 'forgejo';
 }

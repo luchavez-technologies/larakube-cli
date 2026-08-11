@@ -7,13 +7,17 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
+use App\Contracts\HasPresenceProbe;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasToolAccessDetails;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
+use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the PASSWORDS category — 'Password Manager'. Only Vaultwarden. */
-final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWorkloadComponents
+final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -102,5 +106,38 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
     public function commonsDatabaseList(): array
     {
         return ['vaultwarden'];
+    }
+
+    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    {
+        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-vault' : "larakube-vault-{$instance}";
+        $tokenVal = trim(Process::run(
+            "{$kubectl} get secret vault-admin -n {$ns} -o jsonpath='{.data.ADMIN_TOKEN}' --ignore-not-found",
+        )->output());
+        $decodedToken = $tokenVal !== '' ? (base64_decode($tokenVal, true) ?: '<unknown>') : '<unknown>';
+
+        return [
+            ['Admin Token', $decodedToken],
+            ['Admin Panel', $host ? "https://{$host}/admin" : '<unknown>'],
+        ];
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'vaultwarden' : "vaultwarden-{$instance}";
+
+        return [
+            'deployment' => $deployment,
+            'secret' => 'vault-admin',
+            'middlewareName' => 'larakube-vpn-mesh',
+            'namespace' => 'larakube-vault',
+        ];
+    }
+
+    public function presenceProbe(?string $instance = null): ?string
+    {
+        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'vaultwarden' : "vaultwarden-{$instance}";
+
+        return "deployment/{$deployment} -n larakube-vault";
     }
 }
