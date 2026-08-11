@@ -221,6 +221,117 @@ test('plex:rotate finds a cluster-tool tenant under the BARE role name, never th
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/record-sendrec -n larakube-shared'));
 });
 
+test('plex:rotate re-pushes the URL-shaped cluster secret so the synced value follows the rotated password', function () {
+    // The vaultwarden 2026-08-10 outage, fixed at the source: rotating the
+    // static role supersedes Postgres's password, but VAULTWARDEN_DATABASE_URL
+    // is a full URL with the password baked in — it must be rebuilt from
+    // static-creds and re-pushed BEFORE ESO syncs, and the delivered Secret
+    // verified to already embed the new password before the consumer restarts.
+    Process::fake([
+        '*get configmap plex-commons*' => Process::result(
+            output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]]),
+        ),
+        '*get configmap plex-registry*' => Process::result(
+            output: (string) json_encode(['tenants' => ['vaultwarden' => ['db' => 'vaultwarden', 'db_service' => 'postgres']]]),
+        ),
+        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*port-forward*' => Process::result(output: ''),
+        '*get deployment vaultwarden*' => Process::result(output: 'vaultwarden   1/1   1   1   10d'),
+        '*rollout restart*' => Process::result(output: 'restarted'),
+        '*].status}*' => Process::result(output: 'True'),
+        '*].reason}*' => Process::result(output: 'SecretSynced'),
+        '*refreshTime}*' => Process::sequence([
+            Process::result(output: ''),
+            Process::result(output: '2026-08-10T00:06:22Z'),
+        ]),
+        '*get secret vaultwarden-secrets*' => Process::result(
+            output: base64_encode('postgresql://vaultwarden:rotated-pw-123@postgres.larakube-plex.svc.cluster.local:5432/vaultwarden'),
+        ),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $requests = [];
+    Http::fake(function ($request) use (&$requests) {
+        $requests[] = [$request->method(), $request->url(), $request->data()];
+
+        if (str_contains($request->url(), '/database/static-roles/tenant-vaultwarden')) {
+            return Http::response(['errors' => ['no role found']], 404);
+        }
+        if (str_contains($request->url(), '/database/static-roles/vaultwarden')) {
+            return Http::response(['data' => ['db_name' => 'plex-postgres']], 200);
+        }
+        if (str_contains($request->url(), '/database/static-creds/vaultwarden')) {
+            return Http::response(['data' => ['password' => 'rotated-pw-123']], 200);
+        }
+
+        return Http::response([], 204);
+    });
+
+    $this->artisan('plex:rotate local --only=db --tenant=vaultwarden --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('re-pushed VAULTWARDEN_DATABASE_URL')
+        ->expectsOutputToContain('rotated via OpenBao and restarted in larakube-vault');
+
+    // The rebuilt URL — with the rotated password — reached OpenBao's KV.
+    $pushedValues = collect($requests)
+        ->filter(fn ($r) => str_contains($r[1], '/secret/data/production/VAULTWARDEN_DATABASE_URL'))
+        ->pluck('2.data.value')
+        ->filter()
+        ->all();
+
+    expect($pushedValues)->toContain('postgresql://vaultwarden:rotated-pw-123@postgres.larakube-plex.svc.cluster.local:5432/vaultwarden');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vaultwarden -n larakube-vault'));
+});
+
+test('plex:rotate refuses to restart a consumer when the synced secret does not embed the rotated password', function () {
+    // Devsecops fail-closed guard: the re-push + ESO Ready/refreshTime don't
+    // prove convergence — the delivered Secret must actually carry the new
+    // password before a consumer is restarted against it. Here ESO "synced"
+    // the stale value; rotation must fail, not restart vaultwarden onto it.
+    Process::fake([
+        '*get configmap plex-commons*' => Process::result(
+            output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]]),
+        ),
+        '*get configmap plex-registry*' => Process::result(
+            output: (string) json_encode(['tenants' => ['vaultwarden' => ['db' => 'vaultwarden', 'db_service' => 'postgres']]]),
+        ),
+        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*port-forward*' => Process::result(output: ''),
+        '*].status}*' => Process::result(output: 'True'),
+        '*].reason}*' => Process::result(output: 'SecretSynced'),
+        '*refreshTime}*' => Process::sequence([
+            Process::result(output: ''),
+            Process::result(output: '2026-08-10T00:06:22Z'),
+        ]),
+        // Stale value: ESO reconciled but delivered the OLD password.
+        '*get secret vaultwarden-secrets*' => Process::result(
+            output: base64_encode('postgresql://vaultwarden:old-pw@postgres.larakube-plex.svc.cluster.local:5432/vaultwarden'),
+        ),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Http::fake(function ($request) {
+        if (str_contains($request->url(), '/database/static-roles/tenant-vaultwarden')) {
+            return Http::response(['errors' => ['no role found']], 404);
+        }
+        if (str_contains($request->url(), '/database/static-roles/vaultwarden')) {
+            return Http::response(['data' => ['db_name' => 'plex-postgres']], 200);
+        }
+        if (str_contains($request->url(), '/database/static-creds/vaultwarden')) {
+            return Http::response(['data' => ['password' => 'rotated-pw-123']], 200);
+        }
+
+        return Http::response([], 204);
+    });
+
+    $this->artisan('plex:rotate local --only=db --tenant=vaultwarden --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain("doesn't embed the new password");
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart'));
+});
+
 test('the per-tenant cluster secret key is namespaced so two tenants never collide', function () {
     $a = CommonsSecret::TENANT_DB->clusterSecretKey('shop-production');
     $b = CommonsSecret::TENANT_DB->clusterSecretKey('blog-production');

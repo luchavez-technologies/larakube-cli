@@ -76,8 +76,13 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 30
           readinessProbe:
+            {{-- Readiness is the DB-backed /api/health, not `/`: a pod running
+                 against a stale DATABASE_URL (the 2026-08-10 SSO outage) must
+                 report NotReady and leave the Service endpoints instead of
+                 accepting traffic and 503ing. Liveness stays on `/` so a DB
+                 blip doesn't crash-loop the pod. --}}
             httpGet:
-              path: /
+              path: /api/health
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 5

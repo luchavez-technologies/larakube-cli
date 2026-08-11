@@ -356,6 +356,21 @@ class PlexRotateCommand extends Command
         }
 
         $tool = ClusterTool::forCommonsResource($tenant);
+
+        // A URL-shaped cluster secret (sync-config key whose name ends in
+        // _DATABASE_URL) has the DB password baked into its value. Rotating the
+        // static role supersedes Postgres's password, but the synced URL stays
+        // pointed at the OLD one until it is rebuilt from static-creds and
+        // re-pushed here — the vaultwarden 2026-08-10 outage, where the KV
+        // (2026-08-03) and the rotation (2026-08-10) never converged. Fail
+        // closed: if the re-push can't be completed, a "successful" rotation
+        // would leave every consumer authenticating with a password Postgres
+        // just superseded.
+        $urlSecret = $tool !== null ? $this->repushUrlSecret($kubectl, $tool, $tenant, $roleName, $allocation) : null;
+        if ($urlSecret === false) {
+            return false;
+        }
+
         $namespace = $allocation['namespace'] ?? $tool?->namespace();
         if ($namespace === null) {
             $this->line("  <fg=green>✔</> <fg=cyan>{$tenant}</> <fg=gray>rotated via OpenBao. Namespace unknown (joined before it was recorded) — restart its deployment(s) once ESO syncs the new value.</>");
@@ -377,6 +392,7 @@ class PlexRotateCommand extends Command
         $secretName = match (true) {
             $tool === null => 'laravel-secrets-db',
             $ref !== null => "{$ref['secret']}-db",
+            $urlSecret !== null => $urlSecret['secret'],
             default => null,
         };
 
@@ -400,6 +416,18 @@ class PlexRotateCommand extends Command
             return true;
         }
 
+        // The KV re-push alone doesn't prove convergence: ESO's Ready condition
+        // and refreshTime tell "reconciled" apart from "reconciled the STALE
+        // value" — the exact fact that failed silently on 2026-08-10. For a
+        // URL-shaped secret, read the delivered Secret and require it to
+        // already embed the rotated password before restarting a consumer
+        // against it.
+        if ($urlSecret !== null && ! $this->syncedSecretCarries($kubectl, $namespace, $secretName, $urlSecret['key'], $urlSecret['password'])) {
+            $this->laraKubeError("Rotated '{$tenant}'s credential and re-pushed {$urlSecret['key']}, but the synced Secret in {$namespace} doesn't embed the new password yet. Refusing to restart consumers against a stale value — re-run to retry.");
+
+            return false;
+        }
+
         if (trim(Process::run("{$kubectl} get deployment {$deployment} -n {$namespace} --no-headers --ignore-not-found")->output()) !== '') {
             $this->restartSecretConsumers($kubectl, $namespace, $deployment);
             $this->line("  <fg=green>✔</> <fg=cyan>{$tenant}</> <fg=gray>rotated via OpenBao and restarted in </><fg=cyan>{$namespace}</><fg=gray>.</>");
@@ -410,6 +438,86 @@ class PlexRotateCommand extends Command
         $this->line("  <fg=green>✔</> <fg=cyan>{$tenant}</> <fg=gray>rotated via OpenBao and synced to </><fg=cyan>{$namespace}</><fg=gray>.</>");
 
         return true;
+    }
+
+    /**
+     * Rebuild and re-push a tool's URL-shaped cluster secret after its static
+     * role rotated — see the call site in rotateOpenBaoTenant(). Returns null
+     * when the tool syncs no such key, the rebuilt secret/key/password on
+     * success, and false (after reporting) when the re-push can't be
+     * completed — the caller must refuse to proceed, since otherwise the
+     * rotation "succeeds" while every consumer keeps a URL pointed at the
+     * password Postgres just superseded.
+     *
+     * @return array{secret: string, key: string, password: string}|null|false
+     */
+    protected function repushUrlSecret(string $kubectl, ClusterTool $tool, string $tenant, string $roleName, array $allocation): array|null|false
+    {
+        $urlSecret = $this->urlShapedSecret($tool);
+        if ($urlSecret === null) {
+            return null;
+        }
+
+        $password = $this->readStaticRolePassword($kubectl, $roleName);
+        if ($password === null) {
+            $this->laraKubeError("Rotated '{$tenant}'s DB credential but could not read the new password back from OpenBao — can't rebuild {$urlSecret['key']}. Refusing to proceed; re-run to retry.");
+
+            return false;
+        }
+
+        $db = $allocation['db'] ?? $tenant;
+        $url = "postgresql://{$db}:{$password}@postgres.{$this->plexNamespace()}.svc.cluster.local:5432/{$db}";
+
+        if (! $this->pushClusterSecret($kubectl, $urlSecret['key'], $url)) {
+            $this->laraKubeError("Rotated '{$tenant}'s DB credential but could not re-push {$urlSecret['key']} — it still holds the old URL. Refusing to proceed; re-run to retry.");
+
+            return false;
+        }
+
+        $this->line("  <fg=green>✔</> <fg=cyan>{$tenant}</> <fg=gray>re-pushed </><fg=blue>{$urlSecret['key']}</><fg=gray> rebuilt from the rotated credential.</>");
+
+        return ['secret' => $urlSecret['secret'], 'key' => $urlSecret['key'], 'password' => $password];
+    }
+
+    /**
+     * The cluster secret (name + key) whose value holds this tool's DB
+     * password baked into a composed connection URL rather than as a plain
+     * value — the openbaoSyncConfig() keys whose name ends in _DATABASE_URL.
+     * Such a secret can't ride the generic static-creds sync: rotation
+     * supersedes the password inside the URL, so the value must be rebuilt
+     * and re-pushed. Only PASSWORDS (VAULTWARDEN_DATABASE_URL) matches today.
+     *
+     * @return array{secret: string, key: string}|null
+     */
+    protected function urlShapedSecret(ClusterTool $tool): ?array
+    {
+        $config = $tool->openbaoSyncConfig();
+        if ($config === null) {
+            return null;
+        }
+
+        foreach ($config['keys'] as $key) {
+            if (str_ends_with($key, '_DATABASE_URL')) {
+                return ['secret' => $config['secret'], 'key' => $key];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the delivered cluster Secret already embeds the expected value —
+     * direct proof of convergence after a rotation's KV re-push, since ESO's
+     * Ready condition + refreshTime alone can't tell "reconciled the new
+     * value" from "reconciled the stale one".
+     */
+    protected function syncedSecretCarries(string $kubectl, string $namespace, string $secretName, string $key, string $needle): bool
+    {
+        $encoded = trim(Process::run(
+            "{$kubectl} get secret {$secretName} -n {$namespace} -o jsonpath=".escapeshellarg("{.data.{$key}}"),
+        )->output());
+
+        return $encoded !== '' && str_contains((string) base64_decode($encoded), $needle);
     }
 
     protected function rotateCommonsAdmin(string $kubectl, bool $backendAvailable): bool
