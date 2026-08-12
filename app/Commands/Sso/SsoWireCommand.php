@@ -1056,9 +1056,11 @@ class SsoWireCommand extends Command
                 }
 
                 if ($t === ClusterTool::DATA) {
-                    return trim(Process::run(
-                        "{$kubectl} get deployment -n larakube-shared -l 'app.kubernetes.io/component=data' --no-headers --ignore-not-found",
-                    )->output()) !== '';
+                    return $this->deploymentExists($kubectl, 'larakube-shared', 'data-pocketbase')
+                        || $this->deploymentExists($kubectl, 'larakube-shared', 'data-directus')
+                        || trim(Process::run(
+                            "{$kubectl} get deployment -n larakube-shared -l 'app.kubernetes.io/component=data' --no-headers --ignore-not-found",
+                        )->output()) !== '';
                 }
 
                 $schema = $t->oidcEnv();

@@ -5,6 +5,7 @@ metadata:
   namespace: larakube-shared
   labels:
     app: {{ $deployName }}
+    app.kubernetes.io/component: data
 spec:
   replicas: 1
   strategy:
@@ -16,6 +17,7 @@ spec:
     metadata:
       labels:
         app: {{ $deployName }}
+        app.kubernetes.io/component: data
     spec:
       containers:
         - name: directus
