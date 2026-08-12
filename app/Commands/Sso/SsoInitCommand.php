@@ -62,6 +62,10 @@ class SsoInitCommand extends Command
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
 
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::SSO)) {
+            return 1;
+        }
+
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SSO, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 

@@ -10,14 +10,13 @@ use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
 use App\Contracts\HasToolAccessDetails;
-use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the MAIL category — 'Mail Server'. Only Stalwart. */
-final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
+final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasToolAccessDetails, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -87,16 +86,6 @@ final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
             ['Admin Login', "admin / {$decodedPass}"],
             ['IMAP', $host ? "{$host}:993 (SSL/TLS)" : '<unknown>'],
             ['SMTP', $host ? "{$host}:465 (SSL/TLS)" : '<unknown>'],
-        ];
-    }
-
-    public function vpnMiddlewareTarget(?string $instance = null): ?array
-    {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'mail-vpn-only' : "mail-vpn-only-{$instance}";
-
-        return [
-            'name' => $name,
-            'namespace' => 'larakube-shared',
         ];
     }
 

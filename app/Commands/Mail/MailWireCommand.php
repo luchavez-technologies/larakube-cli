@@ -13,6 +13,7 @@ use App\Traits\InteractsWithToolRegistry;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReconcilesPenpotFlags;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\StreamsProcessOutput;
@@ -27,7 +28,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailWireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:wire
         {environment=local : Environment whose mail server to target}
@@ -134,7 +135,7 @@ class MailWireCommand extends Command
     protected function resolveTargets(string $kubectl): array
     {
         $capable = array_filter(
-            ClusterTool::cases(),
+            ClusterTool::shippedCases(),
             fn (ClusterTool $t) => $t->smtpEnv() !== null || $t === ClusterTool::SSO,
         );
 
@@ -150,7 +151,15 @@ class MailWireCommand extends Command
         $slug = $this->option('tool');
         if ($slug !== null) {
             $tool = ClusterTool::tryFrom($slug);
-            if ($tool === null || ($tool->smtpEnv() === null && $tool !== ClusterTool::SSO)) {
+            if ($tool === null) {
+                $this->laraKubeError("'{$slug}' is not an SMTP-capable tool.");
+
+                return [];
+            }
+            if ($this->refuseUnshippedTool($tool)) {
+                return [];
+            }
+            if ($tool->smtpEnv() === null && $tool !== ClusterTool::SSO) {
                 $this->laraKubeError("'{$slug}' is not an SMTP-capable tool.");
 
                 return [];
@@ -358,6 +367,14 @@ class MailWireCommand extends Command
             $logical['host'] = $endpoint['host'].':'.$endpoint['port'];
         }
 
+        // GlitchTip consumes one composed django-environ URL (EMAIL_URL), not
+        // per-host/port/user vars. Stalwart talks implicit TLS on 465, hence
+        // smtp+ssl://, and the credentials must be percent-encoded (the
+        // sender is an email address — an unencoded @ would break the URL).
+        if ($tool === ClusterTool::ERRORS) {
+            $logical['email_url'] = 'smtp+ssl://'.rawurlencode($logical['user']).':'.rawurlencode($logical['password']).'@'.$logical['host'].':'.$logical['port'];
+        }
+
         $staticVars = $schema['static'] ?? [];
         $isPenpot = $deployment === 'design-penpot-backend';
 
@@ -384,7 +401,7 @@ class MailWireCommand extends Command
 
         $ok = true;
         $label = $engine ? "{$tool->getLabel()} ({$engine})" : $tool->getLabel();
-        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $staticVars, $isPenpot, $penpotFlags, &$ok) {
+        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $staticVars, $isPenpot, $penpotFlags, &$ok) {
             Process::run(
                 "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -402,10 +419,25 @@ class MailWireCommand extends Command
 
             if ($ok) {
                 Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns}");
+                $this->forceExternalSecretReconcile($kubectl, $ns, $secret);
             }
 
             if ($ok && $isPenpot) {
                 $this->applyDesignPenpotFlags($kubectl, $ns, 'design-penpot-oidc', $penpotFlags, $deployment, 'design-penpot-frontend');
+            }
+
+            // Secondary components that share the PRIMARY's wiring secret
+            // (e.g. GlitchTip's worker, which sends the alert emails) get
+            // the same envFrom + restart — the general form of Penpot's
+            // frontend needing the same OIDC client as its backend.
+            foreach ($schema['also_patch'] ?? [] as $secondaryDeployment) {
+                if (! $ok) {
+                    break;
+                }
+                $ok = Process::run("{$kubectl} set env deployment/{$secondaryDeployment} --from=secret/{$secret} -n {$ns}")->successful();
+                if ($ok) {
+                    Process::run("{$kubectl} rollout restart deployment/{$secondaryDeployment} -n {$ns}");
+                }
             }
         });
 

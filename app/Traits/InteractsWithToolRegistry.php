@@ -66,6 +66,69 @@ trait InteractsWithToolRegistry
         return null;
     }
 
+    /**
+     * Every instance identifier registered for the host a --domain/--host
+     * target refers to. Host identity wins over slug derivation (idempotency
+     * standard — a target that maps to an existing entry must update THAT
+     * entry in place, never spawn a derived duplicate slug next to it):
+     * all registered entries whose host matches are returned, so a duplicate
+     * registration (same host under two instances, e.g. the DATA incident of
+     * 2026-08-09) is surfaced to removal commands as "remove everything
+     * serving this host". Only hosts with no registered entry at all derive
+     * a fresh slug. An empty/'all' target means the DEFAULT instance —
+     * 'main', the bare-name legacy naming every pre-multi-instance
+     * deployment used.
+     *
+     * @return list<string>
+     */
+    protected function resolveInstanceTargetsForDomain(string $kubectl, ClusterTool $tool, string $domain): array
+    {
+        $domain = trim($domain);
+        if ($domain === '' || $domain === 'all') {
+            return ['main'];
+        }
+
+        $host = $this->normalizeTargetHost($domain);
+        $matches = array_values(array_filter(
+            $this->getRegisteredTools($kubectl),
+            fn (array $e) => ($e['tool'] ?? null) === $tool->value && ($e['host'] ?? null) === $host,
+        ));
+
+        $instances = array_values(array_unique(array_map(
+            fn (array $e) => (string) ($e['instance'] ?? 'main'),
+            $matches,
+        )));
+
+        return $instances !== [] ? $instances : [$tool->instanceSlugFromHost($host)];
+    }
+
+    /**
+     * The single instance identifier a --domain/--host target refers to —
+     * the first entry of resolveInstanceTargetsForDomain() (registered
+     * entries first, then the derived slug). Callers that must act on every
+     * entry serving a host (e.g. teardown) use the plural variant.
+     */
+    protected function resolveInstanceForDomain(string $kubectl, ClusterTool $tool, string $domain): string
+    {
+        return $this->resolveInstanceTargetsForDomain($kubectl, $tool, $domain)[0];
+    }
+
+    /**
+     * Normalize a --domain option before registry matching. Falls back to a
+     * trivial lowercase/trim when the consuming command doesn't bring
+     * ResolvesToolHost (whose sanitizeDomainInput() strips pasted schemes,
+     * paths and ports) — registry hosts are stored bare, so the fallback is
+     * enough for matching; the thorough variant never hurts when present.
+     */
+    protected function normalizeTargetHost(string $domain): string
+    {
+        if (method_exists($this, 'sanitizeDomainInput')) {
+            return $this->sanitizeDomainInput($domain);
+        }
+
+        return strtolower(trim($domain));
+    }
+
     protected function isToolRegistered(string $kubectl, ClusterTool $tool, string $instance = 'main'): bool
     {
         return $this->findToolInstanceEntry($kubectl, $tool, $instance) !== null;

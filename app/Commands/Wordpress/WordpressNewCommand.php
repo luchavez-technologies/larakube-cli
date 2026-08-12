@@ -8,6 +8,7 @@ use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\PhpVersion;
 use App\Enums\SearchDriver;
+use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
@@ -162,6 +163,7 @@ class WordpressNewCommand extends Command
         $config->setEnvironments(['local']);
         $config->framework = AppFramework::WORDPRESS;
         $config->phpVersion = $phpVersion;
+        $config->serverVariation = ServerVariation::FPM_NGINX;
         $config->setDatabase($database);
         $config->setCacheDriver($cacheDriver);
         $config->setObjectStorage($objectStorage); // mandatory

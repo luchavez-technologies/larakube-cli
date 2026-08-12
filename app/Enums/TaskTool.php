@@ -7,17 +7,28 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasVpnWiring;
 
 /**
  * The vendor enum backing ClusterTool::TASKS — 'Project Management'.
  * Plane is dead (zero references anywhere outside the legacy engines()
  * list) and is deliberately dropped here — only Planka ships.
  */
-enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring
+enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring, HasVpnWiring
 {
     public function getLabel(): string
     {
         return 'Planka';
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'tasks-vpn-only' : "tasks-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            'namespace' => 'larakube-shared',
+        ];
     }
 
     public function baseDeploymentName(): string

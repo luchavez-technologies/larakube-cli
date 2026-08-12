@@ -53,7 +53,7 @@ class ToolListCommand extends Command
         $registered = $this->getRegisteredTools($kubectl);
 
         $rows = [];
-        foreach (ClusterTool::cases() as $tool) {
+        foreach (ClusterTool::shippedCases() as $tool) {
             $vendor = $tool->vendor();
             $instances = array_values(array_filter(
                 $registered,
@@ -165,7 +165,18 @@ class ToolListCommand extends Command
                 $r['rotation'] = $this->rotationCell($openBaoReady, $wired);
             }
 
-            // 4. VPN (NetBird mesh)
+            // 4. Secrets (OpenBao KV → ExternalSecret sync)
+            $syncConfig = $toolEnum->openbaoSyncConfig($instance);
+            if ($syncConfig === null) {
+                $r['sync'] = 'N/A';
+            } elseif (! $installed) {
+                $r['sync'] = '—';
+            } else {
+                $wired = trim(Process::run("{$kubectl} get externalsecret {$syncConfig['secret']} -n {$syncConfig['namespace']} --no-headers --ignore-not-found")->output()) !== '';
+                $r['sync'] = $wired ? 'synced' : 'unsynced';
+            }
+
+            // 5. VPN (NetBird mesh)
             $vpnTarget = $toolEnum->vpnMiddlewareTarget($instance);
             if ($vpnTarget === null) {
                 $r['vpn'] = 'N/A';
@@ -196,15 +207,16 @@ class ToolListCommand extends Command
         }
 
         $color = fn (string $v) => match ($v) {
-            'wired', 'OpenBao', 'mesh' => "<fg=green>{$v}</>",
-            'unwired', 'public', 'manual (.env)' => "<fg=gray>{$v}</>",
-            'unreachable' => "<fg=yellow>{$v}</>",
-            'N/A', '—' => "<fg=gray>{$v}</>",
+            'wired', 'OpenBao', 'mesh', 'synced' => '✅',
+            'unwired', 'public', 'manual (.env)', 'unsynced' => '❌',
+            'unreachable' => '⚠️',
+            'N/A' => '🚫',
+            '—' => '<fg=gray>—</>',
             default => $v,
         };
 
         table(
-            ['', 'Service', 'What it is', 'URL', 'Mail', 'SSO', 'Rotation', 'VPN'],
+            ['', 'Service', 'What it is', 'URL', 'Mail', 'SSO', 'Rotation', 'Secrets', 'VPN'],
             array_map(fn (array $r) => [
                 $r['installed'] ? '<fg=green>●</>' : '<fg=gray>○</>',
                 $r['brand'],
@@ -213,6 +225,7 @@ class ToolListCommand extends Command
                 $color((string) $r['mail']),
                 $color((string) $r['sso']),
                 $color((string) $r['rotation']),
+                $color((string) $r['sync']),
                 $color((string) $r['vpn']),
             ], $rows),
         );

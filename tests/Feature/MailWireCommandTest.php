@@ -91,11 +91,44 @@ test('mail:wire local --tool=design configures Penpot SMTP via deployment secret
         '*create secret generic mail-sender*' => Process::result(output: 'created'),
         '*create secret generic design-penpot-smtp*' => Process::result(output: 'created'),
         '*set env deployment/design-penpot-backend*' => Process::result(output: 'updated'),
+        '*set env deployment/design-penpot-frontend*' => Process::result(output: 'updated'),
         '*rollout restart deployment/design-penpot-backend*' => Process::result(output: 'restarted'),
+        '*rollout restart deployment/design-penpot-frontend*' => Process::result(output: 'restarted'),
     ]);
 
     $this->artisan('mail:wire local --tool=design')
         ->expectsOutputToContain('Wired to Stalwart: Design & Prototyping (Penpot)');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'PENPOT_SMTP_HOST'));
+});
+
+test('mail:wire local --tool=errors composes GlitchTip EMAIL_URL and patches the worker too', function () {
+    Process::fake([
+        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
+        '*get deployment glitchtip-web*' => Process::result(output: 'glitchtip-web   1/1   1   1   10d'),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*create secret generic mail-sender*' => Process::result(output: 'created'),
+        '*create secret generic glitchtip-smtp*' => Process::result(output: 'created'),
+        '*set env deployment/glitchtip-web*' => Process::result(output: 'updated'),
+        '*set env deployment/glitchtip-worker*' => Process::result(output: 'updated'),
+        '*rollout restart deployment/glitchtip-web*' => Process::result(output: 'restarted'),
+        '*rollout restart deployment/glitchtip-worker*' => Process::result(output: 'restarted'),
+    ]);
+
+    $this->artisan('mail:wire local --tool=errors')
+        ->expectsOutputToContain('Wired to Stalwart: Error Tracking (GlitchTip)');
+
+    // GlitchTip reads one composed django-environ URL, not per-host vars —
+    // credentials must be percent-encoded (the sender's @ would break it).
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic glitchtip-smtp')
+        && str_contains($process->command, 'EMAIL_URL')
+        && str_contains($process->command, 'DEFAULT_FROM_EMAIL')
+        && str_contains($process->command, 'smtp+ssl://noreply%40luchtech.dev:noreply%40luchtech.dev@'));
+
+    // The worker sends the actual alert emails, so it shares the primary's
+    // SMTP secret via also_patch.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/glitchtip-worker')
+        && str_contains($process->command, '--from=secret/glitchtip-smtp'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/glitchtip-worker'));
 });

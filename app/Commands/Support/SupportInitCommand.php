@@ -54,6 +54,10 @@ class SupportInitCommand extends Command
         $ns = $this->supportNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::SUPPORT)) {
+            return 1;
+        }
+
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SUPPORT, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 

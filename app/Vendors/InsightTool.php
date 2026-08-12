@@ -5,14 +5,25 @@ namespace App\Vendors;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 
 /** The single vendor backing the INSIGHTS category — 'Business Intelligence'. Only Metabase. */
-final class InsightTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasWhiteLabel
+final class InsightTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasVpnWiring, HasWhiteLabel
 {
     public function getLabel(): string
     {
         return 'Metabase';
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'insights-vpn-only' : "insights-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            'namespace' => 'larakube-shared',
+        ];
     }
 
     public function baseDeploymentName(): string

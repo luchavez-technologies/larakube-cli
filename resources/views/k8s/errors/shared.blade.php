@@ -97,6 +97,22 @@ spec:
                 secretKeyRef:
                   name: glitchtip-admin
                   key: password
+            # SMTP (mail:wire): GlitchTip reads a single composed
+            # django-environ URL plus the from-address — EMAIL_URL is built
+            # at wire time (smtp+ssl:// with percent-encoded credentials,
+            # see ErrorTool::smtpEnv()).
+            - name: EMAIL_URL
+              valueFrom:
+                secretKeyRef:
+                  name: glitchtip-smtp
+                  key: EMAIL_URL
+                  optional: true
+            - name: DEFAULT_FROM_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: glitchtip-smtp
+                  key: DEFAULT_FROM_EMAIL
+                  optional: true
           readinessProbe:
             httpGet:
               path: /
@@ -155,6 +171,21 @@ spec:
                   key: secret-key
             - name: GLITCHTIP_DOMAIN
               value: "https://{{ $host }}"
+            # SMTP (mail:wire): the celery worker sends the actual alert +
+            # notification emails, so it mounts the same optional SMTP
+            # secret keys as the web Deployment (see ErrorTool::smtpEnv()).
+            - name: EMAIL_URL
+              valueFrom:
+                secretKeyRef:
+                  name: glitchtip-smtp
+                  key: EMAIL_URL
+                  optional: true
+            - name: DEFAULT_FROM_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: glitchtip-smtp
+                  key: DEFAULT_FROM_EMAIL
+                  optional: true
 ---
 @if ($noPlex)
 apiVersion: v1

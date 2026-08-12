@@ -13,7 +13,7 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
     }
 
     /**
-     * The monitoring stack is five separate workloads plus cluster-scoped RBAC,
+     * The monitoring stack is six separate workloads plus cluster-scoped RBAC,
      * so it can't collapse into one delete: the ClusterRole/ClusterRoleBinding
      * live outside the namespace and would survive a namespace-only teardown,
      * then collide on the next monitor:init.
@@ -24,8 +24,9 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
             'Removing Prometheus...' => "deployment,svc,configmap,pvc,serviceaccount prometheus prometheus-config prometheus-storage -n {$namespace}",
             'Removing Loki...' => "deployment,svc,configmap,pvc loki loki-config loki-storage -n {$namespace}",
             'Removing Promtail...' => "daemonset,configmap,serviceaccount promtail promtail-config -n {$namespace}",
+            'Removing Tempo...' => "deployment,svc,configmap,pvc tempo tempo-config tempo-storage -n {$namespace}",
             'Removing kube-state-metrics...' => "deployment,svc,serviceaccount kube-state-metrics -n {$namespace}",
-            'Removing Grafana...' => "deployment,svc,ingress,secret,configmap grafana grafana-admin grafana-datasources -n {$namespace}",
+            'Removing Grafana...' => "deployment,svc,ingress,secret,configmap grafana grafana-admin grafana-datasources grafana-dashboard-provider grafana-dashboards -n {$namespace}",
             'Removing monitoring RBAC...' => 'clusterrole,clusterrolebinding larakube-prometheus larakube-promtail larakube-kube-state-metrics',
         ];
 

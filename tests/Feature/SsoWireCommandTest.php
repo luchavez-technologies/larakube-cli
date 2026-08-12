@@ -661,6 +661,14 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
                 && $piped['max_age'] === $expected['max_age'];
         });
     }
+
+    // Regression guard (live 2026-08-12): tool:list marks OIDC tools as
+    // wired by probing for the {tool}-oidc Secret. OpenBao's config lives in
+    // its own storage (`bao auth enable oidc` above), so this CLI path is
+    // what must record the openbao-oidc marker itself — without it, tool:list
+    // reports a working SSO login as unwired.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic openbao-oidc -n larakube-secrets')
+        && str_contains($process->command, '--from-literal=client-id='));
 });
 
 test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0001)', function () {
@@ -883,4 +891,78 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/design-penpot-frontend')
         && str_contains($process->command, '--from=secret/design-penpot-oidc'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/design-penpot-frontend'));
+});
+
+test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename to the canonical `zitadel` name)', function () {
+    // Live failure 2026-08-12: Forgejo refused `forgejo admin auth add-oauth`
+    // with "login source already exists [name: Login with SSO]" because an
+    // earlier broken wiring created the source under the display label while
+    // the dedup matcher only recognized the canonical `zitadel` name — and
+    // the Zitadel redirect URI (`/user/oauth2/zitadel/callback`) only agrees
+    // with the source named `zitadel` anyway.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-git*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        // Forgejo's `admin auth list` is a tab-separated table (ID, Name,
+        // Type, Enabled) — the legacy source holds the display label.
+        '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n".'1'."\t"."Login with SSO\t".'OpenID Connect'."\t".'true'),
+        '*admin auth update-oauth*' => Process::result(output: 'source updated'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-git', 'clientId' => 'cid-git', 'clientSecret' => 'csecret-git']),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'git', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('is wired to Zitadel SSO');
+
+    // update-oauth runs in place, renames the legacy source to the canonical
+    // `zitadel` name, and add-oauth never runs — the "already exists" 500 is
+    // the symptom this regression guards against.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'admin auth update-oauth --id 1')
+        && str_contains($process->command, "--name 'zitadel'"));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'admin auth add-oauth'));
+});
+
+test('sso:wire registers the Forgejo login source under the canonical `zitadel` name', function () {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-git*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n"),
+        '*admin auth add-oauth*' => Process::result(output: 'source created'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-git', 'clientId' => 'cid-git', 'clientSecret' => 'csecret-git']),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'git', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('is wired to Zitadel SSO');
+
+    // The source NAME becomes the OAuth2 callback path in Forgejo, so it must
+    // be `zitadel` to agree with the redirect URI registered in Zitadel.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'admin auth add-oauth')
+        && str_contains($process->command, "--name 'zitadel'"));
+
+    // Regression guard: tool:list marks OIDC tools as wired by probing for the
+    // `{tool}-oidc` Secret, so this CLI-OIDC path must write `forgejo-oidc`
+    // like every env-var-wired tool's applyToolEnv() does — otherwise a
+    // freshly-wired Forgejo shows X on tool:list forever.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic forgejo-oidc -n larakube-shared')
+        && str_contains($process->command, '--from-literal=client-id=')
+        && str_contains($process->command, 'cid-git'));
 });

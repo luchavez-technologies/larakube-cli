@@ -13,6 +13,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReconcilesPenpotFlags;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
@@ -26,7 +27,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:wire
         {environment=local : Environment whose deployment to wire}
@@ -84,7 +85,7 @@ class SsoWireCommand extends Command
             return 1;
         }
 
-        $instance = $tool->instanceSlugFromHost($toolHost);
+        $instance = $this->resolveInstanceForDomain($kubectl, $tool, (string) ($toolHost ?? ''));
         $engine = $this->resolveInstanceEngine($kubectl, $tool, $instance, $this->option('engine'));
         $schema = $tool->oidcEnv($engine, $instance);
         if ($schema === null) {
@@ -497,11 +498,9 @@ class SsoWireCommand extends Command
         // to unset, so delete it the same way it was created.
         if ($tool->usesCliOidc()) {
             $exec = "{$kubectl} exec deploy/{$schema['deployment']} -n {$schema['namespace']} -- su-exec git forgejo --config /data/gitea/conf/app.ini admin auth";
-            foreach (preg_split('/\R/', Process::run("{$exec} list")->output()) ?: [] as $line) {
-                if (preg_match('/^(\d+)\s+zitadel\b/', trim($line), $m) === 1) {
-                    $this->withSpin("Removing the Zitadel login source from {$tool->getLabel()}...", fn () => Process::run("{$exec} delete --id {$m[1]}")->successful());
-                    break;
-                }
+            $sourceId = $this->findForgejoOidcSourceId($exec);
+            if ($sourceId !== null) {
+                $this->withSpin("Removing the Zitadel login source from {$tool->getLabel()}...", fn () => Process::run("{$exec} delete --id {$sourceId}")->successful());
             }
 
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
@@ -532,9 +531,12 @@ class SsoWireCommand extends Command
 
     /**
      * Register the OIDC login source inside the tool itself (Gitea keeps them in
-     * its database, not in env). Idempotent: updates the existing `zitadel`
-     * source when one is already present, mirroring how git:init checks
-     * `admin user list` before creating its admin.
+     * its database, not in env). Idempotent: updates the existing source in
+     * place when one is already present — matching the canonical `zitadel` name
+     * as well as the legacy `Login with SSO` label, and renaming any legacy
+     * source to `zitadel` so the callback path agrees with the redirect URI
+     * registered in Zitadel. Mirrors how git:init checks `admin user list`
+     * before creating its admin.
      *
      * @param  array{deployment: string, namespace: string, secret: string, vars: array<string, string>, redirect_path: string}  $schema
      */
@@ -543,16 +545,9 @@ class SsoWireCommand extends Command
         $ns = $schema['namespace'];
         $exec = "{$kubectl} exec deploy/{$schema['deployment']} -n {$ns} -- su-exec git forgejo --config /data/gitea/conf/app.ini admin auth";
 
-        $existingId = null;
-        foreach (preg_split('/\R/', Process::run("{$exec} list")->output()) ?: [] as $line) {
-            // `admin auth list` is a tab-separated table: ID, Name, Type, Enabled.
-            if (preg_match('/^(\d+)\s+zitadel\b/', trim($line), $m) === 1) {
-                $existingId = $m[1];
-                break;
-            }
-        }
+        $existingId = $this->findForgejoOidcSourceId($exec);
 
-        $args = '--name '.escapeshellarg('Login with SSO').' --provider openidConnect '
+        $args = '--name '.escapeshellarg('zitadel').' --provider openidConnect '
             .'--key '.escapeshellarg($clientId).' '
             .'--secret '.escapeshellarg($clientSecret).' '
             .'--auto-discover-url '.escapeshellarg("https://{$ssoHost}/.well-known/openid-configuration");
@@ -570,6 +565,21 @@ class SsoWireCommand extends Command
 
             return $ok;
         });
+
+        if ($ok) {
+            // tool:list marks an OIDC tool as SSO-wired by probing for the
+            // `{tool}-oidc` Secret (e.g. grafana-oidc) — every env-var-wired
+            // tool gets one via applyToolEnv(). Forgejo's config lives in its
+            // DB, so this CLI path was the only wiring that never wrote it,
+            // and tool:list permanently reported a wired Forgejo as unwired.
+            // Record the registration the same way, idempotently.
+            Process::run(
+                "{$kubectl} create secret generic {$schema['secret']} -n {$ns} "
+                .'--from-literal=client-id='.escapeshellarg($clientId).' '
+                .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+        }
 
         return $ok;
     }
@@ -977,6 +987,7 @@ class SsoWireCommand extends Command
 
             if ($ok) {
                 Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns}");
+                $this->forceExternalSecretReconcile($kubectl, $ns, $secret);
             }
 
             if ($ok && $isPenpot) {
@@ -1030,11 +1041,14 @@ class SsoWireCommand extends Command
 
                 return null;
             }
+            if ($this->refuseUnshippedTool($tool)) {
+                return null;
+            }
 
             return $tool;
         }
 
-        $capable = array_values(array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->hasSsoWire()));
+        $capable = array_values(array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->hasSsoWire()));
         $installed = $kubectl !== null
             ? array_values(array_filter($capable, function (ClusterTool $t) use ($kubectl) {
                 if ($t === ClusterTool::CHAT) {
@@ -1305,6 +1319,21 @@ class SsoWireCommand extends Command
             $clusterEnv = $env === 'local' ? 'dev' : $env;
             $this->pushClusterSecret($kubectl, 'OPENBAO_OIDC_CLIENT_ID', $clientId, $clusterEnv);
             $this->pushClusterSecret($kubectl, 'OPENBAO_OIDC_CLIENT_SECRET', $clientSecret, $clusterEnv);
+        }
+
+        if ($ok) {
+            // tool:list marks an OIDC tool as SSO-wired by probing for the
+            // `{tool}-oidc` Secret (openbao-oidc, per SecretTool::oidcEnv()).
+            // OpenBao's wiring lives in its own storage (`bao auth enable
+            // oidc` above), so this CLI path is what must record the marker
+            // secret — every env-var-wired tool gets one from applyToolEnv().
+            // Without it, tool:list reports a login that works as unwired.
+            Process::run(
+                "{$kubectl} create secret generic openbao-oidc -n {$ns} "
+                .'--from-literal=client-id='.escapeshellarg($clientId).' '
+                .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
         }
 
         return $ok;

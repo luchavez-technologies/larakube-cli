@@ -6,9 +6,10 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasVpnWiring;
 
 /** The vendor enum backing ClusterTool::FLOW — 'Workflow Automation'. */
-enum FlowTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring
+enum FlowTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring, HasVpnWiring
 {
     public function getLabel(): string
     {
@@ -16,6 +17,16 @@ enum FlowTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
             self::N8N => 'n8n',
             self::WINDMILL => 'Windmill',
         };
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'flow-vpn-only' : "flow-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            'namespace' => 'larakube-shared',
+        ];
     }
 
     public function baseDeploymentName(): string

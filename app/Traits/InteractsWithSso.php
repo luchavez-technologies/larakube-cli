@@ -94,4 +94,32 @@ trait InteractsWithSso
             'label' => 'Zitadel',
         ];
     }
+
+    /**
+     * Find a Forgejo/Gitea OIDC login source by its ID.
+     *
+     * Looks up the canonical `zitadel` name first (the source name is baked
+     * into the callback path, so it must match the redirect URI registered in
+     * Zitadel), then falls back to the legacy `Login with SSO` label that
+     * older wirings left behind. Returns null when no matching source exists —
+     * for example when sso:wire ran on a tool that never wires OIDC this way.
+     *
+     * @param  string  $exec  Base `forgejo admin auth` command.
+     */
+    protected function findForgejoOidcSourceId(string $exec): ?string
+    {
+        $lines = array_filter(preg_split('/\R/', Process::run("{$exec} list")->output()) ?: []);
+
+        $names = ['zitadel', 'Login with SSO'];
+        foreach ($names as $name) {
+            $pattern = '/^(\d+)\s+'.preg_quote($name, '/').'(?:\s|$)/';
+            foreach ($lines as $line) {
+                if (preg_match($pattern, trim($line), $m) === 1) {
+                    return $m[1];
+                }
+            }
+        }
+
+        return null;
+    }
 }

@@ -108,7 +108,7 @@ class DesignInitCommand extends Command
         $backendServiceName = $instance === 'main' ? 'design-backend' : "design-backend-{$instance}";
         $exporterServiceName = $instance === 'main' ? 'design-exporter' : "design-exporter-{$instance}";
         $ingressName = $serviceName;
-        $dbSecretName = $instance === 'main' ? 'design-penpot-db' : "design-penpot-db-{$instance}";
+        $dbSecretName = $instance === 'main' ? 'design-penpot-secrets' : "design-penpot-secrets-{$instance}";
         $smtpSecretName = $instance === 'main' ? 'design-penpot-smtp' : "design-penpot-smtp-{$instance}";
         $oidcSecretName = $instance === 'main' ? 'design-penpot-oidc' : "design-penpot-oidc-{$instance}";
         $dbName = ClusterTool::DESIGN->commonsDatabases($instance)[0];

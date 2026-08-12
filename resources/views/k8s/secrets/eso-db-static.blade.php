@@ -25,6 +25,9 @@ spec:
     creationPolicy: Merge
     template:
       engineVersion: v2
+      metadata:
+        annotations:
+          reloader.stakater.com/auto: "true"
       data:
 @if(isset($usernameKey))
         {{ $usernameKey }}: "@{{ .username }}"

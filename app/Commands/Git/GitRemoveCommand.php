@@ -29,7 +29,7 @@ class GitRemoveCommand extends AbstractToolRemoveCommand
     {
         $ok = $this->removeResources(
             'Removing Forgejo resources...',
-            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance()),
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
         );
 
         Process::run("{$kubectl} delete middleware/forgejo-vpn-only -n {$namespace} --ignore-not-found 2>/dev/null");

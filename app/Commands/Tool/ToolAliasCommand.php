@@ -46,7 +46,14 @@ class ToolAliasCommand extends Command
         }
 
         $targetDomain = (string) ($this->option('domain') ?: '');
-        $instance = $targetDomain === '' ? 'main' : $tool->instanceSlugFromHost($this->sanitizeDomainInput($targetDomain));
+
+        $context = (string) ($this->option('context') ?: null);
+        $kubectl = $this->ssoKubectl($context);
+
+        // Host identity wins: a --domain that matches an already-registered
+        // entry targets THAT instance in place (registry is the source of
+        // truth for which instance serves a host), never a derived slug.
+        $instance = $this->resolveInstanceForDomain($kubectl, $tool, $targetDomain);
 
         if ($instance !== 'main' && ! $tool->supportsMultipleInstances()) {
             $this->laraKubeError(
@@ -55,9 +62,6 @@ class ToolAliasCommand extends Command
 
             return 1;
         }
-
-        $context = (string) ($this->option('context') ?: null);
-        $kubectl = $this->ssoKubectl($context);
 
         if (! $this->isToolRegistered($kubectl, $tool, $instance)) {
             $this->laraKubeError("Tool '{$tool->value}' (instance: {$instance}) is not registered on this cluster.");

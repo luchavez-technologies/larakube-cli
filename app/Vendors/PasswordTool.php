@@ -128,7 +128,7 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
         return [
             'name' => $name,
-            'namespace' => 'larakube-shared',
+            'namespace' => 'larakube-vault',
         ];
     }
 

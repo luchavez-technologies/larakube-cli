@@ -11,6 +11,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithTraefik;
 use App\Traits\InteractsWithUptime;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -20,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class UptimeInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'uptime:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Uptime Kuma host.}
@@ -33,6 +34,10 @@ class UptimeInitCommand extends Command
 
     public function handle(): int
     {
+        if ($this->refuseUnshippedTool(ClusterTool::UPTIME)) {
+            return 1;
+        }
+
         $this->renderHeader();
 
         return $this->deployUptime();

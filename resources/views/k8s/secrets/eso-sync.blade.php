@@ -39,7 +39,12 @@ spec:
     kind: SecretStore
   target:
     name: {{ $secretName }}
-    creationPolicy: Owner
+    creationPolicy: Merge
+    template:
+      engineVersion: v2
+      metadata:
+        annotations:
+          reloader.stakater.com/auto: "true"
   data:
 @foreach($keys as $key)
     - secretKey: {{ $key }}

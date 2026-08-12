@@ -10,13 +10,24 @@ use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasVpnWiring;
 
 /** The single vendor backing the SIGN category — 'Document Signing'. Only Documenso. */
-final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring
+final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring, HasVpnWiring
 {
     public function getLabel(): string
     {
         return 'Documenso';
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'sign-vpn-only' : "sign-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            'namespace' => 'larakube-shared',
+        ];
     }
 
     public function baseDeploymentName(): string

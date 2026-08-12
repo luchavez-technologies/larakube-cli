@@ -144,6 +144,28 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/link-kutt'));
 });
 
+test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', function () {
+    Process::fake([
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*port-forward*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Http::fake([
+        'localhost:*' => Http::sequence()
+            // databaseEngineMounted()
+            ->push(['data' => ['database/' => ['type' => 'database']]])
+            // kubernetesAuthEnabled()
+            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    ]);
+
+    $this->artisan('secrets:wire local --tool=analytics --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('Web Analytics (Umami) is not yet shipped');
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'apply -f'));
+});
+
 test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND a fresh refreshTime', function () {
     $command = new class extends SecretsWireCommand
     {

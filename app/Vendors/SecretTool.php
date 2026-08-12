@@ -7,17 +7,30 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasPresenceProbe;
 use App\Contracts\HasToolAccessDetails;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the SECRETS category — 'Secrets Manager'. Only OpenBao. */
-final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOidcWiring, HasPresenceProbe, HasToolAccessDetails, HasWorkloadComponents
+final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOidcWiring, HasPresenceProbe, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
         return 'OpenBao';
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'openbao-vpn-only' : "openbao-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            // The ingress annotation is larakube-secrets-openbao-vpn-only@kubernetescrd —
+            // SECRETS' own namespace, not larakube-shared.
+            'namespace' => 'larakube-secrets',
+        ];
     }
 
     public function components(?string $instance = null, ?string $engine = null): array

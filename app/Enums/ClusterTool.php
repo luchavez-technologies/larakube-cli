@@ -499,12 +499,46 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /**
+     * Whether this tool is release-ready and may be advertised to operators.
+     *
+     * Unshipped tools are hidden from every listing/prompt UI (tool:list,
+     * tool:add, tool:show, and the wire commands' candidate loops), and their
+     * per-tool commands refuse to run with a "not yet shipped" message. The
+     * case itself, its reverse lookups (forDeployment(), forCommonsResource(),
+     * forCommonsTenant(), forGrantableRoleKey()) and its components stay fully
+     * intact so live resources are still discovered, backed up, and torn down.
+     *
+     * Current unshipped tools, and the gap that withholds them:
+     *  - ANALYTICS (Umami): no OIDC/SSO integration and no SMTP client wiring —
+     *    it cannot join the fleet's identity or mail story yet.
+     *  - UPTIME (Uptime Kuma): no OIDC/SSO integration and no programmatic SMTP
+     *    story (its mail settings are UI-only, over SQLite) — nothing to wire.
+     */
+    public function isShipped(): bool
+    {
+        return match ($this) {
+            self::ANALYTICS, self::UPTIME => false,
+            default => true,
+        };
+    }
+
+    /**
+     * Every case that is release-ready, for listings and prompts.
+     *
+     * @return list<self>
+     */
+    public static function shippedCases(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $tool) => $tool->isShipped()));
+    }
+
+    /**
      * Get an associative array of value => label for prompts.
      */
     public static function options(): array
     {
         $options = [];
-        foreach (self::cases() as $tool) {
+        foreach (self::shippedCases() as $tool) {
             $options[$tool->value] = $tool->getLabel();
         }
 
@@ -545,7 +579,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         if ($vendor instanceof HasSmtpWiring) {
             $schema = $vendor->smtpEnv($instance);
 
-            return $schema === null ? null : ['namespace' => $this->namespace()] + $schema;
+            return $schema === null ? null : ['namespace' => $this->namespace(), 'also_patch' => $this->alsoPatchDeployments($instance, $engine)] + $schema;
         }
 
         return null;
@@ -873,14 +907,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             return $vendor->vpnMiddlewareTarget($instance);
         }
 
-        $target = $this->vpnMiddlewareTargetBase();
-        if ($target === null || $instance === null || $instance === '' || $instance === 'main') {
-            return $target;
-        }
-
-        $target['name'] = "{$target['name']}-{$instance}";
-
-        return $target;
+        return null;
     }
 
     public function presenceProbe(?string $instance = null): ?string
@@ -1117,40 +1144,6 @@ enum ClusterTool: string implements HasWorkloadComponents
         return $engines !== [] ? $engines : [null];
     }
 
-    /** @return array{name: string, namespace: string}|null */
-    private function vpnMiddlewareTargetBase(): ?array
-    {
-        return match ($this) {
-            self::FLOW => ['name' => 'flow-vpn-only', 'namespace' => $this->namespace()],
-            self::SHEETS => ['name' => 'sheet-vpn-only', 'namespace' => $this->namespace()],
-            self::PASSWORDS => ['name' => 'vault-vpn-only', 'namespace' => $this->namespace()],
-            self::MONITOR => ['name' => 'grafana-vpn-only', 'namespace' => $this->namespace()],
-            self::SECRETS => ['name' => 'openbao-vpn-only', 'namespace' => $this->namespace()],
-            self::ERRORS => ['name' => 'glitchtip-web-vpn-only', 'namespace' => $this->namespace()],
-            self::UPTIME => ['name' => 'uptime-kuma-vpn-only', 'namespace' => $this->namespace()],
-            self::GIT => ['name' => 'forgejo-vpn-only', 'namespace' => $this->namespace()],
-            self::INSIGHTS => ['name' => 'insights-vpn-only', 'namespace' => $this->namespace()],
-            self::MAIL => ['name' => 'mail-vpn-only', 'namespace' => $this->namespace()],
-            self::DESK => ['name' => 'desk-vpn-only', 'namespace' => $this->namespace()],
-            self::CHAT => ['name' => 'chat-vpn-only', 'namespace' => $this->namespace()],
-            self::SSO => ['name' => 'sso-vpn-only', 'namespace' => $this->namespace()],
-            self::WEBMAIL => ['name' => 'webmail-vpn-only', 'namespace' => $this->namespace()],
-            self::NOTES => ['name' => 'notes-vpn-only', 'namespace' => $this->namespace()],
-            self::DRIVE => ['name' => 'drive-vpn-only', 'namespace' => $this->namespace()],
-            self::ANALYTICS => ['name' => 'analytics-vpn-only', 'namespace' => $this->namespace()],
-            self::TASKS => ['name' => 'tasks-vpn-only', 'namespace' => $this->namespace()],
-
-            self::SIGN => ['name' => 'sign-vpn-only', 'namespace' => $this->namespace()],
-            self::SUPPORT => ['name' => 'support-vpn-only', 'namespace' => $this->namespace()],
-            self::LINK => ['name' => 'link-vpn-only', 'namespace' => $this->namespace()],
-            self::CRM => ['name' => 'crm-vpn-only', 'namespace' => $this->namespace()],
-            self::RECORD => ['name' => 'record-vpn-only', 'namespace' => $this->namespace()],
-            self::DESIGN => ['name' => 'design-vpn-only', 'namespace' => $this->namespace()],
-            self::DASHBOARD => ['name' => 'dashboard-vpn-only', 'namespace' => $this->namespace()],
-            default => null,
-        };
-    }
-
     /** @return list<string> */
     private function commonsDatabaseList(?string $engine = null): array
     {
@@ -1182,6 +1175,7 @@ enum ClusterTool: string implements HasWorkloadComponents
 
         return [];
     }
+
     case ANALYTICS = 'analytics';
     case CHAT = 'chat';
     case MEET = 'meet';

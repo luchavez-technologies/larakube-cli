@@ -16,7 +16,7 @@ class DesignRemoveCommand extends AbstractToolRemoveCommand
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
         return trim(Process::run(
-            "{$kubectl} get secret design-penpot-db -n {$namespace} --ignore-not-found",
+            "{$kubectl} get secret design-penpot-secrets -n {$namespace} --ignore-not-found",
         )->output()) === '';
     }
 
@@ -24,7 +24,7 @@ class DesignRemoveCommand extends AbstractToolRemoveCommand
     {
         return $this->removeResources(
             'Removing Penpot resources...',
-            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance()),
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
         );
     }
 }

@@ -10,14 +10,25 @@ use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\UsesForwardAuth;
 
 /** The single vendor backing the RECORD category — 'Screen Recording & Sharing'. Only Sendrec. */
-final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring, UsesForwardAuth
+final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring, HasVpnWiring, UsesForwardAuth
 {
     public function getLabel(): string
     {
         return 'Sendrec';
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'record-vpn-only' : "record-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            'namespace' => 'larakube-shared',
+        ];
     }
 
     public function baseDeploymentName(): string

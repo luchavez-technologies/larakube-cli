@@ -5,6 +5,7 @@ namespace App\Commands\Secrets;
 use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolEnvironment;
@@ -20,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SecretsWireCommand extends Command
 {
-    use DeploysClusterTool, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use DeploysClusterTool, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'secrets:wire
         {environment=local : Environment whose deployment(s) to wire}
@@ -67,7 +68,7 @@ class SecretsWireCommand extends Command
         // wires every capable tool at its own default ('main') instance, the
         // same as before --domain= existed.
         $domain = (string) ($this->option('domain') ?: '');
-        $instance = $domain === '' ? 'main' : ClusterTool::SECRETS->instanceSlugFromHost($this->sanitizeDomainInput($domain));
+        $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::SECRETS, $domain);
 
         $targets = $this->resolveTargets($kubectl, $instance);
         if ($targets === []) {
@@ -101,7 +102,7 @@ class SecretsWireCommand extends Command
      */
     protected function resolveTargets(string $kubectl, string $instance): array
     {
-        $capable = array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
+        $capable = array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
 
         $resolve = function (ClusterTool $t, string $forInstance) use ($kubectl): ?array {
             $engine = $t->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $t, $forInstance, (string) ($this->option('engine') ?: '') ?: null) : null;
@@ -134,7 +135,15 @@ class SecretsWireCommand extends Command
         $slug = $this->option('tool');
         if ($slug !== null) {
             $tool = ClusterTool::tryFrom($slug);
-            if ($tool === null || $tool->dbSecretRef() === null) {
+            if ($tool === null) {
+                $this->laraKubeError("'{$slug}' does not have a Commons database password OpenBao can rotate.");
+
+                return [];
+            }
+            if ($this->refuseUnshippedTool($tool)) {
+                return [];
+            }
+            if ($tool->dbSecretRef() === null) {
                 $this->laraKubeError("'{$slug}' does not have a Commons database password OpenBao can rotate.");
 
                 return [];

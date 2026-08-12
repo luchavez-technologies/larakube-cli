@@ -128,32 +128,13 @@ test('resolveProxied honors the --proxied flag value and always yields false on 
     'truthy words' => ['yes', true],
 ]);
 
-test('link:init --vpn-only creates the Traefik Middleware before applying the manifests', function () {
-    Process::fake([
-        '*get configmap plex-commons*' => json_encode([
-            'version' => 1,
-            'services' => [
-                'postgres' => ['enabled' => true],
-                'redis' => ['enabled' => true],
-            ],
-        ]),
-        '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
-        '*create configmap plex-registry*' => Process::result(output: 'configmap created'),
-        '*get secret link-kutt-secrets*' => Process::result(output: '', exitCode: 1),
-        '*exec *' => Process::result(output: 'success'),
-        '*create namespace*' => Process::result(output: 'namespace created'),
-        '*create secret generic*' => Process::result(output: 'secret created'),
-        '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout *' => Process::result(output: 'rollout success'),
-    ]);
-
+test('link:init --vpn-only refuses — LINK is public infrastructure with no VPN mode', function () {
     $this->artisan('link:init local --vpn-only --no-interaction')
-        ->assertExitCode(0)
-        ->expectsOutputToContain('Ensuring VPN-only Middleware for Link Management (Kutt)...')
-        ->expectsOutputToContain('Kutt shortener stack is live.');
+        ->assertExitCode(1)
+        ->expectsOutputToContain("'link' doesn't have a --vpn-only ingress mode.");
 });
 
-test('link:init --vpn-only aborts when the Middleware apply fails', function () {
+test('link:init --vpn-only aborts without touching kubectl', function () {
     Process::fake([
         '*get secret link-kutt-secrets*' => Process::result(output: '', exitCode: 1),
         '*apply -f *' => Process::result(output: '', exitCode: 1),
@@ -161,5 +142,5 @@ test('link:init --vpn-only aborts when the Middleware apply fails', function () 
 
     $this->artisan('link:init local --vpn-only --no-interaction')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Failed to create the VPN-only Middleware');
+        ->expectsOutputToContain("'link' doesn't have a --vpn-only ingress mode.");
 });

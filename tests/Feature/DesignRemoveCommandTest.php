@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Process;
  */
 test('design:remove deletes the same resource set as before the component refactor', function () {
     Process::fake([
-        '*get secret design-penpot-db*' => Process::result(output: 'design-penpot-db   Opaque   1   10d'),
+        '*get secret design-penpot-secrets*' => Process::result(output: 'design-penpot-secrets   Opaque   1   10d'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -40,7 +40,7 @@ test('design:remove deletes the same resource set as before the component refact
         'service/design-backend',
         'service/design-exporter',
         'ingress/design',
-        'secret/design-penpot-db',
+        'secret/design-penpot-secrets',
         'secret/design-penpot-smtp',
         'secret/design-penpot-oidc',
     ];

@@ -54,7 +54,7 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
     {
         $ok = $this->removeResources(
             'Removing Matrix (Synapse + Element) resources...',
-            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance()),
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
         );
 
         // Reverse chat:init's port opening — Coturn is gone, but its UDP/TCP

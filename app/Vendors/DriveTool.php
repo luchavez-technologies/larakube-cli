@@ -6,16 +6,27 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the DRIVE category — 'Cloud Storage & Sync'. Only oCIS. */
-final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWiring, HasSmtpWiring, HasWorkloadComponents
+final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWiring, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
         return 'oCIS';
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'drive-vpn-only' : "drive-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            'namespace' => 'larakube-shared',
+        ];
     }
 
     public function components(?string $instance = null, ?string $engine = null): array

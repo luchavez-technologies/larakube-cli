@@ -16,6 +16,7 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
 
 use LaravelZero\Framework\Commands\Command;
@@ -33,9 +34,11 @@ class MonitorInitCommand extends Command
         {--vpn-only   : Restrict access via NetBird VPN IP whitelisting}
         {--no-logs    : Skip deploying Loki + Promtail log aggregation (~300MB RAM saved)}
         {--with-logs  : Force deploying Loki + Promtail log aggregation}
+        {--no-traces  : Skip deploying Tempo trace storage (~450MB RAM saved)}
+        {--with-traces : Force deploying Tempo trace storage}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
-    protected $description = 'Deploy the cluster-wide monitoring stack (Prometheus, Loki, Grafana) into larakube-shared';
+    protected $description = 'Deploy the cluster-wide monitoring stack (Grafana, Prometheus, Loki, Tempo) into larakube-shared';
 
     public function handle(): int
     {
@@ -53,7 +56,15 @@ class MonitorInitCommand extends Command
 
         $host = $this->resolveToolHost(SharedClusterService::GRAFANA, ClusterTool::MONITOR, $env, $kubectl);
 
-        $withLogs = $this->resolveLogAggregation();
+        [$withLogs, $withTraces] = $this->resolveMonitoringComponents();
+
+        [
+            'withLogs' => $withLogs,
+            'withTraces' => $withTraces,
+            'removedLogs' => $removedLogs,
+            'removedTraces' => $removedTraces,
+            'datasourcesChanged' => $datasourcesChanged,
+        ] = $this->reconcileMonitoringComponents($kubectl, $ns, $withLogs, $withTraces);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -70,6 +81,12 @@ class MonitorInitCommand extends Command
             return 1;
         }
 
+        if (! $this->syncClusterDashboardConfigMaps($kubectl, $ns, $withLogs, $withTraces)) {
+            $this->laraKubeError('Could not sync the Grafana dashboards — see the output above.');
+
+            return 1;
+        }
+
         $manifest = view('k8s.monitoring.shared', [
             'host' => $host,
             'appName' => $branding['appName'],
@@ -79,6 +96,7 @@ class MonitorInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
             'withLogs' => $withLogs,
+            'withTraces' => $withTraces,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-monitoring.yaml';
@@ -99,6 +117,23 @@ class MonitorInitCommand extends Command
             $this->laraKubeError('Could not apply the monitoring manifest — see the output above.');
 
             return 1;
+        }
+
+        if ($removedLogs) {
+            if (! $this->removeResources('Removing Loki...', "{$kubectl} delete deployment,svc,configmap,pvc loki loki-config loki-storage -n {$ns} --ignore-not-found")
+                || ! $this->removeResources('Removing Promtail...', "{$kubectl} delete daemonset,configmap,serviceaccount promtail promtail-config -n {$ns} --ignore-not-found")) {
+                $this->laraKubeError('Could not remove the previously-deployed log aggregation stack — see the output above.');
+
+                return 1;
+            }
+        }
+
+        if ($removedTraces) {
+            if (! $this->removeResources('Removing Tempo...', "{$kubectl} delete deployment,svc,configmap,pvc tempo tempo-config tempo-storage -n {$ns} --ignore-not-found")) {
+                $this->laraKubeError('Could not remove the previously-deployed trace storage — see the output above.');
+
+                return 1;
+            }
         }
 
         if (! $this->withSpin('Waiting for Prometheus...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/prometheus -n {$ns} --timeout=120s")->successful())) {
@@ -126,6 +161,25 @@ class MonitorInitCommand extends Command
 
             return 1;
         }
+        if ($withTraces && ! $this->withSpin('Waiting for Tempo...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/tempo -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError('tempo never became Ready.');
+
+            return 1;
+        }
+
+        if ($datasourcesChanged) {
+            if (! $this->withSpin('Restarting Grafana to load the updated data sources...', fn () => Process::timeout(70)->run("{$kubectl} rollout restart deploy/grafana -n {$ns}")->successful())) {
+                $this->laraKubeError('Could not restart Grafana — see the output above.');
+
+                return 1;
+            }
+
+            if (! $this->withSpin('Waiting for Grafana after restart...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/grafana -n {$ns} --timeout=120s")->successful())) {
+                $this->laraKubeError('grafana never became Ready after restart.');
+
+                return 1;
+            }
+        }
 
         $this->registerDeployedTool(ClusterTool::MONITOR, $kubectl, $host);
 
@@ -137,14 +191,34 @@ class MonitorInitCommand extends Command
         if ($withLogs) {
             $this->line("  <fg=gray>Loki:</>               loki.{$ns}.svc.cluster.local:3100  <fg=gray>(in-cluster)</>");
         }
+        if ($withTraces) {
+            $this->line("  <fg=gray>Tempo:</>              tempo.{$ns}.svc.cluster.local:3200  <fg=gray>(in-cluster, OTLP :4317/:4318)</>");
+        }
         $this->newLine();
+        $this->line('  Prometheus'.($withLogs ? ' + Loki' : '').($withTraces ? ' + Tempo' : '').' are pre-wired as Grafana data sources.');
+
+        $dashboards = ['Cluster Overview', 'Nodes', 'Pods'];
         if ($withLogs) {
-            $this->line('  Prometheus + Loki are pre-wired as Grafana data sources.');
-        } else {
-            $this->line('  Prometheus is pre-wired as Grafana data source.');
+            $dashboards[] = 'Loki Logs';
+        }
+        if ($withTraces) {
+            $dashboards[] = 'Tempo Service Graph';
+        }
+        $this->line('  Dashboards: '.implode(', ', $dashboards).'.');
+        $this->newLine();
+        if ($removedLogs) {
+            $this->line('  <fg=yellow>Log aggregation (Loki + Promtail) removed — run <fg=cyan>larakube monitor:init --with-logs</> anytime to re-enable.</>');
+        } elseif (! $withLogs) {
             $this->line('  <fg=yellow>Note:</> Log aggregation (Loki + Promtail) is disabled (~300MB RAM saved).');
             $this->line('  Run <fg=yellow>larakube monitor:init --with-logs</> anytime to enable log search in Grafana.');
         }
+        if ($removedTraces) {
+            $this->line('  <fg=yellow>Tempo removed — run <fg=cyan>larakube monitor:init --with-traces</> anytime to re-enable.</>');
+        } elseif (! $withTraces) {
+            $this->line('  <fg=yellow>Note:</> Distributed tracing (Tempo) is disabled (~450MB RAM saved).');
+            $this->line('  Run <fg=yellow>larakube monitor:init --with-traces</> anytime to enable trace search in Grafana.');
+        }
+        $this->newLine();
         if ($env === 'local') {
             $this->line('  Run <fg=yellow>larakube up</> to wire local per-service exporters (MySQL, Redis, etc.).');
         } else {
@@ -156,23 +230,29 @@ class MonitorInitCommand extends Command
     }
 
     /**
-     * Determine whether to deploy log aggregation (Loki + Promtail).
+     * Determine which optional monitoring components to deploy.
      *
-     * In non-interactive environments, default to metrics-only (--no-logs) to save RAM.
-     * In interactive human terminals, prompt with a multiselect.
+     * Flag pairs win outright: --with-logs/--no-logs and
+     * --with-traces/--no-traces. In non-interactive environments the default
+     * is a metrics-only stack to save RAM; interactive terminals get one
+     * multiselect covering both optional components.
+     *
+     * @return array{0: bool, 1: bool} [withLogs, withTraces]
      */
-    protected function resolveLogAggregation(): bool
+    protected function resolveMonitoringComponents(): array
     {
-        if ($this->option('no-logs')) {
-            return false;
-        }
+        $logsExplicit = $this->option('with-logs') || $this->option('no-logs');
+        $tracesExplicit = $this->option('with-traces') || $this->option('no-traces');
 
-        if ($this->option('with-logs')) {
-            return true;
+        if ($logsExplicit || $tracesExplicit) {
+            return [
+                $logsExplicit ? (bool) $this->option('with-logs') : false,
+                $tracesExplicit ? (bool) $this->option('with-traces') : false,
+            ];
         }
 
         if ($this->option('no-interaction') || ! stream_isatty(STDIN)) {
-            return false;
+            return [false, false];
         }
 
         $selected = multiselect(
@@ -180,12 +260,116 @@ class MonitorInitCommand extends Command
             options: [
                 'metrics' => 'Metrics & Alerting (Grafana, Prometheus, kube-state-metrics) — ~150MB RAM',
                 'logs' => 'Log Aggregation (Loki, Promtail) — ~300MB RAM',
+                'traces' => 'Distributed Tracing (Tempo + metrics-generator) — ~450MB RAM',
             ],
             default: ['metrics', 'logs'],
             required: true,
         );
 
-        return in_array('logs', $selected, true);
+        return [in_array('logs', $selected, true), in_array('traces', $selected, true)];
+    }
+
+    /**
+     * Reconcile the desired component set against what is actually deployed.
+     *
+     * A requested component that is absent is simply a new install. A
+     * component that is deployed but no longer requested is reversed in
+     * place (the confirm happens before any manifest change, so declining
+     * leaves the cluster untouched and keeps the component enabled).
+     * Datasource changes only matter when Grafana already exists — it loads
+     * provisioning at startup, so a rollout restart is needed to pick up a
+     * configmap that changed under a running pod.
+     *
+     * @return array{withLogs: bool, withTraces: bool, removedLogs: bool, removedTraces: bool, datasourcesChanged: bool}
+     */
+    protected function reconcileMonitoringComponents(string $kubectl, string $ns, bool $withLogs, bool $withTraces): array
+    {
+        $grafanaPresent = Process::run("{$kubectl} get deployment/grafana -n {$ns} --no-headers")->successful();
+
+        $lokiPresent = Process::run("{$kubectl} get deployment/loki -n {$ns} --no-headers")->successful();
+        $tempoPresent = Process::run("{$kubectl} get deployment/tempo -n {$ns} --no-headers")->successful();
+
+        $lokiMismatch = $withLogs !== $lokiPresent;
+        $tempoMismatch = $withTraces !== $tempoPresent;
+
+        $removedLogs = false;
+        $removedTraces = false;
+
+        if (! $withLogs && $lokiMismatch) {
+            if ($this->confirmComponentRemoval('Log aggregation (Loki + Promtail) is currently deployed.', 'This will delete Loki + Promtail and wipe loki-storage (~10Gi of historical logs).')) {
+                $removedLogs = true;
+            } else {
+                $withLogs = true;
+                $lokiMismatch = false;
+            }
+        }
+
+        if (! $withTraces && $tempoMismatch) {
+            if ($this->confirmComponentRemoval('Tempo trace storage is currently deployed.', 'This will delete Tempo and wipe tempo-storage (~5Gi of trace data).')) {
+                $removedTraces = true;
+            } else {
+                $withTraces = true;
+                $tempoMismatch = false;
+            }
+        }
+
+        return [
+            'withLogs' => $withLogs,
+            'withTraces' => $withTraces,
+            'removedLogs' => $removedLogs,
+            'removedTraces' => $removedTraces,
+            'datasourcesChanged' => $grafanaPresent && ($lokiMismatch || $tempoMismatch),
+        ];
+    }
+
+    /**
+     * Gate a destructive component removal behind a Laravel Prompts confirm().
+     *
+     * Skipped in non-interactive environments (an explicit --no-logs /
+     * --no-traces flag is already a deliberate choice) and under --force,
+     * matching ConfirmsDestructiveAction's contract for automation.
+     */
+    protected function confirmComponentRemoval(string $title, string $detail): bool
+    {
+        if ($this->option('force') || $this->option('no-interaction') || ! stream_isatty(STDIN)) {
+            return true;
+        }
+
+        return confirm(
+            label: "{$title} {$detail}",
+            default: false,
+        );
+    }
+
+    /**
+     * Recreate the grafana-dashboards ConfigMap with exactly the JSON files
+     * for the current component set. kubectl apply preserves the existing
+     * ConfigMap, and the dashboard provider rescans its path every 10s, so
+     * toggling components adds/removes dashboards without a Grafana restart.
+     */
+    protected function syncClusterDashboardConfigMaps(string $kubectl, string $ns, bool $withLogs, bool $withTraces): bool
+    {
+        $dir = resource_path('dashboards');
+
+        $files = ['cluster-overview.json', 'nodes.json', 'pods.json'];
+
+        if ($withLogs) {
+            $files[] = 'loki-logs.json';
+        }
+
+        if ($withTraces) {
+            $files[] = 'tempo-service-graph.json';
+        }
+
+        $fromFiles = implode(' ', array_map(
+            fn (string $file) => '--from-file='.escapeshellarg("{$dir}/{$file}"),
+            $files,
+        ));
+
+        return $this->withSpin(
+            'Syncing Grafana dashboards...',
+            fn () => Process::timeout(70)->run("{$kubectl} create configmap grafana-dashboards {$fromFiles} -n {$ns} --dry-run=client -o yaml | {$kubectl} apply -f - --request-timeout=60s")->successful(),
+        );
     }
 
     protected function resolveEnvironment(): string

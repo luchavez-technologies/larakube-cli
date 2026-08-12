@@ -23,7 +23,7 @@ class NotesRemoveCommand extends AbstractToolRemoveCommand
      */
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $instance = $this->resolveInstance();
+        $instance = $this->resolveInstance($kubectl);
         $deploymentName = ClusterTool::NOTES->deploymentName($instance);
         $serviceName = $instance === 'main' ? 'notes' : "notes-{$instance}";
         $secretName = $instance === 'main' ? 'notes-secrets' : "notes-secrets-{$instance}";

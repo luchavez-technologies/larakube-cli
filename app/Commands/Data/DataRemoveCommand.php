@@ -51,7 +51,7 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
      */
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $instance = $this->resolveInstance();
+        $instance = $this->resolveInstance($kubectl);
         $secretName = $instance !== 'main' ? "data-secrets-{$instance}" : 'data-secrets';
         $smtpSecret = $instance !== 'main' ? "data-smtp-{$instance}" : 'data-smtp';
         $oidcSecret = $instance !== 'main' ? "data-oidc-{$instance}" : 'data-oidc';

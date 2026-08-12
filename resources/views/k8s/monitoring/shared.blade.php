@@ -287,6 +287,144 @@ spec:
       targetPort: 3100
   type: ClusterIP
 ---
+@if($withTraces ?? false)
+# ── Tempo (distributed tracing — OTLP :4317/:4318, HTTP API :3200) ───────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: larakube-shared
+data:
+  tempo.yaml: |
+    stream_over_http_enabled: true
+    server:
+      http_listen_port: 3200
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+    ingester:
+      trace_idle_period: 10s
+      max_block_bytes: 1_000_000
+      max_block_duration: 5m
+    compactor:
+      compaction:
+        block_retention: 168h
+        compacted_block_retention: 24h
+    storage:
+      trace:
+        backend: local
+        wal:
+          path: /var/tempo/wal
+        local:
+          path: /var/tempo/blocks
+    metrics_generator:
+      storage:
+        path: /var/tempo/metrics-generator
+        remote_write:
+          - url: http://prometheus.larakube-shared.svc.cluster.local:9090/api/v1/write
+            send_native_histograms: true
+      registry:
+        external_labels:
+          source: tempo
+      processor:
+        service_graphs:
+          histogram_buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+        span_metrics: {}
+    usage_report:
+      reporting_enabled: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-storage
+  namespace: larakube-shared
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: larakube-shared
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3200"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.10.7
+          args: ["-config.file=/etc/tempo/tempo.yaml"]
+          ports:
+            - containerPort: 3200
+              name: http
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo/
+            - name: storage
+              mountPath: /var/tempo/
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 20
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: tempo-config
+        - name: storage
+          persistentVolumeClaim:
+            claimName: tempo-storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: larakube-shared
+spec:
+  selector:
+    app: tempo
+  ports:
+    - protocol: TCP
+      port: 3200
+      targetPort: 3200
+    - protocol: TCP
+      port: 4317
+      targetPort: 4317
+    - protocol: TCP
+      port: 4318
+      targetPort: 4318
+  type: ClusterIP
+@endif
+---
 # ── Promtail (DaemonSet — one per node, tails /var/log/pods) ─────────────────
 apiVersion: v1
 kind: ServiceAccount
@@ -525,6 +663,7 @@ data:
     apiVersion: 1
     datasources:
       - name: Prometheus
+        uid: prometheus-ds
         type: prometheus
         access: proxy
         url: http://prometheus.larakube-shared.svc.cluster.local:9090
@@ -532,11 +671,43 @@ data:
         editable: false
 @if($withLogs ?? true)
       - name: Loki
+        uid: loki-ds
         type: loki
         access: proxy
         url: http://loki.larakube-shared.svc.cluster.local:3100
         editable: false
 @endif
+@if($withTraces ?? false)
+      - name: Tempo
+        uid: tempo-ds
+        type: tempo
+        access: proxy
+        url: http://tempo.larakube-shared.svc.cluster.local:3200
+        editable: false
+@endif
+---
+# Dashboards-as-code: one static provider scans /var/lib/grafana/dashboards
+# every 10s, so dashboard JSON ConfigMaps added/removed by monitor:init take
+# effect without a Grafana restart (unlike datasources, which load at startup).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: larakube-shared
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+
+    providers:
+      - name: larakube
+        orgId: 1
+        folder: 'LaraKube'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: false
+        options:
+          path: /var/lib/grafana/dashboards
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -579,6 +750,10 @@ spec:
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources/
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards/
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards/
           readinessProbe:
             httpGet:
               path: /api/health
@@ -595,6 +770,12 @@ spec:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
 ---
 apiVersion: v1
 kind: Service

@@ -196,6 +196,15 @@ class SecretsInitCommand extends Command
             file_put_contents($tmp, $clusterStore);
             Process::run("{$kubectl} apply -f ".escapeshellarg($tmp));
             @unlink($tmp);
+
+            $reloader = view('k8s.secrets.reloader', [
+                'namespace' => $ns,
+            ])->render();
+
+            $tmpReloader = sys_get_temp_dir().'/larakube-reloader.yaml';
+            file_put_contents($tmpReloader, $reloader);
+            Process::run("{$kubectl} apply -f ".escapeshellarg($tmpReloader));
+            @unlink($tmpReloader);
         });
 
         foreach (ClusterTool::cases() as $tool) {

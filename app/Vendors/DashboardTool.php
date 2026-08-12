@@ -5,13 +5,24 @@ namespace App\Vendors;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasVpnWiring;
 
 /** The single vendor backing the DASHBOARD category — 'Kubernetes Control Plane'. Only Headlamp. */
-final class DashboardTool implements ClusterToolVendor, HasDeploymentBaseName, HasOidcWiring
+final class DashboardTool implements ClusterToolVendor, HasDeploymentBaseName, HasOidcWiring, HasVpnWiring
 {
     public function getLabel(): string
     {
         return 'Headlamp';
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'dashboard-vpn-only' : "dashboard-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            'namespace' => 'larakube-shared',
+        ];
     }
 
     public function baseDeploymentName(): string

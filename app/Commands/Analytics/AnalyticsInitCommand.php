@@ -12,6 +12,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -22,7 +23,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class AnalyticsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithAnalytics, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithAnalytics, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'analytics:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -35,6 +36,10 @@ class AnalyticsInitCommand extends Command
 
     public function handle(): int
     {
+        if ($this->refuseUnshippedTool(ClusterTool::ANALYTICS)) {
+            return 1;
+        }
+
         $this->renderHeader();
 
         return $this->deployAnalytics();
@@ -95,7 +100,7 @@ class AnalyticsInitCommand extends Command
 
         $rolledOut = $this->withSpin(
             'Applying Umami analytics manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'analytics-umami', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'analytics-umami', 300),
         );
         @unlink($tmp);
 

@@ -84,6 +84,7 @@ test('data:init returns a failing exit code and does not claim success when kube
         '*create secret*' => Process::result(output: 'secret created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*exec*deploy/postgres*' => Process::result(output: 'CREATE DATABASE'),
+        '*exec*deploy/seaweedfs*' => Process::result(output: 'bucket created'),
         '*apply*' => Process::result(output: 'The Deployment "data-directus" is invalid', exitCode: 1),
         '*rollout status*' => Process::result(output: 'deployment "data-directus" successfully rolled out'),
     ]);

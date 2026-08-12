@@ -11,15 +11,26 @@ use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 
 /** The vendor enum backing ClusterTool::DESIGN — 'Design & Prototyping'. Only Penpot today. */
-enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWorkloadComponents
+enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
         return 'Penpot';
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'design-vpn-only' : "design-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            'namespace' => 'larakube-shared',
+        ];
     }
 
     public function components(?string $instance = null, ?string $engine = null): array
@@ -33,7 +44,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
                 deployment: $name('design-penpot-backend'),
                 resources: [
                     ['kind' => 'service', 'name' => 'design-backend'],
-                    ['kind' => 'secret', 'name' => 'design-penpot-db'],
+                    ['kind' => 'secret', 'name' => 'design-penpot-secrets'],
                     ['kind' => 'secret', 'name' => 'design-penpot-smtp'],
                     ['kind' => 'secret', 'name' => 'design-penpot-oidc'],
                 ],
@@ -108,7 +119,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
     /** Not 'db-password' like every other tool — Penpot's own secret already established 'password'. */
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'design-penpot-db', 'key' => 'password'];
+        return ['secret' => 'design-penpot-secrets', 'key' => 'password'];
     }
 
     public function commonsDatabaseList(): array
@@ -147,7 +158,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
     public function openbaoSyncConfig(): array
     {
         return [
-            'secret' => 'design-penpot-db',
+            'secret' => 'design-penpot-secrets',
             'keys' => ['DESIGN_DB_PASSWORD'],
         ];
     }

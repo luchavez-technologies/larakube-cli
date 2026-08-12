@@ -58,3 +58,24 @@ test('sso:unwire delegates to sso:wire --remove', function () {
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 });
+
+test('sso:unwire deletes a legacy "Login with SSO" Forgejo source', function () {
+    // The unwire matcher used to look for the canonical `zitadel` name only,
+    // so a source left behind by an older wiring (named after the display
+    // label) was never deleted — `sso:unwire` silently did nothing.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n".'4'."\t"."Login with SSO\t".'OpenID Connect'."\t".'true'),
+        '*admin auth delete*' => Process::result(output: 'source deleted'),
+    ]);
+
+    Http::fake(['*/management/v1/projects/proj-1/apps/*' => Http::response([], 200)]);
+
+    $this->artisan('sso:unwire', ['--tool' => 'git', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('no longer uses Zitadel SSO');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'admin auth delete --id 4'));
+});

@@ -7,6 +7,7 @@ use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
 
@@ -16,7 +17,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class VpnWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput, ResolvesToolHost;
+    use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolHost;
 
     protected $signature = 'vpn:wire
         {environment=local : Environment whose deployment to wire}
@@ -35,8 +36,14 @@ class VpnWireCommand extends Command
             return 1;
         }
 
+        $env = (string) $this->argument('environment');
+        $context = $this->resolveToolContext($env, $this->option('context'));
+        $kubectl = $this->vpnWireKubectl($context);
+
         $domain = (string) ($this->option('domain') ?: '');
-        $instance = $domain === '' ? 'main' : $tool->instanceSlugFromHost($this->sanitizeDomainInput($domain));
+        // Host identity wins: a --domain matching an already-registered entry
+        // targets THAT instance in place (registry = source of truth).
+        $instance = $this->resolveInstanceForDomain($kubectl, $tool, $domain);
 
         if ($instance !== 'main' && ! $tool->supportsMultipleInstances()) {
             $this->laraKubeError("{$tool->getLabel()} does not support multiple instances — omit --domain to target its single installation.");
@@ -56,8 +63,6 @@ class VpnWireCommand extends Command
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
             ? ConfigData::loadFromFile($projectPath)
             : null;
-        $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->vpnWireKubectl($context);
 
         return $this->wire($tool, $kubectl, $env, $domain);
     }
@@ -113,11 +118,14 @@ class VpnWireCommand extends Command
 
                 return null;
             }
+            if ($this->refuseUnshippedTool($tool)) {
+                return null;
+            }
 
             return $tool;
         }
 
-        $capable = array_values(array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->vpnMiddlewareTarget() !== null));
+        $capable = array_values(array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->vpnMiddlewareTarget() !== null));
 
         $options = [];
         foreach ($capable as $t) {

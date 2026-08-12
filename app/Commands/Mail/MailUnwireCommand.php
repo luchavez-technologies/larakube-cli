@@ -11,6 +11,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\StreamsProcessOutput;
@@ -20,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailUnwireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:unwire
         {environment=local : Environment whose mail settings to unwire}
@@ -63,14 +64,17 @@ class MailUnwireCommand extends Command
 
                 return [];
             }
+            if ($this->refuseUnshippedTool($tool)) {
+                return [];
+            }
 
             return [$tool];
         }
 
         if ($this->option('all')) {
             $installed = [];
-            foreach (ClusterTool::cases() as $candidate) {
-                if (! $candidate->hasSmtpWire()) {
+            foreach (ClusterTool::shippedCases() as $candidate) {
+                if ($candidate->smtpEnv() === null && $candidate !== ClusterTool::SSO) {
                     continue;
                 }
                 if ($this->isToolInstalledForMail($kubectl, $candidate)) {
@@ -88,8 +92,8 @@ class MailUnwireCommand extends Command
         }
 
         $options = [];
-        foreach (ClusterTool::cases() as $candidate) {
-            if ($candidate->hasSmtpWire() && $this->isToolInstalledForMail($kubectl, $candidate)) {
+        foreach (ClusterTool::shippedCases() as $candidate) {
+            if (($candidate->smtpEnv() !== null || $candidate === ClusterTool::SSO) && $this->isToolInstalledForMail($kubectl, $candidate)) {
                 $options[$candidate->value] = $candidate->getLabel();
             }
         }
@@ -110,6 +114,10 @@ class MailUnwireCommand extends Command
 
     protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool
     {
+        if ($tool === ClusterTool::SSO) {
+            return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
+        }
+
         $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, 'main', (string) ($this->option('engine') ?: '') ?: null) : null;
         $schema = $tool->smtpEnv($engine);
         if ($schema === null) {
@@ -171,6 +179,19 @@ class MailUnwireCommand extends Command
                 $ok = Process::run("{$kubectl} set env deployment/{$schema['deployment']} -n {$schema['namespace']} {$pairs}")->successful();
                 if ($ok) {
                     Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
+                }
+
+                // Mirror mail:wire's also_patch loop — secondary components
+                // that shared the PRIMARY's SMTP secret (e.g. GlitchTip's
+                // worker) must lose it too, or they keep mailing Stalwart.
+                foreach ($schema['also_patch'] ?? [] as $secondaryDeployment) {
+                    if (! $ok) {
+                        break;
+                    }
+                    $ok = Process::run("{$kubectl} set env deployment/{$secondaryDeployment} -n {$schema['namespace']} {$pairs}")->successful();
+                    if ($ok) {
+                        Process::run("{$kubectl} rollout restart deployment/{$secondaryDeployment} -n {$schema['namespace']}");
+                    }
                 }
             });
 

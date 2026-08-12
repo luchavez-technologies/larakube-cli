@@ -82,6 +82,26 @@ trait DeploysClusterTool
     }
 
     /**
+     * Refuse `--vpn-only` on a tool with no VPN mode — the public
+     * infrastructure set (data, link, mail, meet, sso, support). Cannot rely
+     * on ensureVpnMiddleware() alone: it no-ops for null targets, which
+     * would let the tool's Ingress render its vpn-only annotation pointing
+     * at a Middleware CRD that is never created — breaking the whole router
+     * for every visitor, the exact bug `vpn:wire` exists to prevent (see
+     * plans/active/vpn-wire.md).
+     */
+    protected function assertVpnOnlySupported(ClusterTool $tool): bool
+    {
+        if ($tool->vpnMiddlewareTarget() !== null) {
+            return true;
+        }
+
+        $this->laraKubeError("'{$tool->value}' doesn't have a --vpn-only ingress mode.");
+
+        return false;
+    }
+
+    /**
      * Create (or idempotently re-apply) the Traefik ipAllowList Middleware a
      * tool's `--vpn-only` ingress annotation references — BEFORE that
      * ingress is ever applied. Without this, `{tool}:init --vpn-only` sets

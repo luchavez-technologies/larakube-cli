@@ -3,9 +3,11 @@
 namespace App\Commands\Uptime;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithUptime;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 
 use function Laravel\Prompts\table;
 
@@ -13,7 +15,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class UptimeShowCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithUptime, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithUptime, LaraKubeOutput, RefusesUnshippedTools;
 
     protected $signature = 'uptime:show
         {environment=local : Environment to show Uptime Kuma access for (resolves the Uptime Kuma host)}
@@ -23,6 +25,10 @@ class UptimeShowCommand extends Command
 
     public function handle(): int
     {
+        if ($this->refuseUnshippedTool(ClusterTool::UPTIME)) {
+            return 1;
+        }
+
         $this->renderHeader();
 
         $env = (string) $this->argument('environment');

@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
 
@@ -30,7 +31,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 abstract class AbstractToolShowCommand extends Command
 {
-    use DeploysClusterTool, LaraKubeOutput, ResolvesToolHost;
+    use DeploysClusterTool, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolHost;
 
     public function __construct()
     {
@@ -50,6 +51,11 @@ abstract class AbstractToolShowCommand extends Command
     public function handle(): int
     {
         $tool = $this->tool();
+
+        if ($this->refuseUnshippedTool($tool)) {
+            return 1;
+        }
+
         $env = (string) $this->argument('environment');
 
         if (! $this->option('json')) {
@@ -69,7 +75,7 @@ abstract class AbstractToolShowCommand extends Command
             return $this->handleAllInstances($tool, $env, $kubectl);
         }
 
-        $instance = $domain === '' || $domain === 'all' ? 'main' : $tool->instanceSlugFromHost($this->sanitizeDomainInput($domain));
+        $instance = $this->resolveInstanceForDomain($kubectl, $tool, $domain);
 
         // The registry is a convenience index, NOT the source of truth: only a
         // handful of {tool}:init commands ever call registerDeployedTool(), so

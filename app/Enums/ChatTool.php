@@ -11,16 +11,27 @@ use App\Contracts\HasMeetBridge;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 
 /** The vendor enum backing ClusterTool::CHAT — 'Team Chat'. Only Matrix today. */
-enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasMeetBridge, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasWhiteLabel, HasWorkloadComponents
+enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasMeetBridge, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
 {
     public function getLabel(): string
     {
         return 'Matrix';
+    }
+
+    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    {
+        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'chat-vpn-only' : "chat-vpn-only-{$instance}";
+
+        return [
+            'name' => $name,
+            'namespace' => 'larakube-shared',
+        ];
     }
 
     public function dbSecretRef(): ?array

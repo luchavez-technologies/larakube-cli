@@ -82,6 +82,10 @@ class MailInitCommand extends Command
         $ns = $this->mailNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::MAIL)) {
+            return 1;
+        }
+
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MAIL, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 

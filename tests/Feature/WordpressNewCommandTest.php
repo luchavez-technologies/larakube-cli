@@ -4,6 +4,8 @@ use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
+use App\Enums\PhpVersion;
+use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 use Illuminate\Contracts\Console\Kernel;
 
@@ -76,4 +78,42 @@ test('ConfigData accepts AppFramework::WORDPRESS framework', function () {
 
     expect($config->framework)->toBe(AppFramework::WORDPRESS);
     expect($config->framework->value)->toBe('wordpress');
+});
+
+// ── WordPress Server Variation (Dockerfile regression) ───────────────────────
+
+test('WordPress config pins the Nginx server variation so the Dockerfile renders', function () {
+    // Regression: wordpress:new built ConfigData without a serverVariation, so
+    // docker.php line 7 read ->value on null and scaffolding crashed before any
+    // manifests were generated. Plan §4b mandates the SSU fpm-nginx base image.
+    $config = new ConfigData;
+    $config->framework = AppFramework::WORDPRESS;
+    $config->phpVersion = PhpVersion::PHP_8_4;
+    $config->serverVariation = ServerVariation::FPM_NGINX;
+    $config->setName('wp');
+    $config->setDatabase(DatabaseDriver::MYSQL);
+    $config->setCacheDriver(CacheDriver::REDIS);
+    $config->setObjectStorage(StorageDriver::MINIO);
+
+    $rendered = view('docker.php', ['config' => $config])->render();
+
+    expect($rendered)->toContain('serversideup/php:8.4-fpm-nginx');
+    expect(ServerVariation::FPM_NGINX->value)->toBe('fpm-nginx');
+});
+
+// ── wp:new Alias Tests ───────────────────────────────────────────────────────
+
+test('wp:new alias is registered', function () {
+    $this->artisan('wp:new --help')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('wp:new');
+});
+
+test('wp:new alias has the same name and --fast options as wordpress:new', function () {
+    $kernel = app(Kernel::class);
+    $commands = $kernel->all();
+
+    expect($commands)->toHaveKey('wp:new');
+    expect($commands['wp:new']->getDefinition()->hasArgument('name'))->toBeTrue();
+    expect($commands['wp:new']->getDefinition()->hasOption('fast'))->toBeTrue();
 });

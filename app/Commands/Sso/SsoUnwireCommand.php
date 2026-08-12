@@ -11,6 +11,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
@@ -19,7 +20,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoUnwireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:unwire
         {environment=local : Environment whose tool SSO to unwire}
@@ -63,7 +64,7 @@ class SsoUnwireCommand extends Command
         $toolHost = $domainOption !== ''
             ? $this->sanitizeDomainInput($domainOption)
             : $this->targetHost($tool, $env, $config, $kubectl);
-        $instance = $toolHost !== null ? $tool->instanceSlugFromHost($toolHost) : 'main';
+        $instance = $toolHost !== null ? $this->resolveInstanceForDomain($kubectl, $tool, $toolHost) : 'main';
 
         $engine = $this->resolveInstanceEngine($kubectl, $tool, $instance, $this->option('engine'));
         $schema = $tool->oidcEnv($engine, $instance);
@@ -99,6 +100,9 @@ class SsoUnwireCommand extends Command
 
                 return null;
             }
+            if ($this->refuseUnshippedTool($tool)) {
+                return null;
+            }
 
             return $tool;
         }
@@ -110,7 +114,7 @@ class SsoUnwireCommand extends Command
         }
 
         $wired = [];
-        foreach (ClusterTool::cases() as $candidate) {
+        foreach (ClusterTool::shippedCases() as $candidate) {
             if ($candidate->hasSsoWire()) {
                 $wired[$candidate->value] = $candidate->getLabel();
             }
@@ -166,11 +170,9 @@ class SsoUnwireCommand extends Command
 
         if ($tool->usesCliOidc()) {
             $exec = "{$kubectl} exec deploy/{$schema['deployment']} -n {$schema['namespace']} -- su-exec git forgejo --config /data/gitea/conf/app.ini admin auth";
-            foreach (preg_split('/\R/', Process::run("{$exec} list")->output()) ?: [] as $line) {
-                if (preg_match('/^(\d+)\s+zitadel\b/', trim($line), $m) === 1) {
-                    $this->withSpin("Removing the Zitadel login source from {$tool->getLabel()}...", fn () => Process::run("{$exec} delete --id {$m[1]}")->successful());
-                    break;
-                }
+            $sourceId = $this->findForgejoOidcSourceId($exec);
+            if ($sourceId !== null) {
+                $this->withSpin("Removing the Zitadel login source from {$tool->getLabel()}...", fn () => Process::run("{$exec} delete --id {$sourceId}")->successful());
             }
 
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");

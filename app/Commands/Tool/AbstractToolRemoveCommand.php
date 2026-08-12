@@ -8,6 +8,7 @@ use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
@@ -35,7 +36,10 @@ use LaravelZero\Framework\Commands\Command;
  */
 abstract class AbstractToolRemoveCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolHost, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolHost, SyncsClusterSecrets;
+
+    /** The instance the teardown loop is currently removing; null outside handle(). */
+    protected ?string $currentInstance = null;
 
     public function __construct()
     {
@@ -57,21 +61,15 @@ abstract class AbstractToolRemoveCommand extends Command
 
     public function handle(): int
     {
-        $this->renderHeader();
-
         $tool = $this->tool();
-        $env = (string) $this->argument('environment');
-        $instance = $this->resolveInstance();
 
-        if ($instance !== 'main' && ! $tool->supportsMultipleInstances()) {
-            $this->laraKubeError(
-                "{$tool->getLabel()} does not support multiple instances — ".
-                '--domain would silently do nothing (or worse, a misleading partial removal) since its '.
-                'teardown targets fixed resource names. Omit --domain to remove the single installation.',
-            );
-
+        if ($this->refuseUnshippedTool($tool)) {
             return 1;
         }
+
+        $this->renderHeader();
+
+        $env = (string) $this->argument('environment');
 
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         // InteractsWithPlex talks to the Commons through its own kubectl; point
@@ -85,17 +83,42 @@ abstract class AbstractToolRemoveCommand extends Command
         $namespace = $tool->namespace();
         $isPurging = (bool) $this->option('purge');
 
+        // Every instance serving the targeted host — normally exactly one
+        // ('main' when --domain is omitted). A host registered under MORE
+        // than one instance is a duplicate-registration artifact (the DATA
+        // incident of 2026-08-09): removal means "take down everything
+        // serving this host", so all matching instances go.
+        $targets = $this->resolveInstanceTargets($kubectl);
+        foreach ($targets as $targetInstance) {
+            if ($targetInstance !== 'main' && ! $tool->supportsMultipleInstances()) {
+                $this->laraKubeError(
+                    "{$tool->getLabel()} does not support multiple instances — ".
+                    '--domain would silently do nothing (or worse, a misleading partial removal) since its '.
+                    'teardown targets fixed resource names. Omit --domain to remove the single installation.',
+                );
+
+                return 1;
+            }
+        }
+
         if (! $this->confirmDestructive($this->teardownWarning($env))) {
             return 0;
         }
 
         $ok = true;
 
-        if ($isPurging) {
-            $ok = $this->dropCommonsTenants($kubectl, $instance) && $ok;
-        }
+        foreach ($targets as $targetInstance) {
+            $this->currentInstance = $targetInstance;
 
-        $ok = $this->teardown($kubectl, $namespace) && $ok;
+            if ($isPurging) {
+                $ok = $this->dropCommonsTenants($kubectl, $targetInstance) && $ok;
+            }
+
+            $ok = $this->teardown($kubectl, $namespace) && $ok;
+
+            $this->unregisterTool($kubectl, $tool, $targetInstance);
+        }
+        $this->currentInstance = null;
 
         if (! $ok) {
             $this->laraKubeError(
@@ -105,8 +128,6 @@ abstract class AbstractToolRemoveCommand extends Command
 
             return 1;
         }
-
-        $this->unregisterTool($kubectl, $tool, $instance);
 
         if ($isPurging) {
             $this->laraKubeInfo("{$tool->getLabel()} removed from {$namespace} in '{$env}' (Commons database destroyed).");
@@ -123,19 +144,31 @@ abstract class AbstractToolRemoveCommand extends Command
     abstract protected function tool(): ClusterTool;
 
     /**
-     * Which instance to remove. --domain empty → 'main'; given → the same
-     * host-derived slug data:init/{tool}:init would have computed for it, so
-     * every step that needs the instance (the multi-instance guard above,
-     * dropCommonsTenants(), teardown(), unregisterTool()) picks it up
-     * automatically through this one seam. DataRemoveCommand overrides this
-     * to look the entry up by host instead — its registry lookup key isn't
-     * the slug, it's the host itself.
+     * Which instance(s) to remove. --domain empty → 'main'; given → every
+     * entry registered for that host (host identity wins, so a duplicate
+     * registration like the DATA 2026-08-09 incident tears down in one
+     * command — removal means "take down everything serving this host"),
+     * else the same host-derived slug {tool}:init would have computed.
+     *
+     * @return list<string>
      */
-    protected function resolveInstance(): string
+    protected function resolveInstanceTargets(string $kubectl): array
     {
-        $domain = (string) ($this->option('domain') ?: '');
+        return $this->resolveInstanceTargetsForDomain($kubectl, $this->tool(), (string) ($this->option('domain') ?: ''));
+    }
 
-        return $domain === '' ? 'main' : $this->tool()->instanceSlugFromHost($this->sanitizeDomainInput($domain));
+    /**
+     * The instance the current teardown step is targeting — the loop
+     * instance when handle() runs over several (duplicate-host removal),
+     * otherwise the first (derived/default) target.
+     */
+    protected function resolveInstance(string $kubectl): string
+    {
+        if ($this->currentInstance !== null) {
+            return $this->currentInstance;
+        }
+
+        return $this->resolveInstanceTargets($kubectl)[0];
     }
 
     /**

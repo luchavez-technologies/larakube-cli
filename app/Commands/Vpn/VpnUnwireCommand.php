@@ -7,6 +7,7 @@ use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
@@ -15,7 +16,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class VpnUnwireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput;
+    use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput, RefusesUnshippedTools;
 
     protected $signature = 'vpn:unwire
         {environment=local : Environment whose deployment to unwire}
@@ -99,11 +100,14 @@ class VpnUnwireCommand extends Command
 
                 return null;
             }
+            if ($this->refuseUnshippedTool($tool)) {
+                return null;
+            }
 
             return $tool;
         }
 
-        $capable = array_values(array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->vpnMiddlewareTarget() !== null));
+        $capable = array_values(array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->vpnMiddlewareTarget() !== null));
 
         $options = [];
         foreach ($capable as $t) {

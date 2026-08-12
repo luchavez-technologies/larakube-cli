@@ -69,9 +69,24 @@ class DataInitCommand extends Command
         $host = $domainOption !== ''
             ? $this->sanitizeDomainInput($domainOption)
             : $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl, 'main', $engineLabel);
-        $instance = ClusterTool::DATA->instanceSlugFromHost($host);
+
+        // Host identity wins over instance-name derivation (idempotency
+        // standard, see InteractsWithToolRegistry::resolveInstanceForDomain):
+        // a target already registered under any instance — 'main' included —
+        // re-targets THAT entry in place instead of spawning a derived
+        // duplicate slug. DATA's default host can be pocket.luchtech.dev
+        // while the service hostPrefix is 'data', so a plain re-run of
+        // data:init without --domain used to derive the slug
+        // 'pocket-luchtech-dev', deploy a SECOND PocketBase from scratch
+        // (data-pocketbase-{slug}) and register it as a duplicate row
+        // (confirmed live 2026-08-09).
+        $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::DATA, $domainOption);
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::DATA, $instance);
         $vpnOnly = (bool) $this->option('vpn-only');
+
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::DATA)) {
+            return 1;
+        }
 
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DATA, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');

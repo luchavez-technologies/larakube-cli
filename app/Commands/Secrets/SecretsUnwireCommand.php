@@ -8,6 +8,7 @@ use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesEnvironmentContext;
 use App\Traits\StreamsProcessOutput;
@@ -20,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SecretsUnwireCommand extends Command
 {
-    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesEnvironmentContext, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesEnvironmentContext, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'secrets:unwire
         {environment=local : Environment whose secrets to unwire}
@@ -74,7 +75,15 @@ class SecretsUnwireCommand extends Command
         $option = (string) ($this->option('tool') ?? '');
         if ($option !== '') {
             $tool = ClusterTool::tryFrom($option);
-            if ($tool === null || $tool->dbSecretRef() === null) {
+            if ($tool === null) {
+                $this->laraKubeError("Tool '{$option}' has no OpenBao DB static-role configuration.");
+
+                return [];
+            }
+            if ($this->refuseUnshippedTool($tool)) {
+                return [];
+            }
+            if ($tool->dbSecretRef() === null) {
                 $this->laraKubeError("Tool '{$option}' has no OpenBao DB static-role configuration.");
 
                 return [];
@@ -84,7 +93,7 @@ class SecretsUnwireCommand extends Command
         }
 
         $installed = [];
-        foreach (ClusterTool::cases() as $candidate) {
+        foreach (ClusterTool::shippedCases() as $candidate) {
             if ($candidate->dbSecretRef() === null) {
                 continue;
             }
