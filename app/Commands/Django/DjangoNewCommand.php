@@ -11,6 +11,7 @@ use App\Enums\StorageDriver;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -26,7 +27,7 @@ use Random\RandomException;
 
 class DjangoNewCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.

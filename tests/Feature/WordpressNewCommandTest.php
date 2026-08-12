@@ -82,6 +82,15 @@ test('ConfigData accepts AppFramework::WORDPRESS framework', function () {
 
 // ── WordPress Server Variation (Dockerfile regression) ───────────────────────
 
+test('wordpress:new wires the architectural engine used by scaffolding', function () {
+    // Regression: orchestrateProjectScaffolding() calls installComponents(),
+    // which lives in InteractsWithArchitecturalEngine. wordpress:new did not
+    // pull that trait in, so scaffolding crashed with a missing method.
+    $reflection = new ReflectionClass(App\Commands\Wordpress\WordpressNewCommand::class);
+
+    expect($reflection->getTraitNames())->toContain('App\Traits\InteractsWithArchitecturalEngine');
+});
+
 test('WordPress config pins the Nginx server variation so the Dockerfile renders', function () {
     // Regression: wordpress:new built ConfigData without a serverVariation, so
     // docker.php line 7 read ->value on null and scaffolding crashed before any
@@ -103,17 +112,16 @@ test('WordPress config pins the Nginx server variation so the Dockerfile renders
 
 // ── wp:new Alias Tests ───────────────────────────────────────────────────────
 
-test('wp:new alias is registered', function () {
-    $this->artisan('wp:new --help')
-        ->assertExitCode(0)
-        ->expectsOutputToContain('wp:new');
+test('wordpress:new exposes the wp:new alias', function () {
+    $kernel = app(Kernel::class);
+
+    expect($kernel->all())->toHaveKey('wp:new');
+    expect($kernel->all()['wp:new']->getName())->toBe('wordpress:new');
+    expect($kernel->all()['wordpress:new']->getAliases())->toContain('wp:new');
 });
 
-test('wp:new alias has the same name and --fast options as wordpress:new', function () {
-    $kernel = app(Kernel::class);
-    $commands = $kernel->all();
-
-    expect($commands)->toHaveKey('wp:new');
-    expect($commands['wp:new']->getDefinition()->hasArgument('name'))->toBeTrue();
-    expect($commands['wp:new']->getDefinition()->hasOption('fast'))->toBeTrue();
+test('wp:new alias resolves to the wordpress:new command', function () {
+    $this->artisan('wp:new --help')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('wordpress:new');
 });

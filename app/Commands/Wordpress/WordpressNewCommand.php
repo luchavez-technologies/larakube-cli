@@ -14,6 +14,7 @@ use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -30,7 +31,7 @@ use Random\RandomException;
 
 class WordpressNewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.
@@ -43,6 +44,13 @@ class WordpressNewCommand extends Command
      * The console command description.
      */
     protected $description = 'Scaffold a new WordPress (Bedrock) project with Kubernetes infrastructure';
+
+    /**
+     * Backward-compatible alias for those who prefer the shorthand.
+     *
+     * @var array<int, string>
+     */
+    protected $aliases = ['wp:new'];
 
     /**
      * Execute the console command.

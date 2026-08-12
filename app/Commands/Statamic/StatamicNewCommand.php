@@ -13,6 +13,7 @@ use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
@@ -30,7 +31,7 @@ use Random\RandomException;
 
 class StatamicNewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.
