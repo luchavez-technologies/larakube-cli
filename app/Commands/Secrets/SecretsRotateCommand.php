@@ -239,6 +239,7 @@ class SecretsRotateCommand extends Command
         }
 
         $deployment = $tool->deploymentName($instance, $engine);
+        Process::run("{$kubectl} annotate deployment {$deployment} -n {$ref['namespace']} reloader.stakater.com/auto=true --overwrite");
         $this->withSpin("Restarting {$tool->getLabel()} to pick up rotated password...", fn () => Process::run(
             "{$kubectl} rollout restart deployment/{$deployment} -n {$ref['namespace']}",
         ));

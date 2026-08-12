@@ -277,8 +277,10 @@ class SecretsWireCommand extends Command
             return false;
         }
 
+        $deployment = $tool->deploymentName($instance, $engine);
+        Process::run("{$kubectl} annotate deployment {$deployment} -n {$ref['namespace']} reloader.stakater.com/auto=true --overwrite");
         $this->withSpin("Restarting {$tool->getLabel()} to pick up the OpenBao-managed password...", fn () => Process::run(
-            "{$kubectl} rollout restart deployment/{$tool->deploymentName($instance, $engine)} -n {$ref['namespace']}",
+            "{$kubectl} rollout restart deployment/{$deployment} -n {$ref['namespace']}",
         ));
 
         $this->laraKubeInfo("✅ {$tool->getLabel()}'s DB password is now rotated by OpenBao every {$rotationPeriod}.");

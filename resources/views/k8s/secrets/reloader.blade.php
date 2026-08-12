@@ -10,8 +10,8 @@ metadata:
   name: reloader-reloader-role
 rules:
   - apiGroups: [""]
-    resources: ["secrets", "configmaps"]
-    verbs: ["get", "list", "watch"]
+    resources: ["secrets", "configmaps", "events"]
+    verbs: ["get", "list", "watch", "create", "patch"]
   - apiGroups: ["apps"]
     resources: ["deployments", "daemonsets", "statefulsets"]
     verbs: ["get", "list", "watch", "update", "patch"]
