@@ -10,6 +10,7 @@ use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasMeetBridge;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
+use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
@@ -17,7 +18,7 @@ use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 
 /** The vendor enum backing ClusterTool::CHAT — 'Team Chat'. Only Matrix today. */
-enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasMeetBridge, HasOidcWiring, HasOpenbaoSync, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
+enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasMeetBridge, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
 {
     public function getLabel(): string
     {

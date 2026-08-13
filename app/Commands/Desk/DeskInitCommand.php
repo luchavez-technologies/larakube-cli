@@ -150,21 +150,17 @@ class DeskInitCommand extends Command
 
     protected function resolveAdminEmail(string $host): string
     {
-        $explicit = (string) ($this->option('admin-email') ?? '');
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
         $default = 'admin@'.$this->deskDomain($host);
 
-        if ($this->option('no-interaction')) {
-            return $default;
-        }
-
-        return text(
-            label: 'Admin email for the FreeScout account',
-            default: $default,
-            required: true,
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => text(
+                label: 'Admin email for the FreeScout account',
+                default: $default,
+                required: true,
+            ),
+            purpose: 'Admin email for FreeScout',
+            example: "--admin-email={$default}",
         );
     }
 

@@ -3,15 +3,21 @@
 namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasWhiteLabel;
 
 /** The single vendor backing the SUPPORT category — 'Customer Support'. Only Chatwoot. */
-final class SupportTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring, HasWhiteLabel
+final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring, HasWhiteLabel
 {
     public function getLabel(): string
+    {
+        return 'Chatwoot';
+    }
+
+    public function adminEmailLabel(): string
     {
         return 'Chatwoot';
     }

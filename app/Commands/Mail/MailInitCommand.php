@@ -19,6 +19,7 @@ use App\Traits\InteractsWithStalwartApi;
 use App\Traits\InteractsWithTraefik;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesCloudFirewall;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -33,7 +34,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, LaraKubeOutput, ManagesCloudFirewall, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, LaraKubeOutput, ManagesCloudFirewall, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'mail:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -41,6 +42,7 @@ class MailInitCommand extends Command
         {--domain=   : Base domain OR full host for Stalwart (example.com → prefix.example.com)}
         {--alias=*    : Additional domain alias(es) to register on the Ingress}
         {--instance=main : Named instance identifier (default: main)}
+        {--admin-email= : Primary postmaster / admin email address for Stalwart}
         {--vpn-only  : Restrict the admin UI via NetBird VPN IP whitelisting}
         {--host-port : Bind mail ports directly to the node (default on single-node k3s)}
         {--no-host-port : Skip hostPort — use on managed K8s with a real LoadBalancer}
@@ -94,17 +96,19 @@ class MailInitCommand extends Command
 
         // Stalwart is self-contained (embedded RocksDB store on its PVC) — no Commons.
         // Keep the admin password stable across re-runs by reading it back.
+        $adminEmail = $this->readMailSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
         $adminPassword = $this->readMailSecret($kubectl, $ns, 'admin-password') ?? Str::random(24);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $adminEmail) {
             Process::run(
                 "{$kubectl} create secret generic mail-secrets -n {$ns} "
                 .'--from-literal=recovery-admin='.escapeshellarg('admin:'.$adminPassword).' '
                 .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
+                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
         });
@@ -217,7 +221,7 @@ class MailInitCommand extends Command
 
         $this->printPlexHint($kubectl, $host);
 
-        $this->registerDeployedTool(ClusterTool::MAIL, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::MAIL, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->offerWebmail($env);
 
@@ -410,5 +414,23 @@ class MailInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::MAIL);
+    }
+
+    /** Resolve the admin email for Stalwart Mail */
+    protected function resolveAdminEmail(string $host): string
+    {
+        $parts = explode('.', $host);
+        $default = 'admin@'.(count($parts) >= 2 ? implode('.', array_slice($parts, 1)) : $host);
+
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => \Laravel\Prompts\text(
+                label: 'Primary postmaster / admin email address for Stalwart',
+                default: $default,
+                required: true,
+            ),
+            purpose: 'Primary postmaster / admin email address for Stalwart',
+            example: "--admin-email={$default}",
+        );
     }
 }

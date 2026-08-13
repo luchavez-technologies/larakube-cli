@@ -26,6 +26,9 @@ Whenever you modify the LaraKube CLI codebase, you **must** proactively run test
 
 **CRITICAL RULE FOR AI AGENTS**: You are STRICTLY FORBIDDEN from running the `./build` command. When a build is required to update the global binary, you must tell the user to run `./build` and wait for them to do it.
 
+### 🎨 CLI Interactivity & Flag Safety Standard
+- **No Silent Defaulting**: Parameters requiring operator decision (like `--admin-email`) MUST use `RequiresFlagsWhenNonInteractive::flagOrPrompt()`. In non-interactive environments without the flag, the command MUST throw `MissingFlagException` rather than guessing a default.
+
 ### 🔁 Idempotency & Safety Standard
 - **Mandatory Idempotency**: Users are expected to commit mistakes and re-run commands when retrying, troubleshooting, or automating. EVERY CLI command (`*:init`, `*:wire`, `*:add`) MUST be strictly **idempotent**.
 - **Credentials & State**: Initializers MUST read existing credentials (admin passwords, database keys, secrets) from the cluster or OpenBao before falling back to generating new random values. Re-runs MUST NEVER wipe databases or break existing connection state.

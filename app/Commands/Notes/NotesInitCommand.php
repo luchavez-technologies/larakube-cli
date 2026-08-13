@@ -16,6 +16,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -30,7 +31,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class NotesInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithNotes, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithNotes, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     /** How Outline's OIDC credentials were resolved this run, for the summary. */
     protected string $oidcSource = 'existing';
@@ -40,6 +41,7 @@ class NotesInitCommand extends Command
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Outline (example.com → prefix.example.com). Omit to target/update the default instance; pass a different host to deploy an ADDITIONAL instance there — the host you give IS its identity}
         {--alias=*    : Additional domain alias(es) to register on this instance\'s Ingress}
+        {--admin-email= : Primary administrator email for Outline}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
@@ -136,6 +138,7 @@ class NotesInitCommand extends Command
         $s3Endpoint = $this->resolveCommonsS3Endpoints($driver, 'Outline')['public'];
 
         // Stable secrets across re-runs — rotating these invalidates sessions.
+        $adminEmail = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'admin-email') ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'db-password') ?? Str::random(24);
         $secretKey = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'secret-key') ?? bin2hex(random_bytes(32));
         $utilsSecret = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'utils-secret') ?? bin2hex(random_bytes(32));
@@ -206,6 +209,7 @@ class NotesInitCommand extends Command
         $this->registerTool($kubectl, ClusterTool::NOTES, [
             'host' => $host,
             'aliases' => $aliasHosts,
+            'extra' => ['adminEmail' => $adminEmail],
         ], $instance);
 
         $this->laraKubeNewLine();
@@ -382,5 +386,23 @@ class NotesInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::NOTES);
+    }
+
+    /** Resolve the admin email for Outline */
+    protected function resolveAdminEmail(string $host): string
+    {
+        $parts = explode('.', $host);
+        $default = 'admin@'.(count($parts) >= 2 ? implode('.', array_slice($parts, 1)) : $host);
+
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => \Laravel\Prompts\text(
+                label: 'Primary administrator email for Outline',
+                default: $default,
+                required: true,
+            ),
+            purpose: 'Primary administrator email for Outline',
+            example: "--admin-email={$default}",
+        );
     }
 }

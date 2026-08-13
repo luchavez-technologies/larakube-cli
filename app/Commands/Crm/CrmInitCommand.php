@@ -12,6 +12,7 @@ use App\Traits\InteractsWithCrm;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -22,12 +23,13 @@ use LaravelZero\Framework\Commands\Command;
 
 class CrmInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithCrm, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithCrm, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'crm:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for CRM (example.com → prefix.example.com)}
+        {--admin-email= : Primary admin email for Twenty CRM}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
@@ -61,6 +63,7 @@ class CrmInitCommand extends Command
             return 1;
         }
 
+        $adminEmail = $this->readCrmSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readCrmSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         $accessTokenSecret = $this->readCrmSecret($kubectl, $ns, 'access-token-secret') ?? bin2hex(random_bytes(32));
         $loginTokenSecret = $this->readCrmSecret($kubectl, $ns, 'login-token-secret') ?? bin2hex(random_bytes(32));
@@ -79,13 +82,14 @@ class CrmInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $accessTokenSecret, $loginTokenSecret, $refreshTokenSecret, $fileTokenSecret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $accessTokenSecret, $loginTokenSecret, $refreshTokenSecret, $fileTokenSecret, $adminEmail) {
             $cmd = "{$kubectl} create secret generic crm-twenty-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=access-token-secret='.escapeshellarg($accessTokenSecret).' '
                 .'--from-literal=login-token-secret='.escapeshellarg($loginTokenSecret).' '
                 .'--from-literal=refresh-token-secret='.escapeshellarg($refreshTokenSecret).' '
                 .'--from-literal=file-token-secret='.escapeshellarg($fileTokenSecret).' '
+                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -";
             Process::run($cmd);
         });
@@ -112,14 +116,15 @@ class CrmInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::CRM, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::CRM, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Twenty CRM stack is live.');
         $this->newLine();
-        $this->line("  <fg=gray>Access URL:</>  <fg=blue>https://{$host}</>");
-        $this->line("  <fg=gray>Database:</>    <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
-        $this->line("  <fg=gray>Redis DB:</>    <fg=blue>{$redisIndex}</>");
+        $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
+        $this->line("  <fg=gray>Admin Email:</>             {$adminEmail}");
+        $this->line("  <fg=gray>Database:</>                <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
+        $this->line("  <fg=gray>Redis DB:</>                <fg=blue>{$redisIndex}</>");
         $this->newLine();
 
         return 0;
@@ -128,5 +133,23 @@ class CrmInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::CRM);
+    }
+
+    /** Resolve the admin email for Twenty CRM */
+    protected function resolveAdminEmail(string $host): string
+    {
+        $parts = explode('.', $host);
+        $default = 'admin@'.(count($parts) >= 2 ? implode('.', array_slice($parts, 1)) : $host);
+
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => \Laravel\Prompts\text(
+                label: 'Primary admin email for Twenty CRM',
+                default: $default,
+                required: true,
+            ),
+            purpose: 'Primary admin email for Twenty CRM',
+            example: "--admin-email={$default}",
+        );
     }
 }

@@ -3,15 +3,21 @@
 namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 
 /** The single vendor backing the INSIGHTS category — 'Business Intelligence'. Only Metabase. */
-final class InsightTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasVpnWiring, HasWhiteLabel
+final class InsightTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDeploymentBaseName, HasVpnWiring, HasWhiteLabel
 {
     public function getLabel(): string
+    {
+        return 'Metabase';
+    }
+
+    public function adminEmailLabel(): string
     {
         return 'Metabase';
     }

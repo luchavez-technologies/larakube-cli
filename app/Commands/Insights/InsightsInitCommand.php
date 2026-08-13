@@ -12,6 +12,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithInsights;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
@@ -23,7 +24,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class InsightsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithInsights, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'insights:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -31,6 +32,7 @@ class InsightsInitCommand extends Command
         {--domain=   : Base domain OR full host for Insights (example.com → prefix.example.com)}
         {--app-name= : Custom branding name for Metabase (defaults to Insights)}
         {--logo-url= : Custom logo URL for Metabase}
+        {--admin-email= : Primary administrator email for Metabase}
         {--no-plex   : Bypass Plex Commons and deploy a dedicated database}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
@@ -68,6 +70,7 @@ class InsightsInitCommand extends Command
             }
         }
 
+        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, 'insights-secrets', 'admin-email') ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readInsightsDbPassword($kubectl, $ns) ?? Str::random(24);
         $encryptionKey = $this->readInsightsEncryptionKey($kubectl, $ns) ?? Str::random(64);
 
@@ -81,11 +84,12 @@ class InsightsInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $encryptionKey) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $encryptionKey, $adminEmail) {
             Process::run(
                 "{$kubectl} create secret generic insights-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=encryption-key='.escapeshellarg($encryptionKey).' '
+                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
         });
@@ -117,12 +121,13 @@ class InsightsInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::INSIGHTS, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::INSIGHTS, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Insights (Metabase) stack is live.');
         $this->newLine();
         $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
+        $this->line("  <fg=gray>Admin Email:</>             {$adminEmail}");
         $this->newLine();
 
         return 0;
@@ -136,5 +141,23 @@ class InsightsInitCommand extends Command
     protected function readInsightsEncryptionKey(string $kubectl, string $ns): ?string
     {
         return $this->readClusterSecretKey($kubectl, $ns, 'insights-secrets', 'encryption-key');
+    }
+
+    /** Resolve the admin email for Metabase */
+    protected function resolveAdminEmail(string $host): string
+    {
+        $parts = explode('.', $host);
+        $default = 'admin@'.(count($parts) >= 2 ? implode('.', array_slice($parts, 1)) : $host);
+
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => \Laravel\Prompts\text(
+                label: 'Primary administrator email for Metabase',
+                default: $default,
+                required: true,
+            ),
+            purpose: 'Primary administrator email for Metabase',
+            example: "--admin-email={$default}",
+        );
     }
 }

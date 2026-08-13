@@ -14,6 +14,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -28,7 +29,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DataInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'data:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -36,6 +37,7 @@ class DataInitCommand extends Command
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Data (example.com → prefix.example.com). Omit to target/update the default instance; pass a different host to deploy an ADDITIONAL instance there — the host you give IS its identity}
         {--alias=*    : Additional domain alias(es) to register on this instance\'s Ingress}
+        {--admin-email= : Email for the primary admin account}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG_DEFAULT_ON;
 
@@ -114,7 +116,7 @@ class DataInitCommand extends Command
 
         $parts = explode('.', $host);
         $domain = count($parts) > 2 ? implode('.', array_slice($parts, 1)) : $host;
-        $adminEmail = $this->readDataSecret($kubectl, $ns, 'admin-email', $instance) ?? "admin@{$domain}";
+        $adminEmail = $this->readDataSecret($kubectl, $ns, 'admin-email', $instance) ?? $this->resolveAdminEmail($host, $engineLabel);
 
         // PocketBase owns no Commons bucket — its storage is a PVC (embedded
         // SQLite + local disk), not S3 — so $bucket is only ever meaningful
@@ -339,6 +341,24 @@ class DataInitCommand extends Command
                 'directus' => 'Directus — Full Postgres + Redis + S3 Headless CMS stack',
             ],
             default: 'pocketbase',
+        );
+    }
+
+    /** Resolve the admin email for Data (Directus / PocketBase) */
+    protected function resolveAdminEmail(string $host, string $toolLabel = 'Data'): string
+    {
+        $parts = explode('.', $host);
+        $default = 'admin@'.(count($parts) >= 2 ? implode('.', array_slice($parts, 1)) : $host);
+
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => \Laravel\Prompts\text(
+                label: "Admin email for {$toolLabel}",
+                default: $default,
+                required: true,
+            ),
+            purpose: "Admin email for {$toolLabel}",
+            example: "--admin-email={$default}",
         );
     }
 }

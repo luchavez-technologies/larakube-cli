@@ -32,17 +32,17 @@ test('chat:init --app-name injects Nginx sub_filter for Cinny app title', functi
 });
 
 test('git:init --app-name sets FORGEJO__ui__APP_NAME', function () {
-    $this->artisan('git:init local --no-plex --app-name="Acme Forge" --no-interaction')
+    $this->artisan('git:init local --no-plex --app-name="Acme Forge" --admin-email=admin@example.com --no-interaction')
         ->assertExitCode(0);
 });
 
 test('support:init --app-name sets Chatwoot INSTALLATION_NAME and BRAND_NAME', function () {
-    $this->artisan('support:init local --app-name="Acme Support" --no-interaction')
+    $this->artisan('support:init local --app-name="Acme Support" --admin-email=admin@example.com --no-interaction')
         ->assertExitCode(0);
 });
 
 test('errors:init --app-name sets GlitchTip GLITCHTIP_INSTANCE_NAME', function () {
-    $this->artisan('errors:init local --no-plex --app-name="Acme Errors" --no-interaction')
+    $this->artisan('errors:init local --no-plex --app-name="Acme Errors" --admin-email=admin@example.com --no-interaction')
         ->assertExitCode(0);
 });
 
@@ -52,7 +52,7 @@ test('link:init --app-name sets Kutt SITE_NAME', function () {
 });
 
 test('insights:init --app-name sets Metabase MB_SITE_NAME', function () {
-    $this->artisan('insights:init local --no-plex --app-name="Acme BI" --no-interaction')
+    $this->artisan('insights:init local --no-plex --app-name="Acme BI" --admin-email=admin@example.com --no-interaction')
         ->assertExitCode(0);
 });
 

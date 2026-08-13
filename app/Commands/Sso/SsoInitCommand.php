@@ -16,6 +16,7 @@ use App\Traits\InteractsWithSecrets;
 use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -30,7 +31,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SsoInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'sso:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -226,22 +227,18 @@ class SsoInitCommand extends Command
      */
     protected function resolveAdminEmail(string $host): string
     {
-        $explicit = trim((string) ($this->option('admin-email') ?? ''));
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
         $default = GlobalConfigData::load()->getEmail() ?: 'admin@'.$host;
 
-        if ($this->option('no-interaction')) {
-            return $default;
-        }
-
-        return text(
-            label: 'Admin email for the Zitadel console login',
-            default: $default,
-            required: true,
-            validate: fn (string $v) => str_contains($v, '@') ? null : 'Enter a valid email address.',
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => text(
+                label: 'Console admin email for Zitadel',
+                default: $default,
+                required: true,
+                validate: fn (string $v) => str_contains($v, '@') ? null : 'Enter a valid email address.',
+            ),
+            purpose: 'Console admin email for Zitadel',
+            example: "--admin-email={$default}",
         );
     }
 

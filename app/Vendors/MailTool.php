@@ -3,6 +3,7 @@
 namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasClusterSecretDbKey;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
@@ -17,9 +18,14 @@ use App\Enums\ClusterToolComponentRole;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the MAIL category — 'Mail Server'. Only Stalwart. */
-final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasToolAccessDetails, HasWorkloadComponents
+final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasToolAccessDetails, HasWorkloadComponents
 {
     public function getLabel(): string
+    {
+        return 'Stalwart';
+    }
+
+    public function adminEmailLabel(): string
     {
         return 'Stalwart';
     }

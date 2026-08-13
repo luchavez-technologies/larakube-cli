@@ -8,11 +8,12 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasSsoLicenseCaveat;
 
 /** The vendor enum backing ClusterTool::DATA — 'Headless CMS & Data API'. */
-enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasSmtpWiring, HasSsoLicenseCaveat
+enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasSsoLicenseCaveat
 {
     public function getLabel(): string
     {

@@ -12,14 +12,24 @@ use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasVpnWiring;
 
 /** The single vendor backing the RESUME category — 'Resume Builder'. Only Reactive Resume. */
-final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
+final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring
 {
     public function getLabel(): string
     {
         return 'Reactive Resume';
+    }
+
+    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    {
+        return [
+            ['Database', 'reactiveresume (Commons Postgres)'],
+            ['S3 Storage', 'reactive-resume-storage (Commons SeaweedFS)'],
+            ['Auth', 'Zitadel OIDC / Native Auth'],
+        ];
     }
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array

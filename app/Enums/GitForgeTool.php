@@ -3,6 +3,7 @@
 namespace App\Enums;
 
 use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
@@ -10,6 +11,7 @@ use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
+use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasVpnWiring;
@@ -20,9 +22,14 @@ use App\Data\ClusterToolComponentData;
 use Illuminate\Support\Facades\Process;
 
 /** The vendor enum backing ClusterTool::GIT — 'Git Forge & CI/CD'. Only Forgejo today; a future alternative would add a case here. */
-enum GitForgeTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents, UsesCliOidc
+enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents, UsesCliOidc
 {
     public function getLabel(): string
+    {
+        return 'Forgejo';
+    }
+
+    public function adminEmailLabel(): string
     {
         return 'Forgejo';
     }

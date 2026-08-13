@@ -1,7 +1,15 @@
 <?php
 
 use App\Exceptions\MissingFlagException;
+use App\Traits\InteractsWithToolRegistry;
 use Illuminate\Support\Facades\Process;
+
+uses(InteractsWithToolRegistry::class);
+
+beforeEach(function () {
+    @unlink(getcwd().'/.larakube.local.json');
+    @unlink(getcwd().'/.larakube.json');
+});
 
 test('data:init --engine=pocketbase deploys pocketbase stack and creates pvc', function () {
     Process::fake([
@@ -12,7 +20,7 @@ test('data:init --engine=pocketbase deploys pocketbase stack and creates pvc', f
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=pocketbase --force')
+    $this->artisan('data:init local --engine=pocketbase --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying PocketBase manifests...')
         ->expectsOutputToContain('PocketBase Data / Headless CMS stack is live.');
@@ -27,7 +35,7 @@ test('data:init uses engine label override when prompting for host', function ()
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init production --domain=pocket.luchtech.dev --engine=pocketbase --force')
+    $this->artisan('data:init production --domain=pocket.luchtech.dev --engine=pocketbase --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying PocketBase manifests...')
         ->expectsOutputToContain('PocketBase Data / Headless CMS stack is live.');
@@ -46,7 +54,7 @@ test('data:init --engine=directus deploys directus stack using commons postgres'
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=directus --force')
+    $this->artisan('data:init local --engine=directus --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Directus manifests...')
         ->expectsOutputToContain('Directus Data / Headless CMS stack is live.');
@@ -77,7 +85,7 @@ test('data:init records which engine an instance runs in the cluster registry', 
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=pocketbase --force')->assertExitCode(0);
+    $this->artisan('data:init local --engine=pocketbase --admin-email=admin@example.com --force')->assertExitCode(0);
 
     expect($captured)->not->toBeNull();
     $dataEntry = collect($captured)->firstWhere('tool', 'data');
@@ -114,11 +122,13 @@ test('data:init without --domain re-targets the existing main instance even when
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init production --engine=pocketbase --force --no-interaction')->assertExitCode(0);
+    $this->artisan('data:init production --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Applying PocketBase manifests...');
 
     // The manifest applied must be main's (data-pocketbase), not a slug instance's.
-    Process::assertRan(fn ($p) => str_contains($p->command, 'larakube-data-pocketbase.yaml'))
-        ->assertNotRan(fn ($p) => str_contains($p->command, 'larakube-data-pocketbase-pocket-luchtech-dev.yaml'));
+    Process::assertRan(fn ($p) => str_contains((string) $p->command, 'data-pocketbase'))
+        ->assertNotRan(fn ($p) => str_contains((string) $p->command, 'data-pocketbase-pocket-luchtech-dev'));
 
     $dataEntries = collect($captured ?? [])->where('tool', 'data');
     expect($dataEntries)->toHaveCount(1)
@@ -141,7 +151,7 @@ test('data:init --domain resolves a distinct instance from the given host, not m
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=pocketbase --domain=blog.example.com --force')
+    $this->artisan('data:init local --engine=pocketbase --domain=blog.example.com --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('https://blog.example.com')
         ->doesntExpectOutputToContain('https://data.');
@@ -156,7 +166,7 @@ test('data:init --alias registers an additional hostname on the same instance\'s
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=pocketbase --alias=alt.example.com --force')
+    $this->artisan('data:init local --engine=pocketbase --alias=alt.example.com --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('https://alt.example.com');
 });

@@ -3,17 +3,23 @@
 namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 
 /** The single vendor backing the CRM category — 'CRM'. Only Twenty. */
-final class CrmTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring, HasVpnWiring
+final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring, HasVpnWiring
 {
     public function getLabel(): string
     {
         return 'Twenty';
+    }
+
+    public function adminEmailLabel(): string
+    {
+        return 'Twenty CRM';
     }
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array

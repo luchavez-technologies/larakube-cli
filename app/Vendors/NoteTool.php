@@ -3,6 +3,7 @@
 namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
@@ -15,9 +16,14 @@ use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 
 /** The single vendor backing the NOTES category — 'Team Wiki & Knowledge Base'. Only Outline. */
-final class NoteTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
+final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
 {
     public function getLabel(): string
+    {
+        return 'Outline';
+    }
+
+    public function adminEmailLabel(): string
     {
         return 'Outline';
     }

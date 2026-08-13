@@ -12,6 +12,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSupport;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
@@ -23,7 +24,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SupportInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'support:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -31,6 +32,7 @@ class SupportInitCommand extends Command
         {--domain=   : Base domain OR full host for Support (example.com → prefix.example.com)}
         {--app-name= : Custom branding name for Chatwoot (defaults to Support)}
         {--logo-url= : Custom logo URL for Chatwoot}
+        {--admin-email= : Primary admin email for Chatwoot}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
@@ -69,6 +71,7 @@ class SupportInitCommand extends Command
             return 1;
         }
 
+        $adminEmail = $this->readSupportSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readSupportSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         $secretKeyBase = $this->readSupportSecret($kubectl, $ns, 'secret-key-base') ?? bin2hex(random_bytes(32));
 
@@ -84,10 +87,11 @@ class SupportInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKeyBase) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKeyBase, $adminEmail) {
             $cmd = "{$kubectl} create secret generic support-chatwoot-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=secret-key-base='.escapeshellarg($secretKeyBase).' '
+                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -";
             Process::run($cmd);
         });
@@ -118,14 +122,15 @@ class SupportInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::SUPPORT, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::SUPPORT, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Chatwoot support stack is live.');
         $this->newLine();
-        $this->line("  <fg=gray>Access URL:</>  <fg=blue>https://{$host}</>");
-        $this->line("  <fg=gray>Database:</>    <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
-        $this->line("  <fg=gray>Redis DB:</>    <fg=blue>{$redisIndex}</>");
+        $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
+        $this->line("  <fg=gray>Admin Email:</>             {$adminEmail}");
+        $this->line("  <fg=gray>Database:</>                <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
+        $this->line("  <fg=gray>Redis DB:</>                <fg=blue>{$redisIndex}</>");
         $this->newLine();
 
         return 0;
@@ -134,5 +139,23 @@ class SupportInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::SUPPORT);
+    }
+
+    /** Resolve the admin email for Chatwoot */
+    protected function resolveAdminEmail(string $host): string
+    {
+        $parts = explode('.', $host);
+        $default = 'admin@'.(count($parts) >= 2 ? implode('.', array_slice($parts, 1)) : $host);
+
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => \Laravel\Prompts\text(
+                label: 'Primary admin email for Chatwoot',
+                default: $default,
+                required: true,
+            ),
+            purpose: 'Primary admin email for Chatwoot',
+            example: "--admin-email={$default}",
+        );
     }
 }

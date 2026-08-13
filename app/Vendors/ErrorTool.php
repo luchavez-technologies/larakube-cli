@@ -3,6 +3,7 @@
 namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
@@ -12,9 +13,14 @@ use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the ERRORS category — 'Error Tracking'. Only GlitchTip. */
-final class ErrorTool implements ClusterToolVendor, HasCommonsDatabases, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
+final class ErrorTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
 {
     public function getLabel(): string
+    {
+        return 'GlitchTip';
+    }
+
+    public function adminEmailLabel(): string
     {
         return 'GlitchTip';
     }

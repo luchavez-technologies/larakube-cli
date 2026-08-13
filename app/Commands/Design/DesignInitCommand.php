@@ -14,6 +14,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReconcilesPenpotFlags;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -25,12 +26,13 @@ use LaravelZero\Framework\Commands\Command;
 
 class DesignInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesign, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ReconcilesPenpotFlags, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesign, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ReconcilesPenpotFlags, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'design:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--context=      : Target a specific kube-context}
         {--domain=       : Base domain OR full host for Penpot (example.com → prefix.example.com)}
+        {--admin-email=  : Primary administrator email for Penpot}
         {--with-exporter : Also deploy the Penpot Exporter (Playwright/Chromium) container for PDF/PNG exports}
         {--vpn-only      : Restrict access via NetBird VPN IP whitelisting}
         {--force         : Skip the confirmation prompt}'.self::PROXIED_FLAG;
@@ -114,6 +116,7 @@ class DesignInitCommand extends Command
         $dbName = ClusterTool::DESIGN->commonsDatabases($instance)[0];
         $dbUser = $dbName;
 
+        $adminEmail = $this->readDesignSecret($kubectl, $ns, 'admin-email', $instance) ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readDesignSecret($kubectl, $ns, 'password', $instance) ?? Str::random(24);
         $secretKey = $this->readDesignSecret($kubectl, $ns, 'secret-key', $instance) ?? bin2hex(random_bytes(32));
 
@@ -201,14 +204,15 @@ class DesignInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::DESIGN, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::DESIGN, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Penpot design & prototyping suite is live.');
         $this->newLine();
-        $this->line("  <fg=gray>Access URL:</>  <fg=blue>https://{$host}</>");
-        $this->line("  <fg=gray>Database:</>    <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
-        $this->line('  <fg=gray>Storage:</>     <fg=blue>Commons S3</> · Bucket <fg=blue>'.$s3Bucket.'</>');
+        $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
+        $this->line("  <fg=gray>Admin Email:</>             {$adminEmail}");
+        $this->line("  <fg=gray>Database:</>                <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
+        $this->line('  <fg=gray>Storage:</>                 <fg=blue>Commons S3</> · Bucket <fg=blue>'.$s3Bucket.'</>');
         $this->newLine();
 
         return 0;
@@ -231,5 +235,23 @@ class DesignInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::DESIGN);
+    }
+
+    /** Resolve the admin email for Penpot */
+    protected function resolveAdminEmail(string $host): string
+    {
+        $parts = explode('.', $host);
+        $default = 'admin@'.(count($parts) >= 2 ? implode('.', array_slice($parts, 1)) : $host);
+
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => \Laravel\Prompts\text(
+                label: 'Primary administrator email for Penpot',
+                default: $default,
+                required: true,
+            ),
+            purpose: 'Primary administrator email for Penpot',
+            example: "--admin-email={$default}",
+        );
     }
 }

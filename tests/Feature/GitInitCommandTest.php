@@ -20,7 +20,7 @@ test('git:init deploys gitea using plex commons seaweedfs by default', function 
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('git:init local --no-interaction')
+    $this->artisan('git:init local --no-interaction --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Creating object-storage bucket')
         ->expectsOutputToContain('Applying Forgejo core manifests...')
@@ -37,12 +37,25 @@ test('git:init deploys standalone gitea when --no-plex is passed', function () {
         '*exec *' => Process::result(output: 'success'),
     ]);
 
-    $this->artisan('git:init local --no-plex --no-interaction')
+    $this->artisan('git:init local --no-plex --no-interaction --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Forgejo core manifests...')
         ->expectsOutputToContain('Initializing Forgejo admin user...')
         ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 });
+
+test('git:init fails when --admin-email is missing in non-interactive mode', function () {
+    Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['seaweedfs' => ['enabled' => true]],
+        ]),
+        '*get secret plex-admin*' => base64_encode('test-cred'),
+        '*exec *' => Process::result(output: 'success'),
+    ]);
+
+    $this->artisan('git:init local --no-interaction');
+})->throws(App\Exceptions\MissingFlagException::class, 'Missing required --admin-email');
 
 test('git:init registers itself in the cluster tool registry, including the admin email', function () {
     // Regression guard: git:init's only registry write was an incidental

@@ -409,22 +409,18 @@ class GitInitCommand extends Command
      */
     protected function resolveAdminEmail(string $host): string
     {
-        $explicit = trim((string) ($this->option('admin-email') ?? ''));
-        if ($explicit !== '') {
-            return $explicit;
-        }
-
         $parts = explode('.', $host);
         $default = 'admin@'.(count($parts) >= 2 ? implode('.', array_slice($parts, 1)) : $host);
 
-        if ($this->cannotPrompt()) {
-            return $default;
-        }
-
-        return (string) text(
-            label: 'Admin email for the Forgejo account',
-            default: $default,
-            required: true,
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => text(
+                label: 'Admin email for the Forgejo account',
+                default: $default,
+                required: true,
+            ),
+            purpose: 'Admin email for Forgejo',
+            example: "--admin-email={$default}",
         );
     }
 

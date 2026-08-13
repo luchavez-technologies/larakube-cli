@@ -12,6 +12,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithTasks;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -22,7 +23,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class TasksInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithTasks, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithTasks, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'tasks:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -109,8 +110,8 @@ class TasksInitCommand extends Command
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Planka tasks stack is live.');
         $this->newLine();
-        $this->line("  <fg=gray>Access URL:</>  <fg=blue>https://{$host}</>");
-        $this->line("  <fg=gray>Database:</>    <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
+        $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
+        $this->line("  <fg=gray>Database:</>                <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
         $this->newLine();
 
         return 0;

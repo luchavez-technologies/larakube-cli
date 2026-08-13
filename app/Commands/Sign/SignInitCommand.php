@@ -13,6 +13,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSign;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -24,7 +25,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SignInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSign, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSign, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'sign:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -130,11 +131,6 @@ class SignInitCommand extends Command
                 if ($this->databaseEngineMounted($kubectl)) {
                     $this->registerStaticRole($kubectl, $dbName);
 
-                    // registerStaticRole() rotates the password as a side
-                    // effect the instant a role is FIRST created — the
-                    // literal $dbPassword the Secret above already has is
-                    // stale from that moment on. Same class of bug that
-                    // desynced Zitadel, confirmed live 2026-08-02.
                     $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
                         Process::run(
@@ -148,14 +144,6 @@ class SignInitCommand extends Command
                 $this->pushClusterSecret($kubectl, 'SIGN_NEXTAUTH_SECRET', $nextauthSecret, $clusterEnv);
                 $this->pushClusterSecret($kubectl, 'SIGN_ENCRYPTION_KEY', $encryptionKey, $clusterEnv);
                 $this->pushClusterSecret($kubectl, 'SIGN_ENCRYPTION_SECONDARY_KEY', $encryptionSecondaryKey, $clusterEnv);
-                // NOT syncClusterSecretToNamespace() here — same bug that
-                // took down Zitadel (confirmed live 2026-08-02): it extracts
-                // KV path "{env}" as one object, but every value above is at
-                // the deeper "{env}/{KEY}" path, so it always syncs empty
-                // and, as an Owner-mode ExternalSecret with a 1m refresh,
-                // wipes the `create secret` above on its next reconcile.
-                // secrets:init's own sweep (tool-es.blade.php) is the
-                // correct, working path.
             }
         });
 
@@ -189,8 +177,8 @@ class SignInitCommand extends Command
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Documenso signature stack is live.');
         $this->newLine();
-        $this->line("  <fg=gray>Access URL:</>  <fg=blue>https://{$host}</>");
-        $this->line("  <fg=gray>Database:</>    <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
+        $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
+        $this->line("  <fg=gray>Database:</>                <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
         $this->newLine();
 
         return 0;

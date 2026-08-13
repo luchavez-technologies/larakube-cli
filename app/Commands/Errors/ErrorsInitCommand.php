@@ -12,6 +12,7 @@ use App\Traits\InteractsWithErrors;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
@@ -22,7 +23,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class ErrorsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'errors:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the GlitchTip host.}
@@ -30,6 +31,7 @@ class ErrorsInitCommand extends Command
         {--domain=   : Base domain OR full host for GlitchTip (example.com → errors.example.com; errors.example.com used as-is)}
         {--app-name= : Custom branding name for GlitchTip (defaults to Error Tracking)}
         {--logo-url= : Custom logo URL for GlitchTip}
+        {--admin-email= : Primary administrator email for GlitchTip}
         {--no-plex   : Bypass Plex Commons and deploy dedicated database/cache pods instead}
         {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
@@ -164,13 +166,15 @@ class ErrorsInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::ERRORS, $kubectl, $host);
+        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, 'glitchtip-admin', 'admin-email') ?? $this->resolveAdminEmail($host);
+
+        $this->registerDeployedTool(ClusterTool::ERRORS, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ GlitchTip stack is live.');
         $this->newLine();
         $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
-        $this->line('  <fg=gray>Admin Email:</>             admin@larakube.local');
+        $this->line("  <fg=gray>Admin Email:</>             {$adminEmail}");
         $this->line("  <fg=gray>Admin Password:</>          {$adminPassword}");
         $this->newLine();
 
@@ -210,5 +214,23 @@ class ErrorsInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::ERRORS);
+    }
+
+    /** Resolve the admin email for GlitchTip */
+    protected function resolveAdminEmail(string $host): string
+    {
+        $parts = explode('.', $host);
+        $default = 'admin@'.(count($parts) >= 2 ? implode('.', array_slice($parts, 1)) : $host);
+
+        return $this->flagOrPrompt(
+            flag: 'admin-email',
+            prompt: fn () => \Laravel\Prompts\text(
+                label: 'Primary administrator email for GlitchTip',
+                default: $default,
+                required: true,
+            ),
+            purpose: 'Primary administrator email for GlitchTip',
+            example: "--admin-email={$default}",
+        );
     }
 }
