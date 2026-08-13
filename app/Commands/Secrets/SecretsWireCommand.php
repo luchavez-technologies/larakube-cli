@@ -207,8 +207,8 @@ class SecretsWireCommand extends Command
             return false;
         }
 
-        if ($tool === ClusterTool::MAIL) {
-            $this->laraKubeWarn("{$tool->getLabel()} (Stalwart) uses static configuration — skipping OpenBao static role rotation.");
+        if (! $tool->supportsDatabasePasswordRotation($instance, $engine)) {
+            $this->laraKubeWarn("{$tool->getLabel()} uses static database configuration — skipping OpenBao static-role rotation.");
 
             return true;
         }

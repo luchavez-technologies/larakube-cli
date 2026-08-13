@@ -14,6 +14,7 @@ use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasMeetBridge;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
+use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasSsoLicenseCaveat;
 use App\Contracts\HasWhiteLabel;
@@ -1073,6 +1074,11 @@ enum ClusterTool: string implements HasWorkloadComponents
      *
      * @return array{namespace: string, secret: string, key: string}|null
      */
+    public function supportsDatabasePasswordRotation(?string $instance = null, ?string $engine = null): bool
+    {
+        return $this->vendor($engine) instanceof HasRotatableDatabasePassword;
+    }
+
     public function dbSecretRef(?string $instance = null, ?string $engine = null): ?array
     {
         $vendor = $this->vendor($engine);

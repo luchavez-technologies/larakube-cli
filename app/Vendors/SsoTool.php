@@ -6,9 +6,10 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasRotatableDatabasePassword;
 
 /** The single vendor backing the SSO category — 'Identity Provider / SSO'. Only Zitadel. */
-final class SsoTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName
+final class SsoTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasRotatableDatabasePassword
 {
     public function getLabel(): string
     {
