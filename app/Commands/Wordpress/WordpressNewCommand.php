@@ -190,7 +190,8 @@ class WordpressNewCommand extends Command
         }
 
         if ($plexCredentials !== null) {
-            $config->markPlexJoined('local', $plexCredentials['services'] ?? []);
+            $config->addEnvironment('local');
+            $config->environments['local']->plex = array_values(array_unique(array_merge($config->environments['local']->plex, $plexCredentials['services'] ?? [])));
         }
 
         // 6. Run composer create-project roots/bedrock inside Docker
