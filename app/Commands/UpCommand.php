@@ -20,6 +20,7 @@ use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithKustomize;
+use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithSslTrust;
 use App\Traits\InteractsWithTraefik;
@@ -37,7 +38,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class UpCommand extends Command
 {
-    use CollectsReminders, DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithKustomize, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
+    use CollectsReminders, DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithKustomize, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -278,8 +279,11 @@ class UpCommand extends Command
 
         // --- 🏗 ARCHITECTURAL SYNC (Local Only) ---
         // Every time we run 'up' locally, we ensure the local overlays
-        // match the current machine's paths (e.g. hostPath code mounts).
+        // match the current machine's paths (e.g. hostPath code mounts)
+        // and ensure any required Plex Commons services are provisioned and live.
         if ($environment === 'local') {
+            $this->ensurePlexProvisionedForApp($config, 'local');
+
             $syncK8s = ! $this->option('no-k8s');
             $syncEnv = ! $this->option('no-env');
 

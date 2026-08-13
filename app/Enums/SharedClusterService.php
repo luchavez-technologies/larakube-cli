@@ -59,6 +59,7 @@ enum SharedClusterService: string
             self::DASHBOARD => 'k8s.dashboard.ingress',
             self::MEET => 'k8s.meet.ingress',
             self::DESIGN => 'k8s.design.ingress',
+            self::RESUME => 'k8s.resume.ingress',
         };
     }
 
@@ -147,7 +148,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN, self::RESUME => false,
             default => true,
         };
     }
@@ -194,6 +195,7 @@ enum SharedClusterService: string
             self::DASHBOARD => 'Headlamp Dashboard',
             self::MEET => 'LiveKit (Meet)',
             self::DESIGN => 'Penpot (Design)',
+            self::RESUME => 'Reactive Resume',
         };
     }
 
@@ -241,6 +243,7 @@ enum SharedClusterService: string
             self::DASHBOARD => 'deployment dashboard-headlamp -n larakube-shared',
             self::MEET => 'deployment meet-livekit -n larakube-shared',
             self::DESIGN => 'deployment design-penpot-backend -n larakube-shared',
+            self::RESUME => 'deployment resume-reactive -n larakube-shared',
         };
     }
 
@@ -357,6 +360,7 @@ enum SharedClusterService: string
             self::DASHBOARD => 'Refreshing Headlamp (Dashboard) ingress...',
             self::MEET => 'Refreshing LiveKit (Meet) ingress...',
             self::DESIGN => 'Refreshing Penpot (Design) ingress...',
+            self::RESUME => 'Refreshing Reactive Resume ingress...',
         };
     }
 
@@ -400,4 +404,5 @@ enum SharedClusterService: string
     case DASHBOARD = 'dashboard';
     case MEET = 'meet';
     case DESIGN = 'design';
+    case RESUME = 'resume';
 }

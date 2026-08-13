@@ -35,6 +35,7 @@ use App\Vendors\MonitorTool;
 use App\Vendors\NoteTool;
 use App\Vendors\PasswordTool;
 use App\Vendors\RecordTool;
+use App\Vendors\ResumeTool;
 use App\Vendors\SecretTool;
 use App\Vendors\SheetTool;
 use App\Vendors\SignTool;
@@ -85,6 +86,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::UPTIME => new UptimeTool,
             self::VPN => new VpnTool,
             self::DASHBOARD => new DashboardTool,
+            self::RESUME => new ResumeTool,
         };
     }
 
@@ -120,6 +122,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DASHBOARD => 'Kubernetes Control Plane (Headlamp)',
             self::MEET => 'Video Meetings (LiveKit)',
             self::DESIGN => 'Design & Prototyping (Penpot)',
+            self::RESUME => 'Resume Builder (Reactive Resume)',
         };
     }
 
@@ -164,6 +167,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DASHBOARD => '☸️',
             self::MEET => '🎥',
             self::DESIGN => '🎨',
+            self::RESUME => '📄',
         };
     }
 
@@ -206,6 +210,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DASHBOARD => 'Dashboard',
             self::MEET => 'Meet',
             self::DESIGN => 'Design',
+            self::RESUME => 'Resume',
         };
     }
 
@@ -266,6 +271,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DASHBOARD => SharedClusterService::DASHBOARD,
             self::MEET => SharedClusterService::MEET,
             self::DESIGN => SharedClusterService::DESIGN,
+            self::RESUME => SharedClusterService::RESUME,
         };
     }
 
@@ -1205,4 +1211,5 @@ enum ClusterTool: string implements HasWorkloadComponents
     case WEBMAIL = 'webmail';
     case DASHBOARD = 'dashboard';
     case DESIGN = 'design';
+    case RESUME = 'resume';
 }

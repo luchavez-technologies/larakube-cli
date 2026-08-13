@@ -16,6 +16,7 @@ use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
+use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\SyncsClusterSecrets;
@@ -31,14 +32,15 @@ use Random\RandomException;
 
 class WordpressNewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.
      */
     protected $signature = 'wordpress:new
                             {name? : The name of the WordPress site}
-                            {--fast : Skip wizard and use ideal defaults}';
+                            {--fast : Skip wizard and use ideal defaults}
+                            {--no-plex : Skip Plex Commons auto-provisioning and use self-hosted databases}';
 
     /**
      * The console command description.
@@ -180,6 +182,16 @@ class WordpressNewCommand extends Command
         }
 
         $this->laraKubeInfo("Scaffolding WordPress (Bedrock): $appName...");
+
+        // Auto-provision Plex Commons database/services for WordPress (unless --no-plex)
+        $plexCredentials = null;
+        if (! $this->option('no-plex')) {
+            $plexCredentials = $this->ensurePlexProvisionedForApp($config);
+        }
+
+        if ($plexCredentials !== null) {
+            $config->markPlexJoined('local', $plexCredentials['services'] ?? []);
+        }
 
         // 6. Run composer create-project roots/bedrock inside Docker
         $this->runBedrockNew($appName, $config, $projectPath);
