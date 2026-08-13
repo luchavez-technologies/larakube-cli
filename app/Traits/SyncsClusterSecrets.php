@@ -297,22 +297,58 @@ trait SyncsClusterSecrets
     }
 
     /**
+     * Resolve the active OpenBao database connection name (e.g. "plex-postgres", "plex-mysql", "plex-mariadb")
+     * based on which database engine is live on the cluster.
+     */
+    protected function resolveOpenBaoDatabaseConfig(string $kubectl, ?string $dbConfig = null): string
+    {
+        if ($dbConfig !== null && $dbConfig !== '' && $dbConfig !== 'plex-postgres') {
+            return $dbConfig;
+        }
+
+        $raw = Process::run(
+            "{$kubectl} get configmap plex-commons -n larakube-plex -o jsonpath=".escapeshellarg('{.data.commons\.json}'),
+        )->output();
+
+        $decoded = json_decode(trim($raw), true);
+        $services = is_array($decoded) ? ($decoded['services'] ?? []) : [];
+
+        foreach (['postgres', 'mysql', 'mariadb'] as $engine) {
+            if (($services[$engine]['enabled'] ?? false) === true) {
+                return 'plex-'.$engine;
+            }
+        }
+
+        foreach (['postgres', 'mysql', 'mariadb'] as $engine) {
+            $check = trim(Process::run("{$kubectl} get deployment {$engine} -n larakube-plex --no-headers --ignore-not-found")->output());
+            if ($check !== '') {
+                return 'plex-'.$engine;
+            }
+        }
+
+        return 'plex-postgres';
+    }
+
+    /**
      * Register a database user as an OpenBao static role so its password is
      * automatically rotated. The role name follows OpenBao conventions and the
      * username matches the database role created by commonsTenantSql().
      *
      * @param  string  $roleName  OpenBao role name (e.g. "tenant-myapp-production")
-     * @param  string  $dbConfig  database/config name (e.g. "plex-postgres")
-     * @param  string  $username  The existing database user/role to manage
+     * @param  string|null  $dbConfig  database/config name (e.g. "plex-postgres", "plex-mysql", "plex-mariadb")
+     * @param  string|null  $username  The existing database user/role to manage
      * @param  string  $rotationPeriod  e.g. "168h" (7 days)
      */
     protected function registerStaticRole(
         string $kubectl,
         string $roleName,
-        string $dbConfig,
-        string $username,
+        ?string $dbConfig = null,
+        ?string $username = null,
         string $rotationPeriod = '168h',
     ): bool {
+        $username ??= $roleName;
+        $dbConfig = $this->resolveOpenBaoDatabaseConfig($kubectl, $dbConfig);
+
         $ns = $this->secretsNamespace();
         $token = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
         if ($token === null) {

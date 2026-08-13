@@ -315,7 +315,7 @@ class MailInitCommand extends Command
             'Pushing STALWART store secrets to OpenBao...',
             function () use ($kubectl, $password) {
                 if ($this->databaseEngineMounted($kubectl)) {
-                    $dbPushed = $this->registerStaticRole($kubectl, 'stalwart', 'plex-postgres', 'stalwart');
+                    $dbPushed = $this->registerStaticRole($kubectl, 'stalwart');
 
                     // Without this, STALWART_STORE_PASSWORD is never pushed
                     // to OpenBao's KV at all on this branch — secrets:init's

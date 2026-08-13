@@ -134,7 +134,7 @@ class SsoInitCommand extends Command
                 $this->pushClusterSecret($kubectl, 'ZITADEL_ADMIN_EMAIL', $adminEmail, 'production');
                 $this->pushClusterSecret($kubectl, 'ZITADEL_ADMIN_PASSWORD', $adminPassword, 'production');
                 if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, 'zitadel', 'plex-postgres', 'zitadel');
+                    $this->registerStaticRole($kubectl, 'zitadel');
 
                     // registerStaticRole() rotates the password as a side
                     // effect the instant a role is FIRST created — the

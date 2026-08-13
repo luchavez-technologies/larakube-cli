@@ -123,7 +123,7 @@ class RecordInitCommand extends Command
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, $dbName, 'plex-postgres', $dbName);
+                    $this->registerStaticRole($kubectl, $dbName);
 
                     // registerStaticRole() rotates the password as a side
                     // effect the instant a role is FIRST created — the

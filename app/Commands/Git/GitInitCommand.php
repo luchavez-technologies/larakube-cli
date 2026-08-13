@@ -470,7 +470,7 @@ class GitInitCommand extends Command
             "Syncing {$key} to the cluster...",
             function () use ($kubectl, $ns, $clusterEnv, $dbPassword, $key) {
                 if ($this->databaseEngineMounted($kubectl)) {
-                    $synced = $this->registerStaticRole($kubectl, 'forgejo', 'plex-postgres', 'forgejo');
+                    $synced = $this->registerStaticRole($kubectl, 'forgejo');
 
                     // Without this, $key is never pushed to OpenBao's KV at
                     // all on this branch — secrets:init's sweep reads it

@@ -84,7 +84,7 @@ class PasswordsInitCommand extends Command
             $this->withSpin('Syncing Vaultwarden secrets to the cluster...', function () use ($kubectl, $ns, $plexNs, $adminToken, $dbPassword, $databaseUrl, &$secretsSynced) {
                 $this->pushClusterSecret($kubectl, 'VAULTWARDEN_ADMIN_TOKEN', $adminToken, 'production');
                 if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, 'vaultwarden', 'plex-postgres', 'vaultwarden');
+                    $this->registerStaticRole($kubectl, 'vaultwarden');
 
                     // registerStaticRole() rotates the password as a side
                     // effect the instant a role is FIRST created — $databaseUrl

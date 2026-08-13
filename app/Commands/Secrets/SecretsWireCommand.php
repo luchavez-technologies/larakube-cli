@@ -228,7 +228,7 @@ class SecretsWireCommand extends Command
 
         $registered = false;
         $this->withSpin("Registering {$tool->getLabel()}'s DB password as an OpenBao static role...", function () use ($kubectl, $tenant, $rotationPeriod, &$registered) {
-            $registered = $this->registerStaticRole($kubectl, $tenant, 'plex-postgres', $tenant, $rotationPeriod);
+            $registered = $this->registerStaticRole($kubectl, $tenant, username: $tenant, rotationPeriod: $rotationPeriod);
         });
 
         if (! $registered) {

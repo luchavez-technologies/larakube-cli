@@ -142,7 +142,7 @@ class DesignInitCommand extends Command
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, $dbName, 'plex-postgres', $dbName);
+                    $this->registerStaticRole($kubectl, $dbName);
                     $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
                         Process::run(
