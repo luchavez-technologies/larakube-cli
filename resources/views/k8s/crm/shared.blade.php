@@ -24,17 +24,17 @@ spec:
             - containerPort: 3000
               name: http
           env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: crm-twenty-secrets
+                  key: db-password
             - name: FRONT_BASE_URL
               value: "https://{{ $host }}"
             - name: PG_DATABASE_URL
               value: "postgres://crm_twenty:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/crm_twenty"
             - name: REDIS_URL
               value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: crm-twenty-secrets
-                  key: db-password
             - name: ACCESS_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
