@@ -302,7 +302,9 @@ class UpCommand extends Command
                 if (file_exists($projectPath.'/.env.example')) {
                     $this->laraKubeInfo('No .env file found. Creating from .env.example...');
                     @copy($projectPath.'/.env.example', $projectPath.'/.env');
-                    $this->runStreaming('php artisan key:generate --no-interaction');
+                    if (file_exists($projectPath.'/artisan')) {
+                        $this->runStreaming('php artisan key:generate --no-interaction');
+                    }
                 } else {
                     $this->laraKubeError('No .env or .env.example found! Deployment may fail.');
                 }
