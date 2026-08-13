@@ -395,7 +395,15 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
 
     $this->artisan('secrets:wire local --tool=mail --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Mail Server (Stalwart) uses static database configuration — skipping OpenBao static-role rotation.');
+        ->expectsOutputToContain("Mail Server (Stalwart)'s DB password is now rotated by OpenBao every 168h");
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/stalwart')
+        && ($request['username'] ?? null) === 'stalwart'
+        && ($request['db_name'] ?? null) === 'plex-postgres');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret stalwart-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/stalwart'));
 });
 
 test('secrets:wire --tool=passwords registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function () {

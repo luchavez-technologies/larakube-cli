@@ -9,6 +9,7 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
+use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
@@ -16,7 +17,7 @@ use App\Enums\ClusterToolComponentRole;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the MAIL category — 'Mail Server'. Only Stalwart. */
-final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasToolAccessDetails, HasWorkloadComponents
+final class MailTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasToolAccessDetails, HasWorkloadComponents
 {
     public function getLabel(): string
     {

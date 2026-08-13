@@ -314,8 +314,18 @@ class MailInitCommand extends Command
         $pushed = $this->withSpin(
             'Pushing STALWART store secrets to OpenBao...',
             function () use ($kubectl, $password) {
-                // Pushing static STALWART_STORE_PASSWORD to OpenBao KV (Stalwart does not support dynamic DB password rotation)
-                $dbPushed = $this->pushClusterSecret($kubectl, 'STALWART_STORE_PASSWORD', $password, 'production');
+                if ($this->databaseEngineMounted($kubectl)) {
+                    $dbPushed = $this->registerStaticRole($kubectl, 'stalwart');
+
+                    if ($dbPushed) {
+                        $realPassword = $this->readStaticRolePassword($kubectl, 'stalwart');
+                        if ($realPassword !== null) {
+                            $this->pushClusterSecret($kubectl, 'STALWART_STORE_PASSWORD', $realPassword, 'production');
+                        }
+                    }
+                } else {
+                    $dbPushed = $this->pushClusterSecret($kubectl, 'STALWART_STORE_PASSWORD', $password, 'production');
+                }
                 $s3Creds = $this->readCommonsS3Credentials();
                 if ($s3Creds !== null) {
                     $this->pushClusterSecret($kubectl, 'STALWART_S3_KEY_ID', $s3Creds['access'], 'production');

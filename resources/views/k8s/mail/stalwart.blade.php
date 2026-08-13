@@ -20,6 +20,8 @@ metadata:
   namespace: larakube-shared
   labels:
     app: stalwart
+  annotations:
+    secret.reloader.stakater.com/reload: "stalwart,mail-secrets"
 spec:
   replicas: 1
   strategy:
