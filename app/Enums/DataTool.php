@@ -105,11 +105,11 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
                 'vars' => [
                     'client_id' => 'AUTH_ZITADEL_CLIENT_ID',
                     'client_secret' => 'AUTH_ZITADEL_CLIENT_SECRET',
-                    'issuer' => 'AUTH_ZITADEL_ISSUER',
-                    'auth_url' => 'AUTH_ZITADEL_AUTHORIZE_URL',
-                    'token_url' => 'AUTH_ZITADEL_ACCESS_URL',
-                    'userinfo_url' => 'AUTH_ZITADEL_PROFILE_URL',
+                    'issuer' => 'AUTH_ZITADEL_ISSUER_URL',
                 ],
+                // Zitadel client IDs are often all-digit; see the string_cast
+                // handling in SsoWireCommand::applyToolEnv().
+                'string_cast' => ['client_id'],
                 'redirect_path' => '/auth/login/zitadel/callback',
             ],
         };

@@ -137,29 +137,11 @@ spec:
                   name: {{ $oidcSecretName }}
                   key: AUTH_ZITADEL_CLIENT_SECRET
                   optional: true
-            - name: AUTH_ZITADEL_ISSUER
+            - name: AUTH_ZITADEL_ISSUER_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ $oidcSecretName }}
-                  key: AUTH_ZITADEL_ISSUER
-                  optional: true
-            - name: AUTH_ZITADEL_AUTHORIZE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $oidcSecretName }}
-                  key: AUTH_ZITADEL_AUTHORIZE_URL
-                  optional: true
-            - name: AUTH_ZITADEL_ACCESS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $oidcSecretName }}
-                  key: AUTH_ZITADEL_ACCESS_URL
-                  optional: true
-            - name: AUTH_ZITADEL_PROFILE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $oidcSecretName }}
-                  key: AUTH_ZITADEL_PROFILE_URL
+                  key: AUTH_ZITADEL_ISSUER_URL
                   optional: true
             - name: AUTH_ZITADEL_SCOPE
               value: "openid email profile"
@@ -195,7 +177,7 @@ spec:
               cpu: 100m
             limits:
               memory: 1Gi
-              cpu: 500m
+              cpu: 1000m
 ---
 apiVersion: v1
 kind: Service

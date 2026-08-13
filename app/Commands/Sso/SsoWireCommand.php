@@ -904,7 +904,7 @@ class SsoWireCommand extends Command
     }
 
     /**
-     * @param  array{deployment: string, namespace: string, secret: string, static?: array<string, string>, vars: array<string, string>}  $schema
+     * @param  array{deployment: string, namespace: string, secret: string, static?: array<string, string>, vars: array<string, string>, string_cast?: list<string>}  $schema
      * @param  array<string, string>  $logical
      */
     protected function applyToolEnv(string $kubectl, array $schema, array $logical): bool
@@ -934,7 +934,15 @@ class SsoWireCommand extends Command
         }
         foreach ($schema['vars'] as $key => $envName) {
             if (isset($logical[$key])) {
-                $literals .= '--from-literal='.$envName.'='.escapeshellarg($logical[$key]).' ';
+                $value = $logical[$key];
+                // Directus auto-casts all-digit env values to a JS number, which
+                // breaks openid-client's Client constructor ("client_id is
+                // required") — Zitadel issues purely-numeric client IDs. The
+                // `string:` prefix is Directus's own documented escape hatch.
+                if (in_array($key, $schema['string_cast'] ?? [], true) && preg_match('/^\d+$/', $value)) {
+                    $value = 'string:'.$value;
+                }
+                $literals .= '--from-literal='.$envName.'='.escapeshellarg($value).' ';
             }
         }
 

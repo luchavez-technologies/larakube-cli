@@ -29,3 +29,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0011](0011-dynamic-local-tld-resolution.md) | Local TLD is dynamic; hardcoding `.dev.test` is forbidden | Accepted |
 | [0012](0012-cluster-tool-registry-redesign.md) | Cluster tool registry: flat list, host-as-identity, no `--instance=` | Accepted |
 | [0013](0013-design-init-idempotent-flags.md) | Tool `:init`/`:wire` reconcile feature flags from truth, never union with history | Accepted |
+| [0014](0014-cluster-tools-vs-project-apps-deploy-path.md) | Cluster Tools (`:init`/`:wire`) deploy by direct `kubectl apply`; project apps (`new`/`cloud:deploy`) go through CI/CD | Accepted |
