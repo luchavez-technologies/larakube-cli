@@ -333,16 +333,18 @@ spec:
               mountPath: /var/lib/mysql
         - name: mysqld-exporter
           image: {{ \App\Enums\DatabaseDriver::MYSQL->exporterImage() }}
+          args:
+            - "--mysqld.username=root"
+            - "--mysqld.address=127.0.0.1:3306"
+            - "--config.my-cnf="
           ports:
             - containerPort: 9104
           env:
-            - name: MYSQL_ROOT_PASSWORD
+            - name: MYSQLD_EXPORTER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: plex-admin
                   key: MYSQL_ROOT_PASSWORD
-            - name: DATA_SOURCE_NAME
-              value: "root:$(MYSQL_ROOT_PASSWORD)@(127.0.0.1:3306)/"
           resources:
             requests:
               memory: "32Mi"

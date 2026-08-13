@@ -32,14 +32,16 @@ spec:
             - name: DATA_SOURCE_NAME
               value: "postgresql://{{ $driver->dbUsername() }}:$(DB_PASSWORD)@{{ $driver->getPodName($config) }}:{{ $driver->dbPort() }}/laravel?sslmode=disable"
 @else
+          args:
+            - "--mysqld.username=root"
+            - "--mysqld.address={{ $driver->getPodName($config) }}:{{ $driver->dbPort() }}"
+            - "--config.my-cnf="
           env:
-            - name: MYSQL_ROOT_PASSWORD
+            - name: MYSQLD_EXPORTER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: laravel-secrets
                   key: DB_PASSWORD
-            - name: DATA_SOURCE_NAME
-              value: "{{ $driver->dbUsername() }}:$(MYSQL_ROOT_PASSWORD)@({{ $driver->getPodName($config) }}:{{ $driver->dbPort() }})/"
 @endif
           readinessProbe:
             httpGet:
