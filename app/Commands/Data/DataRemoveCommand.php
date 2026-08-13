@@ -18,6 +18,7 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
         {--context=  : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
         {--domain=   : The instance\'s domain/host — the same value you gave data:init, since that IS its identity. Omit for the default instance}
         {--engine=   : Restrict removal to "directus", "pocketbase", or "all" — only asked when both are deployed for this instance}
+        {--all       : Remove all registered instances of this tool}
         {--purge     : Also destroy persistent data — drop the Plex Commons database and release the Redis index. Irreversible.}
         {--force     : Skip the confirmation prompt (required for non-interactive runs)}';
 

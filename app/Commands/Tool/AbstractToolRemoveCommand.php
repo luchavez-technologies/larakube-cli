@@ -13,6 +13,9 @@ use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
+
+use function Laravel\Prompts\select;
+
 use LaravelZero\Framework\Commands\Command;
 
 /**
@@ -50,6 +53,7 @@ abstract class AbstractToolRemoveCommand extends Command
             {environment=local : Environment to remove ".$tool->getLabel()." from}
             {--context=  : Target a specific kube-context (defaults to the environment's saved cloud target)}
             {--domain=   : The instance's host, to target a specific one (e.g. --domain=blog.example.com). Omit for the default instance}
+            {--all       : Remove all registered instances of this tool}
             {--purge     : Also destroy persistent data — drop the Plex Commons database and release the Redis index. Irreversible.}
             {--force     : Skip the confirmation prompt (required for non-interactive runs)}";
         }
@@ -144,17 +148,60 @@ abstract class AbstractToolRemoveCommand extends Command
     abstract protected function tool(): ClusterTool;
 
     /**
-     * Which instance(s) to remove. --domain empty → 'main'; given → every
-     * entry registered for that host (host identity wins, so a duplicate
-     * registration like the DATA 2026-08-09 incident tears down in one
-     * command — removal means "take down everything serving this host"),
-     * else the same host-derived slug {tool}:init would have computed.
+     * Which instance(s) to remove.
+     * 1. --domain given → target instances registered for that domain/host.
+     * 2. --all given → target every registered instance of this tool.
+     * 3. Interactive with multiple registered instances → prompt select choice.
+     * 4. Single/unregistered → default to registered instance or 'main'.
      *
      * @return list<string>
      */
     protected function resolveInstanceTargets(string $kubectl): array
     {
-        return $this->resolveInstanceTargetsForDomain($kubectl, $this->tool(), (string) ($this->option('domain') ?: ''));
+        $domain = (string) ($this->option('domain') ?: '');
+        if ($domain !== '') {
+            return $this->resolveInstanceTargetsForDomain($kubectl, $this->tool(), $domain);
+        }
+
+        if ($this->hasOption('all') && $this->option('all')) {
+            $instances = $this->getToolInstances($kubectl, $this->tool());
+
+            return $instances !== [] ? $instances : ['main'];
+        }
+
+        $tool = $this->tool();
+        $registered = array_values(array_filter(
+            $this->getRegisteredTools($kubectl),
+            fn (array $e) => ($e['tool'] ?? null) === $tool->value,
+        ));
+
+        if (count($registered) > 1 && ! $this->cannotPrompt()) {
+            $options = [];
+            foreach ($registered as $entry) {
+                $inst = (string) ($entry['instance'] ?? 'main');
+                $host = (string) ($entry['host'] ?? '');
+                $label = $host !== '' ? "{$inst} ({$host})" : $inst;
+                $options[$inst] = $label;
+            }
+            $options['__all__'] = 'All instances';
+
+            $choice = select(
+                label: "Which {$tool->getLabel()} instance would you like to remove?",
+                options: $options,
+            );
+
+            if ($choice === '__all__') {
+                return array_values(array_filter(array_keys($options), fn ($k) => $k !== '__all__'));
+            }
+
+            return [$choice];
+        }
+
+        if ($registered !== []) {
+            return [(string) ($registered[0]['instance'] ?? 'main')];
+        }
+
+        return ['main'];
     }
 
     /**
