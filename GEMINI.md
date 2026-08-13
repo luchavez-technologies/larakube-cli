@@ -60,6 +60,10 @@ Whenever you modify the LaraKube CLI codebase, you **must** proactively run test
 - **Pod Proxying**: Commands like `larakube php`, `larakube art`, and `larakube composer` act as **proxies**. They do NOT run the command locally. Instead, they identify the correct pod in the project's Kubernetes namespace (e.g., `laravel-web`) and execute the command there via `kubectl exec`.
 - **Environment Context**: The CLI determines the target namespace and pod based on the `.larakube.json` file in the current working directory.
 
+### 📋 Plan Artifact Location Standard (Mandatory Audit Trail)
+- **Always Save Plans in `cli/plans/`**: Whenever creating, writing, or updating an architectural or implementation plan (e.g. via `/plan` or tool artifacts), AI agents MUST ALWAYS save a copy of the plan document inside the repository at `cli/plans/active/<plan-name>.md` (or `cli/plans/` directory).
+- **Zero Scattered Plans**: NEVER output plan markdown files outside of `cli/plans/`. All plans must be persisted in the repo's `cli/plans/` directory for historical tracking and auditing purposes.
+
 ### 📦 Development Wrappers
 -   **Standalone**: Distributed as a Mach-O/Linux binary with embedded PHP runtime.
 -   **K3s Bridge**: Automated image sideloading via `k3s ctr images import` for local builds.
@@ -67,3 +71,4 @@ Whenever you modify the LaraKube CLI codebase, you **must** proactively run test
 -   **Daemon Runner**: Persistent Docker-based development environment for zero-host dependencies:
     -   **CLI**: `./php` (Daemon: `larakube-php-cli`)
     -   *Note*: Use `./php stop` to cleanup the daemon.
+
