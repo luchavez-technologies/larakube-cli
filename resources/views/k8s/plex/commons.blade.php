@@ -422,6 +422,7 @@ spec:
               command: ["redis-cli", "ping"]
             initialDelaySeconds: 5
             periodSeconds: 10
+@if($withMonitoring ?? false)
         - name: redis-exporter
           image: {{ \App\Enums\CacheDriver::REDIS->exporterImage() }}
           ports:
@@ -436,6 +437,7 @@ spec:
             limits:
               memory: "32Mi"
               cpu: "50m"
+@endif
 ---
 apiVersion: v1
 kind: Service
