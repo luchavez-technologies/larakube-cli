@@ -314,26 +314,8 @@ class MailInitCommand extends Command
         $pushed = $this->withSpin(
             'Pushing STALWART store secrets to OpenBao...',
             function () use ($kubectl, $password) {
-                if ($this->databaseEngineMounted($kubectl)) {
-                    $dbPushed = $this->registerStaticRole($kubectl, 'stalwart');
-
-                    // Without this, STALWART_STORE_PASSWORD is never pushed
-                    // to OpenBao's KV at all on this branch — secrets:init's
-                    // sweep (tool-es.blade.php) reads it from there, so the
-                    // synced Secret would silently end up with no password
-                    // key. And even if it HAD been pushed with $password,
-                    // registerStaticRole() rotates the real one as a side
-                    // effect the instant a role is first created — read back
-                    // what OpenBao actually set, not the pre-rotation value.
-                    if ($dbPushed) {
-                        $realPassword = $this->readStaticRolePassword($kubectl, 'stalwart');
-                        if ($realPassword !== null) {
-                            $this->pushClusterSecret($kubectl, 'STALWART_STORE_PASSWORD', $realPassword, 'production');
-                        }
-                    }
-                } else {
-                    $dbPushed = $this->pushClusterSecret($kubectl, 'STALWART_STORE_PASSWORD', $password, 'production');
-                }
+                // Pushing static STALWART_STORE_PASSWORD to OpenBao KV (Stalwart does not support dynamic DB password rotation)
+                $dbPushed = $this->pushClusterSecret($kubectl, 'STALWART_STORE_PASSWORD', $password, 'production');
                 $s3Creds = $this->readCommonsS3Credentials();
                 if ($s3Creds !== null) {
                     $this->pushClusterSecret($kubectl, 'STALWART_S3_KEY_ID', $s3Creds['access'], 'production');

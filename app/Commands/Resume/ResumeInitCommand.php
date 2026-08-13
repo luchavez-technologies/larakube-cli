@@ -93,6 +93,7 @@ class ResumeInitCommand extends Command
         $s3Endpoint = $this->resolveCommonsS3Endpoints($s3Driver, 'Reactive Resume')['public'];
 
         $dbPassword = $this->readResumeSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
+        $authSecret = $this->readResumeSecret($kubectl, $ns, 'auth-secret') ?? Str::random(32);
 
         $dbName = 'reactiveresume';
 
@@ -105,9 +106,10 @@ class ResumeInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $clusterEnv) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $authSecret, $clusterEnv) {
             $cmd = "{$kubectl} create secret generic resume-reactive-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
+                .'--from-literal=auth-secret='.escapeshellarg($authSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -";
             Process::run($cmd);
 

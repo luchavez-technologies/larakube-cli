@@ -26,8 +26,15 @@ spec:
           env:
             - name: PORT
               value: "3000"
+            - name: APP_URL
+              value: "https://{{ $host }}"
             - name: PUBLIC_URL
               value: "https://{{ $host }}"
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: resume-reactive-secrets
+                  key: auth-secret
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -103,6 +110,13 @@ spec:
                   name: resume-reactive-smtp
                   key: MAIL_FROM
                   optional: true
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /api/health
@@ -122,8 +136,8 @@ spec:
               memory: 256Mi
               cpu: 50m
             limits:
-              memory: 512Mi
-              cpu: 200m
+              memory: 1Gi
+              cpu: 500m
 ---
 apiVersion: v1
 kind: Service

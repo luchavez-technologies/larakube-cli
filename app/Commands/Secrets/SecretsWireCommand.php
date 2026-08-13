@@ -207,6 +207,12 @@ class SecretsWireCommand extends Command
             return false;
         }
 
+        if ($tool === ClusterTool::MAIL) {
+            $this->laraKubeWarn("{$tool->getLabel()} (Stalwart) uses static configuration — skipping OpenBao static role rotation.");
+
+            return true;
+        }
+
         // A tool can advertise a dbSecretRef yet have no password on this
         // install (e.g. a tool whose install never provisioned the Commons
         // tenant). Registering a phantom static role would silently fail every
