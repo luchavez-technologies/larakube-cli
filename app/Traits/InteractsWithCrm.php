@@ -25,16 +25,19 @@ trait InteractsWithCrm
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    protected function isCrmInstalled(string $kubectl, string $ns): bool
+    protected function isCrmInstalled(string $kubectl, string $ns, ?string $instance = null): bool
     {
-        $out = Process::run("{$kubectl} get deployment crm-twenty -n {$ns} --no-headers --ignore-not-found")->output();
+        $dep = ClusterTool::CRM->deploymentName($instance);
+        $out = Process::run("{$kubectl} get deployment {$dep} -n {$ns} --no-headers --ignore-not-found")->output();
 
         return trim($out) !== '';
     }
 
-    protected function readCrmSecret(string $kubectl, string $ns, string $key): ?string
+    protected function readCrmSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'crm-twenty-secrets', $key);
+        $secretName = $instance !== null && $instance !== '' ? "crm-twenty-secrets-{$instance}" : 'crm-twenty-secrets';
+
+        return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
     }
 
     protected function resolveCrmHostReadOnly(string $env, ?ConfigData $config): ?string

@@ -48,11 +48,17 @@ class CrmInitCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->crmKubectl($context);
-        $host = $this->resolveToolHost(SharedClusterService::CRM, ClusterTool::CRM, $env, $kubectl);
+
+        $domainOption = trim((string) ($this->option('domain') ?? ''));
+        $host = $domainOption !== ''
+            ? $this->sanitizeDomainInput($domainOption)
+            : $this->resolveToolHost(SharedClusterService::CRM, ClusterTool::CRM, $env, $kubectl);
+        $instance = ClusterTool::CRM->instanceSlugFromHost($host);
+
         $ns = $this->crmNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::CRM, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::CRM, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -63,27 +69,35 @@ class CrmInitCommand extends Command
             return 1;
         }
 
-        $adminEmail = $this->readCrmSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
-        $dbPassword = $this->readCrmSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-        $accessTokenSecret = $this->readCrmSecret($kubectl, $ns, 'access-token-secret') ?? bin2hex(random_bytes(32));
-        $loginTokenSecret = $this->readCrmSecret($kubectl, $ns, 'login-token-secret') ?? bin2hex(random_bytes(32));
-        $refreshTokenSecret = $this->readCrmSecret($kubectl, $ns, 'refresh-token-secret') ?? bin2hex(random_bytes(32));
-        $fileTokenSecret = $this->readCrmSecret($kubectl, $ns, 'file-token-secret') ?? bin2hex(random_bytes(32));
+        $secretName = "crm-twenty-secrets-{$instance}";
+        $deploymentName = ClusterTool::CRM->deploymentName($instance);
+        $serviceName = "crm-{$instance}";
+        $ingressName = $serviceName;
+        $oidcSecretName = "crm-twenty-oidc-{$instance}";
 
-        $dbName = 'crm_twenty';
+        $adminEmail = $this->readCrmSecret($kubectl, $ns, 'admin-email', $instance) ?? $this->resolveAdminEmail($host);
+        $dbPassword = $this->readCrmSecret($kubectl, $ns, 'db-password', $instance) ?? Str::random(24);
+        $accessTokenSecret = $this->readCrmSecret($kubectl, $ns, 'access-token-secret', $instance) ?? bin2hex(random_bytes(32));
+        $loginTokenSecret = $this->readCrmSecret($kubectl, $ns, 'login-token-secret', $instance) ?? bin2hex(random_bytes(32));
+        $refreshTokenSecret = $this->readCrmSecret($kubectl, $ns, 'refresh-token-secret', $instance) ?? bin2hex(random_bytes(32));
+        $fileTokenSecret = $this->readCrmSecret($kubectl, $ns, 'file-token-secret', $instance) ?? bin2hex(random_bytes(32));
+
+        $dbName = 'crm_twenty_'.str_replace('-', '_', $instance);
+        $dbUser = $dbName;
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
         }
 
-        $redisIndex = $this->allocateCommonsRedisIndex('crm_twenty');
+        $redisKey = "crm_twenty_{$instance}";
+        $redisIndex = $this->allocateCommonsRedisIndex($redisKey);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $accessTokenSecret, $loginTokenSecret, $refreshTokenSecret, $fileTokenSecret, $adminEmail) {
-            $cmd = "{$kubectl} create secret generic crm-twenty-secrets -n {$ns} "
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $accessTokenSecret, $loginTokenSecret, $refreshTokenSecret, $fileTokenSecret, $adminEmail) {
+            $cmd = "{$kubectl} create secret generic {$secretName} -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=access-token-secret='.escapeshellarg($accessTokenSecret).' '
                 .'--from-literal=login-token-secret='.escapeshellarg($loginTokenSecret).' '
@@ -101,14 +115,22 @@ class CrmInitCommand extends Command
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'redisIndex' => $redisIndex,
+            'instance' => $instance,
+            'deploymentName' => $deploymentName,
+            'serviceName' => $serviceName,
+            'ingressName' => $ingressName,
+            'secretName' => $secretName,
+            'oidcSecretName' => $oidcSecretName,
+            'dbUser' => $dbUser,
+            'dbName' => $dbName,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-crm-twenty.yaml';
+        $tmp = sys_get_temp_dir()."/larakube-crm-twenty-{$instance}.yaml";
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Twenty CRM manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'crm-twenty', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
         );
         @unlink($tmp);
 
@@ -116,7 +138,7 @@ class CrmInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::CRM, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::CRM, $kubectl, $host, instance: $instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Twenty CRM stack is live.');

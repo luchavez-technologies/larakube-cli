@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: crm-twenty
+  name: {{ $deploymentName ?? 'crm-twenty' }}
   namespace: larakube-shared
   labels:
-    app: crm-twenty
+    app: {{ $deploymentName ?? 'crm-twenty' }}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: crm-twenty
+      app: {{ $deploymentName ?? 'crm-twenty' }}
   template:
     metadata:
       labels:
-        app: crm-twenty
+        app: {{ $deploymentName ?? 'crm-twenty' }}
     spec:
       containers:
         - name: twenty
@@ -27,51 +27,51 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: crm-twenty-secrets
+                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
                   key: db-password
             - name: FRONT_BASE_URL
               value: "https://{{ $host }}"
             - name: PG_DATABASE_URL
-              value: "postgres://crm_twenty:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/crm_twenty"
+              value: "postgres://{{ $dbUser ?? 'crm_twenty' }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName ?? 'crm_twenty' }}"
             - name: REDIS_URL
               value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
             - name: ACCESS_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: crm-twenty-secrets
+                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
                   key: access-token-secret
             - name: LOGIN_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: crm-twenty-secrets
+                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
                   key: login-token-secret
             - name: REFRESH_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: crm-twenty-secrets
+                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
                   key: refresh-token-secret
             - name: FILE_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: crm-twenty-secrets
+                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
                   key: file-token-secret
             # OIDC
             - name: SSO_OIDC_ISSUER
               valueFrom:
                 secretKeyRef:
-                  name: crm-twenty-oidc
+                  name: {{ $oidcSecretName ?? 'crm-twenty-oidc' }}
                   key: SSO_OIDC_ISSUER
                   optional: true
             - name: SSO_OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: crm-twenty-oidc
+                  name: {{ $oidcSecretName ?? 'crm-twenty-oidc' }}
                   key: SSO_OIDC_CLIENT_ID
                   optional: true
             - name: SSO_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: crm-twenty-oidc
+                  name: {{ $oidcSecretName ?? 'crm-twenty-oidc' }}
                   key: SSO_OIDC_CLIENT_SECRET
                   optional: true
           startupProbe:
@@ -107,11 +107,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: crm
+  name: {{ $serviceName ?? 'crm' }}
   namespace: larakube-shared
 spec:
   selector:
-    app: crm-twenty
+    app: {{ $deploymentName ?? 'crm-twenty' }}
   ports:
     - protocol: TCP
       port: 80

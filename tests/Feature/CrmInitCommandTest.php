@@ -36,7 +36,7 @@ test('crm:init deploys Twenty CRM using commons postgres and redis', function ()
 
 test('crm:show displays status table for Twenty CRM', function () {
     Process::fake([
-        '*get deployment crm-twenty*' => Process::result(output: 'crm-twenty   1/1   1   1   10d'),
+        '*get deployment *' => Process::result(output: 'crm-twenty-crm-dev-test   1/1   1   1   10d'),
     ]);
 
     $this->artisan(CrmShowCommand::class, [
@@ -46,7 +46,10 @@ test('crm:show displays status table for Twenty CRM', function () {
 
 test('crm:remove cleans up Twenty CRM resources', function () {
     Process::fake([
-        '*delete deployment/crm-twenty*' => Process::result(output: 'deleted'),
+        '*get secret larakube-tools-registry*' => json_encode([
+            ['tool' => 'crm', 'instance' => 'crm-dev-test', 'host' => 'crm.dev.test'],
+        ]),
+        '*delete deployment/crm-twenty-crm-dev-test*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: 'deleted'),
     ]);
 
