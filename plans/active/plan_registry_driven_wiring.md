@@ -1,18 +1,16 @@
-# Implementation Plan: Registry-Driven Tool Resolution for `*:wire` and `*:unwire` Commands
+# Implementation Plan: Registry-Driven Tool Resolution for `*:wire`, `*:unwire`, `*:remove`, and `tool:remove` Commands
 
 ## Goal Description
-Refactor LaraKube's orchestration wiring commands (`mail:wire`, `sso:wire`, `secrets:wire`, `vpn:wire`) and their sibling unwiring commands (`mail:unwire`, `sso:unwire`, `secrets:unwire`, `vpn:unwire`) to use the cluster Tool Registry (`larakube-tools-registry` via `InteractsWithToolRegistry`) as the primary source of truth for target resolution, with fallback probes against live Kubernetes deployments when the registry is uninitialized or missing.
+Refactor LaraKube's orchestration wiring commands (`mail:wire`, `sso:wire`, `secrets:wire`, `vpn:wire`), unwiring commands (`mail:unwire`, `sso:unwire`, `secrets:unwire`, `vpn:unwire`), tool removal base (`AbstractToolRemoveCommand` for `{tool}:remove`), and global tool removal helper (`tool:remove` via `ResolvesClusterTool`) to use the cluster Tool Registry (`larakube-tools-registry` via `InteractsWithToolRegistry`) as the primary source of truth for target resolution, with fallback probes against live Kubernetes deployments when the registry is uninitialized or missing.
 
 ---
 
 ## Architectural Analysis & Current Limitations
 
 ### The Problem
-Currently, `mail:wire`, `sso:wire`, `secrets:wire`, and `vpn:wire` resolve candidates by querying static `ClusterTool::shippedCases()` enums and probing fixed default deployment names via `kubectl get deployment`.
-
-1. **Ignores Tool Registry Metadata**: `larakube-tools-registry` stores exact registered metadata (`tool`, `instance`, `host`, `aliases`, `engine`) for every installed tool. Probing raw Enums bypasses this metadata.
-2. **Breaks Multi-Instance Deployments**: When an operator deploys a named instance (e.g. `notes` instance `sister` at `sister.dev.test`), hardcoded deployment probes (checking only `notes-outline`) miss named instances (e.g. `notes-outline-sister`).
-3. **Slow Redundant K8s Probes**: Probing 20+ static enum cases against K8s API when zero or 1 tool is installed adds unnecessary command latency.
+1. **Hardcoded Deployment Probes in `*:wire` / `*:unwire`**: Currently queries static `ClusterTool::shippedCases()` enums and probes fixed default deployment names via `kubectl get deployment`, bypassing `larakube-tools-registry` metadata and missing multi-instance deployments (e.g. `notes-outline-sister`).
+2. **Hardcoded Single-Instance Assumptions in `*:remove`**: In `AbstractToolRemoveCommand`, omitting `--domain` assumes `['main']`. If multiple instances of a tool are registered in `larakube-tools-registry` (e.g. `notes:main` and `notes:sister`), `{tool}:remove` cannot prompt the operator to choose which instance to remove.
+3. **Registry-Only Brittleness in `tool:remove`**: `ResolvesClusterTool` queries `getRegisteredTools` only. If the registry is empty or uninitialized on an existing cluster, `tool:remove` reports `"No shared tools available to remove"`, failing to detect un-registered live deployments.
 
 ---
 
@@ -21,13 +19,17 @@ Currently, `mail:wire`, `sso:wire`, `secrets:wire`, and `vpn:wire` resolve candi
 > [!IMPORTANT]
 > **Key Decisions**:
 > 1. **Dual Resolution Strategy**:
->    - **Primary**: Read `larakube-tools-registry` Secret (`getRegisteredTools($kubectl)`). Filter entries by tool capabilities (`smtpEnv`, `oidcEnv`, `dbSecretRef`, `vpnMiddlewareTarget`).
+>    - **Primary**: Read `larakube-tools-registry` Secret (`getRegisteredTools($kubectl)`). Filter entries by tool capabilities (`smtpEnv`, `oidcEnv`, `dbSecretRef`, `vpnMiddlewareTarget`) or removal status.
 >    - **Fallback**: If the registry is empty or missing, fall back to live K8s deployment probes (`deploymentExists` / `isToolPresentOnCluster`) across `ClusterTool::shippedCases()`.
-> 2. **Interactive Multi-Instance Selection**:
+> 2. **Multi-Instance Tool Removal (`{tool}:remove`)**:
+>    - When `{tool}:remove` runs interactively without `--domain=`, check the registered instances for `{tool}` via `getRegisteredTools($kubectl)`.
+>    - If multiple instances exist (e.g., `main` on `notes.dev.test` and `sister` on `sister.dev.test`), display an interactive `select` prompt listing all instances with their host names so the operator can choose which specific instance to remove.
+>    - Support `--all` flag to remove all instances of `{tool}` in a single pass.
+> 3. **Interactive Multi-Instance Selection for Wiring**:
 >    - Group options by Tool first (e.g., `Outline`, `PocketBase`).
->    - If the selected tool has multiple registered instances (e.g., `main` on `notes.dev.test` and `sister` on `sister.dev.test`), show a sub-prompt (`select`) to choose the specific instance/domain.
-> 3. **`--all` Flag Multi-Instance Execution**:
->    - When `--all` is passed, iterate through and wire **every installed tool AND every registered instance** of that tool across the cluster.
+>    - If the selected tool has multiple registered instances, show a sub-prompt (`select`) to choose the target instance/domain.
+> 4. **`--all` Flag Execution**:
+>    - Wire every installed tool AND every registered instance of that tool across the cluster.
 
 ---
 
@@ -42,7 +44,28 @@ Currently, `mail:wire`, `sso:wire`, `secrets:wire`, and `vpn:wire` resolve candi
 
 ---
 
-### 2. Refactor Commands
+### 2. Multi-Instance Teardown Base & Global Removal Helper
+
+#### [MODIFY] [`cli/app/Commands/Tool/AbstractToolRemoveCommand.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/cli/app/Commands/Tool/AbstractToolRemoveCommand.php)
+- Refactor `resolveInstanceTargets($kubectl)`:
+  - If `--domain=` is specified, resolve that target directly.
+  - If `--domain=` is omitted in interactive mode:
+    - Query registered instances for `$this->tool()`.
+    - If multiple instances exist, show a Laravel Prompts `select()` prompt displaying `instance (host)` for the user to choose.
+    - If `--all` option is passed, return all registered instances.
+  - Fall back to live deployment probes if no registry entries exist.
+
+#### [MODIFY] [`cli/app/Traits/ResolvesClusterTool.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/cli/app/Traits/ResolvesClusterTool.php)
+- Refactor `resolveTools($kubectl, $actionHint)` for `tool:remove`:
+  - Query `getRegisteredTools($kubectl)` as primary source of truth.
+  - Fall back to checking `isToolPresentOnCluster($kubectl, $tool)` across `ClusterTool::shippedCases()` if the registry is empty or missing.
+
+#### [MODIFY] [`cli/app/Commands/Tool/ToolRemoveCommand.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/cli/app/Commands/Tool/ToolRemoveCommand.php)
+- Add `--all` and `--domain` options passthrough to `{tool}:remove`.
+
+---
+
+### 3. Refactor Wiring & Unwiring Commands
 
 #### [MODIFY] [`cli/app/Commands/Mail/MailWireCommand.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/cli/app/Commands/Mail/MailWireCommand.php)
 - Refactor `resolveTargets($kubectl)` to query registry + fallback probes.
@@ -79,7 +102,7 @@ Currently, `mail:wire`, `sso:wire`, `secrets:wire`, and `vpn:wire` resolve candi
 ### Automated Tests
 1. **Pest Feature Tests**:
    ```bash
-   php vendor/bin/pest tests/Feature/MailWireCommandTest.php tests/Feature/SsoWireCommandTest.php tests/Feature/SecretsWireCommandTest.php tests/Feature/VpnWireCommandTest.php tests/Feature/NamedToolInstanceTest.php
+   php vendor/bin/pest tests/Feature/ToolRemoveCommandTest.php tests/Feature/MailWireCommandTest.php tests/Feature/SsoWireCommandTest.php tests/Feature/SecretsWireCommandTest.php tests/Feature/VpnWireCommandTest.php tests/Feature/NamedToolInstanceTest.php
    ```
 2. **Pint Formatting**:
    ```bash
