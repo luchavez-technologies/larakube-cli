@@ -735,6 +735,20 @@ trait InteractsWithPlex
         $missing = array_diff($services, $offered);
 
         if (! empty($missing)) {
+            if (confirm('The Commons is missing required service(s): '.implode(', ', $missing).'. Would you like to enable them now?', true)) {
+                $allServices = array_values(array_unique(array_merge($offered, $services)));
+                $bootstrap = ['--services' => implode(',', $allServices)];
+                if ($this->plexContext) {
+                    $bootstrap['--context'] = $this->plexContext;
+                }
+                $this->call('plex:init', $bootstrap);
+                $spec = $this->getCommonsSpec();
+                $offered = $this->enabledCommonsServices($spec);
+                $missing = array_diff($services, $offered);
+            }
+        }
+
+        if (! empty($missing)) {
             $this->laraKubeError('The Commons does not offer: '.implode(', ', $missing).'.');
             $this->laraKubeLine('  Re-run `larakube plex:init` to add it, then join again.');
 
