@@ -86,6 +86,7 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+@if($withMonitoring ?? false)
         - name: postgres-exporter
           image: {{ \App\Enums\DatabaseDriver::POSTGRESQL->exporterImage() }}
           ports:
@@ -105,6 +106,7 @@ spec:
             limits:
               memory: "64Mi"
               cpu: "100m"
+@endif
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -331,6 +333,7 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
+@if($withMonitoring ?? false)
         - name: mysqld-exporter
           image: {{ \App\Enums\DatabaseDriver::MYSQL->exporterImage() }}
           args:
@@ -352,6 +355,7 @@ spec:
             limits:
               memory: "64Mi"
               cpu: "100m"
+@endif
       volumes:
         - name: data
           persistentVolumeClaim:

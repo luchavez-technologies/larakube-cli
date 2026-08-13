@@ -654,10 +654,14 @@ trait InteractsWithPlex
     protected function applyCommonsManifest(array $spec): void
     {
         $json = (string) json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $kubectl = $this->plexKubectl();
+        $hasMonitoring = trim(Process::run("{$kubectl} get deployment prometheus -n larakube-shared --no-headers --ignore-not-found")->output()) !== '';
+
         $manifest = view('k8s.plex.commons', [
             'spec' => $spec,
             'specJsonIndented' => preg_replace('/^/m', '    ', $json),
             'isLocal' => $this->targetsLocalCluster(),
+            'withMonitoring' => $hasMonitoring,
         ])->render();
 
         $ns = $this->plexNamespace();
