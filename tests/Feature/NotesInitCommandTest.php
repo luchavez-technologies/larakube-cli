@@ -65,6 +65,7 @@ test('notes:init signs Outline\'s S3 endpoint against the Commons public host, n
 
     $this->artisan(NotesInitCommand::class, [
         'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
@@ -84,6 +85,7 @@ test('notes:init wires REDIS_COLLABORATION_URL to the same Commons Redis as REDI
 
     $this->artisan(NotesInitCommand::class, [
         'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
@@ -102,6 +104,7 @@ test('notes:init falls back to the internal S3 endpoint when the Commons has no 
 
     $this->artisan(NotesInitCommand::class, [
         'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
@@ -122,6 +125,7 @@ test('notes:init scopes the Service/Ingress name by instance so a second instanc
     $this->artisan(NotesInitCommand::class, [
         'environment' => 'local',
         '--domain' => 'blog.example.com',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
@@ -140,6 +144,7 @@ test('notes:init returns a failing exit code and does not claim success when kub
 
     $this->artisan(NotesInitCommand::class, [
         'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])
         ->assertExitCode(1)

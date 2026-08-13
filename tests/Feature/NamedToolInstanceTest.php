@@ -53,7 +53,7 @@ test('notes:init deploys a named multi-instance with isolated DB and secrets', f
         '*' => Process::result(output: 'success'),
     ]);
 
-    $this->artisan('notes:init', ['environment' => 'local', '--domain' => 'sister', '--force' => true])
+    $this->artisan('notes:init', ['environment' => 'local', '--domain' => 'sister', '--admin-email' => 'admin@example.com', '--force' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('Outline wiki stack is live');
 });

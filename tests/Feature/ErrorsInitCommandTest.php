@@ -20,7 +20,7 @@ test('errors:init deploys glitchtip using plex commons postgres and redis', func
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('errors:init local')
+    $this->artisan('errors:init local --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Allocating database \'glitchtip\' in the Commons...')
         ->expectsOutputToContain('Applying GlitchTip manifests...')
@@ -40,7 +40,7 @@ test('errors:init deploys standalone glitchtip when --no-plex is passed', functi
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('errors:init local --no-plex')
+    $this->artisan('errors:init local --no-plex --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying GlitchTip manifests...')
         ->expectsOutputToContain('Waiting for local database...')

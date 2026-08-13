@@ -32,6 +32,7 @@ test('data:init deploys Directus with Postgres, Redis, and SeaweedFS S3', functi
     $this->artisan(DataInitCommand::class, [
         'environment' => 'local',
         '--engine' => 'directus',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])
         ->assertExitCode(0)
@@ -92,6 +93,7 @@ test('data:init returns a failing exit code and does not claim success when kube
     $this->artisan(DataInitCommand::class, [
         'environment' => 'local',
         '--engine' => 'directus',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])
         ->assertExitCode(1)
@@ -178,6 +180,7 @@ test('data:init omits zitadel from AUTH_PROVIDERS until sso:wire has actually re
     $this->artisan(DataInitCommand::class, [
         'environment' => 'local',
         '--engine' => 'directus',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
@@ -192,6 +195,7 @@ test('data:init includes zitadel in AUTH_PROVIDERS once sso:wire has registered 
     $this->artisan(DataInitCommand::class, [
         'environment' => 'local',
         '--engine' => 'directus',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
@@ -296,7 +300,7 @@ test('data:init switching engine on the same instance tears down the other engin
     // --force skips confirmDestructive()'s prompt AND its warning text (same
     // as every other destructive command in this codebase) — so what proves
     // the swap happened is the actual delete command, not printed output.
-    $this->artisan('data:init local --engine=pocketbase --force')
+    $this->artisan('data:init local --engine=pocketbase --admin-email=admin@example.com --force')
         ->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
@@ -324,7 +328,7 @@ test('data:init does not touch a different instance\'s resources when switching 
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=pocketbase --domain=blog.example.com --force')
+    $this->artisan('data:init local --engine=pocketbase --domain=blog.example.com --admin-email=admin@example.com --force')
         ->assertExitCode(0);
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete')

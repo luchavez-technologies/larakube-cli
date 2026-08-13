@@ -55,6 +55,7 @@ test('design:init deploys Penpot stack into larakube-shared with Postgres, Redis
 
     $this->artisan(DesignInitCommand::class, [
         'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
@@ -103,6 +104,7 @@ test('design:init allocates a real Commons Redis index instead of hardcoding 0',
 
     $this->artisan(DesignInitCommand::class, [
         'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
@@ -117,6 +119,7 @@ test('design:init includes penpot-exporter container when --with-exporter flag i
 
     $this->artisan(DesignInitCommand::class, [
         'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
         '--with-exporter' => true,
         '--no-interaction' => true,
     ])->assertExitCode(0);
