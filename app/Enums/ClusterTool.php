@@ -1026,11 +1026,6 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public function instanceSlugFromHost(string $host): string
     {
-        $label = explode('.', $host)[0] ?? $host;
-        if ($label === $this->service()?->hostPrefix()) {
-            return 'main';
-        }
-
         $slug = strtolower(str_replace('.', '-', $host));
         $slug = trim((string) preg_replace('/[^a-z0-9-]/', '-', $slug), '-');
 

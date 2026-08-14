@@ -195,9 +195,9 @@ test('supportsMultipleInstances() pins the 2026-08 multi-instance capability aud
     }
 });
 
-test('instanceSlugFromHost() derives main for the tool\'s own bare-prefix host', function () {
-    expect(ClusterTool::DATA->instanceSlugFromHost('data.example.com'))->toBe('main')
-        ->and(ClusterTool::DATA->instanceSlugFromHost('data.luchtech.dev'))->toBe('main');
+test('instanceSlugFromHost() derives pure host-based slug for every host', function () {
+    expect(ClusterTool::DATA->instanceSlugFromHost('data.example.com'))->toBe('data-example-com')
+        ->and(ClusterTool::DATA->instanceSlugFromHost('data.luchtech.dev'))->toBe('data-luchtech-dev');
 });
 
 test('instanceSlugFromHost() never collides on the leftmost label — the incident this method exists to prevent', function () {
