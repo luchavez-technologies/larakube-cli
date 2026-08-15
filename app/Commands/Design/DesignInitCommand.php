@@ -118,6 +118,11 @@ class DesignInitCommand extends Command
 
         $adminEmail = $this->readDesignSecret($kubectl, $ns, 'admin-email', $instance) ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readDesignSecret($kubectl, $ns, 'password', $instance) ?? Str::random(24);
+        // Once OpenBao's database secrets engine already owns this static
+        // role, defer to ITS current password instead of re-affirming a
+        // locally-cached one that may predate OpenBao's own rotation — see
+        // resolveManagedDbPassword()'s docblock.
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
         $secretKey = $this->readDesignSecret($kubectl, $ns, 'secret-key', $instance) ?? bin2hex(random_bytes(32));
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {

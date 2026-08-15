@@ -142,6 +142,14 @@ class GitInitCommand extends Command
             if (! $this->ensureCommons(['postgres', 'redis'])) {
                 return 1;
             }
+            // Once OpenBao's database secrets engine already owns the
+            // 'forgejo' static role, defer to ITS current password instead
+            // of re-affirming a locally-cached one that may predate
+            // OpenBao's own rotation — see resolveManagedDbPassword()'s
+            // docblock. Confirmed live 2026-08-15: this exact gap took
+            // Forgejo down after a routine OpenBao reseal/resync.
+            $dbPassword = $this->resolveManagedDbPassword($kubectl, 'forgejo', $dbPassword);
+
             if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'forgejo', $dbPassword)) {
                 return 1;
             }

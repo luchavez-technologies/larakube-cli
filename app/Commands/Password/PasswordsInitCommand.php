@@ -62,6 +62,11 @@ class PasswordsInitCommand extends Command
 
         // Allocate Vaultwarden database in Plex Commons Postgres if available
         $dbPassword = Str::random(24);
+        // Once OpenBao's database secrets engine already owns the
+        // 'vaultwarden' static role, defer to ITS current password instead
+        // of clobbering Postgres with a fresh one on every run — see
+        // resolveManagedDbPassword()'s docblock.
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, 'vaultwarden', $dbPassword);
         $databaseUrl = null;
         $plexNs = $this->plexNamespace();
 

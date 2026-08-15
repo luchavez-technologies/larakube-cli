@@ -100,6 +100,13 @@ class SsoInitCommand extends Command
         $adminEmail = $this->readSsoSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
 
         if (! $noPlex) {
+            // Once OpenBao's database secrets engine already owns the
+            // 'zitadel' static role, defer to ITS current password instead
+            // of re-affirming a locally-cached one that may predate
+            // OpenBao's own rotation — see resolveManagedDbPassword()'s
+            // docblock.
+            $dbPassword = $this->resolveManagedDbPassword($kubectl, 'zitadel', $dbPassword);
+
             if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'zitadel', $dbPassword)) {
                 return 1;
             }

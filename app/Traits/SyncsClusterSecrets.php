@@ -386,6 +386,49 @@ trait SyncsClusterSecrets
     }
 
     /**
+     * The password to hand allocateDatabase() for a role OpenBao's database
+     * secrets engine may already own. Once a static role exists, OpenBao is
+     * the SOLE source of truth for that role's password — it rotates
+     * Postgres directly via its own DB connection on its own schedule
+     * (default 168h). allocateDatabase()'s `ALTER ROLE` is unconditional,
+     * so calling it with anything other than OpenBao's current password —
+     * a freshly generated one, or a locally-cached one that predates
+     * OpenBao's last rotation — silently overwrites what OpenBao just set,
+     * leaving Postgres, OpenBao's bookkeeping, and the synced Secret
+     * three-way inconsistent. The next sync then pushes OpenBao's (now
+     * ALSO wrong, relative to the just-overwritten Postgres) value into the
+     * Deployment, and the pod can't authenticate. Confirmed live
+     * 2026-08-15: Forgejo and Vaultwarden both went into CrashLoopBackOff
+     * on "password authentication failed" from exactly this race — every
+     * `{tool}:init` command that both calls allocateDatabase() AND
+     * registers an OpenBao static role for the same role needs this call
+     * BEFORE allocateDatabase(), not just the existing post-hoc
+     * readStaticRolePassword()-and-overwrite step after it (that step
+     * alone only covers a role's first-ever registration, which rotates
+     * the password as a side effect of creation — it does nothing for a
+     * re-run against an already-existing role).
+     *
+     * $localPassword — the caller's own read-existing-secret-or-generate-
+     * fresh value — is used only when OpenBao doesn't (yet) govern this
+     * role: OpenBao not installed, or the database secrets engine not
+     * mounted. That is also correctly the value used for a role's
+     * first-ever creation, since no prior OpenBao password exists to defer
+     * to yet.
+     */
+    protected function resolveManagedDbPassword(string $kubectl, string $roleName, string $localPassword): string
+    {
+        if (! $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
+            return $localPassword;
+        }
+
+        if (! $this->databaseEngineMounted($kubectl)) {
+            return $localPassword;
+        }
+
+        return $this->readStaticRolePassword($kubectl, $roleName) ?? $localPassword;
+    }
+
+    /**
      * Delete a static role's OpenBao registration entirely — required before
      * a tool's Commons database tenant is dropped, or the role is left
      * pointing at a Postgres user that no longer exists in that form. Left

@@ -293,6 +293,11 @@ class MailInitCommand extends Command
 
         $existingPassword = $this->readClusterSecretKey($kubectl, $ns, 'stalwart-openbao', 'STALWART_STORE_PASSWORD');
         $password = $existingPassword ?? Str::random(24);
+        // Once OpenBao's database secrets engine already owns the
+        // 'stalwart' static role, defer to ITS current password instead of
+        // re-affirming a locally-cached one that may predate OpenBao's own
+        // rotation — see resolveManagedDbPassword()'s docblock.
+        $password = $this->resolveManagedDbPassword($kubectl, 'stalwart', $password);
 
         // Unlike the checks above, this one is a real failure, not a missing
         // precondition — say so loudly rather than in passing gray.

@@ -97,6 +97,11 @@ class ResumeInitCommand extends Command
         $authSecret = $this->readResumeSecret($kubectl, $ns, 'auth-secret') ?? Str::random(32);
 
         $dbName = 'reactiveresume';
+        // Once OpenBao's database secrets engine already owns this static
+        // role, defer to ITS current password instead of re-affirming a
+        // locally-cached one that may predate OpenBao's own rotation — see
+        // resolveManagedDbPassword()'s docblock.
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;

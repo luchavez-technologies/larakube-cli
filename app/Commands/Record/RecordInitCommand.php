@@ -104,6 +104,11 @@ class RecordInitCommand extends Command
         $jwtSecret = $this->readRecordSecret($kubectl, $ns, 'jwt-secret') ?? bin2hex(random_bytes(32));
 
         $dbName = 'record_sendrec';
+        // Once OpenBao's database secrets engine already owns this static
+        // role, defer to ITS current password instead of re-affirming a
+        // locally-cached one that may predate OpenBao's own rotation — see
+        // resolveManagedDbPassword()'s docblock.
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;

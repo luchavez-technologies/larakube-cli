@@ -76,6 +76,11 @@ function syncsClusterSecrets(): object
         {
             $this->forceExternalSecretReconcile($kubectl, $namespace, $name);
         }
+
+        public function managedDbPassword(string $kubectl, string $roleName, string $localPassword): string
+        {
+            return $this->resolveManagedDbPassword($kubectl, $roleName, $localPassword);
+        }
     };
 }
 
@@ -511,4 +516,74 @@ test('forceExternalSecretReconcile annotates the ExternalSecret to nudge ESO int
         && str_contains($process->command, "-n 'luchtech-local'")
         && str_contains($process->command, 'force-sync=')
         && str_contains($process->command, '--overwrite'));
+});
+
+/**
+ * Regression suite for the 2026-08-15 desync incident: Forgejo and
+ * Vaultwarden both went CrashLoopBackOff on "password authentication
+ * failed" because their :init commands called allocateDatabase() with a
+ * locally-generated/cached password without ever checking whether OpenBao's
+ * database secrets engine already owned that role — see
+ * resolveManagedDbPassword()'s own docblock for the full mechanics.
+ */
+test('resolveManagedDbPassword falls back to the local password when OpenBao is not bootstrapped', function () {
+    Process::fake([
+        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+    ]);
+
+    expect(syncsClusterSecrets()->managedDbPassword($this->kubectl, 'vaultwarden', 'fresh-random-local'))
+        ->toBe('fresh-random-local');
+});
+
+test('resolveManagedDbPassword falls back to the local password when the database engine is not mounted', function () {
+    Process::fake([
+        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*port-forward*' => Process::result(output: ''),
+    ]);
+
+    Http::fake([
+        'localhost:*' => Http::response(['data' => ['secret/' => ['type' => 'kv']]]),
+    ]);
+
+    expect(syncsClusterSecrets()->managedDbPassword($this->kubectl, 'vaultwarden', 'fresh-random-local'))
+        ->toBe('fresh-random-local');
+});
+
+test('resolveManagedDbPassword falls back to the local password when OpenBao has no static role for it yet (first-ever creation)', function () {
+    Process::fake([
+        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*port-forward*' => Process::result(output: ''),
+    ]);
+
+    Http::fake(function ($request) {
+        if (str_contains($request->url(), 'sys/mounts')) {
+            return Http::response(['data' => ['database/' => ['type' => 'database']]]);
+        }
+
+        return Http::response(['errors' => ['no static role found at database/static-creds/brand-new-role']], 400);
+    });
+
+    expect(syncsClusterSecrets()->managedDbPassword($this->kubectl, 'brand-new-role', 'fresh-random-local'))
+        ->toBe('fresh-random-local');
+});
+
+test('resolveManagedDbPassword defers to OpenBao\'s current static-role password once the role already exists — never the local one', function () {
+    Process::fake([
+        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*port-forward*' => Process::result(output: ''),
+    ]);
+
+    Http::fake(function ($request) {
+        if (str_contains($request->url(), 'sys/mounts')) {
+            return Http::response(['data' => ['database/' => ['type' => 'database']]]);
+        }
+        if (str_contains($request->url(), 'database/static-creds/vaultwarden')) {
+            return Http::response(['data' => ['password' => 'openbao-managed-password']]);
+        }
+
+        return Http::response([], 404);
+    });
+
+    expect(syncsClusterSecrets()->managedDbPassword($this->kubectl, 'vaultwarden', 'fresh-random-local'))
+        ->toBe('openbao-managed-password');
 });

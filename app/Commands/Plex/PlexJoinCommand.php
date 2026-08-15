@@ -245,9 +245,22 @@ class PlexJoinCommand extends Command
         // its own Commons service — allocate the per-tenant DB + login there.
         $dbDriver = $config->getDatabase();
         $dbService = $dbDriver?->commonsServiceName();
-        if ($dbDriver !== null && $dbService !== null && in_array($dbService, $services, true)
-            && ! $this->allocateDatabase($dbDriver, $tenant, $password)) {
-            return 1;
+        if ($dbDriver !== null && $dbService !== null && in_array($dbService, $services, true)) {
+            // Once OpenBao's database secrets engine already owns this
+            // tenant's static role ('tenant-{$tenant}'), defer to ITS
+            // current password instead of clobbering Postgres with a fresh
+            // random one on every join/re-join — that's exactly the "should
+            // never reset a credential as a side effect" behavior the
+            // registerStaticRole() call further down already documents as
+            // the intent, but couldn't actually deliver on its own: its
+            // idempotent no-op only protects OpenBao's OWN bookkeeping, not
+            // Postgres, which allocateDatabase() below unconditionally
+            // ALTERs regardless. See resolveManagedDbPassword()'s docblock.
+            $password = $this->resolveManagedDbPassword($this->plexKubectl(), "tenant-{$tenant}", $password);
+
+            if (! $this->allocateDatabase($dbDriver, $tenant, $password)) {
+                return 1;
+            }
         }
 
         // Object storage: a per-tenant bucket on the shared Commons S3, using the
