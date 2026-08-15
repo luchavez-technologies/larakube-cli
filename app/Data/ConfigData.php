@@ -1503,9 +1503,18 @@ class ConfigData extends Data
      */
     public function getSharedServiceHost(SharedClusterService $service, string $environment = 'local', string $instance = 'main'): string
     {
+        // '' and 'main' both mean "this service's own default instance" —
+        // resolveInstanceTargetsForDomain()'s no-registry fallback returns
+        // '', a registry entry written before instances existed (or with a
+        // legacy hand-transformed value) stores literal 'main'. Treating
+        // only one of the two as the sentinel here silently produced a
+        // trailing-dash host ("grafana-" instead of "grafana") the moment
+        // '' reached this method (ADR 0012, amended 2026-08-15).
+        $isDefault = $instance === '' || $instance === 'main';
+
         $envData = $this->getEnvironment($environment);
 
-        if ($instance === 'main' && $envData && isset($envData->hosts[$service->value])) {
+        if ($isDefault && $envData && isset($envData->hosts[$service->value])) {
             return $envData->hosts[$service->value];
         }
 
@@ -1514,7 +1523,7 @@ class ConfigData extends Data
         }
 
         if ($envData && isset($envData->hosts['web'])) {
-            $suffix = $instance !== 'main' ? "-{$instance}" : '';
+            $suffix = $isDefault ? '' : "-{$instance}";
 
             return "{$service->hostPrefix()}{$suffix}-{$envData->hosts['web']}";
         }

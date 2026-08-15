@@ -46,16 +46,22 @@ abstract class AbstractToolRemoveCommand extends Command
 
     public function __construct()
     {
+        if (static::class === self::class) {
+            parent::__construct();
+
+            return;
+        }
+
         $tool = $this->tool();
 
         if (empty($this->signature)) {
-            $this->signature = "{$tool->value}:remove
-            {environment=local : Environment to remove ".$tool->getLabel()." from}
-            {--context=  : Target a specific kube-context (defaults to the environment's saved cloud target)}
-            {--domain=   : The instance's host, to target a specific one (e.g. --domain=blog.example.com). Omit for the default instance}
-            {--all       : Remove all registered instances of this tool}
-            {--purge     : Also destroy persistent data — drop the Plex Commons database and release the Redis index. Irreversible.}
-            {--force     : Skip the confirmation prompt (required for non-interactive runs)}";
+            $this->signature = "{$tool->value}:remove ".
+                '{environment=local : Environment to remove '.$tool->getLabel().' from} '.
+                '{--context= : Target a specific kube-context (defaults to the environment\'s saved cloud target)} '.
+                '{--domain= : The instance\'s host, to target a specific one (e.g. --domain=blog.example.com). Omit for the default instance} '.
+                '{--all : Remove all registered instances of this tool} '.
+                '{--purge : Also destroy persistent data — drop the Plex Commons database and release the Redis index. Irreversible.} '.
+                '{--force : Skip the confirmation prompt (required for non-interactive runs)}';
         }
 
         $this->description ??= "Remove {$tool->getLabel()} from a cluster";
@@ -93,16 +99,14 @@ abstract class AbstractToolRemoveCommand extends Command
         // incident of 2026-08-09): removal means "take down everything
         // serving this host", so all matching instances go.
         $targets = $this->resolveInstanceTargets($kubectl);
-        foreach ($targets as $targetInstance) {
-            if ($targetInstance !== 'main' && ! $tool->supportsMultipleInstances()) {
-                $this->laraKubeError(
-                    "{$tool->getLabel()} does not support multiple instances — ".
-                    '--domain would silently do nothing (or worse, a misleading partial removal) since its '.
-                    'teardown targets fixed resource names. Omit --domain to remove the single installation.',
-                );
+        if ((string) $this->option('domain') !== '' && ! $tool->supportsMultipleInstances()) {
+            $this->laraKubeError(
+                "{$tool->getLabel()} does not support multiple instances — ".
+                '--domain would silently do nothing (or worse, a misleading partial removal) since its '.
+                'teardown targets fixed resource names. Omit --domain to remove the single installation.',
+            );
 
-                return 1;
-            }
+            return 1;
         }
 
         if (! $this->confirmDestructive($this->teardownWarning($env))) {
@@ -163,13 +167,27 @@ abstract class AbstractToolRemoveCommand extends Command
             return $this->resolveInstanceTargetsForDomain($kubectl, $this->tool(), $domain);
         }
 
-        if ($this->hasOption('all') && $this->option('all')) {
-            $instances = $this->getToolInstances($kubectl, $this->tool());
+        $tool = $this->tool();
 
-            return $instances !== [] ? $instances : ['main'];
+        if ($this->hasOption('all') && $this->option('all')) {
+            $instances = $this->getToolInstances($kubectl, $tool);
+
+            if ($instances !== []) {
+                return $instances;
+            }
+
+            // Removal is read-only targeting, not installation — never write a
+            // fresh registry stub just to compute a fallback instance slug,
+            // and never GUESS one via instanceSlugFromHost() either: it now
+            // always derives a real (never empty/'main') slug (ADR 0012,
+            // amended 2026-08-15), which would target resources that don't
+            // exist for a legacy, pre-registry deployment. null is what
+            // every teardown method below already treats as "this tool's
+            // own unsuffixed default" — the exact same value the plain
+            // no-flags branch a few lines down already falls back to.
+            return [null];
         }
 
-        $tool = $this->tool();
         $registered = array_values(array_filter(
             $this->getRegisteredTools($kubectl),
             fn (array $e) => ($e['tool'] ?? null) === $tool->value,
@@ -178,7 +196,10 @@ abstract class AbstractToolRemoveCommand extends Command
         if (count($registered) > 1 && ! $this->cannotPrompt()) {
             $options = [];
             foreach ($registered as $entry) {
-                $inst = (string) ($entry['instance'] ?? 'main');
+                // A registry entry missing its own 'instance' key is a
+                // malformed/legacy write — '' (this tool's default), never a
+                // guessed slug, matches every other fallback in this file.
+                $inst = (string) ($entry['instance'] ?? '');
                 $host = (string) ($entry['host'] ?? '');
                 $label = $host !== '' ? "{$inst} ({$host})" : $inst;
                 $options[$inst] = $label;
@@ -198,10 +219,12 @@ abstract class AbstractToolRemoveCommand extends Command
         }
 
         if ($registered !== []) {
-            return [(string) ($registered[0]['instance'] ?? 'main')];
+            $firstInst = (string) ($registered[0]['instance'] ?? '');
+
+            return [$firstInst !== '' ? $firstInst : null];
         }
 
-        return ['main'];
+        return [null];
     }
 
     /**
@@ -209,7 +232,7 @@ abstract class AbstractToolRemoveCommand extends Command
      * instance when handle() runs over several (duplicate-host removal),
      * otherwise the first (derived/default) target.
      */
-    protected function resolveInstance(string $kubectl): string
+    protected function resolveInstance(string $kubectl): ?string
     {
         if ($this->currentInstance !== null) {
             return $this->currentInstance;
@@ -256,7 +279,7 @@ abstract class AbstractToolRemoveCommand extends Command
      * dropping a Commons database that this install never leased would destroy
      * a DIFFERENT tool's data if the names ever collided.
      */
-    protected function dropCommonsTenants(string $kubectl, string $instance = 'main'): bool
+    protected function dropCommonsTenants(string $kubectl, ?string $instance = null): bool
     {
         $tool = $this->tool();
         $databases = $tool->commonsDatabases($instance);
@@ -287,10 +310,11 @@ abstract class AbstractToolRemoveCommand extends Command
             @unlink($tmp);
         }
 
-        $this->unregisterTenant($instance === 'main' ? $tool->value : "{$tool->value}_{$instance}");
+        $tenantKey = ($instance === null || $instance === '') ? $tool->value : "{$tool->value}_{$instance}";
+        $this->unregisterTenant($tenantKey);
 
         foreach ($tool->commonsRedisKeys() as $key) {
-            $redisTenant = $instance === 'main' ? $key : "{$key}_{$instance}";
+            $redisTenant = ($instance === null || $instance === '') ? $key : "{$key}_{$instance}";
             $this->releaseCommonsRedisIndex($redisTenant);
         }
 
@@ -326,7 +350,7 @@ abstract class AbstractToolRemoveCommand extends Command
      * install) is silently skipped rather than needing its own condition
      * here — same discipline the hand-written strings this replaces relied on.
      */
-    protected function teardownComponentsCommand(string $kubectl, string $namespace, string $instance = 'main'): string
+    protected function teardownComponentsCommand(string $kubectl, string $namespace, ?string $instance = null): string
     {
         $refs = [];
         foreach ($this->tool()->components($instance) as $component) {

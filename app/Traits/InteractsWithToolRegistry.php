@@ -40,13 +40,14 @@ trait InteractsWithToolRegistry
     {
         $entries = array_filter($this->getRegisteredTools($kubectl), fn ($e) => ($e['tool'] ?? null) === $tool->value);
 
-        return array_values(array_column($entries, 'instance'));
+        return array_column($entries, 'instance');
     }
 
-    protected function findToolInstanceEntry(string $kubectl, ClusterTool $tool, string $instance = 'main'): ?array
+    protected function findToolInstanceEntry(string $kubectl, ClusterTool $tool, ?string $instance = null): ?array
     {
         foreach ($this->getRegisteredTools($kubectl) as $entry) {
-            if (($entry['tool'] ?? null) === $tool->value && ($entry['instance'] ?? 'main') === $instance) {
+            $entryInst = $entry['instance'] ?? null;
+            if (($entry['tool'] ?? null) === $tool->value && ($entryInst === $instance || ($instance === null && ($entryInst === '' || $entryInst === null || $entryInst === 'main')))) {
                 return $entry;
             }
         }
@@ -75,9 +76,7 @@ trait InteractsWithToolRegistry
      * registration (same host under two instances, e.g. the DATA incident of
      * 2026-08-09) is surfaced to removal commands as "remove everything
      * serving this host". Only hosts with no registered entry at all derive
-     * a fresh slug. An empty/'all' target means the DEFAULT instance —
-     * 'main', the bare-name legacy naming every pre-multi-instance
-     * deployment used.
+     * a fresh slug.
      *
      * @return list<string>
      */
@@ -85,10 +84,36 @@ trait InteractsWithToolRegistry
     {
         $domain = trim($domain);
         if ($domain === '' || $domain === 'all') {
+            $matches = array_values(array_filter(
+                $this->getRegisteredTools($kubectl),
+                fn (array $e) => ($e['tool'] ?? null) === $tool->value,
+            ));
+            if ($matches !== []) {
+                return array_values(array_unique(array_map(
+                    fn (array $e) => (string) ($e['instance'] ?? 'main'),
+                    $matches,
+                )));
+            }
+
+            // Never registered at all: assume this tool's own conventional,
+            // unsuffixed default naming — never GUESS a slug via
+            // instanceSlugFromHost(). That method deliberately never
+            // special-cases a tool's own default host anymore (ADR 0012,
+            // amended 2026-08-15), so it always derives a real, non-empty
+            // slug — which would target resources that were never actually
+            // created under that name for a legacy, pre-registry
+            // deployment. 'main' — not '' — on purpose: this value flows out
+            // to half a dozen commands (SsoWireCommand, ToolAliasCommand,
+            // DataInitCommand, VpnWireCommand, SecretsWireCommand/
+            // SecretsRotateCommand) that already recognize literal 'main' as
+            // "the default instance" but don't all treat '' the same way —
+            // introducing a second sentinel here would silently break every
+            // one of them instead of fixing anything.
             return ['main'];
         }
 
         $host = $this->normalizeTargetHost($domain);
+
         $matches = array_values(array_filter(
             $this->getRegisteredTools($kubectl),
             fn (array $e) => ($e['tool'] ?? null) === $tool->value && ($e['host'] ?? null) === $host,
@@ -99,7 +124,26 @@ trait InteractsWithToolRegistry
             $matches,
         )));
 
-        return $instances !== [] ? $instances : [$tool->instanceSlugFromHost($host)];
+        if ($instances !== []) {
+            return $instances;
+        }
+
+        // Same reasoning as above, but the operator named a specific host:
+        // only trust instanceSlugFromHost() to invent a slug when that host
+        // is genuinely NOT this tool's own conventional default (a real
+        // second instance). An unregistered legacy tool targeted by its own
+        // default host must still resolve to the unsuffixed convention it
+        // actually deployed under, not a freshly computed one nothing was
+        // ever named after. This is the same leftmost-label check
+        // instanceSlugFromHost() itself used to make before it was
+        // deliberately simplified to always derive a real slug (ADR 0012,
+        // amended 2026-08-15) — it still belongs here, at the one call site
+        // that's actually trying to recognize an existing legacy deploy
+        // rather than name a brand new one.
+        $prefix = $tool->service()?->hostPrefix();
+        $isOwnDefaultHost = $prefix !== null && $prefix !== '' && (explode('.', $host, 2)[0] ?? '') === $prefix;
+
+        return [$isOwnDefaultHost ? 'main' : $tool->instanceSlugFromHost($host)];
     }
 
     /**
@@ -129,7 +173,7 @@ trait InteractsWithToolRegistry
         return strtolower(trim($domain));
     }
 
-    protected function isToolRegistered(string $kubectl, ClusterTool $tool, string $instance = 'main'): bool
+    protected function isToolRegistered(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
     {
         return $this->findToolInstanceEntry($kubectl, $tool, $instance) !== null;
     }
@@ -137,7 +181,7 @@ trait InteractsWithToolRegistry
     /**
      * Record (or update) a tool instance in the cluster registry.
      */
-    protected function registerTool(string $kubectl, ClusterTool $tool, array $metadata = [], string $instance = 'main'): bool
+    protected function registerTool(string $kubectl, ClusterTool $tool, array $metadata = [], ?string $instance = null): bool
     {
         $list = $this->getRegisteredTools($kubectl);
         // Never let an absent/empty value clobber a known one.
@@ -146,7 +190,8 @@ trait InteractsWithToolRegistry
 
         $found = false;
         foreach ($list as &$entry) {
-            if (($entry['tool'] ?? null) === $tool->value && ($entry['instance'] ?? 'main') === $instance) {
+            $entryInst = $entry['instance'] ?? null;
+            if (($entry['tool'] ?? null) === $tool->value && ($entryInst === $instance || ($instance === null && ($entryInst === '' || $entryInst === null || $entryInst === 'main')))) {
                 $entry = array_merge($entry, $metadata, ['updatedAt' => $now]);
                 $found = true;
                 break;
@@ -165,7 +210,7 @@ trait InteractsWithToolRegistry
         return $this->saveToolRegistry($kubectl, $list);
     }
 
-    protected function getToolInstanceData(string $kubectl, ClusterTool $tool, string $instance = 'main'): ?InstanceData
+    protected function getToolInstanceData(string $kubectl, ClusterTool $tool, ?string $instance = null): ?InstanceData
     {
         $entry = $this->findToolInstanceEntry($kubectl, $tool, $instance);
 
@@ -180,23 +225,24 @@ trait InteractsWithToolRegistry
         return array_values(array_map(fn (array $e) => InstanceData::from($e), $entries));
     }
 
-    protected function getToolHost(string $kubectl, ClusterTool $tool, string $instance = 'main'): ?string
+    protected function getToolHost(string $kubectl, ClusterTool $tool, ?string $instance = null): ?string
     {
         return $this->findToolInstanceEntry($kubectl, $tool, $instance)['host'] ?? null;
     }
 
-    protected function getToolAliasHosts(string $kubectl, ClusterTool $tool, string $instance = 'main'): array
+    protected function getToolAliasHosts(string $kubectl, ClusterTool $tool, ?string $instance = null): array
     {
         return $this->findToolInstanceEntry($kubectl, $tool, $instance)['aliases'] ?? [];
     }
 
-    protected function addToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, string $instance = 'main'): bool
+    protected function addToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, ?string $instance = null): bool
     {
         $list = $this->getRegisteredTools($kubectl);
 
         $found = false;
         foreach ($list as &$entry) {
-            if (($entry['tool'] ?? null) === $tool->value && ($entry['instance'] ?? 'main') === $instance) {
+            $entryInst = $entry['instance'] ?? null;
+            if (($entry['tool'] ?? null) === $tool->value && ($entryInst === $instance || ($instance === null && ($entryInst === '' || $entryInst === null || $entryInst === 'main')))) {
                 $existing = $entry['aliases'] ?? [];
                 if (! in_array($aliasHost, $existing, true)) {
                     $existing[] = $aliasHost;
@@ -211,13 +257,14 @@ trait InteractsWithToolRegistry
         return $found && $this->saveToolRegistry($kubectl, $list);
     }
 
-    protected function removeToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, string $instance = 'main'): bool
+    protected function removeToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, ?string $instance = null): bool
     {
         $list = $this->getRegisteredTools($kubectl);
 
         $found = false;
         foreach ($list as &$entry) {
-            if (($entry['tool'] ?? null) === $tool->value && ($entry['instance'] ?? 'main') === $instance) {
+            $entryInst = $entry['instance'] ?? null;
+            if (($entry['tool'] ?? null) === $tool->value && ($entryInst === $instance || ($instance === null && ($entryInst === '' || $entryInst === null || $entryInst === 'main')))) {
                 $existing = $entry['aliases'] ?? [];
                 $entry['aliases'] = array_values(array_filter($existing, fn ($h) => $h !== $aliasHost));
                 $found = true;
@@ -233,12 +280,17 @@ trait InteractsWithToolRegistry
         return $this->saveToolRegistry($kubectl, $list);
     }
 
-    protected function unregisterTool(string $kubectl, ClusterTool $tool, string $instance = 'main'): bool
+    protected function unregisterTool(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
     {
         $list = $this->getRegisteredTools($kubectl);
         $filtered = array_values(array_filter(
             $list,
-            fn ($e) => ! (($e['tool'] ?? null) === $tool->value && ($e['instance'] ?? 'main') === $instance),
+            function ($e) use ($tool, $instance) {
+                $entryInst = $e['instance'] ?? null;
+                $matches = ($e['tool'] ?? null) === $tool->value && ($entryInst === $instance || ($instance === null && ($entryInst === '' || $entryInst === null || $entryInst === 'main')));
+
+                return ! $matches;
+            },
         ));
 
         if (count($filtered) === count($list)) {

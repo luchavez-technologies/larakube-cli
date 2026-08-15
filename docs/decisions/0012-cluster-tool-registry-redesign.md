@@ -56,11 +56,6 @@ dots — RFC 1035) is derived automatically, never operator-supplied:
 // ClusterTool::instanceSlugFromHost()
 public function instanceSlugFromHost(string $host): string
 {
-    $label = explode('.', $host)[0] ?? $host;
-    if ($label === $this->service()?->hostPrefix()) {
-        return 'main';
-    }
-
     $slug = strtolower(str_replace('.', '-', $host));       // FULL host, not just the label
     $slug = trim((string) preg_replace('/[^a-z0-9-]/', '-', $slug), '-');
 
@@ -71,6 +66,28 @@ public function instanceSlugFromHost(string $host): string
 Hashing the **full host**, not the leftmost label, is what fixes mistake #2
 above: `blog.example.com` and `blog.other.com` now derive `blog-example-com`
 and `blog-other-com` — never the same slug.
+
+> **Amendment, 2026-08-15:** the code sample above originally special-cased
+> a tool's own bare-prefix host (`data.example.com` for DATA) to return the
+> literal string `'main'`, matching every pre-instance-system deployment.
+> Commits `f59ca28`/`2ff4b87` (2026-08-14) deliberately removed that branch
+> — `instanceSlugFromHost()` now always derives a real slug, with no magic
+> string, full stop; Twenty CRM (`ClusterTool::CRM`) was the first tool
+> upgraded to depend on that unconditionally. This ADR's own code sample had
+> drifted from the shipped implementation as a result — fixed here to match.
+>
+> That simplification did NOT retroactively rename any already-deployed
+> legacy tool's resources — every tool deployed before 2026-08-14 still has
+> real, unsuffixed-or-`main`-suffixed Kubernetes resources on disk, and
+> reading `'main'` back out of an existing `larakube-tools-registry` entry
+> must keep working forever (see Consequences below and
+> [`plans/completed/eliminate-main-instance-defaults.md`](../../plans/completed/eliminate-main-instance-defaults.md)).
+> `'main'` isn't eradicated as a *value* — old data and old resource names
+> keep meaning what they've always meant. What's gone is `instanceSlugFromHost()`
+> ever *manufacturing* a fresh `'main'` for a tool that doesn't already have
+> one, which is exactly the kind of asymmetry (some code paths derive real
+> slugs, others reach for a magic string) this ADR exists to prevent in the
+> first place.
 
 `ResolvesToolHost::sanitizeDomainInput()` is the matching input side: strips
 scheme/path/port/stray dots from whatever an operator pastes, but —

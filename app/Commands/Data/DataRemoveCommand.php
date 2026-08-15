@@ -53,13 +53,20 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
     protected function teardown(string $kubectl, string $namespace): bool
     {
         $instance = $this->resolveInstance($kubectl);
-        $secretName = $instance !== 'main' ? "data-secrets-{$instance}" : 'data-secrets';
-        $smtpSecret = $instance !== 'main' ? "data-smtp-{$instance}" : 'data-smtp';
-        $oidcSecret = $instance !== 'main' ? "data-oidc-{$instance}" : 'data-oidc';
+        // resolveInstance() can return null (unregistered, no --all/--domain
+        // — see resolveInstanceTargets()) as well as '' or the legacy literal
+        // 'main', all three meaning the same "default instance". Checking
+        // only the literal string here silently produced a trailing-dash
+        // name ("data-secrets-") for the null/'' cases (ADR 0012, amended
+        // 2026-08-15).
+        $isDefault = $instance === null || $instance === '' || $instance === 'main';
+        $secretName = $isDefault ? 'data-secrets' : "data-secrets-{$instance}";
+        $smtpSecret = $isDefault ? 'data-smtp' : "data-smtp-{$instance}";
+        $oidcSecret = $isDefault ? 'data-oidc' : "data-oidc-{$instance}";
 
         // Directus's Service/Ingress are named after deploymentName()
         // (data-directus[-instance]) since the instance-parity fix.
-        $directusDeploy = $instance !== 'main' ? "data-directus-{$instance}" : 'data-directus';
+        $directusDeploy = $isDefault ? 'data-directus' : "data-directus-{$instance}";
         $pocketbaseDeploy = ClusterTool::DATA->deploymentName($instance, 'pocketbase');
 
         $requested = strtolower((string) ($this->option('engine') ?: ''));
