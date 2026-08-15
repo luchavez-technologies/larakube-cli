@@ -66,11 +66,21 @@ class SecretsInitCommand extends Command
             'image' => SecretsBackend::OPENBAO->getDockerImage(),
             'port' => SecretsBackend::OPENBAO->getDefaultPort(),
             'host' => $host,
-            // Cloud/production stay manual-unseal by design — a security
-            // boundary, not friction to remove. Local dev is the case this
-            // solves: a laptop sleep/wake cycle restarts the pod (Vault/
-            // OpenBao always reseals on restart) with nobody watching.
-            'autoUnseal' => $env === 'local',
+            // Was local-only ("cloud/production stay manual-unseal by
+            // design — a security boundary"), reconsidered 2026-08-15: the
+            // unseal key already lives in-cluster as a plain Secret
+            // (openbao-bootstrap) regardless of this flag — anyone who can
+            // read Secrets in this namespace can already unseal manually, so
+            // withholding auto-unseal in production defends against a
+            // restart, not against a real compromise. What it actually cost:
+            // a node hiccup resealed OpenBao in production, and every tool
+            // whose ExternalSecret/VaultDynamicSecret depends on it (ESO's
+            // Kubernetes-auth login, static-role rotation reads, KV pushes)
+            // failed silently until a human noticed and ran
+            // `secrets:unseal` by hand — Forgejo and Vaultwarden both went
+            // down from stale, superseded DB passwords as a direct result.
+            // See docs/decisions/0016-openbao-auto-unseal-everywhere.md.
+            'autoUnseal' => true,
         ])->render();
 
         $crdsManifest = view('k8s.secrets.eso-crds')->render();

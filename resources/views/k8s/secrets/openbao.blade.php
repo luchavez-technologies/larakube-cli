@@ -2,8 +2,9 @@
     $port = $port ?? 8200;
     $image = $image ?? 'openbao/openbao:2.6.1';
     $namespace = $namespace ?? 'larakube-secrets';
-    // Local-only: a cloud/production seal is a deliberate security boundary,
-    // not an accident to paper over automatically.
+    // SecretsInitCommand always passes true now (see its own comment for
+    // why manual-unseal-in-production was reconsidered). false here is just
+    // a safe default for any other direct caller of this view.
     $autoUnseal = $autoUnseal ?? false;
 @endphp
 apiVersion: v1

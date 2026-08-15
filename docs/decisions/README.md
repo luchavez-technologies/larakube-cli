@@ -30,3 +30,5 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0012](0012-cluster-tool-registry-redesign.md) | Cluster tool registry: flat list, host-as-identity, no `--instance=` | Accepted |
 | [0013](0013-design-init-idempotent-flags.md) | Tool `:init`/`:wire` reconcile feature flags from truth, never union with history | Accepted |
 | [0014](0014-cluster-tools-vs-project-apps-deploy-path.md) | Cluster Tools (`:init`/`:wire`) deploy by direct `kubectl apply`; project apps (`new`/`cloud:deploy`) go through CI/CD | Accepted |
+| [0016](0016-openbao-auto-unseal-everywhere.md) | OpenBao auto-unseals in every environment, not just `local` | Accepted |
+| [0017](0017-db-password-defers-to-openbao-static-role.md) | `{tool}:init` defers to OpenBao's static-role password before calling `allocateDatabase()`, never after only | Accepted |
