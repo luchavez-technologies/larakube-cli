@@ -13,6 +13,7 @@ test('crm:init deploys Twenty CRM using commons postgres and redis', function ()
             'services' => [
                 'postgres' => ['enabled' => true],
                 'redis' => ['enabled' => true],
+                'seaweedfs' => ['enabled' => true],
             ],
         ]),
         '*plex-registry*' => json_encode(['tenants' => []]),
@@ -27,11 +28,44 @@ test('crm:init deploys Twenty CRM using commons postgres and redis', function ()
 
     $this->artisan(CrmInitCommand::class, [
         'environment' => 'local',
-        '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
     ])
         ->assertExitCode(0)
         ->expectsOutputToContain('Twenty CRM stack is live.');
+});
+
+test('crm:init detects MinIO rather than assuming SeaweedFS when that\'s what plex:init actually provisioned', function () {
+    // Regression: the Commons S3 backend is an operator choice at plex:init
+    // (StorageDriver has 3 options), not a fixed SeaweedFS install — an
+    // earlier version of this wiring hardcoded StorageDriver::SEAWEEDFS.
+    Process::fake([
+        '*plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => [
+                'postgres' => ['enabled' => true],
+                'redis' => ['enabled' => true],
+                'minio' => ['enabled' => true],
+            ],
+        ]),
+        '*plex-registry*' => json_encode(['tenants' => []]),
+        '*larakube-tools-registry*' => Process::result(output: ''),
+        '*exec*' => Process::result(output: 'CREATE DATABASE'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*create secret*' => Process::result(output: 'secret created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout status*' => Process::result(output: 'rollout success'),
+        '*get secret*' => Process::result(output: '', exitCode: 1),
+    ]);
+
+    $this->artisan(CrmInitCommand::class, [
+        'environment' => 'local',
+        '--no-interaction' => true,
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Commons MinIO');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'deploy/minio'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'deploy/seaweedfs'));
 });
 
 test('crm:show displays status table for Twenty CRM', function () {
@@ -63,7 +97,7 @@ test('crm:remove cleans up Twenty CRM resources', function () {
 test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function () {
     expect(ClusterTool::CRM->smtpEnv())->toBe([
         'namespace' => 'larakube-shared',
-        'also_patch' => [],
+        'also_patch' => ['crm-twenty-worker'],
         'deployment' => 'crm-twenty',
         'secret' => 'crm-twenty-smtp',
         'static' => [
@@ -77,4 +111,38 @@ test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function 
             'from' => 'EMAIL_FROM_ADDRESS',
         ],
     ]);
+});
+
+/**
+ * Regression: ClusterTool::smtpEnv()/oidcEnv() call $vendor->smtpEnv($instance)
+ * with ONE positional argument. CrmTool used to declare
+ * smtpEnv(?string $engine, ?string $instance) — an extra leading parameter
+ * that doesn't exist on the HasSmtpWiring contract — so that lone argument
+ * landed in CRM's $engine slot and $instance stayed null forever, silently
+ * targeting the unsuffixed 'crm-twenty' deployment for every real instance.
+ * The zero-arg test above can't catch this; it has to actually pass an
+ * instance through the real wrapper call, the way mail:wire/sso:wire do.
+ */
+test('smtpEnv()/oidcEnv() actually suffix CRM deployment names for a real instance', function () {
+    expect(ClusterTool::CRM->smtpEnv(instance: 'crm-luchtech-dev'))->toBe([
+        'namespace' => 'larakube-shared',
+        'also_patch' => ['crm-twenty-worker-crm-luchtech-dev'],
+        'deployment' => 'crm-twenty-crm-luchtech-dev',
+        'secret' => 'crm-twenty-smtp-crm-luchtech-dev',
+        'static' => [
+            'EMAIL_DRIVER' => 'smtp',
+        ],
+        'vars' => [
+            'host' => 'EMAIL_SMTP_HOST',
+            'port' => 'EMAIL_SMTP_PORT',
+            'user' => 'EMAIL_SMTP_USER',
+            'password' => 'EMAIL_SMTP_PASSWORD',
+            'from' => 'EMAIL_FROM_ADDRESS',
+        ],
+    ]);
+
+    $oidc = ClusterTool::CRM->oidcEnv(instance: 'crm-luchtech-dev');
+    expect($oidc['deployment'])->toBe('crm-twenty-crm-luchtech-dev')
+        ->and($oidc['secret'])->toBe('crm-twenty-oidc-crm-luchtech-dev')
+        ->and($oidc['also_patch'])->toBe(['crm-twenty-worker-crm-luchtech-dev']);
 });

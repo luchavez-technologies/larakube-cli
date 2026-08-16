@@ -61,7 +61,7 @@ test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown
     expect($designDeployments)->toBe(['design-penpot-backend', 'design-penpot-frontend', 'design-penpot-exporter']);
 });
 
-test('only DESIGN\'s frontend and ERRORS\' worker components share the primary\'s wiring secret', function () {
+test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components share the primary\'s wiring secret', function () {
     foreach (ClusterTool::cases() as $tool) {
         $shared = array_values(array_filter($tool->components(), fn ($c) => $c->sharesPrimarySecret));
 
@@ -71,13 +71,17 @@ test('only DESIGN\'s frontend and ERRORS\' worker components share the primary\'
         } elseif ($tool === ClusterTool::ERRORS) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('glitchtip-worker');
+        } elseif ($tool === ClusterTool::CRM) {
+            expect($shared)->toHaveCount(1)
+                ->and($shared[0]->deployment)->toBe('crm-twenty-worker');
         } else {
             expect($shared)->toBe([]);
         }
     }
 
     expect(ClusterTool::DESIGN->alsoPatchDeployments())->toBe(['design-penpot-frontend'])
-        ->and(ClusterTool::ERRORS->alsoPatchDeployments())->toBe(['glitchtip-worker']);
+        ->and(ClusterTool::ERRORS->alsoPatchDeployments())->toBe(['glitchtip-worker'])
+        ->and(ClusterTool::CRM->alsoPatchDeployments())->toBe(['crm-twenty-worker']);
 });
 
 test('backupVolume is only true for the components InteractsWithBackup already covers today', function () {

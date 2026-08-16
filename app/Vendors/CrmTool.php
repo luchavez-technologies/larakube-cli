@@ -4,13 +4,17 @@ namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
+use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
-use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasOidcWiring;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
+use App\Contracts\HasWorkloadComponents;
+use App\Data\ClusterToolComponentData;
+use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the CRM category — 'CRM'. Only Twenty. */
-final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring, HasVpnWiring
+final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasOidcWiring, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -32,12 +36,30 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         ];
     }
 
-    public function baseDeploymentName(): string
+    public function components(?string $instance = null, ?string $engine = null): array
     {
-        return 'crm-twenty';
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+
+        return [
+            new ClusterToolComponentData(
+                key: 'server',
+                role: ClusterToolComponentRole::PRIMARY,
+                deployment: $name('crm-twenty'),
+            ),
+            // Twenty's own docker-compose splits web (HTTP/API) from worker
+            // (yarn worker:prod — email/calendar sync, workflow runs, cron).
+            // The worker needs the same DB/Redis/SMTP/OIDC config as the
+            // server, so mail:wire/sso:wire must patch it too.
+            new ClusterToolComponentData(
+                key: 'worker',
+                role: ClusterToolComponentRole::WORKER,
+                deployment: $name('crm-twenty-worker'),
+                sharesPrimarySecret: true,
+            ),
+        ];
     }
 
-    public function smtpEnv(?string $engine = null, ?string $instance = null): ?array
+    public function smtpEnv(?string $instance = null): ?array
     {
         $dep = $instance !== null && $instance !== '' ? "crm-twenty-{$instance}" : 'crm-twenty';
         $sec = $instance !== null && $instance !== '' ? "crm-twenty-smtp-{$instance}" : 'crm-twenty-smtp';
@@ -58,7 +80,7 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         ];
     }
 
-    public function oidcEnv(?string $engine = null, ?string $instance = null): ?array
+    public function oidcEnv(?string $instance = null): ?array
     {
         $dep = $instance !== null && $instance !== '' ? "crm-twenty-{$instance}" : 'crm-twenty';
         $sec = $instance !== null && $instance !== '' ? "crm-twenty-oidc-{$instance}" : 'crm-twenty-oidc';
@@ -82,5 +104,10 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         $name = $instance !== null && $instance !== '' ? 'crm_twenty_'.str_replace('-', '_', $instance) : 'crm_twenty';
 
         return [$name];
+    }
+
+    public function commonsBucketList(): array
+    {
+        return ['crm-twenty-storage'];
     }
 }
