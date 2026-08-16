@@ -85,7 +85,7 @@ abstract class AbstractToolShowCommand extends Command
         // has no instance concept — it's a coarse "does this tool exist at all"
         // probe, which is the correct fallback only for the main instance.
         $installed = $this->isToolRegistered($kubectl, $tool, $instance)
-            || ($instance === 'main' && $this->isToolPresentOnCluster($kubectl, $tool));
+            || $this->isToolPresentOnCluster($kubectl, $tool);
         $host = $this->resolveHost($tool, $env, $kubectl, $instance);
         $rows = $this->rows($host, $env, $kubectl, $instance);
 

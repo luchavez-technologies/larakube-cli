@@ -68,9 +68,8 @@ class SecretsWireCommand extends Command
         // wires every capable tool at its own default ('main') instance, the
         // same as before --domain= existed.
         $domain = (string) ($this->option('domain') ?: '');
-        $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::SECRETS, $domain);
 
-        $targets = $this->resolveTargets($kubectl, $instance);
+        $targets = $this->resolveTargets($kubectl, $domain);
         if ($targets === []) {
             return 1;
         }
@@ -100,11 +99,11 @@ class SecretsWireCommand extends Command
      *
      * @return list<array{0: ClusterTool, 1: string, 2: ?string}>
      */
-    protected function resolveTargets(string $kubectl, string $instance): array
+    protected function resolveTargets(string $kubectl, string $domain): array
     {
         $capable = array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
 
-        $resolve = function (ClusterTool $t, string $forInstance) use ($kubectl): ?array {
+        $resolve = function (ClusterTool $t, ?string $forInstance) use ($kubectl): ?array {
             $engine = $t->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $t, $forInstance, (string) ($this->option('engine') ?: '') ?: null) : null;
             if ($t->dbSecretRef($forInstance, $engine) === null) {
                 return null;
@@ -119,7 +118,8 @@ class SecretsWireCommand extends Command
         if ($this->option('all')) {
             $installed = [];
             foreach ($capable as $t) {
-                $resolved = $resolve($t, 'main');
+                $targetInst = $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $t, $domain) : null;
+                $resolved = $resolve($t, $targetInst);
                 if ($resolved !== null) {
                     $installed[] = $resolved;
                 }
@@ -149,7 +149,8 @@ class SecretsWireCommand extends Command
                 return [];
             }
 
-            $resolved = $resolve($tool, $instance);
+            $targetInst = $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $tool, $domain) : null;
+            $resolved = $resolve($tool, $targetInst);
             if ($resolved === null) {
                 $this->laraKubeError("{$tool->getLabel()} is not installed (or has no wireable Commons database) at this instance.");
 
@@ -161,7 +162,8 @@ class SecretsWireCommand extends Command
 
         $installed = [];
         foreach ($capable as $t) {
-            $resolved = $resolve($t, $instance);
+            $targetInst = $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $t, $domain) : null;
+            $resolved = $resolve($t, $targetInst);
             if ($resolved !== null) {
                 $installed[] = $resolved;
             }
@@ -196,7 +198,7 @@ class SecretsWireCommand extends Command
         return [];
     }
 
-    protected function wireTool(string $kubectl, ClusterTool $tool, string $instance, ?string $engine, string $rotationPeriod): bool
+    protected function wireTool(string $kubectl, ClusterTool $tool, ?string $instance, ?string $engine, string $rotationPeriod): bool
     {
         $ref = $tool->dbSecretRef($instance, $engine);
         $tenant = $tool->commonsDatabases($instance, $engine)[0] ?? null;

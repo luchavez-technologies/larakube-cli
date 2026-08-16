@@ -24,7 +24,7 @@ final class InsightTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'insights-vpn-only' : "insights-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'insights-vpn-only' : "insights-vpn-only-{$instance}";
 
         return [
             'name' => $name,

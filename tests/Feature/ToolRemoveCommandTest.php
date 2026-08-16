@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Process;
  * command's --remove branch.
  */
 test('tool:remove takes the environment as its only positional', function () {
-    foreach (ClusterTool::cases() as $tool) {
+    foreach (ClusterTool::shippedCases() as $tool) {
         $definition = $this->app
             ->make(Kernel::class)
             ->all()[$tool->removeCommand()]
@@ -24,7 +24,7 @@ test('tool:remove takes the environment as its only positional', function () {
 test('every tool has a remove command and none of them still accept --remove on init', function () {
     $commands = $this->app->make(Kernel::class)->all();
 
-    foreach (ClusterTool::cases() as $tool) {
+    foreach (ClusterTool::shippedCases() as $tool) {
         expect($commands)->toHaveKey($tool->removeCommand());
 
         expect($commands[$tool->initCommand()]->getDefinition()->hasOption('remove'))

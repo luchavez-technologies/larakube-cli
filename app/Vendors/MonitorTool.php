@@ -98,9 +98,9 @@ final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, Has
         return ['app_name_key' => 'GF_BRANDING_APP_TITLE', 'logo_url_key' => 'GF_BRANDING_FAV_ICON'];
     }
 
-    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
-        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-monitoring' : "larakube-monitoring-{$instance}";
+        $ns = ($instance === null || $instance === '') ? 'larakube-monitoring' : "larakube-monitoring-{$instance}";
         $passVal = trim(Process::run(
             "{$kubectl} get secret grafana-admin -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
         )->output());
@@ -115,7 +115,7 @@ final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, Has
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'grafana-vpn-only' : "grafana-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'grafana-vpn-only' : "grafana-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -125,7 +125,7 @@ final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, Has
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'grafana' : "grafana-{$instance}";
+        $deployment = ($instance === null || $instance === '') ? 'grafana' : "grafana-{$instance}";
 
         return "deployment/{$deployment} -n larakube-monitoring";
     }

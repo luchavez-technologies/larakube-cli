@@ -16,7 +16,7 @@ final class WebmailTool implements ClusterToolVendor, HasDeploymentBaseName, Has
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'webmail-vpn-only' : "webmail-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'webmail-vpn-only' : "webmail-vpn-only-{$instance}";
 
         return [
             'name' => $name,

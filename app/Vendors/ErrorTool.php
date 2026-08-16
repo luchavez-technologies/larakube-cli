@@ -27,7 +27,7 @@ final class ErrorTool implements ClusterToolVendor, HasAdminEmailPrompt, HasComm
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'glitchtip-web-vpn-only' : "glitchtip-web-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'glitchtip-web-vpn-only' : "glitchtip-web-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -37,7 +37,7 @@ final class ErrorTool implements ClusterToolVendor, HasAdminEmailPrompt, HasComm
 
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(

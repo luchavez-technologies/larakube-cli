@@ -70,7 +70,7 @@ class DataInitCommand extends Command
         $engineLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
         $host = $domainOption !== ''
             ? $this->sanitizeDomainInput($domainOption)
-            : $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl, 'main', $engineLabel);
+            : $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl, 'main', $engineLabel, deferRegistration: true);
 
         // Host identity wins over instance-name derivation (idempotency
         // standard, see InteractsWithToolRegistry::resolveInstanceForDomain):

@@ -47,7 +47,7 @@ trait ResolvesClusterTool
 
         foreach (ClusterTool::shippedCases() as $tool) {
             $isInstalled = in_array($tool->value, $installedTools, true)
-                || ($installedTools === [] && $actionHint === 'remove' && $this->isToolPresentOnCluster($kubectl, $tool));
+                || ($actionHint === 'remove' && $this->isToolPresentOnCluster($kubectl, $tool));
 
             if ($actionHint === 'install' && $isInstalled) {
                 continue;

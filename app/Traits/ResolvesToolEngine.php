@@ -32,7 +32,7 @@ trait ResolvesToolEngine
     /**
      * @param  string|null  $flagEngine  An explicit --engine= value, which always wins.
      */
-    protected function resolveInstanceEngine(string $kubectl, ClusterTool $tool, string $instance, ?string $flagEngine): ?string
+    protected function resolveInstanceEngine(string $kubectl, ClusterTool $tool, ?string $instance, ?string $flagEngine): ?string
     {
         if ($flagEngine !== null && $flagEngine !== '') {
             return $flagEngine;
@@ -91,7 +91,7 @@ trait ResolvesToolEngine
         );
     }
 
-    private function engineDeploymentExists(string $kubectl, ClusterTool $tool, string $instance, string $engine): bool
+    private function engineDeploymentExists(string $kubectl, ClusterTool $tool, ?string $instance, string $engine): bool
     {
         return trim(Process::run(
             "{$kubectl} get deployment {$tool->deploymentName($instance, $engine)} -n {$tool->namespace()} --no-headers --ignore-not-found",

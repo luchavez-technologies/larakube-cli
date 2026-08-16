@@ -45,7 +45,7 @@ class VpnWireCommand extends Command
         // targets THAT instance in place (registry = source of truth).
         $instance = $this->resolveInstanceForDomain($kubectl, $tool, $domain);
 
-        if ($instance !== 'main' && ! $tool->supportsMultipleInstances()) {
+        if ($domain !== '' && ! $tool->supportsMultipleInstances()) {
             $this->laraKubeError("{$tool->getLabel()} does not support multiple instances — omit --domain to target its single installation.");
 
             return 1;

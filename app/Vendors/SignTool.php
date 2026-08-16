@@ -23,7 +23,7 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'sign-vpn-only' : "sign-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'sign-vpn-only' : "sign-vpn-only-{$instance}";
 
         return [
             'name' => $name,

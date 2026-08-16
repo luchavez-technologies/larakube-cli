@@ -24,7 +24,7 @@ final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasC
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'record-vpn-only' : "record-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'record-vpn-only' : "record-vpn-only-{$instance}";
 
         return [
             'name' => $name,

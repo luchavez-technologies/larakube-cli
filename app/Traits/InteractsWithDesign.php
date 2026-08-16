@@ -25,7 +25,7 @@ trait InteractsWithDesign
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    protected function isDesignInstalled(string $kubectl, string $ns, string $instance = 'main'): bool
+    protected function isDesignInstalled(string $kubectl, string $ns, ?string $instance = null): bool
     {
         $deployment = ClusterTool::DESIGN->deploymentName($instance);
         $out = Process::run("{$kubectl} get deployment {$deployment} -n {$ns} --no-headers --ignore-not-found")->output();
@@ -33,10 +33,10 @@ trait InteractsWithDesign
         return trim($out) !== '';
     }
 
-    protected function readDesignSecret(string $kubectl, string $ns, string $key, string $instance = 'main'): ?string
+    protected function readDesignSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
     {
         $ref = ClusterTool::DESIGN->dbSecretRef($instance);
-        $secretName = $ref['secret'] ?? ($instance === 'main' ? 'design-penpot-secrets' : "design-penpot-secrets-{$instance}");
+        $secretName = $ref['secret'] ?? (($instance === null || $instance === '') ? 'design-penpot-secrets' : "design-penpot-secrets-{$instance}");
 
         return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
     }

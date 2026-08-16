@@ -23,7 +23,7 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'openbao-vpn-only' : "openbao-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'openbao-vpn-only' : "openbao-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -35,7 +35,7 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
 
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(
@@ -62,9 +62,9 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
         return [];
     }
 
-    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
-        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-secrets' : "larakube-secrets-{$instance}";
+        $ns = ($instance === null || $instance === '') ? 'larakube-secrets' : "larakube-secrets-{$instance}";
         $tokenVal = trim(Process::run(
             "{$kubectl} get secret openbao-bootstrap -n {$ns} -o jsonpath='{.data.root-token}' --ignore-not-found",
         )->output());
@@ -82,7 +82,7 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'openbao-backend' : "openbao-backend-{$instance}";
+        $deployment = ($instance === null || $instance === '') ? 'openbao-backend' : "openbao-backend-{$instance}";
 
         return "deployment/{$deployment} -n larakube-secrets";
     }

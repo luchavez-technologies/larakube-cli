@@ -340,7 +340,7 @@ class MailWireCommand extends Command
             return $ok;
         }
 
-        $instance = (string) ($this->option('instance') ?: 'main');
+        $instance = $this->resolveWireInstance($kubectl, $tool);
         $engine = $this->resolveInstanceEngine($kubectl, $tool, $instance, $this->option('engine'));
         $schema = $tool->smtpEnv($engine, $instance);
         if ($schema === null) {
@@ -454,18 +454,44 @@ class MailWireCommand extends Command
             return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
         }
 
+        $instance = $this->resolveWireInstance($kubectl, $tool);
+
         // Resolve the live engine BEFORE checking existence — a tool whose
         // smtpEnv() shape depends on $engine (DATA) would otherwise always
         // be checked against its DEFAULT engine's Deployment name, so a
         // PocketBase-only install (data-directus doesn't exist) was
         // silently invisible to --all/the tool-selection prompt.
-        $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, 'main', (string) ($this->option('engine') ?: '') ?: null) : null;
-        $schema = $tool->smtpEnv($engine);
+        $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, $instance, (string) ($this->option('engine') ?: '') ?: null) : null;
+        $schema = $tool->smtpEnv($engine, $instance);
         if ($schema === null) {
             return false;
         }
 
         return $this->deploymentExists($kubectl, $schema['namespace'], $schema['deployment']);
+    }
+
+    /**
+     * Which instance a tool's SMTP wiring targets. --instance= always wins.
+     * Otherwise: conventional single-instance tools (the vast majority)
+     * ignore whatever string lands here entirely — every smtpEnv()
+     * implementation except CRM's hardcodes its deployment name — so 'main'
+     * is a safe default for them. Host-derived, no-'main' tools (CRM, and
+     * DATA once data:init registers correctly) have no 'main' deployment at
+     * all; for those, the registry's real instance is the only name that
+     * will ever match a live Deployment. Multiple registered instances is
+     * genuinely ambiguous and needs an explicit --instance=, same as every
+     * other multi-instance command.
+     */
+    protected function resolveWireInstance(string $kubectl, ClusterTool $tool): string
+    {
+        $explicit = (string) ($this->option('instance') ?: '');
+        if ($explicit !== '') {
+            return $explicit;
+        }
+
+        $registered = $this->getToolInstances($kubectl, $tool);
+
+        return count($registered) === 1 ? $registered[0] : 'main';
     }
 
     protected function deploymentExists(string $kubectl, string $ns, string $deployment): bool

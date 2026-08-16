@@ -36,7 +36,7 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(
@@ -109,9 +109,9 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
         return ['vaultwarden'];
     }
 
-    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
-        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-vault' : "larakube-vault-{$instance}";
+        $ns = ($instance === null || $instance === '') ? 'larakube-vault' : "larakube-vault-{$instance}";
         $tokenVal = trim(Process::run(
             "{$kubectl} get secret vault-admin -n {$ns} -o jsonpath='{.data.ADMIN_TOKEN}' --ignore-not-found",
         )->output());
@@ -125,7 +125,7 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'vault-vpn-only' : "vault-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'vault-vpn-only' : "vault-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -135,7 +135,7 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'vaultwarden' : "vaultwarden-{$instance}";
+        $deployment = ($instance === null || $instance === '') ? 'vaultwarden' : "vaultwarden-{$instance}";
 
         return "deployment/{$deployment} -n larakube-vault";
     }

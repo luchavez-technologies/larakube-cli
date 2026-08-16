@@ -24,7 +24,7 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'sheet-vpn-only' : "sheet-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'sheet-vpn-only' : "sheet-vpn-only-{$instance}";
 
         return [
             'name' => $name,

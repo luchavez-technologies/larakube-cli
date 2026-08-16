@@ -30,7 +30,7 @@ final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommo
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'notes-vpn-only' : "notes-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'notes-vpn-only' : "notes-vpn-only-{$instance}";
 
         return [
             'name' => $name,

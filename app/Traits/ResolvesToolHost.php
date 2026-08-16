@@ -29,6 +29,23 @@ use RuntimeException;
  */
 trait ResolvesToolHost
 {
+    /**
+     * @param  bool  $deferRegistration  True for tools whose real instance is
+     *                                   derived from the host AFTER this call returns (CRM, DATA —
+     *                                   "pure host-derived, no main fallback", see ClusterTool::CRM's
+     *                                   commit history and docs/decisions on DATA's host-as-identity fix).
+     *                                   For those, registering a stub under the DEFAULT $instance ('main')
+     *                                   here would diverge from the real instance the caller computes
+     *                                   moments later via instanceSlugFromHost($host) — registerTool()'s
+     *                                   exact-instance-match merge can't reconcile the two, so a second,
+     *                                   duplicate registry row gets appended instead of updating the
+     *                                   first (confirmed live 2026-08-14, Twenty CRM). Every other tool's
+     *                                   instance genuinely IS 'main' end-to-end, so this stays false for
+     *                                   them — skipping it would only lose the "host survives a Ctrl-C
+     *                                   before deploy finishes" convenience, which does not apply to
+     *                                   host-derived tools anyway (their derived instance isn't known
+     *                                   until after this call regardless).
+     */
     protected function resolveToolHost(
         SharedClusterService $service,
         ClusterTool $tool,
@@ -36,6 +53,7 @@ trait ResolvesToolHost
         ?string $kubectl = null,
         string $instance = 'main',
         ?string $labelOverride = null,
+        bool $deferRegistration = false,
     ): string {
         $domain = (string) ($this->option('domain') ?? '');
         if ($domain !== '') {
@@ -64,7 +82,7 @@ trait ResolvesToolHost
             return $this->resolveNonInteractiveHost($service, $tool, $env, $config, $kubectl, $instance);
         }
 
-        return $this->promptForCloudHost($service, $env, $config, $tool, $kubectl, $instance, $labelOverride);
+        return $this->promptForCloudHost($service, $env, $config, $tool, $kubectl, $instance, $labelOverride, $deferRegistration);
     }
 
     protected function resolveToolAliasHosts(string $kubectl, ClusterTool $tool, string $instance = 'main'): array
@@ -181,6 +199,7 @@ trait ResolvesToolHost
         ?string $kubectl = null,
         string $instance = 'main',
         ?string $labelOverride = null,
+        bool $deferRegistration = false,
     ): string {
         if ($config === null) {
             $config = $this->resolveProjectConfig();
@@ -214,7 +233,11 @@ trait ResolvesToolHost
         // means a second project on the same cluster re-prompts for a host that
         // is already known. registerTool() merges, so this is safe to call
         // before {tool}:init records the rest of its metadata.
-        if ($tool !== null && $kubectl !== null && method_exists($this, 'registerTool')) {
+        //
+        // $deferRegistration skips this for host-derived tools (see this
+        // method's docblock) — their caller's own final registerDeployedTool()
+        // call, made once the real instance is known, is the only write.
+        if (! $deferRegistration && $tool !== null && $kubectl !== null && method_exists($this, 'registerTool')) {
             $this->registerTool($kubectl, $tool, ['host' => $host], $instance);
             $this->laraKubeInfo("Recorded the {$service->label()} host on the cluster.");
         }

@@ -16,7 +16,7 @@ final class UptimeTool implements ClusterToolVendor, HasDeploymentBaseName, HasV
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'uptime-kuma-vpn-only' : "uptime-kuma-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'uptime-kuma-vpn-only' : "uptime-kuma-vpn-only-{$instance}";
 
         return [
             'name' => $name,

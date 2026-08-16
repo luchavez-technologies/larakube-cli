@@ -113,7 +113,7 @@ test('registerTool appends a new tool entry to the flat list and saves it via a 
 
     expect($captured)->toBeArray()->toHaveCount(1)
         ->and($captured[0]['tool'])->toBe('sso')
-        ->and($captured[0]['instance'])->toBe('main')
+        ->and($captured[0]['instance'])->toBeNull()
         ->and($captured[0]['engine'])->toBe('zitadel');
 });
 

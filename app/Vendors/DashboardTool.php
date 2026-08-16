@@ -17,7 +17,7 @@ final class DashboardTool implements ClusterToolVendor, HasDeploymentBaseName, H
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'dashboard-vpn-only' : "dashboard-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'dashboard-vpn-only' : "dashboard-vpn-only-{$instance}";
 
         return [
             'name' => $name,

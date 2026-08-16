@@ -11,18 +11,6 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
 {
     use ManagesToolFirewallPorts;
 
-    public function __construct()
-    {
-        $this->signature = 'chat:remove
-        {environment=local : Environment to remove Team Chat from}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Not supported — Team Chat has a single instance}
-        {--purge     : Also destroy persistent data — drop the Plex Commons database. Irreversible.}
-        {--force     : Skip the confirmation prompt}';
-
-        parent::__construct();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::CHAT;

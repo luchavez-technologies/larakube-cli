@@ -40,7 +40,7 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
 
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(
@@ -80,9 +80,9 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
         return 'STALWART_STORE_PASSWORD';
     }
 
-    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
-        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-mail' : "larakube-mail-{$instance}";
+        $ns = ($instance === null || $instance === '') ? 'larakube-mail' : "larakube-mail-{$instance}";
         $passVal = trim(Process::run(
             "{$kubectl} get secret stalwart -n {$ns} -o jsonpath='{.data.admin-password}' --ignore-not-found",
         )->output());
@@ -98,7 +98,7 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'stalwart' : "stalwart-{$instance}";
+        $deployment = ($instance === null || $instance === '') ? 'stalwart' : "stalwart-{$instance}";
 
         return "deployment/{$deployment} -n larakube-mail";
     }

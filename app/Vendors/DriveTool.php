@@ -21,7 +21,7 @@ final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWi
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'drive-vpn-only' : "drive-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'drive-vpn-only' : "drive-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -31,7 +31,7 @@ final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWi
 
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(

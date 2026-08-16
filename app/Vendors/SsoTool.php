@@ -23,7 +23,7 @@ final class SsoTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         return 'Zitadel';
     }
 
-    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
         return [
             ['Database', 'zitadel (Commons Postgres)'],
