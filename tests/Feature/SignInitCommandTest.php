@@ -126,3 +126,53 @@ test('sign:init returns a failing exit code and does not claim success when kube
         ->assertExitCode(1)
         ->doesntExpectOutputToContain('Documenso signature stack is live');
 });
+
+test('sign:init --vpn-only names the Traefik Middleware sign-vpn-only, never sign-vpn-only-main', function () {
+    // Regression guard (2026-08-15): ensureVpnMiddleware()'s $instance
+    // default used to be the literal string 'main', which SignTool's
+    // vpnMiddlewareTarget() recognized as "no instance" and correctly
+    // produced 'sign-vpn-only'. When SignTool (and ~9 other Vendors) were
+    // simplified to only recognize null/'' as "no instance"
+    // (matching CRM's pure host-derived convention), ensureVpnMiddleware()'s
+    // own default was left unchanged at 'main' — so this exact call, with no
+    // explicit --domain/instance, would have silently applied a SECOND
+    // Middleware named 'sign-vpn-only-main' instead of updating the real
+    // 'sign-vpn-only' one, leaving --vpn-only's access restriction pointing
+    // at whichever Middleware the Ingress annotation actually references —
+    // a live access-control gap, not a cosmetic naming one.
+    $appliedVpnMiddlewareManifest = null;
+    Process::fake(function ($process) use (&$appliedVpnMiddlewareManifest) {
+        $cmd = $process->command;
+
+        if (str_contains($cmd, 'apply -f')) {
+            preg_match('/apply -f (\'[^\']*\'|"[^"]*"|\S+)/', $cmd, $m);
+            $path = trim($m[1] ?? '', '\'"');
+            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-vpn-middleware-')) {
+                $appliedVpnMiddlewareManifest = ['path' => $path, 'content' => file_get_contents($path)];
+            }
+
+            return Process::result(output: 'applied');
+        }
+
+        return match (true) {
+            str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode(signCommonsSpec('files.example.com'))),
+            str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
+            str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "sign-documenso" successfully rolled out'),
+            default => Process::result(output: ''),
+        };
+    });
+
+    $this->artisan(SignInitCommand::class, [
+        'environment' => 'local',
+        '--vpn-only' => true,
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    expect($appliedVpnMiddlewareManifest)->not->toBeNull()
+        ->and($appliedVpnMiddlewareManifest['path'])->toContain('sign-vpn-only.yaml')
+        ->and($appliedVpnMiddlewareManifest['path'])->not->toContain('sign-vpn-only-main')
+        ->and($appliedVpnMiddlewareManifest['content'])->toContain('name: sign-vpn-only')
+        ->and($appliedVpnMiddlewareManifest['content'])->not->toContain('sign-vpn-only-main');
+});

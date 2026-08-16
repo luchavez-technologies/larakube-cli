@@ -23,7 +23,7 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
         return 'Reactive Resume';
     }
 
-    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
         return [
             ['Database', 'reactiveresume (Commons Postgres)'],
@@ -34,7 +34,7 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'resume-vpn-only' : "resume-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'resume-vpn-only' : "resume-vpn-only-{$instance}";
 
         return [
             'name' => $name,

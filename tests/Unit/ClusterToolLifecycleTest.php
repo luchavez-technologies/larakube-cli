@@ -223,3 +223,29 @@ test('instanceSlugFromHost() is deterministic and Kubernetes-resource-name-safe'
         ->and(strlen($first))->toBeLessThanOrEqual(40)
         ->and($first)->toMatch('/^[a-z0-9-]+$/');
 });
+
+test('vpnMiddlewareTarget() never produces a -main suffix for the default (no-instance) call, for any tool with a vpn-only mode', function () {
+    // ensureVpnMiddleware() (app/Traits/DeploysClusterTool.php) used to
+    // default $instance to the literal string 'main', and every Vendor's
+    // vpnMiddlewareTarget() recognized that string as "no instance". Several
+    // Vendors were later simplified to only recognize null/'' (2026-08-15,
+    // matching CRM's pure host-derived convention) without updating
+    // ensureVpnMiddleware()'s own default to match — so any of the ~28
+    // `*:init --vpn-only` callers that omit $instance (all of them except
+    // CrmInitCommand, which always computes its own) would have silently
+    // produced a second, wrongly-suffixed Middleware
+    // ("analytics-vpn-only-main" instead of "analytics-vpn-only") the next
+    // time --vpn-only was used — a real access-control regression, not just
+    // a cosmetic one. ensureVpnMiddleware()'s default is now null, matching
+    // every Vendor unconditionally. See also the feature-level version of
+    // this same regression, exercised through a real *:init --vpn-only
+    // command, in SignInitCommandTest.php.
+    foreach (ClusterTool::cases() as $tool) {
+        $target = $tool->vpnMiddlewareTarget();
+        if ($target === null) {
+            continue;
+        }
+
+        expect($target['name'])->not->toEndWith('-main');
+    }
+});
