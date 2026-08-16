@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: chatwoot
-          image: chatwoot/chatwoot:v4.16.1
+          image: chatwoot/chatwoot:v4.16.2
           command:
             - docker/entrypoints/render.sh
           ports:
@@ -176,7 +176,7 @@ spec:
     spec:
       containers:
         - name: sidekiq
-          image: chatwoot/chatwoot:v4.16.1
+          image: chatwoot/chatwoot:v4.16.2
           command:
             - bundle
             - exec

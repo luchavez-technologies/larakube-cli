@@ -139,12 +139,21 @@ test('deploymentName() matches the actual Deployment name each tool\'s own manif
     expect(ClusterTool::VPN->deploymentName())->toBe('netbird-management');
 });
 
-test('planka OIDC redirect path matches its real callback route', function () {
-    // Regression guard: this was '/api/auth/oidc/callback/' for a long time,
-    // which is not a route Planka exposes — its actual OIDC callback is
-    // '/oidc-callback' (confirmed against Planka's own docs). sso:wire would
-    // register a Zitadel redirect URI that 404s on every login attempt.
-    expect(ClusterTool::TASKS->oidcEnv()['redirect_path'])->toBe('/oidc-callback');
+test('tasks (Planka) does not claim OIDC wiring — it was removed from the OSS edition', function () {
+    // Regression guard, inverted from the original: TaskTool used to claim
+    // HasOidcWiring with a working '/oidc-callback' redirect path, correct
+    // for the version pinned at the time (v2.1.1). Confirmed live 2026-08-16
+    // against the real v2.1.1 vs v2.2.1 docker-compose.yml/server source
+    // (not just docs.planka.cloud, which is run by PLANKA Software GmbH and
+    // still documents OIDC as if current): OIDC/SSO was deliberately removed
+    // from PLANKA Community in v2.2.0 and moved to PLANKA Pro (paid). We
+    // upgraded to v2.2.1 for its 2FA feature and a real path-traversal CVE
+    // fix (CWE-22, local file storage — which is what we use), so the OIDC
+    // wiring was dropped rather than left as dead config nothing reads.
+    // If TaskTool ever re-implements HasOidcWiring, it means either Planka
+    // brought OIDC back to Community, or PLANKA Pro is intentionally in use
+    // — verify against the real pinned version's source before trusting it.
+    expect(ClusterTool::TASKS->vendor())->not->toBeInstanceOf(\App\Contracts\HasOidcWiring::class);
 });
 
 test('directus SSO carries a license caveat, pocketbase does not', function () {

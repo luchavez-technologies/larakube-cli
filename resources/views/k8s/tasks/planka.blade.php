@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: planka
-          image: ghcr.io/plankanban/planka:2.1.1
+          image: ghcr.io/plankanban/planka:2.2.1
           ports:
             - containerPort: 1337
               name: http
@@ -40,26 +40,6 @@ spec:
                   key: db-password
             - name: DATABASE_URL
               value: "postgres://tasks_planka:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/tasks_planka"
-            - name: OIDC_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: tasks-planka-oidc
-                  key: client-id
-                  optional: true
-            - name: OIDC_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: tasks-planka-oidc
-                  key: client-secret
-                  optional: true
-            - name: OIDC_ISSUER
-              valueFrom:
-                secretKeyRef:
-                  name: tasks-planka-oidc
-                  key: issuer
-                  optional: true
-            - name: OIDC_SCOPES
-              value: "openid profile email"
           startupProbe:
             httpGet:
               path: /

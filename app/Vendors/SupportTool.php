@@ -47,7 +47,11 @@ final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
 
     public function whiteLabel(): array
     {
-        return ['app_name_key' => 'INSTALLATION_NAME', 'logo_url_key' => 'LOGO_URL'];
+        // 'LOGO_URL' was never a real Chatwoot config key — confirmed against
+        // config/installation_config.yml on the actual pinned version. The
+        // real key is just 'LOGO' ('LOGO_DARK'/'LOGO_THUMBNAIL' also exist
+        // for variants, not used here). INSTALLATION_NAME is correct as-is.
+        return ['app_name_key' => 'INSTALLATION_NAME', 'logo_url_key' => 'LOGO'];
     }
 
     public function commonsDatabaseList(): array
