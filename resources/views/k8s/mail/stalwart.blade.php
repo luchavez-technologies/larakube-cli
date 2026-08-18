@@ -13,6 +13,28 @@ spec:
     requests:
       storage: 5Gi
 ---
+@if($storeBootstrap ?? null)
+{{-- EXPERIMENTAL, local-only: pre-seeds Stalwart's DataStore config.json so
+     it skips bootstrap/wizard mode on first boot — see
+     MailInitCommand::bootstrapStalwartStoreForLocal(). authSecret references
+     STALWART_STORE_PASSWORD by NAME, never embeds the value itself. --}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stalwart-config
+  namespace: larakube-shared
+data:
+  config.json: |
+    {
+      "@type": "PostgreSql",
+      "host": "{{ $storeBootstrap['host'] }}",
+      "port": {{ $storeBootstrap['port'] }},
+      "database": "{{ $storeBootstrap['database'] }}",
+      "authUsername": "{{ $storeBootstrap['username'] }}",
+      "authSecret": { "@type": "EnvironmentVariable", "variableName": "STALWART_STORE_PASSWORD" }
+    }
+---
+@endif
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -79,12 +101,32 @@ spec:
                  RECORD_JWT_SECRET, every other tool's credentials — as env vars
                  inside the mail server. Naming the three Stalwart actually needs
                  keeps the blast radius to those three. --}}
+@if($storeBootstrap ?? null)
+            - name: STALWART_STORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mail-secrets
+                  key: store-password
+@else
             - name: STALWART_STORE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: stalwart
                   key: STALWART_STORE_PASSWORD
                   optional: true
+@endif
+@if(($storeBootstrap['blob'] ?? null))
+            - name: STALWART_S3_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mail-secrets
+                  key: s3-access-key
+            - name: STALWART_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mail-secrets
+                  key: s3-secret-key
+@else
             - name: STALWART_S3_KEY_ID
               valueFrom:
                 secretKeyRef:
@@ -97,6 +139,14 @@ spec:
                   name: stalwart
                   key: STALWART_S3_SECRET_KEY
                   optional: true
+@endif
+@if(($storeBootstrap['search']['type'] ?? null) === 'meilisearch')
+            - name: STALWART_SEARCH_MEILI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mail-secrets
+                  key: search-meili-key
+@endif
           ports:
             - { containerPort: 8080, name: http }
             - { containerPort: 25, @if($hostPort)hostPort: 25, @endif name: smtp }
@@ -134,10 +184,25 @@ spec:
             - name: stalwart-data
               mountPath: /etc/stalwart
               subPath: etc
+@if($storeBootstrap ?? null)
+            {{-- Overlays a single read-only file on top of the writable PVC
+                 mount above — a standard, supported k8s pattern. Presence of
+                 this file at process start is what skips bootstrap mode; see
+                 MailInitCommand::bootstrapStalwartStoreForLocal(). --}}
+            - name: stalwart-config
+              mountPath: /etc/stalwart/config.json
+              subPath: config.json
+              readOnly: true
+@endif
       volumes:
         - name: stalwart-data
           persistentVolumeClaim:
             claimName: stalwart-data
+@if($storeBootstrap ?? null)
+        - name: stalwart-config
+          configMap:
+            name: stalwart-config
+@endif
 ---
 # HTTP admin + JMAP, fronted by Traefik (TLS terminated at the ingress).
 apiVersion: v1

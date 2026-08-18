@@ -1185,8 +1185,9 @@ trait InteractsWithPlex
      * main store (PostgreSQL), blob store (SeaweedFS / MinIO / Garage),
      * cache (Valkey), and search (PostgreSQL).
      */
-    protected function printPlexHint(string $kubectl, string $host): void
+    protected function printPlexHint(string $kubectl, string $host, ?array $storeBootstrap = null): void
     {
+        $storeAlreadyBootstrapped = $storeBootstrap !== null;
         $ns = $this->plexNamespace();
 
         $spec = $this->getCommonsSpec();
@@ -1254,41 +1255,62 @@ trait InteractsWithPlex
         )->output()) !== '';
 
         $this->newLine();
-        $this->line('  <fg=yellow>7. Configure stores</> — replace Stalwart\'s embedded RocksDB with');
-        $this->line('     your Plex Commons services. Open the install wizard at');
-        $this->line("     <fg=blue>https://{$host}/</> and configure each section:");
-        $this->newLine();
-        $this->line('     <fg=red>⚠ Switching the Data (main) store starts Stalwart from an EMPTY directory.</>');
-        $this->line('     <fg=gray>  Accounts, domains and DKIM keys live in that store and are NOT migrated —</>');
-        $this->line('     <fg=gray>  you will re-create them after switching. Do this before onboarding people.</>');
-        $this->newLine();
 
-        $this->line('     <fg=gray>Settings → Store → Data (main):</>');
-        $this->line("       Host:     <fg=blue>postgres.{$ns}.svc.cluster.local</>");
-        $this->line('       Port:     <fg=blue>5432</>');
-
-        if ($openBaoBootstrapped) {
-            // The dedicated role path — least privilege, and rotatable via
-            // `larakube plex:rotate`.
-            $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(already created for you)</>');
-            $this->line('       Username: <fg=blue>stalwart</>');
-            $this->line('       Password: choose <fg=green>"Secret read from environment variable"</>');
-            $this->line('                 and enter <fg=green>STALWART_STORE_PASSWORD</>');
-            $this->line('       <fg=gray>Do NOT use the postgres superuser here — it is a different password</>');
-            $this->line('       <fg=gray>and pairing it with STALWART_STORE_PASSWORD will fail to authenticate.</>');
+        if ($storeAlreadyBootstrapped) {
+            // EXPERIMENTAL local-only wizard-skip: the Data (main) store was
+            // already pre-seeded into config.json before first boot, so there
+            // is no wizard step for it and nothing was ever on an empty/
+            // RocksDB directory to begin with — see
+            // MailInitCommand::bootstrapStalwartStoreForLocal().
+            $this->line('  <fg=yellow>7. Configure remaining stores</> — the Data (main) store is');
+            $this->line('     <fg=green>already configured</> (Commons Postgres, set automatically at deploy).');
+            $this->line("     Open <fg=blue>https://{$host}/admin</> → Settings → Storage for the rest:");
         } else {
-            // No secrets backend: no dedicated role was provisioned, so the superuser
-            // is the only credential that exists.
-            $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(create it — see the psql command below)</>');
-            $this->line('       Username: <fg=blue>postgres</>');
-            $this->line("       Password: <fg=blue>{$pgPassword}</>");
-            $this->line('       <fg=gray>This is the Commons superuser. Run</> <fg=blue>larakube secrets:init</> <fg=gray>first to get a</>');
-            $this->line('       <fg=gray>dedicated, rotatable "stalwart" role backed by an env var instead.</>');
+            $this->line('  <fg=yellow>7. Configure stores</> — replace Stalwart\'s embedded RocksDB with');
+            $this->line('     your Plex Commons services. Open the install wizard at');
+            $this->line("     <fg=blue>https://{$host}/</> and configure each section:");
+            $this->newLine();
+            $this->line('     <fg=red>⚠ Switching the Data (main) store starts Stalwart from an EMPTY directory.</>');
+            $this->line('     <fg=gray>  Accounts, domains and DKIM keys live in that store and are NOT migrated —</>');
+            $this->line('     <fg=gray>  you will re-create them after switching. Do this before onboarding people.</>');
+            $this->newLine();
+
+            $this->line('     <fg=gray>Settings → Store → Data (main):</>');
+            $this->line("       Host:     <fg=blue>postgres.{$ns}.svc.cluster.local</>");
+            $this->line('       Port:     <fg=blue>5432</>');
+
+            if ($openBaoBootstrapped) {
+                // The dedicated role path — least privilege, and rotatable via
+                // `larakube plex:rotate`.
+                $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(already created for you)</>');
+                $this->line('       Username: <fg=blue>stalwart</>');
+                $this->line('       Password: choose <fg=green>"Secret read from environment variable"</>');
+                $this->line('                 and enter <fg=green>STALWART_STORE_PASSWORD</>');
+                $this->line('       <fg=gray>Do NOT use the postgres superuser here — it is a different password</>');
+                $this->line('       <fg=gray>and pairing it with STALWART_STORE_PASSWORD will fail to authenticate.</>');
+            } else {
+                // No secrets backend: no dedicated role was provisioned, so the superuser
+                // is the only credential that exists.
+                $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(create it — see the psql command below)</>');
+                $this->line('       Username: <fg=blue>postgres</>');
+                $this->line("       Password: <fg=blue>{$pgPassword}</>");
+                $this->line('       <fg=gray>This is the Commons superuser. Run</> <fg=blue>larakube secrets:init</> <fg=gray>first to get a</>');
+                $this->line('       <fg=gray>dedicated, rotatable "stalwart" role backed by an env var instead.</>');
+            }
         }
 
         $this->newLine();
 
-        if ($s3Backend !== null) {
+        if ($storeAlreadyBootstrapped && $storeBootstrap['blob'] !== null) {
+            $blobLabel = match ($storeBootstrap['blob']['backend']) {
+                'seaweedfs' => 'SeaweedFS',
+                'minio' => 'MinIO',
+                'garage' => 'Garage',
+                default => ucfirst($storeBootstrap['blob']['backend']),
+            };
+            $this->line("     <fg=gray>Settings → Storage → Blob Store:</> <fg=green>already configured</> ({$blobLabel}).");
+            $this->newLine();
+        } elseif ($s3Backend !== null) {
             $s3Label = match ($s3Backend) {
                 'seaweedfs' => 'SeaweedFS',
                 'minio' => 'MinIO',
@@ -1317,7 +1339,10 @@ trait InteractsWithPlex
             $this->newLine();
         }
 
-        if ($hasRedis) {
+        if ($storeAlreadyBootstrapped && $storeBootstrap['redis'] !== null) {
+            $this->line('     <fg=gray>Settings → Store → Cache (Valkey):</> <fg=green>already configured</>.');
+            $this->newLine();
+        } elseif ($hasRedis) {
             $this->line('     <fg=gray>Settings → Store → Cache (Valkey):</>');
             $this->line("       Redis URL:  <fg=blue>redis://redis.{$ns}.svc.cluster.local:6379/0</>");
             $this->newLine();
@@ -1327,31 +1352,46 @@ trait InteractsWithPlex
             $this->newLine();
         }
 
-        $this->line('     <fg=gray>Settings → Store → Search (PostgreSQL):</>');
-        $this->line('       (Uses the same Postgres as the main store for minimal cost.)');
-        $this->line("       Host:     <fg=blue>postgres.{$ns}.svc.cluster.local</>");
-        $this->line('       Port:     <fg=blue>5432</>');
-        $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(same as main store)</>');
-        if ($openBaoBootstrapped) {
-            $this->line('       Username: <fg=blue>stalwart</>');
-            $this->line('       Password: choose <fg=green>"Secret read from environment variable"</>');
-            $this->line('                 and enter <fg=green>STALWART_STORE_PASSWORD</>');
+        if ($storeAlreadyBootstrapped) {
+            $searchLabel = $storeBootstrap['search']['type'] === 'meilisearch' ? 'Meilisearch' : 'reusing the Data store';
+            $this->line("     <fg=gray>Settings → Store → Search:</> <fg=green>already configured</> ({$searchLabel}).");
+            $this->newLine();
         } else {
-            $this->line('       Username: <fg=blue>postgres</>');
-            $this->line("       Password: <fg=blue>{$pgPassword}</>");
+            $this->line('     <fg=gray>Settings → Store → Search (PostgreSQL):</>');
+            $this->line('       (Uses the same Postgres as the main store for minimal cost.)');
+            $this->line("       Host:     <fg=blue>postgres.{$ns}.svc.cluster.local</>");
+            $this->line('       Port:     <fg=blue>5432</>');
+            $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(same as main store)</>');
+            if ($openBaoBootstrapped) {
+                $this->line('       Username: <fg=blue>stalwart</>');
+                $this->line('       Password: choose <fg=green>"Secret read from environment variable"</>');
+                $this->line('                 and enter <fg=green>STALWART_STORE_PASSWORD</>');
+            } else {
+                $this->line('       Username: <fg=blue>postgres</>');
+                $this->line("       Password: <fg=blue>{$pgPassword}</>");
+            }
+            $this->newLine();
         }
-        $this->newLine();
 
-        if (! $openBaoBootstrapped) {
+        if (! $openBaoBootstrapped && ! $storeAlreadyBootstrapped) {
             // Only needed on the superuser path — configureStalwartStore()
-            // already ran CREATE DATABASE when the secrets backend was available.
+            // already ran CREATE DATABASE when the secrets backend was available,
+            // and bootstrapStalwartStoreForLocal() does the same for the
+            // local wizard-skip path.
             $this->line('     <fg=gray>Create the database before applying the wizard:</>');
             $this->line("       <fg=blue>psql -h postgres.{$ns}.svc.cluster.local -U postgres -c \"CREATE DATABASE stalwart;\"</>");
         }
 
-        $this->line('     <fg=gray>After configuring stores, apply the wizard and run:</>');
-        $this->line('       <fg=blue>larakube mail:restart</>');
-        $this->newLine();
+        if ($storeAlreadyBootstrapped) {
+            // Nothing left needs a restart: every store either got configured
+            // live via the management API (confirmed empirically — changes
+            // apply immediately) or genuinely isn't offered by the Commons
+            // yet, which "enable it in plex:init" above already covers.
+        } else {
+            $this->line('     <fg=gray>After configuring stores, apply the wizard and run:</>');
+            $this->line('       <fg=blue>larakube mail:restart</>');
+            $this->newLine();
+        }
 
         // The env-var tip that used to live here is now part of the Data (main)
         // credentials block above, so the username and the password advice can

@@ -103,17 +103,36 @@ class MailInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $adminEmail) {
-            Process::run(
-                "{$kubectl} create secret generic mail-secrets -n {$ns} "
+        // EXPERIMENTAL, local-only: pre-seed Stalwart's DataStore config.json so
+        // it skips bootstrap/wizard mode on first boot entirely (Stalwart only
+        // enters bootstrap mode when it starts with no config.json present).
+        // Deliberately scoped to $env === 'local' — cloud installs keep the
+        // existing wizard-driven flow untouched; see bootstrapStalwartStoreForLocal().
+        $storeBootstrap = $this->bootstrapStalwartStoreForLocal($kubectl, $env);
+
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $adminEmail, $storeBootstrap) {
+            $cmd = "{$kubectl} create secret generic mail-secrets -n {$ns} "
                 .'--from-literal=recovery-admin='.escapeshellarg('admin:'.$adminPassword).' '
                 .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
-                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' ';
+
+            if ($storeBootstrap !== null) {
+                $cmd .= '--from-literal=store-password='.escapeshellarg($storeBootstrap['password']).' ';
+
+                if ($storeBootstrap['blob'] !== null) {
+                    $cmd .= '--from-literal=s3-access-key='.escapeshellarg($storeBootstrap['blob']['accessKey']).' '
+                        .'--from-literal=s3-secret-key='.escapeshellarg($storeBootstrap['blob']['secretKey']).' ';
+                }
+
+                if ($storeBootstrap['search']['type'] === 'meilisearch') {
+                    $cmd .= '--from-literal=search-meili-key='.escapeshellarg($storeBootstrap['search']['key']).' ';
+                }
+            }
+
+            Process::run($cmd."--dry-run=client -o yaml | {$kubectl} apply -f -");
         });
 
-        $instance = (string) ($this->option('instance') ?: 'main');
+        $instance = (string) ($this->option('instance') ?: '');
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::MAIL, $instance);
 
         $manifest = view('k8s.mail.stalwart', [
@@ -123,6 +142,7 @@ class MailInitCommand extends Command
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'hostPort' => ! $this->option('no-host-port'),
+            'storeBootstrap' => $storeBootstrap,
         ])->render();
 
         $tmp = sys_get_temp_dir().'/larakube-mail.yaml';
@@ -147,6 +167,10 @@ class MailInitCommand extends Command
         // behind it. Best-effort like the CORS write below: a miss here is
         // recoverable via mail:check, not a broken deploy.
         $this->stalwartTrustReverseProxy($kubectl, $ns);
+
+        if ($storeBootstrap !== null) {
+            $this->configureStalwartAdditionalStoresForLocal($kubectl, $ns, $storeBootstrap);
+        }
 
         // NOTE: a `dkimManagement.algorithms` write used to sit here, meant to
         // stop Stalwart stamping both Ed25519 and RSA (the SES 554 duplicate
@@ -178,14 +202,25 @@ class MailInitCommand extends Command
         $this->line('  <fg=gray>Admin login:</>            <fg=blue>admin</> / <fg=blue>'.$adminPassword.'</>');
         $this->line('  <fg=gray>Verify anytime:</>         <fg=blue>larakube mail:check '.$env.'</> <fg=gray>— runs every check below and shows what\'s left.</>');
         $this->newLine();
-        $this->line('  <fg=yellow>1. First-run setup</> — open <fg=blue>https://'.$host.'</> and complete the wizard.');
-        $this->line('     <fg=gray>(You can configure your stores during the wizard or later in Settings → Storage — see step 7 below).</>');
-        $this->line('     <fg=gray>At the wizard\'s "Setup complete" screen, apply it with:</> <fg=blue>larakube mail:restart '.$env.'</>');
-        $this->line('     <fg=gray>(the config lives in Stalwart\'s store and needs a restart to load — else /admin loops the wizard).</>');
-        $this->line('     <fg=gray>Won\'t load right after (re)deploy? That\'s a stale DNS cache, not a failure —</>');
-        $this->line('     <fg=gray>ExternalDNS just (re)created the record. Flush it or use an Incognito window:</>');
-        $this->line('       <fg=blue>sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder</> <fg=gray>(macOS)</>');
-        $this->newLine();
+        if ($storeBootstrap !== null) {
+            // EXPERIMENTAL local-only wizard-skip: config.json was already
+            // pre-seeded, so Stalwart booted straight into normal operation —
+            // there's no wizard left to complete. See
+            // bootstrapStalwartStoreForLocal() for the mechanism.
+            $this->line('  <fg=yellow>1. Setup</> — <fg=green>already done.</> Stalwart booted straight into normal');
+            $this->line('     operation (no wizard) with its Data store pointed at Commons Postgres.');
+            $this->line("     Log in at <fg=blue>https://{$host}/admin</> with the Admin login above.");
+            $this->newLine();
+        } else {
+            $this->line('  <fg=yellow>1. First-run setup</> — open <fg=blue>https://'.$host.'</> and complete the wizard.');
+            $this->line('     <fg=gray>(You can configure your stores during the wizard or later in Settings → Storage — see step 7 below).</>');
+            $this->line('     <fg=gray>At the wizard\'s "Setup complete" screen, apply it with:</> <fg=blue>larakube mail:restart '.$env.'</>');
+            $this->line('     <fg=gray>(the config lives in Stalwart\'s store and needs a restart to load — else /admin loops the wizard).</>');
+            $this->line('     <fg=gray>Won\'t load right after (re)deploy? That\'s a stale DNS cache, not a failure —</>');
+            $this->line('     <fg=gray>ExternalDNS just (re)created the record. Flush it or use an Incognito window:</>');
+            $this->line('       <fg=blue>sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder</> <fg=gray>(macOS)</>');
+            $this->newLine();
+        }
         $this->line("  <fg=yellow>2. Valid TLS on the mail ports</> (so Apple Mail/Thunderbird don't warn).");
         $this->line('     The web UI cert is handled by the ingress; the mail ports (465/993) need');
         $this->line('     Stalwart to hold its own cert. In <fg=gray>Settings → Server → TLS → ACME Providers</>:');
@@ -219,7 +254,20 @@ class MailInitCommand extends Command
         $this->line('  <fg=gray>Ports 25/465/587/993/4190 must be reachable.  Wire a tool:</> <fg=blue>larakube mail:wire</>');
         $this->newLine();
 
-        $this->printPlexHint($kubectl, $host);
+        // Skip entirely once nothing is left to report: mail:init already
+        // printed a real-time ✔ for every store it just configured above —
+        // repeating "already configured" here would be pure noise. Still
+        // shown when genuinely stuck on the old wizard-driven path, or when
+        // Commons offers a blob/redis backend this run couldn't wire (a real
+        // gap worth surfacing). mail:show calls printPlexHint() unconditionally
+        // — for a later status check, "already configured" IS the useful answer.
+        $storesFullyHandled = $storeBootstrap !== null
+            && ($storeBootstrap['blob'] !== null || ! $storeBootstrap['commonsOffersBlob'])
+            && ($storeBootstrap['redis'] !== null || ! $storeBootstrap['commonsOffersRedis']);
+
+        if (! $storesFullyHandled) {
+            $this->printPlexHint($kubectl, $host, storeBootstrap: $storeBootstrap);
+        }
 
         $this->registerDeployedTool(ClusterTool::MAIL, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
@@ -250,6 +298,160 @@ class MailInitCommand extends Command
         // webmail:init resolves its own host (local → webmail.{tld}; cloud →
         // prompt/persist) and handles the Stalwart CORS flip + restart itself.
         $this->call('webmail:init', ['environment' => $env]);
+    }
+
+    /**
+     * EXPERIMENTAL — local only. Stalwart enters bootstrap/wizard mode the
+     * instant it starts with no config.json present; while in that mode it
+     * runs no mail services and its JMAP management API is restricted, so
+     * every JMAP-driven automation already in this codebase
+     * (stalwartEnsureApiKey, stalwartTrustReverseProxy, etc.) silently no-ops
+     * until a human finishes the web wizard. Pre-seeding a config.json that
+     * declares the Postgres DataStore before the pod's first boot skips
+     * bootstrap mode entirely — see resources/views/k8s/mail/stalwart.blade.php.
+     *
+     * Deliberately does NOT touch OpenBao/secrets:wire at all — that
+     * redesign is a separate, explicitly deferred piece of work
+     * (configureStalwartStore() below is untouched). This only resolves a
+     * password and allocates the Commons database; the password itself is
+     * written straight into mail-secrets (see deployMail()), never pushed
+     * anywhere else from here.
+     *
+     * Scoped to local: cloud installs keep the current wizard-driven flow
+     * completely unchanged while this is being proven out.
+     *
+     * Also detects which OTHER Commons services are enabled (S3-compatible
+     * blob storage, Redis/Valkey, Meilisearch) so deployMail() can wire their
+     * credentials into mail-secrets/the Deployment alongside the DataStore
+     * password — the actual x:BlobStore/x:InMemoryStore/x:SearchStore JMAP
+     * calls happen post-rollout, in configureStalwartAdditionalStoresForLocal()
+     * below, once the pod is up and an API key can be minted. config.json
+     * itself stays scoped to just the DataStore — that's the one setting
+     * Stalwart reads before bootstrap mode is even decided; everything else
+     * is configured live via the same management API the wizard itself uses.
+     *
+     * @return array{password: string, host: string, port: int, database: string, username: string, blob: array{backend: string, endpoint: string, bucket: string, accessKey: string, secretKey: string}|null, redis: array{url: string}|null, search: array{type: string, url?: string, key?: string}}|null
+     */
+    protected function bootstrapStalwartStoreForLocal(string $kubectl, string $env): ?array
+    {
+        if ($env !== 'local') {
+            return null;
+        }
+
+        $spec = $this->getCommonsSpec();
+        if ($spec === null || ! in_array('postgres', $this->enabledCommonsServices($spec), true)) {
+            return null;
+        }
+
+        $services = $this->enabledCommonsServices($spec);
+        $ns = $this->plexNamespace();
+
+        $password = $this->resolveManagedDbPassword($kubectl, 'stalwart', Str::random(24));
+
+        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'stalwart', $password)) {
+            return null;
+        }
+
+        $blob = null;
+        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+            if (! in_array($candidate, $services, true)) {
+                continue;
+            }
+            $storageDriver = StorageDriver::tryFrom($candidate);
+            $s3Creds = $this->readCommonsS3Credentials();
+            if ($storageDriver !== null && $s3Creds !== null && $this->allocateStorageBucket($storageDriver, 'stalwart')) {
+                $blob = [
+                    'backend' => $candidate,
+                    'endpoint' => "http://{$candidate}.{$ns}.svc.cluster.local:8333",
+                    'bucket' => 'stalwart',
+                    'accessKey' => $s3Creds['access'],
+                    'secretKey' => $s3Creds['secret'],
+                ];
+            }
+            break;
+        }
+
+        // A hardcoded /0 would collide with whatever other Commons tenant
+        // already owns that logical Redis database — every other Commons-Redis
+        // tool (Forgejo, Design, Notes, CRM, ...) allocates its own index via
+        // the shared registry; Stalwart follows the same convention (released
+        // on mail:remove --purge via MailTool::commonsRedisKeys()).
+        $redisIndex = in_array('redis', $services, true) ? $this->allocateCommonsRedisIndex('stalwart') : null;
+        $redis = $redisIndex !== null
+            ? ['url' => "redis://redis.{$ns}.svc.cluster.local:6379/{$redisIndex}"]
+            : null;
+
+        $meiliKey = in_array('meilisearch', $services, true) ? $this->readCommonsMeiliKey() : null;
+        $search = $meiliKey !== null
+            ? ['type' => 'meilisearch', 'url' => "http://meilisearch.{$ns}.svc.cluster.local:7700", 'key' => $meiliKey]
+            : ['type' => 'default'];
+
+        return [
+            'password' => $password,
+            'host' => "postgres.{$ns}.svc.cluster.local",
+            'port' => 5432,
+            'database' => 'stalwart',
+            'username' => 'stalwart',
+            'blob' => $blob,
+            'redis' => $redis,
+            'search' => $search,
+            // Whether the Commons OFFERED a blob/redis backend at all — lets
+            // deployMail() tell "auto-configured" apart from "genuinely
+            // nothing to configure" vs "offered but this run couldn't wire
+            // it" (e.g. allocateStorageBucket()/S3 creds failed), the one
+            // case still worth printing the manual fallback for.
+            'commonsOffersBlob' => array_intersect(['seaweedfs', 'minio', 'garage'], $services) !== [],
+            'commonsOffersRedis' => in_array('redis', $services, true),
+        ];
+    }
+
+    /**
+     * Post-rollout half of the local wizard-skip: issues the actual
+     * x:BlobStore/x:InMemoryStore/x:SearchStore JMAP /set calls now that the
+     * pod is up (in full normal mode, not bootstrap) and stalwartJmap() can
+     * mint/use the automation API key. Each call is independent and
+     * best-effort — one failing doesn't block the others or fail the deploy;
+     * mail:check is the place to notice a gap.
+     */
+    protected function configureStalwartAdditionalStoresForLocal(string $kubectl, string $ns, array $storeBootstrap): void
+    {
+        if ($storeBootstrap['blob'] !== null) {
+            $blob = $storeBootstrap['blob'];
+            $this->withSpin('Configuring Stalwart blob store...', fn () => $this->stalwartJmap($kubectl, $ns, [
+                ['x:BlobStore/set', ['update' => ['singleton' => [
+                    '@type' => 'S3',
+                    'bucket' => $blob['bucket'],
+                    'region' => ['@type' => 'Custom', 'customEndpoint' => $blob['endpoint'], 'customRegion' => 'us-east-1'],
+                    'accessKey' => $blob['accessKey'],
+                    'secretKey' => ['@type' => 'EnvironmentVariable', 'variableName' => 'STALWART_S3_SECRET_KEY'],
+                ]]], 'c1'],
+            ]) !== null);
+        }
+
+        if ($storeBootstrap['redis'] !== null) {
+            $redis = $storeBootstrap['redis'];
+            $this->withSpin('Configuring Stalwart cache (Valkey)...', fn () => $this->stalwartJmap($kubectl, $ns, [
+                ['x:InMemoryStore/set', ['update' => ['singleton' => [
+                    '@type' => 'Redis',
+                    'url' => $redis['url'],
+                ]]], 'c1'],
+            ]) !== null);
+        }
+
+        $search = $storeBootstrap['search'];
+        if ($search['type'] === 'meilisearch') {
+            $this->withSpin('Configuring Stalwart search (Meilisearch)...', fn () => $this->stalwartJmap($kubectl, $ns, [
+                ['x:SearchStore/set', ['update' => ['singleton' => [
+                    '@type' => 'Meilisearch',
+                    'url' => $search['url'],
+                    'httpAuth' => ['@type' => 'Bearer', 'bearerToken' => ['@type' => 'EnvironmentVariable', 'variableName' => 'STALWART_SEARCH_MEILI_KEY']],
+                ]]], 'c1'],
+            ]) !== null);
+        } else {
+            $this->withSpin('Configuring Stalwart search (reusing Data store)...', fn () => $this->stalwartJmap($kubectl, $ns, [
+                ['x:SearchStore/set', ['update' => ['singleton' => ['@type' => 'Default']]], 'c1'],
+            ]) !== null);
+        }
     }
 
     /**
@@ -365,10 +567,16 @@ class MailInitCommand extends Command
         $synced = $this->withSpin(
             'Waiting for stalwart to sync into the cluster...',
             function () use ($kubectl, $ns) {
-                $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ns, 'stalwart');
-                $this->forceExternalSecretReconcile($kubectl, $ns, 'stalwart');
+                // The dynamic-credential ExternalSecret is 'stalwart-db', not the
+                // bare tool name — 'stalwart' is a DIFFERENT, static ExternalSecret
+                // (see tool-es.blade.php) that never reconciles this key at all, so
+                // waiting on it always times out and reports failure even when the
+                // OpenBao push above genuinely succeeded. Confirmed live 2026-08-18
+                // (identical bug, Forgejo).
+                $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ns, 'stalwart-db');
+                $this->forceExternalSecretReconcile($kubectl, $ns, 'stalwart-db');
 
-                return $this->waitForExternalSecretSynced($kubectl, $ns, 'stalwart', $refreshTimeBefore);
+                return $this->waitForExternalSecretSynced($kubectl, $ns, 'stalwart-db', $refreshTimeBefore);
             },
         );
 

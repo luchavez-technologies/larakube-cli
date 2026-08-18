@@ -7,6 +7,7 @@ use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasClusterSecretDbKey;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
@@ -18,7 +19,7 @@ use App\Enums\ClusterToolComponentRole;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the MAIL category — 'Mail Server'. Only Stalwart. */
-final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasToolAccessDetails, HasWorkloadComponents
+final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasToolAccessDetails, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -75,6 +76,11 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
         return ['stalwart'];
     }
 
+    public function commonsRedisKeys(): array
+    {
+        return ['stalwart'];
+    }
+
     public function clusterSecretDbKey(string $tenant): string
     {
         return 'STALWART_STORE_PASSWORD';
@@ -82,9 +88,16 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
 
     public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
-        $ns = ($instance === null || $instance === '') ? 'larakube-mail' : "larakube-mail-{$instance}";
+        // Always larakube-shared, never instance-suffixed — mailNamespace()
+        // (InteractsWithMail) returns this same fixed value unconditionally;
+        // only the Deployment name (see presenceProbe()) varies by instance.
+        $ns = 'larakube-shared';
+        // mail-secrets, not 'stalwart' — 'stalwart' is the OpenBao-synced
+        // secret dbSecretRef()/openbaoSyncConfig() write DB/S3 creds into; it
+        // never holds admin-password. mail-secrets is what mail:init itself
+        // creates and always contains it.
         $passVal = trim(Process::run(
-            "{$kubectl} get secret stalwart -n {$ns} -o jsonpath='{.data.admin-password}' --ignore-not-found",
+            "{$kubectl} get secret mail-secrets -n {$ns} -o jsonpath='{.data.admin-password}' --ignore-not-found",
         )->output());
         $decodedPass = $passVal !== '' ? (base64_decode($passVal, true) ?: '<unknown>') : '<unknown>';
 
@@ -100,6 +113,6 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
     {
         $deployment = ($instance === null || $instance === '') ? 'stalwart' : "stalwart-{$instance}";
 
-        return "deployment/{$deployment} -n larakube-mail";
+        return "deployment/{$deployment} -n larakube-shared";
     }
 }

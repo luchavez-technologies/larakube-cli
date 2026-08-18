@@ -12,6 +12,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithStalwartApi;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class MailShowCommand extends Command
@@ -106,10 +107,55 @@ class MailShowCommand extends Command
         $this->newLine();
 
         if ($host) {
-            $this->printPlexHint($kubectl, $host);
+            $this->printPlexHint($kubectl, $host, storeBootstrap: $this->detectStoreBootstrap($kubectl, $ns));
         }
 
         return 0;
+    }
+
+    /**
+     * Reconstruct a printPlexHint()-shaped storeBootstrap array from LIVE
+     * server state, for installs deployed via the local wizard-skip path
+     * (MailInitCommand::bootstrapStalwartStoreForLocal()). mail:show has no
+     * access to the array mail:init built at deploy time, so it detects the
+     * same thing a different way: the 'stalwart-config' ConfigMap only
+     * exists on that path (it's what pre-seeds config.json and skips
+     * bootstrap mode), so its presence is the signal; the actual per-store
+     * details then come from asking Stalwart's own management API what's
+     * really configured right now, not from re-deriving Commons state.
+     *
+     * Returns null on any wizard-driven install — printPlexHint() then keeps
+     * its original, unmodified behaviour for the majority of clusters that
+     * haven't opted into this experimental path.
+     */
+    protected function detectStoreBootstrap(string $kubectl, string $ns): ?array
+    {
+        $configMapExists = trim(Process::run(
+            "{$kubectl} get configmap stalwart-config -n {$ns} --no-headers --ignore-not-found",
+        )->output()) !== '';
+
+        if (! $configMapExists) {
+            return null;
+        }
+
+        $blob = $this->stalwartJmap($kubectl, $ns, [['x:BlobStore/get', ['ids' => ['singleton']], 'c1']])[0][1]['list'][0] ?? null;
+        $redisType = $this->stalwartJmap($kubectl, $ns, [['x:InMemoryStore/get', ['ids' => ['singleton']], 'c1']])[0][1]['list'][0]['@type'] ?? null;
+        $searchType = $this->stalwartJmap($kubectl, $ns, [['x:SearchStore/get', ['ids' => ['singleton']], 'c1']])[0][1]['list'][0]['@type'] ?? null;
+
+        $backend = 'seaweedfs';
+        $endpoint = (string) ($blob['region']['customEndpoint'] ?? '');
+        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+            if (str_contains($endpoint, "{$candidate}.")) {
+                $backend = $candidate;
+                break;
+            }
+        }
+
+        return [
+            'blob' => ($blob['@type'] ?? null) === 'S3' ? ['backend' => $backend] : null,
+            'redis' => $redisType === 'Redis' ? ['url' => ''] : null,
+            'search' => ['type' => $searchType === 'Meilisearch' ? 'meilisearch' : 'default'],
+        ];
     }
 
     /**
@@ -190,7 +236,7 @@ class MailShowCommand extends Command
             return null;
         }
 
-        $host = $this->resolveSsoHostReadOnly($env, null);
+        $host = $this->resolveSsoHostReadOnly($env, null, $ssoKubectl);
         $pat = $this->readSsoSecret($ssoKubectl, $ssoNs, 'machine-pat');
 
         if ($host === null || $pat === null) {
