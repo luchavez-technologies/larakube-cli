@@ -202,11 +202,7 @@ class NotesInitCommand extends Command
             return 1;
         }
 
-        $this->registerTool($kubectl, ClusterTool::NOTES, [
-            'host' => $host,
-            'aliases' => $aliasHosts,
-            'extra' => ['adminEmail' => $adminEmail],
-        ], $instance);
+        $this->registerDeployedTool(ClusterTool::NOTES, $kubectl, $host, instance: $instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Outline wiki stack is live.');

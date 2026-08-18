@@ -98,6 +98,58 @@ test('notes:init wires REDIS_COLLABORATION_URL to the same Commons Redis as REDI
         ->and($concurrency[1] ?? null)->toBe('1');
 });
 
+test('notes:init registers itself in the cluster tool registry, including the admin email', function () {
+    // Regression guard: notes:init called the low-level registerTool()
+    // directly with 'extra' => [...] as a literal metadata key instead of
+    // going through registerDeployedTool() (which flattens 'extra' the way
+    // every other tool's registry entry expects — see git:init's identical
+    // fix). On the live cluster this meant Outline had NO registry entry at
+    // all (confirmed 2026-08-18: tool:list showed it as "not installed"
+    // despite the pod running healthy).
+    $captured = null;
+    $spec = notesCommonsSpec('files.example.com');
+
+    Process::fake(function ($process) use ($spec, &$captured) {
+        $cmd = $process->command;
+
+        if (str_contains($cmd, 'create secret generic larakube-tools-registry')) {
+            if (preg_match('/--from-file=registry\.json=(\S+)/', $cmd, $m)) {
+                $captured = json_decode(file_get_contents($m[1]), true);
+            }
+
+            return Process::result();
+        }
+
+        if (str_contains($cmd, 'apply -f')) {
+            return Process::result(output: 'applied');
+        }
+
+        return match (true) {
+            str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode($spec)),
+            str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'get secret larakube-tools-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
+            str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
+            str_contains($cmd, 'notes-outline-oidc') => Process::result(output: base64_encode('existing-client-id')),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "notes-outline" successfully rolled out'),
+            default => Process::result(output: ''),
+        };
+    });
+
+    $this->artisan(NotesInitCommand::class, [
+        'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    expect($captured)->not->toBeNull();
+    $notesEntry = collect($captured)->firstWhere('tool', 'notes');
+    expect($notesEntry)->not->toBeNull()
+        ->and($notesEntry['host'])->not->toBeNull()
+        ->and($notesEntry['adminEmail'])->toBe('admin@example.com')
+        ->and($notesEntry)->not->toHaveKey('extra');
+});
+
 test('notes:init falls back to the internal S3 endpoint when the Commons has no public host', function () {
     $appliedManifest = null;
     fakeNotesInitProcess(null, $appliedManifest);
