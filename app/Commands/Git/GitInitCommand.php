@@ -3,7 +3,6 @@
 namespace App\Commands\Git;
 
 use App\Enums\ClusterTool;
-use App\Enums\CommonsSecret;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
@@ -196,14 +195,6 @@ class GitInitCommand extends Command
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
-
-        // After the namespace exists — the sync applies CRDs INTO it, so calling
-        // this next to allocateDatabase() would fail on a fresh cluster.
-        // --no-plex has no Commons tenant to sync, hence the false default.
-        $secretsSynced = false;
-        if (! $noPlex) {
-            $secretsSynced = $this->syncDbPasswordToCluster($kubectl, $ns, $env, $dbPassword);
-        }
 
         $vpnOnly = (bool) $this->option('vpn-only');
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::GIT);
@@ -432,105 +423,10 @@ class GitInitCommand extends Command
         );
     }
 
-    /** Read any key from the forgejo-admin secret; null when absent. */
-    /**
-     * Mirror the Plex Commons tenant password into OpenBao.
-     *
-     * Deliberately ONLY the Commons credential — the same line mail draws. A
-     * Commons tenant password is a SHARED value: `plex:rotate` changes it on the
-     * Postgres side, and without an OpenBao copy there is nothing for a
-     * rotation to update, so Forgejo would keep booting with a stale literal.
-     *
-     * Forgejo's own identity (secret-key, registry-token, oauth-jwt-secret,
-     * runner-secret) stays k8s-only on purpose: a forge is foundational enough
-     * that its own credentials must not depend on another service being
-     * reachable — the same reasoning that keeps Stalwart's api-key and recovery
-     * admin out of OpenBao.
-     *
-     * Best-effort throughout. OpenBao is an optional capability, so a cluster
-     * without it falls through silently; a cluster WITH it that fails reports
-     * why, because a half-synced rotation source is worse than none.
-     */
-    protected function syncDbPasswordToCluster(string $kubectl, string $ns, string $env, string $dbPassword): bool
-    {
-        if (! $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
-            return false;
-        }
-
-        // Environment slugs: 'dev' is the built-in local one,
-        // every other environment is user-named and passed through as-is.
-        $clusterEnv = $env === 'local' ? 'dev' : $env;
-
-        // Ask the enum for the key rather than spelling it out. plex:rotate
-        // writes the rotated value to CommonsSecret::TENANT_DB->clusterSecretKey(),
-        // so a hand-written name here would rotate into a key nothing reads —
-        // the exact failure this sync exists to prevent.
-        $key = CommonsSecret::TENANT_DB->clusterSecretKey('forgejo');
-        if ($key === null) {
-            return false;
-        }
-
-        $ok = $this->withSpin(
-            "Syncing {$key} to the cluster...",
-            function () use ($kubectl, $ns, $clusterEnv, $dbPassword, $key) {
-                if ($this->databaseEngineMounted($kubectl)) {
-                    $synced = $this->registerStaticRole($kubectl, 'forgejo');
-
-                    // Without this, $key is never pushed to OpenBao's KV at
-                    // all on this branch — secrets:init's sweep reads it
-                    // from there, so the synced Secret would end up with no
-                    // password key. And even if it had been pushed with
-                    // $dbPassword, registerStaticRole() rotates the real one
-                    // as a side effect the instant a role is first created —
-                    // read back what OpenBao actually set, not the
-                    // pre-rotation value. Same class of bug that desynced
-                    // Zitadel, confirmed live 2026-08-02.
-                    if ($synced) {
-                        $realPassword = $this->readStaticRolePassword($kubectl, 'forgejo');
-                        if ($realPassword !== null) {
-                            $this->pushClusterSecret($kubectl, $key, $realPassword, $clusterEnv);
-                        }
-                    }
-                } else {
-                    $synced = $this->pushClusterSecret($kubectl, $key, $dbPassword, $clusterEnv);
-                }
-
-                if (! $synced) {
-                    return false;
-                }
-
-                // NOT syncClusterSecretToNamespace() here — same bug that
-                // took down Zitadel (confirmed live 2026-08-02): it extracts
-                // KV path "{env}" as one object, but $key above is written
-                // at the deeper "{env}/{$key}" path, so it always syncs
-                // empty and, as an Owner-mode ExternalSecret with a 1m
-                // refresh, wipes out the correct one secrets:init already
-                // maintains (tool-es.blade.php) on its next reconcile —
-                // Forgejo unable to start is exactly the failure this sync
-                // exists to prevent. Reconcile the existing one instead.
-                $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ns, 'forgejo');
-                $this->forceExternalSecretReconcile($kubectl, $ns, 'forgejo');
-
-                return $this->waitForExternalSecretSynced($kubectl, $ns, 'forgejo', $refreshTimeBefore);
-            },
-        );
-
-        if (! $ok) {
-            $this->laraKubeError(
-                "Forgejo is installed, but {$key} could not be stored in the cluster — "
-                .'`larakube plex:rotate` will not be able to rotate this tenant until it is.',
-            );
-        }
-
-        // Only a SUCCESSFUL sync flips the manifest onto the cluster-backed
-        // key. Pointing the Deployment at a Secret that was never created would
-        // leave FORGEJO__database__PASSWD unset and Forgejo unable to start.
-        return $ok;
-    }
-
+    /** Read any key from the git-secrets secret; null when absent. */
     protected function readForgejoSecret(string $kubectl, string $ns, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'forgejo-admin', $key);
+        return $this->readClusterSecretKey($kubectl, $ns, 'git-secrets', $key);
     }
 
     /** Parse admin password from existing secret */

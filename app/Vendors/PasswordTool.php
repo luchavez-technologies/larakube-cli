@@ -28,7 +28,13 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
     public function dbSecretRef(): ?array
     {
         return [
-            'secret' => 'vaultwarden-secrets',
+            // Same Secret passwords:init already writes admin-token/plain-token
+            // into — secrets:wire's dynamic ExternalSecret uses creationPolicy:
+            // Merge, so this key rides alongside those without conflicting.
+            // 'vaultwarden-secrets' never exists unless secrets:init's sweep
+            // happens to create it, which left DATABASE_URL's hard (non-optional)
+            // dependency unresolvable on any cluster without OpenBao bootstrapped.
+            'secret' => 'vault-secrets',
             'key' => 'VAULTWARDEN_DATABASE_URL',
             'template' => 'postgresql://vaultwarden:{{ .password }}@postgres.larakube-plex.svc.cluster.local:5432/vaultwarden',
         ];
@@ -99,7 +105,7 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
     public function openbaoSyncConfig(): array
     {
         return [
-            'secret' => 'vaultwarden-secrets',
+            'secret' => 'vault-secrets',
             'keys' => ['VAULTWARDEN_DATABASE_URL'],
         ];
     }
@@ -112,8 +118,11 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
     public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
         $ns = ($instance === null || $instance === '') ? 'larakube-vault' : "larakube-vault-{$instance}";
+        // vault-secrets has no ADMIN_TOKEN key — admin-token holds the
+        // Argon2id HASH Vaultwarden itself consumes (irreversible); the raw
+        // token an operator actually logs in with is plain-token.
         $tokenVal = trim(Process::run(
-            "{$kubectl} get secret vault-admin -n {$ns} -o jsonpath='{.data.ADMIN_TOKEN}' --ignore-not-found",
+            "{$kubectl} get secret vault-secrets -n {$ns} -o jsonpath='{.data.plain-token}' --ignore-not-found",
         )->output());
         $decodedToken = $tokenVal !== '' ? (base64_decode($tokenVal, true) ?: '<unknown>') : '<unknown>';
 

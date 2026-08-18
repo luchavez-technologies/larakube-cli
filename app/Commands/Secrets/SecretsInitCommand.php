@@ -227,6 +227,21 @@ class SecretsInitCommand extends Command
                 continue;
             }
 
+            // A tool that has graduated to dynamic-creds rotation (secrets:wire)
+            // already has a "{secret}-db" ExternalSecret targeting this same
+            // k8s Secret. Recreating the static KV-mirrored one here would race
+            // it on every reconcile — each overwrites the other's value, and
+            // since the KV one refreshes more often it usually wins, silently
+            // reintroducing a stale password. Confirmed live 2026-08-17 (git/
+            // Forgejo, sustained 28P01 auth failures). Once dynamic rotation
+            // exists, it's authoritative — skip the static sync entirely.
+            $dynamicallyWired = trim(Process::run(
+                "{$kubectl} get externalsecret {$config['secret']}-db -n {$config['namespace']} --ignore-not-found -o name",
+            )->output());
+            if ($dynamicallyWired !== '') {
+                continue;
+            }
+
             $this->withSpin("Syncing OpenBao secrets to {$config['secret']} in {$config['namespace']}...", function () use ($kubectl, $config) {
                 $es = view('k8s.secrets.tool-es', [
                     'namespace' => $config['namespace'],

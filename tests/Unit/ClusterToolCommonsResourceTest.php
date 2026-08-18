@@ -19,16 +19,17 @@ test('forCommonsResource returns null for a genuine Application Tenant', functio
         ->and(ClusterTool::forCommonsResource('demo-production'))->toBeNull();
 });
 
-test('PASSWORDS is wired into openbaoSyncConfig so secrets:init actually maintains vaultwarden-secrets', function () {
-    // Regression guard: PasswordsInitCommand's manifest sources DATABASE_URL
-    // from vaultwarden-secrets via a required (non-optional) secretKeyRef,
-    // but nothing ever put PASSWORDS in the sweep that maintains that
-    // Secret — confirmed live 2026-08-02 investigating the Zitadel masterkey
-    // incident. Without this, the next passwords:init would have re-created
-    // the same class of broken, self-wiping ExternalSecret that took down SSO.
+test('PASSWORDS is wired into openbaoSyncConfig so secrets:init actually maintains vault-secrets', function () {
+    // Regression guard, redesigned 2026-08-18: DATABASE_URL now lives in
+    // vault-secrets — the Secret passwords:init itself creates and controls
+    // (alongside admin-token/plain-token), not the never-created
+    // 'vaultwarden-secrets'. secrets:wire's dynamic ExternalSecret merges
+    // (creationPolicy: Merge) a rotated value into this same Secret instead
+    // of depending on a separate one that only existed if secrets:init's
+    // sweep happened to run first — see PasswordTool::dbSecretRef().
     $config = ClusterTool::PASSWORDS->openbaoSyncConfig();
 
     expect($config)->not->toBeNull()
-        ->and($config['secret'])->toBe('vaultwarden-secrets')
+        ->and($config['secret'])->toBe('vault-secrets')
         ->and($config['keys'])->toContain('VAULTWARDEN_DATABASE_URL');
 });

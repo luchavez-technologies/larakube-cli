@@ -75,7 +75,7 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret sign-documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get secret sign-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment sign-documenso*' => Process::result(output: 'sign-documenso'),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -102,7 +102,7 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
         && ($request['db_name'] ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret sign-documenso-secrets-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret sign-secrets-db'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/sign-documenso'));
 });
 
@@ -113,7 +113,7 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret link-kutt-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get secret link-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment link-kutt*' => Process::result(output: 'link-kutt'),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -140,7 +140,7 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
         && ($request['db_name'] ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret link-kutt-secrets-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret link-secrets-db'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/link-kutt'));
 });
 
@@ -205,8 +205,15 @@ test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND
 });
 
 test('secrets:wire rejects a tool with no wireable Commons database password', function () {
+    // Desk (FreeScout) has a Commons database (HasCommonsDatabases) but no
+    // simple single-key password to hand OpenBao (no HasDbSecretRef) — the
+    // other reason a tool can be rejected here, distinct from Drive's "no
+    // Commons DB at all" case covered separately below. Monitor used to be
+    // this test's example until it grew a real Commons Postgres tenant for
+    // Grafana (2026-08-18) — see MonitorInitCommandTest's allocation test.
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get deployment desk-freescout*' => Process::result(output: 'desk-freescout'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -217,7 +224,7 @@ test('secrets:wire rejects a tool with no wireable Commons database password', f
             ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=monitor --force')
+    $this->artisan('secrets:wire local --tool=desk --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('does not have a Commons database password OpenBao can rotate');
 });
@@ -248,7 +255,7 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret sign-documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get secret sign-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment sign-documenso*' => Process::result(output: 'sign-documenso'),
         '*get deployment record-sendrec*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),
@@ -409,7 +416,7 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
 test('secrets:wire --tool=passwords registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function () {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret vaultwarden-secrets*' => Process::result(output: base64_encode('postgresql://vaultwarden:pw@postgres:5432/vaultwarden')),
+        '*get secret vault-secrets*' => Process::result(output: base64_encode('postgresql://vaultwarden:pw@postgres:5432/vaultwarden')),
         '*get deployment vaultwarden*' => Process::result(output: 'vaultwarden'),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -433,7 +440,7 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
         && ($request['db_name'] ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret vaultwarden-secrets-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret vault-secrets-db'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vaultwarden'));
 });
 

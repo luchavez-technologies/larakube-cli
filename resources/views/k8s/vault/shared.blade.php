@@ -1,12 +1,15 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: vault-admin
+  name: vault-secrets
   namespace: larakube-vault
 type: Opaque
 data:
   plain-token: {{ base64_encode($adminToken) }}
   admin-token: {{ base64_encode($hashedAdminToken ?? $adminToken) }}
+@if(isset($databaseUrl) && $databaseUrl)
+  VAULTWARDEN_DATABASE_URL: {{ base64_encode($databaseUrl) }}
+@endif
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -50,21 +53,18 @@ spec:
             - name: ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: vault-admin
+                  name: vault-secrets
                   key: admin-token
 @if(isset($databaseUrl) && $databaseUrl)
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: vaultwarden-secrets
+                  name: vault-secrets
                   key: VAULTWARDEN_DATABASE_URL
 @endif
-            {{-- No `envFrom: secretRef` here. The synced Secret mirrors every key
-                 stored in the cluster backend, so it injected every OTHER tool's credentials
-                 into this container — and injected VAULTWARDEN_ADMIN_TOKEN /
-                 VAULTWARDEN_DB_PASSWORD, which Vaultwarden does not read (it
-                 wants ADMIN_TOKEN and DATABASE_URL), so it was pure blast radius
-                 for no benefit. --}}
+            {{-- No `envFrom: secretRef` here — a synced Secret mirroring every
+                 key stored in the cluster backend would inject every OTHER
+                 tool's credentials into this container for no benefit. --}}
           volumeMounts:
             - name: vaultwarden-volume
               mountPath: /data

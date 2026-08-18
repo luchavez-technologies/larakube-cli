@@ -28,6 +28,60 @@ test('git:init deploys gitea using plex commons seaweedfs by default', function 
         ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 });
 
+test('git:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function () {
+    // {tool}:init must not know or care whether OpenBao is installed; it
+    // just writes a locally-generated password directly into git-secrets
+    // (see the Deployment template's db-password key, rendered straight
+    // from the PHP variable). Only secrets:wire may register a tool's DB
+    // password as an OpenBao static role. Design principle stated explicitly
+    // 2026-08-18, after a live incident: :init doing this eagerly meant a
+    // tool's password silently became OpenBao-managed the moment OpenBao
+    // existed on the cluster, with no explicit secrets:wire ever run — the
+    // opposite of what secrets:wire's own description promises ("hand a
+    // tool's DB password over to OpenBao static-role rotation").
+    // resolveManagedDbPassword() is the one exception: a READ-only check so
+    // a re-run doesn't clobber a password OpenBao already owns from a PAST
+    // secrets:wire run — it never itself registers anything.
+    Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => [
+                'postgres' => ['enabled' => true],
+                'redis' => ['enabled' => true],
+                'seaweedfs' => ['enabled' => true],
+            ],
+        ]),
+        '*get secret plex-admin*' => base64_encode('test-cred'),
+        '*get secret gitea-admin*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*port-forward*' => Process::result(output: ''),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+        '*' => Process::result(),
+    ]);
+
+    // Only resolveManagedDbPassword()'s read-only lookup should ever hit
+    // OpenBao's HTTP API from :init — nothing here is a static-role write.
+    Http::fake(function (Illuminate\Http\Client\Request $request) {
+        $path = parse_url($request->url(), PHP_URL_PATH);
+
+        return match (true) {
+            $path === '/v1/sys/mounts' => Http::response(['data' => ['database/' => ['type' => 'database']]]),
+            $path === '/v1/database/static-creds/forgejo' => Http::response(['data' => []]),
+            default => Http::response(['data' => []]),
+        };
+    });
+
+    $this->artisan('git:init local --no-interaction --admin-email=admin@example.com')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'externalsecret'));
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/'));
+});
+
 test('git:init deploys standalone gitea when --no-plex is passed', function () {
     Process::fake([
         '*get secret gitea-admin*' => Process::result(output: '', exitCode: 1),

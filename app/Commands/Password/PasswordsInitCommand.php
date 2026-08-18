@@ -62,10 +62,13 @@ class PasswordsInitCommand extends Command
 
         // Allocate Vaultwarden database in Plex Commons Postgres if available
         $dbPassword = Str::random(24);
-        // Once OpenBao's database secrets engine already owns the
-        // 'vaultwarden' static role, defer to ITS current password instead
-        // of clobbering Postgres with a fresh one on every run — see
-        // resolveManagedDbPassword()'s docblock.
+
+        // passwords:init doesn't know or care whether OpenBao exists on this
+        // cluster — only secrets:wire --tool=passwords may register the
+        // 'vaultwarden' static role and hand rotation over to it. This is a
+        // READ-only exception: it defers to OpenBao's current password when
+        // a PAST secrets:wire run already made it the owner, so a re-run
+        // here never clobbers it back to a fresh local one.
         $dbPassword = $this->resolveManagedDbPassword($kubectl, 'vaultwarden', $dbPassword);
         $databaseUrl = null;
         $plexNs = $this->plexNamespace();
@@ -77,58 +80,10 @@ class PasswordsInitCommand extends Command
             }
         }
 
-        // Secrets Backend Integration: Push secrets and sync to larakube-vault.
-        // The manifest branches on this: when the sync lands, DATABASE_URL is
-        // sourced from the synced Secret so plex:rotate can reach this pod;
-        // otherwise it stays a literal. Only a sync that actually SUCCEEDED
-        // counts — pointing the Deployment at a Secret that was never created
-        // would leave DATABASE_URL unset, and Vaultwarden falls back to SQLite
-        // when it is, quietly stranding every existing vault.
-        $secretsSynced = false;
-
-        if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
-            $this->withSpin('Syncing Vaultwarden secrets to the cluster...', function () use ($kubectl, $ns, $plexNs, $adminToken, $dbPassword, $databaseUrl, &$secretsSynced) {
-                $this->pushClusterSecret($kubectl, 'VAULTWARDEN_ADMIN_TOKEN', $adminToken, 'production');
-                if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, 'vaultwarden');
-
-                    // registerStaticRole() rotates the password as a side
-                    // effect the instant a role is FIRST created — $databaseUrl
-                    // still has the pre-rotation $dbPassword baked in at that
-                    // point. Rebuild it from what OpenBao actually set before
-                    // pushing, or the KV value (and everything synced from
-                    // it) is stale from the moment it's written. Confirmed
-                    // live 2026-08-02 on Zitadel's identical registration.
-                    $realPassword = $this->readStaticRolePassword($kubectl, 'vaultwarden');
-                    if ($realPassword !== null && $databaseUrl !== null) {
-                        $databaseUrl = "postgresql://vaultwarden:{$realPassword}@postgres.{$plexNs}.svc.cluster.local:5432/vaultwarden";
-                    }
-                } else {
-                    $this->pushClusterSecret($kubectl, 'VAULTWARDEN_DB_PASSWORD', $dbPassword, 'production');
-                }
-
-                $urlPushed = $databaseUrl === null
-                    || $this->pushClusterSecret($kubectl, 'VAULTWARDEN_DATABASE_URL', $databaseUrl, 'production');
-
-                // NOT syncClusterSecretToNamespace() here — same bug that
-                // took down Zitadel (confirmed live 2026-08-02): it extracts
-                // KV path "production" as one object, but VAULTWARDEN_DATABASE_URL
-                // above is written at the deeper "production/{KEY}" path, so
-                // it always syncs empty and, as an Owner-mode ExternalSecret
-                // with a 1m refresh, wipes vaultwarden-secrets on its next
-                // reconcile — the manifest's DATABASE_URL isn't optional, so
-                // that's a crash loop, not a quiet fallback. PASSWORDS is now
-                // in ClusterTool::openbaoSyncConfig(), so secrets:init's own
-                // sweep (tool-es.blade.php) maintains the real one; reconcile
-                // that instead of creating a second, conflicting one.
-                $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ns, 'vaultwarden-secrets');
-                $this->forceExternalSecretReconcile($kubectl, $ns, 'vaultwarden-secrets');
-                $synced = $this->waitForExternalSecretSynced($kubectl, $ns, 'vaultwarden-secrets', $refreshTimeBefore);
-                $secretsSynced = $urlPushed && $synced && $databaseUrl !== null;
-
-                return $synced;
-            });
-        }
+        // Written straight into vault-secrets by the manifest below (same
+        // pattern as git-secrets/monitor-secrets) — no OpenBao involvement
+        // unless/until secrets:wire merges a rotated value into this same
+        // Secret via the 'vault-secrets-db' ExternalSecret.
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -143,7 +98,6 @@ class PasswordsInitCommand extends Command
             'adminToken' => $adminToken,
             'hashedAdminToken' => $hashedAdminToken,
             'databaseUrl' => $databaseUrl,
-            'secretsSynced' => $secretsSynced,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
