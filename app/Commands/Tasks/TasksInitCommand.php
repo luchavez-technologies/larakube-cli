@@ -16,6 +16,7 @@ use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\SyncsClusterSecrets;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -23,7 +24,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class TasksInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithTasks, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithTasks, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'tasks:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -63,6 +64,12 @@ class TasksInitCommand extends Command
         }
 
         $dbPassword = $this->readTasksSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
+        // tasks:init doesn't know or care whether OpenBao is installed —
+        // only secrets:wire --tool=tasks may register the 'tasks_planka'
+        // static role. This is a READ-only exception: it defers to OpenBao's
+        // current password when a PAST secrets:wire run already made it the
+        // owner, so a re-run here never clobbers it back to a fresh local one.
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, 'tasks_planka', $dbPassword);
         $secretKey = $this->readTasksSecret($kubectl, $ns, 'secret-key') ?? bin2hex(random_bytes(32));
 
         $dbName = 'tasks_planka';

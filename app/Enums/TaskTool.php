@@ -5,6 +5,7 @@ namespace App\Enums;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 
@@ -22,11 +23,16 @@ use App\Contracts\HasVpnWiring;
  * like Directus's paid SSO — Directus's wiring is real and works with a
  * license; there is no OIDC code left in the OSS image to wire into.
  */
-enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring, HasVpnWiring
+enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
 {
     public function getLabel(): string
     {
         return 'Planka';
+    }
+
+    public function dbSecretRef(): ?array
+    {
+        return ['secret' => 'tasks-planka-secrets', 'key' => 'db-password'];
     }
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array

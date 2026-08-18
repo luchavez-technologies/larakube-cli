@@ -17,6 +17,7 @@ use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\SyncsClusterSecrets;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -24,7 +25,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SupportInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'support:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -73,6 +74,12 @@ class SupportInitCommand extends Command
 
         $adminEmail = $this->readSupportSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readSupportSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
+        // support:init doesn't know or care whether OpenBao is installed —
+        // only secrets:wire --tool=support may register the 'support_chatwoot'
+        // static role. This is a READ-only exception: it defers to OpenBao's
+        // current password when a PAST secrets:wire run already made it the
+        // owner, so a re-run here never clobbers it back to a fresh local one.
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, 'support_chatwoot', $dbPassword);
         $secretKeyBase = $this->readSupportSecret($kubectl, $ns, 'secret-key-base') ?? bin2hex(random_bytes(32));
 
         $dbName = 'support_chatwoot';

@@ -6,15 +6,21 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasWhiteLabel;
 
 /** The single vendor backing the SUPPORT category — 'Customer Support'. Only Chatwoot. */
-final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring, HasWhiteLabel
+final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDeploymentBaseName, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel
 {
     public function getLabel(): string
     {
         return 'Chatwoot';
+    }
+
+    public function dbSecretRef(): ?array
+    {
+        return ['secret' => 'support-secrets', 'key' => 'db-password'];
     }
 
     public function adminEmailLabel(): string

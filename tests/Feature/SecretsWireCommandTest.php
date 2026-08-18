@@ -144,6 +144,68 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/link-kutt'));
 });
 
+test('secrets:wire --tool=support registers a static role for support_chatwoot and restarts support-chatwoot', function () {
+    Process::fake(array_merge(fakeSyncedExternalSecret(), [
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret support-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get deployment support-chatwoot*' => Process::result(output: 'support-chatwoot'),
+        '*port-forward*' => Process::result(output: ''),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout restart*' => Process::result(output: 'restarted'),
+        '*' => Process::result(),
+    ]));
+
+    Http::fake([
+        'localhost:*' => Http::sequence()
+            ->push(['data' => ['database/' => ['type' => 'database']]])
+            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
+            ->push([]),
+    ]);
+
+    $this->artisan('secrets:wire local --tool=support --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("Customer Support (Chatwoot)'s DB password is now rotated by OpenBao every 168h");
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/support_chatwoot')
+        && ($request['username'] ?? null) === 'support_chatwoot'
+        && ($request['db_name'] ?? null) === 'plex-postgres');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret support-secrets-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/support-chatwoot'));
+});
+
+test('secrets:wire --tool=tasks registers a static role for tasks_planka and restarts tasks-planka', function () {
+    Process::fake(array_merge(fakeSyncedExternalSecret(), [
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret tasks-planka-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get deployment tasks-planka*' => Process::result(output: 'tasks-planka'),
+        '*port-forward*' => Process::result(output: ''),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout restart*' => Process::result(output: 'restarted'),
+        '*' => Process::result(),
+    ]));
+
+    Http::fake([
+        'localhost:*' => Http::sequence()
+            ->push(['data' => ['database/' => ['type' => 'database']]])
+            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
+            ->push([]),
+    ]);
+
+    $this->artisan('secrets:wire local --tool=tasks --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("Project Management (Planka)'s DB password is now rotated by OpenBao every 168h");
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/tasks_planka')
+        && ($request['username'] ?? null) === 'tasks_planka'
+        && ($request['db_name'] ?? null) === 'plex-postgres');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret tasks-planka-secrets-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/tasks-planka'));
+});
+
 test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', function () {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
