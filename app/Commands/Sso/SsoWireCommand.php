@@ -910,22 +910,50 @@ class SsoWireCommand extends Command
     protected function applyToolEnv(string $kubectl, array $schema, array $logical): bool
     {
         $staticVars = $schema['static'] ?? [];
-        $isPenpot = $schema['deployment'] === 'design-penpot-backend';
+        $isPenpot = str_starts_with($schema['deployment'], 'design-penpot-backend');
+        // Instance suffix (e.g. '-design-luchtech-dev', or '' for the bare
+        // legacy name) — derived from the deployment name so the smtp/oidc
+        // secret and frontend deployment names below always match the same
+        // instance $schema['secret']/$schema['deployment'] already resolved to.
+        $penpotSuffix = $isPenpot ? substr($schema['deployment'], strlen('design-penpot-backend')) : '';
 
         // PENPOT_FLAGS is reconciled from scratch by ReconcilesPenpotFlags,
         // not carried through the generic static-var plumbing below — see
-        // docs/decisions/0013-design-init-idempotent-flags.md.
-        $penpotFlags = null;
-        if ($isPenpot) {
-            unset($staticVars['PENPOT_FLAGS']);
-            $penpotFlags = $this->resolveDesignPenpotFlags(
-                $kubectl,
-                $schema['namespace'],
-                'design-penpot-oidc',
-                'design-penpot-smtp',
-                (bool) $this->option('sso-only'),
-                $schema['deployment'],
-            );
+        // docs/decisions/0013-design-init-idempotent-flags.md. Computed
+        // AFTER the secret is (re)written below, not here — this secret may
+        // not have real OIDC credentials yet on a first-ever wire (or after
+        // a rename/recreate), and resolveDesignPenpotFlags() reads the
+        // secret's current state, so computing it before the write below
+        // would see stale/empty data and silently omit
+        // 'enable-login-with-oidc' — confirmed live 2026-08-17 (Design).
+        $ssoOnlyOption = (bool) $this->option('sso-only');
+
+        // PENPOT_FLAGS is reconciled separately (ReconcilesPenpotFlags,
+        // below) — excluded from the generic static-var plumbing so its
+        // computed-fresh-every-time value is never shadowed by a stale
+        // literal here.
+        unset($staticVars['PENPOT_FLAGS']);
+
+        // sso_only_vars must be folded into $staticVars BEFORE $literals is
+        // built below — see docs/decisions/0018-wire-commands-never-literal-env.md
+        // point 6. Previously this merge happened after the secret write, so
+        // these vars only ever reached the Deployment through a literal
+        // `kubectl set env` override that's now removed; merging early means
+        // they ride the same Secret + `--from=secret` path as everything else.
+        $unsetPairs = '';
+        if ($ssoOnlyOption && ! empty($schema['sso_only_vars'])) {
+            $staticVars = array_merge($staticVars, $schema['sso_only_vars']);
+        } elseif (! empty($schema['sso_only_vars'])) {
+            // Turning --sso-only OFF: these vars have no declarative
+            // "absent" state if a PAST run wrote them literally — that's the
+            // one case still requiring an imperative `KEY-` unset. Removing
+            // a key never produces the value+valueFrom conflict; only
+            // ADDING a literal value does. See ADR 0018 point 4.
+            foreach ($schema['sso_only_vars'] as $k => $v) {
+                if (! isset($staticVars[$k])) {
+                    $unsetPairs .= ' '.$k.'-';
+                }
+            }
         }
 
         $literals = '';
@@ -951,7 +979,7 @@ class SsoWireCommand extends Command
         $ns = $schema['namespace'];
 
         $ok = true;
-        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotFlags, &$ok) {
+        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotSuffix, $ssoOnlyOption, $unsetPairs, &$ok) {
             Process::run(
                 "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -959,28 +987,15 @@ class SsoWireCommand extends Command
             $set = Process::run("{$kubectl} set env deployment/{$deployment} --from=secret/{$secret} -n {$ns}");
             $ok = $set->successful();
 
-            $staticVars = $schema['static'] ?? [];
-            unset($staticVars['PENPOT_FLAGS']);
-            $unsetPairs = '';
-
-            if ($this->option('sso-only') && ! empty($schema['sso_only_vars'])) {
-                $staticVars = array_merge($staticVars, $schema['sso_only_vars']);
-            } elseif (! empty($schema['sso_only_vars'])) {
-                foreach ($schema['sso_only_vars'] as $k => $v) {
-                    if (! isset($staticVars[$k])) {
-                        $unsetPairs .= ' '.$k.'-';
-                    }
-                }
-            }
-            unset($staticVars['PENPOT_FLAGS']);
-
-            if ($ok && (! empty($staticVars) || $unsetPairs !== '')) {
-                $pairs = '';
-                foreach ($staticVars as $k => $v) {
-                    $pairs .= ' '.$k.'='.escapeshellarg($v);
-                }
-                $pairs .= $unsetPairs;
-                $ok = Process::run("{$kubectl} set env deployment/{$deployment} -n {$ns}{$pairs}")->successful();
+            // ADR 0018: every value that belongs on the Deployment is already
+            // in the Secret and already applied declaratively via --from=secret
+            // above. The only thing left to do imperatively is REMOVE a var
+            // that has no place in the Secret at all (an --sso-only toggle-off)
+            // — never re-apply a value as a literal `value:` override, which
+            // would desync `kubectl apply`'s bookkeeping for every future
+            // `{tool}:init` re-run.
+            if ($ok && $unsetPairs !== '') {
+                $ok = Process::run("{$kubectl} set env deployment/{$deployment} -n {$ns}{$unsetPairs}")->successful();
             }
 
             foreach ($schema['also_patch'] ?? [] as $secondaryDeployment) {
@@ -999,7 +1014,15 @@ class SsoWireCommand extends Command
             }
 
             if ($ok && $isPenpot) {
-                $this->applyDesignPenpotFlags($kubectl, $ns, 'design-penpot-oidc', $penpotFlags, $deployment, ...($schema['also_patch'] ?? ['design-penpot-frontend']));
+                $penpotFlags = $this->resolveDesignPenpotFlags(
+                    $kubectl,
+                    $ns,
+                    $secret,
+                    "design-smtp{$penpotSuffix}",
+                    $ssoOnlyOption,
+                    $deployment,
+                );
+                $this->applyDesignPenpotFlags($kubectl, $ns, $secret, $penpotFlags, $deployment, ...($schema['also_patch'] ?? ["design-penpot-frontend{$penpotSuffix}"]));
             }
         });
 

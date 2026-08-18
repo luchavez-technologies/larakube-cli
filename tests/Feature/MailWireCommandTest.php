@@ -89,7 +89,7 @@ test('mail:wire local --tool=design configures Penpot SMTP via deployment secret
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*create secret generic mail-sender*' => Process::result(output: 'created'),
-        '*create secret generic design-penpot-smtp*' => Process::result(output: 'created'),
+        '*create secret generic design-smtp*' => Process::result(output: 'created'),
         '*set env deployment/design-penpot-backend*' => Process::result(output: 'updated'),
         '*set env deployment/design-penpot-frontend*' => Process::result(output: 'updated'),
         '*rollout restart deployment/design-penpot-backend*' => Process::result(output: 'restarted'),
@@ -147,7 +147,7 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*create secret generic mail-sender*' => Process::result(output: 'created'),
-        '*create secret generic crm-twenty-smtp-crm-luchtech-dev*' => Process::result(output: 'created'),
+        '*create secret generic crm-smtp-crm-luchtech-dev*' => Process::result(output: 'created'),
         '*set env deployment/crm-twenty-crm-luchtech-dev*' => Process::result(output: 'updated'),
         '*set env deployment/crm-twenty-worker-crm-luchtech-dev*' => Process::result(output: 'updated'),
         '*rollout restart deployment/crm-twenty-crm-luchtech-dev*' => Process::result(output: 'restarted'),
@@ -157,10 +157,10 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
     $this->artisan('mail:wire local --tool=crm')
         ->expectsOutputToContain('Wired to Stalwart: CRM (Twenty)');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic crm-twenty-smtp-crm-luchtech-dev')
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic crm-smtp-crm-luchtech-dev')
         && str_contains($process->command, 'EMAIL_SMTP_HOST'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/crm-twenty-worker-crm-luchtech-dev')
-        && str_contains($process->command, '--from=secret/crm-twenty-smtp-crm-luchtech-dev'));
+        && str_contains($process->command, '--from=secret/crm-smtp-crm-luchtech-dev'));
 
     // The never-existing unsuffixed name must never be targeted.
     Process::assertNotRan(fn ($process) => preg_match('#deployment/crm-twenty(-worker)?(\s|$)#', $process->command) === 1);

@@ -140,6 +140,91 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
         && $request['redirectUris'][0] === 'https://grafana.'.GlobalConfigData::load()->getLocalTld().'/login/generic_oauth');
 });
 
+test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, never as a literal env override', function () {
+    // ADR 0018: sso_only_vars merged into $staticVars must land in the
+    // Secret (reached via --from=secret) — a literal `set env KEY=value`
+    // pass would desync kubectl apply's bookkeeping for the next
+    // monitor:init re-apply, exactly the bug this test guards against.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-monitor*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*set env deployment/grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects/proj-1/roles' => Http::response([]),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'monitor', '--sso-only' => true, '--no-interaction' => true])
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic grafana-oidc')
+        && str_contains($process->command, "GF_AUTH_DISABLE_LOGIN_FORM='true'")
+        && str_contains($process->command, "GF_USERS_ALLOW_SIGN_UP='false'"));
+
+    // No literal `set env deployment/grafana GF_AUTH_DISABLE_LOGIN_FORM=...`
+    // override — only --from=secret (declarative) and the harmless KEY-
+    // unset shape are allowed to touch the Deployment directly.
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/grafana')
+        && str_contains($process->command, 'GF_AUTH_DISABLE_LOGIN_FORM='));
+});
+
+test('sso:wire without --sso-only unsets a previously-written sso_only_var instead of leaving it stuck on', function () {
+    // The one legitimate remaining imperative Deployment touch (ADR 0018
+    // point 4): there's no declarative way to remove an env var a PAST
+    // --sso-only run may have written, so toggling back off still needs
+    // `kubectl set env deployment/X KEY-`.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-monitor*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*set env deployment/grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects/proj-1/roles' => Http::response([]),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/grafana')
+        && str_contains($process->command, 'GF_AUTH_DISABLE_LOGIN_FORM-')
+        && str_contains($process->command, 'GF_USERS_ALLOW_SIGN_UP-'));
+
+    // The unset command must be a pure removal — never carry a value for
+    // the same key alongside the `-` suffix.
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/grafana')
+        && str_contains($process->command, "GF_AUTH_DISABLE_LOGIN_FORM='true'"));
+});
+
 test('sso:wire registers oCIS Drive as a public PKCE client with its real callback URIs', function () {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
@@ -709,9 +794,14 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         && $request['redirectUris'][0] === 'https://link.'.GlobalConfigData::load()->getLocalTld().'/login/oidc');
 
     // Kutt is an open-to-org tool: wiring must patch the deployment with the
-    // link-kutt-oidc secret and flip OIDC_ENABLED on — no RBAC roles.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/link-kutt')
+    // link-oidc secret and flip OIDC_ENABLED on — no RBAC roles. Per ADR
+    // 0018, OIDC_ENABLED reaches the Deployment declaratively (in the
+    // link-oidc Secret, pulled in via --from=secret), never as a literal
+    // `set env KEY=value` override.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic link-oidc')
         && str_contains($process->command, 'OIDC_ENABLED'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/link-kutt')
+        && str_contains($process->command, '--from=secret/link-oidc'));
 });
 
 test('sso:wire registers a new OIDC client and wires it to Directus (data)', function () {
@@ -867,8 +957,8 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
         '*get deployment design-penpot-frontend*' => Process::result(output: 'design-penpot-frontend   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-design*' => Process::result(output: ''),
-        '*get secret design-penpot-oidc*' => Process::result(output: ''),
-        '*get secret design-penpot-smtp*' => Process::result(output: ''),
+        '*get secret design-oidc*' => Process::result(output: ''),
+        '*get secret design-smtp*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*set env deployment/design-penpot-backend*' => Process::result(output: 'deployment.apps/design-penpot-backend env updated'),
         '*set env deployment/design-penpot-frontend*' => Process::result(output: 'deployment.apps/design-penpot-frontend env updated'),
@@ -887,9 +977,9 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
         ->expectsOutputToContain('Design & Prototyping (Penpot) is wired to Zitadel SSO');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/design-penpot-backend')
-        && str_contains($process->command, '--from=secret/design-penpot-oidc'));
+        && str_contains($process->command, '--from=secret/design-oidc'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/design-penpot-frontend')
-        && str_contains($process->command, '--from=secret/design-penpot-oidc'));
+        && str_contains($process->command, '--from=secret/design-oidc'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/design-penpot-frontend'));
 });
 

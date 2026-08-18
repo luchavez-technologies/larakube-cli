@@ -315,7 +315,7 @@ class MailWireCommand extends Command
                 return false;
             }
 
-            $ssoHost = $this->resolveSsoHostReadOnly($env, null);
+            $ssoHost = $this->resolveSsoHostReadOnly($env, null, $kubectl);
             if ($ssoHost === null) {
                 $this->laraKubeError("Could not resolve Zitadel's host for '{$env}'. Re-run `larakube sso:init {$env}` so the host is persisted.");
 
@@ -376,15 +376,21 @@ class MailWireCommand extends Command
         }
 
         $staticVars = $schema['static'] ?? [];
-        $isPenpot = $deployment === 'design-penpot-backend';
+        $isPenpot = str_starts_with($deployment, 'design-penpot-backend');
+        // Instance suffix (e.g. '-design-luchtech-dev', or '' for the bare
+        // legacy name) — derived from the deployment name so the oidc secret
+        // and frontend deployment names below always match the same instance
+        // $schema['secret']/$deployment already resolved to.
+        $penpotSuffix = $isPenpot ? substr($deployment, strlen('design-penpot-backend')) : '';
 
         // PENPOT_FLAGS is reconciled from scratch by ReconcilesPenpotFlags,
         // not carried through the generic static-var plumbing below — see
-        // docs/decisions/0013-design-init-idempotent-flags.md.
-        $penpotFlags = null;
+        // docs/decisions/0013-design-init-idempotent-flags.md. Computed
+        // AFTER the secret is (re)written below, not here — see the matching
+        // comment in SsoWireCommand::applyToolEnv() (confirmed live
+        // 2026-08-17, Design) for why computing it before the write is wrong.
         if ($isPenpot) {
             unset($staticVars['PENPOT_FLAGS']);
-            $penpotFlags = $this->resolveDesignPenpotFlags($kubectl, $ns, 'design-penpot-oidc', 'design-penpot-smtp', null, $deployment);
         }
 
         $literals = '';
@@ -401,7 +407,7 @@ class MailWireCommand extends Command
 
         $ok = true;
         $label = $engine ? "{$tool->getLabel()} ({$engine})" : $tool->getLabel();
-        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $staticVars, $isPenpot, $penpotFlags, &$ok) {
+        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotSuffix, &$ok) {
             Process::run(
                 "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -409,21 +415,20 @@ class MailWireCommand extends Command
             $set = Process::run("{$kubectl} set env deployment/{$deployment} --from=secret/{$secret} -n {$ns}");
             $ok = $set->successful();
 
-            if ($ok && ! empty($staticVars)) {
-                $pairs = '';
-                foreach ($staticVars as $k => $v) {
-                    $pairs .= ' '.$k.'='.escapeshellarg($v);
-                }
-                $ok = Process::run("{$kubectl} set env deployment/{$deployment} -n {$ns}{$pairs}")->successful();
-            }
-
+            // ADR 0018: $staticVars is already in the Secret (see $literals
+            // above) and already applied declaratively via --from=secret —
+            // a second literal `kubectl set env KEY=value` pass here would
+            // desync kubectl apply's bookkeeping for every future
+            // `{tool}:init` re-run. Mail wiring has no sso_only_vars
+            // concept, so there's no legitimate unset case left either.
             if ($ok) {
                 Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns}");
                 $this->forceExternalSecretReconcile($kubectl, $ns, $secret);
             }
 
             if ($ok && $isPenpot) {
-                $this->applyDesignPenpotFlags($kubectl, $ns, 'design-penpot-oidc', $penpotFlags, $deployment, 'design-penpot-frontend');
+                $penpotFlags = $this->resolveDesignPenpotFlags($kubectl, $ns, "design-oidc{$penpotSuffix}", $secret, null, $deployment);
+                $this->applyDesignPenpotFlags($kubectl, $ns, "design-oidc{$penpotSuffix}", $penpotFlags, $deployment, "design-penpot-frontend{$penpotSuffix}");
             }
 
             // Secondary components that share the PRIMARY's wiring secret

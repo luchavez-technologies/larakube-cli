@@ -85,17 +85,31 @@ trait ReconcilesPenpotFlags
     }
 
     /**
-     * Write the reconciled value the one way that's actually guaranteed to
-     * reach the running pod: a direct `kubectl set env`. Idempotent by
-     * construction — a no-op (no restart) when the value is unchanged, and
-     * only rolls the (Recreate-strategy, real-downtime) Deployment when it
-     * actually changes. Also refreshes the Secret's own copy so a
-     * from-scratch install that hasn't had any :wire command run yet still
-     * gets a sane value via the Deployment template's optional
-     * secretKeyRef fallback.
+     * Write the reconciled value to the Secret — the ONLY place it's ever
+     * written — then `kubectl rollout restart` any deployment whose pod
+     * needs to pick it up right now, rather than a literal
+     * `kubectl set env ... PENPOT_FLAGS=<value>`. See
+     * docs/decisions/0018-wire-commands-never-literal-env.md: a literal
+     * write desyncs `kubectl apply`'s bookkeeping and permanently breaks
+     * every future `design:init` re-apply, which is worse than the problem
+     * it solved. A rollout restart delivers the same "reaches the pod now"
+     * guarantee without ever touching the env array's shape — the
+     * Deployment template's optional `secretKeyRef` for PENPOT_FLAGS
+     * (design:init's own base manifest) picks up the new Secret value on
+     * the restart.
+     *
+     * Idempotent by construction — a no-op (no restart) when the value is
+     * unchanged from what's already in the Secret, and only rolls the
+     * (Recreate-strategy, real-downtime) Deployment when it actually
+     * changes. Also refreshes the Secret's own copy so a from-scratch
+     * install that hasn't had any :wire command run yet still gets a sane
+     * value via the Deployment template's optional secretKeyRef fallback.
      */
     protected function applyDesignPenpotFlags(string $kubectl, string $ns, string $oidcSecretName, string $value, string ...$deployments): void
     {
+        $current = $this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, 'PENPOT_FLAGS');
+        $changed = $current !== $value;
+
         $secretExists = trim(Process::run("{$kubectl} get secret {$oidcSecretName} -n {$ns} --ignore-not-found")->output()) !== '';
         if ($secretExists) {
             Process::run(
@@ -110,9 +124,13 @@ trait ReconcilesPenpotFlags
             );
         }
 
+        if (! $changed) {
+            return;
+        }
+
         foreach ($deployments as $deployment) {
             if (trim(Process::run("{$kubectl} get deployment {$deployment} -n {$ns} --ignore-not-found")->output()) !== '') {
-                Process::run("{$kubectl} set env deployment/{$deployment} -n {$ns} PENPOT_FLAGS=".escapeshellarg($value));
+                Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns}");
             }
         }
     }

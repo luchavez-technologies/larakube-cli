@@ -1,6 +1,6 @@
 # 0013 — Tool `:init`/`:wire` reconcile feature flags from truth, never union with history
 
-**Status:** Accepted (2026-08-10, revised same day after a live incident)
+**Status:** Accepted (2026-08-10, revised same day after a live incident; point 4's delivery mechanism further revised 2026-08-18 — see [0018](0018-wire-commands-never-literal-env.md))
 
 ## Context
 
@@ -74,13 +74,18 @@ either.
 4. `ReconcilesPenpotFlags::applyDesignPenpotFlags()` is the one place that
    writes the result: it refreshes the Secret's `PENPOT_FLAGS` key (so a
    from-scratch install still gets a sane value via the template's
-   `secretKeyRef` fallback) **and** issues a direct
-   `kubectl set env deployment/{name} PENPOT_FLAGS=<value>` against both
-   backend and frontend — the one mechanism proven to actually reach the
-   running pod regardless of which shape (literal vs. `secretKeyRef`) is
-   currently live. `kubectl set env` is idempotent by construction: a no-op
-   when the value is unchanged, and only rolls the Deployment (whose
-   strategy is `Recreate` — real downtime) when it actually changes.
+   `secretKeyRef` fallback) and — **revised 2026-08-18, see
+   [0018](0018-wire-commands-never-literal-env.md)** — issues
+   `kubectl rollout restart deployment/{name}` against both backend and
+   frontend to reach the running pod, rather than the literal
+   `kubectl set env deployment/{name} PENPOT_FLAGS=<value>` this point
+   originally specified. The literal write solved the "reach the running pod"
+   problem this point describes, but created a worse one: it silently
+   desynced the live Deployment from `kubectl apply`'s bookkeeping, breaking
+   every subsequent `design:init` re-apply (confirmed live 2026-08-18, all 20
+   `HasOidcWiring`/`HasSmtpWiring` tools equally exposed — not Design-specific).
+   A rollout restart delivers the same "reaches the pod now" guarantee without
+   ever touching the env array's shape.
 5. `design:init` (`DesignInitCommand::ensureDesignBaselineFlags`),
    `sso:wire` (`SsoWireCommand::applyToolEnv`), and `mail:wire`
    (`MailWireCommand`'s SMTP-wiring method) all call the same
