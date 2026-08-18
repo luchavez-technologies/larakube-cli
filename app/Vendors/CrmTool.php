@@ -6,7 +6,6 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
-use App\Contracts\HasOidcWiring;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
@@ -14,7 +13,7 @@ use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the CRM category — 'CRM'. Only Twenty. */
-final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasOidcWiring, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
+final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -80,24 +79,11 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         ];
     }
 
-    public function oidcEnv(?string $instance = null): ?array
-    {
-        $dep = $instance !== null && $instance !== '' ? "crm-twenty-{$instance}" : 'crm-twenty';
-        $sec = $instance !== null && $instance !== '' ? "crm-oidc-{$instance}" : 'crm-oidc';
-
-        return [
-            'deployment' => $dep,
-            'secret' => $sec,
-            'static' => [
-                'SSO_ENABLED' => 'true',
-            ],
-            'vars' => [
-                'issuer' => 'SSO_OIDC_ISSUER',
-                'client_id' => 'SSO_OIDC_CLIENT_ID',
-                'client_secret' => 'SSO_OIDC_CLIENT_SECRET',
-            ],
-        ];
-    }
+    // No oidcEnv()/HasOidcWiring — Twenty CRM paywalls SSO behind its paid
+    // Organization tier; the self-hosted OSS edition doesn't support it, so
+    // there is no real auth story to wire (see feedback_no_unofficial_integrations).
+    // sso:wire --tool=crm now refuses cleanly via hasSsoWire() instead of
+    // registering a client Zitadel-side that Twenty could never honor.
 
     public function commonsDatabaseList(?string $instance = null): array
     {

@@ -114,16 +114,16 @@ test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function 
 });
 
 /**
- * Regression: ClusterTool::smtpEnv()/oidcEnv() call $vendor->smtpEnv($instance)
- * with ONE positional argument. CrmTool used to declare
+ * Regression: ClusterTool::smtpEnv() calls $vendor->smtpEnv($instance) with
+ * ONE positional argument. CrmTool used to declare
  * smtpEnv(?string $engine, ?string $instance) — an extra leading parameter
  * that doesn't exist on the HasSmtpWiring contract — so that lone argument
  * landed in CRM's $engine slot and $instance stayed null forever, silently
  * targeting the unsuffixed 'crm-twenty' deployment for every real instance.
  * The zero-arg test above can't catch this; it has to actually pass an
- * instance through the real wrapper call, the way mail:wire/sso:wire do.
+ * instance through the real wrapper call, the way mail:wire does.
  */
-test('smtpEnv()/oidcEnv() actually suffix CRM deployment names for a real instance', function () {
+test('smtpEnv() actually suffixes CRM deployment names for a real instance', function () {
     expect(ClusterTool::CRM->smtpEnv(instance: 'crm-luchtech-dev'))->toBe([
         'namespace' => 'larakube-shared',
         'also_patch' => ['crm-twenty-worker-crm-luchtech-dev'],
@@ -140,11 +140,20 @@ test('smtpEnv()/oidcEnv() actually suffix CRM deployment names for a real instan
             'from' => 'EMAIL_FROM_ADDRESS',
         ],
     ]);
+});
 
-    $oidc = ClusterTool::CRM->oidcEnv(instance: 'crm-luchtech-dev');
-    expect($oidc['deployment'])->toBe('crm-twenty-crm-luchtech-dev')
-        ->and($oidc['secret'])->toBe('crm-oidc-crm-luchtech-dev')
-        ->and($oidc['also_patch'])->toBe(['crm-twenty-worker-crm-luchtech-dev']);
+test('crm does not claim OIDC wiring — Twenty paywalls SSO behind its paid Organization tier', function () {
+    // Confirmed live 2026-08-18: sso:wire --tool=crm crashed on a missing
+    // 'redirect_path' key CrmTool::oidcEnv() never declared. Rather than
+    // guess at Twenty's real OIDC callback shape (its login route embeds a
+    // dynamic identity-provider id: /auth/oidc/login/:identityProviderId,
+    // not a fixed path) for a feature self-hosted Twenty can't actually use
+    // without a paid license, CrmTool drops HasOidcWiring entirely — same
+    // pattern as Planka/Tasks (see ClusterToolLifecycleTest). sso:wire now
+    // refuses cleanly via hasSsoWire() instead of registering a Zitadel
+    // client Twenty could never honor.
+    expect(ClusterTool::CRM->vendor())->not->toBeInstanceOf(App\Contracts\HasOidcWiring::class)
+        ->and(ClusterTool::CRM->hasSsoWire())->toBeFalse();
 });
 
 test('crm:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function () {
