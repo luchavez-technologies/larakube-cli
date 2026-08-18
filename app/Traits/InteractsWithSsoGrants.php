@@ -48,7 +48,7 @@ trait InteractsWithSsoGrants
             return null;
         }
 
-        $ssoHost = $this->resolveSsoHostReadOnly($env, $config);
+        $ssoHost = $this->resolveSsoHostReadOnly($env, $config, $kubectl);
         if ($ssoHost === null) {
             $this->laraKubeError("No host is configured for Zitadel in '{$env}' — run `sso:init` first.");
 

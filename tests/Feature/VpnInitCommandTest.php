@@ -21,7 +21,7 @@ test('vpn:init deploys netbird vpn to larakube-vpn', function () {
         "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
         "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
         // Already bootstrapped — vpn:init should skip auth/config setup entirely, no Http calls made.
-        "{$kubectl} get secret netbird-admin -n larakube-vpn*" => Process::result(output: 'netbird-admin', exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: 'vpn-secrets', exitCode: 0),
         "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
@@ -64,7 +64,7 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
             "{$kubectl} rollout status deploy/netbird-signal -n larakube-vpn*" => Process::result(output: 'rollout success'),
             "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
             "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
-            "{$kubectl} get secret netbird-admin -n larakube-vpn*" => Process::result(output: 'netbird-admin', exitCode: 0),
+            "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: 'vpn-secrets', exitCode: 0),
             "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
             '*larakube-tools-registry*' => Process::result(output: ''),
             '*create namespace larakube-shared*' => Process::result(output: 'created'),
@@ -103,8 +103,8 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
         "{$kubectl} rollout status deploy/netbird-signal -n larakube-vpn*" => Process::result(output: 'rollout success'),
         "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
         "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
-        "{$kubectl} get secret netbird-admin -n larakube-vpn*" => Process::result(output: '', exitCode: 1),
-        "{$kubectl} create secret generic netbird-admin*" => Process::result(output: 'secret/netbird-admin created'),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} create secret generic vpn-secrets*" => Process::result(output: 'secret/vpn-secrets created'),
         "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
     ]);
     Http::fake([
@@ -130,7 +130,7 @@ test('vpn:init warns but does not fail when NetBird auth bootstrap fails', funct
         "{$kubectl} rollout status deploy/netbird-signal -n larakube-vpn*" => Process::result(output: 'rollout success'),
         "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
         "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
-        "{$kubectl} get secret netbird-admin -n larakube-vpn*" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: '', exitCode: 1),
         "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
     ]);
     Http::fake([
@@ -189,7 +189,7 @@ test('vpn:init generates the relay secret + management.json on first run', funct
         "{$kubectl} rollout status deploy/netbird-signal -n larakube-vpn*" => Process::result(output: 'rollout success'),
         "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
         "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
-        "{$kubectl} get secret netbird-admin -n larakube-vpn*" => Process::result(output: 'netbird-admin', exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: 'vpn-secrets', exitCode: 0),
         "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: '', exitCode: 1),
         "{$kubectl} create secret generic netbird-relay-secret*" => Process::result(output: 'secret/netbird-relay-secret created'),
     ]);

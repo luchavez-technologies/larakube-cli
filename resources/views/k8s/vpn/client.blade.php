@@ -40,7 +40,7 @@ spec:
             - name: NB_SETUP_KEY
               valueFrom:
                 secretKeyRef:
-                  name: netbird-admin
+                  name: vpn-secrets
                   key: setup-key
           volumeMounts:
             - name: data

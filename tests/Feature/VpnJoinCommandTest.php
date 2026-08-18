@@ -54,7 +54,7 @@ test('vpn:join errors when no setup key has been bootstrapped yet', function () 
 
     Process::fake([
         "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
     ]);
 
     [$command, $output] = vpnJoinRunner();
@@ -82,7 +82,7 @@ test('vpn:join targets the CHOSEN environment\'s own saved context, never the am
     try {
         Process::fake([
             "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
-            "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
+            "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
         ]);
 
         [$command] = vpnJoinRunner('production');

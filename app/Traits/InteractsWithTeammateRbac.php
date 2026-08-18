@@ -34,11 +34,18 @@ trait InteractsWithTeammateRbac
     /**
      * Preset flags → a built-in ClusterRole. Default is `edit` (operate the app,
      * but can't manage RBAC). `--read` = `view` (no exec, no secrets), `--admin` =
-     * `admin` (edit + manage access within the namespace).
+     * `admin` (edit + manage access within the namespace) — EXCEPT when granting
+     * cluster-wide ($clusterWide): the built-in `admin` ClusterRole deliberately
+     * excludes cluster-scoped resources (Nodes, PersistentVolumes, StorageClasses,
+     * CustomResourceDefinitions, ClusterRoles/Bindings) even when bound via a
+     * ClusterRoleBinding, so binding it cluster-wide silently under-delivers on
+     * what "admin across the whole cluster" implies. `cluster-admin` is the only
+     * built-in role that actually reaches those — use it instead in that case.
      */
-    public function presetClusterRole(bool $read, bool $edit, bool $admin): string
+    public function presetClusterRole(bool $read, bool $edit, bool $admin, bool $clusterWide = false): string
     {
         return match (true) {
+            $admin && $clusterWide => 'cluster-admin',
             $admin => 'admin',
             $read => 'view',
             default => 'edit',

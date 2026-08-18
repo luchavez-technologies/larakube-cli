@@ -20,6 +20,21 @@ test('presets map to built-in ClusterRoles, defaulting to edit', function () {
     expect($t->presetClusterRole(read: true, edit: false, admin: true))->toBe('admin');     // admin wins
 });
 
+test('admin escalates to the real cluster-admin ClusterRole when granted cluster-wide', function () {
+    $t = teammateRbac();
+
+    // Bound via a ClusterRoleBinding, the built-in `admin` role excludes
+    // cluster-scoped resources (Nodes, StorageClasses, CRDs, ClusterRoles) —
+    // only `cluster-admin` actually reaches those, so --admin --cluster must
+    // resolve to it rather than silently under-delivering.
+    expect($t->presetClusterRole(read: false, edit: false, admin: true, clusterWide: true))->toBe('cluster-admin');
+    expect($t->presetClusterRole(read: false, edit: false, admin: true, clusterWide: false))->toBe('admin');
+
+    // view/edit are unaffected by cluster-wide scope — only admin escalates.
+    expect($t->presetClusterRole(read: true, edit: false, admin: false, clusterWide: true))->toBe('view');
+    expect($t->presetClusterRole(read: false, edit: true, admin: false, clusterWide: true))->toBe('edit');
+});
+
 test('the context name is meaningful (app+env namespace), not the cluster host', function () {
     expect(teammateRbac()->teammateContextName('react-test-production'))->toBe('larakube-react-test-production');
     expect(teammateRbac()->teammateContextName(''))->toBe('larakube-cluster');

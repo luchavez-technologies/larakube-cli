@@ -54,14 +54,14 @@ trait InteractsWithVpn
 
     /**
      * Read the reusable setup key `vpn:init` bootstrapped, from the k8s Secret
-     * it wrote (`kubectl create secret ... netbird-admin`). One bootstrap,
+     * it wrote (`kubectl create secret ... vpn-secrets`). One bootstrap,
      * shared by every teammate with kubectl access — used by both `vpn:join`
      * (this developer's own machine) and `cloud:harden` (the VPS host itself).
      */
     protected function fetchVpnSetupKey(string $kubectl, string $ns): ?string
     {
         $encoded = trim(Process::run(
-            "{$kubectl} get secret netbird-admin -n {$ns} -o jsonpath='{.data.setup-key}'",
+            "{$kubectl} get secret vpn-secrets -n {$ns} -o jsonpath='{.data.setup-key}'",
         )->output());
 
         if ($encoded === '') {
@@ -75,7 +75,7 @@ trait InteractsWithVpn
 
     /**
      * Read the NetBird owner's Personal Access Token from the same k8s Secret
-     * `vpn:init` bootstrapped (`netbird-admin`), same shape as
+     * `vpn:init` bootstrapped (`vpn-secrets`), same shape as
      * fetchVpnSetupKey() but the `pat` field instead of `setup-key`. Used to
      * call NetBird's REST API (minting/listing/revoking setup keys) on the
      * operator's behalf — vpn:grant/vpn:revoke/vpn:users.
@@ -83,7 +83,7 @@ trait InteractsWithVpn
     protected function fetchVpnPat(string $kubectl, string $ns): ?string
     {
         $encoded = trim(Process::run(
-            "{$kubectl} get secret netbird-admin -n {$ns} -o jsonpath='{.data.pat}'",
+            "{$kubectl} get secret vpn-secrets -n {$ns} -o jsonpath='{.data.pat}'",
         )->output());
 
         if ($encoded === '') {

@@ -14,7 +14,7 @@ function fakeVpnUsersInstalled(string $pat = 'nbp_test_pat'): void
 
     Process::fake([
         "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode($pat), exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode($pat), exitCode: 0),
     ]);
 }
 

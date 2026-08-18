@@ -69,7 +69,7 @@ test('vpn client manifest renders as valid multi-document YAML wired to the boot
     $setupKeyEnv = collect($env)->firstWhere('name', 'NB_SETUP_KEY');
 
     expect($setupKeyEnv['valueFrom']['secretKeyRef'])->toBe([
-        'name' => 'netbird-admin',
+        'name' => 'vpn-secrets',
         'key' => 'setup-key',
     ]);
 });

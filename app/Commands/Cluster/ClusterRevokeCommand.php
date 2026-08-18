@@ -20,6 +20,7 @@ class ClusterRevokeCommand extends Command
     protected $signature = 'cluster:revoke
         {environment? : An environment (in-project) or namespace — a deploy credential, or one app to drop a teammate from}
         {--name= : Revoke a TEAMMATE (omit the environment to off-board them entirely)}
+        {--cluster : Teammate only: revoke just their cluster-wide grant, keep any per-namespace access}
         {--context= : Standalone: target a kube-context directly (when not in a project)}
         {--with-secret : Also delete the GitHub <ENV>_KUBECONFIG secret (deploy revoke only; best-effort)}
         {--force : Skip the confirmation prompt}';
@@ -77,8 +78,10 @@ class ClusterRevokeCommand extends Command
 
     /**
      * Revoke a teammate: from ONE app (delete that RoleBinding) when a namespace is
-     * given, or off-board entirely (every RoleBinding cluster-wide + the SA + token)
-     * when it isn't. Their kubeconfig is unchanged but its token stops working.
+     * given, JUST their cluster-wide grant when --cluster is passed (their
+     * per-namespace access, if any, is untouched), or off-board entirely (every
+     * RoleBinding + any ClusterRoleBinding + the SA + token) otherwise. Their
+     * kubeconfig is unchanged but its token stops working.
      */
     protected function revokeTeammate(string $name, string $arg): int
     {
@@ -87,6 +90,10 @@ class ClusterRevokeCommand extends Command
             $this->laraKubeError('Could not derive an identity from that name.');
 
             return 1;
+        }
+
+        if ($this->option('cluster')) {
+            return $this->revokeTeammateClusterGrant($name, $sa);
         }
 
         // An env/namespace named → remove from just that one (env-first resolution).
@@ -134,10 +141,39 @@ class ClusterRevokeCommand extends Command
             }
         }
 
+        // A ClusterRoleBinding is cluster-scoped, not namespace-scoped — it's
+        // invisible to the RoleBinding sweep above. Skipping this left every
+        // --cluster grant (including cluster-admin) alive after "off-boarding".
+        Process::run("{$kubectl} delete clusterrolebinding ".escapeshellarg($this->teammateClusterBindingName($sa)).' --ignore-not-found');
+
         $accessNs = escapeshellarg($this->accessNamespace());
         Process::run("{$kubectl} -n {$accessNs} delete serviceaccount ".escapeshellarg($sa).' secret '.escapeshellarg($sa.'-token').' --ignore-not-found');
 
         $this->laraKubeInfo("✅ Off-boarded '{$name}'.");
+
+        return 0;
+    }
+
+    /** Revoke JUST a teammate's cluster-wide grant — their per-namespace access, if any, is untouched. */
+    protected function revokeTeammateClusterGrant(string $name, string $sa): int
+    {
+        $context = $this->resolveClusterContext($this->option('context'));
+        if ($context === null) {
+            $this->laraKubeError('No kube-context to revoke on — pass --context or configure kubectl.');
+
+            return 1;
+        }
+        $kubectl = $this->contextKubectl($context);
+
+        $this->laraKubeWarn("This removes '{$name}'s cluster-wide grant on '{$context}' (their per-namespace access, if any, keeps working).");
+        if (! $this->option('force') && ! confirm("Revoke {$name}'s cluster-wide grant?", false)) {
+            $this->laraKubeInfo('Cancelled.');
+
+            return 0;
+        }
+
+        Process::run("{$kubectl} delete clusterrolebinding ".escapeshellarg($this->teammateClusterBindingName($sa)).' --ignore-not-found');
+        $this->laraKubeInfo("✅ Removed {$name}'s cluster-wide grant.");
 
         return 0;
     }

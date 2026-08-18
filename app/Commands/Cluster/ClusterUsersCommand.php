@@ -165,15 +165,28 @@ class ClusterUsersCommand extends Command
         return 0;
     }
 
-    /** A teammate's bindings as a "namespace:role" summary, read live. */
+    /** A teammate's bindings as a "namespace:role" summary, read live — including any cluster-wide grant. */
     protected function teammateAccess(string $kubectl, string $sa): string
     {
-        $out = trim(Process::run(
+        $parts = [];
+
+        $clusterOut = trim(Process::run(
+            "{$kubectl} get clusterrolebinding -l larakube.dev/access-user=".escapeshellarg($sa)
+            .' -o jsonpath='.escapeshellarg('{range .items[*]}{.roleRef.name}{"  "}{end}'),
+        )->output());
+        foreach (array_filter(explode(' ', $clusterOut)) as $role) {
+            $parts[] = "cluster:{$role}";
+        }
+
+        $nsOut = trim(Process::run(
             "{$kubectl} get rolebinding -A -l larakube.dev/access-user=".escapeshellarg($sa)
             .' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.namespace}{":"}{.roleRef.name}{"  "}{end}'),
         )->output());
+        if ($nsOut !== '') {
+            $parts[] = $nsOut;
+        }
 
-        return $out !== '' ? $out : '— (no apps)';
+        return $parts !== [] ? implode('  ', $parts) : '— (no apps)';
     }
 
     /** Show the LIVE Role rules + binding/token state for one namespace's deployer. */

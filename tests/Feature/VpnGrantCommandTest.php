@@ -14,7 +14,7 @@ function fakeVpnGrantInstalled(string $pat = 'nbp_test_pat'): void
 
     Process::fake([
         "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode($pat), exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode($pat), exitCode: 0),
     ]);
 }
 
@@ -74,7 +74,7 @@ test('vpn:grant errors when no admin PAT has been bootstrapped yet', function ()
 
     Process::fake([
         "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('vpn:grant local --name=lloyd')

@@ -45,10 +45,10 @@ test('joinVpn repoints the kube-context to the VPS\'s own overlay IP once it joi
     $kubectl = hardenVpnKubectl();
 
     Process::fake([
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: base64_encode('SETUP-KEY-123'), exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: base64_encode('SETUP-KEY-123'), exitCode: 0),
         'ssh -i /key -p 22 larakube@1.2.3.4 *' => Process::result(exitCode: 0),
         'ssh -o BatchMode=yes -o StrictHostKeyChecking=no -i /key -p 22 larakube@1.2.3.4 hostname' => Process::result(output: "hello-vps\n", exitCode: 0),
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
         "{$kubectl} config set-cluster 'larakube-1.2.3.4' --server='https://100.86.159.244:6443'" => Process::result(exitCode: 0),
     ]);
     Http::fake([
@@ -74,10 +74,10 @@ test('joinVpn dials the overlay IP but derives the context name from the public 
     $kubectl = hardenVpnKubectl();
 
     Process::fake([
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: base64_encode('SETUP-KEY-123'), exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: base64_encode('SETUP-KEY-123'), exitCode: 0),
         'ssh -i /key -p 22 larakube@100.86.159.244 *' => Process::result(exitCode: 0),
         'ssh -o BatchMode=yes -o StrictHostKeyChecking=no -i /key -p 22 larakube@100.86.159.244 hostname' => Process::result(output: "hello-vps\n", exitCode: 0),
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
         "{$kubectl} config set-cluster 'larakube-1.2.3.4' --server='https://100.86.159.244:6443'" => Process::result(exitCode: 0),
     ]);
     Http::fake([
@@ -130,10 +130,10 @@ test('joinVpn warns instead of failing when the overlay IP can\'t be determined'
     $kubectl = hardenVpnKubectl();
 
     Process::fake([
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: base64_encode('SETUP-KEY-123'), exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: base64_encode('SETUP-KEY-123'), exitCode: 0),
         'ssh -i /key -p 22 larakube@1.2.3.4 *' => Process::result(exitCode: 0),
         'ssh -o BatchMode=yes -o StrictHostKeyChecking=no -i /key -p 22 larakube@1.2.3.4 hostname' => Process::result(output: "hello-vps\n", exitCode: 0),
-        "{$kubectl} get secret netbird-admin -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
     ]);
     Http::fake([
         // The just-joined host never shows up in the peer list.

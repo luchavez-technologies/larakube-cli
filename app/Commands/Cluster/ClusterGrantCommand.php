@@ -93,11 +93,16 @@ class ClusterGrantCommand extends Command
      * Resolve the access level. An explicit --read/--edit/--admin flag always
      * wins. Otherwise ask (rather than silently granting write access) — falling
      * back to the documented `edit` default when non-interactive (e.g. CI).
+     *
+     * $clusterWide changes what "admin" means: bound cluster-wide it resolves to
+     * the built-in `cluster-admin` ClusterRole instead of `admin` — see
+     * presetClusterRole()'s docblock for why `admin` alone doesn't actually reach
+     * every namespace-scoped role.
      */
-    protected function resolveAccessRole(): string
+    protected function resolveAccessRole(bool $clusterWide): string
     {
         if ($this->option('read') || $this->option('edit') || $this->option('admin')) {
-            return $this->presetClusterRole((bool) $this->option('read'), (bool) $this->option('edit'), (bool) $this->option('admin'));
+            return $this->presetClusterRole((bool) $this->option('read'), (bool) $this->option('edit'), (bool) $this->option('admin'), $clusterWide);
         }
 
         if ($this->flag('no-interaction')) {
@@ -106,7 +111,11 @@ class ClusterGrantCommand extends Command
 
         return select(
             label: 'Access level',
-            options: [
+            options: $clusterWide ? [
+                'view' => 'Read-only — logs + status (no exec, no secrets)',
+                'edit' => 'Operate every app — edit (default)',
+                'cluster-admin' => 'Full cluster-admin — nodes, storage, RBAC, everything',
+            ] : [
                 'view' => 'Read-only — logs + status (no exec, no secrets)',
                 'edit' => 'Operate the app — edit (default)',
                 'admin' => 'Namespace-admin — edit + manage access within the namespace',
@@ -132,7 +141,11 @@ class ClusterGrantCommand extends Command
     {
         $this->laraKubeWarn("Cluster-wide grant: '{$name}' gets [{$role}] in EVERY namespace on '{$adminContext}'.");
 
-        if ($role !== 'view') {
+        if ($role === 'cluster-admin') {
+            $this->line('  <fg=gray>This IS full cluster-admin — root on the cluster. Nodes, StorageClasses,</>');
+            $this->line('  <fg=gray>CustomResourceDefinitions, every Secret, other people\'s RBAC — everything.</>');
+            $this->line('  <fg=gray>Scope it to `admin` instead with:</> <fg=yellow>larakube cluster:grant <env> --admin --name '.$name.'</>');
+        } elseif ($role !== 'view') {
             $this->line('  <fg=gray>That includes reading every Secret in every namespace — Commons Postgres</>');
             $this->line('  <fg=gray>superuser, secrets-backend bootstrap, Zitadel machine PAT — and running pods</>');
             $this->line('  <fg=gray>as any ServiceAccount, which is an escalation path to cluster-admin.</>');
@@ -237,10 +250,10 @@ class ClusterGrantCommand extends Command
             return 1;
         }
 
-        $role = $this->resolveAccessRole();
+        $clusterWide = (bool) $this->option('cluster');
+        $role = $this->resolveAccessRole($clusterWide);
         $accessNs = $this->accessNamespace();
         $ctx = $this->contextKubectl($adminContext);
-        $clusterWide = (bool) $this->option('cluster');
 
         if ($clusterWide && ! $this->confirmClusterScope($name, $role, $adminContext)) {
             return 1;

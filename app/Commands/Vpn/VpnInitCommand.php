@@ -189,7 +189,7 @@ class VpnInitCommand extends Command
      */
     protected function bootstrapVpnAuth(string $kubectl, string $ns, string $host): void
     {
-        if (Process::run("{$kubectl} get secret netbird-admin -n {$ns}")->successful()) {
+        if (Process::run("{$kubectl} get secret vpn-secrets -n {$ns}")->successful()) {
             return;
         }
 
@@ -250,7 +250,7 @@ class VpnInitCommand extends Command
             $this->registerSecret($key);
 
             Process::run(
-                "{$kubectl} create secret generic netbird-admin -n {$ns} "
+                "{$kubectl} create secret generic vpn-secrets -n {$ns} "
                 .'--from-literal=pat='.escapeshellarg($pat).' '
                 .'--from-literal=setup-key='.escapeshellarg($key).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
