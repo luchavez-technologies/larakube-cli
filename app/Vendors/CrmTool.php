@@ -62,7 +62,7 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
     public function smtpEnv(?string $instance = null): ?array
     {
         $dep = $instance !== null && $instance !== '' ? "crm-twenty-{$instance}" : 'crm-twenty';
-        $sec = $instance !== null && $instance !== '' ? "crm-twenty-smtp-{$instance}" : 'crm-twenty-smtp';
+        $sec = $instance !== null && $instance !== '' ? "crm-smtp-{$instance}" : 'crm-smtp';
 
         return [
             'deployment' => $dep,
@@ -83,7 +83,7 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
     public function oidcEnv(?string $instance = null): ?array
     {
         $dep = $instance !== null && $instance !== '' ? "crm-twenty-{$instance}" : 'crm-twenty';
-        $sec = $instance !== null && $instance !== '' ? "crm-twenty-oidc-{$instance}" : 'crm-twenty-oidc';
+        $sec = $instance !== null && $instance !== '' ? "crm-oidc-{$instance}" : 'crm-oidc';
 
         return [
             'deployment' => $dep,

@@ -27,7 +27,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'chat-vpn-only' : "chat-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'chat-vpn-only' : "chat-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -45,7 +45,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
 
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(

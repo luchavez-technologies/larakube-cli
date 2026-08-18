@@ -40,7 +40,7 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
     {
         return [
             'deployment' => 'sign-documenso',
-            'secret' => 'sign-documenso-smtp',
+            'secret' => 'sign-smtp',
             'static' => [
                 'NEXT_PRIVATE_SMTP_TRANSPORT' => 'smtp-auth',
                 // mail:wire targets Stalwart's submissions port 465 (implicit
@@ -62,7 +62,7 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
     {
         return [
             'deployment' => 'sign-documenso',
-            'secret' => 'sign-documenso-oidc',
+            'secret' => 'sign-oidc',
             'static' => [
                 'NEXT_PUBLIC_DISABLE_OIDC_SIGNIN' => 'false',
                 // v2 has no NEXT_PRIVATE_OIDC_ALLOW_SIGNUP; the real control
@@ -86,7 +86,7 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
 
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'sign-documenso-secrets', 'key' => 'db-password'];
+        return ['secret' => 'sign-secrets', 'key' => 'db-password'];
     }
 
     public function commonsDatabaseList(): array

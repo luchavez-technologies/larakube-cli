@@ -16,7 +16,7 @@ class RecordRemoveCommand extends AbstractToolRemoveCommand
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
         return trim(Process::run(
-            "{$kubectl} get secret record-sendrec-secrets -n {$namespace} --ignore-not-found",
+            "{$kubectl} get secret record-secrets -n {$namespace} --ignore-not-found",
         )->output()) === '';
     }
 
@@ -25,7 +25,7 @@ class RecordRemoveCommand extends AbstractToolRemoveCommand
         return $this->removeResources(
             'Removing Sendrec resources...',
             "{$kubectl} delete deployment/record-sendrec service/record ingress/record "
-            ."secret/record-sendrec-secrets secret/record-sendrec-smtp secret/record-sendrec-oidc -n {$namespace} --ignore-not-found",
+            ."secret/record-secrets secret/record-smtp secret/record-oidc -n {$namespace} --ignore-not-found",
         );
     }
 }

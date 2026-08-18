@@ -62,7 +62,7 @@ class ToolListCommand extends Command
 
             if ($instances === []) {
                 $isPresent = $this->isToolPresentOnCluster($kubectl, $tool);
-                $instances = [['tool' => $tool->value, 'instance' => 'main', 'installed' => $isPresent]];
+                $instances = [['tool' => $tool->value, 'instance' => '', 'installed' => $isPresent]];
             } else {
                 foreach ($instances as &$inst) {
                     $inst['installed'] = true;
@@ -71,7 +71,7 @@ class ToolListCommand extends Command
             }
 
             foreach ($instances as $entry) {
-                $instance = $entry['instance'] ?? 'main';
+                $instance = $entry['instance'] ?? '';
                 $installed = (bool) ($entry['installed'] ?? true);
 
                 if ($onlyInstalled && ! $installed) {
@@ -90,7 +90,7 @@ class ToolListCommand extends Command
                 $aliasSuffix = $aliasHosts !== [] ? ' (+'.count($aliasHosts).' alias)' : '';
 
                 $serviceLabel = $tool->brandName();
-                if ($instance !== 'main') {
+                if ($instance !== '') {
                     $serviceLabel .= " [{$instance}]";
                 }
 

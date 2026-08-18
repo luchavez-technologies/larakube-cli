@@ -9,5 +9,5 @@ interface HasToolAccessDetails
      *
      * @return list<array{0: string, 1: string}>
      */
-    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array;
+    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = ''): array;
 }

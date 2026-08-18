@@ -173,7 +173,7 @@ class MailPasswordCommand extends Command
             return;
         }
 
-        $host = $this->resolveSsoHostReadOnly($env, null);
+        $host = $this->resolveSsoHostReadOnly($env, null, $ssoKubectl);
         $pat = $this->readSsoSecret($ssoKubectl, $ssoNs, 'machine-pat');
 
         if ($host === null || $pat === null) {

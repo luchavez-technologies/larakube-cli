@@ -40,9 +40,8 @@ final class SsoTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
     public function dbSecretRef(): ?array
     {
         return [
-            'secret' => 'sso-zitadel-secrets',
-            'key' => 'masterkey',
-            'template' => 'postgresql://zitadel:{{ .password }}@postgres.larakube-plex.svc.cluster.local:5432/zitadel',
+            'secret' => 'sso-secrets',
+            'key' => 'db-password',
         ];
     }
 

@@ -45,9 +45,9 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
                 deployment: $name('design-penpot-backend'),
                 resources: [
                     ['kind' => 'service', 'name' => 'design-backend'],
-                    ['kind' => 'secret', 'name' => 'design-penpot-secrets'],
-                    ['kind' => 'secret', 'name' => 'design-penpot-smtp'],
-                    ['kind' => 'secret', 'name' => 'design-penpot-oidc'],
+                    ['kind' => 'secret', 'name' => 'design-secrets'],
+                    ['kind' => 'secret', 'name' => 'design-smtp'],
+                    ['kind' => 'secret', 'name' => 'design-oidc'],
                 ],
             ),
             new ClusterToolComponentData(
@@ -73,9 +73,11 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
 
     public function smtpEnv(?string $instance = null): ?array
     {
+        $suffix = ($instance === null || $instance === '') ? '' : "-{$instance}";
+
         return [
-            'deployment' => 'design-penpot-backend',
-            'secret' => 'design-penpot-smtp',
+            'deployment' => "design-penpot-backend{$suffix}",
+            'secret' => "design-smtp{$suffix}",
             'static' => [
                 // PENPOT_FLAGS is deliberately absent — MailWireCommand
                 // reconciles it via ReconcilesPenpotFlags instead of the
@@ -96,9 +98,11 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
 
     public function oidcEnv(?string $instance = null): ?array
     {
+        $suffix = ($instance === null || $instance === '') ? '' : "-{$instance}";
+
         return [
-            'deployment' => 'design-penpot-backend',
-            'secret' => 'design-penpot-oidc',
+            'deployment' => "design-penpot-backend{$suffix}",
+            'secret' => "design-oidc{$suffix}",
             'redirect_path' => '/api/auth/oidc/callback',
             'static' => [
                 // PENPOT_FLAGS is deliberately absent — SsoWireCommand::applyToolEnv
@@ -120,7 +124,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
     /** Not 'db-password' like every other tool — Penpot's own secret already established 'password'. */
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'design-penpot-secrets', 'key' => 'password'];
+        return ['secret' => 'design-secrets', 'key' => 'password'];
     }
 
     public function commonsDatabaseList(): array
@@ -159,7 +163,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
     public function openbaoSyncConfig(): array
     {
         return [
-            'secret' => 'design-penpot-secrets',
+            'secret' => 'design-secrets',
             'keys' => ['DESIGN_DB_PASSWORD'],
         ];
     }

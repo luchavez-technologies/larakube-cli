@@ -34,7 +34,7 @@ trait InteractsWithRecord
 
     protected function readRecordSecret(string $kubectl, string $ns, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'record-sendrec-secrets', $key);
+        return $this->readClusterSecretKey($kubectl, $ns, 'record-secrets', $key);
     }
 
     protected function resolveRecordHostReadOnly(string $env, ?ConfigData $config): ?string

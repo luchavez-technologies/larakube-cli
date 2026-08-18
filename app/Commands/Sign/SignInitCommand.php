@@ -124,7 +124,7 @@ class SignInitCommand extends Command
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $nextauthSecret, $encryptionKey, $encryptionSecondaryKey, $clusterEnv) {
-            $cmd = "{$kubectl} create secret generic sign-documenso-secrets -n {$ns} "
+            $cmd = "{$kubectl} create secret generic sign-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=nextauth-secret='.escapeshellarg($nextauthSecret).' '
                 .'--from-literal=encryption-key='.escapeshellarg($encryptionKey).' '
@@ -139,7 +139,7 @@ class SignInitCommand extends Command
                     $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
                         Process::run(
-                            "{$kubectl} patch secret sign-documenso-secrets -n {$ns} --type=json "
+                            "{$kubectl} patch secret sign-secrets -n {$ns} --type=json "
                             .'-p=\'[{"op":"replace","path":"/data/db-password","value":"'.base64_encode($realPassword).'"}]\'',
                         );
                     }

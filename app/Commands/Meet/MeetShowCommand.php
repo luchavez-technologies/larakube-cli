@@ -21,7 +21,7 @@ class MeetShowCommand extends AbstractToolShowCommand
      *
      * @return array<int, array<int, string>>
      */
-    protected function rows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    protected function rows(?string $host, string $env, string $kubectl, string $instance = ''): array
     {
         $rows = parent::rows($host, $env, $kubectl, $instance);
 

@@ -12,7 +12,7 @@ class FlowShowCommand extends AbstractToolShowCommand
         return ClusterTool::FLOW;
     }
 
-    protected function afterTable(?string $host, string $env, string $instance = 'main'): void
+    protected function afterTable(?string $host, string $env, string $instance = ''): void
     {
         if ($host === null) {
             return;

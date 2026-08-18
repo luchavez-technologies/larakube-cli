@@ -34,7 +34,7 @@ trait InteractsWithLink
 
     protected function readLinkSecret(string $kubectl, string $ns, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'link-kutt-secrets', $key);
+        return $this->readClusterSecretKey($kubectl, $ns, 'link-secrets', $key);
     }
 
     protected function resolveLinkHostReadOnly(string $env, ?ConfigData $config): ?string

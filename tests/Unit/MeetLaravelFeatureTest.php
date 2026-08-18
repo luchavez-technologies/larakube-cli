@@ -91,7 +91,7 @@ test('when Meet is installed the project gets its own consumer key', function ()
         '*get deployment meet-livekit*' => Process::result(output: 'meet-livekit 1/1'),
         '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
         '*get secret larakube-tools-registry*' => Process::result(
-            output: base64_encode(json_encode([['tool' => 'meet', 'instance' => 'main', 'host' => 'meet.example.com']])),
+            output: base64_encode(json_encode([['tool' => 'meet', 'instance' => '', 'host' => 'meet.example.com']])),
         ),
         '*create secret*' => Process::result(output: 'applied'),
         '*apply -f *' => Process::result(output: 'applied'),

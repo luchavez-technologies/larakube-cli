@@ -85,7 +85,7 @@ test('sign:init falls back to the internal S3 endpoint when the Commons has no p
 test('sign:init declares the mail:wire/sso:wire static keys as literal values, not valueFrom', function () {
     // Regression guard for a real incident (2026-08-05): mail:wire/sso:wire
     // set these 4 names via `kubectl set env NAME=value` (a plain literal),
-    // never through the sign-documenso-smtp/-oidc Secrets. Declaring them
+    // never through the sign-smtp/-oidc Secrets. Declaring them
     // here as valueFrom made every re-run of sign:init fail — kubectl
     // apply's merge re-added valueFrom on top of the live literal value,
     // and the two are mutually exclusive ("valueFrom: Invalid value: '':

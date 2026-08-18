@@ -141,7 +141,7 @@ trait DeploysClusterTool
      * of a successful deploy — no need for the `tool:add` proxy
      * to be the only path that registers.
      */
-    protected function registerDeployedTool(ClusterTool $tool, string $kubectl, ?string $host = null, string $instance = 'main', array $extra = []): bool
+    protected function registerDeployedTool(ClusterTool $tool, string $kubectl, ?string $host = null, string $instance = '', array $extra = []): bool
     {
         $metadata = $host !== null ? ['host' => $host] : [];
 

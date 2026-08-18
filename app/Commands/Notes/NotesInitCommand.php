@@ -63,14 +63,10 @@ class NotesInitCommand extends Command
 
         // --domain here means "this exact host" (see ResolvesToolHost::sanitizeDomainInput()
         // — no auto-prefixing), so it can double as the instance identifier.
-        // No --domain given → target/update the default instance instead; any
-        // OTHER host IS a different instance, by construction — same
-        // convention as data:init.
-        $domainOption = trim((string) ($this->option('domain') ?? ''));
-        $host = $domainOption !== ''
-            ? $this->sanitizeDomainInput($domainOption)
-            : $this->resolveToolHost(SharedClusterService::NOTES, ClusterTool::NOTES, $env, $kubectl, 'main');
-        $instance = ClusterTool::NOTES->instanceSlugFromHost($host);
+        // No --domain given → ask which registered instance to target, or
+        // offer to create a new one, rather than guessing (see
+        // resolveInstanceAwareHost()'s docblock).
+        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::NOTES, ClusterTool::NOTES, $env, $kubectl);
 
         $ns = $this->notesNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -119,11 +115,11 @@ class NotesInitCommand extends Command
         // Ingress host rule instead of getting its own. Every other
         // multi-instance tool (data, chat, ...) already suffixes its
         // Service/Ingress name by instance; Outline just never did.
-        $serviceName = $instance === 'main' ? 'notes' : "notes-{$instance}";
-        $secretName = $instance === 'main' ? 'notes-secrets' : "notes-secrets-{$instance}";
-        $oidcSecretName = $instance === 'main' ? 'notes-outline-oidc' : "notes-outline-oidc-{$instance}";
+        $serviceName = "notes-{$instance}";
+        $secretName = "notes-secrets-{$instance}";
+        $oidcSecretName = "notes-outline-oidc-{$instance}";
         $dbName = ClusterTool::NOTES->commonsDatabases($instance)[0];
-        $s3Bucket = $instance === 'main' ? 'notes-storage' : "notes-storage-{$instance}";
+        $s3Bucket = "notes-storage-{$instance}";
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::NOTES, $instance);
 
         $driver = StorageDriver::from($s3Service);
@@ -309,7 +305,7 @@ class NotesInitCommand extends Command
             ? ConfigData::loadFromFile($projectPath)
             : null;
 
-        $ssoHost = $this->resolveSsoHostReadOnly($env, $config);
+        $ssoHost = $this->resolveSsoHostReadOnly($env, $config, $kubectl);
         if ($ssoHost === null) {
             $this->laraKubeError("Zitadel is installed but its host for '{$env}' could not be resolved — re-run `larakube sso:init {$env}`.");
 
@@ -324,7 +320,7 @@ class NotesInitCommand extends Command
         }
 
         $tool = ClusterTool::NOTES;
-        $appName = $instance === 'main' ? $tool->productName() : "{$tool->productName()} ({$instance})";
+        $appName = "{$tool->productName()} ({$instance})";
         $registered = null;
         $this->withSpin("Registering Outline ({$instance}) as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $tool, $host, $aliasHosts, $appName) {
             $projectId = $this->zitadelEnsureProject($ssoHost, $pat, 'LaraKube Shared Tools');
@@ -346,7 +342,7 @@ class NotesInitCommand extends Command
             return false;
         }
 
-        $ssoAppSecret = $instance === 'main' ? 'sso-app-notes' : "sso-app-notes-{$instance}";
+        $ssoAppSecret = "sso-app-notes-{$instance}";
 
         Process::run(
             "{$kubectl} create secret generic {$ssoAppSecret} -n ".$this->ssoNamespace().' '

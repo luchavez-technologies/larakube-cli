@@ -129,21 +129,18 @@ trait InteractsWithToolRegistry
         }
 
         // Same reasoning as above, but the operator named a specific host:
-        // only trust instanceSlugFromHost() to invent a slug when that host
-        // is genuinely NOT this tool's own conventional default (a real
-        // second instance). An unregistered legacy tool targeted by its own
-        // default host must still resolve to the unsuffixed convention it
-        // actually deployed under, not a freshly computed one nothing was
-        // ever named after. This is the same leftmost-label check
-        // instanceSlugFromHost() itself used to make before it was
-        // deliberately simplified to always derive a real slug (ADR 0012,
-        // amended 2026-08-15) — it still belongs here, at the one call site
-        // that's actually trying to recognize an existing legacy deploy
-        // rather than name a brand new one.
-        $prefix = $tool->service()?->hostPrefix();
-        $isOwnDefaultHost = $prefix !== null && $prefix !== '' && (explode('.', $host, 2)[0] ?? '') === $prefix;
-
-        return [$isOwnDefaultHost ? 'main' : $tool->instanceSlugFromHost($host)];
+        // nothing is registered for it yet, so derive a real slug via
+        // instanceSlugFromHost() unconditionally. This tool's own canonical
+        // default host used to get an escape hatch here — recognized as
+        // implying the legacy bare 'main' instance, for backward
+        // compatibility with pre-registry deployments that were never
+        // suffixed. That compatibility constraint no longer applies (ADR
+        // 0012, amended 2026-08-15): every host, including a tool's own
+        // default one, now derives a real instance slug, so a fresh install
+        // — even on the exact host a bare-named legacy install used to
+        // occupy — gets fully-suffixed resource names, never a bare name
+        // again.
+        return [$tool->instanceSlugFromHost($host)];
     }
 
     /**

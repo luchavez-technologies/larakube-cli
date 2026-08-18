@@ -16,7 +16,7 @@ class LinkRemoveCommand extends AbstractToolRemoveCommand
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
         return trim(Process::run(
-            "{$kubectl} get secret link-kutt-secrets -n {$namespace} --ignore-not-found",
+            "{$kubectl} get secret link-secrets -n {$namespace} --ignore-not-found",
         )->output()) === '';
     }
 
@@ -25,7 +25,7 @@ class LinkRemoveCommand extends AbstractToolRemoveCommand
         return $this->removeResources(
             'Removing Kutt resources...',
             "{$kubectl} delete deployment/link-kutt service/link ingress/link "
-            ."secret/link-kutt-secrets -n {$namespace} --ignore-not-found",
+            ."secret/link-secrets secret/link-smtp secret/link-oidc -n {$namespace} --ignore-not-found",
         );
     }
 }

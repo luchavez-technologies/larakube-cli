@@ -18,7 +18,7 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: forgejo-admin
+  name: git-secrets
   namespace: larakube-shared
 type: Opaque
 data:
@@ -109,6 +109,18 @@ spec:
 @endif
             - name: FORGEJO__security__INSTALL_LOCK
               value: "true"
+            {{-- Public self-registration has no place on this cluster — every
+                 legitimate user already has a Zitadel identity, and an
+                 anonymous account is free to push unbounded LFS blobs into
+                 the shared Commons storage/disk. DISABLE_REGISTRATION only
+                 blocks the local /user/sign_up form; it does NOT block OAuth2
+                 auto-registration, which stays on via ENABLE_AUTO_REGISTRATION
+                 below so a teammate's first Zitadel SSO login still just
+                 works without a manual account-creation step. --}}
+            - name: FORGEJO__service__DISABLE_REGISTRATION
+              value: "true"
+            - name: FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION
+              value: "true"
             - name: FORGEJO__server__ROOT_URL
               value: "https://{{ $host }}/"
             - name: FORGEJO__server__DOMAIN
@@ -132,24 +144,24 @@ spec:
             - name: FORGEJO__security__SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: forgejo-admin
+                  name: git-secrets
                   key: secret-key
             - name: FORGEJO__security__INTERNAL_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: forgejo-admin
+                  name: git-secrets
                   key: internal-token
             - name: FORGEJO__server__LFS_JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: forgejo-admin
+                  name: git-secrets
                   key: lfs-jwt-secret
             {{-- Separate from the LFS one. Left unset, Forgejo regenerates it on
                  every boot and signs out every OIDC session. --}}
             - name: FORGEJO__oauth2__JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: forgejo-admin
+                  name: git-secrets
                   key: oauth-jwt-secret
 @if (! ($noPlex ?? false))
 @if(($redisIndex ?? null) !== null)
@@ -306,7 +318,7 @@ spec:
             - name: RUNNER_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: forgejo-admin
+                  name: git-secrets
                   key: runner-secret
           workingDir: /data
           volumeMounts:

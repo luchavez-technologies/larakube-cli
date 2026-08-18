@@ -134,6 +134,8 @@ test('dashboard:trust writes the config and restarts k3s when the OIDC trust is 
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-app-dashboard*' => Process::result(output: base64_encode('cid-1')),
+        '*get secret larakube-tools-registry*' => Process::result(output: '', exitCode: 1),
+        '*get ingress -n*' => Process::result(output: ''),
         "*'echo success'" => Process::result(output: "success\n"),
         '*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: ''),
         '*get --raw=/livez*' => Process::result(output: 'ok', exitCode: 0),

@@ -31,12 +31,12 @@ spec:
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-secrets
+                  name: link-secrets
                   key: jwt-secret
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-secrets
+                  name: link-secrets
                   key: db-password
             - name: DB_HOST
               value: "postgres.{{ $plexNamespace }}.svc.cluster.local"
@@ -60,17 +60,17 @@ spec:
             - name: MAIL_HOST
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-smtp
+                  name: link-smtp
                   key: MAIL_HOST
                   optional: true
             - name: MAIL_PORT
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-smtp
+                  name: link-smtp
                   key: MAIL_PORT
                   optional: true
             # mail:wire sets this as a plain literal (kubectl set env
-            # NAME=value), never through the link-kutt-smtp Secret — must
+            # NAME=value), never through the link-smtp Secret — must
             # stay a literal here too, or a future kubectl apply conflicts
             # with mail:wire's live value (see ClusterTool::LINK's smtpEnv()).
             - name: MAIL_SECURE
@@ -78,38 +78,38 @@ spec:
             - name: MAIL_USER
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-smtp
+                  name: link-smtp
                   key: MAIL_USER
                   optional: true
             - name: MAIL_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-smtp
+                  name: link-smtp
                   key: MAIL_PASSWORD
                   optional: true
             - name: MAIL_FROM
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-smtp
+                  name: link-smtp
                   key: MAIL_FROM
                   optional: true
             # OIDC
             - name: OIDC_ISSUER
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-oidc
+                  name: link-oidc
                   key: OIDC_ISSUER
                   optional: true
             - name: OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-oidc
+                  name: link-oidc
                   key: OIDC_CLIENT_ID
                   optional: true
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: link-kutt-oidc
+                  name: link-oidc
                   key: OIDC_CLIENT_SECRET
                   optional: true
           startupProbe:

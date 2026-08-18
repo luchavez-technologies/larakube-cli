@@ -75,12 +75,12 @@ test('isErrorsInstalled reflects whether the glitchtip-web Deployment exists', f
 
 test('readErrorsAdminPassword decodes the admin secret, null when absent', function () {
     Process::fake([
-        "kubectl get secret glitchtip-admin -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t-adm1n'),
+        "kubectl get secret errors-secrets -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t-adm1n'),
     ]);
     expect(errorsReader()->adminPassword('kubectl', 'larakube-shared'))->toBe('s3cr3t-adm1n');
 
     Process::fake([
-        "kubectl get secret glitchtip-admin -n larakube-shared -o jsonpath='{.data.password}'" => Process::result(output: '', exitCode: 1),
+        "kubectl get secret errors-secrets -n larakube-shared -o jsonpath='{.data.password}'" => Process::result(output: '', exitCode: 1),
     ]);
     expect(errorsReader()->adminPassword('kubectl', 'larakube-shared'))->toBeNull();
 });
@@ -93,7 +93,7 @@ test('errorsAccess is null when glitchtip is not installed, populated when it is
 
     Process::fake([
         "{$kubectl} get deployment glitchtip-web -n larakube-shared --no-headers" => 'glitchtip-web   1/1   1   1   5d',
-        "{$kubectl} get secret glitchtip-admin -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t-adm1n'),
+        "{$kubectl} get secret errors-secrets -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t-adm1n'),
     ]);
     $access = errorsReader()->access('local', null);
 

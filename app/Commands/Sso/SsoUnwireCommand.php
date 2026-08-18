@@ -64,7 +64,7 @@ class SsoUnwireCommand extends Command
         $toolHost = $domainOption !== ''
             ? $this->sanitizeDomainInput($domainOption)
             : $this->targetHost($tool, $env, $config, $kubectl);
-        $instance = $toolHost !== null ? $this->resolveInstanceForDomain($kubectl, $tool, $toolHost) : 'main';
+        $instance = $toolHost !== null ? $this->resolveInstanceForDomain($kubectl, $tool, $toolHost) : '';
 
         $engine = $this->resolveInstanceEngine($kubectl, $tool, $instance, $this->option('engine'));
         $schema = $tool->oidcEnv($engine, $instance);
@@ -78,7 +78,7 @@ class SsoUnwireCommand extends Command
             return 1;
         }
 
-        $ssoHost = $this->resolveSsoHostReadOnly($env, $config);
+        $ssoHost = $this->resolveSsoHostReadOnly($env, $config, $kubectl);
         $pat = $this->readSsoSecret($kubectl, $ssoNs, 'machine-pat');
 
         if ($ssoHost === null || $pat === null) {

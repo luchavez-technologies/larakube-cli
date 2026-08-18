@@ -603,7 +603,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
 
             if (is_array($decoded)) {
                 foreach ($decoded as $entry) {
-                    if (($entry['tool'] ?? null) === 'meet' && ($entry['instance'] ?? 'main') === 'main') {
+                    if (($entry['tool'] ?? null) === 'meet' && ($entry['instance'] ?? '') === '') {
                         $meetHost = $entry['host'] ?? null;
                         break;
                     }

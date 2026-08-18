@@ -150,3 +150,21 @@ test('notes:init returns a failing exit code and does not claim success when kub
         ->assertExitCode(1)
         ->doesntExpectOutputToContain('Outline wiki stack is live');
 });
+
+test('notes:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function () {
+    // Same class of bug as the 2026-08-17 Design incident: a no-flag re-run
+    // used to derive a fresh instance slug via raw instanceSlugFromHost()
+    // instead of recognizing an already-registered instance.
+    Process::fake([
+        '*larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ['tool' => 'notes', 'instance' => 'main', 'host' => 'notes.example.com'],
+            ['tool' => 'notes', 'instance' => 'blog-example-com', 'host' => 'blog.example.com'],
+        ]))),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan(NotesInitCommand::class, [
+        'environment' => 'local',
+        '--no-interaction' => true,
+    ])->run();
+})->throws(RuntimeException::class, 'pass --domain=<host>');

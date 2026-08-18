@@ -49,11 +49,13 @@ class CrmInitCommand extends Command
         $this->plexContext = $context;
         $kubectl = $this->crmKubectl($context);
 
-        $domainOption = trim((string) ($this->option('domain') ?? ''));
-        $host = $domainOption !== ''
-            ? $this->sanitizeDomainInput($domainOption)
-            : $this->resolveToolHost(SharedClusterService::CRM, ClusterTool::CRM, $env, $kubectl, deferRegistration: true);
-        $instance = ClusterTool::CRM->instanceSlugFromHost($host);
+        // No --domain given → ask which registered instance to target, or
+        // offer to create a new one, rather than guessing (see
+        // resolveInstanceAwareHost()'s docblock — this also fixes the
+        // confirmed live 2026-08-14 duplicate-registration bug, where a
+        // no-flag re-run's registry lookup under the default 'main' instance
+        // never matched CRM's always-derived-slug entries).
+        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::CRM, ClusterTool::CRM, $env, $kubectl);
 
         $ns = $this->crmNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -91,12 +93,12 @@ class CrmInitCommand extends Command
         }
         $s3Driver = StorageDriver::from($s3Service);
 
-        $secretName = "crm-twenty-secrets-{$instance}";
+        $secretName = "crm-secrets-{$instance}";
         $deploymentName = ClusterTool::CRM->deploymentName($instance);
         $workerDeploymentName = "crm-twenty-worker-{$instance}";
         $serviceName = "crm-{$instance}";
         $ingressName = $serviceName;
-        $oidcSecretName = "crm-twenty-oidc-{$instance}";
+        $oidcSecretName = "crm-oidc-{$instance}";
 
         $dbPassword = $this->readCrmSecret($kubectl, $ns, 'db-password', $instance) ?? Str::random(24);
         $accessTokenSecret = $this->readCrmSecret($kubectl, $ns, 'access-token-secret', $instance) ?? bin2hex(random_bytes(32));

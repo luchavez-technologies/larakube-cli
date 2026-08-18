@@ -17,7 +17,7 @@ enum DeskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'desk-vpn-only' : "desk-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'desk-vpn-only' : "desk-vpn-only-{$instance}";
 
         return [
             'name' => $name,

@@ -31,7 +31,7 @@ final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
     {
         return [
             'deployment' => 'support-chatwoot',
-            'secret' => 'support-chatwoot-smtp',
+            'secret' => 'support-smtp',
             'static' => [
                 'SMTP_ENABLE_STARTTLS_AUTO' => 'true',
             ],

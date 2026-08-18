@@ -5,9 +5,9 @@ use Illuminate\Support\Facades\Process;
 
 test('data:remove tears down single default instance cleanly', function () {
     Process::fake([
-        '*get secret larakube-tools-registry*' => json_encode([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'main', 'host' => 'data.dev.test'],
-        ]),
+        ]))),
         '*get deployment data-pocketbase*' => Process::result(output: ''),
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
         '*delete deployment/data-directus*' => Process::result(output: 'deleted'),
@@ -23,9 +23,9 @@ test('data:remove tears down single default instance cleanly', function () {
 
 test('data:remove targets explicit domain instance', function () {
     Process::fake([
-        '*get secret larakube-tools-registry*' => json_encode([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'blog', 'host' => 'blog.dev.test'],
-        ]),
+        ]))),
         '*get deployment data-pocketbase-blog*' => Process::result(output: ''),
         '*get deployment data-directus-blog*' => Process::result(output: 'data-directus-blog   1/1   1   1   10d'),
         '*delete deployment/data-directus-blog*' => Process::result(output: 'deleted'),
@@ -40,12 +40,32 @@ test('data:remove targets explicit domain instance', function () {
     ])->assertExitCode(0);
 });
 
-test('data:remove --all removes all registered instances', function () {
+test('data:remove hard-errors non-interactively when 2+ instances are registered and neither --domain nor --all was given', function () {
+    // Previously this silently picked $registered[0] and tore that instance
+    // down without telling the operator there was a choice to make — the
+    // exact same failure class as the DATA duplicate-registration incident
+    // this file's other tests guard against, just at removal time instead of
+    // init time. Failing loudly beats guessing.
     Process::fake([
-        '*get secret larakube-tools-registry*' => json_encode([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'main', 'host' => 'data.dev.test'],
             ['tool' => 'data', 'instance' => 'blog', 'host' => 'blog.dev.test'],
-        ]),
+        ]))),
+    ]);
+
+    $this->artisan(DataRemoveCommand::class, [
+        'environment' => 'local',
+        '--force' => true,
+        '--no-interaction' => true,
+    ])->run();
+})->throws(RuntimeException::class, 'Pass --domain=<host>');
+
+test('data:remove --all removes all registered instances', function () {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ['tool' => 'data', 'instance' => 'main', 'host' => 'data.dev.test'],
+            ['tool' => 'data', 'instance' => 'blog', 'host' => 'blog.dev.test'],
+        ]))),
         '*get deployment data-pocketbase*' => Process::result(output: ''),
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
         '*' => Process::result(output: 'deleted'),

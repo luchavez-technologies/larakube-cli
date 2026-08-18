@@ -90,7 +90,7 @@ trait InteractsWithSso
         }
 
         return [
-            'host' => $this->resolveSsoHostReadOnly($env, $config),
+            'host' => $this->resolveSsoHostReadOnly($env, $config, $kubectl),
             'label' => 'Zitadel',
         ];
     }

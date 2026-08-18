@@ -60,6 +60,66 @@ test('flow:remove --purge drops both engine databases and deletes the resources'
         ->expectsOutputToContain('Removing Flow resources...');
 });
 
+test('sheets:remove --purge drops the Commons database AND its S3 buckets, not just the database', function () {
+    // The bug this guards: --purge dropped the Postgres tenant but silently
+    // left every tool's S3 bucket (and its contents) behind — commonsBuckets()
+    // was declared but never consulted by the teardown path.
+    Process::fake([
+        '*get configmap plex-registry*' => Process::result(output: json_encode([
+            'tenants' => [
+                'sheet-public' => ['s3_bucket' => 'sheet-public', 's3_service' => 'seaweedfs'],
+                'sheet-private' => ['s3_bucket' => 'sheet-private', 's3_service' => 'seaweedfs'],
+            ],
+        ])),
+        '*exec *' => Process::result(output: 'dropped'),
+        '*delete *' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('sheets:remove local --force --purge')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("Dropping database 'teable' from Plex Commons")
+        ->expectsOutputToContain("Dropping object-storage bucket 'sheet-public' from Plex Commons")
+        ->expectsOutputToContain("Dropping object-storage bucket 'sheet-private' from Plex Commons");
+});
+
+test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when the registry has no record for it', function () {
+    // A pre-registry install (bucket created before the tenant registry
+    // tracked s3_service) has nothing to read the backend from — fall back
+    // to whichever S3 service the live Commons spec has enabled, the same
+    // discovery order every {tool}:init uses to pick one in the first place.
+    Process::fake([
+        '*get configmap plex-registry*' => Process::result(output: json_encode(['tenants' => []])),
+        '*get configmap plex-commons*' => Process::result(output: json_encode([
+            'services' => ['seaweedfs' => ['enabled' => true]],
+        ])),
+        '*exec *' => Process::result(output: 'dropped'),
+        '*delete *' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('sheets:remove local --force --purge')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("Dropping object-storage bucket 'sheet-public' from Plex Commons");
+});
+
+test('drive:remove --purge does NOT drop its Commons bucket — oCIS encryption keys would orphan the data', function () {
+    Process::fake([
+        '*get configmap plex-registry*' => Process::result(output: json_encode([
+            'tenants' => ['drive-ocis' => ['s3_bucket' => 'drive-ocis', 's3_service' => 'seaweedfs']],
+        ])),
+        '*delete *' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('drive:remove local --force --purge')
+        ->assertExitCode(0)
+        ->doesntExpectOutputToContain('Dropping object-storage bucket');
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'weed shell')
+        || str_contains($process->command, 'bucket.delete'));
+});
+
 test('a failed delete exits non-zero instead of reporting success', function () {
     // The bug this guards: every tool's remove path used to discard the step
     // result and print "removed" regardless of what kubectl actually did.
@@ -104,8 +164,8 @@ test('--domain on a single-instance tool errors instead of silently no-opping', 
     // sso:remove/mail:remove/etc. inherit --domain from the shared base
     // unconditionally, but SSO/MAIL's teardown targets fixed resource names
     // — --domain=foo.example.com would do nothing (or a misleading partial
-    // removal) rather than what it implies. supportsMultipleInstances()
-    // guards this for every tool where it's false, not just these two.
+    // removal) rather than what it implies. hasInstanceAwareRemoval() guards
+    // this for every tool where it's false, not just these two.
     $this->artisan('sso:remove local --domain=foo.example.com --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('does not support multiple instances');
@@ -119,4 +179,29 @@ test('omitting --domain is always allowed, even for single-instance tools', func
     Process::fake(['*' => Process::result(output: '')]);
 
     $this->artisan('sso:remove local --force')->assertExitCode(0);
+});
+
+test('--domain on a tool without real per-instance teardown errors instead of silently deleting the one real install', function () {
+    // ClusterTool::supportsMultipleInstances() defaults `true` for these —
+    // "no known architectural blocker", not "already built". Their :remove
+    // commands' teardown() is fully hardcoded and ignores $instance/--domain
+    // entirely, so --domain=anything used to be silently accepted and then
+    // silently ignored: it always deleted the one real installation
+    // regardless of what host was passed. hasInstanceAwareRemoval() closes
+    // that gap for every tool except the 4 with real per-instance logic.
+    $groupB = array_filter(
+        ClusterTool::shippedCases(),
+        // DNS excluded: dns:remove is a bespoke Cloudflare-zone command that
+        // never extended AbstractToolRemoveCommand and has no --domain option
+        // at all — this loop only covers tools sharing the generic guard.
+        fn (ClusterTool $tool) => ! $tool->hasInstanceAwareRemoval() && $tool !== ClusterTool::DNS,
+    );
+
+    expect($groupB)->not->toBeEmpty();
+
+    foreach ($groupB as $tool) {
+        $this->artisan("{$tool->value}:remove local --domain=foo.example.com --force")
+            ->assertExitCode(1)
+            ->expectsOutputToContain('does not support multiple instances');
+    }
 });

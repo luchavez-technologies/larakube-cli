@@ -15,7 +15,7 @@ test('link:init deploys Kutt using the Commons postgres and redis', function () 
         ]),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*create configmap plex-registry*' => Process::result(output: 'configmap created'),
-        '*get secret link-kutt-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret link-secrets*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret generic*' => Process::result(output: 'secret created'),
@@ -47,7 +47,7 @@ test('link manifest pins Kutt to the Commons postgres client and enables redis',
 
 test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a future kubectl apply never conflicts with mail:wire', function () {
     // Regression guard: mail:wire sets MAIL_SECURE via a plain literal
-    // `kubectl set env NAME=value`, never through the link-kutt-smtp Secret.
+    // `kubectl set env NAME=value`, never through the link-smtp Secret.
     // Declaring it here as valueFrom made a later link:init re-run fail —
     // kubectl apply's merge re-adds valueFrom on top of the live literal
     // value mail:wire already set, and the two are mutually exclusive
@@ -136,7 +136,7 @@ test('link:init --vpn-only refuses — LINK is public infrastructure with no VPN
 
 test('link:init --vpn-only aborts without touching kubectl', function () {
     Process::fake([
-        '*get secret link-kutt-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret link-secrets*' => Process::result(output: '', exitCode: 1),
         '*apply -f *' => Process::result(output: '', exitCode: 1),
     ]);
 

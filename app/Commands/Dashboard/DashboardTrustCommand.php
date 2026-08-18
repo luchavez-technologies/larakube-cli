@@ -73,7 +73,7 @@ class DashboardTrustCommand extends Command
             return 1;
         }
 
-        $ssoHost = $this->resolveSsoHostReadOnly($environment, $config);
+        $ssoHost = $this->resolveSsoHostReadOnly($environment, $config, $kubectl);
         $clientId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-dashboard', 'client-id');
 
         if ($ssoHost === null || $clientId === null) {

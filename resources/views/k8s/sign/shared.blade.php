@@ -33,22 +33,22 @@ spec:
             - name: NEXTAUTH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-secrets
+                  name: sign-secrets
                   key: nextauth-secret
             - name: NEXT_PRIVATE_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-secrets
+                  name: sign-secrets
                   key: encryption-key
             - name: NEXT_PRIVATE_ENCRYPTION_SECONDARY_KEY
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-secrets
+                  name: sign-secrets
                   key: encryption-secondary-key
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-secrets
+                  name: sign-secrets
                   key: db-password
             - name: NEXT_PRIVATE_DATABASE_URL
               value: "postgres://sign_documenso:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/sign_documenso"
@@ -73,7 +73,7 @@ spec:
             - name: NEXT_PRIVATE_UPLOAD_SECRET_ACCESS_KEY
               value: "{{ $s3SecretKey }}"
             # mail:wire sets these two as plain literals (kubectl set env
-            # NAME=value), never through the sign-documenso-smtp Secret — must
+            # NAME=value), never through the sign-smtp Secret — must
             # stay literals here too, or a future kubectl apply conflicts with
             # mail:wire's live value (see ClusterTool::SIGN's smtpEnv()).
             - name: NEXT_PRIVATE_SMTP_TRANSPORT
@@ -83,31 +83,31 @@ spec:
             - name: NEXT_PRIVATE_SMTP_HOST
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-smtp
+                  name: sign-smtp
                   key: NEXT_PRIVATE_SMTP_HOST
                   optional: true
             - name: NEXT_PRIVATE_SMTP_PORT
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-smtp
+                  name: sign-smtp
                   key: NEXT_PRIVATE_SMTP_PORT
                   optional: true
             - name: NEXT_PRIVATE_SMTP_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-smtp
+                  name: sign-smtp
                   key: NEXT_PRIVATE_SMTP_USERNAME
                   optional: true
             - name: NEXT_PRIVATE_SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-smtp
+                  name: sign-smtp
                   key: NEXT_PRIVATE_SMTP_PASSWORD
                   optional: true
             - name: NEXT_PRIVATE_SMTP_FROM_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-smtp
+                  name: sign-smtp
                   key: NEXT_PRIVATE_SMTP_FROM_ADDRESS
                   optional: true
             # sso:wire sets these two as plain literals too — same reasoning
@@ -119,19 +119,19 @@ spec:
             - name: NEXT_PRIVATE_OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-oidc
+                  name: sign-oidc
                   key: NEXT_PRIVATE_OIDC_CLIENT_ID
                   optional: true
             - name: NEXT_PRIVATE_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-oidc
+                  name: sign-oidc
                   key: NEXT_PRIVATE_OIDC_CLIENT_SECRET
                   optional: true
             - name: NEXT_PRIVATE_OIDC_WELL_KNOWN
               valueFrom:
                 secretKeyRef:
-                  name: sign-documenso-oidc
+                  name: sign-oidc
                   key: NEXT_PRIVATE_OIDC_WELL_KNOWN
                   optional: true
           # Documenso verifies 163 migrations + runs service-account migrations +

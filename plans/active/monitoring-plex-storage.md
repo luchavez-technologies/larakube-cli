@@ -1,8 +1,8 @@
 # Plan: Reuse Plex Commons storage for the monitoring stack
 
-> **Status:** queued (post-v0.21.x). Net-new, architecturally significant — do NOT
-> fold into the current test/ship pass. Pairs naturally with the Gitea / Plex-MinIO
-> work (1.x), which is where the shared Plex object store first appears.
+> **Status:** §4.2 (Grafana → Plex database) shipped 2026-08-18 — see that section for
+> why the original premise changed. §4.1 (Loki → Plex object storage) and §4.3
+> (Prometheus, explicitly out) are still queued.
 
 ## 1. Question this answers
 
@@ -54,10 +54,26 @@ longer stand alone.
 - Idempotent re-run must not flip backends silently — record the chosen backend so a
   later `monitor:init` keeps it (switching backends loses historical logs).
 
-### 4.2 Grafana → Plex database (only with HA) — secondary, likely defer
-- Only meaningful once Grafana runs >1 replica. Until HA monitoring is on the table,
-  keep SQLite-on-PVC. Note it here so it isn't re-litigated; build it with HA Grafana,
-  not before.
+### 4.2 Grafana → Plex database — ✅ SHIPPED 2026-08-18, for a different reason than planned
+This section originally deferred Grafana-on-Postgres until HA. That premise turned out
+to be wrong: `monitor:init` never persisted Grafana's own database *at all* — no PVC,
+no external DB, just the built-in SQLite on the pod's ephemeral filesystem. A teammate's
+UI-created dashboards were lost this way (confirmed live 2026-08-18) — not an HA problem,
+a **data-loss** problem that existed even at replicas=1.
+
+What shipped, keeping §3's constraint intact (monitor:init must still fully succeed with
+no Plex Commons on the cluster):
+- **Default:** a real Commons Postgres tenant (`grafana` database), OpenBao static-role
+  password rotation, same pattern every other Commons-backed tool uses — rides along
+  with the existing nightly Commons backup for free.
+- **`--no-plex`:** falls back to SQLite on a `grafana-storage` PVC (1Gi) instead of the
+  pod's ephemeral filesystem — still genuinely persistent, just not Commons-backed or
+  covered by the nightly backup. Mirrors `git:init`'s own `--no-plex` story.
+- `MonitorTool` gained `HasCommonsDatabases`/`HasDbSecretRef`/`HasRotatableDatabasePassword`/
+  `HasOpenbaoSync`; `MonitorRemoveCommand::usesBundledStorage()` detects the PVC to skip
+  a `--purge` Commons-drop attempt on `--no-plex` installs.
+- HA Grafana (multiple replicas) still isn't built — nothing here blocks it; a shared DB
+  was always a prerequisite either way, and it's now already in place by default.
 
 ### 4.3 Prometheus — explicitly out
 - No object storage without Thanos/Mimir. Track that as its own (much larger) plan if

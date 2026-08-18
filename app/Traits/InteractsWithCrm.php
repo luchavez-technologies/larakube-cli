@@ -35,7 +35,7 @@ trait InteractsWithCrm
 
     protected function readCrmSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
     {
-        $secretName = $instance !== null && $instance !== '' ? "crm-twenty-secrets-{$instance}" : 'crm-twenty-secrets';
+        $secretName = $instance !== null && $instance !== '' ? "crm-secrets-{$instance}" : 'crm-secrets';
 
         return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
     }

@@ -58,7 +58,7 @@ class MailSyncSsoCommand extends Command
             return 1;
         }
 
-        $ssoHost = $this->resolveSsoHostReadOnly($env, $config);
+        $ssoHost = $this->resolveSsoHostReadOnly($env, $config, $ssoKubectl);
         $pat = $this->readSsoSecret($ssoKubectl, $ssoNs, 'machine-pat');
 
         if ($ssoHost === null || $pat === null) {

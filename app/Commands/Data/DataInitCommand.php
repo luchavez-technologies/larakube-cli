@@ -59,30 +59,21 @@ class DataInitCommand extends Command
         $kubectl = $this->dataKubectl($context);
         $ns = $this->dataNamespace();
 
-        // --domain here means "this exact host" (see sanitizeDataDomainInput()
-        // — no auto-prefixing), so it can double as the instance identifier.
-        // No --domain given → target/update the default instance instead (its
-        // own recorded host, prompting only on a genuinely first-ever deploy —
-        // same "no flags = just re-run against what's already there"
-        // convention every other tool follows). Any OTHER host IS a different
-        // instance, by construction — no separate name to ask for or remember.
-        $domainOption = trim((string) ($this->option('domain') ?? ''));
-        $engineLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
-        $host = $domainOption !== ''
-            ? $this->sanitizeDomainInput($domainOption)
-            : $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl, 'main', $engineLabel, deferRegistration: true);
-
         // Host identity wins over instance-name derivation (idempotency
         // standard, see InteractsWithToolRegistry::resolveInstanceForDomain):
-        // a target already registered under any instance — 'main' included —
-        // re-targets THAT entry in place instead of spawning a derived
-        // duplicate slug. DATA's default host can be pocket.luchtech.dev
+        // a target already registered under any instance re-targets THAT
+        // entry in place instead of spawning a derived duplicate slug.
+        // resolveInstanceAwareHost() resolves both together in one step —
+        // the previous split (sanitize-or-resolveToolHost for $host, then a
+        // SEPARATE resolveInstanceForDomain($domainOption) for $instance)
+        // could drift apart: DATA's default host can be pocket.luchtech.dev
         // while the service hostPrefix is 'data', so a plain re-run of
         // data:init without --domain used to derive the slug
         // 'pocket-luchtech-dev', deploy a SECOND PocketBase from scratch
         // (data-pocketbase-{slug}) and register it as a duplicate row
         // (confirmed live 2026-08-09).
-        $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::DATA, $domainOption);
+        $engineLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
+        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl, $engineLabel);
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::DATA, $instance);
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -100,9 +91,9 @@ class DataInitCommand extends Command
         $s3Key = $s3Creds['access'] ?? 'seaweedfs-access-key';
         $s3Secret = $s3Creds['secret'] ?? 'seaweedfs-secret-key';
 
-        $secretName = $instance !== 'main' ? "data-secrets-{$instance}" : 'data-secrets';
-        $smtpSecretName = $instance !== 'main' ? "data-smtp-{$instance}" : 'data-smtp';
-        $oidcSecretName = $instance !== 'main' ? "data-oidc-{$instance}" : 'data-oidc';
+        $secretName = "data-secrets-{$instance}";
+        $smtpSecretName = "data-smtp-{$instance}";
+        $oidcSecretName = "data-oidc-{$instance}";
         $deployName = ClusterTool::DATA->deploymentName($instance, $engine);
 
         if (! $this->tearDownOtherEngineForInstance($kubectl, $ns, $instance, $engine)) {
@@ -147,7 +138,7 @@ class DataInitCommand extends Command
             $redisIndex = null;
         }
 
-        $pvcName = $instance !== 'main' ? "data-pocketbase-pvc-{$instance}" : 'data-pocketbase-pvc';
+        $pvcName = "data-pocketbase-pvc-{$instance}";
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -188,9 +179,7 @@ class DataInitCommand extends Command
         // Store to OpenBao vault if available
         if ($this->secretsBackendAvailable($kubectl)) {
             $prefix = $engine === 'pocketbase' ? 'DATA_POCKETBASE' : 'DATA_DIRECTUS';
-            if ($instance !== 'main') {
-                $prefix .= '_'.strtoupper(str_replace('-', '_', $instance));
-            }
+            $prefix .= '_'.strtoupper(str_replace('-', '_', $instance));
 
             $this->pushClusterSecret($kubectl, "{$prefix}_SECRET", $secret, $env);
             $this->pushClusterSecret($kubectl, "{$prefix}_KEY", $key, $env);
@@ -204,7 +193,7 @@ class DataInitCommand extends Command
             }
         }
 
-        $ssoWired = $this->readClusterSecretKey($kubectl, $ns, $instance !== 'main' ? "data-oidc-{$instance}" : 'data-oidc', $engine === 'pocketbase' ? 'POCKETBASE_OIDC_CLIENT_ID' : 'AUTH_ZITADEL_CLIENT_ID') !== null;
+        $ssoWired = $this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, $engine === 'pocketbase' ? 'POCKETBASE_OIDC_CLIENT_ID' : 'AUTH_ZITADEL_CLIENT_ID') !== null;
 
         $manifest = view('k8s.data.shared', [
             'engine' => $engine,

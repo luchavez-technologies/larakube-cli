@@ -4,6 +4,7 @@ namespace App\Commands\Tool;
 
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\StorageDriver;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithPlex;
@@ -17,6 +18,7 @@ use Illuminate\Support\Facades\Process;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
+use RuntimeException;
 
 /**
  * Base for every `{tool}:remove {environment}` command.
@@ -93,21 +95,22 @@ abstract class AbstractToolRemoveCommand extends Command
         $namespace = $tool->namespace();
         $isPurging = (bool) $this->option('purge');
 
+        if ((string) $this->option('domain') !== '' && ! $tool->hasInstanceAwareRemoval()) {
+            $this->laraKubeError(
+                "{$tool->getLabel()} does not support multiple instances yet — ".
+                '--domain would silently do nothing (or worse, a misleading partial removal) since its '.
+                'teardown targets fixed resource names. Remove without --domain.',
+            );
+
+            return 1;
+        }
+
         // Every instance serving the targeted host — normally exactly one
         // ('main' when --domain is omitted). A host registered under MORE
         // than one instance is a duplicate-registration artifact (the DATA
         // incident of 2026-08-09): removal means "take down everything
         // serving this host", so all matching instances go.
         $targets = $this->resolveInstanceTargets($kubectl);
-        if ((string) $this->option('domain') !== '' && ! $tool->supportsMultipleInstances()) {
-            $this->laraKubeError(
-                "{$tool->getLabel()} does not support multiple instances — ".
-                '--domain would silently do nothing (or worse, a misleading partial removal) since its '.
-                'teardown targets fixed resource names. Omit --domain to remove the single installation.',
-            );
-
-            return 1;
-        }
 
         if (! $this->confirmDestructive($this->teardownWarning($env))) {
             return 0;
@@ -218,6 +221,21 @@ abstract class AbstractToolRemoveCommand extends Command
             return [$choice];
         }
 
+        if (count($registered) > 1) {
+            // Reaching here means cannotPrompt() was true — the branch above
+            // already handles the interactive multi-instance case with a
+            // select() prompt. Silently picking $registered[0] here (the old
+            // behaviour) meant a non-interactive run could tear down the
+            // wrong instance without the operator ever being told there was
+            // a choice to make. Same "fail loud, don't guess" philosophy as
+            // ResolvesToolHost::resolveNonInteractiveHost().
+            throw new RuntimeException(
+                "Multiple {$tool->getLabel()} instances are registered, and this command is running ".
+                'non-interactively, so which one to remove cannot be guessed. '.
+                'Pass --domain=<host> to target one, or --all to remove every registered instance.',
+            );
+        }
+
         if ($registered !== []) {
             $firstInst = (string) ($registered[0]['instance'] ?? '');
 
@@ -263,8 +281,16 @@ abstract class AbstractToolRemoveCommand extends Command
             "Deployments, Services, Ingresses and Secrets in {$tool->namespace()}",
         ];
 
-        if ($isPurging && $tool->commonsDatabases() !== []) {
-            $lines[] = 'Plex Commons database(s) WILL BE DESTROYED: '.implode(', ', $tool->commonsDatabases());
+        $databases = $tool->commonsDatabases();
+        $buckets = $this->preservesBucketsOnPurge() ? [] : $tool->commonsBuckets();
+
+        if ($isPurging && ($databases !== [] || $buckets !== [])) {
+            if ($databases !== []) {
+                $lines[] = 'Plex Commons database(s) WILL BE DESTROYED: '.implode(', ', $databases);
+            }
+            if ($buckets !== []) {
+                $lines[] = 'Plex Commons S3 bucket(s) WILL BE DESTROYED, contents included: '.implode(', ', $buckets);
+            }
         } else {
             $lines[] = 'Persistent data (Plex Commons DB + S3 buckets) WILL BE PRESERVED.';
         }
@@ -273,19 +299,33 @@ abstract class AbstractToolRemoveCommand extends Command
     }
 
     /**
-     * Drop this tool's Commons Postgres tenant(s) and release any Commons Redis
-     * index. Skipped per-database when the install bundled its own storage
-     * (`--no-plex`) — detected by the subclass via usesBundledStorage(), because
-     * dropping a Commons database that this install never leased would destroy
-     * a DIFFERENT tool's data if the names ever collided.
+     * Drop this tool's Commons Postgres tenant(s), release any Commons Redis
+     * index, AND drop its Commons S3 bucket(s). Skipped entirely when the
+     * install bundled its own storage (`--no-plex`) — detected by the
+     * subclass via usesBundledStorage(), because dropping Commons resources
+     * this install never leased would destroy a DIFFERENT tool's data if the
+     * names ever collided.
+     *
+     * The bucket step used to be missing — `--purge` dropped the database but
+     * silently left every tool's S3 bucket (and its contents) behind, so
+     * "purge" under-delivered on its own promise for every tool that stores
+     * files in the Commons (Design, Sheet, CRM, Resume, Record, Chat, Mail,
+     * GitForge, Sign — plus Drive, which has NO Commons database at all, so
+     * the old `$databases === []` early return skipped its bucket drop
+     * unconditionally, no matter what).
      */
     protected function dropCommonsTenants(string $kubectl, ?string $instance = null): bool
     {
         $tool = $this->tool();
         $databases = $tool->commonsDatabases($instance);
+        $buckets = $tool->commonsBuckets($instance);
 
-        if ($databases === [] || $this->usesBundledStorage($kubectl, $tool->namespace())) {
+        if (($databases === [] && $buckets === []) || $this->usesBundledStorage($kubectl, $tool->namespace())) {
             return true;
+        }
+
+        if ($this->preservesBucketsOnPurge()) {
+            $buckets = [];
         }
 
         $ok = true;
@@ -318,6 +358,50 @@ abstract class AbstractToolRemoveCommand extends Command
             $this->releaseCommonsRedisIndex($redisTenant);
         }
 
+        foreach ($buckets as $bucket) {
+            $ok = $this->dropCommonsBucket($kubectl, $plexNs, $bucket) && $ok;
+        }
+
+        return $ok;
+    }
+
+    /**
+     * Drop one Commons S3 bucket (and its contents — irreversible). The
+     * backend (SeaweedFS/MinIO/Garage) it lives on is read from the tenant
+     * registry the same allocateStorageBucket() wrote it to; a pre-registry
+     * install falls back to whichever S3 service the live Commons spec has
+     * enabled, the same discovery order every {tool}:init uses to pick one
+     * in the first place. No backend found (Commons has no S3 at all) isn't
+     * a failure — there is nothing to drop.
+     */
+    protected function dropCommonsBucket(string $kubectl, string $plexNs, string $bucket): bool
+    {
+        $registry = $this->getRegistry();
+        $service = $registry['tenants'][$bucket]['s3_service'] ?? null;
+
+        if ($service === null) {
+            $spec = $this->getCommonsSpec() ?? ['services' => []];
+            foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+                if (in_array($candidate, $this->enabledCommonsServices($spec), true)) {
+                    $service = $candidate;
+                    break;
+                }
+            }
+        }
+
+        $driver = $service !== null ? StorageDriver::tryFrom($service) : null;
+        if ($driver === null) {
+            return true;
+        }
+
+        $cmd = $driver->commonsBucketDeleteCommand($bucket);
+        $ok = $this->removeResources(
+            "Dropping object-storage bucket '{$bucket}' from Plex Commons (if exists)...",
+            "{$kubectl} exec -n {$plexNs} deploy/{$service} -- sh -c ".escapeshellarg($cmd),
+        );
+
+        $this->unregisterTenant($bucket);
+
         return $ok;
     }
 
@@ -328,6 +412,21 @@ abstract class AbstractToolRemoveCommand extends Command
      * old remove path used (looking for the bundled DB Deployment / a secret).
      */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
+    {
+        return false;
+    }
+
+    /**
+     * True when this tool's bucket contents must survive `--purge` even
+     * though it genuinely uses the Commons (unlike usesBundledStorage(),
+     * which means "there's nothing here to drop" — this means "there is,
+     * but dropping it would be unsafe"). Exists for Drive: oCIS wraps each
+     * file's encryption key with drive-secrets' rekey key, so deleting the
+     * bucket without also handling per-file re-encryption would orphan data
+     * no re-init could recover — a mistyped `drive:remove --purge` must not
+     * be able to destroy files. Default: buckets purge normally.
+     */
+    protected function preservesBucketsOnPurge(): bool
     {
         return false;
     }

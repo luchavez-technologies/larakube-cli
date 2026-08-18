@@ -762,6 +762,35 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /**
+     * Whether `{tool}:remove --domain=X` actually targets instance X, rather
+     * than silently accepting the flag and then tearing down the one real
+     * installation regardless of what was passed.
+     *
+     * Deliberately narrower than supportsMultipleInstances() above: that
+     * method answers "is there a known architectural blocker to this tool
+     * ever supporting more than one instance" and defaults `true` — a
+     * forward-looking, optimistic default meant for things like the generic
+     * `-{instance}` suffixing in dbSecretRef()/openbaoSyncConfig(), which is
+     * harmless to compute even for a tool that never gets a second instance.
+     *
+     * This method instead answers "does this tool's :remove command have
+     * real per-instance teardown logic TODAY" — and defaults `false`, because
+     * most tools' teardown() hardcodes fixed resource names and completely
+     * ignores $instance/--domain. Only DATA, NOTES, CRM and DESIGN currently
+     * resolve --domain to a specific registered instance before tearing it
+     * down; every other tool would silently ignore --domain and delete the
+     * one real installation no matter what host was passed, which is the
+     * footgun this method exists to let the :remove guard close.
+     */
+    public function hasInstanceAwareRemoval(): bool
+    {
+        return match ($this) {
+            self::DATA, self::NOTES, self::CRM, self::DESIGN => true,
+            default => false,
+        };
+    }
+
+    /**
      * True when this tool (for this engine) is configured by a mounted config
      * FILE and ignores environment variables entirely — so the `kubectl set env`
      * path that mail:wire and sso:wire use cannot reach it.
@@ -965,7 +994,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         }
 
         $base = $vendor->baseDeploymentName();
-        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name($base)),
@@ -1017,11 +1046,12 @@ enum ClusterTool: string implements HasWorkloadComponents
      * Derive a Kubernetes-resource-naming-safe instance slug from a host —
      * the identifier every multi-instance tool's registry entry and
      * deploymentName()/commonsDatabases()/commonsBuckets() suffix uses.
-     * 'main' for this tool's own bare-prefix host (e.g. "data.example.com"),
-     * matching every deployment made before instances existed. Otherwise the
-     * FULL host, not just its leftmost label — two different hosts that
-     * happen to share a leftmost label (blog.siteA.com vs blog.siteB.com)
-     * must never collide on the same Kubernetes Service name. Confirmed live
+     * Always derived from the FULL host, not just its leftmost label — two
+     * different hosts that happen to share a leftmost label
+     * (blog.siteA.com vs blog.siteB.com) must never collide on the same
+     * Kubernetes Service name. This includes a tool's own conventional
+     * default host (e.g. "data.example.com") — there is no bare-prefix/
+     * 'main' escape hatch (ADR 0012, amended 2026-08-15). Confirmed live
      * 2026-08-09.
      */
     public function instanceSlugFromHost(string $host): string
@@ -1048,7 +1078,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         if ($vendor instanceof HasOpenbaoSync) {
             $config = ['namespace' => $this->namespace()] + $vendor->openbaoSyncConfig();
 
-            if ($instance === null || $instance === '' || $instance === 'main') {
+            if ($instance === null || $instance === '') {
                 return $config;
             }
 
@@ -1066,8 +1096,6 @@ enum ClusterTool: string implements HasWorkloadComponents
      * rotation. null for tools with no simple single-key password (e.g. one
      * baked into a composed connection URL, or no Commons DB at all) —
      * those need bespoke handling, not this generic path.
-     *
-     * @return array{namespace: string, secret: string, key: string}|null
      */
     public function supportsDatabasePasswordRotation(?string $instance = null, ?string $engine = null): bool
     {
@@ -1084,7 +1112,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             }
 
             $ref = ['namespace' => $this->namespace()] + $ref;
-            if ($instance === null || $instance === '' || $instance === 'main') {
+            if ($instance === null || $instance === '') {
                 return $ref;
             }
 
@@ -1100,7 +1128,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function commonsBuckets(?string $instance = null, ?string $engine = null): array
     {
         $list = $this->commonsBucketList($engine);
-        if ($instance === null || $instance === '' || $instance === 'main') {
+        if ($instance === null || $instance === '') {
             return $list;
         }
 
@@ -1111,11 +1139,20 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function commonsDatabases(?string $instance = null, ?string $engine = null): array
     {
         $list = $this->commonsDatabaseList($engine);
-        if ($instance === null || $instance === '' || $instance === 'main') {
+        if ($instance === null || $instance === '') {
             return $list;
         }
 
-        return array_map(fn (string $db) => "{$db}_{$instance}", $list);
+        // Postgres identifiers with a hyphen need quoting everywhere they're
+        // used (unquoted SQL parses `-` as subtraction) — a footgun this
+        // codebase already avoids for CRM's hand-rolled equivalent
+        // (CrmTool::commonsDatabaseList()). Instance slugs come from
+        // instanceSlugFromHost(), which is hyphen-heavy by design (dashed
+        // hostnames), so convert them here too rather than leaving a mixed
+        // `db_instance-with-hyphens` name.
+        $dbInstance = str_replace('-', '_', $instance);
+
+        return array_map(fn (string $db) => "{$db}_{$dbInstance}", $list);
     }
 
     /**

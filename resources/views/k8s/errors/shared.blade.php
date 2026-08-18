@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: glitchtip-admin
+  name: errors-secrets
   namespace: larakube-shared
 type: Opaque
 data:
@@ -32,17 +32,17 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: database-url
             - name: CELERY_BROKER_URL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: redis-url
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: secret-key
 ---
 apiVersion: apps/v1
@@ -72,17 +72,17 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: database-url
             - name: CELERY_BROKER_URL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: redis-url
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: secret-key
             - name: GLITCHTIP_DOMAIN
               value: "https://{{ $host }}"
@@ -95,7 +95,7 @@ spec:
             - name: GLITCHTIP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: password
             # SMTP (mail:wire): GlitchTip reads a single composed
             # django-environ URL plus the from-address — EMAIL_URL is built
@@ -157,17 +157,17 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: database-url
             - name: CELERY_BROKER_URL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: redis-url
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-admin
+                  name: errors-secrets
                   key: secret-key
             - name: GLITCHTIP_DOMAIN
               value: "https://{{ $host }}"

@@ -53,7 +53,7 @@ class FlowInitCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = $this->flowKubectl($context);
-        $host = $this->resolveToolHost(SharedClusterService::FLOW, ClusterTool::FLOW, $env, $kubectl, 'main', $this->engineLabel($engine));
+        $host = $this->resolveToolHost(SharedClusterService::FLOW, ClusterTool::FLOW, $env, $kubectl, '', $this->engineLabel($engine));
 
         $ns = $this->flowNamespace();
         $noPlex = (bool) $this->option('no-plex');

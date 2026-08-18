@@ -41,7 +41,7 @@ final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasC
     {
         return [
             'deployment' => 'record-sendrec',
-            'secret' => 'record-sendrec-smtp',
+            'secret' => 'record-smtp',
             // SendRec defaults to STARTTLS, which deadlocks on Stalwart's
             // 465 (implicit TLS) listener: plaintext EHLO vs a waiting TLS
             // handshake, 30s read timeout. Stalwart exposes no 587 listener,
@@ -82,14 +82,14 @@ final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasC
         // authorises access, the app still keeps its own accounts.
         return [
             'deployment' => 'record-sendrec',
-            'secret' => 'record-sendrec-oidc',
+            'secret' => 'record-oidc',
             'redirect_path' => '/oauth2/callback',
         ];
     }
 
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'record-sendrec-secrets', 'key' => 'db-password'];
+        return ['secret' => 'record-secrets', 'key' => 'db-password'];
     }
 
     public function commonsDatabaseList(): array

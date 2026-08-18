@@ -34,7 +34,7 @@ trait InteractsWithSign
 
     protected function readSignSecret(string $kubectl, string $ns, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'sign-documenso-secrets', $key);
+        return $this->readClusterSecretKey($kubectl, $ns, 'sign-secrets', $key);
     }
 
     protected function resolveSignHostReadOnly(string $env, ?ConfigData $config): ?string

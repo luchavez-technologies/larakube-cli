@@ -21,7 +21,7 @@ class DataShowCommand extends AbstractToolShowCommand
      * data:init) is the only place this is answered without a live
      * `kubectl get deployment` probe.
      */
-    protected function rows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    protected function rows(?string $host, string $env, string $kubectl, string $instance = ''): array
     {
         $rows = parent::rows($host, $env, $kubectl, $instance);
 
@@ -33,7 +33,7 @@ class DataShowCommand extends AbstractToolShowCommand
         return $rows;
     }
 
-    protected function afterTable(?string $host, string $env, string $instance = 'main'): void
+    protected function afterTable(?string $host, string $env, string $instance = ''): void
     {
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $kubectl = $this->dataKubectl($context);

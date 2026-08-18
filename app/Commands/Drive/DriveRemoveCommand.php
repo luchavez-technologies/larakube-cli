@@ -18,8 +18,19 @@ class DriveRemoveCommand extends AbstractToolRemoveCommand
         return [
             "Drive (oCIS) will be REMOVED from '{$env}':",
             'Deployments, Services, Ingresses and access middleware in larakube-shared',
-            'Drive file data (S3 bucket / PVC) and the drive-secrets encryption keys are PRESERVED',
+            'Drive file data (S3 bucket / PVC) and the drive-secrets encryption keys are PRESERVED — even with --purge',
         ];
+    }
+
+    /**
+     * oCIS wraps each file's encryption key with drive-secrets' rekey key —
+     * dropping the Commons bucket without also handling per-file
+     * re-encryption would orphan data no re-init could recover. See
+     * teardown()'s docblock.
+     */
+    protected function preservesBucketsOnPurge(): bool
+    {
+        return true;
     }
 
     protected function teardown(string $kubectl, string $namespace): bool

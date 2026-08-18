@@ -16,7 +16,7 @@ class SignRemoveCommand extends AbstractToolRemoveCommand
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
         return trim(Process::run(
-            "{$kubectl} get secret sign-documenso-secrets -n {$namespace} --ignore-not-found",
+            "{$kubectl} get secret sign-secrets -n {$namespace} --ignore-not-found",
         )->output()) === '';
     }
 
@@ -25,7 +25,7 @@ class SignRemoveCommand extends AbstractToolRemoveCommand
         return $this->removeResources(
             'Removing Documenso resources...',
             "{$kubectl} delete deployment/sign-documenso service/sign ingress/sign "
-            ."secret/sign-documenso-secrets -n {$namespace} --ignore-not-found",
+            ."secret/sign-secrets secret/sign-smtp secret/sign-oidc -n {$namespace} --ignore-not-found",
         );
     }
 }

@@ -38,12 +38,12 @@ trait InteractsWithVault
     /** The existing Vaultwarden admin token, or null when the secret isn't there. */
     protected function readVaultAdminToken(string $kubectl, string $ns): ?string
     {
-        $plain = $this->readClusterSecretKey($kubectl, $ns, 'vault-admin', 'plain-token');
+        $plain = $this->readClusterSecretKey($kubectl, $ns, 'vault-secrets', 'plain-token');
         if ($plain !== null) {
             return $plain;
         }
 
-        $legacy = $this->readClusterSecretKey($kubectl, $ns, 'vault-admin', 'admin-token');
+        $legacy = $this->readClusterSecretKey($kubectl, $ns, 'vault-secrets', 'admin-token');
         if ($legacy === null) {
             return null;
         }

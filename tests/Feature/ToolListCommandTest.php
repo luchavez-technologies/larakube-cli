@@ -35,7 +35,7 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'mail', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
+                ['tool' => 'mail', 'instance' => '', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
             ])),
         ),
         '*get deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
@@ -73,7 +73,7 @@ test('tool:list lists multiple registered instances of a tool as separate rows',
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'notes', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'notes', 'instance' => '', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
                 ['tool' => 'notes', 'instance' => 'docs', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'wiki.luchtech.dev'],
             ])),
         ),
@@ -86,7 +86,7 @@ test('tool:list lists multiple registered instances of a tool as separate rows',
     expect($exit)->toBe(0);
     $notesRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'notes'));
     expect($notesRows)->toHaveCount(2)
-        ->and($notesRows[0]['instance'])->toBe('main')
+        ->and($notesRows[0]['instance'])->toBe('')
         ->and($notesRows[0]['brand'])->toBe('Notes')
         ->and($notesRows[1]['instance'])->toBe('docs')
         ->and($notesRows[1]['brand'])->toBe('Notes [docs]');

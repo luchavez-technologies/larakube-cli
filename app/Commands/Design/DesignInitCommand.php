@@ -53,11 +53,7 @@ class DesignInitCommand extends Command
         $this->plexContext = $context;
         $kubectl = $this->designKubectl($context);
 
-        $domainOption = trim((string) ($this->option('domain') ?? ''));
-        $host = $domainOption !== ''
-            ? $this->sanitizeDomainInput($domainOption)
-            : $this->resolveToolHost(SharedClusterService::DESIGN, ClusterTool::DESIGN, $env, $kubectl, 'main');
-        $instance = ClusterTool::DESIGN->instanceSlugFromHost($host);
+        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::DESIGN, ClusterTool::DESIGN, $env, $kubectl);
 
         $ns = $this->designNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -104,15 +100,15 @@ class DesignInitCommand extends Command
         $s3Endpoint = $this->resolveCommonsS3Endpoints($s3Driver, 'Penpot')['public'];
 
         $backendName = ClusterTool::DESIGN->deploymentName($instance);
-        $frontendName = $instance === 'main' ? 'design-penpot-frontend' : "design-penpot-frontend-{$instance}";
-        $exporterName = $instance === 'main' ? 'design-penpot-exporter' : "design-penpot-exporter-{$instance}";
-        $serviceName = $instance === 'main' ? 'design' : "design-{$instance}";
-        $backendServiceName = $instance === 'main' ? 'design-backend' : "design-backend-{$instance}";
-        $exporterServiceName = $instance === 'main' ? 'design-exporter' : "design-exporter-{$instance}";
+        $frontendName = "design-penpot-frontend-{$instance}";
+        $exporterName = "design-penpot-exporter-{$instance}";
+        $serviceName = "design-{$instance}";
+        $backendServiceName = "design-backend-{$instance}";
+        $exporterServiceName = "design-exporter-{$instance}";
         $ingressName = $serviceName;
-        $dbSecretName = $instance === 'main' ? 'design-penpot-secrets' : "design-penpot-secrets-{$instance}";
-        $smtpSecretName = $instance === 'main' ? 'design-penpot-smtp' : "design-penpot-smtp-{$instance}";
-        $oidcSecretName = $instance === 'main' ? 'design-penpot-oidc' : "design-penpot-oidc-{$instance}";
+        $dbSecretName = "design-secrets-{$instance}";
+        $smtpSecretName = "design-smtp-{$instance}";
+        $oidcSecretName = "design-oidc-{$instance}";
         $dbName = ClusterTool::DESIGN->commonsDatabases($instance)[0];
         $dbUser = $dbName;
 
@@ -209,7 +205,7 @@ class DesignInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::DESIGN, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::DESIGN, $kubectl, $host, instance: $instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Penpot design & prototyping suite is live.');
@@ -224,7 +220,7 @@ class DesignInitCommand extends Command
     }
 
     /**
-     * Reconcile design-penpot-oidc's PENPOT_FLAGS to ClusterTool::DESIGN's
+     * Reconcile design-oidc's PENPOT_FLAGS to ClusterTool::DESIGN's
      * current baselineFlags() plus whatever integrations are verifiably
      * still wired — recomputed from scratch every run via
      * ReconcilesPenpotFlags, not unioned with whatever string happened to

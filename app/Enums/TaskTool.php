@@ -31,7 +31,7 @@ enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'tasks-vpn-only' : "tasks-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'tasks-vpn-only' : "tasks-vpn-only-{$instance}";
 
         return [
             'name' => $name,

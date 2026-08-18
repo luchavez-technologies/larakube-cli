@@ -88,7 +88,7 @@ class SupportInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKeyBase, $adminEmail) {
-            $cmd = "{$kubectl} create secret generic support-chatwoot-secrets -n {$ns} "
+            $cmd = "{$kubectl} create secret generic support-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=secret-key-base='.escapeshellarg($secretKeyBase).' '
                 .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '

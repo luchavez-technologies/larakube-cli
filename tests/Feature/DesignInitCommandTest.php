@@ -129,6 +129,27 @@ test('design:init includes penpot-exporter container when --with-exporter flag i
         ->and($appliedManifest)->toContain('PENPOT_EXPORTER_URI');
 });
 
+test('design:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function () {
+    // Regression guard for the 2026-08-17 incident: a no-flag re-run used to
+    // silently derive a fresh instance slug and create a stray, conflicting
+    // Deployment/Ingress alongside the real one. Now it must refuse outright
+    // rather than pick one — see ResolvesToolHost::resolveInstanceAwareHost().
+    $registry = [
+        ['tool' => 'design', 'instance' => 'main', 'host' => 'design.example.com'],
+        ['tool' => 'design', 'instance' => 'team2-example-com', 'host' => 'team2.example.com'],
+    ];
+
+    Process::fake([
+        '*larakube-tools-registry*' => Process::result(output: base64_encode(json_encode($registry))),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan(DesignInitCommand::class, [
+        'environment' => 'local',
+        '--no-interaction' => true,
+    ])->run();
+})->throws(RuntimeException::class, 'pass --domain=<host>');
+
 test('design:show displays Penpot deployment access info', function () {
     Process::fake([
         '*' => Process::result(output: 'installed'),

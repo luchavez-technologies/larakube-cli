@@ -73,7 +73,7 @@ trait InteractsWithGitForge
     }
 
     /**
-     * Copy registry credentials from the shared `forgejo-admin` secret in the
+     * Copy registry credentials from the shared `git-secrets` secret in the
      * `larakube-shared` namespace and create a local namespace-scoped pull-secret
      * named `gitea-login` so project pods can pull private registry images.
      */
@@ -82,15 +82,15 @@ trait InteractsWithGitForge
         $kubectl = $this->gitKubectl($context);
         $sharedNs = $this->gitNamespace();
 
-        // Read username and registry-token from forgejo-admin secret
-        $usernameRaw = Process::run("{$kubectl} get secret forgejo-admin -n {$sharedNs} -o jsonpath='{.data.username}'")->output();
-        $tokenRaw = Process::run("{$kubectl} get secret forgejo-admin -n {$sharedNs} -o jsonpath='{.data.registry-token}'")->output();
+        // Read username and registry-token from git-secrets secret
+        $usernameRaw = Process::run("{$kubectl} get secret git-secrets -n {$sharedNs} -o jsonpath='{.data.username}'")->output();
+        $tokenRaw = Process::run("{$kubectl} get secret git-secrets -n {$sharedNs} -o jsonpath='{.data.registry-token}'")->output();
 
         $username = trim((string) base64_decode(trim($usernameRaw)));
         $token = trim((string) base64_decode(trim($tokenRaw)));
 
         if ($username === '' || $token === '') {
-            $this->laraKubeWarn('Skipped Forgejo pull secret — could not read forgejo-admin credentials from '.$sharedNs);
+            $this->laraKubeWarn('Skipped Forgejo pull secret — could not read git-secrets credentials from '.$sharedNs);
 
             return;
         }

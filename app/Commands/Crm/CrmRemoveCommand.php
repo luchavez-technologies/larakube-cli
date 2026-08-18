@@ -24,13 +24,14 @@ class CrmRemoveCommand extends AbstractToolRemoveCommand
         $workerDeploymentName = "crm-twenty-worker-{$instance}";
         $serviceName = "crm-{$instance}";
         $ingressName = $serviceName;
-        $secretName = "crm-twenty-secrets-{$instance}";
-        $oidcSecretName = "crm-twenty-oidc-{$instance}";
+        $secretName = "crm-secrets-{$instance}";
+        $oidcSecretName = "crm-oidc-{$instance}";
+        $smtpSecretName = "crm-smtp-{$instance}";
 
         return $this->removeResources(
             'Removing Twenty CRM resources...',
             "{$kubectl} delete deployment/{$deploymentName} deployment/{$workerDeploymentName} service/{$serviceName} ingress/{$ingressName} "
-            ."secret/{$secretName} secret/{$oidcSecretName} -n {$namespace} --ignore-not-found",
+            ."secret/{$secretName} secret/{$oidcSecretName} secret/{$smtpSecretName} -n {$namespace} --ignore-not-found",
         );
     }
 }

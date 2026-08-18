@@ -47,7 +47,7 @@ class ErrorsShowCommand extends Command
         }
 
         $errorsUrl = $access['host'] ? "https://{$access['host']}" : '<fg=gray>host not configured — run errors:init '.$env.'</>';
-        $password = $access['password'] !== null ? $access['password'] : '<fg=gray>unknown (glitchtip-admin secret missing)</>';
+        $password = $access['password'] !== null ? $access['password'] : '<fg=gray>unknown (errors-secrets secret missing)</>';
 
         table(['Component', 'Access'], [
             ['GlitchTip URL', $errorsUrl],

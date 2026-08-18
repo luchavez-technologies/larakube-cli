@@ -99,7 +99,7 @@ test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function 
         'namespace' => 'larakube-shared',
         'also_patch' => ['crm-twenty-worker'],
         'deployment' => 'crm-twenty',
-        'secret' => 'crm-twenty-smtp',
+        'secret' => 'crm-smtp',
         'static' => [
             'EMAIL_DRIVER' => 'smtp',
         ],
@@ -128,7 +128,7 @@ test('smtpEnv()/oidcEnv() actually suffix CRM deployment names for a real instan
         'namespace' => 'larakube-shared',
         'also_patch' => ['crm-twenty-worker-crm-luchtech-dev'],
         'deployment' => 'crm-twenty-crm-luchtech-dev',
-        'secret' => 'crm-twenty-smtp-crm-luchtech-dev',
+        'secret' => 'crm-smtp-crm-luchtech-dev',
         'static' => [
             'EMAIL_DRIVER' => 'smtp',
         ],
@@ -143,6 +143,25 @@ test('smtpEnv()/oidcEnv() actually suffix CRM deployment names for a real instan
 
     $oidc = ClusterTool::CRM->oidcEnv(instance: 'crm-luchtech-dev');
     expect($oidc['deployment'])->toBe('crm-twenty-crm-luchtech-dev')
-        ->and($oidc['secret'])->toBe('crm-twenty-oidc-crm-luchtech-dev')
+        ->and($oidc['secret'])->toBe('crm-oidc-crm-luchtech-dev')
         ->and($oidc['also_patch'])->toBe(['crm-twenty-worker-crm-luchtech-dev']);
 });
+
+test('crm:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function () {
+    // Regression guard for the confirmed live 2026-08-14 duplicate-registration
+    // bug: a no-flag re-run's registry lookup under the default 'main' instance
+    // never matched CRM's always-derived-slug entries, so it silently derived
+    // a fresh host/instance and created a second, duplicate CRM deployment.
+    Process::fake([
+        '*larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ['tool' => 'crm', 'instance' => 'crm-luchtech-dev', 'host' => 'crm.luchtech.dev'],
+            ['tool' => 'crm', 'instance' => 'crm2-luchtech-dev', 'host' => 'crm2.luchtech.dev'],
+        ]))),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan(CrmInitCommand::class, [
+        'environment' => 'local',
+        '--no-interaction' => true,
+    ])->run();
+})->throws(RuntimeException::class, 'pass --domain=<host>');

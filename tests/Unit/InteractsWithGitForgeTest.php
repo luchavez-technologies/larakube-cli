@@ -104,15 +104,15 @@ test('ensureGiteaPullSecret copies credentials from shared secret to target name
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
-        "{$kubectl} get secret forgejo-admin -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
-        "{$kubectl} get secret forgejo-admin -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok123'),
+        "{$kubectl} get secret git-secrets -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
+        "{$kubectl} get secret git-secrets -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok123'),
         "{$kubectl} delete secret gitea-login -n 'demo-production' --ignore-not-found" => Process::result(output: 'deleted'),
         "{$kubectl} create secret docker-registry gitea-login -n 'demo-production' --docker-server='git.dev.test' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local" => Process::result(output: 'created'),
     ]);
 
     gitReader()->runPullSecret('', 'demo-production');
-    Process::assertRan("{$kubectl} get secret forgejo-admin -n larakube-shared -o jsonpath='{.data.username}'");
-    Process::assertRan("{$kubectl} get secret forgejo-admin -n larakube-shared -o jsonpath='{.data.registry-token}'");
+    Process::assertRan("{$kubectl} get secret git-secrets -n larakube-shared -o jsonpath='{.data.username}'");
+    Process::assertRan("{$kubectl} get secret git-secrets -n larakube-shared -o jsonpath='{.data.registry-token}'");
     Process::assertRan("{$kubectl} delete secret gitea-login -n 'demo-production' --ignore-not-found");
     Process::assertRan("{$kubectl} create secret docker-registry gitea-login -n 'demo-production' --docker-server='git.dev.test' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local");
 });

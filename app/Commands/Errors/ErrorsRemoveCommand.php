@@ -23,7 +23,7 @@ class ErrorsRemoveCommand extends AbstractToolRemoveCommand
      */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $url = $this->readClusterSecretKey($kubectl, $namespace, 'glitchtip-admin', 'database-url');
+        $url = $this->readClusterSecretKey($kubectl, $namespace, 'errors-secrets', 'database-url');
 
         return $url !== null && str_contains($url, 'glitchtip-db');
     }
@@ -35,7 +35,7 @@ class ErrorsRemoveCommand extends AbstractToolRemoveCommand
             "{$kubectl} delete deploy/glitchtip-web deploy/glitchtip-worker "
             .'deploy/glitchtip-db deploy/glitchtip-cache pvc/glitchtip-db-storage '
             .'svc/glitchtip-web svc/glitchtip-db svc/glitchtip-cache '
-            .'ingress/glitchtip secret/glitchtip-admin job/glitchtip-db-migrations '
+            .'ingress/glitchtip secret/errors-secrets job/glitchtip-db-migrations '
             ."-n {$namespace} --ignore-not-found",
         );
     }

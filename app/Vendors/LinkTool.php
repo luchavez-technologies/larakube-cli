@@ -28,7 +28,7 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSec
     {
         return [
             'deployment' => 'link-kutt',
-            'secret' => 'link-kutt-smtp',
+            'secret' => 'link-smtp',
             'static' => [
                 'MAIL_ENABLED' => 'true',
                 'MAIL_SECURE' => 'true',
@@ -47,14 +47,14 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSec
     {
         // Kutt has native OIDC support (server/passport.js) driven by
         // plain env vars — OIDC_ENABLED plus the standard trio. The
-        // manifest already mounts the link-kutt-oidc secret, so this
+        // manifest already mounts the link-oidc secret, so this
         // is what makes `sso:wire link` work end-to-end. Verified
         // against thedevs-network/kutt docs: redirect path is
         // /login/oidc, and OIDC_SCOPE defaults to "openid profile
         // email" (matches Zitadel's default scopes).
         return [
             'deployment' => 'link-kutt',
-            'secret' => 'link-kutt-oidc',
+            'secret' => 'link-oidc',
             'static' => [
                 'OIDC_ENABLED' => 'true',
             ],
@@ -69,7 +69,7 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSec
 
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'link-kutt-secrets', 'key' => 'db-password'];
+        return ['secret' => 'link-secrets', 'key' => 'db-password'];
     }
 
     public function commonsDatabaseList(): array

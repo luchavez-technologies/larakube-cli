@@ -153,7 +153,7 @@ test('tasks (Planka) does not claim OIDC wiring — it was removed from the OSS 
     // If TaskTool ever re-implements HasOidcWiring, it means either Planka
     // brought OIDC back to Community, or PLANKA Pro is intentionally in use
     // — verify against the real pinned version's source before trusting it.
-    expect(ClusterTool::TASKS->vendor())->not->toBeInstanceOf(\App\Contracts\HasOidcWiring::class);
+    expect(ClusterTool::TASKS->vendor())->not->toBeInstanceOf(App\Contracts\HasOidcWiring::class);
 });
 
 test('directus SSO carries a license caveat, pocketbase does not', function () {
@@ -201,6 +201,25 @@ test('supportsMultipleInstances() pins the 2026-08 multi-instance capability aud
         $expected = ! in_array($tool, $expectedFalse, true);
         expect($tool->supportsMultipleInstances())
             ->toBe($expected, "supportsMultipleInstances() for {$tool->value} should be ".($expected ? 'true' : 'false'));
+    }
+});
+
+test('hasInstanceAwareRemoval() only allowlists the 4 tools with real per-instance teardown', function () {
+    // Deliberately narrower than supportsMultipleInstances() above: that
+    // method's `true` default means "no known architectural blocker", not
+    // "already built". Only DATA, NOTES, CRM and DESIGN actually resolve
+    // --domain to a specific registered instance before tearing it down
+    // today — every other tool's teardown() hardcodes fixed resource names
+    // and would silently ignore --domain, deleting the one real installation
+    // regardless of what host was passed. A tool moving in or out of this
+    // list means its :remove command grew (or lost) real per-instance
+    // teardown — a deliberate capability change, not drift.
+    $expectedTrue = [ClusterTool::DATA, ClusterTool::NOTES, ClusterTool::CRM, ClusterTool::DESIGN];
+
+    foreach (ClusterTool::cases() as $tool) {
+        $expected = in_array($tool, $expectedTrue, true);
+        expect($tool->hasInstanceAwareRemoval())
+            ->toBe($expected, "hasInstanceAwareRemoval() for {$tool->value} should be ".($expected ? 'true' : 'false'));
     }
 });
 

@@ -16,7 +16,7 @@ class SupportRemoveCommand extends AbstractToolRemoveCommand
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
         return trim(Process::run(
-            "{$kubectl} get secret support-chatwoot-secrets -n {$namespace} --ignore-not-found",
+            "{$kubectl} get secret support-secrets -n {$namespace} --ignore-not-found",
         )->output()) === '';
     }
 
@@ -25,7 +25,7 @@ class SupportRemoveCommand extends AbstractToolRemoveCommand
         return $this->removeResources(
             'Removing Chatwoot resources...',
             "{$kubectl} delete deployment/support-chatwoot deployment/support-chatwoot-worker "
-            ."service/support ingress/support secret/support-chatwoot-secrets -n {$namespace} --ignore-not-found",
+            ."service/support ingress/support secret/support-secrets secret/support-smtp -n {$namespace} --ignore-not-found",
         );
     }
 }

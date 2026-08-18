@@ -13,7 +13,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-{{ ($instance ?? 'main') === 'main' ? 'crm-vpn-only' : 'crm-vpn-only-'.$instance }}@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-{{ ($instance ?? '') === '' ? 'crm-vpn-only' : 'crm-vpn-only-'.$instance }}@kubernetescrd
 @endif
 spec:
   rules:

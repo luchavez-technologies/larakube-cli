@@ -31,14 +31,14 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: record-sendrec-secrets
+                  name: record-secrets
                   key: db-password
             - name: DATABASE_URL
               value: "postgres://record_sendrec:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/record_sendrec?sslmode=disable"
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: record-sendrec-secrets
+                  name: record-secrets
                   key: jwt-secret
             - name: S3_ENDPOINT
               value: "{{ $s3Endpoint }}"
@@ -63,38 +63,38 @@ spec:
             - name: SMTP_HOST
               valueFrom:
                 secretKeyRef:
-                  name: record-sendrec-smtp
+                  name: record-smtp
                   key: SMTP_HOST
                   optional: true
             - name: SMTP_PORT
               valueFrom:
                 secretKeyRef:
-                  name: record-sendrec-smtp
+                  name: record-smtp
                   key: SMTP_PORT
                   optional: true
             - name: SMTP_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: record-sendrec-smtp
+                  name: record-smtp
                   key: SMTP_USERNAME
                   optional: true
             - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: record-sendrec-smtp
+                  name: record-smtp
                   key: SMTP_PASSWORD
                   optional: true
             - name: EMAIL_FROM_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  name: record-sendrec-smtp
+                  name: record-smtp
                   key: EMAIL_FROM_ADDRESS
                   optional: true
           # NOTE: no OIDC_* env vars here on purpose. SendRec's SSO is
           # WORKSPACE-level and configured inside the app (its .env.example
           # declares no OIDC variables at all), so env-based wiring is inert.
           # A previous revision injected OIDC_ENABLED/CLIENT_ID/CLIENT_SECRET/
-          # ISSUER from a `record-sendrec-oidc` Secret — those were invented and
+          # ISSUER from a `record-oidc` Secret — those were invented and
           # did nothing. See plans/active/sendrec-native-sso.md.
 ---
 apiVersion: v1

@@ -40,7 +40,7 @@ test('git:remove deletes the same resource set as before the component refactor'
         'service/forgejo-ssh',
         'ingress/forgejo',
         'pvc/forgejo-data',
-        'secret/forgejo-admin',
+        'secret/git-secrets',
     ];
     sort($expected);
 

@@ -85,7 +85,7 @@ class LinkInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $jwtSecret) {
-            $cmd = "{$kubectl} create secret generic link-kutt-secrets -n {$ns} "
+            $cmd = "{$kubectl} create secret generic link-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=jwt-secret='.escapeshellarg($jwtSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -";

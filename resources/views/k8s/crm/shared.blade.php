@@ -5,6 +5,7 @@ metadata:
   namespace: larakube-shared
   labels:
     app: {{ $deploymentName ?? 'crm-twenty' }}
+    larakube-tool: crm
 spec:
   replicas: 1
   strategy:
@@ -33,7 +34,7 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: db-password
             - name: FRONT_BASE_URL
               value: "https://{{ $host }}"
@@ -46,32 +47,32 @@ spec:
             - name: ACCESS_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: access-token-secret
             - name: LOGIN_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: login-token-secret
             - name: REFRESH_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: refresh-token-secret
             - name: FILE_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: file-token-secret
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: encryption-key
             - name: APP_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: encryption-key
             # Commons SeaweedFS (S3-compatible). Twenty's enum value for S3
             # storage is literally "S_3" — not "s3"/"S3" — per its own
@@ -89,12 +90,12 @@ spec:
             - name: STORAGE_S3_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: s3-key
             - name: STORAGE_S3_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: s3-secret
             # SeaweedFS denies anonymous reads by design — attachment links
             # handed to the browser must be presigned against the PUBLIC
@@ -108,19 +109,19 @@ spec:
             - name: SSO_OIDC_ISSUER
               valueFrom:
                 secretKeyRef:
-                  name: {{ $oidcSecretName ?? 'crm-twenty-oidc' }}
+                  name: {{ $oidcSecretName ?? 'crm-oidc' }}
                   key: SSO_OIDC_ISSUER
                   optional: true
             - name: SSO_OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ $oidcSecretName ?? 'crm-twenty-oidc' }}
+                  name: {{ $oidcSecretName ?? 'crm-oidc' }}
                   key: SSO_OIDC_CLIENT_ID
                   optional: true
             - name: SSO_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $oidcSecretName ?? 'crm-twenty-oidc' }}
+                  name: {{ $oidcSecretName ?? 'crm-oidc' }}
                   key: SSO_OIDC_CLIENT_SECRET
                   optional: true
           startupProbe:
@@ -188,7 +189,7 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: db-password
             - name: SERVER_URL
               value: "https://{{ $host }}"
@@ -199,32 +200,32 @@ spec:
             - name: ACCESS_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: access-token-secret
             - name: LOGIN_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: login-token-secret
             - name: REFRESH_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: refresh-token-secret
             - name: FILE_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: file-token-secret
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: encryption-key
             - name: APP_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: encryption-key
             - name: STORAGE_TYPE
               value: "S_3"
@@ -237,12 +238,12 @@ spec:
             - name: STORAGE_S3_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: s3-key
             - name: STORAGE_S3_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-twenty-secrets' }}
+                  name: {{ $secretName ?? 'crm-secrets' }}
                   key: s3-secret
             - name: STORAGE_S3_PRESIGNED_URL_ENABLED
               value: "true"

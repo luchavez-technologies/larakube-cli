@@ -31,12 +31,12 @@ spec:
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-secrets
+                  name: support-secrets
                   key: secret-key-base
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-secrets
+                  name: support-secrets
                   key: db-password
             - name: POSTGRES_DATABASE
               value: "support_chatwoot"
@@ -66,41 +66,41 @@ spec:
             - name: SMTP_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_ADDRESS
                   optional: true
             - name: SMTP_PORT
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_PORT
                   optional: true
             - name: SMTP_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_USERNAME
                   optional: true
             - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_PASSWORD
                   optional: true
             - name: MAILER_SENDER_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: MAILER_SENDER_EMAIL
                   optional: true
             - name: SMTP_DOMAIN
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_DOMAIN
                   optional: true
             # mail:wire sets this as a plain literal (kubectl set env
-            # NAME=value), never through the support-chatwoot-smtp Secret —
+            # NAME=value), never through the support-smtp Secret —
             # must stay a literal here too, or a future kubectl apply
             # conflicts with mail:wire's live value (see ClusterTool::SUPPORT's
             # smtpEnv()).
@@ -189,12 +189,12 @@ spec:
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-secrets
+                  name: support-secrets
                   key: secret-key-base
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-secrets
+                  name: support-secrets
                   key: db-password
             - name: POSTGRES_DATABASE
               value: "support_chatwoot"
@@ -210,41 +210,41 @@ spec:
             - name: SMTP_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_ADDRESS
                   optional: true
             - name: SMTP_PORT
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_PORT
                   optional: true
             - name: SMTP_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_USERNAME
                   optional: true
             - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_PASSWORD
                   optional: true
             - name: MAILER_SENDER_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: MAILER_SENDER_EMAIL
                   optional: true
             - name: SMTP_DOMAIN
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-smtp
+                  name: support-smtp
                   key: SMTP_DOMAIN
                   optional: true
             # mail:wire sets this as a plain literal (kubectl set env
-            # NAME=value), never through the support-chatwoot-smtp Secret —
+            # NAME=value), never through the support-smtp Secret —
             # must stay a literal here too, or a future kubectl apply
             # conflicts with mail:wire's live value (see ClusterTool::SUPPORT's
             # smtpEnv()).

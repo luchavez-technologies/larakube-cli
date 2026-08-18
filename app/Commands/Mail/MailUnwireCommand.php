@@ -118,7 +118,7 @@ class MailUnwireCommand extends Command
             return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
         }
 
-        $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, 'main', (string) ($this->option('engine') ?: '') ?: null) : null;
+        $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, '', (string) ($this->option('engine') ?: '') ?: null) : null;
         $schema = $tool->smtpEnv($engine);
         if ($schema === null) {
             return false;
@@ -140,7 +140,7 @@ class MailUnwireCommand extends Command
             if ($tool === ClusterTool::SSO) {
                 $ssoNs = $this->ssoNamespace();
                 $pat = $this->readSsoSecret($kubectl, $ssoNs, 'machine-pat');
-                $ssoHost = $this->resolveSsoHostReadOnly($env, null);
+                $ssoHost = $this->resolveSsoHostReadOnly($env, null, $kubectl);
                 if ($pat && $ssoHost) {
                     $this->zitadelConfigureSmtp($ssoHost, $pat, '', '', '', '', '');
                 }
@@ -149,7 +149,7 @@ class MailUnwireCommand extends Command
                 continue;
             }
 
-            $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, 'main', (string) ($this->option('engine') ?: '') ?: null) : null;
+            $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, '', (string) ($this->option('engine') ?: '') ?: null) : null;
 
             if ($tool->configuresViaConfigFile($engine)) {
                 if ($this->unwireSynapseSmtp($kubectl, $tool)) {

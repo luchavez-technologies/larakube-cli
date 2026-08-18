@@ -34,7 +34,7 @@ trait InteractsWithSupport
 
     protected function readSupportSecret(string $kubectl, string $ns, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'support-chatwoot-secrets', $key);
+        return $this->readClusterSecretKey($kubectl, $ns, 'support-secrets', $key);
     }
 
     protected function resolveSupportHostReadOnly(string $env, ?ConfigData $config): ?string

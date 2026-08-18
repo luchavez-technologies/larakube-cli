@@ -46,8 +46,7 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
     {
         return [
             'secret' => 'resume-reactive-secrets',
-            'key' => 'database-url',
-            'template' => 'postgresql://reactiveresume:{{ .password }}@postgres.larakube-plex.svc.cluster.local:5432/reactiveresume',
+            'key' => 'db-password',
         ];
     }
 

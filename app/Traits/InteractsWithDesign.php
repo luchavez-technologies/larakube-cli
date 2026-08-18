@@ -36,7 +36,7 @@ trait InteractsWithDesign
     protected function readDesignSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
     {
         $ref = ClusterTool::DESIGN->dbSecretRef($instance);
-        $secretName = $ref['secret'] ?? (($instance === null || $instance === '') ? 'design-penpot-secrets' : "design-penpot-secrets-{$instance}");
+        $secretName = $ref['secret'] ?? (($instance === null || $instance === '') ? 'design-secrets' : "design-secrets-{$instance}");
 
         return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
     }

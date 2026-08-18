@@ -54,12 +54,11 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
     {
         $instance = $this->resolveInstance($kubectl);
         // resolveInstance() can return null (unregistered, no --all/--domain
-        // — see resolveInstanceTargets()) as well as '' or the legacy literal
-        // 'main', all three meaning the same "default instance". Checking
-        // only the literal string here silently produced a trailing-dash
-        // name ("data-secrets-") for the null/'' cases (ADR 0012, amended
-        // 2026-08-15).
-        $isDefault = $instance === null || $instance === '' || $instance === 'main';
+        // — see resolveInstanceTargets()) as well as '', both meaning the
+        // same "default instance". Checking only the literal string here
+        // silently produced a trailing-dash name ("data-secrets-") for the
+        // null/'' cases (ADR 0012, amended 2026-08-15).
+        $isDefault = $instance === null || $instance === '';
         $secretName = $isDefault ? 'data-secrets' : "data-secrets-{$instance}";
         $smtpSecret = $isDefault ? 'data-smtp' : "data-smtp-{$instance}";
         $oidcSecret = $isDefault ? 'data-oidc' : "data-oidc-{$instance}";

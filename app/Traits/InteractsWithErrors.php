@@ -39,7 +39,7 @@ trait InteractsWithErrors
     protected function readErrorsAdminPassword(string $kubectl, string $ns): ?string
     {
         $out = trim(Process::run(
-            "{$kubectl} get secret glitchtip-admin -n {$ns} -o jsonpath='{.data.password}'",
+            "{$kubectl} get secret errors-secrets -n {$ns} -o jsonpath='{.data.password}'",
         )->output());
 
         return $out !== '' ? (string) base64_decode($out) : null;

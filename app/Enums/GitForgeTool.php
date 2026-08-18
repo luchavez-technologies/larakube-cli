@@ -44,7 +44,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
 
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(
@@ -57,7 +57,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
                     ['kind' => 'service', 'name' => 'forgejo-ssh'],
                     ['kind' => 'ingress', 'name' => 'forgejo'],
                     ['kind' => 'pvc', 'name' => 'forgejo-data'],
-                    ['kind' => 'secret', 'name' => 'forgejo-admin'],
+                    ['kind' => 'secret', 'name' => 'git-secrets'],
                 ],
                 backupVolume: true,
                 backupPath: '/data',
@@ -138,11 +138,11 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         return ['app_name_key' => 'FORGEJO__ui__APP_NAME'];
     }
 
-    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = ''): array
     {
-        $ns = ($instance === 'main' || $instance === null || $instance === '') ? 'larakube-shared' : "larakube-shared-{$instance}";
+        $ns = ($instance === null || $instance === '') ? 'larakube-shared' : "larakube-shared-{$instance}";
         $adminPassword = trim(Process::run(
-            "{$kubectl} get secret forgejo-admin -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
+            "{$kubectl} get secret git-secrets -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
         )->output());
         $decodedPass = $adminPassword !== '' ? (base64_decode($adminPassword, true) ?: '<unknown>') : '<unknown>';
 
@@ -156,7 +156,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'forgejo-vpn-only' : "forgejo-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'forgejo-vpn-only' : "forgejo-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -166,7 +166,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '' || $instance === 'main') ? 'forgejo' : "forgejo-{$instance}";
+        $deployment = ($instance === null || $instance === '') ? 'forgejo' : "forgejo-{$instance}";
 
         return "deployment/{$deployment} -n larakube-shared";
     }

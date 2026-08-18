@@ -3,7 +3,7 @@
 test('support manifest declares SMTP_ENABLE_STARTTLS_AUTO as a literal, not valueFrom, in both containers', function () {
     // Regression guard: mail:wire sets SMTP_ENABLE_STARTTLS_AUTO via a plain
     // literal (kubectl set env NAME=value), never through the
-    // support-chatwoot-smtp Secret. Declaring it here as valueFrom made a
+    // support-smtp Secret. Declaring it here as valueFrom made a
     // later support:init re-run fail — kubectl apply's merge re-adds
     // valueFrom on top of the live literal value mail:wire already set, and
     // the two are mutually exclusive (the exact bug confirmed live on

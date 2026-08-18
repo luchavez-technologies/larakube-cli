@@ -93,13 +93,40 @@ test('data:init records which engine an instance runs in the cluster registry', 
         ->and($dataEntry['engine'])->toBe('pocketbase');
 });
 
-test('data:init without --domain re-targets the existing main instance even when its host label differs from the service prefix', function () {
+test('data:init without --domain errors instead of guessing when an instance is already registered', function () {
+    // data:init now resolves host+instance via resolveInstanceAwareHost()
+    // (the same pattern CRM/Design/Notes already use) instead of the old
+    // split resolveToolHost()+resolveInstanceForDomain() two-step. That old
+    // split is what let a plain re-run of data:init silently derive the
+    // wrong slug and duplicate-register (confirmed live 2026-08-09: DATA's
+    // default host is pocket.luchtech.dev but the service hostPrefix is
+    // 'data', so a no-flag re-run derived 'pocket-luchtech-dev', deployed a
+    // SECOND PocketBase, and registered a duplicate row). The unified
+    // resolver closes that class of bug at the root: whenever ANY instance
+    // is already registered and no --domain is given, it refuses outright
+    // rather than picking one — see ResolvesToolHost::resolveInstanceAwareHost()
+    // and DesignInitCommandTest's equivalent guard.
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'data', 'instance' => 'main', 'aliases' => [], 'installedAt' => '2026-08-09T10:35:58+00:00', 'host' => 'pocket.luchtech.dev'],
+            ])),
+        ),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('data:init production --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
+        ->run();
+})->throws(RuntimeException::class, 'pass --domain=<host>');
+
+test('data:init --domain re-targets an already-registered instance in place, never spawning a derived duplicate', function () {
     // Regression guard (confirmed live 2026-08-09): DATA's default host is
-    // pocket.luchtech.dev but the service hostPrefix is 'data', so a plain
-    // re-run of data:init derived the slug 'pocket-luchtech-dev', deployed a
-    // SECOND PocketBase (data-pocketbase-{slug}) and registered a duplicate
-    // registry row next to 'main' — both pointing at the same host. Host
-    // identity must win: re-run = update main in place, never a new instance.
+    // pocket.luchtech.dev but the service hostPrefix is 'data', so deriving
+    // a slug from the host alone used to yield 'pocket-luchtech-dev' — a
+    // DIFFERENT instance than the one already registered for that exact
+    // host. Host identity must win: passing --domain of an already-registered
+    // host updates that entry in place, never spawns a duplicate derived-slug
+    // instance.
     $captured = null;
 
     Process::fake([
@@ -122,12 +149,14 @@ test('data:init without --domain re-targets the existing main instance even when
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init production --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
+    $this->artisan('data:init production --domain=pocket.luchtech.dev --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying PocketBase manifests...');
 
-    // The manifest applied must be main's (data-pocketbase), not a slug instance's.
-    Process::assertRan(fn ($p) => str_contains((string) $p->command, 'data-pocketbase'))
+    // The manifest applied must reuse the already-registered 'main' instance
+    // (now suffixed like any other instance, per ADR 0012's amendment), not
+    // a fresh slug derived from the host.
+    Process::assertRan(fn ($p) => str_contains((string) $p->command, 'data-pocketbase-main'))
         ->assertNotRan(fn ($p) => str_contains((string) $p->command, 'data-pocketbase-pocket-luchtech-dev'));
 
     $dataEntries = collect($captured ?? [])->where('tool', 'data');
@@ -192,17 +221,18 @@ test('data:remove --domain derives the same instance data:init would have, not m
 });
 
 test('data:remove --domain removes EVERY instance registered for the host (duplicate cleanup)', function () {
-    // Regression guard for the 2026-08-09 incident: main AND the buggy
-    // host-derived slug both registered pocket.luchtech.dev. Removal means
-    // "take down everything serving this host" — both instances must be
-    // torn down and unregistered in one command, leaving a clean slate.
+    // Regression guard for the 2026-08-09 incident: the legacy un-suffixed
+    // default instance (instance '') AND the buggy host-derived slug both
+    // registered pocket.luchtech.dev. Removal means "take down everything
+    // serving this host" — both instances must be torn down and
+    // unregistered in one command, leaving a clean slate.
     $captured = null;
     $writes = [];
 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'data', 'instance' => 'main', 'aliases' => [], 'installedAt' => '2026-08-09T10:35:58+00:00', 'host' => 'pocket.luchtech.dev'],
+                ['tool' => 'data', 'instance' => '', 'aliases' => [], 'installedAt' => '2026-08-09T10:35:58+00:00', 'host' => 'pocket.luchtech.dev'],
                 ['tool' => 'data', 'instance' => 'pocket-luchtech-dev', 'aliases' => [], 'installedAt' => '2026-08-09T10:36:31+00:00', 'host' => 'pocket.luchtech.dev'],
             ])),
         ),
@@ -237,7 +267,7 @@ test('data:remove --domain removes EVERY instance registered for the host (dupli
     $firstData = collect($writes[0])->where('tool', 'data')->first();
     $secondData = collect($writes[1])->where('tool', 'data')->first();
     expect($firstData['instance'])->toBe('pocket-luchtech-dev')
-        ->and($secondData['instance'])->toBe('main');
+        ->and($secondData['instance'])->toBe('');
 });
 
 test('data:remove --engine=pocketbase removes pocketbase resources', function () {

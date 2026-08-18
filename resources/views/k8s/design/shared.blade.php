@@ -162,6 +162,13 @@ spec:
                   name: {{ $oidcSecretName }}
                   key: PENPOT_OIDC_BASE_URI
                   optional: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1536Mi
 ---
 apiVersion: v1
 kind: Service
@@ -224,6 +231,13 @@ spec:
                   name: {{ $oidcSecretName }}
                   key: PENPOT_OIDC_NAME
                   optional: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
 ---
 apiVersion: v1
 kind: Service
@@ -269,6 +283,13 @@ spec:
               value: "https://{{ $host }}"
             - name: PENPOT_REDIS_URI
               value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
 ---
 apiVersion: v1
 kind: Service

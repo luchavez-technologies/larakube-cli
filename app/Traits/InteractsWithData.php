@@ -32,9 +32,9 @@ trait InteractsWithData
         return trim($out) !== '';
     }
 
-    protected function readDataSecret(string $kubectl, string $ns, string $key, string $instance = 'main'): ?string
+    protected function readDataSecret(string $kubectl, string $ns, string $key, string $instance = ''): ?string
     {
-        $secretName = $instance !== 'main' ? "data-secrets-{$instance}" : 'data-secrets';
+        $secretName = $instance !== '' ? "data-secrets-{$instance}" : 'data-secrets';
 
         return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
     }

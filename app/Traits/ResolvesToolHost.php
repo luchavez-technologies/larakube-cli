@@ -7,6 +7,7 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use RuntimeException;
@@ -51,7 +52,7 @@ trait ResolvesToolHost
         ClusterTool $tool,
         string $env,
         ?string $kubectl = null,
-        string $instance = 'main',
+        string $instance = '',
         ?string $labelOverride = null,
         bool $deferRegistration = false,
     ): string {
@@ -85,7 +86,7 @@ trait ResolvesToolHost
         return $this->promptForCloudHost($service, $env, $config, $tool, $kubectl, $instance, $labelOverride, $deferRegistration);
     }
 
-    protected function resolveToolAliasHosts(string $kubectl, ClusterTool $tool, string $instance = 'main'): array
+    protected function resolveToolAliasHosts(string $kubectl, ClusterTool $tool, string $instance = ''): array
     {
         $explicit = (array) ($this->option('alias') ?? []);
         $recorded = method_exists($this, 'getToolAliasHosts') ? $this->getToolAliasHosts($kubectl, $tool, $instance) : [];
@@ -171,7 +172,7 @@ trait ResolvesToolHost
         string $env,
         ?ConfigData $config,
         ?string $kubectl = null,
-        string $instance = 'main',
+        string $instance = '',
     ): string {
         // The cluster registry is checked by the caller before we get here, so
         // a stored host has already won. What's left is derivation: a tool host
@@ -197,7 +198,7 @@ trait ResolvesToolHost
         ?ConfigData $config = null,
         ?ClusterTool $tool = null,
         ?string $kubectl = null,
-        string $instance = 'main',
+        string $instance = '',
         ?string $labelOverride = null,
         bool $deferRegistration = false,
     ): string {
@@ -209,7 +210,7 @@ trait ResolvesToolHost
         // per-instance dimension, so reusing it for a named instance would
         // just recreate the exact host collision this parameter exists to
         // avoid.
-        $existing = $instance === 'main' ? ($config?->getEnvironment($env)?->hosts[$service->value] ?? null) : null;
+        $existing = $instance === '' ? ($config?->getEnvironment($env)?->hosts[$service->value] ?? null) : null;
         if ($existing) {
             return $existing;
         }
@@ -243,5 +244,102 @@ trait ResolvesToolHost
         }
 
         return $host;
+    }
+
+    /**
+     * Resolve BOTH the host and instance for a multi-instance tool's `:init`,
+     * without ever silently deriving an instance slug that doesn't match an
+     * already-registered/deployed one. Replaces the
+     * `$domain !== '' ? sanitize : resolveToolHost(...)` then raw
+     * `instanceSlugFromHost($host)` idiom, which could compute a fresh slug
+     * that pointed at nothing while a live deployment sat under a different
+     * one — confirmed live 2026-08-17 (Penpot: a stray, conflicting Ingress
+     * on the production hostname) and 2026-08-14 (Twenty CRM: a duplicate
+     * registry row, see resolveToolHost()'s docblock above).
+     *
+     * 1. `--domain` given                              → host-as-identity
+     *    (sanitizeDomainInput), instance via resolveInstanceForDomain()
+     *    (registry wins over any fresh derivation).
+     * 2. `--domain` omitted, no instance registered yet → today's normal
+     *    flow (interactive prompt / non-interactive derivation via
+     *    resolveToolHost()), instance derived the same registry-aware way.
+     * 3. `--domain` omitted, 1+ registered, interactive → ask which
+     *    instance to re-initialize, or offer to create a new one, instead
+     *    of guessing.
+     * 4. `--domain` omitted, 1+ registered, non-interactive → hard error:
+     *    pass --domain explicitly. Never silently pick one.
+     *
+     * Requires the composing class to also use RequiresFlagsWhenNonInteractive
+     * (cannotPrompt()) and DeploysClusterTool (getAllToolInstanceData(),
+     * resolveInstanceForDomain(), sanitizeDomainInput()) — the same
+     * requirement resolveToolHost() itself documents above.
+     *
+     * @return array{0: string, 1: string} [$host, $instance]
+     */
+    protected function resolveInstanceAwareHost(
+        SharedClusterService $service,
+        ClusterTool $tool,
+        string $env,
+        string $kubectl,
+        ?string $labelOverride = null,
+    ): array {
+        $domainOption = trim((string) ($this->option('domain') ?? ''));
+
+        if ($domainOption !== '') {
+            return [
+                $this->sanitizeDomainInput($domainOption),
+                $this->resolveInstanceForDomain($kubectl, $tool, $domainOption),
+            ];
+        }
+
+        $existing = $this->getAllToolInstanceData($kubectl, $tool);
+        $label = $labelOverride ?? $service->label();
+
+        if ($existing !== []) {
+            if ($this->cannotPrompt()) {
+                throw new RuntimeException(
+                    "Multiple {$label} instances may already exist — pass --domain=<host> to target one "
+                    .'(or a new host to create another) instead of guessing non-interactively.',
+                );
+            }
+
+            $options = [];
+            foreach ($existing as $entry) {
+                $inst = (string) ($entry->instance ?? 'main');
+                $entryHost = (string) ($entry->host ?? '');
+                $options[$inst] = $entryHost !== '' ? "{$inst} ({$entryHost})" : $inst;
+            }
+            $options['__new__'] = 'Create a new instance';
+
+            $choice = select(
+                label: count($existing) === 1
+                    ? "{$label} already has an instance — re-initialize it, or create a new one?"
+                    : "Which {$label} instance would you like to (re-)initialize?",
+                options: $options,
+            );
+
+            if ($choice !== '__new__') {
+                foreach ($existing as $entry) {
+                    if ((string) ($entry->instance ?? 'main') === $choice && $entry->host !== null) {
+                        return [$entry->host, $choice];
+                    }
+                }
+            }
+
+            $newDomain = text(
+                label: "What host should the new {$label} instance use in '{$env}'?",
+                placeholder: "e.g. {$service->hostPrefix()}.example.com",
+                required: true,
+            );
+
+            return [
+                $this->sanitizeDomainInput($newDomain),
+                $this->resolveInstanceForDomain($kubectl, $tool, $newDomain),
+            ];
+        }
+
+        $host = $this->resolveToolHost($service, $tool, $env, $kubectl, 'main', $labelOverride, deferRegistration: true);
+
+        return [$host, $this->resolveInstanceForDomain($kubectl, $tool, $host)];
     }
 }

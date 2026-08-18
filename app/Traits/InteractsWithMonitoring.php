@@ -37,7 +37,13 @@ trait InteractsWithMonitoring
     /** The existing Grafana admin password, or null when the secret isn't there. */
     protected function readGrafanaPassword(string $kubectl, string $ns): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'grafana-admin', 'password');
+        return $this->readClusterSecretKey($kubectl, $ns, 'monitor-secrets', 'password');
+    }
+
+    /** Grafana's Commons Postgres tenant password — read-or-generate, like the admin password above. */
+    protected function readGrafanaDbPassword(string $kubectl, string $ns): ?string
+    {
+        return $this->readClusterSecretKey($kubectl, $ns, 'monitor-secrets', 'db-password');
     }
 
     /**

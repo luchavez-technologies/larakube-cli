@@ -166,7 +166,7 @@ class ErrorsInitCommand extends Command
             return 1;
         }
 
-        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, 'glitchtip-admin', 'admin-email') ?? $this->resolveAdminEmail($host);
+        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, 'errors-secrets', 'admin-email') ?? $this->resolveAdminEmail($host);
 
         $this->registerDeployedTool(ClusterTool::ERRORS, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
@@ -184,17 +184,17 @@ class ErrorsInitCommand extends Command
     /** Check if database-url points locally or to Plex Commons */
     protected function isErrorsDatabaseLocal(string $kubectl, string $ns): bool
     {
-        $url = $this->readClusterSecretKey($kubectl, $ns, 'glitchtip-admin', 'database-url');
+        $url = $this->readClusterSecretKey($kubectl, $ns, 'errors-secrets', 'database-url');
 
         return $url !== null && str_contains($url, 'glitchtip-db');
     }
 
     /**
-     * Parse database user password from existing glitchtip-admin Secret.
+     * Parse database user password from existing errors-secrets Secret.
      */
     protected function readExistingDbPassword(string $kubectl, string $ns): ?string
     {
-        $url = $this->readClusterSecretKey($kubectl, $ns, 'glitchtip-admin', 'database-url');
+        $url = $this->readClusterSecretKey($kubectl, $ns, 'errors-secrets', 'database-url');
 
         if ($url === null) {
             return null;

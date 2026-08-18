@@ -8,7 +8,7 @@ uses(InteractsWithToolRegistry::class);
 test('secrets:unwire is registered and unwires OpenBao DB rotation for a tool', function () {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-token')),
-        '*get secret sign-documenso-secrets*' => Process::result(output: 'found'),
+        '*get secret sign-secrets*' => Process::result(output: 'found'),
         '*exec deploy/openbao-backend*' => Process::result(output: '{"data":{"rotation_period":"86400s"}}'),
         '*delete externalsecret*' => Process::result(output: 'deleted'),
         '*delete vaultdynamicsecret*' => Process::result(output: 'deleted'),
@@ -50,7 +50,7 @@ test('secrets:unwire supports unwiring git, notes, sheets, and chat tools', func
 test('secrets:unwire resolves environment context correctly for non-local environment (production)', function () {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-token')),
-        '*get secret sign-documenso-secrets*' => Process::result(output: 'found'),
+        '*get secret sign-secrets*' => Process::result(output: 'found'),
         '*exec deploy/openbao-backend*' => Process::result(output: '{"data":{"rotation_period":"86400s"}}'),
         '*delete externalsecret*' => Process::result(output: 'deleted'),
         '*delete vaultdynamicsecret*' => Process::result(output: 'deleted'),

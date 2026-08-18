@@ -120,7 +120,7 @@ class RecordInitCommand extends Command
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $jwtSecret, $clusterEnv) {
-            $cmd = "{$kubectl} create secret generic record-sendrec-secrets -n {$ns} "
+            $cmd = "{$kubectl} create secret generic record-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=jwt-secret='.escapeshellarg($jwtSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -";
@@ -138,7 +138,7 @@ class RecordInitCommand extends Command
                     $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
                         Process::run(
-                            "{$kubectl} patch secret record-sendrec-secrets -n {$ns} --type=json "
+                            "{$kubectl} patch secret record-secrets -n {$ns} --type=json "
                             .'-p=\'[{"op":"replace","path":"/data/db-password","value":"'.base64_encode($realPassword).'"}]\'',
                         );
                     }

@@ -21,7 +21,7 @@ enum FlowTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'flow-vpn-only' : "flow-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'flow-vpn-only' : "flow-vpn-only-{$instance}";
 
         return [
             'name' => $name,
