@@ -646,11 +646,12 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: grafana-admin
+  name: monitor-secrets
   namespace: larakube-shared
 type: Opaque
 data:
   password: {{ base64_encode($grafanaPassword) }}
+  db-password: {{ base64_encode($dbPassword) }}
 ---
 # Pre-wired Prometheus + Loki data sources
 apiVersion: v1
@@ -708,6 +709,24 @@ data:
         allowUiUpdates: false
         options:
           path: /var/lib/grafana/dashboards
+@if($noPlex ?? false)
+---
+# --no-plex: no Commons Postgres to lease, so Grafana keeps its own SQLite —
+# but backed by a real PVC this time, not the pod's ephemeral filesystem.
+# Survives pod recreation; NOT covered by the Commons nightly backup (there's
+# no Commons here at all) — the default (Commons Postgres) is preferred when
+# available.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-storage
+  namespace: larakube-shared
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+@endif
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -733,7 +752,7 @@ spec:
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: grafana-admin
+                  name: monitor-secrets
                   key: password
             - name: GF_SERVER_ROOT_URL
               value: "https://{{ $host }}"
@@ -747,6 +766,34 @@ spec:
 @endif
             - name: GF_PATHS_PROVISIONING
               value: /etc/grafana/provisioning
+            {{-- Grafana's own database — dashboards created/edited via the UI,
+                 folders, alert rules, users. Previously unset, so it defaulted
+                 to Grafana's built-in SQLite on the pod's ephemeral filesystem
+                 with nothing backing it — wiped on every pod recreation.
+                 Confirmed live 2026-08-18. Commons Postgres, same pattern
+                 every other Commons-backed tool uses, so it also rides along
+                 with the existing nightly Commons backup. --no-plex has no
+                 Commons to lease, so it falls back to SQLite on a real PVC
+                 (see the mount below) instead of these GF_DATABASE_* vars —
+                 Grafana defaults to SQLite at /var/lib/grafana when none are
+                 set, which is exactly what that mount backs. --}}
+@unless($noPlex ?? false)
+            - name: GF_DATABASE_TYPE
+              value: postgres
+            - name: GF_DATABASE_HOST
+              value: "postgres.{{ $plexNamespace }}.svc.cluster.local:5432"
+            - name: GF_DATABASE_NAME
+              value: grafana
+            - name: GF_DATABASE_USER
+              value: grafana
+            - name: GF_DATABASE_SSL_MODE
+              value: disable
+            - name: GF_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: monitor-secrets
+                  key: db-password
+@endunless
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources/
@@ -754,6 +801,10 @@ spec:
               mountPath: /etc/grafana/provisioning/dashboards/
             - name: dashboards
               mountPath: /var/lib/grafana/dashboards/
+@if($noPlex ?? false)
+            - name: storage
+              mountPath: /var/lib/grafana/
+@endif
           readinessProbe:
             httpGet:
               path: /api/health
@@ -776,6 +827,11 @@ spec:
         - name: dashboards
           configMap:
             name: grafana-dashboards
+@if($noPlex ?? false)
+        - name: storage
+          persistentVolumeClaim:
+            claimName: grafana-storage
+@endif
 ---
 apiVersion: v1
 kind: Service

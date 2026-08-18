@@ -3,18 +3,22 @@
 namespace App\Commands\Monitor;
 
 use App\Enums\ClusterTool;
+use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithMonitoring;
+use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -23,7 +27,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MonitorInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, InteractsWithPlex, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'monitor:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Grafana host.}
@@ -36,6 +40,7 @@ class MonitorInitCommand extends Command
         {--with-logs  : Force deploying Loki + Promtail log aggregation}
         {--no-traces  : Skip deploying Tempo trace storage (~450MB RAM saved)}
         {--with-traces : Force deploying Tempo trace storage}
+        {--no-plex   : Bypass Plex Commons — Grafana keeps its own database on a local PVC instead of Commons Postgres}
         {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Deploy the cluster-wide monitoring stack (Grafana, Prometheus, Loki, Tempo) into larakube-shared';
@@ -51,6 +56,7 @@ class MonitorInitCommand extends Command
     {
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
+        $this->plexContext = $context;
         $kubectl = $this->monitoringKubectl($context);
         $ns = $this->monitoringNamespace();
 
@@ -72,6 +78,47 @@ class MonitorInitCommand extends Command
 
         $password = $this->resolveGrafanaPassword($kubectl, $ns);
 
+        // Grafana's own database (dashboards created/edited via the UI, not
+        // the dashboards-as-code provisioned into the 'LaraKube' folder) was
+        // previously unpersisted — no PVC, no external DB, just Grafana's
+        // built-in SQLite on the pod's ephemeral filesystem, wiped on every
+        // pod recreation. Confirmed live 2026-08-18 — a teammate's dashboard
+        // work was lost this way. Default: a real Commons Postgres tenant,
+        // same pattern every other Commons-backed tool already uses — it also
+        // rides along with the existing nightly Commons backup for free.
+        // --no-plex is the fallback for a cluster with no Plex Commons at
+        // all: still-persistent (a PVC survives pod recreation, unlike the
+        // old ephemeral-only setup) but plain SQLite, uninvolved in any
+        // backup routine — mirrors git:init's own --no-plex story.
+        $noPlex = (bool) $this->option('no-plex');
+        $dbPassword = null;
+
+        if (! $noPlex) {
+            $dbPassword = $this->readGrafanaDbPassword($kubectl, $ns) ?? Str::random(24);
+
+            if (! $this->ensureCommons(['postgres'])) {
+                return 1;
+            }
+
+            // Once OpenBao's database secrets engine already owns the
+            // 'grafana' static role (because `secrets:wire --tool=monitor`
+            // was run at some point), defer to ITS current password instead
+            // of re-affirming a locally-cached one that may predate OpenBao's
+            // own rotation — see resolveManagedDbPassword()'s docblock (the
+            // same gap took Forgejo down 2026-08-15). This is a READ, not a
+            // write: it never registers anything with OpenBao itself — only
+            // `secrets:wire` does that. `monitor:init` doesn't know or care
+            // whether OpenBao exists otherwise; see ADR-adjacent note in
+            // GitInitCommand — `{tool}:init` must never call
+            // registerStaticRole()/isOpenBaoBootstrapped() to INITIATE
+            // rotation, only to avoid clobbering it if already active.
+            $dbPassword = $this->resolveManagedDbPassword($kubectl, 'grafana', $dbPassword);
+
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'grafana', $dbPassword)) {
+                return 1;
+            }
+        }
+
         $vpnOnly = (bool) $this->option('vpn-only');
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::MONITOR);
 
@@ -92,6 +139,9 @@ class MonitorInitCommand extends Command
             'appName' => $branding['appName'],
             'logoUrl' => $branding['logoUrl'],
             'grafanaPassword' => $password,
+            'noPlex' => $noPlex,
+            'dbPassword' => $dbPassword,
+            'plexNamespace' => $noPlex ? null : $this->plexNamespace(),
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
@@ -187,6 +237,9 @@ class MonitorInitCommand extends Command
         $this->laraKubeInfo('✅ Monitoring stack is live.');
         $this->newLine();
         $this->line("  <fg=gray>Grafana:</>            <fg=blue>https://{$host}</>  <fg=gray>admin / {$password}</>");
+        $this->line($noPlex
+            ? '  <fg=gray>Grafana database:</>  SQLite on a local PVC (not backed up — run with the default Commons Postgres for that).'
+            : '  <fg=gray>Grafana database:</>  Commons Postgres (persists dashboards/users across restarts, covered by the nightly Commons backup).');
         $this->line("  <fg=gray>Prometheus:</>         prometheus.{$ns}.svc.cluster.local:9090  <fg=gray>(in-cluster)</>");
         if ($withLogs) {
             $this->line("  <fg=gray>Loki:</>               loki.{$ns}.svc.cluster.local:3100  <fg=gray>(in-cluster)</>");
@@ -361,15 +414,32 @@ class MonitorInitCommand extends Command
             $files[] = 'tempo-service-graph.json';
         }
 
+        // resource_path() resolves inside the phar when running from the
+        // compiled binary — kubectl is a separate process and can't read
+        // phar:// paths, so each file is copied out to a real tmp path first.
+        $tmpFiles = [];
+        foreach ($files as $file) {
+            $tmp = tempnam(sys_get_temp_dir(), 'lk_dash_');
+            copy("{$dir}/{$file}", $tmp);
+            $tmpFiles[$file] = $tmp;
+        }
+
         $fromFiles = implode(' ', array_map(
-            fn (string $file) => '--from-file='.escapeshellarg("{$dir}/{$file}"),
-            $files,
+            fn (string $file, string $tmp) => '--from-file='.escapeshellarg("{$file}={$tmp}"),
+            array_keys($tmpFiles),
+            $tmpFiles,
         ));
 
-        return $this->withSpin(
+        $result = $this->withSpin(
             'Syncing Grafana dashboards...',
             fn () => Process::timeout(70)->run("{$kubectl} create configmap grafana-dashboards {$fromFiles} -n {$ns} --dry-run=client -o yaml | {$kubectl} apply -f - --request-timeout=60s")->successful(),
         );
+
+        foreach ($tmpFiles as $tmp) {
+            @unlink($tmp);
+        }
+
+        return $result;
     }
 
     protected function resolveEnvironment(): string

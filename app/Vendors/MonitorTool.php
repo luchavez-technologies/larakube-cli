@@ -3,9 +3,12 @@
 namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
+use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasVpnWiring;
@@ -13,7 +16,7 @@ use App\Contracts\HasWhiteLabel;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the MONITOR category — 'Monitoring Stack'. Only Grafana. */
-final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, HasOidcWiring, HasPresenceProbe, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel
+final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel
 {
     public function getLabel(): string
     {
@@ -23,6 +26,34 @@ final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, Has
     public function baseDeploymentName(): string
     {
         return 'grafana';
+    }
+
+    /**
+     * Grafana's own database (dashboards created/edited via the UI, folders,
+     * alert rules, users) — previously unset, so it defaulted to Grafana's
+     * built-in SQLite file on the pod's ephemeral filesystem. Nothing backed
+     * it with a PVC, so it was wiped on every pod recreation (a rollout
+     * restart, a node reboot, anything). Confirmed live 2026-08-18 — a
+     * teammate's dashboard work was lost this way. Dashboards-as-code (the
+     * JSON files monitor:init provisions into the 'LaraKube' folder) were
+     * never affected — those are re-read from a ConfigMap on every boot.
+     */
+    public function commonsDatabaseList(): array
+    {
+        return ['grafana'];
+    }
+
+    public function dbSecretRef(): ?array
+    {
+        return ['secret' => 'monitor-secrets', 'key' => 'db-password'];
+    }
+
+    public function openbaoSyncConfig(): array
+    {
+        return [
+            'secret' => 'monitor-secrets',
+            'keys' => ['GRAFANA_DB_PASSWORD'],
+        ];
     }
 
     /** No 'port' key in vars — a real, pre-existing quirk, not an omission. */
@@ -102,7 +133,7 @@ final class MonitorTool implements ClusterToolVendor, HasDeploymentBaseName, Has
     {
         $ns = ($instance === null || $instance === '') ? 'larakube-monitoring' : "larakube-monitoring-{$instance}";
         $passVal = trim(Process::run(
-            "{$kubectl} get secret grafana-admin -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
+            "{$kubectl} get secret monitor-secrets -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
         )->output());
         $decodedPass = $passVal !== '' ? (base64_decode($passVal, true) ?: '<unknown>') : '<unknown>';
 

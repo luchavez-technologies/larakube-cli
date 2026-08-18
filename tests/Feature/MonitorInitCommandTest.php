@@ -4,6 +4,11 @@ use Illuminate\Support\Facades\Process;
 
 test('monitor:init --no-logs deploys metrics-only stack without loki, promtail and tempo', function () {
     Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
@@ -33,6 +38,11 @@ test('monitor:init --no-logs deploys metrics-only stack without loki, promtail a
 
 test('monitor:init --with-logs deploys full stack including loki and promtail', function () {
     Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
@@ -57,6 +67,11 @@ test('monitor:init --with-logs deploys full stack including loki and promtail', 
 
 test('monitor:init --with-traces --with-logs deploys the full stack including tempo', function () {
     Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
@@ -79,6 +94,11 @@ test('monitor:init --with-traces --with-logs deploys the full stack including te
 
 test('monitor:init defaults to metrics-only in non-interactive mode', function () {
     Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
@@ -98,6 +118,11 @@ test('monitor:init defaults to metrics-only in non-interactive mode', function (
 
 test('monitor:init --no-logs removes a previously deployed log aggregation stack and restarts grafana', function () {
     Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
@@ -128,6 +153,11 @@ test('monitor:init --no-logs removes a previously deployed log aggregation stack
 
 test('monitor:init --no-traces removes a previously deployed tempo stack and restarts grafana', function () {
     Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
@@ -154,6 +184,11 @@ test('monitor:init --no-traces removes a previously deployed tempo stack and res
 
 test('monitor:init re-running with matching flags is a no-op — no deletions, no grafana restart', function () {
     Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
@@ -175,10 +210,111 @@ test('monitor:init re-running with matching flags is a no-op — no deletions, n
     Process::assertNotRan('*rollout restart*');
 });
 
+test('monitor:init allocates a real Commons Postgres database for Grafana instead of leaving it on ephemeral SQLite', function () {
+    // Previously monitor:init never touched Postgres at all — Grafana's own
+    // database (UI-created dashboards, folders, alert rules, users) lived
+    // only in its built-in SQLite on the pod's ephemeral filesystem, wiped
+    // on every pod recreation. Confirmed live 2026-08-18 — a teammate's
+    // dashboard work was lost this way. Dashboards-as-code (the JSON files
+    // provisioned into the 'LaraKube' folder) were never affected by this.
+    Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*create configmap*' => Process::result(output: 'configmap created'),
+        '*get secret*' => Process::result(output: '', exitCode: 1),
+        '*get deployment*' => Process::result(output: '', exitCode: 1),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+    ]);
+
+    $this->artisan('monitor:init local --no-logs')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("Allocating database 'grafana' in the Commons");
+
+    Process::assertRan(fn ($p) => str_contains($p->command, 'exec -i -n')
+        && str_contains($p->command, 'larakube-plex')
+        && str_contains($p->command, 'deploy/postgres'));
+});
+
+test('monitor:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function () {
+    // Same design principle as GitInitCommandTest's sibling: {tool}:init
+    // must not know or care whether OpenBao is installed — it just writes
+    // the locally-generated password directly into monitor-secrets (see
+    // the Deployment template's db-password key, rendered from the PHP
+    // variable). Only secrets:wire may register a tool's DB password as an
+    // OpenBao static role. This test previously asserted the OPPOSITE
+    // (monitor:init reconciling monitor-secrets-db itself) — that assertion
+    // encoded the exact bug this design principle exists to prevent.
+    Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*create configmap*' => Process::result(output: 'configmap created'),
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret*' => Process::result(output: '', exitCode: 1),
+        '*port-forward*' => Process::result(output: ''),
+        '*get deployment*' => Process::result(output: '', exitCode: 1),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+        '*' => Process::result(),
+    ]);
+
+    // Only resolveManagedDbPassword()'s read-only lookup should ever hit
+    // OpenBao's HTTP API from :init — nothing here is a static-role write.
+    Http::fake(function (Illuminate\Http\Client\Request $request) {
+        $path = parse_url($request->url(), PHP_URL_PATH);
+
+        return match (true) {
+            $path === '/v1/sys/mounts' => Http::response(['data' => ['database/' => ['type' => 'database']]]),
+            $path === '/v1/database/static-creds/grafana' => Http::response(['data' => []]),
+            default => Http::response(['data' => []]),
+        };
+    });
+
+    $this->artisan('monitor:init local --no-logs')
+        ->assertExitCode(0);
+
+    Process::assertNotRan(fn ($p) => str_contains($p->command, 'externalsecret'));
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/'));
+});
+
+test('monitor:init --no-plex skips Commons Postgres entirely and uses a local PVC for SQLite instead', function () {
+    // The fallback for a cluster with no Plex Commons at all — mirrors
+    // git:init's own --no-plex story. Still genuinely persistent (a PVC
+    // survives pod recreation, unlike the pre-fix ephemeral-only setup),
+    // just not backed by Commons Postgres or its nightly backup.
+    Process::fake([
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*create configmap*' => Process::result(output: 'configmap created'),
+        '*get secret*' => Process::result(output: '', exitCode: 1),
+        '*get deployment*' => Process::result(output: '', exitCode: 1),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+    ]);
+
+    $this->artisan('monitor:init local --no-logs --no-plex')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('SQLite on a local PVC')
+        ->doesntExpectOutputToContain("Allocating database 'grafana' in the Commons");
+
+    Process::assertNotRan(fn ($p) => str_contains($p->command, 'exec')
+        && str_contains($p->command, 'deploy/postgres'));
+    Process::assertNotRan(fn ($p) => str_contains($p->command, 'get configmap plex-commons'));
+});
+
 test('monitoring shared blade view conditionally renders optional components based on withLogs and withTraces', function () {
     $metricsOnlyManifest = view('k8s.monitoring.shared', [
         'host' => 'grafana.dev.test',
         'grafanaPassword' => 'secret123',
+        'dbPassword' => 'db-secret123',
+        'plexNamespace' => 'larakube-plex',
         'isLocal' => true,
         'vpnOnly' => false,
         'withLogs' => false,
@@ -189,6 +325,11 @@ test('monitoring shared blade view conditionally renders optional components bas
         ->toContain('app: kube-state-metrics')
         ->toContain('app: grafana')
         ->toContain('name: grafana-dashboard-provider')
+        // Grafana's own DB must be Commons Postgres, not left on ephemeral
+        // SQLite — see monitor:init's dedicated allocation test.
+        ->toContain('GF_DATABASE_TYPE')
+        ->toContain('value: postgres')
+        ->toContain('db-password')
         ->not->toContain('app: loki')
         ->not->toContain('app: promtail')
         ->not->toContain('app: tempo')
@@ -199,6 +340,8 @@ test('monitoring shared blade view conditionally renders optional components bas
     $fullManifest = view('k8s.monitoring.shared', [
         'host' => 'grafana.dev.test',
         'grafanaPassword' => 'secret123',
+        'dbPassword' => 'db-secret123',
+        'plexNamespace' => 'larakube-plex',
         'isLocal' => true,
         'vpnOnly' => false,
         'withLogs' => true,
