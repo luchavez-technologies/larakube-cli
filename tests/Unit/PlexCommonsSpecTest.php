@@ -21,7 +21,7 @@ function plexSpec(): object
     };
 }
 
-test('the default spec enables only Postgres + Redis', function () {
+test('the default spec enables only Postgres + Redis', function (): void {
     $p = plexSpec();
     $spec = $p->defaultCommonsSpec();
 
@@ -37,7 +37,7 @@ test('the default spec enables only Postgres + Redis', function () {
         ->and($spec['services']['mariadb']['enabled'])->toBeFalse();
 });
 
-test('Commons service images/ports derive from the driver enums (no drift)', function () {
+test('Commons service images/ports derive from the driver enums (no drift)', function (): void {
     // Every service is present in the shape (enabled or not), so its image/port
     // is assertable regardless of the default.
     $spec = plexSpec()->defaultCommonsSpec()['services'];
@@ -58,7 +58,7 @@ test('Commons service images/ports derive from the driver enums (no drift)', fun
         ->and($spec['minio']['port'])->toBe(StorageDriver::MINIO->port());
 });
 
-test('enabling Meilisearch in the spec turns it on', function () {
+test('enabling Meilisearch in the spec turns it on', function (): void {
     $p = plexSpec();
 
     // No --with-meili flag — Meili is just another service you enable.
@@ -67,7 +67,7 @@ test('enabling Meilisearch in the spec turns it on', function () {
     expect($p->enabledCommonsServices($spec))->toBe(['postgres', 'redis', 'meilisearch']);
 });
 
-test('normalize fills defaults for a partial spec and respects an explicit disable', function () {
+test('normalize fills defaults for a partial spec and respects an explicit disable', function (): void {
     $p = plexSpec();
 
     $spec = $p->normalizeCommonsSpec([
@@ -83,7 +83,7 @@ test('normalize fills defaults for a partial spec and respects an explicit disab
         ->and($spec['services']['redis']['port'])->toBe(6379);
 });
 
-test('normalize is idempotent so export → init --from is lossless', function () {
+test('normalize is idempotent so export → init --from is lossless', function (): void {
     $p = plexSpec();
 
     $once = $p->normalizeCommonsSpec(['services' => ['meilisearch' => ['enabled' => true], 'seaweedfs' => ['enabled' => true]]]);
@@ -91,7 +91,7 @@ test('normalize is idempotent so export → init --from is lossless', function (
     expect($p->normalizeCommonsSpec($once))->toEqual($once);
 });
 
-test('the pooler sub-key defaults off for Postgres and is absent from non-pooling services', function () {
+test('the pooler sub-key defaults off for Postgres and is absent from non-pooling services', function (): void {
     $spec = plexSpec()->defaultCommonsSpec()['services'];
 
     expect($spec['postgres']['pooler'])->toBe([
@@ -114,7 +114,7 @@ test('the pooler sub-key defaults off for Postgres and is absent from non-poolin
         ->and($spec['garage'])->not->toHaveKey('pooler');
 });
 
-test('turning the pooler on in a partial spec is preserved, not defaulted back off', function () {
+test('turning the pooler on in a partial spec is preserved, not defaulted back off', function (): void {
     $p = plexSpec();
 
     $spec = $p->normalizeCommonsSpec([
@@ -129,7 +129,7 @@ test('turning the pooler on in a partial spec is preserved, not defaulted back o
     expect($p->normalizeCommonsSpec($spec))->toEqual($spec);
 });
 
-test('every DatabaseDriver case answers the pooler methods so a new engine cannot silently skip them', function () {
+test('every DatabaseDriver case answers the pooler methods so a new engine cannot silently skip them', function (): void {
     foreach (DatabaseDriver::cases() as $driver) {
         expect($driver->supportsPooling())->toBeBool();
 
@@ -145,7 +145,7 @@ test('every DatabaseDriver case answers the pooler methods so a new engine canno
     }
 });
 
-test('Postgres pooler image is pinned, never floating', function () {
+test('Postgres pooler image is pinned, never floating', function (): void {
     expect(DatabaseDriver::POSTGRESQL->poolerImage())
         ->toContain(':')
         ->not->toEndWith(':latest');

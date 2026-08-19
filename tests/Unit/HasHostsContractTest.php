@@ -11,30 +11,28 @@ use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 
-test('every host-publishing component declares its overrideable services', function () {
+test('every host-publishing component declares its overrideable services', function (): void {
     // Cloud-overrideable components — must have entries in getHostServices.
     expect(LaravelFeature::REVERB->getHostServices())->toHaveKey('reverb')
         ->and(SearchDriver::MEILISEARCH->getHostServices())->toHaveKey('meilisearch')
         ->and(SearchDriver::TYPESENSE->getHostServices())
-        ->toHaveKey('typesense')
-        ->toHaveKey('typesense-dashboard')
+        ->toHaveKeys(['typesense', 'typesense-dashboard'])
         ->and(StorageDriver::MINIO->getHostServices())
-        ->toHaveKey('s3')
-        ->toHaveKey('s3-console');
+        ->toHaveKeys(['s3', 's3-console']);
 });
 
-test('local-console components opt out of host overrides via empty getHostServices', function () {
+test('local-console components opt out of host overrides via empty getHostServices', function (): void {
     // DB and Cache consoles are local-only with baked-in .kube domains;
     // they MUST NOT show up in the env wizard's host-override prompts.
-    expect(DatabaseDriver::MYSQL->getHostServices())->toBe([])
-        ->and(DatabaseDriver::POSTGRESQL->getHostServices())->toBe([])
-        ->and(CacheDriver::REDIS->getHostServices())->toBe([])
-        ->and(CacheDriver::MEMCACHED->getHostServices())->toBe([])
-        ->and(ServerVariation::FRANKENPHP->getHostServices())->toBe([])
-        ->and(Blueprint::FILAMENT->getHostServices())->toBe([]);
+    expect(DatabaseDriver::MYSQL->getHostServices())->toBeEmpty()
+        ->and(DatabaseDriver::POSTGRESQL->getHostServices())->toBeEmpty()
+        ->and(CacheDriver::REDIS->getHostServices())->toBeEmpty()
+        ->and(CacheDriver::MEMCACHED->getHostServices())->toBeEmpty()
+        ->and(ServerVariation::FRANKENPHP->getHostServices())->toBeEmpty()
+        ->and(Blueprint::FILAMENT->getHostServices())->toBeEmpty();
 });
 
-test('databases publish no ingress host — consoles are shared companions, not per-project routes', function () {
+test('databases publish no ingress host — consoles are shared companions, not per-project routes', function (): void {
     $config = ConfigData::from([
         'name' => 'demo',
         'databases' => ['mysql'],
@@ -46,15 +44,15 @@ test('databases publish no ingress host — consoles are shared companions, not 
 
     // The DB console moved to the shared CompanionDriver apps (phpmyadmin.kube
     // in larakube-companions); the driver itself no longer publishes a host in any env.
-    expect(DatabaseDriver::MYSQL->getHosts($config, 'local'))->toBe([])
-        ->and(DatabaseDriver::MYSQL->getHosts($config, 'production'))->toBe([]);
+    expect(DatabaseDriver::MYSQL->getHosts($config, 'local'))->toBeEmpty()
+        ->and(DatabaseDriver::MYSQL->getHosts($config, 'production'))->toBeEmpty();
 
     // ...so nothing DB-shaped leaks into the merged host map either.
     expect(array_keys($config->getAllHosts('local')))->not->toContain('mysql.demo.kube');
     expect(array_keys($config->getAllHosts('production')))->not->toContain('mysql.demo.kube');
 });
 
-test('DerivesHostsFromServices trait honours per-env overrides through getServiceHost', function () {
+test('DerivesHostsFromServices trait honours per-env overrides through getServiceHost', function (): void {
     $config = ConfigData::from([
         'name' => 'demo',
         'features' => ['reverb'],
@@ -73,7 +71,7 @@ test('DerivesHostsFromServices trait honours per-env overrides through getServic
     expect($hosts)->toHaveKey('ws.example.com', 'Reverb WebSocket');
 });
 
-test('DerivesHostsFromServices trait falls back to prefix pattern when no override', function () {
+test('DerivesHostsFromServices trait falls back to prefix pattern when no override', function (): void {
     $config = ConfigData::from([
         'name' => 'demo',
         'features' => ['reverb'],
@@ -87,7 +85,7 @@ test('DerivesHostsFromServices trait falls back to prefix pattern when no overri
     expect($hosts)->toHaveKey('reverb-example.com', 'Reverb WebSocket');
 });
 
-test('storage driver exposes both s3 and console as overrideable services', function () {
+test('storage driver exposes both s3 and console as overrideable services', function (): void {
     $config = ConfigData::from([
         'name' => 'demo',
         'objectStorage' => 'minio',
@@ -109,7 +107,7 @@ test('storage driver exposes both s3 and console as overrideable services', func
         ->toHaveKey('s3-console-example.com', 'MinIO Console');
 });
 
-test('storage driver skips its manifests in envs where it is externally managed', function () {
+test('storage driver skips its manifests in envs where it is externally managed', function (): void {
     $config = ConfigData::from([
         'name' => 'demo',
         'objectStorage' => 'minio',
@@ -126,7 +124,7 @@ test('storage driver skips its manifests in envs where it is externally managed'
         ->and($files)->not->toHaveKey('production');
 });
 
-test('database and cache consoles never appear in getAllHosts — shared companions own them now', function () {
+test('database and cache consoles never appear in getAllHosts — shared companions own them now', function (): void {
     $config = ConfigData::from([
         'name' => 'demo',
         'databases' => ['mysql'],
@@ -140,7 +138,7 @@ test('database and cache consoles never appear in getAllHosts — shared compani
         ->and($hosts)->not->toContain('redis.demo.kube');
 });
 
-test('getAllHosts includes additionalWebHosts, labeled distinctly from the primary application host', function () {
+test('getAllHosts includes additionalWebHosts, labeled distinctly from the primary application host', function (): void {
     $config = ConfigData::from([
         'name' => 'demo',
         'environments' => [
@@ -158,7 +156,7 @@ test('getAllHosts includes additionalWebHosts, labeled distinctly from the prima
         ->and($hosts)->toHaveKey('mybrand.io', 'Web (alias)');
 });
 
-test('only client-facing endpoints are promptable for custom hosts', function () {
+test('only client-facing endpoints are promptable for custom hosts', function (): void {
     // Reverb (ws) and S3 are worth a vanity subdomain prompt...
     expect(LaravelFeature::REVERB)->toBeInstanceOf(HasPromptableHosts::class)
         ->and(LaravelFeature::REVERB->getPromptableHostServices())->toHaveKey('reverb')
@@ -176,7 +174,7 @@ test('only client-facing endpoints are promptable for custom hosts', function ()
 
 });
 
-test('all HasHosts implementers conform to the new contract', function () {
+test('all HasHosts implementers conform to the new contract', function (): void {
     // Catches future enums that implement HasHosts but forget getHostServices.
     $implementers = [
         LaravelFeature::REVERB,
@@ -189,7 +187,7 @@ test('all HasHosts implementers conform to the new contract', function () {
     ];
 
     foreach ($implementers as $component) {
-        expect($component)->toBeInstanceOf(HasHosts::class);
-        expect($component->getHostServices())->toBeArray();
+        expect($component)->toBeInstanceOf(HasHosts::class)
+            ->and($component->getHostServices())->toBeArray();
     }
 });

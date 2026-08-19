@@ -33,7 +33,7 @@ function directusDocuments(string $rendered): array
     );
 }
 
-test('directus manifest renders as valid multi-document YAML for main and a named instance', function () {
+test('directus manifest renders as valid multi-document YAML for main and a named instance', function (): void {
     foreach ([[], ['deployName' => 'data-directus-blog', 'secretName' => 'data-secrets-blog', 'smtpSecretName' => 'data-smtp-blog', 'oidcSecretName' => 'data-oidc-blog', 'dbName' => 'data_directus_blog', 'bucket' => 'data-directus-storage-blog']] as $overrides) {
         $documents = directusDocuments(directusManifest($overrides));
 
@@ -45,20 +45,20 @@ test('directus manifest renders as valid multi-document YAML for main and a name
     }
 });
 
-test('directus main instance keeps the original unsuffixed resource names', function () {
+test('directus main instance keeps the original unsuffixed resource names', function (): void {
     $documents = directusDocuments(directusManifest());
 
     $deployment = collect($documents)->firstWhere('kind', 'Deployment');
     $service = collect($documents)->firstWhere('kind', 'Service');
     $ingress = collect($documents)->firstWhere('kind', 'Ingress');
 
-    expect($deployment['metadata']['name'])->toBe('data-directus');
-    expect($service['metadata']['name'])->toBe('data-directus');
-    expect($ingress['metadata']['name'])->toBe('data-directus');
-    expect($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('data-directus');
+    expect($deployment['metadata']['name'])->toBe('data-directus')
+        ->and($service['metadata']['name'])->toBe('data-directus')
+        ->and($ingress['metadata']['name'])->toBe('data-directus')
+        ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('data-directus');
 });
 
-test('directus named instance gets distinct Deployment/Service/Ingress names, not shared "data"', function () {
+test('directus named instance gets distinct Deployment/Service/Ingress names, not shared "data"', function (): void {
     // Regression guard: before this fix, directus.blade.php and its shared
     // k8s.data.ingress partial hardcoded "data-directus"/"data"/"data_directus"
     // regardless of instance — two Directus instances collided on Deployment,
@@ -77,10 +77,10 @@ test('directus named instance gets distinct Deployment/Service/Ingress names, no
     $service = collect($documents)->firstWhere('kind', 'Service');
     $ingress = collect($documents)->firstWhere('kind', 'Ingress');
 
-    expect($deployment['metadata']['name'])->toBe('data-directus-blog');
-    expect($service['metadata']['name'])->toBe('data-directus-blog');
-    expect($ingress['metadata']['name'])->toBe('data-directus-blog');
-    expect($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('data-directus-blog');
+    expect($deployment['metadata']['name'])->toBe('data-directus-blog')
+        ->and($service['metadata']['name'])->toBe('data-directus-blog')
+        ->and($ingress['metadata']['name'])->toBe('data-directus-blog')
+        ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('data-directus-blog');
 
     $rendered = directusManifest([
         'deployName' => 'data-directus-blog',

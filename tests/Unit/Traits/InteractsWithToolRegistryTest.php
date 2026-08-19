@@ -14,7 +14,7 @@ function capturedRegistryWrite(string $command): ?array
     return json_decode(file_get_contents($m[1]), true);
 }
 
-test('getRegisteredTools parses the flat list from the cluster secret', function () {
+test('getRegisteredTools parses the flat list from the cluster secret', function (): void {
     $trait = new class
     {
         use InteractsWithToolRegistry;
@@ -39,7 +39,7 @@ test('getRegisteredTools parses the flat list from the cluster secret', function
         ->and($tools[0]['installedAt'])->toBe('2026-08-01T09:00:00+00:00');
 });
 
-test('getRegisteredTools returns empty array when secret is missing', function () {
+test('getRegisteredTools returns empty array when secret is missing', function (): void {
     $trait = new class
     {
         use InteractsWithToolRegistry;
@@ -57,7 +57,7 @@ test('getRegisteredTools returns empty array when secret is missing', function (
     expect($trait->get('kubectl'))->toBeArray()->toBeEmpty();
 });
 
-test('findToolInstanceEntry filters the flat list by tool and instance', function () {
+test('findToolInstanceEntry filters the flat list by tool and instance', function (): void {
     $trait = new class
     {
         use InteractsWithToolRegistry;
@@ -83,7 +83,7 @@ test('findToolInstanceEntry filters the flat list by tool and instance', functio
         ->and($trait->find('kubectl', ClusterTool::SSO, 'blog-example-com'))->toBeNull();
 });
 
-test('registerTool appends a new tool entry to the flat list and saves it via a temp file', function () {
+test('registerTool appends a new tool entry to the flat list and saves it via a temp file', function (): void {
     $trait = new class
     {
         use InteractsWithToolRegistry;
@@ -117,7 +117,7 @@ test('registerTool appends a new tool entry to the flat list and saves it via a 
         ->and($captured[0]['engine'])->toBe('zitadel');
 });
 
-test('registerTool merges metadata into an existing matching entry instead of duplicating it', function () {
+test('registerTool merges metadata into an existing matching entry instead of duplicating it', function (): void {
     $trait = new class
     {
         use InteractsWithToolRegistry;
@@ -144,14 +144,13 @@ test('registerTool merges metadata into an existing matching entry instead of du
         },
     ]);
 
-    expect($trait->register('kubectl', ClusterTool::SSO))->toBeTrue();
-
-    expect($captured)->toHaveCount(1)
+    expect($trait->register('kubectl', ClusterTool::SSO))->toBeTrue()
+        ->and($captured)->toHaveCount(1)
         ->and($captured[0]['host'])->toBe('sso.new.example.com')
         ->and($captured[0]['installedAt'])->toBe('2026-08-01T09:00:00+00:00');
 });
 
-test('unregisterTool removes only the matching tool+instance entry and saves it', function () {
+test('unregisterTool removes only the matching tool+instance entry and saves it', function (): void {
     $trait = new class
     {
         use InteractsWithToolRegistry;
@@ -179,13 +178,12 @@ test('unregisterTool removes only the matching tool+instance entry and saves it'
         },
     ]);
 
-    expect($trait->unregister('kubectl', ClusterTool::SSO))->toBeTrue();
-
-    expect($captured)->toHaveCount(1)
+    expect($trait->unregister('kubectl', ClusterTool::SSO))->toBeTrue()
+        ->and($captured)->toHaveCount(1)
         ->and($captured[0]['tool'])->toBe('data');
 });
 
-test('two different tools coexist in the same flat list without colliding', function () {
+test('two different tools coexist in the same flat list without colliding', function (): void {
     $trait = new class
     {
         use InteractsWithToolRegistry;

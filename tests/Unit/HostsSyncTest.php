@@ -28,7 +28,7 @@ function hostsHelper(): object
     };
 }
 
-test('applyHostsBlock appends a block and preserves existing content', function () {
+test('applyHostsBlock appends a block and preserves existing content', function (): void {
     $result = hostsHelper()->apply("127.0.0.1 localhost\n", '# LaraKube: app', '127.0.0.1 app.test');
 
     expect($result)->toContain('127.0.0.1 localhost')      // existing entries kept
@@ -36,7 +36,7 @@ test('applyHostsBlock appends a block and preserves existing content', function 
         ->and($result)->toContain('127.0.0.1 app.test');
 });
 
-test('applyHostsBlock is idempotent (no duplicate blocks on repeat)', function () {
+test('applyHostsBlock is idempotent (no duplicate blocks on repeat)', function (): void {
     $h = hostsHelper();
     $once = $h->apply("127.0.0.1 localhost\n", '# LaraKube: app', '127.0.0.1 app.test');
     $twice = $h->apply($once, '# LaraKube: app', '127.0.0.1 app.test');
@@ -45,7 +45,7 @@ test('applyHostsBlock is idempotent (no duplicate blocks on repeat)', function (
         ->and(substr_count($twice, '# LaraKube: app'))->toBe(1);
 });
 
-test('applyHostsBlock replaces an existing block in place (updates, no dupes)', function () {
+test('applyHostsBlock replaces an existing block in place (updates, no dupes)', function (): void {
     $h = hostsHelper();
     $first = $h->apply("127.0.0.1 localhost\n", '# LaraKube: app', '127.0.0.1 old.test');
     $second = $h->apply($first, '# LaraKube: app', '127.0.0.1 new.test ws.new.test');
@@ -56,7 +56,7 @@ test('applyHostsBlock replaces an existing block in place (updates, no dupes)', 
         ->and($second)->toContain('127.0.0.1 localhost');    // unrelated entries kept
 });
 
-test('isWsl detects the WSL_DISTRO_NAME environment variable', function () {
+test('isWsl detects the WSL_DISTRO_NAME environment variable', function (): void {
     $original = getenv('WSL_DISTRO_NAME');
 
     try {

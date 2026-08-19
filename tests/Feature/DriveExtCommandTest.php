@@ -6,7 +6,7 @@ use App\Commands\Drive\DriveExtShowCommand;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-test('drive:ext:add installs specified extension non-interactively', function () {
+test('drive:ext:add installs specified extension non-interactively', function (): void {
     Http::fake([
         'https://marketplace.owncloud.com/*' => Http::response([
             'apps' => [
@@ -29,7 +29,7 @@ test('drive:ext:add installs specified extension non-interactively', function ()
         ->expectsOutputToContain("Web extension 'excalidraw' installed.");
 });
 
-test('drive:ext:show displays installed and available extensions in a table', function () {
+test('drive:ext:show displays installed and available extensions in a table', function (): void {
     Http::fake([
         'https://marketplace.owncloud.com/*' => Http::response([
             'apps' => [
@@ -51,7 +51,7 @@ test('drive:ext:show displays installed and available extensions in a table', fu
         ->expectsOutputToContain("oCIS Web Extensions Status ('local'):");
 });
 
-test('drive:ext:remove deletes specified extension', function () {
+test('drive:ext:remove deletes specified extension', function (): void {
     Process::fake([
         '*ls -1*' => Process::result(output: "excalidraw\n"),
         '*rm -rf*' => Process::result(output: ''),

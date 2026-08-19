@@ -21,6 +21,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Data\StackData;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function cloudCreateRunner(): CloudCreateCommand
 {
@@ -78,23 +79,23 @@ function cloudCreateRunner(): CloudCreateCommand
     };
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 });
 
-test('promptStackName defaults to "{name}-{kind}" — no environment, no larakube- prefix', function () {
+test('promptStackName defaults to "{name}-{kind}" — no environment, no larakube- prefix', function (): void {
     $runner = cloudCreateRunner();
 
     expect($runner->stackName('myapp', 'vps'))->toBe('myapp-vps')
         ->and($runner->stackName('myapp', 'managed'))->toBe('myapp-managed');
 });
 
-test('promptStackName falls back to "standalone" when no name base is given', function () {
+test('promptStackName falls back to "standalone" when no name base is given', function (): void {
     expect(cloudCreateRunner()->stackName(null, 'vps'))->toBe('standalone-vps')
         ->and(cloudCreateRunner()->stackName('', 'vps'))->toBe('standalone-vps');
 });
 
-test('registerStack stores kind exactly as given — "managed", never the provider-specific "doks"', function () {
+test('registerStack stores kind exactly as given — "managed", never the provider-specific "doks"', function (): void {
     $runner = cloudCreateRunner();
     $runner->register('myapp-managed', 'managed');
 
@@ -104,7 +105,7 @@ test('registerStack stores kind exactly as given — "managed", never the provid
         ->and($stacks['myapp-managed']->kind)->toBe('managed');
 });
 
-test('stacksOfKind actually finds a registered managed stack — the bug this naming fix closes', function () {
+test('stacksOfKind actually finds a registered managed stack — the bug this naming fix closes', function (): void {
     // Before the fix, createManaged() registered kind: 'doks' while
     // stacksOfKind() filtered on 'managed' — this assertion would have failed
     // (empty array) had that mismatch still been in place, since a stack
@@ -115,10 +116,10 @@ test('stacksOfKind actually finds a registered managed stack — the bug this na
 
     expect($runner->ofKind('managed'))->toHaveCount(1)
         ->and($runner->ofKind('vps'))->toHaveCount(1)
-        ->and(array_key_exists('myapp-managed', $runner->ofKind('managed')))->toBeTrue();
+        ->and($runner->ofKind('managed'))->toHaveKey('myapp-managed');
 });
 
-test('findExpectedStack returns null when nothing is registered yet, and the exact match once it is', function () {
+test('findExpectedStack returns null when nothing is registered yet, and the exact match once it is', function (): void {
     $runner = cloudCreateRunner();
 
     expect($runner->expected('myapp', 'vps'))->toBeNull();
@@ -132,13 +133,13 @@ test('findExpectedStack returns null when nothing is registered yet, and the exa
         ->and($runner->expected('myapp', 'managed'))->toBeNull();
 });
 
-test('findExpectedStack returns null with no name base at all', function () {
+test('findExpectedStack returns null with no name base at all', function (): void {
     expect(cloudCreateRunner()->expected(null, 'vps'))->toBeNull();
 });
 
-test('resolveEnvironment outside a project carries the raw argument through as the standalone name instead of discarding it', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-cloudcreate-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('resolveEnvironment outside a project carries the raw argument through as the standalone name instead of discarding it', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     $originalDir = getcwd();
     chdir($tempDir);
 
@@ -151,13 +152,13 @@ test('resolveEnvironment outside a project carries the raw argument through as t
             ->and($standaloneName)->toBe('mycompany-infra');
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('resolveEnvironment inside a project binds the environment and returns no standalone name', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-cloudcreate-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('resolveEnvironment inside a project binds the environment and returns no standalone name', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     $projectConfig = ConfigData::from(['name' => 'myapp', 'environments' => ['local' => []]]);
     $projectConfig->setPath($tempDir);
     $projectConfig->saveToFile($tempDir);
@@ -175,6 +176,6 @@ test('resolveEnvironment inside a project binds the environment and returns no s
             ->and($standaloneName)->toBeNull();
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });

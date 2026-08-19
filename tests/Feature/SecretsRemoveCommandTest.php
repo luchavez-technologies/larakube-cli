@@ -2,13 +2,13 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('secrets:remove is registered', function () {
+test('secrets:remove is registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('secrets:remove');
 });
 
-test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the shared CRDs', function () {
+test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the shared CRDs', function (): void {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);
@@ -41,7 +41,7 @@ test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the sha
         || str_contains($process->command, 'external-secrets.io'));
 });
 
-test('secrets:remove --purge deletes the PVC and bootstrap secret', function () {
+test('secrets:remove --purge deletes the PVC and bootstrap secret', function (): void {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);

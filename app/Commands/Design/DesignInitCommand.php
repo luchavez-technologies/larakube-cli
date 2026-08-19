@@ -23,6 +23,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class DesignInitCommand extends Command
 {
@@ -137,7 +138,7 @@ class DesignInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbSecretName, $dbName, $dbPassword, $secretKey, $clusterEnv) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbSecretName, $dbName, $dbPassword, $secretKey, $clusterEnv): void {
             $cmd = "{$kubectl} create secret generic {$dbSecretName} -n {$ns} "
                 .'--from-literal=password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=secret-key='.escapeshellarg($secretKey).' '
@@ -192,14 +193,15 @@ class DesignInitCommand extends Command
             's3SecretKey' => $s3Creds['secret'],
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-design-penpot-'.$instance.'.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-design-penpot-'.$instance.'.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Penpot manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $backendName, 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

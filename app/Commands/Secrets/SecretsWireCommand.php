@@ -18,6 +18,7 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SecretsWireCommand extends Command
 {
@@ -235,7 +236,7 @@ class SecretsWireCommand extends Command
         $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ref['namespace'], "{$ref['secret']}-db");
 
         $registered = false;
-        $this->withSpin("Registering {$tool->getLabel()}'s DB password as an OpenBao static role...", function () use ($kubectl, $tenant, $rotationPeriod, &$registered) {
+        $this->withSpin("Registering {$tool->getLabel()}'s DB password as an OpenBao static role...", function () use ($kubectl, $tenant, $rotationPeriod, &$registered): void {
             $registered = $this->registerStaticRole($kubectl, $tenant, username: $tenant, rotationPeriod: $rotationPeriod);
         });
 
@@ -245,7 +246,7 @@ class SecretsWireCommand extends Command
             return false;
         }
 
-        $this->withSpin("Wiring OpenBao rotation into {$ref['secret']}...", function () use ($kubectl, $tenant, $ref) {
+        $this->withSpin("Wiring OpenBao rotation into {$ref['secret']}...", function () use ($kubectl, $tenant, $ref): void {
             $manifest = view('k8s.secrets.eso-db-static', [
                 'namespace' => $ref['namespace'],
                 'secretsNamespace' => $this->secretsNamespace(),
@@ -255,10 +256,11 @@ class SecretsWireCommand extends Command
                 'passwordTemplate' => $ref['template'] ?? null,
             ])->render();
 
-            $tmp = sys_get_temp_dir().'/larakube-eso-db-static-'.$tenant.'.yaml';
+            $temporaryDirectory = TemporaryDirectory::make();
+            $tmp = $temporaryDirectory->path('larakube-eso-db-static-'.$tenant.'.yaml');
             file_put_contents($tmp, $manifest);
             Process::run("{$kubectl} apply -f ".escapeshellarg($tmp));
-            @unlink($tmp);
+            $temporaryDirectory->delete();
         });
 
         // The manifest above is byte-identical across rotations (only the
@@ -274,7 +276,7 @@ class SecretsWireCommand extends Command
         // restart" restarts the pod against a password that's already stale.
         // Confirmed live 2026-07-30: it took Documenso down a second time.
         $synced = false;
-        $this->withSpin("Waiting for {$ref['secret']} to sync...", function () use ($kubectl, $ref, $refreshTimeBefore, &$synced) {
+        $this->withSpin("Waiting for {$ref['secret']} to sync...", function () use ($kubectl, $ref, $refreshTimeBefore, &$synced): void {
             $synced = $this->waitForExternalSecretSynced($kubectl, $ref['namespace'], "{$ref['secret']}-db", $refreshTimeBefore);
         });
 

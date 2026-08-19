@@ -23,7 +23,7 @@ function monitoringExporters(): object
     };
 }
 
-test('isMonitoringActive reflects whether the prometheus Deployment exists', function () {
+test('isMonitoringActive reflects whether the prometheus Deployment exists', function (): void {
     Process::fake(['kubectl get deployment prometheus -n larakube-shared --no-headers' => 'prometheus   1/1   1   1   5d']);
     expect(monitoringExporters()->active())->toBeTrue();
 
@@ -31,7 +31,7 @@ test('isMonitoringActive reflects whether the prometheus Deployment exists', fun
     expect(monitoringExporters()->active())->toBeFalse();
 });
 
-test('isMonitoringActive scopes to the given kubectl prefix', function () {
+test('isMonitoringActive scopes to the given kubectl prefix', function (): void {
     Process::fake(['kubectl --context=do-sfo3 get deployment prometheus -n larakube-shared --no-headers' => 'prometheus   1/1   1   1   5d']);
 
     expect(monitoringExporters()->active('kubectl --context=do-sfo3'))->toBeTrue();

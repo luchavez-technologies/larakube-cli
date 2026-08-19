@@ -36,7 +36,7 @@ function hostsProcessHelper(): object
     };
 }
 
-test('resolveIngressIp prefers the LoadBalancer IP over the node InternalIP', function () {
+test('resolveIngressIp prefers the LoadBalancer IP over the node InternalIP', function (): void {
     Process::fake([
         "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'" => '203.0.113.10',
     ]);
@@ -44,7 +44,7 @@ test('resolveIngressIp prefers the LoadBalancer IP over the node InternalIP', fu
     expect(hostsProcessHelper()->ingressIp())->toBe('203.0.113.10');
 });
 
-test('resolveIngressIp falls back to the node InternalIP when there is no LoadBalancer IP', function () {
+test('resolveIngressIp falls back to the node InternalIP when there is no LoadBalancer IP', function (): void {
     Process::fake([
         "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'" => Process::result(output: '', exitCode: 1),
         "kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'" => '172.31.5.2',
@@ -53,7 +53,7 @@ test('resolveIngressIp falls back to the node InternalIP when there is no LoadBa
     expect(hostsProcessHelper()->ingressIp())->toBe('172.31.5.2');
 });
 
-test('resolveIngressIp falls back to 127.0.0.1 when neither is available', function () {
+test('resolveIngressIp falls back to 127.0.0.1 when neither is available', function (): void {
     Process::fake([
         "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'" => Process::result(output: '', exitCode: 1),
         "kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'" => Process::result(output: '', exitCode: 1),
@@ -62,12 +62,12 @@ test('resolveIngressIp falls back to 127.0.0.1 when neither is available', funct
     expect(hostsProcessHelper()->ingressIp())->toBe('127.0.0.1');
 });
 
-test('dnsmasqCoversKube is false when the platform-specific dnsmasq marker file is absent', function () {
+test('dnsmasqCoversKube is false when the platform-specific dnsmasq marker file is absent', function (): void {
     $tld = 'nonexistent-tld-'.uniqid();
     expect(hostsProcessHelper()->dnsmasqCovers($tld))->toBeFalse();
 });
 
-test('writeToEtcHosts stages content in a random tempnam path, not a hardcoded predictable one', function () {
+test('writeToEtcHosts stages content in a random tempnam path, not a hardcoded predictable one', function (): void {
     Process::fake([
         'sudo cp *' => Process::result(exitCode: 0),
     ]);
@@ -83,7 +83,7 @@ test('writeToEtcHosts stages content in a random tempnam path, not a hardcoded p
     });
 });
 
-test('writeToEtcHosts returns false when sudo cp fails', function () {
+test('writeToEtcHosts returns false when sudo cp fails', function (): void {
     Process::fake([
         'sudo cp *' => Process::result(exitCode: 1),
     ]);

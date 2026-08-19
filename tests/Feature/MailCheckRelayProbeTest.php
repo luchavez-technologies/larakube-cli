@@ -35,41 +35,41 @@ function fakeRelayEnv(string $opensslOutput, ?string $routeList = null): void
     ]);
 }
 
-test('probeRelay reports ok when the relay accepts AUTH (235)', function () {
+test('probeRelay reports ok when the relay accepts AUTH (235)', function (): void {
     fakeRelayEnv("250-hello\r\n334 VXNlcm5hbWU6\r\n235 2.7.0 Authentication successful\r\n221 bye\r\n");
 
     [$status, $where, $hint] = invokeProbeRelay();
 
-    expect($status)->toBe('ok');
-    expect($where)->toContain('smtp-relay.brevo.com:2525');
-    expect($where)->toContain('authenticating');
+    expect($status)->toBe('ok')
+        ->and($where)->toContain('smtp-relay.brevo.com:2525')
+        ->toContain('authenticating');
 });
 
-test('probeRelay reports fail when the relay rejects the credentials (535)', function () {
+test('probeRelay reports fail when the relay rejects the credentials (535)', function (): void {
     fakeRelayEnv("250-hello\r\n334 VXNlcm5hbWU6\r\n535 5.7.8 Authentication failed\r\n");
 
     [$status, $where, $hint] = invokeProbeRelay();
 
-    expect($status)->toBe('fail');
-    expect($where)->toContain('535');
-    expect($hint)->toContain('xsmtpsib-');
+    expect($status)->toBe('fail')
+        ->and($where)->toContain('535')
+        ->and($hint)->toContain('xsmtpsib-');
 });
 
-test('probeRelay reports fail when the submission port is unreachable (no banner)', function () {
+test('probeRelay reports fail when the submission port is unreachable (no banner)', function (): void {
     fakeRelayEnv(''); // openssl timed out / no connection → empty output
 
     [$status, $where, $hint] = invokeProbeRelay();
 
-    expect($status)->toBe('fail');
-    expect($where)->toContain('unreachable');
-    expect($hint)->toContain('2525');
+    expect($status)->toBe('fail')
+        ->and($where)->toContain('unreachable')
+        ->and($hint)->toContain('2525');
 });
 
-test('probeRelay warns when the secret exists but Stalwart has no route', function () {
+test('probeRelay warns when the secret exists but Stalwart has no route', function (): void {
     fakeRelayEnv('235 ok', routeList: '[]'); // route query returns no matching route
 
     [$status, $where, $hint] = invokeProbeRelay();
 
-    expect($status)->toBe('warn');
-    expect($where)->toContain('no Stalwart route');
+    expect($status)->toBe('warn')
+        ->and($where)->toContain('no Stalwart route');
 });

@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Http;
 
-test('update command detects if version is up to date', function () {
+test('update command detects if version is up to date', function (): void {
     config(['app.version' => 'v0.2.0']);
 
     Http::fake([
@@ -18,7 +18,7 @@ test('update command detects if version is up to date', function () {
         ->assertExitCode(0);
 });
 
-test('update command handles update availability and cancellation', function () {
+test('update command handles update availability and cancellation', function (): void {
     config(['app.version' => 'v0.1.0']);
 
     Http::fake([
@@ -33,7 +33,7 @@ test('update command handles update availability and cancellation', function () 
         ->assertExitCode(0);
 });
 
-test('update command fails gracefully on GitHub API failure', function () {
+test('update command fails gracefully on GitHub API failure', function (): void {
     Http::fake([
         'api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest' => Http::response([], 500),
     ]);
@@ -43,7 +43,7 @@ test('update command fails gracefully on GitHub API failure', function () {
         ->assertExitCode(1);
 });
 
-test('update --canary warns and can be cancelled without ever hitting the network', function () {
+test('update --canary warns and can be cancelled without ever hitting the network', function (): void {
     // No Http::fake() entry for releases/tags/canary — if the command reached
     // it anyway, Http::fake()'s default (successful, empty) response would
     // mask the assertion instead of failing loudly, so also assert no request
@@ -58,7 +58,7 @@ test('update --canary warns and can be cancelled without ever hitting the networ
     Http::assertNothingSent();
 });
 
-test('update --canary fails gracefully on GitHub API failure', function () {
+test('update --canary fails gracefully on GitHub API failure', function (): void {
     Http::fake([
         'api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary' => Http::response([], 500),
     ]);
@@ -69,7 +69,7 @@ test('update --canary fails gracefully on GitHub API failure', function () {
         ->assertExitCode(1);
 });
 
-test('update defers to Homebrew instead of self-replacing when the running binary lives under a Cellar', function () {
+test('update defers to Homebrew instead of self-replacing when the running binary lives under a Cellar', function (): void {
     $originalArgv0 = $_SERVER['argv'][0] ?? null;
     $_SERVER['argv'][0] = '/opt/homebrew/Cellar/larakube/0.31.0/bin/larakube';
 

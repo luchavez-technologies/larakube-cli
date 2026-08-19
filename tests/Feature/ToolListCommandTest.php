@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-test('tool:list detects tools live on the cluster even if missing from registry secret and auto-reconciles their host', function () {
+test('tool:list detects tools live on the cluster even if missing from registry secret and auto-reconciles their host', function (): void {
     Process::fake([
         // Empty registry secret
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
@@ -27,7 +27,7 @@ test('tool:list detects tools live on the cluster even if missing from registry 
         ->and($mailRow['url'])->toBe('https://send.luchtech.dev');
 });
 
-test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool', function () {
+test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool', function (): void {
     // Regression guard: this rotation column replaces the ad-hoc, now-deleted
     // "Cluster Tools using Plex" section that used to live on plex:show —
     // confirmed live 2026-08-02 that section had drifted (still said 'gitea'
@@ -69,7 +69,7 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
         ->and($dnsRow['rotation'])->toBe('N/A');
 });
 
-test('tool:list lists multiple registered instances of a tool as separate rows', function () {
+test('tool:list lists multiple registered instances of a tool as separate rows', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
@@ -92,7 +92,7 @@ test('tool:list lists multiple registered instances of a tool as separate rows',
         ->and($notesRows[1]['brand'])->toBe('Notes [docs]');
 });
 
-test('tool:list surfaces OpenBao KV secret sync status for wired and unwired tools', function () {
+test('tool:list surfaces OpenBao KV secret sync status for wired and unwired tools', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
@@ -128,7 +128,7 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
     expect($dnsRow['sync'])->toBe('N/A');
 });
 
-test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, not just the bare legacy name', function () {
+test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, not just the bare legacy name', function (): void {
     // Regression guard: secrets:init's static KV-mirror sweep deliberately
     // skips creating the bare-named ExternalSecret once a tool's dynamic
     // '{secret}-db' one exists (secrets:wire's own, to avoid racing it) — so
@@ -160,7 +160,7 @@ test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, 
     expect($designRow['sync'])->toBe('synced');
 });
 
-test('tool:list --installed filters out uninstalled tools', function () {
+test('tool:list --installed filters out uninstalled tools', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
@@ -179,7 +179,7 @@ test('tool:list --installed filters out uninstalled tools', function () {
         ->not->toContain('analytics');
 });
 
-test('tool:list never advertises unshipped tools (analytics, uptime)', function () {
+test('tool:list never advertises unshipped tools (analytics, uptime)', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
@@ -195,7 +195,7 @@ test('tool:list never advertises unshipped tools (analytics, uptime)', function 
         ->not->toContain('uptime');
 });
 
-test('tool:list reports SSO as wired for a CLI-OIDC tool once sso:wire records its forgejo-oidc secret', function () {
+test('tool:list reports SSO as wired for a CLI-OIDC tool once sso:wire records its forgejo-oidc secret', function (): void {
     // Regression guard (live 2026-08-12): Forgejo's OIDC wiring lives in its
     // DB (`forgejo admin auth add-oauth`), so the sso:wire CLI-OIDC path is
     // what writes the `forgejo-oidc` secret — tool:list's probe depends on it.

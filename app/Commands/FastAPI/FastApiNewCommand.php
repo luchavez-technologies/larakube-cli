@@ -158,7 +158,7 @@ class FastApiNewCommand extends Command
         $this->generateFastApiScaffolding($projectDir, $database, $cacheDriver, $objectStorage);
 
         // 7. Generate K8s manifests
-        $this->withSpin('Orchestrating FastAPI infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating FastAPI infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

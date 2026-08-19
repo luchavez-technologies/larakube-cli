@@ -1,8 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('pipeline:test guides installation when act is missing', function () {
+test('pipeline:test guides installation when act is missing', function (): void {
     Process::fake([
         'which act' => Process::result(output: '', exitCode: 1),
     ]);
@@ -13,7 +14,7 @@ test('pipeline:test guides installation when act is missing', function () {
         ->expectsOutputToContain('Install it via Homebrew: brew install nektos/tap/act');
 });
 
-test('pipeline:test fails when docker is not running', function () {
+test('pipeline:test fails when docker is not running', function (): void {
     Process::fake([
         'which act' => '/usr/local/bin/act',
         'docker info' => Process::result(output: 'error', exitCode: 1),
@@ -24,10 +25,9 @@ test('pipeline:test fails when docker is not running', function () {
         ->expectsOutputToContain('Docker daemon is not running. Please start Docker and try again.');
 });
 
-test('pipeline:test runs act builder locally with mock secrets', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-pipe-test-'.uniqid();
-    mkdir($tempDir, 0755, true);
-    $tempDir = realpath($tempDir) ?: $tempDir;
+test('pipeline:test runs act builder locally with mock secrets', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = realpath($temporaryDirectory->path()) ?: $temporaryDirectory->path();
 
     // Create a .larakube.json
     file_put_contents($tempDir.'/.larakube.json', json_encode(['name' => 'demo']));
@@ -55,6 +55,6 @@ test('pipeline:test runs act builder locally with mock secrets', function () {
         Process::assertRan(fn ($process) => str_contains($process->command, 'act') && str_contains($process->command, '--secret-file'));
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });

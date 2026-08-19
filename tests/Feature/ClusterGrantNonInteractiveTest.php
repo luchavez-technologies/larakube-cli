@@ -12,24 +12,25 @@
 
 use App\State;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 
     // Run outside any project so resolveClusterTarget takes the standalone
     // (literal namespace + --context) branch — the path a Cloud job uses.
-    $this->tempDir = sys_get_temp_dir().'/larakube-clustergrant-ni-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    exec('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
-test('a missing --name fails clearly under --no-interaction instead of prompting', function () {
+test('a missing --name fails clearly under --no-interaction instead of prompting', function (): void {
     $this->artisan('cluster:grant', [
         'environment' => 'blue-production',
         '--context' => 'do-nyc1-blue',
@@ -39,7 +40,7 @@ test('a missing --name fails clearly under --no-interaction instead of prompting
     expect(State::$lastError)->toContain('--name=');
 });
 
-test('a missing namespace/context target fails clearly, not with a hang', function () {
+test('a missing namespace/context target fails clearly, not with a hang', function (): void {
     // No environment arg and no project → standalone branch with nothing to
     // target. Must error, not prompt.
     $this->artisan('cluster:grant', ['--name' => 'lloyd', '--no-interaction' => true])
@@ -48,7 +49,7 @@ test('a missing namespace/context target fails clearly, not with a hang', functi
     expect(State::$lastError)->toContain('namespace');
 });
 
-test('--json on a failing grant emits one parseable failure object', function () {
+test('--json on a failing grant emits one parseable failure object', function (): void {
     $this->artisan('cluster:grant', [
         'environment' => 'blue-production',
         '--context' => 'do-nyc1-blue',

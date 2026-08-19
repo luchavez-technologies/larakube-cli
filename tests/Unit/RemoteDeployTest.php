@@ -26,11 +26,11 @@ function remoteDeploy(): object
     };
 }
 
-test('the per-host context name matches what cloud:init creates', function () {
+test('the per-host context name matches what cloud:init creates', function (): void {
     expect(remoteDeploy()->remoteContextName('159.223.43.95'))->toBe('larakube-159.223.43.95');
 });
 
-test('the production build cross-compiles for the amd64 node and targets the deploy stage', function () {
+test('the production build cross-compiles for the amd64 node and targets the deploy stage', function (): void {
     $cmd = remoteDeploy()->buildProductionImageCommand('app-one:abc123', '/proj/Dockerfile.php', '/proj');
 
     expect($cmd)
@@ -41,7 +41,7 @@ test('the production build cross-compiles for the amd64 node and targets the dep
         ->toContain("-t 'app-one:abc123'");
 });
 
-test('normalizeArch maps uname / kubectl / override tokens to a docker platform', function () {
+test('normalizeArch maps uname / kubectl / override tokens to a docker platform', function (): void {
     $r = remoteDeploy();
 
     // amd64 family
@@ -58,7 +58,7 @@ test('normalizeArch maps uname / kubectl / override tokens to a docker platform'
         ->and($r->normalizeArch(null))->toBeNull();
 });
 
-test('the production build honours the resolved platform (native arm64 for a Pi)', function () {
+test('the production build honours the resolved platform (native arm64 for a Pi)', function (): void {
     $cmd = remoteDeploy()->buildProductionImageCommand('app-one:abc123', '/proj/Dockerfile.php', '/proj', 'linux/arm64');
 
     expect($cmd)
@@ -66,7 +66,7 @@ test('the production build honours the resolved platform (native arm64 for a Pi)
         ->not->toContain('linux/amd64');
 });
 
-test('the registry build honours the resolved platform and defaults to amd64', function () {
+test('the registry build honours the resolved platform and defaults to amd64', function (): void {
     $r = remoteDeploy();
 
     expect($r->buildAndPushImageCommand('ghcr.io/me/app:abc', '/proj/Dockerfile.php', '/proj', 'linux/arm64'))
@@ -76,7 +76,7 @@ test('the registry build honours the resolved platform and defaults to amd64', f
         ->toContain('--platform linux/amd64');   // unchanged default
 });
 
-test('a dotenv secret path is passed as a BuildKit --secret flag when provided', function () {
+test('a dotenv secret path is passed as a BuildKit --secret flag when provided', function (): void {
     $cmd = remoteDeploy()->buildProductionImageCommand('app:prod', '/proj/Dockerfile.php', '/proj', 'linux/amd64', '/tmp/lk_dotenv_build_xyz');
 
     expect($cmd)
@@ -86,13 +86,13 @@ test('a dotenv secret path is passed as a BuildKit --secret flag when provided',
         ->not->toContain('--build-arg');
 });
 
-test('no --secret flag appears when no dotenv path is given', function () {
+test('no --secret flag appears when no dotenv path is given', function (): void {
     $cmd = remoteDeploy()->buildProductionImageCommand('app:prod', '/proj/Dockerfile.php', '/proj');
 
     expect($cmd)->not->toContain('--secret');
 });
 
-test('the sideload streams the saved image into the remote k3s containerd', function () {
+test('the sideload streams the saved image into the remote k3s containerd', function (): void {
     $r = remoteDeploy();
     $ssh = $r->sshBaseCommand('larakube', '159.223.43.95', 22, '/home/me/.ssh/id_rsa');
     $cmd = $r->sideloadOverSshCommand('app-one:abc123', $ssh);
@@ -102,7 +102,7 @@ test('the sideload streams the saved image into the remote k3s containerd', func
         ->and($cmd)->toContain("'sudo k3s ctr images import -'");
 });
 
-test('apply rewrites the local :latest tag to the sideloaded tag, on the env context', function () {
+test('apply rewrites the local :latest tag to the sideloaded tag, on the env context', function (): void {
     $cmd = remoteDeploy()->applyWithImageRewriteCommand(
         'larakube-159.223.43.95', '/proj/.infrastructure/k8s/overlays/production', 'app-one:latest', 'app-one:abc123',
     );
@@ -115,7 +115,7 @@ test('apply rewrites the local :latest tag to the sideloaded tag, on the env con
         ->toContain("kubectl --context 'larakube-159.223.43.95' apply -f -");
 });
 
-test('the scoped apply drives kubectl via the scoped kubeconfig, not a named context', function () {
+test('the scoped apply drives kubectl via the scoped kubeconfig, not a named context', function (): void {
     $cmd = remoteDeploy()->applyWithImageRewriteUsingKubeconfig(
         '/tmp/lk_kubeconfig_x', '/proj/.infrastructure/k8s/overlays/production', 'app-one:latest', 'app-one:abc123',
     );
@@ -129,7 +129,7 @@ test('the scoped apply drives kubectl via the scoped kubeconfig, not a named con
         ->toContain('awk');                // strips the cluster-scoped Namespace doc
 });
 
-test('the scoped apply strips the cluster-scoped Namespace doc (deployer cannot apply it)', function () {
+test('the scoped apply strips the cluster-scoped Namespace doc (deployer cannot apply it)', function (): void {
     $cmd = remoteDeploy()->dropNamespaceDocCommand();
 
     expect($cmd)
@@ -138,7 +138,7 @@ test('the scoped apply strips the cluster-scoped Namespace doc (deployer cannot 
         ->toContain('drop=1');
 });
 
-test('the image tag uses the git sha when present, else a timestamped fallback', function () {
+test('the image tag uses the git sha when present, else a timestamped fallback', function (): void {
     $r = remoteDeploy();
 
     expect($r->formatImageTag('  abc1234  ', 1000))->toBe('abc1234-1000')   // sha prefix + unique timestamp
@@ -146,7 +146,7 @@ test('the image tag uses the git sha when present, else a timestamped fallback',
         ->and($r->formatImageTag('', 1717286400))->toBe('build-1717286400');
 });
 
-test('the registry deploy can pin an immutable digest reference, not just a mutable tag', function () {
+test('the registry deploy can pin an immutable digest reference, not just a mutable tag', function (): void {
     $registry = new RegistryData(provider: RegistryProvider::GHCR, image: 'me/app');
     $digest = 'sha256:'.str_repeat('a', 64);
 
@@ -154,7 +154,7 @@ test('the registry deploy can pin an immutable digest reference, not just a muta
         ->and($registry->getDigestReference($digest))->toBe("ghcr.io/me/app@{$digest}");   // immutable, content-addressed
 });
 
-test('env split routes secrets to the Secret and the rest to the ConfigMap', function () {
+test('env split routes secrets to the Secret and the rest to the ConfigMap', function (): void {
     $r = remoteDeploy();
     $lines = [
         'APP_URL=https://app.test',

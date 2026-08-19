@@ -163,7 +163,7 @@ class DotnetNewCommand extends Command
         $this->generateDotnetProgramCs($projectDir);
 
         // 7. Generate K8s manifests
-        $this->withSpin('Orchestrating .NET Core infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating .NET Core infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

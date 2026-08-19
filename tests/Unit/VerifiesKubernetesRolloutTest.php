@@ -24,7 +24,7 @@ function rolloutVerifier(): object
     };
 }
 
-test('applyAndVerifyRollout returns true only once both apply and rollout succeed', function () {
+test('applyAndVerifyRollout returns true only once both apply and rollout succeed', function (): void {
     Process::fake([
         "kubectl apply -f '/tmp/manifest.yaml' --request-timeout=60s" => Process::result(exitCode: 0),
         "kubectl rollout status deployment/traefik -n 'traefik' --timeout=120s" => Process::result(exitCode: 0),
@@ -33,28 +33,28 @@ test('applyAndVerifyRollout returns true only once both apply and rollout succee
     expect(rolloutVerifier()->apply('kubectl', '/tmp/manifest.yaml', 'traefik', 'traefik'))->toBeTrue();
 });
 
-test('applyAndVerifyRollout fails fast when the apply itself fails, without checking rollout', function () {
+test('applyAndVerifyRollout fails fast when the apply itself fails, without checking rollout', function (): void {
     Process::fake([
         "kubectl apply -f '/tmp/manifest.yaml' --request-timeout=60s" => Process::result(output: '', errorOutput: 'error: unable to apply', exitCode: 1),
     ]);
 
-    expect(rolloutVerifier()->apply('kubectl', '/tmp/manifest.yaml', 'traefik', 'traefik'))->toBeFalse();
-    expect(State::$lastError)->toContain('Could not apply the traefik manifest');
+    expect(rolloutVerifier()->apply('kubectl', '/tmp/manifest.yaml', 'traefik', 'traefik'))->toBeFalse()
+        ->and(State::$lastError)->toContain('Could not apply the traefik manifest');
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout status'));
 });
 
-test('applyAndVerifyRollout fails when apply succeeds but the Deployment never becomes Ready', function () {
+test('applyAndVerifyRollout fails when apply succeeds but the Deployment never becomes Ready', function (): void {
     Process::fake([
         "kubectl apply -f '/tmp/manifest.yaml' --request-timeout=60s" => Process::result(exitCode: 0),
         "kubectl rollout status deployment/traefik -n 'traefik' --timeout=120s" => Process::result(exitCode: 1),
     ]);
 
-    expect(rolloutVerifier()->apply('kubectl', '/tmp/manifest.yaml', 'traefik', 'traefik'))->toBeFalse();
-    expect(State::$lastError)->toContain('never became Ready');
+    expect(rolloutVerifier()->apply('kubectl', '/tmp/manifest.yaml', 'traefik', 'traefik'))->toBeFalse()
+        ->and(State::$lastError)->toContain('never became Ready');
 });
 
-test('applyAndVerifyRollout appends extra apply flags verbatim', function () {
+test('applyAndVerifyRollout appends extra apply flags verbatim', function (): void {
     Process::fake([
         "kubectl apply -f '/tmp/manifest.yaml' --request-timeout=60s --validate=false" => Process::result(exitCode: 0),
         "kubectl rollout status deployment/traefik -n 'traefik' --timeout=120s" => Process::result(exitCode: 0),

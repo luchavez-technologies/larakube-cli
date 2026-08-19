@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Process;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\table;
 
+use Spatie\TemporaryDirectory\TemporaryDirectory;
+
 trait ManagesCompanions
 {
     use InteractsWithHosts, ReadsEnvSources;
@@ -29,10 +31,11 @@ trait ManagesCompanions
             'companion' => $companion,
             'localTld' => GlobalConfigData::load()->getLocalTld(),
         ])->render();
-        $tmp = sys_get_temp_dir().'/larakube-companion-'.$companion->value.'.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-companion-'.$companion->value.'.yaml');
         file_put_contents($tmp, $manifest);
         Process::run('kubectl apply -f '.escapeshellarg($tmp));
-        @unlink($tmp);
+        $temporaryDirectory->delete();
     }
 
     protected function removeCompanion(CompanionDriver $companion): void
@@ -388,10 +391,11 @@ trait ManagesCompanions
             "  hosts: \"{$hostsStr}\"",
         ]);
 
-        $tmp = sys_get_temp_dir().'/larakube-pma-hosts.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-pma-hosts.yaml');
         file_put_contents($tmp, $yaml);
         Process::run('kubectl apply -f '.escapeshellarg($tmp));
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         Process::run('kubectl set env deployment/phpmyadmin PMA_HOSTS='.escapeshellarg($hostsStr).' -n larakube-companions');
         Process::run('kubectl rollout restart deployment/phpmyadmin -n larakube-companions');

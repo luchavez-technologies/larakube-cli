@@ -75,14 +75,14 @@ class MeetUnwireCommand extends Command
         //    when this was the only consumer.
         $registry = $this->revokeMeetKey($registry, 'chat');
         // withSpin() returns a success bool, not the callback's value.
-        $this->withSpin('Revoking the Chat LiveKit key...', function () use ($kubectl, $ns, &$registry) {
+        $this->withSpin('Revoking the Chat LiveKit key...', function () use ($kubectl, $ns, &$registry): void {
             $registry = $this->writeMeetKeys($kubectl, $ns, $registry);
         });
 
         $meetHost = $this->getToolHost($kubectl, ClusterTool::MEET);
 
         if ($meetHost !== null && $this->isMeetInstalled($kubectl, $ns)) {
-            $this->withSpin('Reloading LiveKit without the Chat key...', function () use ($kubectl, $meetHost, $registry, $env) {
+            $this->withSpin('Reloading LiveKit without the Chat key...', function () use ($kubectl, $meetHost, $registry, $env): void {
                 $manifest = view('k8s.meet.livekit', [
                     'host' => $meetHost,
                     'consumers' => $registry,
@@ -117,7 +117,7 @@ class MeetUnwireCommand extends Command
     {
         $ok = true;
 
-        $this->withSpin('Removing the focus from Synapse...', function () use ($kubectl, $ns, &$ok) {
+        $this->withSpin('Removing the focus from Synapse...', function () use ($kubectl, $ns, &$ok): void {
             $raw = Process::run(
                 "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
             )->output();

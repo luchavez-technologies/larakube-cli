@@ -3,9 +3,9 @@
 use App\Traits\InteractsWithToolRegistry;
 use Illuminate\Support\Facades\Process;
 
-uses(InteractsWithToolRegistry::class);
+pest()->use(InteractsWithToolRegistry::class);
 
-test('tool:alias adds an alias domain to a registered tool and re-applies ingress', function () {
+test('tool:alias adds an alias domain to a registered tool and re-applies ingress', function (): void {
     $initialJson = json_encode([
         ['tool' => 'mail', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'installedAt' => '2026-08-01T00:00:00+00:00'],
     ]);
@@ -33,7 +33,7 @@ test('tool:alias adds an alias domain to a registered tool and re-applies ingres
         ->expectsOutputToContain('https://send.next.site');
 });
 
-test('tool:alias --domain= targets the registered instance serving that host, not a derived slug', function () {
+test('tool:alias --domain= targets the registered instance serving that host, not a derived slug', function (): void {
     // Regression guard (unified instance resolution, 2026-08-12): mail's
     // default host is send.luchtech.dev but its service hostPrefix is 'send'
     // — the old derivation produced the slug 'send-luchtech-dev' and died
@@ -55,7 +55,7 @@ test('tool:alias --domain= targets the registered instance serving that host, no
         ->expectsOutputToContain('Registered alias domain \'send.next.site\' for Mail Server (Stalwart)');
 });
 
-test('tool:alias --remove removes an alias domain from a registered tool', function () {
+test('tool:alias --remove removes an alias domain from a registered tool', function (): void {
     $registryJson = json_encode([
         ['tool' => 'mail', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'aliases' => ['send.next.site'], 'installedAt' => '2026-08-01T00:00:00+00:00'],
     ]);

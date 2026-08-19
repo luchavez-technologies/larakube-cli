@@ -2,13 +2,13 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('mail:unwire is registered', function () {
+test('mail:unwire is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:unwire');
 });
 
-test('mail:unwire unsets tool mail environment variables', function () {
+test('mail:unwire unsets tool mail environment variables', function (): void {
     Process::fake([
         '*get deployment vaultwarden*' => Process::result(output: 'vaultwarden   1/1   1   1   10d'),
         '*set env deployment/vaultwarden*' => Process::result(output: 'env updated'),
@@ -20,7 +20,7 @@ test('mail:unwire unsets tool mail environment variables', function () {
         ->expectsOutputToContain('no longer routes mail through Stalwart');
 });
 
-test('mail:unwire --tool=data unsets PocketBase\'s own vars, not Directus\'s, on a PocketBase-only install', function () {
+test('mail:unwire --tool=data unsets PocketBase\'s own vars, not Directus\'s, on a PocketBase-only install', function (): void {
     // Regression test: unwireTargets() used to call $tool->smtpEnv() with
     // NO $engine argument at all — even though it had just resolved one a
     // line above for the configuresViaConfigFile() check — so a

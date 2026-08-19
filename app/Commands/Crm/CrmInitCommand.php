@@ -21,6 +21,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class CrmInitCommand extends Command
 {
@@ -132,7 +133,7 @@ class CrmInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $accessTokenSecret, $loginTokenSecret, $refreshTokenSecret, $fileTokenSecret, $encryptionKey, $s3Key, $s3Secret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $accessTokenSecret, $loginTokenSecret, $refreshTokenSecret, $fileTokenSecret, $encryptionKey, $s3Key, $s3Secret): void {
             $cmd = "{$kubectl} create secret generic {$secretName} -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=access-token-secret='.escapeshellarg($accessTokenSecret).' '
@@ -167,7 +168,8 @@ class CrmInitCommand extends Command
             's3PublicEndpoint' => $s3Endpoints['public'],
         ])->render();
 
-        $tmp = sys_get_temp_dir()."/larakube-crm-twenty-{$instance}.yaml";
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path("larakube-crm-twenty-{$instance}.yaml");
         file_put_contents($tmp, $manifest);
 
         // Twenty CRM's official entrypoint runs `yarn database:init:prod`/
@@ -181,7 +183,7 @@ class CrmInitCommand extends Command
             'Applying Twenty CRM manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 420),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

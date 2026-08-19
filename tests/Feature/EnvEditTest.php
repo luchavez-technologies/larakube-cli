@@ -15,10 +15,11 @@
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-beforeEach(function () {
-    $this->tempDir = sys_get_temp_dir().'/larakube-env-edit-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+beforeEach(function (): void {
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
     file_put_contents($this->tempDir.'/.env', "APP_NAME=env-edit-test\n");
 
     $this->originalDir = getcwd();
@@ -27,9 +28,9 @@ beforeEach(function () {
     Prompt::interactive(false);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    exec('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
 function saveEnvEditConfig(string $dir): ConfigData
@@ -57,11 +58,12 @@ function saveEnvEditConfig(string $dir): ConfigData
     return $config;
 }
 
-test('env without --edit on an existing environment stays a no-op and points at the flag', function () {
+test('env without --edit on an existing environment stays a no-op and points at the flag', function (): void {
     saveEnvEditConfig($this->tempDir);
 
     $this->artisan('env', ['name' => 'staging'])
         ->expectsOutputToContain("Environment 'staging' already exists in DNA; keeping current settings. Pass --edit to review and update it.")
+        ->expectsConfirmation("Set up the CI/CD deploy workflow for 'staging' now?", 'no')
         ->assertExitCode(0);
 
     $reloaded = ConfigData::loadFromFile($this->tempDir);
@@ -73,11 +75,20 @@ test('env without --edit on an existing environment stays a no-op and points at 
         ->and($env->storageClass)->toBe('custom-storage-class');
 });
 
-test('env --edit re-runs the wizard prefilled with current values and leaves them unchanged on accept', function () {
+test('env --edit re-runs the wizard prefilled with current values and leaves them unchanged on accept', function (): void {
     saveEnvEditConfig($this->tempDir);
 
     $this->artisan('env', ['name' => 'staging', '--edit' => true, '--no-interaction' => true])
         ->expectsOutputToContain("Editing environment 'staging'...")
+        ->expectsChoice('Which Ingress Controller will staging use?', 'nginx', [
+            'traefik' => 'Traefik (LaraKube Default)',
+            'aws-alb' => 'AWS Application Load Balancer (EKS Standard)',
+            'nginx' => 'NGINX Ingress Controller (AKS/DigitalOcean Standard)',
+        ])
+        ->expectsQuestion('Web host for staging (optional, e.g. staging.example.com)', 'staging.example.com')
+        ->expectsQuestion("Any additional hostnames for staging's web pod? (optional, comma-separated)", 'admin.staging.example.com')
+        ->expectsConfirmation('Configure a container registry for staging?', 'no')
+        ->expectsConfirmation("Set up the CI/CD deploy workflow for 'staging' now?", 'no')
         ->assertExitCode(0);
 
     $reloaded = ConfigData::loadFromFile($this->tempDir);
@@ -92,7 +103,7 @@ test('env --edit re-runs the wizard prefilled with current values and leaves the
         ->and($env->storageClass)->toBe('custom-storage-class');
 });
 
-test('env --edit with an existing registry re-confirms it (default flips to true) rather than silently dropping it', function () {
+test('env --edit with an existing registry re-confirms it (default flips to true) rather than silently dropping it', function (): void {
     $config = ConfigData::from([
         'name' => 'env-edit-test',
         'serverVariation' => 'fpm-nginx',
@@ -116,6 +127,22 @@ test('env --edit with an existing registry re-confirms it (default flips to true
     // doesn't silently skip past an existing registry — it re-confirms
     // and re-prompts provider/image (which is what "review" means here).
     $this->artisan('env', ['name' => 'staging', '--edit' => true, '--no-interaction' => true])
+        ->expectsChoice('Which Ingress Controller will staging use?', 'traefik', [
+            'traefik' => 'Traefik (LaraKube Default)',
+            'aws-alb' => 'AWS Application Load Balancer (EKS Standard)',
+            'nginx' => 'NGINX Ingress Controller (AKS/DigitalOcean Standard)',
+        ])
+        ->expectsQuestion('Web host for staging (optional, e.g. staging.example.com)', 'staging.example.com')
+        ->expectsQuestion("Any additional hostnames for staging's web pod? (optional, comma-separated)", '')
+        ->expectsConfirmation('Review/update the container registry for staging?', 'yes')
+        ->expectsChoice('Which container registry for staging?', 'ghcr', [
+            'ghcr' => 'GitHub Container Registry (GHCR)',
+            'dockerhub' => 'Docker Hub',
+            'gitlab' => 'GitLab Container Registry',
+            'gitea' => 'Gitea Container Registry',
+        ])
+        ->expectsQuestion('Image repository path (optional, e.g. owner/repo)', 'acme/env-edit-test')
+        ->expectsConfirmation("Set up the CI/CD deploy workflow for 'staging' now?", 'no')
         ->assertExitCode(0);
 
     $reloaded = ConfigData::loadFromFile($this->tempDir);

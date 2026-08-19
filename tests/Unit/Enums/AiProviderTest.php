@@ -2,7 +2,7 @@
 
 use App\Enums\AiProvider;
 
-test('ai provider has correct labels', function () {
+test('ai provider has correct labels', function (): void {
     expect(AiProvider::OPENAI->getLabel())->toBe('OpenAI')
         ->and(AiProvider::ANTHROPIC->getLabel())->toBe('Anthropic')
         ->and(AiProvider::GEMINI->getLabel())->toBe('Google Gemini')
@@ -14,12 +14,12 @@ test('ai provider has correct labels', function () {
         ->and(AiProvider::OLLAMA->getLabel())->toBe('Ollama (Local)');
 });
 
-test('ai provider has correct command options', function () {
+test('ai provider has correct command options', function (): void {
     $options = AiProvider::getCommandOptions();
     expect($options)->toContain('openai', 'anthropic', 'gemini', 'ollama');
 });
 
-test('ai provider has correct command option arrays', function () {
+test('ai provider has correct command option arrays', function (): void {
     $options = AiProvider::getCommandOptionArrays();
     expect($options)->toBeArray()
         ->and($options[0])->toHaveKeys(['name', 'description'])

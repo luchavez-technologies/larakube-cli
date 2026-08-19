@@ -29,7 +29,7 @@ use App\Traits\GathersInfrastructureConfig;
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
 
-afterEach(function () {
+afterEach(function (): void {
     // Prompt::fake() forces interactive mode and installs a mocked terminal;
     // reset it so a later test/file in the same process doesn't inherit a
     // fake, already-exhausted terminal and block on a real prompt.
@@ -49,7 +49,7 @@ function diffRunner(): object
     };
 }
 
-test('diffConfigs detects a database swap', function () {
+test('diffConfigs detects a database swap', function (): void {
     $old = new ConfigData(name: 'diff-test');
     $old->setDatabase(DatabaseDriver::MYSQL);
     $new = clone $old;
@@ -64,7 +64,7 @@ test('diffConfigs detects a database swap', function () {
     ]);
 });
 
-test('diffConfigs reports no database change when untouched', function () {
+test('diffConfigs reports no database change when untouched', function (): void {
     $old = new ConfigData(name: 'diff-test');
     $old->setDatabase(DatabaseDriver::SQLITE);
     $new = clone $old;
@@ -72,7 +72,7 @@ test('diffConfigs reports no database change when untouched', function () {
     expect(diffRunner()->diff($old, $new)['database']['changed'])->toBeFalse();
 });
 
-test('diffConfigs compares the raw cache property, not the DATABASE-defaulting getter', function () {
+test('diffConfigs compares the raw cache property, not the DATABASE-defaulting getter', function (): void {
     // getCacheDriver() substitutes CacheDriver::DATABASE for null. If the diff
     // compared that getter instead of the raw property, a never-configured
     // cache driver would look identical to an explicit "database" choice.
@@ -89,7 +89,7 @@ test('diffConfigs compares the raw cache property, not the DATABASE-defaulting g
     ]);
 });
 
-test('diffConfigs treats picking "None" as clearing an existing cache driver', function () {
+test('diffConfigs treats picking "None" as clearing an existing cache driver', function (): void {
     $old = new ConfigData(name: 'diff-test');
     $old->setCacheDriver(CacheDriver::REDIS);
     $new = clone $old;
@@ -104,7 +104,7 @@ test('diffConfigs treats picking "None" as clearing an existing cache driver', f
     ]);
 });
 
-test('diffConfigs computes add/remove lists for features and blueprints', function () {
+test('diffConfigs computes add/remove lists for features and blueprints', function (): void {
     $old = new ConfigData(name: 'diff-test');
     $old->addFeature(LaravelFeature::HORIZON);
     $new = clone $old;
@@ -116,7 +116,7 @@ test('diffConfigs computes add/remove lists for features and blueprints', functi
         ->and($diff['features']['remove'])->toBe([LaravelFeature::HORIZON]);
 });
 
-test('addEnvironment("local") preserves an existing cloud environment, unlike setEnvironments', function () {
+test('addEnvironment("local") preserves an existing cloud environment, unlike setEnvironments', function (): void {
     // This is the exact fix for bug #2: InitCommand::handle() must call
     // addEnvironment('local') (idempotent) on a re-init, never
     // setEnvironments(['local']) (a destructive full replace), or a
@@ -136,7 +136,7 @@ test('addEnvironment("local") preserves an existing cloud environment, unlike se
         ->and($config->getEnvironments())->toContain('local');
 });
 
-test('forcePrompts re-opens PHP version, OS, strategy, and GitHub Actions prompts with the current value as default', function () {
+test('forcePrompts re-opens PHP version, OS, strategy, and GitHub Actions prompts with the current value as default', function (): void {
     // Regression guard for a gap found while wiring forcePrompts: these four
     // prompts previously defaulted to hardcoded fallbacks (PHP_8_5, ALPINE,
     // SINGLE_NODE, true) instead of the project's actual current value, which
@@ -221,7 +221,7 @@ function runReinitWizard(ConfigData $config): ConfigData
     return $runner->run($config);
 }
 
-test('picking "None" for storage in the wizard clears a previously-configured driver', function () {
+test('picking "None" for storage in the wizard clears a previously-configured driver', function (): void {
     // Options are ['' => None, 'seaweedfs', 'minio', 'garage'] (StorageDriver::cases()
     // order) with default 'minio' pre-highlighted at index 2 — two UPs reach "None".
     Prompt::fake([
@@ -240,7 +240,7 @@ test('picking "None" for storage in the wizard clears a previously-configured dr
         ->and($result->cacheDriver)->toBe(CacheDriver::REDIS);
 });
 
-test('picking "None" for cache in the wizard clears a previously-configured driver', function () {
+test('picking "None" for cache in the wizard clears a previously-configured driver', function (): void {
     // Same shape as storage: options are ['' => None, 'redis', 'memcached', 'database']
     // with default 'redis' pre-highlighted at index 1 — one UP reaches "None".
     Prompt::fake([

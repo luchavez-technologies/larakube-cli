@@ -15,6 +15,7 @@ use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Deploy the nightly backup CronJob.
@@ -99,14 +100,15 @@ class BackupScheduleCommand extends Command
             'dbDumpTemplate' => $driver->commonsBackupCommand('__DB__'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-backup-cron.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-backup-cron.yaml');
         file_put_contents($tmp, $manifest);
 
         $ok = $this->withSpin('Deploying the backup CronJob...', fn () => Process::timeout(300)->run(
             "{$kubectl} apply -f {$tmp}",
         )->successful());
 
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $ok) {
             $this->laraKubeError('Failed to deploy the CronJob.');

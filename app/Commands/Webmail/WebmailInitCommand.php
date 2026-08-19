@@ -21,6 +21,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class WebmailInitCommand extends Command
 {
@@ -92,7 +93,7 @@ class WebmailInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $sessionSecret, $adminPassword, $env) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $sessionSecret, $adminPassword, $env): void {
             Process::run(
                 "{$kubectl} create secret generic webmail-secrets -n {$ns} "
                 .'--from-literal=WEBMAIL_SESSION_SECRET='.escapeshellarg($sessionSecret).' '
@@ -124,14 +125,15 @@ class WebmailInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-webmail.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-webmail.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Bulwark manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'webmail-bulwark', 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

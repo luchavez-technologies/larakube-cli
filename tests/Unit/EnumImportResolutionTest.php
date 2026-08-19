@@ -14,7 +14,7 @@
 
 use Symfony\Component\Finder\SplFileInfo;
 
-test('every App\\Enums enum referenced via :: is imported or fully-qualified', function () {
+test('every App\\Enums enum referenced via :: is imported or fully-qualified', function (): void {
     $appDir = base_path('app');
 
     $enums = array_map(fn ($p) => basename($p, '.php'), glob($appDir.'/Enums/*.php'));
@@ -52,5 +52,5 @@ test('every App\\Enums enum referenced via :: is imported or fully-qualified', f
         }
     }
 
-    expect($violations)->toBe([]);
+    expect($violations)->toBeEmpty();
 });

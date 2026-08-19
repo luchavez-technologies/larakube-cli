@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Artisan;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function configTldChdir(string $dir): string
 {
@@ -10,9 +11,9 @@ function configTldChdir(string $dir): string
     return $original;
 }
 
-test('config:tld status shows only the global TLD outside a project', function () {
-    $tempDir = sys_get_temp_dir().'/config-tld-noproject-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('config:tld status shows only the global TLD outside a project', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     $original = configTldChdir($tempDir);
 
     try {
@@ -20,16 +21,16 @@ test('config:tld status shows only the global TLD outside a project', function (
         $output = Artisan::output();
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 
     expect($output)->toContain('Local TLD:')
         ->and($output)->not->toContain("project's TLD");
 });
 
-test('config:tld status shows the project TLD following the global default', function () {
-    $tempDir = sys_get_temp_dir().'/config-tld-followsglobal-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('config:tld status shows the project TLD following the global default', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     file_put_contents($tempDir.'/.larakube.json', json_encode(['name' => 'demo']));
     $original = configTldChdir($tempDir);
 
@@ -38,7 +39,7 @@ test('config:tld status shows the project TLD following the global default', fun
         $output = Artisan::output();
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 
     expect($output)->toContain('Global Local TLD:')
@@ -46,9 +47,9 @@ test('config:tld status shows the project TLD following the global default', fun
         ->and($output)->toContain('follows the global default');
 });
 
-test('config:tld status shows a pinned project TLD override', function () {
-    $tempDir = sys_get_temp_dir().'/config-tld-override-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('config:tld status shows a pinned project TLD override', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     file_put_contents($tempDir.'/.larakube.json', json_encode(['name' => 'demo', 'localTld' => 'test']));
     $original = configTldChdir($tempDir);
 
@@ -57,7 +58,7 @@ test('config:tld status shows a pinned project TLD override', function () {
         $output = Artisan::output();
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 
     expect($output)->toContain("This project's TLD:")

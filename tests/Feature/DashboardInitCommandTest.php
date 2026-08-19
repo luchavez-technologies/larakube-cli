@@ -4,9 +4,9 @@ use App\Enums\ClusterTool;
 use App\Traits\InteractsWithToolRegistry;
 use Illuminate\Support\Facades\Process;
 
-uses(InteractsWithToolRegistry::class);
+pest()->use(InteractsWithToolRegistry::class);
 
-test('dashboard:init deploys CNCF Headlamp into larakube-shared', function () {
+test('dashboard:init deploys CNCF Headlamp into larakube-shared', function (): void {
     Process::fake([
         '*get secret *' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -27,7 +27,7 @@ test('dashboard:init deploys CNCF Headlamp into larakube-shared', function () {
     });
 });
 
-test('dashboard:init --vpn-only creates the Traefik Middleware before applying manifests', function () {
+test('dashboard:init --vpn-only creates the Traefik Middleware before applying manifests', function (): void {
     Process::fake([
         '*get secret *' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -44,7 +44,7 @@ test('dashboard:init --vpn-only creates the Traefik Middleware before applying m
         ->expectsOutputToContain('CNCF Headlamp Kubernetes Control Plane is live.');
 });
 
-test('dashboard manifest uses Headlamp\'s real listen port 4466, not 4686', function () {
+test('dashboard manifest uses Headlamp\'s real listen port 4466, not 4686', function (): void {
     // Regression guard for a real incident (2026-08-06): the container port,
     // both probes, the Service, and the Ingress backend were all declared on
     // 4686 — a transposed-digit typo. Headlamp's own binary logs "Listen
@@ -65,7 +65,7 @@ test('dashboard manifest uses Headlamp\'s real listen port 4466, not 4686', func
         ->and(substr_count($manifest, '4466'))->toBe(6); // containerPort, 2 probes, Service port + targetPort, Ingress backend port
 });
 
-test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG_ prefix koanf actually reads', function () {
+test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG_ prefix koanf actually reads', function (): void {
     // Regression guard for a real incident (2026-08-06): the OIDC Secret keys
     // (and ClusterTool::DASHBOARD->oidcEnv()'s vars/static, wired the same way
     // by sso:wire) were named HEADLAMP_OIDC_* — Headlamp's koanf-based config
@@ -86,9 +86,8 @@ test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG
         ->and($manifest)->toContain('HEADLAMP_CONFIG_OIDC_CLIENT_ID')
         ->and($manifest)->toContain('HEADLAMP_CONFIG_OIDC_CLIENT_SECRET')
         ->and($manifest)->toContain('HEADLAMP_CONFIG_OIDC_SCOPES')
-        ->and($manifest)->not->toContain('HEADLAMP_OIDC_');
-
-    expect(ClusterTool::DASHBOARD->oidcEnv())
+        ->and($manifest)->not->toContain('HEADLAMP_OIDC_')
+        ->and(ClusterTool::DASHBOARD->oidcEnv())
         ->and(ClusterTool::DASHBOARD->oidcEnv()['vars'])->toBe([
             'client_id' => 'HEADLAMP_CONFIG_OIDC_CLIENT_ID',
             'client_secret' => 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET',
@@ -99,7 +98,7 @@ test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG
         ]);
 });
 
-test('dashboard manifest binds cluster-admin to the OIDC-authenticated -dashboard-admin group, not just the ServiceAccount', function () {
+test('dashboard manifest binds cluster-admin to the OIDC-authenticated -dashboard-admin group, not just the ServiceAccount', function (): void {
     // Regression for a real live gap (2026-08-06): granting dashboard-admin
     // via sso:grant did nothing on the cluster. Root cause turned out to be
     // TWO layered issues, both confirmed live:
@@ -132,7 +131,7 @@ test('dashboard manifest binds cluster-admin to the OIDC-authenticated -dashboar
         ->and($manifest)->toContain('name: -dashboard-admin');
 });
 
-test('dashboard:remove deletes Headlamp resources', function () {
+test('dashboard:remove deletes Headlamp resources', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
     ]);

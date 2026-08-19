@@ -90,7 +90,7 @@ class BackupRunCommand extends Command
         $service = $driver->commonsServiceName();
 
         foreach ($databases as $db) {
-            $this->withSpin("Dumping database {$db}...", function () use ($kubectl, $db, $work, $driver, $service, &$failures) {
+            $this->withSpin("Dumping database {$db}...", function () use ($kubectl, $db, $work, $driver, $service, &$failures): void {
                 $result = Process::timeout(600)->run(
                     "{$kubectl} exec deploy/{$service} -n larakube-plex -c {$service} -- "
                     .'sh -c '.escapeshellarg($driver->commonsBackupCommand($db))
@@ -107,7 +107,7 @@ class BackupRunCommand extends Command
         $volumeTargets = $this->backupVolumeTargets($kubectl);
 
         foreach ($volumeTargets as $target) {
-            $this->withSpin("Archiving {$target['name']}...", function () use ($kubectl, $target, $work, &$failures) {
+            $this->withSpin("Archiving {$target['name']}...", function () use ($kubectl, $target, $work, &$failures): void {
                 $dir = dirname($target['path']);
                 $base = basename($target['path']);
 

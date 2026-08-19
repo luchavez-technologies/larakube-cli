@@ -15,6 +15,7 @@ use App\Data\ConfigData;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithArchitecturalEngine;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Yaml\Yaml;
 use Tests\TestCase;
 
@@ -23,17 +24,14 @@ use Tests\TestCase;
 // global-namespace code in a matching `namespace { ... }` block).
 require_once __DIR__.'/Support/KubectlExecMock.php';
 
-uses(TestCase::class)->in('Feature', 'Unit');
+pest()->extend(TestCase::class)->in('Feature', 'Unit');
 
-// Force non-interactive prompts in EVERY test. Laravel Prompts only renders to
-// the terminal when STDIN is a TTY (`static::$interactive ??= stream_isatty(STDIN)`
-// in Prompt::prompt()). That's false in CI/Docker (so an unfaked prompt returns
-// its default) but TRUE in a developer's terminal — where an unfaked text()/
-// password() prompt renders and loops until it exhausts memory (the
-// TypedValue::trimWidthBackwards OOM). Pinning it false makes both environments
-// behave identically. Prompt::fake() calls interactive(true) itself, so the
-// tests that script key presses still work.
-beforeEach(fn () => Prompt::interactive(false));
+// Prompt::interactive(false) and Sleep::fake() both live in
+// Tests\TestCase::setUp(), not here — a standalone top-level beforeEach()
+// in this file did not reliably take effect for either (confirmed live:
+// real interactive prompts still rendered and blocked on Enter in a real
+// terminal, and polling loops still slept for real), while the identical
+// calls inside setUp() do. See TestCase.php for the full note.
 
 /**
  * Helper to generate manifests and return their content as a string for snapshotting.
@@ -43,11 +41,18 @@ function generateManifests(ConfigData $config): string
     // Bypass all interactive prompts during tests
     Prompt::fallbackUsing(fn () => true);
 
-    $tempDir = sys_get_temp_dir().'/larakube-snapshot-stable-test';
-    if (is_dir($tempDir)) {
-        exec('rm -rf '.escapeshellarg($tempDir));
-    }
-    mkdir($tempDir, 0755, true);
+    // A UNIQUE directory per call, not a shared fixed name — the old fixed
+    // 'larakube-snapshot-stable-test' path was never actually required for
+    // the snapshot normalization below (that already keys off the real
+    // $tempDir value, whatever it is), but it did mean two of these running
+    // concurrently under `pest --parallel` raced the same rm-rf/mkdir/write
+    // cycle (confirmed live: "No such file or directory" on
+    // kustomization.yaml, worker-order-dependent).
+    // deleteWhenDestroyed(): a safety net for the NO_MANIFESTS_GENERATED
+    // early return below, which (same as the pre-existing behavior) skips
+    // the explicit delete() at the bottom of this function.
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     $config->setPath($tempDir);
 
@@ -118,8 +123,7 @@ function generateManifests(ConfigData $config): string
         $combined .= $content."\n\n";
     }
 
-    // Cleanup
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 
     return $combined;
 }
@@ -132,8 +136,8 @@ function generateManifestsAsArray(ConfigData $config): array
     // Bypass all interactive prompts during tests
     Prompt::fallbackUsing(fn () => true);
 
-    $tempDir = sys_get_temp_dir().'/larakube-array-test-'.uniqid();
-    mkdir($tempDir, 0755, true);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     $config->setPath($tempDir);
     $config->resolveDependencies();
@@ -201,7 +205,7 @@ function generateManifestsAsArray(ConfigData $config): array
         }
     }
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 
     return $manifests;
 }

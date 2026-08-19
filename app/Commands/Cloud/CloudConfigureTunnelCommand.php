@@ -15,6 +15,7 @@ use function Laravel\Prompts\password;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class CloudConfigureTunnelCommand extends Command
 {
@@ -102,10 +103,11 @@ class CloudConfigureTunnelCommand extends Command
                 'namespace' => $namespace,
             ])->render();
 
-            $tmp = sys_get_temp_dir().'/larakube-tunnel.yaml';
+            $temporaryDirectory = TemporaryDirectory::make();
+            $tmp = $temporaryDirectory->path('larakube-tunnel.yaml');
             file_put_contents($tmp, $manifest);
             Process::run($kubectl.' apply -f '.escapeshellarg($tmp));
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             return true;
         });

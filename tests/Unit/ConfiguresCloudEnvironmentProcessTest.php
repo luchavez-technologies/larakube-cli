@@ -15,6 +15,7 @@ use App\Traits\EnsuresRealHosts;
 use App\Traits\GathersEnvironmentData;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function cloudEnvironmentHelper(): object
 {
@@ -34,7 +35,7 @@ function cloudEnvironmentHelper(): object
     };
 }
 
-test('gitRemoteUrl trims the origin remote, empty string outside a git repo', function () {
+test('gitRemoteUrl trims the origin remote, empty string outside a git repo', function (): void {
     Process::fake(['git remote get-url origin' => "git@github.com:acme/demo.git\n"]);
     expect(cloudEnvironmentHelper()->remoteUrl())->toBe('git@github.com:acme/demo.git');
 
@@ -42,12 +43,13 @@ test('gitRemoteUrl trims the origin remote, empty string outside a git repo', fu
     expect(cloudEnvironmentHelper()->remoteUrl())->toBe('');
 });
 
-test('resolveGlabCommand prefers a real command -v hit over the hardcoded fallback paths', function () {
+test('resolveGlabCommand prefers a real command -v hit over the hardcoded fallback paths', function (): void {
     // resolveGlabCommand() also requires the candidate to be a real,
     // executable file on disk (@is_executable()) — Process::fake() only
     // covers the `command -v` lookup, not that check, so this needs an
     // actual (temporary) executable to resolve to.
-    $fakeGlab = sys_get_temp_dir().'/fake-glab-'.uniqid();
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $fakeGlab = $temporaryDirectory->path().'/fake-glab';
     file_put_contents($fakeGlab, "#!/bin/sh\necho fake-glab\n");
     chmod($fakeGlab, 0755);
 
@@ -56,11 +58,11 @@ test('resolveGlabCommand prefers a real command -v hit over the hardcoded fallba
 
         expect(cloudEnvironmentHelper()->glab())->toBe($fakeGlab);
     } finally {
-        unlink($fakeGlab);
+        $temporaryDirectory->delete();
     }
 });
 
-test('resolveGlabCommand is null when neither command -v nor any fallback path resolves to a real executable', function () {
+test('resolveGlabCommand is null when neither command -v nor any fallback path resolves to a real executable', function (): void {
     Process::fake(['command -v glab' => Process::result(output: '', exitCode: 1)]);
 
     // Only meaningful on a machine where glab genuinely isn't installed at

@@ -1,9 +1,10 @@
 <?php
 
-test('pipeline:show fails when no workflows exist', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-pipe-show-'.uniqid();
-    mkdir($tempDir, 0755, true);
-    $tempDir = realpath($tempDir) ?: $tempDir;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
+
+test('pipeline:show fails when no workflows exist', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = realpath($temporaryDirectory->path()) ?: $temporaryDirectory->path();
 
     $originalDir = getcwd();
     chdir($tempDir);
@@ -14,14 +15,13 @@ test('pipeline:show fails when no workflows exist', function () {
             ->expectsOutputToContain('No LaraKube workflows/pipelines found in this project.');
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('pipeline:show shows parsed github actions workflow details', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-pipe-show-'.uniqid();
-    mkdir($tempDir, 0755, true);
-    $tempDir = realpath($tempDir) ?: $tempDir;
+test('pipeline:show shows parsed github actions workflow details', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = realpath($temporaryDirectory->path()) ?: $temporaryDirectory->path();
 
     mkdir($tempDir.'/.github/workflows', 0755, true);
 
@@ -60,14 +60,13 @@ YAML;
             ->expectsOutputToContain('Step 3: Secret ref');
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('pipeline:show shows parsed gitlab pipeline details', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-pipe-show-'.uniqid();
-    mkdir($tempDir, 0755, true);
-    $tempDir = realpath($tempDir) ?: $tempDir;
+test('pipeline:show shows parsed gitlab pipeline details', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = realpath($temporaryDirectory->path()) ?: $temporaryDirectory->path();
 
     $yamlContent = <<<'YAML'
 stages:
@@ -94,6 +93,6 @@ YAML;
             ->expectsOutputToContain('Step 2: kubectl apply -f .');
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });

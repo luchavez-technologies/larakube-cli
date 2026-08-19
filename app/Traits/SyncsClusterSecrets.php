@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Enums\SecretsBackend;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 /**
  * Reusable primitive for pushing secrets into the secrets manager and syncing
@@ -763,9 +764,16 @@ trait SyncsClusterSecrets
      */
     protected function waitForExternalSecretSynced(string $kubectl, string $namespace, string $name, ?string $refreshTimeBefore, int $timeoutSeconds = 30): bool
     {
-        $deadline = time() + $timeoutSeconds;
+        // now()/Carbon, not raw time(): Sleep::fake(syncWithCarbon: true)
+        // (see TestCase::setUp()) advances Carbon's test-"now" by each faked
+        // sleep's duration, so this deadline check naturally expires in a
+        // test without any real wait. A raw time()-based deadline would keep
+        // spinning for the FULL real timeout regardless of how fast the
+        // sleep itself is faked, since PHP's own time() only ever reflects
+        // actual elapsed wall-clock time.
+        $deadline = now()->addSeconds($timeoutSeconds);
 
-        while (time() < $deadline) {
+        while (now()->lt($deadline)) {
             $status = trim(Process::run(
                 "{$kubectl} get externalsecret {$name} -n {$namespace} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'",
             )->output());
@@ -780,7 +788,7 @@ trait SyncsClusterSecrets
                 return true;
             }
 
-            usleep(1_500_000);
+            Sleep::usleep(1_500_000);
         }
 
         return false;

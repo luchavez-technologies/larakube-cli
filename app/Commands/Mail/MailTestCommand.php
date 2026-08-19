@@ -81,7 +81,7 @@ class MailTestCommand extends Command
         ));
 
         $result = ['auth' => false, 'accepted' => false, 'raw' => ''];
-        $this->withSpin("Sending a test email to {$to}...", function () use (&$result, $kubectl, $ns, $from, $pass, $to) {
+        $this->withSpin("Sending a test email to {$to}...", function () use (&$result, $kubectl, $ns, $from, $pass, $to): void {
             $result = $this->sendViaSmtp($kubectl, $ns, $from, $pass, $to);
         });
 

@@ -20,6 +20,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class AnalyticsInitCommand extends Command
 {
@@ -78,7 +79,7 @@ class AnalyticsInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $appSecret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $appSecret): void {
             Process::run(
                 "{$kubectl} create secret generic analytics-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
@@ -95,14 +96,15 @@ class AnalyticsInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-analytics.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-analytics.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Umami analytics manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'analytics-umami', 300),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

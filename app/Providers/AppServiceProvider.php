@@ -44,7 +44,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Hide/Remove commands from binary for clean DX
         if (Phar::running() !== '') {
-            Artisan::starting(function ($artisan) {
+            Artisan::starting(function ($artisan): void {
                 $toHide = [
                     // AI Boilerplate
                     'make:agent',

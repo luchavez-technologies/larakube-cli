@@ -22,6 +22,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SupportInitCommand extends Command
 {
@@ -94,7 +95,7 @@ class SupportInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKeyBase, $adminEmail) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKeyBase, $adminEmail): void {
             $cmd = "{$kubectl} create secret generic support-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=secret-key-base='.escapeshellarg($secretKeyBase).' '
@@ -116,14 +117,15 @@ class SupportInitCommand extends Command
             'redisIndex' => $redisIndex,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-support-chatwoot.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-support-chatwoot.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Chatwoot manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'support-chatwoot', 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

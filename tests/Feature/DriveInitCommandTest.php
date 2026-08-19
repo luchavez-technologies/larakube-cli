@@ -3,7 +3,7 @@
 use App\Commands\Drive\DriveInitCommand;
 use Illuminate\Support\Facades\Process;
 
-test('drive:init deploys ocis engine', function () {
+test('drive:init deploys ocis engine', function (): void {
     Process::fake([
         '*get secret drive-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),

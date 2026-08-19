@@ -2,8 +2,9 @@
 
 use App\Data\CloudData;
 use App\Data\ConfigData;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('setCloud stores connection config on the environment and getters read it back', function () {
+test('setCloud stores connection config on the environment and getters read it back', function (): void {
     $config = new ConfigData(name: 'cloudy');
 
     $config->setCloud('production', [
@@ -22,17 +23,17 @@ test('setCloud stores connection config on the environment and getters read it b
         ->and($config->getCloudKey('production'))->toBe('/home/me/.ssh/prod');
 });
 
-test('getCloud helpers return sensible defaults for an env with no cloud config', function () {
+test('getCloud helpers return sensible defaults for an env with no cloud config', function (): void {
     $config = new ConfigData(name: 'bare');
 
     expect($config->getCloud('production'))->toBeNull()
         ->and($config->getCloudIp('production'))->toBeNull()
         ->and($config->getCloudUser('production'))->toBe('larakube')
         ->and($config->getCloudPort('production'))->toBe(22)
-        ->and($config->getCloudConfig('production'))->toBe([]);
+        ->and($config->getCloudConfig('production'))->toBeEmpty();
 });
 
-test('legacy top-level cloud map is migrated into per-env cloud on load', function () {
+test('legacy top-level cloud map is migrated into per-env cloud on load', function (): void {
     $config = ConfigData::from([
         'name' => 'legacy',
         'environments' => ['local' => [], 'production' => [], 'staging' => []],
@@ -47,12 +48,12 @@ test('legacy top-level cloud map is migrated into per-env cloud on load', functi
         ->and($config->getCloudIp('staging'))->toBe('198.51.100.6');
 
     // Top-level legacy field is cleared.
-    expect($config->cloud)->toBe([]);
+    expect($config->cloud)->toBeEmpty();
 });
 
-test('cloud connection splits into the gitignored local file and round-trips', function () {
-    $dir = sys_get_temp_dir().'/larakube-cloud-'.bin2hex(random_bytes(4));
-    mkdir($dir, 0755, true);
+test('cloud connection splits into the gitignored local file and round-trips', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
 
     $config = ConfigData::from([
         'name' => 'roundtrip',
@@ -71,7 +72,7 @@ test('cloud connection splits into the gitignored local file and round-trips', f
         ->and($committed['environments']['production'])->not->toHaveKey('cloud');
 
     // The connection lives in the gitignored local file...
-    expect(is_file($localFile))->toBeTrue();
+    expect($localFile)->toBeFile();
     $local = json_decode(file_get_contents($localFile), true);
     expect($local['environments']['production']['cloud']['ip'])->toBe('203.0.113.99')
         ->and(file_get_contents($dir.'/.gitignore'))->toContain('.larakube.local.json');
@@ -81,9 +82,5 @@ test('cloud connection splits into the gitignored local file and round-trips', f
     expect($reloaded->getCloudIp('production'))->toBe('203.0.113.99')
         ->and($reloaded->getCloudUser('production'))->toBe('deploy');
 
-    // cleanup
-    @unlink($dir.'/'.ConfigData::CONFIG_FILE);
-    @unlink($localFile);
-    @unlink($dir.'/.gitignore');
-    @rmdir($dir);
+    $temporaryDirectory->delete();
 });

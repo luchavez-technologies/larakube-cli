@@ -56,7 +56,7 @@ function backupFakes(array $overrides = []): array
     ], $overrides, ['*' => Process::result(output: '')]);
 }
 
-test('backup:init refuses a destination inside the cluster', function () {
+test('backup:init refuses a destination inside the cluster', function (): void {
     // The seductive wrong answer, and the one both earlier plans reached for:
     // SeaweedFS shares a block device with every volume it would protect, so a
     // disk or droplet loss destroys the data and the backups together.
@@ -69,7 +69,7 @@ test('backup:init refuses a destination inside the cluster', function () {
         ->expectsOutputToContain('inside this cluster');
 });
 
-test('backup:init rejects localhost too', function () {
+test('backup:init rejects localhost too', function (): void {
     Process::fake(backupFakes());
 
     $this->artisan('backup:init local --no-interaction --endpoint=http://localhost:9000 '
@@ -78,7 +78,7 @@ test('backup:init rejects localhost too', function () {
         ->expectsOutputToContain('inside this cluster');
 });
 
-test('backup:init accepts a real off-site endpoint and prints the passphrase once', function () {
+test('backup:init accepts a real off-site endpoint and prints the passphrase once', function (): void {
     // Bucket reads empty => no existing config => a fresh passphrase is minted.
     Process::fake(backupFakes([
         '*larakube-backup-config*bucket*' => Process::result(output: ''),
@@ -95,7 +95,7 @@ test('backup:init accepts a real off-site endpoint and prints the passphrase onc
         ->expectsOutputToContain('WRITE THIS DOWN SOMEWHERE OFF THIS SERVER');
 });
 
-test('backup:run refuses to run before a destination is configured', function () {
+test('backup:run refuses to run before a destination is configured', function (): void {
     Process::fake(['*' => Process::result(output: '')]);
 
     $this->artisan('backup:run local --no-interaction')
@@ -103,7 +103,7 @@ test('backup:run refuses to run before a destination is configured', function ()
         ->expectsOutputToContain('No backup destination configured');
 });
 
-test('backup:run aborts and uploads nothing when a dump fails', function () {
+test('backup:run aborts and uploads nothing when a dump fails', function (): void {
     // A partial backup that reports success is the one you discover during a
     // restore. Failing loudly and uploading nothing is the safer outcome.
     Process::fake(backupFakes([
@@ -118,7 +118,7 @@ test('backup:run aborts and uploads nothing when a dump fails', function () {
     Process::assertNotRan(fn ($job) => str_contains($job->command, 's3 cp'));
 });
 
-test('backup:run aborts when the cluster reports no databases', function () {
+test('backup:run aborts when the cluster reports no databases', function (): void {
     Process::fake(backupFakes(['*pg_database*' => Process::result(output: '')]));
 
     $this->artisan('backup:run local --no-interaction')
@@ -126,7 +126,7 @@ test('backup:run aborts when the cluster reports no databases', function () {
         ->expectsOutputToContain('no databases to back up');
 });
 
-test('backup:list reports honestly when the destination is empty', function () {
+test('backup:list reports honestly when the destination is empty', function (): void {
     Process::fake(backupFakes(['*s3 ls*' => Process::result(output: '')]));
 
     $this->artisan('backup:list local --no-interaction')
@@ -134,7 +134,7 @@ test('backup:list reports honestly when the destination is empty', function () {
         ->expectsOutputToContain('No backups found');
 });
 
-test('the inventory excludes Prometheus and includes the Synapse signing key', function () {
+test('the inventory excludes Prometheus and includes the Synapse signing key', function (): void {
     Process::fake(backupFakes());
 
     $cmd = new class
@@ -178,7 +178,7 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
         ->and($names)->not->toContain('chat-db');
 });
 
-test('a tool with no legacy name gets the derived {tool}-{component} format', function () {
+test('a tool with no legacy name gets the derived {tool}-{component} format', function (): void {
     // DRIVE's component key is "app" — its legacy name ("drive-ocis") is
     // preserved via the map, but a hypothetical future backup-worthy
     // component with no legacy entry must still get a stable, predictable
@@ -204,7 +204,7 @@ test('a tool with no legacy name gets the derived {tool}-{component} format', fu
         ->and($names)->not->toContain('secrets-app');
 });
 
-test('aws invocations disable the checksum that R2 and B2 reject', function () {
+test('aws invocations disable the checksum that R2 and B2 reject', function (): void {
     // From aws-cli 2.23 the client sends x-amz-checksum-crc32 by default, which
     // Cloudflare R2, Backblaze B2 and MinIO reject. It surfaces as an opaque
     // signature error at the exact moment you need the backup to work.
@@ -227,7 +227,7 @@ test('aws invocations disable the checksum that R2 and B2 reject', function () {
         ->toHaveKey('AWS_DEFAULT_REGION', 'auto');
 });
 
-test('an empty region falls back to auto rather than an AWS-specific default', function () {
+test('an empty region falls back to auto rather than an AWS-specific default', function (): void {
     $cmd = new class
     {
         use InteractsWithBackup;
@@ -242,7 +242,7 @@ test('an empty region falls back to auto rather than an AWS-specific default', f
     expect($cmd->env()['AWS_DEFAULT_REGION'])->toBe('auto');
 });
 
-test('restore accepts the destination on the command line, for when no cluster exists', function () {
+test('restore accepts the destination on the command line, for when no cluster exists', function (): void {
     // The disaster this command is for is the cluster being gone. Reading the
     // destination *from* the cluster only works for the mild failures.
     Process::fake([
@@ -261,7 +261,7 @@ test('restore accepts the destination on the command line, for when no cluster e
         ->expectsOutputToContain('No completed backups found');
 });
 
-test('restore without a cluster or flags explains the recovery card', function () {
+test('restore without a cluster or flags explains the recovery card', function (): void {
     Process::fake(['*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('backup:restore local --no-interaction')
@@ -269,7 +269,7 @@ test('restore without a cluster or flags explains the recovery card', function (
         ->expectsOutputToContain('backup-recovery.txt');
 });
 
-test('the R2 account id is read from the endpoint, not asked for again', function () {
+test('the R2 account id is read from the endpoint, not asked for again', function (): void {
     $cmd = new class
     {
         use InteractsWithBackup;
@@ -287,7 +287,7 @@ test('the R2 account id is read from the endpoint, not asked for again', functio
         ->and($cmd->id('https://nope.r2.cloudflarestorage.com'))->toBeNull();
 });
 
-test('creating a bucket that already exists is success, not an error', function () {
+test('creating a bucket that already exists is success, not an error', function (): void {
     // Re-running backup:init against a configured destination is normal.
     Http::fake([
         'api.cloudflare.com/*' => Http::response([
@@ -311,7 +311,7 @@ test('creating a bucket that already exists is success, not an error', function 
         ->and($cmd->make()['message'])->toContain('already exists');
 });
 
-test('a token without R2 permission says exactly which scope is missing', function () {
+test('a token without R2 permission says exactly which scope is missing', function (): void {
     Http::fake([
         'api.cloudflare.com/*' => Http::response([
             'success' => false,
@@ -336,7 +336,7 @@ test('a token without R2 permission says exactly which scope is missing', functi
         ->and($result['message'])->toContain('Workers R2 Storage');
 });
 
-test('bucket creation is refused for non-R2 endpoints rather than failing obscurely', function () {
+test('bucket creation is refused for non-R2 endpoints rather than failing obscurely', function (): void {
     Process::fake(backupFakes());
     Http::fake();
 
@@ -347,7 +347,7 @@ test('bucket creation is refused for non-R2 endpoints rather than failing obscur
         ->expectsOutputToContain('only supported for Cloudflare R2');
 });
 
-test('the environment argument selects the cluster, not whatever kubectl points at', function () {
+test('the environment argument selects the cluster, not whatever kubectl points at', function (): void {
     // backup:init production once wrote its config to the local orbstack
     // cluster because the environment argument was ignored. A backup of the
     // wrong cluster is the worst outcome: it looks exactly like a good one.
@@ -366,7 +366,7 @@ test('the environment argument selects the cluster, not whatever kubectl points 
         && str_contains($job->command, 'larakube-backup-config'));
 });
 
-test('the recovery card appends and never destroys an older passphrase', function () {
+test('the recovery card appends and never destroys an older passphrase', function (): void {
     // A rebuilt cluster has no config, so backup:init mints a fresh passphrase.
     // Overwriting here would make every archive already in the bucket
     // permanently unreadable — discovered only during a recovery.
@@ -393,7 +393,7 @@ test('the recovery card appends and never destroys an older passphrase', functio
     @unlink($card);
 });
 
-test('backup:schedule refuses before a destination exists', function () {
+test('backup:schedule refuses before a destination exists', function (): void {
     // A nightly job with nowhere to upload fails silently every night, which is
     // the worst shape a backup problem can take.
     Process::fake(['*' => Process::result(output: '')]);
@@ -403,7 +403,7 @@ test('backup:schedule refuses before a destination exists', function () {
         ->expectsOutputToContain('No backup destination configured');
 });
 
-test('backup:schedule deploys the CronJob and names the exec permission', function () {
+test('backup:schedule deploys the CronJob and names the exec permission', function (): void {
     Process::fake(backupFakes(['*apply -f *' => Process::result(output: 'created')]));
 
     $this->artisan('backup:schedule local --no-interaction')
@@ -414,7 +414,7 @@ test('backup:schedule deploys the CronJob and names the exec permission', functi
         ->expectsOutputToContain('pods/exec');
 });
 
-test('the CronJob covers every volume in the inventory and no others', function () {
+test('the CronJob covers every volume in the inventory and no others', function (): void {
     Process::fake(backupFakes());
 
     $volumes = (new class
@@ -442,7 +442,7 @@ test('the CronJob covers every volume in the inventory and no others', function 
     expect($manifest)->not->toContain('prometheus');
 });
 
-test('the CronJob refuses to upload a backup with no databases', function () {
+test('the CronJob refuses to upload a backup with no databases', function (): void {
     $manifest = view('k8s.backup.cronjob', [
         'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
         'dbDriver' => 'postgres', 'dbService' => 'postgres',
@@ -456,7 +456,7 @@ test('the CronJob refuses to upload a backup with no databases', function () {
         ->and($manifest)->toContain('concurrencyPolicy: Forbid');
 });
 
-test('the CronJob encrypts before the upload container ever sees the data', function () {
+test('the CronJob encrypts before the upload container ever sees the data', function (): void {
     $manifest = view('k8s.backup.cronjob', [
         'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
         'dbDriver' => 'postgres', 'dbService' => 'postgres',
@@ -485,7 +485,7 @@ test('the CronJob encrypts before the upload container ever sees the data', func
         ->toContain('AWS_REQUEST_CHECKSUM_CALCULATION');
 });
 
-test('backup:unschedule is a no-op when nothing is scheduled', function () {
+test('backup:unschedule is a no-op when nothing is scheduled', function (): void {
     Process::fake(backupFakes(['*get cronjob*' => Process::result(output: '')]));
 
     $this->artisan('backup:unschedule local --force')
@@ -493,7 +493,7 @@ test('backup:unschedule is a no-op when nothing is scheduled', function () {
         ->expectsOutputToContain('nothing to do');
 });
 
-test('backup:unschedule removes the exec grant, not just the job', function () {
+test('backup:unschedule removes the exec grant, not just the job', function (): void {
     Process::fake(backupFakes([
         '*get cronjob*' => Process::result(output: 'larakube-backup  17 3 * * *'),
         '*delete *' => Process::result(output: 'deleted'),
@@ -509,7 +509,7 @@ test('backup:unschedule removes the exec grant, not just the job', function () {
     Process::assertRan(fn ($job) => str_contains($job->command, 'clusterrole/larakube-backup'));
 });
 
-test('backup:unschedule never touches existing backups or the destination', function () {
+test('backup:unschedule never touches existing backups or the destination', function (): void {
     Process::fake(backupFakes([
         '*get cronjob*' => Process::result(output: 'larakube-backup  17 3 * * *'),
         '*delete *' => Process::result(output: 'deleted'),
@@ -522,7 +522,7 @@ test('backup:unschedule never touches existing backups or the destination', func
     Process::assertNotRan(fn ($job) => str_contains($job->command, 's3 rm'));
 });
 
-test('the CronJob pins a timezone so a 3am schedule is not 11am somewhere', function () {
+test('the CronJob pins a timezone so a 3am schedule is not 11am somewhere', function (): void {
     // Kubernetes reads a bare schedule in the controller-manager's timezone,
     // which is UTC on essentially every cluster. Without timeZone, "17 3 * * *"
     // fires at 11:17 in Manila — squarely in business hours, while pg_dump and
@@ -541,7 +541,7 @@ test('the CronJob pins a timezone so a 3am schedule is not 11am somewhere', func
     expect($cron['spec']['timeZone'])->toBe('Asia/Manila');
 });
 
-test('changing only the timezone still rolls the CronJob', function () {
+test('changing only the timezone still rolls the CronJob', function (): void {
     $checksum = function (string $tz): string {
         $manifest = view('k8s.backup.cronjob', [
             'schedule' => '17 3 * * *', 'timezone' => $tz, 'volumes' => [],
@@ -560,7 +560,7 @@ test('changing only the timezone still rolls the CronJob', function () {
     expect($checksum('Asia/Manila'))->not->toBe($checksum('UTC'));
 });
 
-test('the schedule is described in local time AND UTC, so it cannot be misread', function () {
+test('the schedule is described in local time AND UTC, so it cannot be misread', function (): void {
     $cmd = new class
     {
         // Lives on SchedulesCronJobs now: every command that deploys a CronJob
@@ -582,7 +582,7 @@ test('the schedule is described in local time AND UTC, so it cannot be misread',
         ->and($cmd->describe('*/5 * * * *', 'UTC'))->toContain('*/5 * * * *');
 });
 
-test('backup:schedule rejects a timezone Kubernetes would not accept', function () {
+test('backup:schedule rejects a timezone Kubernetes would not accept', function (): void {
     Process::fake(backupFakes(['*apply -f *' => Process::result(output: 'created')]));
 
     $this->artisan('backup:schedule local --no-interaction --timezone=Mars/Olympus')
@@ -592,7 +592,7 @@ test('backup:schedule rejects a timezone Kubernetes would not accept', function 
     Process::assertNotRan(fn ($job) => str_contains($job->command, 'apply -f'));
 });
 
-test('an explicit --cron wins over the picker', function () {
+test('an explicit --cron wins over the picker', function (): void {
     Process::fake(backupFakes(['*apply -f *' => Process::result(output: 'created')]));
 
     $this->artisan('backup:schedule local --no-interaction --cron="5 4 * * *" --timezone=UTC')
@@ -600,7 +600,7 @@ test('an explicit --cron wins over the picker', function () {
         ->expectsOutputToContain('04:05 UTC');
 });
 
-test('non-interactive falls back to a nightly default rather than refusing', function () {
+test('non-interactive falls back to a nightly default rather than refusing', function (): void {
     // A cluster with no backups is worse than one backed up at a time nobody
     // chose, so this defaults instead of throwing MissingFlagException.
     Process::fake(backupFakes(['*apply -f *' => Process::result(output: 'created')]));
@@ -610,7 +610,7 @@ test('non-interactive falls back to a nightly default rather than refusing', fun
         ->expectsOutputToContain('03:17 UTC');
 });
 
-test('the projected storage is shown, because nothing prunes it yet', function () {
+test('the projected storage is shown, because nothing prunes it yet', function (): void {
     $method = new ReflectionMethod(BackupScheduleCommand::class, 'describeGrowth');
     $method->setAccessible(true);
     $cmd = new BackupScheduleCommand;
@@ -624,7 +624,7 @@ test('the projected storage is shown, because nothing prunes it yet', function (
         ->and($method->invoke($cmd, 'nonsense', 55))->toBeNull();
 });
 
-test('the backup and the media prune do not run at the same time', function () {
+test('the backup and the media prune do not run at the same time', function (): void {
     // chat-media-prune uploads media INTO SeaweedFS; the backup tars
     // SeaweedFS's data directory. Overlapping risks archiving that volume
     // mid-write — and both are I/O heavy on a single node.
@@ -650,7 +650,7 @@ test('the backup and the media prune do not run at the same time', function () {
     expect($pruneCron)->not->toBe($backupCron);
 });
 
-test('every image the backup job uses is one that still exists', function () {
+test('every image the backup job uses is one that still exists', function (): void {
     // bitnami/kubectl:1.31 passed a server-side dry-run and then 404'd at pull
     // time — Bitnami withdrew their Docker Hub images in 2025. Schema
     // validation says nothing about whether an image can be fetched.
@@ -685,7 +685,7 @@ test('every image the backup job uses is one that still exists', function () {
     }
 });
 
-test('the backup works on MySQL and MariaDB, not just PostgreSQL', function () {
+test('the backup works on MySQL and MariaDB, not just PostgreSQL', function (): void {
     // Postgres is the common Commons choice, not the only supported one. A
     // backup that hardcodes psql/pg_dump silently does nothing on the others.
     foreach ([DatabaseDriver::MYSQL, DatabaseDriver::MARIADB] as $driver) {
@@ -714,7 +714,7 @@ test('the backup works on MySQL and MariaDB, not just PostgreSQL', function () {
     }
 });
 
-test('the encrypt stage does not assume the Commons engine', function () {
+test('the encrypt stage does not assume the Commons engine', function (): void {
     // postgres:17.9 was chosen because it was "already on the node" — true only
     // for a Postgres Commons, and it would need re-checking for openssl on each
     // other engine.
@@ -736,7 +736,7 @@ test('the encrypt stage does not assume the Commons engine', function () {
         ->and($encrypt['image'])->toBe('alpine/openssl:3.5.4');
 });
 
-test('an unsupported Commons engine is refused rather than scheduled', function () {
+test('an unsupported Commons engine is refused rather than scheduled', function (): void {
     // MongoDB and SQLite have no dump command; a nightly job that cannot dump
     // anything would fail silently forever.
     expect(DatabaseDriver::MONGODB->hasCommonsDumpCommand())->toBeFalse()
@@ -746,7 +746,7 @@ test('an unsupported Commons engine is refused rather than scheduled', function 
         ->and(DatabaseDriver::MARIADB->hasCommonsDumpCommand())->toBeTrue();
 });
 
-test('restore is engine-aware — it never assumes the Commons database is Postgres', function () {
+test('restore is engine-aware — it never assumes the Commons database is Postgres', function (): void {
     // backup:run and backup:schedule were made engine-aware; backup:restore was
     // missed and hardcoded `exec deploy/postgres -- psql -U postgres`. On a
     // MySQL or MariaDB Commons that pipes a mysqldump into a pod that does not
@@ -765,11 +765,11 @@ test('restore is engine-aware — it never assumes the Commons database is Postg
 
     // Engines with no dump command must have no restore command either, so the
     // command refuses instead of running something meaningless.
-    expect(DatabaseDriver::MONGODB->commonsAdminRestoreCommand('x'))->toBe('')
-        ->and(DatabaseDriver::SQLITE->commonsAdminRestoreCommand('x'))->toBe('');
+    expect(DatabaseDriver::MONGODB->commonsAdminRestoreCommand('x'))->toBeEmpty()
+        ->and(DatabaseDriver::SQLITE->commonsAdminRestoreCommand('x'))->toBeEmpty();
 });
 
-test('the Postgres restore stops on the first error instead of exiting 0', function () {
+test('the Postgres restore stops on the first error instead of exiting 0', function (): void {
     // psql without ON_ERROR_STOP prints every error, keeps going, and still
     // exits 0 — so a restore that populated nothing reports success, which is
     // the worst possible outcome for this particular command.
@@ -777,14 +777,14 @@ test('the Postgres restore stops on the first error instead of exiting 0', funct
         ->toContain('ON_ERROR_STOP=1');
 });
 
-test('dump and restore are inverses across every backup-capable engine', function () {
+test('dump and restore are inverses across every backup-capable engine', function (): void {
     foreach (DatabaseDriver::cases() as $driver) {
         expect($driver->commonsAdminRestoreCommand('db') !== '')
             ->toBe($driver->hasCommonsDumpCommand(), "{$driver->value} can dump but not restore, or vice versa");
     }
 });
 
-test('the volume restore mounts the claim where the real pod mounts it', function () {
+test('the volume restore mounts the claim where the real pod mounts it', function (): void {
     // The archive is made with `tar -C dirname(path) basename(path)`, so its
     // leading component IS the mount point. Mount the claim anywhere else and
     // extraction nests it a level too deep — /data/data/… instead of /data/….
@@ -817,7 +817,7 @@ test('the volume restore mounts the claim where the real pod mounts it', functio
     expect($resolved)->toBe(['claim' => 'forgejo-data', 'mountPath' => '/data']);
 });
 
-test('a Secret mounted inside the data volume never wins over the PVC', function () {
+test('a Secret mounted inside the data volume never wins over the PVC', function (): void {
     // chat-synapse mounts homeserver.yaml at /data/homeserver.yaml, inside the
     // PVC's own /data. Only the PVC-backed mount can be restored into, so the
     // longest-prefix match must still skip non-PVC mounts.
@@ -857,7 +857,7 @@ test('a Secret mounted inside the data volume never wins over the PVC', function
     expect($resolved)->toBe(['claim' => 'chat-synapse-data', 'mountPath' => '/data']);
 });
 
-test('backup:restore declares the flags the restore flow depends on', function () {
+test('backup:restore declares the flags the restore flow depends on', function (): void {
     $signature = (new ReflectionClass(BackupRestoreCommand::class))
         ->getDefaultProperties()['signature'];
 
@@ -866,7 +866,7 @@ test('backup:restore declares the flags the restore flow depends on', function (
         ->toContain('--dry-run');
 });
 
-test('the Postgres restore clears the schema and hands it back to the tenant role', function () {
+test('the Postgres restore clears the schema and hands it back to the tenant role', function (): void {
     // pg_dump --no-owner emits no DROP, so replaying into a populated database
     // dies on the first CREATE TABLE. And objects belong to whoever creates
     // them: restoring as the superuser would leave every table owned by
@@ -885,16 +885,16 @@ test('the Postgres restore clears the schema and hands it back to the tenant rol
         ->and(strpos($preamble, 'CREATE SCHEMA'))->toBeLessThan(strpos($preamble, 'SET ROLE'));
 });
 
-test('MySQL and MariaDB need no restore preamble', function () {
+test('MySQL and MariaDB need no restore preamble', function (): void {
     // mysqldump emits DROP TABLE IF EXISTS by default, and their privileges are
     // GRANT-based on the database rather than per-object ownership — so neither
     // problem the Postgres preamble solves exists here.
-    expect(DatabaseDriver::MYSQL->commonsRestorePreamble('x'))->toBe('')
-        ->and(DatabaseDriver::MARIADB->commonsRestorePreamble('x'))->toBe('')
-        ->and(DatabaseDriver::MONGODB->commonsRestorePreamble('x'))->toBe('');
+    expect(DatabaseDriver::MYSQL->commonsRestorePreamble('x'))->toBeEmpty()
+        ->and(DatabaseDriver::MARIADB->commonsRestorePreamble('x'))->toBeEmpty()
+        ->and(DatabaseDriver::MONGODB->commonsRestorePreamble('x'))->toBeEmpty();
 });
 
-test('a failed Postgres restore rolls back the schema drop', function () {
+test('a failed Postgres restore rolls back the schema drop', function (): void {
     // The preamble DROPs the schema before the dump refills it. Without
     // --single-transaction, psql autocommits each statement, so a failure
     // halfway leaves an emptied database and no way back — the worst outcome
@@ -911,7 +911,7 @@ function runListing(string $lines): array
     return ['*s3 ls --recursive*' => Process::result(output: $lines)];
 }
 
-test('a run without a manifest is incomplete and never offered', function () {
+test('a run without a manifest is incomplete and never offered', function (): void {
     // Splitting one archive into ~19 objects gives up "the backup lands whole
     // or not at all". The manifest, written last, is what buys it back: a run
     // interrupted mid-upload must be invisible rather than half-restorable.
@@ -946,7 +946,7 @@ test('a run without a manifest is incomplete and never offered', function () {
         ->and($cmd->latest($config))->toBe('2026-08-08-031116');
 });
 
-test('objects from the old single-archive layout are ignored', function () {
+test('objects from the old single-archive layout are ignored', function (): void {
     $cmd = new class
     {
         use InteractsWithBackup;
@@ -959,8 +959,7 @@ test('objects from the old single-archive layout are ignored', function () {
 
     Process::fake(runListing('2026-08-07 20:21:45   57458688 larakube/2026-08-07-202145.tar.gz.enc'));
 
-    expect($cmd->runs(['endpoint' => 'https://r2', 'bucket' => 'b', 'access_key' => 'AK', 'secret_key' => 'SK', 'region' => 'auto']))
-        ->toBe([]);
+    expect($cmd->runs(['endpoint' => 'https://r2', 'bucket' => 'b', 'access_key' => 'AK', 'secret_key' => 'SK', 'region' => 'auto']))->toBeEmpty();
 });
 
 /**
@@ -981,7 +980,7 @@ class BackupPruneCommandProbe extends BackupPruneCommand
     }
 }
 
-test('restore refuses a backup whose manifest never landed', function () {
+test('restore refuses a backup whose manifest never landed', function (): void {
     // The consumer side of "the manifest is written last". A run interrupted
     // mid-upload leaves objects behind; the guarantee is that they can never be
     // half-restored, because without a manifest there is nothing to restore
@@ -1005,7 +1004,7 @@ test('restore refuses a backup whose manifest never landed', function () {
     Process::assertNotRan(fn ($job) => str_contains($job->command, 'db-forgejo.sql.gz.enc'));
 });
 
-test('backup:prune keeps the newest run per period, GFS style', function () {
+test('backup:prune keeps the newest run per period, GFS style', function (): void {
     $cmd = new BackupPruneCommandProbe;
 
     // Two runs on the same day: only the newer one should hold the daily slot.
@@ -1023,7 +1022,7 @@ test('backup:prune keeps the newest run per period, GFS style', function () {
         ->and($keep)->not->toContain('2026-01-15-031700');
 });
 
-test('backup:prune never deletes a run id it cannot parse', function () {
+test('backup:prune never deletes a run id it cannot parse', function (): void {
     $keep = (new BackupPruneCommandProbe)->keepers(
         ['something-else', '2026-03-15-031700'],
         keepDaily: 0, keepWeekly: 0, keepMonthly: 0,
@@ -1034,7 +1033,7 @@ test('backup:prune never deletes a run id it cannot parse', function () {
     expect($keep)->toBe(['something-else']);
 });
 
-test('backup:prune shows before it deletes', function () {
+test('backup:prune shows before it deletes', function (): void {
     // The only command in the suite that destroys backups. --apply is required,
     // so a bare run can never remove anything.
     $signature = (new ReflectionClass(BackupPruneCommand::class))
@@ -1046,7 +1045,7 @@ test('backup:prune shows before it deletes', function () {
         ->toContain('--keep-monthly=6');
 });
 
-test('backup:restore declares --deep, the drill that survives per-item fetching', function () {
+test('backup:restore declares --deep, the drill that survives per-item fetching', function (): void {
     // Once restore only downloads what you pick, the default path stops proving
     // the archive is readable. --deep is what keeps that evidence available.
     $signature = (new ReflectionClass(BackupRestoreCommand::class))
@@ -1055,7 +1054,7 @@ test('backup:restore declares --deep, the drill that survives per-item fetching'
     expect($signature)->toContain('--deep')->toContain('--backup=');
 });
 
-test('the CronJob writes the same per-item layout the CLI does', function () {
+test('the CronJob writes the same per-item layout the CLI does', function (): void {
     // Two producers, one format. If the scheduled job kept bundling, every
     // nightly backup would be invisible to backup:list and unreadable by
     // backup:restore — you would have backups and no way to know.

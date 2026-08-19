@@ -48,6 +48,24 @@ trait InteractsWithChat
     }
 
     /**
+     * Write (or overwrite) a key on the chat-secrets secret — a plain k8s
+     * Secret patch, same posture as InteractsWithMail::storeMailSecret():
+     * this holds Synapse's OWN self-contained automation credentials (the
+     * larakube-automation admin's access token/password, minted lazily by
+     * InteractsWithMatrixApi::matrixAdminToken()), not something other
+     * tools consume, so it stays k8s-only rather than gaining an OpenBao
+     * dependency.
+     */
+    protected function storeChatSecret(string $kubectl, string $ns, string $key, string $value): bool
+    {
+        $patch = json_encode(['data' => [$key => base64_encode($value)]]);
+
+        return Process::run(
+            "{$kubectl} patch secret chat-secrets -n {$ns} --type=merge -p ".escapeshellarg((string) $patch),
+        )->successful();
+    }
+
+    /**
      * Read wired SMTP values from the `chat-smtp` Secret.
      *
      * Returns an array suitable for passing as `$smtp` to the matrix view, or

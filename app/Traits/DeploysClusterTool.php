@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * The single source of truth for "which cluster does this tool's deploy/
@@ -125,11 +126,12 @@ trait DeploysClusterTool
             'namespace' => $target['namespace'],
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-vpn-middleware-'.$target['name'].'.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-vpn-middleware-'.$target['name'].'.yaml');
         file_put_contents($tmp, $manifest);
 
         $ok = $this->applyResource("Ensuring VPN-only Middleware for {$tool->getLabel()}...", "{$kubectl} apply -f {$tmp}");
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         return $ok;
     }

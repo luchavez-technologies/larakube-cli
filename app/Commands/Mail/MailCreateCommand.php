@@ -15,6 +15,7 @@ use App\Traits\RequiresFlagsWhenNonInteractive;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
@@ -26,6 +27,7 @@ class MailCreateCommand extends Command
     protected $signature = 'mail:create
         {environment=local : Environment whose mail server to target}
         {--email= : Full email address for the new account}
+        {--domain=   : Which configured domain to create the mailbox under (default: the email\'s own domain, or the first configured domain)}
         {--name=     : Display name for the account}
         {--password= : Account password (auto-generated if omitted)}
         {--quota=1   : Mailbox quota in GB}
@@ -66,9 +68,22 @@ class MailCreateCommand extends Command
             return 1;
         }
 
-        $domainId = $domains[0]['id'] ?? null;
-        $domainName = $domains[0]['name'] ?? '?';
         $domainNames = array_column($domains, 'name', 'id');
+        $domainIdsByName = array_flip($domainNames);
+
+        $domainOption = (string) ($this->option('domain') ?? '');
+        if ($domainOption !== '') {
+            if (! isset($domainIdsByName[$domainOption])) {
+                $this->laraKubeError("Unknown domain '{$domainOption}'. Configured domains: ".implode(', ', array_keys($domainIdsByName)));
+
+                return 1;
+            }
+            $domainId = $domainIdsByName[$domainOption];
+            $domainName = $domainOption;
+        } else {
+            $domainId = $domains[0]['id'] ?? null;
+            $domainName = $domains[0]['name'] ?? '?';
+        }
 
         $email = (string) ($this->option('email') ?: text(
             label: 'Email address',
@@ -80,9 +95,25 @@ class MailCreateCommand extends Command
         $localPart = $parts[0];
         $givenDomain = $parts[1] ?? null;
 
-        if ($givenDomain && isset(array_flip($domainNames)[$givenDomain])) {
-            $domainId = array_flip($domainNames)[$givenDomain];
-            $domainName = $givenDomain;
+        if ($domainOption === '') {
+            if ($givenDomain && isset($domainIdsByName[$givenDomain])) {
+                $domainId = $domainIdsByName[$givenDomain];
+                $domainName = $givenDomain;
+            } elseif (count($domains) > 1 && ! $this->cannotPrompt()) {
+                // Two+ domains configured and neither --domain nor the email's
+                // own address disambiguated which one — silently defaulting to
+                // $domains[0] here risks provisioning a mailbox on the wrong
+                // domain (e.g. a partner.example address landing under
+                // luchtech.dev). A non-interactive caller with no hint keeps
+                // the $domains[0] fallback set above — a prompt isn't
+                // available there.
+                $domainName = select(
+                    label: 'Which domain should this mailbox belong to?',
+                    options: array_values($domainNames),
+                    default: $domainName,
+                );
+                $domainId = $domainIdsByName[$domainName];
+            }
         }
 
         $displayName = (string) ($this->option('name') ?: text(
@@ -103,7 +134,12 @@ class MailCreateCommand extends Command
             : (int) $this->option('quota');
         $quotaBytes = $quotaGb * 1073741824;
 
-        $created = $this->withSpin('Creating account...', function () use ($kubectl, $ns, $localPart, $domainId, $rawPassword, $displayName, $quotaBytes) {
+        // withSpin()/Command::task() always returns a bool (success signal),
+        // never the closure's own return value, so the JMAP response must be
+        // captured by reference — matching the pattern used elsewhere (e.g.
+        // UpCommand's manifest-validation step), not assigned directly.
+        $created = null;
+        $this->withSpin('Creating account...', function () use (&$created, $kubectl, $ns, $localPart, $domainId, $rawPassword, $displayName, $quotaBytes): void {
             $responses = $this->stalwartJmap($kubectl, $ns, [[
                 'x:Account/set',
                 [
@@ -132,7 +168,7 @@ class MailCreateCommand extends Command
                 'c1',
             ]]);
 
-            return $responses;
+            $created = $responses;
         });
 
         if ($created === null) {
@@ -180,7 +216,7 @@ class MailCreateCommand extends Command
         }
         $this->newLine();
 
-        $this->maybeCreateSsoIdentity($env, $fullEmail, $displayName, $rawPassword);
+        $this->maybeCreateSsoIdentity($env, $fullEmail, $displayName, $rawPassword, $domainName);
 
         return 0;
     }
@@ -198,8 +234,14 @@ class MailCreateCommand extends Command
      * When Zitadel ISN'T installed this is a no-op (only --sso turns that into
      * an error). Never fails the command: the mailbox already exists by this
      * point, so a failed/skipped SSO step is a warning, not a rollback trigger.
+     *
+     * $mailDomain resolves a matching Zitadel org (via sso:org) so a mailbox
+     * on an onboarded partner domain (e.g. partner.example) lands its SSO identity
+     * in that domain's own org, not the master org. Falls back to the master
+     * org — today's behaviour, unchanged — when no org name matches, which
+     * is the normal case for every domain that was never sso:org'd.
      */
-    protected function maybeCreateSsoIdentity(string $env, string $email, string $displayName, string $password): void
+    protected function maybeCreateSsoIdentity(string $env, string $email, string $displayName, string $password, ?string $mailDomain = null): void
     {
         $ssoKubectl = $this->ssoKubectl($this->resolveToolContext($env));
         $ssoNs = $this->ssoNamespace();
@@ -234,9 +276,11 @@ class MailCreateCommand extends Command
             return;
         }
 
+        $orgId = $mailDomain !== null ? $this->zitadelFindOrgByName($host, $pat, $mailDomain) : null;
+
         // Same password as the mailbox, so one credential unlocks both mail and
         // SSO — the account password printed above is all the user needs.
-        $userId = $this->zitadelCreateUser($host, $pat, $email, $displayName, $password);
+        $userId = $this->zitadelCreateUser($host, $pat, $email, $displayName, $password, $orgId);
 
         if ($userId === null) {
             $this->laraKubeError("Mailbox created, but the matching SSO identity could not be created — check Zitadel's console.");

@@ -58,7 +58,7 @@ function forceWsl(callable $callback): void
     }
 }
 
-test('isDockerDesktopKubernetesOnWsl is false outside WSL, regardless of context', function () {
+test('isDockerDesktopKubernetesOnWsl is false outside WSL, regardless of context', function (): void {
     $original = getenv('WSL_DISTRO_NAME');
 
     try {
@@ -71,8 +71,8 @@ test('isDockerDesktopKubernetesOnWsl is false outside WSL, regardless of context
     }
 });
 
-test('isDockerDesktopKubernetesOnWsl checks the current context on WSL', function () {
-    forceWsl(function () {
+test('isDockerDesktopKubernetesOnWsl checks the current context on WSL', function (): void {
+    forceWsl(function (): void {
         Process::fake(['kubectl config current-context' => 'docker-desktop']);
         expect(wslDetector()->dockerDesktopKubernetes())->toBeTrue();
 
@@ -81,7 +81,7 @@ test('isDockerDesktopKubernetesOnWsl checks the current context on WSL', functio
     });
 });
 
-test('hasDockerCli reflects whether `command -v docker` resolves', function () {
+test('hasDockerCli reflects whether `command -v docker` resolves', function (): void {
     Process::fake(['command -v docker' => '/usr/bin/docker']);
     expect(wslDetector()->dockerCli())->toBeTrue();
 
@@ -89,7 +89,7 @@ test('hasDockerCli reflects whether `command -v docker` resolves', function () {
     expect(wslDetector()->dockerCli())->toBeFalse();
 });
 
-test('isDockerDesktop matches the daemon operating-system string, case-insensitively', function () {
+test('isDockerDesktop matches the daemon operating-system string, case-insensitively', function (): void {
     Process::fake(['docker info --format "{{.OperatingSystem}}"' => 'Docker Desktop']);
     expect(wslDetector()->dockerDesktop())->toBeTrue();
 
@@ -100,14 +100,14 @@ test('isDockerDesktop matches the daemon operating-system string, case-insensiti
     expect(wslDetector()->dockerDesktop())->toBeFalse();
 });
 
-test('hasDockerDesktopOnWsl requires both WSL and a reachable Docker Desktop daemon', function () {
+test('hasDockerDesktopOnWsl requires both WSL and a reachable Docker Desktop daemon', function (): void {
     Process::fake([
         'command -v docker' => '/usr/bin/docker',
         'docker info --format "{{.OperatingSystem}}"' => 'Docker Desktop',
     ]);
     expect(wslDetector()->dockerDesktopOnWsl())->toBeFalse(); // not WSL
 
-    forceWsl(function () {
+    forceWsl(function (): void {
         Process::fake([
             'command -v docker' => '/usr/bin/docker',
             'docker info --format "{{.OperatingSystem}}"' => 'Docker Desktop',

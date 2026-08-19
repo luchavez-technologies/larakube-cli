@@ -1,9 +1,10 @@
 ## Running PHP/Composer
 
-All PHP and Composer commands in this directory MUST go through the local wrapper scripts, not the host `php`/`composer` binaries — they run inside a persistent Docker daemon that has the right PHP version and extensions.
+Requires PHP 8.4 installed locally (see CONTRIBUTING.md for the extension list) — run everything directly on the host.
 
-- `./php vendor/bin/pest` (tests), `./php vendor/bin/pint` (formatting, per repo-wide hard rule), `./php vendor/bin/phpstan` (static analysis)
-- `./composer <args>` for dependency management
+- `./vendor/bin/pest --parallel` (tests — parallel is the default; shared-state races that broke it were fixed 2026-08-19, see `tests/TestCase.php`), `./vendor/bin/pint` (formatting, per repo-wide hard rule), `./vendor/bin/phpstan` (static analysis)
+- `./vendor/bin/rector process` (automated refactoring — applies `rector.php`'s `PestSetList::CODING_STYLE` set across `app/`, `bootstrap/`, `config/`, `resources/`, `scripts/`, `tests/`: adds explicit `: void` return types to test closures, merges chained `expect()->and()` assertions, and similar Pest coding-style normalizations). Run it, then `./vendor/bin/pint` to clean up formatting afterward, then `./vendor/bin/pest --parallel` to confirm nothing broke — Rector rewrites code structure, so always re-verify rather than trusting the diff on sight.
+- `composer <args>` for dependency management
 - Never run `./build` yourself — tell the user to run it and wait.
 
 ## graphify
@@ -17,6 +18,8 @@ Rules:
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
 
 ## Writing Tests
+
+See `docs/decisions/0019-test-fidelity-conventions.md` for the full rationale behind every rule below — read it before writing a new test file.
 
 All shell commands MUST be faked via `Process::fake()` — never let a test hit a real cluster, Docker, or filesystem command. Every pattern that a command might execute must have a matching entry:
 
@@ -44,3 +47,7 @@ Key rules:
 - `Process::start()` (async) needs its own pattern — `Process::run()` patterns don't cover it.
 - `Http::withBody()->send()` and `Http::withToken()->send()` need matching fakes just like `Http::get()` / `Http::post()`.
 - If a test is slow (multiple seconds per assertion), a real process or HTTP call is leaking through — add the missing fake pattern.
+- Calling `Http::fake()` with a pattern that doesn't match a request throws — but a test that never calls `Http::fake()` at all does NOT throw or hang, it just makes a real, unmocked HTTP call. This is the more dangerous gap: `openBaoApi()`-style helpers port-forward (properly faked via `Process::fake()`) then make a real `Http::` call to `http://localhost:{port}` — with no `Http::fake()`, that request goes out for real. It usually fails fast (nothing's listening) and looks like it "worked," but confirmed live (2026-08-19): under `pest --parallel`, it intermittently picked up a response from an unrelated real local service, flipping the test's result. Any test reaching an `openBaoApi()`/similar HTTP-over-port-forward call needs its own `Http::fake(['localhost:*' => ...])`, even if the test "passes without it."
+- Real `sleep()`/`usleep()` in production code must go through the `Sleep` facade (`Illuminate\Support\Sleep`), not raw PHP calls — `Tests\TestCase::setUp()` fakes it globally, so faked code is instant in tests; raw calls are not. Wall-clock deadline loops (`while (time() < $deadline)`) must use `now()`/Carbon, not raw `time()` — `Sleep::fake(syncWithCarbon: true)` only advances Carbon's test-"now", not PHP's native `time()`.
+- Temp directories in tests use `Spatie\TemporaryDirectory\TemporaryDirectory::make()` (already a dependency), not `sys_get_temp_dir().'/fixed-name'` or manual `mkdir`/`rm -rf` — a shared fixed path races under `pest --parallel` even if it "works" sequentially.
+- Any `confirm()`/`text()`/`select()`/`multiselect()` a command's code path can reach during a `$this->artisan(...)` call needs a matching `->expectsConfirmation(...)`/`->expectsQuestion(...)`/`->expectsChoice(...)` in the test — `configurePrompts()` runs on every real command execution (including in tests) and always routes prompts through Laravel's own fallback (`$this->components->confirm()`/etc. on a Mockery-mocked `OutputStyle`), never real terminal rendering. An unstubbed prompt throws `Received Mockery_..., but no expectations were specified`. Match the prompt's `label:` text exactly (no suffix is added) and, for `expectsChoice`, the exact `options` array (label text, not just keys) — Mockery compares both. Order matters: stubs are consumed in the order the command asks them. If a command gates its own prompt behind a raw `stream_isatty(STDIN)` check (e.g. `confirmComponentRemoval()`-style guards), that prompt's presence depends on whether the *test runner* has a real TTY — pass `--force`/`--no-interaction` in the test instead of stubbing it, so the test is deterministic across environments. Tests that use Laravel Prompts' own `Prompt::fake([...keys])` + a manually-run `$command->handle()` (bypassing `$this->artisan()`) are unaffected by this as long as they never call `$command->run()` (which is what triggers `configurePrompts()`).

@@ -3,32 +3,34 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 Prompt::interactive(false);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function makeExportFile(array $environments = []): string
+function makeExportFile(array $environments = []): TemporaryDirectory
 {
-    $path = sys_get_temp_dir().'/larakube_import_test_'.uniqid().'.json';
-    file_put_contents($path, json_encode([
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    file_put_contents($temporaryDirectory->path('export.json'), json_encode([
         'engine' => 'openbao',
         'exported_at' => now()->toIso8601String(),
         'environments' => $environments,
     ]));
 
-    return $path;
+    return $temporaryDirectory;
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-test('secrets:import initializes and unseals openbao, then writes secrets', function () {
-    $input = makeExportFile([
+test('secrets:import initializes and unseals openbao, then writes secrets', function (): void {
+    $temporaryDirectory = makeExportFile([
         'production' => [
             'APP_KEY' => 'base64:abc123',
             'DB_PASSWORD' => 's3cret',
         ],
     ]);
+    $input = $temporaryDirectory->path('export.json');
 
     Process::fake([
         '*port-forward*' => Process::result(),
@@ -56,11 +58,12 @@ test('secrets:import initializes and unseals openbao, then writes secrets', func
         ->assertExitCode(0)
         ->expectsOutputToContain('Imported 2 secret(s)');
 
-    @unlink($input);
+    $temporaryDirectory->delete();
 });
 
-test('secrets:import unseals an already-initialized but sealed openbao', function () {
-    $input = makeExportFile(['production' => ['APP_KEY' => 'abc']]);
+test('secrets:import unseals an already-initialized but sealed openbao', function (): void {
+    $temporaryDirectory = makeExportFile(['production' => ['APP_KEY' => 'abc']]);
+    $input = $temporaryDirectory->path('export.json');
 
     Process::fake([
         '*port-forward*' => Process::result(),
@@ -87,10 +90,10 @@ test('secrets:import unseals an already-initialized but sealed openbao', functio
         ->assertExitCode(0)
         ->expectsOutputToContain('Imported 1 secret(s)');
 
-    @unlink($input);
+    $temporaryDirectory->delete();
 });
 
-test('secrets:import fails when input file does not exist', function () {
+test('secrets:import fails when input file does not exist', function (): void {
     Process::fake(['*' => Process::result()]);
 
     $this->artisan('secrets:import local --input=/nonexistent/file.json --no-interaction')

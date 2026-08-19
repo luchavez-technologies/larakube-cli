@@ -17,6 +17,7 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SecretsInitCommand extends Command
 {
@@ -90,7 +91,8 @@ class SecretsInitCommand extends Command
             'namespace' => $ns,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-openbao.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-openbao.yaml');
         file_put_contents($tmp, $crdsManifest."\n---\n".$generatorCrdsManifest."\n---\n".$manifest."\n---\n".$esoManifest);
 
         // Two resources to verify per apply (openbao-backend + external-
@@ -101,7 +103,7 @@ class SecretsInitCommand extends Command
         // this command claims success regardless (confirmed live on
         // Documenso, 2026-08-05).
         $applied = $this->withSpin('Applying OpenBao & External Secrets Operator manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $applied) {
             $this->laraKubeError('Could not apply the OpenBao/ESO manifest — see the output above.');
@@ -179,7 +181,7 @@ class SecretsInitCommand extends Command
         // way, same as before this existed. A userpass hiccup shouldn't
         // block the rest of the OpenBao/ESO deployment.
         $userpassAdmin = null;
-        $this->withSpin('Ensuring a baseline OpenBao admin login (userpass, independent of SSO)...', function () use ($kubectl, $ns, $token, &$userpassAdmin) {
+        $this->withSpin('Ensuring a baseline OpenBao admin login (userpass, independent of SSO)...', function () use ($kubectl, $ns, $token, &$userpassAdmin): void {
             $userpassAdmin = $this->ensureOpenBaoUserpassAdmin($kubectl, $ns, $token);
         });
 
@@ -195,26 +197,28 @@ class SecretsInitCommand extends Command
             $this->newLine();
         }
 
-        $this->withSpin('Wiring External Secrets Operator to OpenBao...', function () use ($kubectl, $ns, $token) {
+        $this->withSpin('Wiring External Secrets Operator to OpenBao...', function () use ($kubectl, $ns, $token): void {
             $clusterStore = view('k8s.secrets.cluster-store', [
                 'namespace' => $ns,
                 'token' => base64_encode($token),
                 'hostAPI' => 'http://openbao-backend.'.$ns.'.svc.cluster.local:8200',
             ])->render();
 
-            $tmp = sys_get_temp_dir().'/larakube-eso-cluster-store.yaml';
+            $temporaryDirectory = TemporaryDirectory::make();
+            $tmp = $temporaryDirectory->path('larakube-eso-cluster-store.yaml');
             file_put_contents($tmp, $clusterStore);
             Process::run("{$kubectl} apply -f ".escapeshellarg($tmp));
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             $reloader = view('k8s.secrets.reloader', [
                 'namespace' => $ns,
             ])->render();
 
-            $tmpReloader = sys_get_temp_dir().'/larakube-reloader.yaml';
+            $reloaderTemporaryDirectory = TemporaryDirectory::make();
+            $tmpReloader = $reloaderTemporaryDirectory->path('larakube-reloader.yaml');
             file_put_contents($tmpReloader, $reloader);
             Process::run("{$kubectl} apply -f ".escapeshellarg($tmpReloader));
-            @unlink($tmpReloader);
+            $reloaderTemporaryDirectory->delete();
         });
 
         foreach (ClusterTool::cases() as $tool) {
@@ -242,17 +246,18 @@ class SecretsInitCommand extends Command
                 continue;
             }
 
-            $this->withSpin("Syncing OpenBao secrets to {$config['secret']} in {$config['namespace']}...", function () use ($kubectl, $config) {
+            $this->withSpin("Syncing OpenBao secrets to {$config['secret']} in {$config['namespace']}...", function () use ($kubectl, $config): void {
                 $es = view('k8s.secrets.tool-es', [
                     'namespace' => $config['namespace'],
                     'secretName' => $config['secret'],
                     'keys' => $config['keys'],
                 ])->render();
 
-                $tmp = sys_get_temp_dir().'/larakube-es-'.$config['secret'].'.yaml';
+                $temporaryDirectory = TemporaryDirectory::make();
+                $tmp = $temporaryDirectory->path('larakube-es-'.$config['secret'].'.yaml');
                 file_put_contents($tmp, $es);
                 Process::run("{$kubectl} apply -f ".escapeshellarg($tmp));
-                @unlink($tmp);
+                $temporaryDirectory->delete();
             });
         }
 

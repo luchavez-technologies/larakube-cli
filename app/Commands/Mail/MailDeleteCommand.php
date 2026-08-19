@@ -91,7 +91,7 @@ class MailDeleteCommand extends Command
         $accountId = $target['id'];
 
         $destroyed = false;
-        $this->withSpin('Deleting account...', function () use (&$destroyed, $kubectl, $ns, $accountId) {
+        $this->withSpin('Deleting account...', function () use (&$destroyed, $kubectl, $ns, $accountId): void {
             $responses = $this->stalwartJmap($kubectl, $ns, [[
                 'x:Account/set',
                 ['destroy' => [$accountId]],

@@ -37,7 +37,7 @@ function envResolver(array $arguments = [], array $options = []): object
     };
 }
 
-test('an explicit environment always wins, even alongside --domain', function () {
+test('an explicit environment always wins, even alongside --domain', function (): void {
     $resolved = envResolver(
         ['environment' => 'production'],
         ['domain' => 'example.com'],
@@ -46,28 +46,28 @@ test('an explicit environment always wins, even alongside --domain', function ()
     expect($resolved)->toBe('production');
 });
 
-test('--domain without an environment is refused instead of silently becoming local', function () {
+test('--domain without an environment is refused instead of silently becoming local', function (): void {
     // The regression: this used to return 'local' and deploy a production
     // hostname to the current kube-context with local TLS.
     expect(fn () => envResolver([], ['domain' => 'example.com'])->resolve(ClusterTool::SECRETS))
         ->toThrow(AmbiguousEnvironmentException::class);
 });
 
-test('--domain is refused even under --no-interaction', function () {
+test('--domain is refused even under --no-interaction', function (): void {
     // CI is exactly where a silently-wrong cluster does the most damage.
     expect(fn () => envResolver([], ['domain' => 'example.com', 'no-interaction' => true])
         ->resolve(ClusterTool::SECRETS))
         ->toThrow(AmbiguousEnvironmentException::class);
 });
 
-test('a bare --no-interaction run still defaults to local', function () {
+test('a bare --no-interaction run still defaults to local', function (): void {
     // No domain means no evidence of a cloud target — `local` stays the
     // documented default for an omitted {environment?}.
     expect(envResolver([], ['no-interaction' => true])->resolve(ClusterTool::SECRETS))
         ->toBe('local');
 });
 
-test('the refusal names the command and the domain so the fix is copy-pasteable', function () {
+test('the refusal names the command and the domain so the fix is copy-pasteable', function (): void {
     try {
         envResolver([], ['domain' => 'example.com'])->resolve(ClusterTool::MAIL);
         $this->fail('expected AmbiguousEnvironmentException');
@@ -77,7 +77,7 @@ test('the refusal names the command and the domain so the fix is copy-pasteable'
     }
 });
 
-test('no init command still forces the environment from --domain', function () {
+test('no init command still forces the environment from --domain', function (): void {
     $commands = app(Kernel::class)->all();
 
     foreach (ClusterTool::cases() as $tool) {

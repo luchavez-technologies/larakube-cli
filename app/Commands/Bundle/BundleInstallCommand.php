@@ -9,7 +9,9 @@ use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromptsForHosts;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Install-side: extract and deploy the air-gapped bundle on the customer's server.
@@ -154,7 +156,7 @@ class BundleInstallCommand extends Command
             if (Process::run('k3s ctr version')->successful()) {
                 break;
             }
-            sleep(1);
+            Sleep::sleep(1);
         }
 
         if ($this->option('skip-images')) {
@@ -178,11 +180,11 @@ class BundleInstallCommand extends Command
                         if (Process::run('k3s ctr version')->successful()) {
                             break;
                         }
-                        sleep(1);
+                        Sleep::sleep(1);
                     }
 
                     // Give it an extra 5 seconds of breathing room after the socket responds
-                    sleep(5);
+                    Sleep::sleep(5);
                 }
 
                 if (! $success) {
@@ -364,8 +366,13 @@ class BundleInstallCommand extends Command
         }
 
         $this->laraKubeInfo('Generating TLS certificates...');
-        $certDir = sys_get_temp_dir().'/larakube-certs-'.time();
-        @mkdir($certDir, 0700, true);
+        // permission(0700) BEFORE create(): this directory holds TLS private
+        // keys, so it must never inherit TemporaryDirectory's default 0777.
+        // Keep $certTemporaryDirectory alive for the rest of this method —
+        // deleteWhenDestroyed() fires on garbage collection, which would
+        // delete the directory immediately if nothing held a reference to it.
+        $certTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $certDir = $certTemporaryDirectory->path();
 
         $certs = $this->generateSanCertificates(
             domains: array_values($hosts),
@@ -379,7 +386,7 @@ class BundleInstallCommand extends Command
             if (Process::run('kubectl get nodes')->successful()) {
                 break;
             }
-            sleep(2);
+            Sleep::sleep(2);
         }
 
         // Ensure namespace exists before we create secrets
@@ -388,7 +395,8 @@ class BundleInstallCommand extends Command
         // Traefik expects the TLSStore in its own namespace for the default certificate
         Process::run('kubectl create namespace traefik --dry-run=client -o yaml | kubectl apply -f -');
 
-        $tmpCertsYml = sys_get_temp_dir().'/traefik-certs.yml';
+        $certsTemporaryDirectory = TemporaryDirectory::make();
+        $tmpCertsYml = $certsTemporaryDirectory->path('traefik-certs.yml');
         file_put_contents($tmpCertsYml, view('traefik.dev-certs')->render());
         Process::run("kubectl create configmap traefik-config -n traefik --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply -f -");
 
@@ -396,14 +404,15 @@ class BundleInstallCommand extends Command
         $tmpTlsKey = escapeshellarg($certs['tls_key']);
         Process::run("kubectl create secret generic traefik-certificates -n traefik --from-file=local-dev.pem={$tmpTlsCrt} --from-file=local-dev-key.pem={$tmpTlsKey} --dry-run=client -o yaml | kubectl apply -f -");
 
-        @unlink($tmpCertsYml);
+        $certsTemporaryDirectory->delete();
 
         // 7. Deploy Traefik
         $this->laraKubeInfo('Deploying Traefik Ingress Controller...');
-        $tmpInstall = sys_get_temp_dir().'/traefik-install.yaml';
+        $installTemporaryDirectory = TemporaryDirectory::make();
+        $tmpInstall = $installTemporaryDirectory->path('traefik-install.yaml');
         file_put_contents($tmpInstall, view('k8s.traefik-install')->render());
         $this->runStreaming("kubectl apply -f {$tmpInstall}");
-        @unlink($tmpInstall);
+        $installTemporaryDirectory->delete();
 
         if ($public !== '') {
             Process::run("kubectl create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");

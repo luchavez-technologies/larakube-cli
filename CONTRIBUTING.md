@@ -13,35 +13,30 @@ All command classes must use the `App\Traits\LaraKubeOutput` trait.
 - **Failures:** Use `$this->laraKubeError("Message")` for errors.
 - **Header:** Always call `$this->renderHeader()` at the start of the `handle()` method.
 
-## 🛠 Local Development (Professional CLI Toolkit)
+## 🛠 Local Development
 
-LaraKube follows a strict **Zero-Host Dependency** philosophy. To ensure your development environment is consistent with our build servers, use the provided wrappers:
+Install PHP 8.4 locally. `kubectl` also needs to be on your `PATH` for anything that talks to a cluster.
 
-### 1. The Development Runner (`./php`)
-Use this for running ANY LaraKube command or PHP code. It automatically bootstraps a **persistent background daemon** (`larakube-php-cli`) with `php`, `docker`, and `kubectl` pre-installed and mapped to your host for near-instant execution.
+Required PHP extensions (matches CI's `setup-php` step in `.github/workflows/ci.yml`): `mbstring`, `xml`, `ctype`, `iconv`, `intl`, `pdo_sqlite`, `bcmath`, `zip`, `pcntl`, `posix`, `openssl` — plus `phar` (with `phar.readonly=0`) if you're building standalone binaries yourself.
+
+### 1. Running the CLI in dev mode
+`./larakube` runs directly against your current source (as opposed to `/usr/local/bin/larakube`, the last **built** binary):
 
 ```bash
-# Run chat in dev mode (Starts the daemon on first run)
-./php larakube chat
+# Run chat in dev mode
+./larakube chat
 
-# Run tinker to test your code or interact with the application context
-./php larakube tinker
-
-# Check cluster info from the warm container
-./php kubectl cluster-info
-
-# Stop the daemon to clear resources or reset state
-./php stop
+# Check cluster info
+kubectl cluster-info
 ```
 
-### 2. Dependency Management (`./composer`)
-Always manage dependencies via the wrapper. It leverages the hot PHP CLI daemon for rapid package installation and consistent versioning.
+### 2. Dependency Management
 ```bash
-./composer require some/package
+composer require some/package
 ```
 
 ### 3. The Builder (`./build`)
-Use this to compile and test the standalone binary locally.
+Use this to compile and test the standalone binary locally — it now shells out to your host `php` directly.
 ```bash
 # Build and install to /usr/local/bin/larakube
 ./build --local
@@ -67,9 +62,9 @@ Hybrid tools are compatible with both the native **AI SDK** (`larakube chat`) an
    ```bash
    git config core.hooksPath .githooks
    ```
-3. **Linting**: We use **Laravel Pint**. Run it via the wrapper:
+3. **Linting**: We use **Laravel Pint**.
    ```bash
-   ./php ./vendor/bin/pint
+   ./vendor/bin/pint
    ```
 
 ## 🧪 Deployment Testing

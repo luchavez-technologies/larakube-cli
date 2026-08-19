@@ -21,6 +21,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PasswordsInitCommand extends Command
 {
@@ -103,14 +104,15 @@ class PasswordsInitCommand extends Command
             'vpnOnly' => $vpnOnly,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-vault.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-vault.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Vaultwarden manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'vaultwarden', 120),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

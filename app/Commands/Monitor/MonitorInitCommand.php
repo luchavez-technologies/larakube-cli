@@ -24,6 +24,7 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MonitorInitCommand extends Command
 {
@@ -149,7 +150,8 @@ class MonitorInitCommand extends Command
             'withTraces' => $withTraces,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-monitoring.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-monitoring.yaml');
         file_put_contents($tmp, $manifest);
 
         // Multiple resources to verify per apply (prometheus/loki/ksm/grafana/
@@ -161,7 +163,7 @@ class MonitorInitCommand extends Command
         // Documenso, 2026-08-05 — same root cause as the missing-timeout
         // ProcessTimedOutException crash found the same day).
         $applied = $this->withSpin('Applying monitoring manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $applied) {
             $this->laraKubeError('Could not apply the monitoring manifest — see the output above.');

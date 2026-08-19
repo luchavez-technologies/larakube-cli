@@ -21,17 +21,17 @@ function k3sInstaller(): object
     };
 }
 
-test('k3sVersion falls back to the single ConfigData default', function () {
+test('k3sVersion falls back to the single ConfigData default', function (): void {
     expect(k3sInstaller()->version())->toBe(ConfigData::DEFAULT_K3S_VERSION);
 });
 
-test('k3sVersion honors a project override', function () {
+test('k3sVersion honors a project override', function (): void {
     $config = ConfigData::from(['name' => 'demo', 'k3sVersion' => 'v1.31.0+k3s1']);
 
     expect(k3sInstaller()->version($config))->toBe('v1.31.0+k3s1');
 });
 
-test('k3sInstallCommand builds the local form: env var, no install flags', function () {
+test('k3sInstallCommand builds the local form: env var, no install flags', function (): void {
     $cmd = k3sInstaller()->command('v1.30.4+k3s1', env: ['K3S_KUBECONFIG_MODE' => '644']);
 
     expect($cmd)->toBe(
@@ -41,7 +41,7 @@ test('k3sInstallCommand builds the local form: env var, no install flags', funct
     );
 });
 
-test('k3sInstallCommand builds the remote form: install flags via sh -s -', function () {
+test('k3sInstallCommand builds the remote form: install flags via sh -s -', function (): void {
     $cmd = k3sInstaller()->command('v1.30.4+k3s1', [
         '--disable=traefik',
         '--write-kubeconfig-mode 644',
@@ -55,7 +55,7 @@ test('k3sInstallCommand builds the remote form: install flags via sh -s -', func
         ->toContain('--kubelet-arg=fail-swap-on=false');
 });
 
-test('k3sInstallCommand routes env assignments through `env` when sudo, so sudo\'s env_reset does not strip them', function () {
+test('k3sInstallCommand routes env assignments through `env` when sudo, so sudo\'s env_reset does not strip them', function (): void {
     $cmd = k3sInstaller()->command(
         'v1.30.4+k3s1',
         ['--disable=traefik', '--write-kubeconfig-mode=644'],

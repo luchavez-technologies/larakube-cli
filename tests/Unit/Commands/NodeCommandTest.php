@@ -3,10 +3,11 @@
 use App\Data\ConfigData;
 use App\Enums\FrontendStack;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('node command routes to node pod for frontend stacks requiring a node pod', function () {
-    $tmpDir = sys_get_temp_dir().'/larakube-node-test-'.uniqid();
-    mkdir($tmpDir, 0755, true);
+test('node command routes to node pod for frontend stacks requiring a node pod', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tmpDir = $temporaryDirectory->path();
 
     // React requires node pod
     $config = new ConfigData(name: 'react-app');
@@ -28,13 +29,13 @@ test('node command routes to node pod for frontend stacks requiring a node pod',
         });
     } finally {
         chdir($originalCwd);
-        shell_exec('rm -rf '.escapeshellarg($tmpDir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('node command routes to web pod for frontend stacks not requiring a node pod', function () {
-    $tmpDir = sys_get_temp_dir().'/larakube-node-test-'.uniqid();
-    mkdir($tmpDir, 0755, true);
+test('node command routes to web pod for frontend stacks not requiring a node pod', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tmpDir = $temporaryDirectory->path();
 
     // Livewire does not require node pod
     $config = new ConfigData(name: 'livewire-app');
@@ -56,6 +57,6 @@ test('node command routes to web pod for frontend stacks not requiring a node po
         });
     } finally {
         chdir($originalCwd);
-        shell_exec('rm -rf '.escapeshellarg($tmpDir));
+        $temporaryDirectory->delete();
     }
 });

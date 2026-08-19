@@ -24,7 +24,7 @@ function traefikDetector(): object
     };
 }
 
-test('isTraefikInstalled is true on the first, most specific label match', function () {
+test('isTraefikInstalled is true on the first, most specific label match', function (): void {
     Process::fake([
         'kubectl get svc -A -l app.kubernetes.io/name=traefik,app.kubernetes.io/component=ingress-controller -o name' => 'service/traefik',
     ]);
@@ -32,7 +32,7 @@ test('isTraefikInstalled is true on the first, most specific label match', funct
     expect(traefikDetector()->installed())->toBeTrue();
 });
 
-test('isTraefikInstalled falls back through nginx-ingress, name-based, then kube-system-wide', function () {
+test('isTraefikInstalled falls back through nginx-ingress, name-based, then kube-system-wide', function (): void {
     Process::fake([
         'kubectl get svc -A -l app.kubernetes.io/name=traefik,app.kubernetes.io/component=ingress-controller -o name' => Process::result(output: '', exitCode: 1),
         'kubectl get svc -A -l app=ingress-nginx,app.kubernetes.io/name=ingress-nginx -o name' => Process::result(output: '', exitCode: 1),
@@ -43,7 +43,7 @@ test('isTraefikInstalled falls back through nginx-ingress, name-based, then kube
     expect(traefikDetector()->installed())->toBeTrue();
 });
 
-test('isTraefikInstalled is false when every detection strategy comes up empty', function () {
+test('isTraefikInstalled is false when every detection strategy comes up empty', function (): void {
     Process::fake([
         'kubectl get svc -A -l app.kubernetes.io/name=traefik,app.kubernetes.io/component=ingress-controller -o name' => Process::result(output: '', exitCode: 1),
         'kubectl get svc -A -l app=ingress-nginx,app.kubernetes.io/name=ingress-nginx -o name' => Process::result(output: '', exitCode: 1),

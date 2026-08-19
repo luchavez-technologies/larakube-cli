@@ -160,7 +160,7 @@ class AdonisjsNewCommand extends Command
         }
 
         // 6. Generate K8s manifests
-        $this->withSpin('Orchestrating AdonisJS infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating AdonisJS infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

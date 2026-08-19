@@ -31,7 +31,7 @@ class CloudStacksCommand extends Command
         }
 
         $rows = [];
-        foreach ($stacks as $name => $stack) {
+        foreach ($stacks as $stack) {
             $rows[] = [
                 $stack->name,
                 $stack->kind,

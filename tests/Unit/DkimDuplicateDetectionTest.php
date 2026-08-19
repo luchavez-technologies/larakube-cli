@@ -36,14 +36,14 @@ function sig(string $domain, string $stage = 'active'): array
     return ['domain' => $domain, 'stage' => $stage];
 }
 
-test('a single active key per domain is not a duplicate', function () {
+test('a single active key per domain is not a duplicate', function (): void {
     expect(dkimHarness()->duplicates([
         sig('luchtech.dev'),
         sig('example.com'),
     ]))->toBe([]);
 });
 
-test('two active keys on one domain is the 554 bounce state', function () {
+test('two active keys on one domain is the 554 bounce state', function (): void {
     expect(dkimHarness()->duplicates([
         sig('luchtech.dev'),
         sig('luchtech.dev'),
@@ -51,7 +51,7 @@ test('two active keys on one domain is the 554 bounce state', function () {
     ]))->toBe(['luchtech.dev' => 2]);
 });
 
-test('a key mid-rotation does not count as a duplicate', function () {
+test('a key mid-rotation does not count as a duplicate', function (): void {
     // The exact false positive this guards: Stalwart stages the next key well
     // before promoting it, so active + pending is the healthy steady state for
     // roughly a quarter of the year.
@@ -67,7 +67,7 @@ test('a key mid-rotation does not count as a duplicate', function () {
     ]))->toBe([]);
 });
 
-test('both DKIM generations of Ed25519 are pruned, not just DKIM1', function () {
+test('both DKIM generations of Ed25519 are pruned, not just DKIM1', function (): void {
     // x:DkimSignature has four variants; an earlier prune matched only
     // Dkim1Ed25519Sha256, so a Dkim2 Ed25519 key survived and re-created the
     // duplicate header.

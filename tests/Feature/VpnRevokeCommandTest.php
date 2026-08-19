@@ -26,7 +26,7 @@ function vpnRevokeKeysResponse(): array
     ];
 }
 
-test('vpn:revoke --name revokes the active key for that teammate', function () {
+test('vpn:revoke --name revokes the active key for that teammate', function (): void {
     fakeVpnRevokeInstalled();
 
     Http::fake([
@@ -43,7 +43,7 @@ test('vpn:revoke --name revokes the active key for that teammate', function () {
         && $request['revoked'] === true);
 });
 
-test('vpn:revoke --key-id revokes one specific key by id', function () {
+test('vpn:revoke --key-id revokes one specific key by id', function (): void {
     fakeVpnRevokeInstalled();
 
     Http::fake([
@@ -56,7 +56,7 @@ test('vpn:revoke --key-id revokes one specific key by id', function () {
         ->expectsOutputToContain("Revoked 'lloyd'");
 });
 
-test('vpn:revoke errors when no active key exists for that name', function () {
+test('vpn:revoke errors when no active key exists for that name', function (): void {
     fakeVpnRevokeInstalled();
 
     Http::fake([
@@ -69,7 +69,7 @@ test('vpn:revoke errors when no active key exists for that name', function () {
         ->expectsOutputToContain("No active setup key found for 'maria'");
 });
 
-test('vpn:revoke without --name/--key-id in non-interactive mode errors clearly', function () {
+test('vpn:revoke without --name/--key-id in non-interactive mode errors clearly', function (): void {
     fakeVpnRevokeInstalled();
 
     Http::fake([
@@ -81,7 +81,7 @@ test('vpn:revoke without --name/--key-id in non-interactive mode errors clearly'
         ->expectsOutputToContain('Pass --name= or --key-id=');
 });
 
-test('vpn:revoke errors when the VPN is not installed', function () {
+test('vpn:revoke errors when the VPN is not installed', function (): void {
     Process::fake([
         vpnRevokeKubectl().' get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
     ]);

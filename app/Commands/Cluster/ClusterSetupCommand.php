@@ -9,6 +9,7 @@ use App\Traits\InteractsWithOs;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PrunesKubeContext;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
 
 class ClusterSetupCommand extends Command
@@ -100,7 +101,7 @@ class ClusterSetupCommand extends Command
                 $nodeAppeared = true;
                 break;
             }
-            sleep(2);
+            Sleep::sleep(2);
         }
 
         if (! $nodeAppeared) {

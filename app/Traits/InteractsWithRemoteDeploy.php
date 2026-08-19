@@ -7,6 +7,7 @@ use App\Data\ConfigData;
 use App\Enums\LaravelFeature;
 use App\Enums\RegistryProvider;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 /**
  * Deploy a project to a remote VPS WITHOUT a container registry: build the image
@@ -740,7 +741,7 @@ trait InteractsWithRemoteDeploy
                 }
                 if ($attempt < 3) {
                     $this->line('  <fg=gray>RBAC not effective yet — retrying ('.$attempt.'/2)...</>');
-                    sleep(2);
+                    Sleep::sleep(2);
                 }
             }
             if (! $result->successful()) {

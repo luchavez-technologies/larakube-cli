@@ -8,6 +8,7 @@
 
 use App\Traits\InstallsK9s;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function k9sResolver(): object
 {
@@ -22,8 +23,9 @@ function k9sResolver(): object
     };
 }
 
-test('resolveK9sBin returns the PATH binary when it exists and is executable', function () {
-    $fakeK9s = sys_get_temp_dir().'/fake-k9s-'.uniqid();
+test('resolveK9sBin returns the PATH binary when it exists and is executable', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $fakeK9s = $temporaryDirectory->path().'/fake-k9s';
     file_put_contents($fakeK9s, "#!/bin/sh\necho fake-k9s\n");
     chmod($fakeK9s, 0755);
 
@@ -32,11 +34,11 @@ test('resolveK9sBin returns the PATH binary when it exists and is executable', f
 
         expect(k9sResolver()->resolve())->toBe($fakeK9s);
     } finally {
-        unlink($fakeK9s);
+        $temporaryDirectory->delete();
     }
 });
 
-test('resolveK9sBin is null when neither PATH nor the managed location has a real executable', function () {
+test('resolveK9sBin is null when neither PATH nor the managed location has a real executable', function (): void {
     Process::fake(['command -v k9s' => Process::result(output: '', exitCode: 1)]);
 
     $managed = home_path('.larakube/bin/k9s');

@@ -28,6 +28,7 @@ use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class NotesInitCommand extends Command
 {
@@ -154,7 +155,7 @@ class NotesInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $secretKey, $utilsSecret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $secretKey, $utilsSecret): void {
             Process::run(
                 "{$kubectl} create secret generic {$secretName} -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
@@ -189,14 +190,15 @@ class NotesInitCommand extends Command
             's3SecretKey' => $s3SecretKey,
         ])->render();
 
-        $tmp = sys_get_temp_dir()."/larakube-notes-{$instance}.yaml";
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path("larakube-notes-{$instance}.yaml");
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Outline wiki manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;
@@ -318,7 +320,7 @@ class NotesInitCommand extends Command
         $tool = ClusterTool::NOTES;
         $appName = "{$tool->productName()} ({$instance})";
         $registered = null;
-        $this->withSpin("Registering Outline ({$instance}) as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $tool, $host, $aliasHosts, $appName) {
+        $this->withSpin("Registering Outline ({$instance}) as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $tool, $host, $aliasHosts, $appName): void {
             $projectId = $this->zitadelEnsureProject($ssoHost, $pat, 'LaraKube Shared Tools');
             if ($projectId === null) {
                 return;

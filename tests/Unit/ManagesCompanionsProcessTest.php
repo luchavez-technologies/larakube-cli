@@ -29,7 +29,7 @@ function companionsProcessHelper(): object
     };
 }
 
-test('isCompanionInstalled reflects whether the Deployment exists', function () {
+test('isCompanionInstalled reflects whether the Deployment exists', function (): void {
     Process::fake(["kubectl get deployment 'phpmyadmin' -n larakube-companions --no-headers" => 'phpmyadmin   1/1   1   1   5d']);
     expect(companionsProcessHelper()->installed(CompanionDriver::PHPMYADMIN))->toBeTrue();
 
@@ -37,7 +37,7 @@ test('isCompanionInstalled reflects whether the Deployment exists', function () 
     expect(companionsProcessHelper()->installed(CompanionDriver::PHPMYADMIN))->toBeFalse();
 });
 
-test('readClusterEnvVars decodes a Secret and passes through a ConfigMap', function () {
+test('readClusterEnvVars decodes a Secret and passes through a ConfigMap', function (): void {
     Process::fake([
         "kubectl get 'secret' 'laravel-secrets' -n 'demo' -o json" => json_encode([
             'data' => ['DB_PASSWORD' => base64_encode('s3cr3t')],
@@ -55,7 +55,7 @@ test('readClusterEnvVars decodes a Secret and passes through a ConfigMap', funct
         ->toBe(['DB_HOST' => 'mariadb.demo.svc.cluster.local']);
 });
 
-test('readClusterEnvVars is empty when the object is missing or the cluster is unreachable', function () {
+test('readClusterEnvVars is empty when the object is missing or the cluster is unreachable', function (): void {
     Process::fake(["kubectl get 'secret' 'laravel-secrets' -n 'demo' -o json" => Process::result(output: '', exitCode: 1)]);
 
     expect(companionsProcessHelper()->clusterEnvVars('secret', 'laravel-secrets', 'demo', true))->toBe([]);

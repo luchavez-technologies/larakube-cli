@@ -49,7 +49,7 @@ function fakeDesignInitProcess(?string $s3Host = null, ?string &$appliedManifest
     });
 }
 
-test('design:init deploys Penpot stack into larakube-shared with Postgres, Redis, and S3 endpoints', function () {
+test('design:init deploys Penpot stack into larakube-shared with Postgres, Redis, and S3 endpoints', function (): void {
     $appliedManifest = null;
     fakeDesignInitProcess('files.example.com', $appliedManifest);
 
@@ -68,7 +68,7 @@ test('design:init deploys Penpot stack into larakube-shared with Postgres, Redis
         ->and($appliedManifest)->toContain('https://files.example.com');
 });
 
-test('design:init allocates a real Commons Redis index instead of hardcoding 0', function () {
+test('design:init allocates a real Commons Redis index instead of hardcoding 0', function (): void {
     // Regression guard: PENPOT_REDIS_URI used to hardcode logical DB index 0
     // directly in the Blade template, bypassing allocateCommonsRedisIndex()
     // entirely — so it was never recorded in the tenant registry and could
@@ -113,7 +113,7 @@ test('design:init allocates a real Commons Redis index instead of hardcoding 0',
         ->and($appliedManifest)->toContain('redis://redis.larakube-plex.svc.cluster.local:6379/1');
 });
 
-test('design:init includes penpot-exporter container when --with-exporter flag is set', function () {
+test('design:init includes penpot-exporter container when --with-exporter flag is set', function (): void {
     $appliedManifest = null;
     fakeDesignInitProcess('files.example.com', $appliedManifest);
 
@@ -129,7 +129,7 @@ test('design:init includes penpot-exporter container when --with-exporter flag i
         ->and($appliedManifest)->toContain('PENPOT_EXPORTER_URI');
 });
 
-test('design:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function () {
+test('design:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
     // Regression guard for the 2026-08-17 incident: a no-flag re-run used to
     // silently derive a fresh instance slug and create a stray, conflicting
     // Deployment/Ingress alongside the real one. Now it must refuse outright
@@ -150,7 +150,7 @@ test('design:init errors instead of guessing when multiple instances are already
     ])->run();
 })->throws(RuntimeException::class, 'pass --domain=<host>');
 
-test('design:show displays Penpot deployment access info', function () {
+test('design:show displays Penpot deployment access info', function (): void {
     Process::fake([
         '*' => Process::result(output: 'installed'),
     ]);
@@ -160,7 +160,7 @@ test('design:show displays Penpot deployment access info', function () {
     ])->assertExitCode(0);
 });
 
-test('design:remove cleans up Penpot resources', function () {
+test('design:remove cleans up Penpot resources', function (): void {
     Process::fake([
         '*' => Process::result(output: 'deleted'),
     ]);

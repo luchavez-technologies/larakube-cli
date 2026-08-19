@@ -2,6 +2,7 @@
 
 use App\Data\ConfigData;
 use Illuminate\Support\Facades\Artisan;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Spin up a throwaway LaraKube project (.larakube.json + optional Dockerfile.php),
@@ -10,8 +11,8 @@ use Illuminate\Support\Facades\Artisan;
  */
 function extAddInProject(?string $dockerfile, callable $fn): void
 {
-    $dir = sys_get_temp_dir().'/ext-add-'.uniqid();
-    mkdir($dir, 0755, true);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/.larakube.json', json_encode(['name' => 'demo']));
     if ($dockerfile !== null) {
         file_put_contents($dir.'/Dockerfile.php', $dockerfile);
@@ -24,12 +25,12 @@ function extAddInProject(?string $dockerfile, callable $fn): void
         $fn($dir);
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 }
 
-test('ext:add writes the extension to .larakube.json', function () {
-    extAddInProject("FROM php:8.5\nRUN install-php-extensions gd\n", function (string $dir) {
+test('ext:add writes the extension to .larakube.json', function (): void {
+    extAddInProject("FROM php:8.5\nRUN install-php-extensions gd\n", function (string $dir): void {
         $code = Artisan::call('ext:add', ['extension' => 'imagick']);
 
         expect($code)->toBe(0);
@@ -39,8 +40,8 @@ test('ext:add writes the extension to .larakube.json', function () {
     });
 });
 
-test('ext:add appends to the existing install-php-extensions line, preserving prior extensions', function () {
-    extAddInProject("FROM php:8.5\nRUN install-php-extensions gd\n", function (string $dir) {
+test('ext:add appends to the existing install-php-extensions line, preserving prior extensions', function (): void {
+    extAddInProject("FROM php:8.5\nRUN install-php-extensions gd\n", function (string $dir): void {
         Artisan::call('ext:add', ['extension' => 'imagick']);
 
         $dockerfile = file_get_contents($dir.'/Dockerfile.php');
@@ -48,8 +49,8 @@ test('ext:add appends to the existing install-php-extensions line, preserving pr
     });
 });
 
-test('ext:add is idempotent — re-adding does not duplicate the extension', function () {
-    extAddInProject("FROM php:8.5\nRUN install-php-extensions gd\n", function (string $dir) {
+test('ext:add is idempotent — re-adding does not duplicate the extension', function (): void {
+    extAddInProject("FROM php:8.5\nRUN install-php-extensions gd\n", function (string $dir): void {
         Artisan::call('ext:add', ['extension' => 'imagick']);
         Artisan::call('ext:add', ['extension' => 'imagick']);
 
@@ -59,8 +60,8 @@ test('ext:add is idempotent — re-adding does not duplicate the extension', fun
     });
 });
 
-test('ext:add warns when Dockerfile.php has no install-php-extensions line', function () {
-    extAddInProject("FROM php:8.5\n", function (string $dir) {
+test('ext:add warns when Dockerfile.php has no install-php-extensions line', function (): void {
+    extAddInProject("FROM php:8.5\n", function (string $dir): void {
         $code = Artisan::call('ext:add', ['extension' => 'imagick']);
         $output = Artisan::output();
 
@@ -71,9 +72,9 @@ test('ext:add warns when Dockerfile.php has no install-php-extensions line', fun
     });
 });
 
-test('ext:add fails cleanly outside a LaraKube project', function () {
-    $dir = sys_get_temp_dir().'/ext-add-noproject-'.uniqid();
-    mkdir($dir, 0755, true);
+test('ext:add fails cleanly outside a LaraKube project', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $original = getcwd();
     chdir($dir);
 
@@ -82,6 +83,6 @@ test('ext:add fails cleanly outside a LaraKube project', function () {
         expect($code)->toBe(1);
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 });

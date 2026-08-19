@@ -436,7 +436,7 @@ class PlexMigrateCommand extends Command
                 // for deletion, and gets dropped from the local overlay
                 // entirely on the next heal+up anyway.
                 $released = false;
-                $this->withSpin("Releasing '{$target['pvc']}'...", function () use ($selfHostedKubectl, $namespace, $target, &$released) {
+                $this->withSpin("Releasing '{$target['pvc']}'...", function () use ($selfHostedKubectl, $namespace, $target, &$released): void {
                     $released = $this->releaseSelfHostedPvc($selfHostedKubectl, $namespace, $target['pvc'], $target['deployment']);
                 });
 

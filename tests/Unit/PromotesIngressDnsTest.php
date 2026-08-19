@@ -16,7 +16,7 @@ function ingressDnsHelper(): object
     };
 }
 
-test('traefikLoadBalancerIp returns a valid IP from the current context', function () {
+test('traefikLoadBalancerIp returns a valid IP from the current context', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
@@ -26,7 +26,7 @@ test('traefikLoadBalancerIp returns a valid IP from the current context', functi
     expect(ingressDnsHelper()->ip())->toBe('203.0.113.10');
 });
 
-test('traefikLoadBalancerIp scopes to a given context', function () {
+test('traefikLoadBalancerIp scopes to a given context', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
@@ -36,7 +36,7 @@ test('traefikLoadBalancerIp scopes to a given context', function () {
     expect(ingressDnsHelper()->ip('larakube-1.2.3.4'))->toBe('198.51.100.5');
 });
 
-test('traefikLoadBalancerIp is null when there is no LB IP yet or the value is not a valid IP', function () {
+test('traefikLoadBalancerIp is null when there is no LB IP yet or the value is not a valid IP', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([

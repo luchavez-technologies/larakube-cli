@@ -12,6 +12,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Process\FakeInvokedProcess;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
@@ -114,6 +115,24 @@ trait InteractsWithSecrets
      */
     protected function awaitLocalPort(int $port, ?InvokedProcess $tunnel = null, float $timeoutSeconds = 15.0): bool
     {
+        // Stop before ever touching a real socket when the tunnel is faked
+        // (Process::fake() is active) — the ORIGINAL check order called a
+        // real fsockopen() first and only fell back to this afterwards,
+        // which meant an unrelated real service that happened to be
+        // listening on this call's random port (30100-31100 — a wide
+        // enough range that a busy dev machine running many local services,
+        // or several `pest --parallel` workers each independently picking
+        // a port, can and does collide with it) would make awaitLocalPort()
+        // return true via a REAL connection instead of the fake short-
+        // circuit — and the caller then makes a REAL, entirely unfaked HTTP
+        // request to that port (confirmed live: this is exactly what
+        // intermittently flipped SecretsUnwireCommandTest's expected output
+        // under `pest --parallel` — staticRoleExists() got back a real
+        // response instead of the expected null-because-unreachable).
+        if ($tunnel instanceof FakeInvokedProcess) {
+            return true;
+        }
+
         $deadline = microtime(true) + $timeoutSeconds;
 
         while (microtime(true) < $deadline) {
@@ -126,18 +145,12 @@ trait InteractsWithSecrets
             }
 
             // Stop as soon as the tunnel itself is gone — waiting out the full
-            // timeout on a dead port-forward buys nothing, and in tests (where
-            // the process is faked and no port ever opens) it would otherwise
-            // stall every call for the whole timeout.
-            if ($tunnel instanceof FakeInvokedProcess) {
-                return true;
-            }
-
+            // timeout on a dead port-forward buys nothing.
             if ($tunnel !== null && ! $tunnel->running()) {
                 return false;
             }
 
-            usleep(200_000);
+            Sleep::usleep(200_000);
         }
 
         return false;
@@ -247,7 +260,7 @@ trait InteractsWithSecrets
      */
     protected function ensureOpenBaoReady(string $kubectl, string $ns): ?string
     {
-        $this->withSpin('Checking OpenBao initialization status...', function () use ($kubectl, &$initStatus) {
+        $this->withSpin('Checking OpenBao initialization status...', function () use ($kubectl, &$initStatus): void {
             $initStatus = $this->openBaoApi($kubectl, 'GET', '/v1/sys/init');
         });
 
@@ -261,7 +274,7 @@ trait InteractsWithSecrets
         $rootToken = null;
 
         if (! $initialized) {
-            $this->withSpin('Initializing OpenBao (1 key share, threshold 1)...', function () use ($kubectl, &$initResult) {
+            $this->withSpin('Initializing OpenBao (1 key share, threshold 1)...', function () use ($kubectl, &$initResult): void {
                 $initResult = $this->openBaoApi($kubectl, 'POST', '/v1/sys/init', [
                     'secret_shares' => 1,
                     'secret_threshold' => 1,
@@ -277,7 +290,7 @@ trait InteractsWithSecrets
             $rootToken = $initResult['root_token'];
             $unsealKey = $initResult['keys'][0];
 
-            $this->withSpin('Storing OpenBao bootstrap credentials in cluster...', function () use ($kubectl, $ns, $rootToken, $unsealKey) {
+            $this->withSpin('Storing OpenBao bootstrap credentials in cluster...', function () use ($kubectl, $ns, $rootToken, $unsealKey): void {
                 $yaml = implode("\n", [
                     'apiVersion: v1',
                     'kind: Secret',
@@ -296,7 +309,7 @@ trait InteractsWithSecrets
                 @unlink($tmp);
             });
 
-            $this->withSpin('Unsealing OpenBao...', function () use ($kubectl, $unsealKey) {
+            $this->withSpin('Unsealing OpenBao...', function () use ($kubectl, $unsealKey): void {
                 $this->openBaoApi($kubectl, 'POST', '/v1/sys/unseal', ['key' => $unsealKey]);
             });
 
@@ -323,7 +336,7 @@ trait InteractsWithSecrets
     protected function unsealOpenBao(string $kubectl, string $ns): bool
     {
         $sealStatus = null;
-        $this->withSpin('Checking OpenBao seal status...', function () use ($kubectl, &$sealStatus) {
+        $this->withSpin('Checking OpenBao seal status...', function () use ($kubectl, &$sealStatus): void {
             $sealStatus = $this->openBaoApi($kubectl, 'GET', '/v1/sys/seal-status');
         });
 
@@ -339,7 +352,7 @@ trait InteractsWithSecrets
         }
 
         $result = null;
-        $this->withSpin('Unsealing OpenBao...', function () use ($kubectl, $unsealKey, &$result) {
+        $this->withSpin('Unsealing OpenBao...', function () use ($kubectl, $unsealKey, &$result): void {
             $result = $this->openBaoApi($kubectl, 'POST', '/v1/sys/unseal', ['key' => $unsealKey]);
         });
 
@@ -357,7 +370,7 @@ trait InteractsWithSecrets
         }
 
         $result = null;
-        $this->withSpin('Sealing OpenBao...', function () use ($kubectl, $token, &$result) {
+        $this->withSpin('Sealing OpenBao...', function () use ($kubectl, $token, &$result): void {
             $result = $this->openBaoApi($kubectl, 'PUT', '/v1/sys/seal', null, $token);
         });
 

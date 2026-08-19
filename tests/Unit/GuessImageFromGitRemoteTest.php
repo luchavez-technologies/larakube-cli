@@ -23,19 +23,19 @@ function gitRemoteGuesser(): object
     };
 }
 
-test('guessImageFromGitRemote parses owner/repo from an SSH remote', function () {
+test('guessImageFromGitRemote parses owner/repo from an SSH remote', function (): void {
     Process::fake(["git -C '/proj' remote get-url origin" => "git@github.com:acme/demo.git\n"]);
 
     expect(gitRemoteGuesser()->guess('/proj'))->toBe('acme/demo');
 });
 
-test('guessImageFromGitRemote parses owner/repo from an HTTPS remote', function () {
+test('guessImageFromGitRemote parses owner/repo from an HTTPS remote', function (): void {
     Process::fake(["git -C '/proj' remote get-url origin" => "https://github.com/acme/demo\n"]);
 
     expect(gitRemoteGuesser()->guess('/proj'))->toBe('acme/demo');
 });
 
-test('guessImageFromGitRemote is empty when there is no origin remote', function () {
+test('guessImageFromGitRemote is empty when there is no origin remote', function (): void {
     Process::fake(["git -C '/proj' remote get-url origin" => Process::result(output: '', exitCode: 1)]);
 
     expect(gitRemoteGuesser()->guess('/proj'))->toBe('');

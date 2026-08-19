@@ -10,6 +10,7 @@ use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function ciVpnRunner(): object
 {
@@ -26,7 +27,7 @@ function ciVpnRunner(): object
                 $config,
                 $environment,
                 $projectPath,
-                function (string $name, string $value) {
+                function (string $name, string $value): void {
                     $this->uploaded[] = [$name, $value];
                 },
             );
@@ -41,18 +42,18 @@ function ciVpnKubectl(): string
     return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl --context '.escapeshellarg('larakube-203.0.113.10');
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 
-    $this->tempDir = sys_get_temp_dir().'/larakube-civpn-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    exec('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
 function ciVpnConfig(string $dir): ConfigData
@@ -73,7 +74,7 @@ function ciVpnConfig(string $dir): ConfigData
     return $config;
 }
 
-test('ensureCiVpnSecret returns null and touches nothing when the environment has no cloud target', function () {
+test('ensureCiVpnSecret returns null and touches nothing when the environment has no cloud target', function (): void {
     $config = ConfigData::from([
         'name' => 'civpn-test',
         'database' => 'sqlite',
@@ -85,11 +86,11 @@ test('ensureCiVpnSecret returns null and touches nothing when the environment ha
     Http::preventStrayRequests();
 
     $runner = ciVpnRunner();
-    expect($runner->ensure($config, 'production', $this->tempDir))->toBeNull();
-    expect($runner->uploaded)->toBe([]);
+    expect($runner->ensure($config, 'production', $this->tempDir))->toBeNull()
+        ->and($runner->uploaded)->toBe([]);
 });
 
-test('ensureCiVpnSecret returns null when the VPN is not installed for that environment', function () {
+test('ensureCiVpnSecret returns null when the VPN is not installed for that environment', function (): void {
     $config = ciVpnConfig($this->tempDir);
 
     Process::fake([
@@ -98,11 +99,11 @@ test('ensureCiVpnSecret returns null when the VPN is not installed for that envi
     Http::preventStrayRequests();
 
     $runner = ciVpnRunner();
-    expect($runner->ensure($config, 'production', $this->tempDir))->toBeNull();
-    expect($runner->uploaded)->toBe([]);
+    expect($runner->ensure($config, 'production', $this->tempDir))->toBeNull()
+        ->and($runner->uploaded)->toBe([]);
 });
 
-test('ensureCiVpnSecret mints an ephemeral reusable key, uploads it, and persists ciVpn on first use', function () {
+test('ensureCiVpnSecret mints an ephemeral reusable key, uploads it, and persists ciVpn on first use', function (): void {
     $config = ciVpnConfig($this->tempDir);
     $kubectl = ciVpnKubectl();
 

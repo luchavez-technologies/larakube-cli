@@ -70,7 +70,7 @@ class StorageMigrateCommand extends Command
         }
 
         // 1. Scale workload replicas to 0 to pause DB writes and release file locks
-        $this->withSpin("Pausing workload replicas in namespace '{$namespace}'...", function () use ($namespace) {
+        $this->withSpin("Pausing workload replicas in namespace '{$namespace}'...", function () use ($namespace): void {
             $cmd = "kubectl scale deployment --all --replicas=0 -n {$namespace}";
             Process::run($cmd);
         });
@@ -79,7 +79,7 @@ class StorageMigrateCommand extends Command
         $this->laraKubeInfo("Syncing PVC '{$pvcName}' data to new {$targetStorageClass} volume...");
 
         // 3. Resume workload replicas
-        $this->withSpin("Resuming workload replicas in namespace '{$namespace}'...", function () use ($namespace) {
+        $this->withSpin("Resuming workload replicas in namespace '{$namespace}'...", function () use ($namespace): void {
             $cmd = "kubectl scale deployment --all --replicas=1 -n {$namespace}";
             Process::run($cmd);
         });

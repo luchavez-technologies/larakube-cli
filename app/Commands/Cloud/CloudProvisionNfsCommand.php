@@ -7,10 +7,12 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\confirm;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class CloudProvisionNfsCommand extends Command
 {
@@ -164,10 +166,11 @@ class CloudProvisionNfsCommand extends Command
     /** Render a manifest view and apply it. */
     protected function applyView(string $context, string $view, array $data): bool
     {
-        $tmp = sys_get_temp_dir().'/larakube-'.str_replace('.', '-', $view).'.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-'.str_replace('.', '-', $view).'.yaml');
         file_put_contents($tmp, view($view, $data)->render());
         $code = $this->runStreaming($this->kubectl().' --context '.escapeshellarg($context).' apply -f '.escapeshellarg($tmp).' --request-timeout=60s');
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if ($code !== 0) {
             $this->laraKubeError("Failed to apply {$view}.");
@@ -216,10 +219,11 @@ spec:
     requests:
       storage: 1Mi
 YAML;
-        $tmp = sys_get_temp_dir().'/larakube-nfs-smoke.yaml';
+        $smokeTemporaryDirectory = TemporaryDirectory::make();
+        $tmp = $smokeTemporaryDirectory->path('larakube-nfs-smoke.yaml');
         file_put_contents($tmp, $pvc);
         Process::run("{$ctx}apply -f ".escapeshellarg($tmp));
-        @unlink($tmp);
+        $smokeTemporaryDirectory->delete();
 
         $bound = false;
         for ($i = 0; $i < 30; $i++) {
@@ -228,7 +232,7 @@ YAML;
                 $bound = true;
                 break;
             }
-            usleep(2_000_000);
+            Sleep::usleep(2_000_000);
         }
 
         // Clean up the test PVC either way.

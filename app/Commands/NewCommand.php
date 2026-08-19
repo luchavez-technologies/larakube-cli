@@ -197,7 +197,7 @@ class NewCommand extends Command
             $config->environments['local']->plex = array_unique(array_merge($config->environments['local']->plex, $plexCredentials['services']));
         }
 
-        $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
 
             if ($config->id) {

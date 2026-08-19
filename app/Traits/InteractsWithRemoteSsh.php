@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 /**
  * Shared SSH primitives for the cloud:* commands that drive a remote host
@@ -42,7 +43,7 @@ trait InteractsWithRemoteSsh
             if ($attempt % 3 === 0) {
                 $this->line('  ⏳ Still waiting for sshd... ('.($attempt * $delay).'s)');
             }
-            sleep($delay);
+            Sleep::sleep($delay);
         }
 
         return false;
@@ -74,7 +75,7 @@ trait InteractsWithRemoteSsh
         // timeout here is the EXPECTED result, not a failure to check for.
         Process::timeout(10)->run($rebootCmd);
 
-        sleep(5); // give the box a moment to actually go down before polling
+        Sleep::sleep(5); // give the box a moment to actually go down before polling
 
         if (! $this->waitForSsh($user, $ip, $port, $keyPath)) {
             $this->laraKubeWarn('Server did not come back online after reboot — check it manually before continuing.');
@@ -117,7 +118,7 @@ trait InteractsWithRemoteSsh
         $fullCommand = $sudo.'bash -c '.escapeshellarg($remoteCommand);
         $sshCommand = "ssh -i {$keyPath} -p {$port} {$user}@{$ip} ".escapeshellarg($fullCommand);
 
-        $result = Process::forever()->run($sshCommand, function (string $type, string $output) {
+        $result = Process::forever()->run($sshCommand, function (string $type, string $output): void {
             echo $output;
         });
 

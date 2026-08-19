@@ -5,7 +5,7 @@ use App\Enums\CacheDriver;
 use App\Enums\LaravelFeature;
 use App\Enums\ServerVariation;
 
-test('Dependency Resolution: Horizon automatically adds Redis', function () {
+test('Dependency Resolution: Horizon automatically adds Redis', function (): void {
     $config = new ConfigData(name: 'test-app');
     $config->addFeature(LaravelFeature::HORIZON);
 
@@ -14,7 +14,7 @@ test('Dependency Resolution: Horizon automatically adds Redis', function () {
     expect($config->getCacheDrivers())->toContain(CacheDriver::REDIS);
 });
 
-test('Dependency Resolution: Octane automatically pivots to FrankenPHP', function () {
+test('Dependency Resolution: Octane automatically pivots to FrankenPHP', function (): void {
     $config = new ConfigData(name: 'test-app');
     $config->addFeature(LaravelFeature::OCTANE);
 
@@ -23,7 +23,7 @@ test('Dependency Resolution: Octane automatically pivots to FrankenPHP', functio
     expect($config->getServerVariation())->toBe(ServerVariation::FRANKENPHP);
 });
 
-test('Dependency Resolution: Reverb adds its own feature requirements', function () {
+test('Dependency Resolution: Reverb adds its own feature requirements', function (): void {
     $config = new ConfigData(name: 'test-app');
     $config->addFeature(LaravelFeature::REVERB);
 

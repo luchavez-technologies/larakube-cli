@@ -81,16 +81,16 @@ function ensuresRealHostsRunner(): object
     };
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     resetPromptFallbacks();
     Prompt::interactive(false);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     resetPromptFallbacks();
 });
 
-test('a real, already-configured web host does not trigger the re-prompt', function () {
+test('a real, already-configured web host does not trigger the re-prompt', function (): void {
     $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
     $config->setHost('production', 'web', 'acme.example.com');
 
@@ -101,7 +101,7 @@ test('a real, already-configured web host does not trigger the re-prompt', funct
         ->and($runner->lines)->toBeEmpty();
 });
 
-test('a missing web host triggers the re-prompt', function () {
+test('a missing web host triggers the re-prompt', function (): void {
     $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
 
     $runner = ensuresRealHostsRunner();
@@ -119,7 +119,7 @@ test('a missing web host triggers the re-prompt', function () {
     expect($runner->lines)->not->toBeEmpty();
 });
 
-test('the "{name}.com" placeholder is treated as unset and triggers the re-prompt', function () {
+test('the "{name}.com" placeholder is treated as unset and triggers the re-prompt', function (): void {
     $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
     $config->setHost('production', 'web', 'acme.com');
 
@@ -129,7 +129,7 @@ test('the "{name}.com" placeholder is treated as unset and triggers the re-promp
     expect($runner->lines)->not->toBeEmpty();
 });
 
-test('a local-TLD host triggers the re-prompt — the exact gap cloud:deploy used to have', function () {
+test('a local-TLD host triggers the re-prompt — the exact gap cloud:deploy used to have', function (): void {
     $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
     $config->setHost('production', 'web', 'acme.kube');
 
@@ -139,7 +139,7 @@ test('a local-TLD host triggers the re-prompt — the exact gap cloud:deploy use
     expect($runner->lines)->not->toBeEmpty();
 });
 
-test('a .dev.test host is also caught as local and triggers the re-prompt', function () {
+test('a .dev.test host is also caught as local and triggers the re-prompt', function (): void {
     $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
     $config->setHost('production', 'web', 'acme.dev.test');
 
@@ -149,7 +149,7 @@ test('a .dev.test host is also caught as local and triggers the re-prompt', func
     expect($runner->lines)->not->toBeEmpty();
 });
 
-test('a real promptable host (e.g. Reverb) is confirmed rather than silently skipped', function () {
+test('a real promptable host (e.g. Reverb) is confirmed rather than silently skipped', function (): void {
     // It used to `continue` past anything that merely looked real, so a stale
     // host sailed through untouched and unmentioned. Now it asks — and the
     // question must actually reach the user, hence the invocation count.
@@ -178,7 +178,7 @@ test('a real promptable host (e.g. Reverb) is confirmed rather than silently ski
         ->and($config->getHost('production', 'web'))->toBe('acme.example.com');
 });
 
-test('declining the confirmation re-prompts and replaces the promptable host', function () {
+test('declining the confirmation re-prompts and replaces the promptable host', function (): void {
     $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
     $config->addFeature(LaravelFeature::REVERB);
     $config->setHost('production', 'web', 'acme.example.com');
@@ -196,7 +196,7 @@ test('declining the confirmation re-prompts and replaces the promptable host', f
         ->and($config->getHost('production', 'web'))->toBe('acme.example.com');
 });
 
-test('hosts are only confirmed once per command run', function () {
+test('hosts are only confirmed once per command run', function (): void {
     // cloud:configure calls this guard twice in one invocation — once in its
     // base step, once in the CI step — which asked every "keep this host?"
     // question twice. The base step saves before the CI step re-reads, so the
@@ -226,7 +226,7 @@ test('hosts are only confirmed once per command run', function () {
         ->and($second)->toBe('acme.example.com');
 });
 
-test('each environment is still confirmed on its own', function () {
+test('each environment is still confirmed on its own', function (): void {
     $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
     $config->setHost('production', 'web', 'acme.example.com');
     $config->setHost('staging', 'web', 'stg.acme.example.com');
@@ -250,7 +250,7 @@ test('each environment is still confirmed on its own', function () {
         ->and(implode(' ', $asked))->toContain('stg.acme.example.com');
 });
 
-test('declining the web-host confirmation re-prompts for a new one', function () {
+test('declining the web-host confirmation re-prompts for a new one', function (): void {
     $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
     $config->setHost('production', 'web', 'old.acme.example.com');
 
@@ -265,7 +265,7 @@ test('declining the web-host confirmation re-prompts for a new one', function ()
         ->and($config->getHost('production', 'web'))->toBe('new.acme.example.com');
 });
 
-test('isLocalDomain recognizes every allowed local TLD and .dev.test, and rejects a real domain', function () {
+test('isLocalDomain recognizes every allowed local TLD and .dev.test, and rejects a real domain', function (): void {
     $runner = ensuresRealHostsRunner();
 
     foreach (GlobalConfigData::ALLOWED_TLDS as $tld) {

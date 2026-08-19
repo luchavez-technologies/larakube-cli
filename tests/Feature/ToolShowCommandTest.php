@@ -5,7 +5,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 
-test('every tool that serves a host has a show command', function () {
+test('every tool that serves a host has a show command', function (): void {
     $commands = $this->app->make(Kernel::class)->all();
 
     foreach (ClusterTool::cases() as $tool) {
@@ -20,7 +20,7 @@ test('every tool that serves a host has a show command', function () {
     }
 });
 
-test('show commands take the environment as their only positional and default to local', function () {
+test('show commands take the environment as their only positional and default to local', function (): void {
     $commands = $this->app->make(Kernel::class)->all();
 
     foreach (ClusterTool::cases() as $tool) {
@@ -35,7 +35,7 @@ test('show commands take the environment as their only positional and default to
     }
 });
 
-test('show exits non-zero and points at init when the tool is not installed', function () {
+test('show exits non-zero and points at init when the tool is not installed', function (): void {
     Process::fake([
         // Empty registry: nothing is installed on this cluster.
         '*larakube-tools-registry*' => Process::result(output: ''),
@@ -48,7 +48,7 @@ test('show exits non-zero and points at init when the tool is not installed', fu
         ->expectsOutputToContain('notes:init local');
 });
 
-test('--json emits a machine-readable object instead of a table', function () {
+test('--json emits a machine-readable object instead of a table', function (): void {
     Process::fake([
         // The registry Secret holds base64'd JSON — a flat list across every tool/instance.
         '*larakube-tools-registry*' => Process::result(

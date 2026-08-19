@@ -9,7 +9,7 @@ use App\Enums\LaravelFeature;
 use App\Enums\PhpVersion;
 use App\Enums\ServerVariation;
 
-test('Databases: MySQL, MariaDB, PostgreSQL, and MongoDB generate correct manifests', function () {
+test('Databases: MySQL, MariaDB, PostgreSQL, and MongoDB generate correct manifests', function (): void {
     $drivers = [
         ['driver' => DatabaseDriver::MYSQL, 'file' => 'base/mysql-deployment.yaml', 'port' => 3306],
         ['driver' => DatabaseDriver::MARIADB, 'file' => 'base/mariadb-deployment.yaml', 'port' => 3306],
@@ -39,7 +39,7 @@ test('Databases: MySQL, MariaDB, PostgreSQL, and MongoDB generate correct manife
     }
 });
 
-test('every database engine is a Deployment over a standalone PVC — no StatefulSets', function () {
+test('every database engine is a Deployment over a standalone PVC — no StatefulSets', function (): void {
     // MongoDB was a StatefulSet with a volumeClaimTemplate, but nothing that
     // justifies one was ever wired: replicas 1, no --replSet, and a plain
     // ClusterIP Service instead of a headless one, so the stable per-pod DNS
@@ -67,17 +67,16 @@ test('every database engine is a Deployment over a standalone PVC — no Statefu
         $pvc = collect($manifests["overlays/local/{$driver->value}-volumes.yaml"])
             ->firstWhere('kind', 'PersistentVolumeClaim');
 
-        expect($pvc['metadata']['name'])->toBe("{$config->getName()}-{$driver->value}-pvc");
-
-        expect($manifests['base/kustomization.yaml']['resources'])->toContain("{$driver->value}-deployment.yaml");
-        expect($manifests['overlays/local/kustomization.yaml']['resources'])->toContain("{$driver->value}-volumes.yaml");
+        expect($pvc['metadata']['name'])->toBe("{$config->getName()}-{$driver->value}-pvc")
+            ->and($manifests['base/kustomization.yaml']['resources'])->toContain("{$driver->value}-deployment.yaml")
+            ->and($manifests['overlays/local/kustomization.yaml']['resources'])->toContain("{$driver->value}-volumes.yaml");
     }
 
     expect(DatabaseDriver::MONGODB->getManagedResources(new ConfigData(name: 'mongo-managed'))[0]['kind'])
         ->toBe('Deployment');
 });
 
-test('Caching: Redis and Memcached generate correct manifests', function () {
+test('Caching: Redis and Memcached generate correct manifests', function (): void {
     $drivers = [
         ['driver' => CacheDriver::REDIS, 'file' => 'base/redis-deployment.yaml', 'port' => 6379],
         ['driver' => CacheDriver::MEMCACHED, 'file' => 'base/memcached-deployment.yaml', 'port' => 11211],
@@ -106,7 +105,7 @@ test('Caching: Redis and Memcached generate correct manifests', function () {
     }
 });
 
-test('Frontend: Node pod is generated only when required', function () {
+test('Frontend: Node pod is generated only when required', function (): void {
     $stacks = [
         ['stack' => FrontendStack::REACT, 'shouldExist' => true],
         ['stack' => FrontendStack::VUE, 'shouldExist' => true],
@@ -133,7 +132,7 @@ test('Frontend: Node pod is generated only when required', function () {
     }
 });
 
-test('Server Variations: containerPort and Ingress scheme', function () {
+test('Server Variations: containerPort and Ingress scheme', function (): void {
     $variations = [
         ServerVariation::FPM_NGINX,
         ServerVariation::FRANKENPHP,
@@ -166,7 +165,7 @@ test('Server Variations: containerPort and Ingress scheme', function () {
     }
 });
 
-test('Deployment Strategies: PVC layout follows the strategy', function () {
+test('Deployment Strategies: PVC layout follows the strategy', function (): void {
     // Single-node: a shared ReadWriteOnce storage PVC. Multi-node: NO shared PVC —
     // app pods use a per-pod emptyDir (block storage can't do RWX across nodes).
     foreach ([DeploymentStrategy::SINGLE_NODE, DeploymentStrategy::MULTI_NODE_HA] as $strategy) {
@@ -193,7 +192,7 @@ test('Deployment Strategies: PVC layout follows the strategy', function () {
     }
 });
 
-test('Structural Verification: Horizon includes Redis and secondary deployment', function () {
+test('Structural Verification: Horizon includes Redis and secondary deployment', function (): void {
     $config = new ConfigData(name: 'horizon-app');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setPhpVersion(PhpVersion::PHP_8_5);
@@ -215,11 +214,11 @@ test('Structural Verification: Horizon includes Redis and secondary deployment',
 
     // 4. Verify Kustomization contains both
     $kustomization = $manifests['base/kustomization.yaml'];
-    expect($kustomization['resources'])->toContain('redis-deployment.yaml');
-    expect($kustomization['resources'])->toContain('horizon-deployment.yaml');
+    expect($kustomization['resources'])->toContain('redis-deployment.yaml')
+        ->toContain('horizon-deployment.yaml');
 });
 
-test('Structural Verification: Reverb includes Service and Deployment', function () {
+test('Structural Verification: Reverb includes Service and Deployment', function (): void {
     $config = new ConfigData(name: 'reverb-app');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setPhpVersion(PhpVersion::PHP_8_5);
@@ -232,17 +231,16 @@ test('Structural Verification: Reverb includes Service and Deployment', function
     expect($manifests)->toHaveKey('base/reverb-deployment.yaml');
     $docs = $manifests['base/reverb-deployment.yaml'];
 
-    expect($docs)->toBeArray();
-    expect($docs[0]['kind'])->toBe('Deployment');
-    expect($docs[1]['kind'])->toBe('Service');
+    expect($docs)->toBeArray()
+        ->and($docs[0]['kind'])->toBe('Deployment')
+        ->and($docs[1]['kind'])->toBe('Service');
 
     // Verify ports
     expect($docs[0]['spec']['template']['spec']['containers'][0]['ports'][0]['containerPort'])->toBe(8081);
-    expect($docs[1]['spec']['ports'][0]['port'])->toBe(8080);
-    expect($docs[1]['spec']['ports'][0]['targetPort'])->toBe(8081);
+    expect($docs[1]['spec']['ports'][0])->toMatchArray(['port' => 8080, 'targetPort' => 8081]);
 });
 
-test('Structural Verification: Kitchen Sink includes ALL expected manifests', function () {
+test('Structural Verification: Kitchen Sink includes ALL expected manifests', function (): void {
     $config = new ConfigData(name: 'kitchen-sink');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setPhpVersion(PhpVersion::PHP_8_5);
@@ -259,12 +257,11 @@ test('Structural Verification: Kitchen Sink includes ALL expected manifests', fu
 
     // Hard assertions on file existence - snapshots might miss these if broken, but this WON'T.
     expect($manifests)->toHaveKey('base/queues-deployment.yaml');
-    expect($manifests)->toHaveKey('base/scheduler-cronjob.yaml');
-    expect($manifests)->toHaveKey('base/reverb-deployment.yaml');
+    expect($manifests)->toHaveKeys(['base/scheduler-cronjob.yaml', 'base/reverb-deployment.yaml']);
 
     // Verify Kustomization list
     $kustomization = $manifests['base/kustomization.yaml'];
-    expect($kustomization['resources'])->toContain('queues-deployment.yaml');
-    expect($kustomization['resources'])->toContain('scheduler-cronjob.yaml');
-    expect($kustomization['resources'])->toContain('reverb-deployment.yaml');
+    expect($kustomization['resources'])->toContain('queues-deployment.yaml')
+        ->toContain('scheduler-cronjob.yaml')
+        ->toContain('reverb-deployment.yaml');
 });

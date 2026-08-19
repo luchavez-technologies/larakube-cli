@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Process;
 use function Laravel\Prompts\confirm;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ConsoleCommand extends Command
 {
@@ -112,7 +113,7 @@ class ConsoleCommand extends Command
             $label = $this->option('update') ? 'Updating LaraKube Console...' : 'The LaraKube Console is not installed. Would you like to install it now?';
 
             if (! $exists || $this->confirm($label, true)) {
-                $this->withSpin($this->option('update') ? 'Updating manifests...' : 'Installing LaraKube Console...', function () use ($workspace) {
+                $this->withSpin($this->option('update') ? 'Updating manifests...' : 'Installing LaraKube Console...', function () use ($workspace): void {
                     // Resolve the absolute path to the currently running LaraKube binary
                     $binaryPath = realpath($_SERVER['argv'][0]) ?: '/usr/local/bin/larakube';
 
@@ -128,10 +129,11 @@ class ConsoleCommand extends Command
                         'host' => $consoleHost,
                     ])->render();
 
-                    $tmp = sys_get_temp_dir().'/larakube-dashboard.yaml';
+                    $temporaryDirectory = TemporaryDirectory::make();
+                    $tmp = $temporaryDirectory->path('larakube-dashboard.yaml');
                     file_put_contents($tmp, $manifest);
                     $this->runStreaming("kubectl apply -f {$tmp}");
-                    unlink($tmp);
+                    $temporaryDirectory->delete();
                 });
 
                 $this->laraKubeInfo($this->option('update') ? '✅ LaraKube Console updated.' : '✅ LaraKube Console installed.');
@@ -159,7 +161,7 @@ class ConsoleCommand extends Command
             return 0;
         }
 
-        $this->withSpin('Removing LaraKube Console resources...', function () {
+        $this->withSpin('Removing LaraKube Console resources...', function (): void {
             $this->runStreaming('kubectl delete namespace larakube-system --wait=false');
         });
 

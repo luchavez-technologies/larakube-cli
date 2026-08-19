@@ -10,13 +10,13 @@ use Laravel\Prompts\Prompt;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
-test('mail:relay is registered', function () {
+test('mail:relay is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:relay');
 });
 
-test('mail:relay requires installed stalwart', function () {
+test('mail:relay requires installed stalwart', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:relay', ['--provider' => 'brevo', '--username' => 'a@b.com', '--api-key' => 'k'])
@@ -24,7 +24,7 @@ test('mail:relay requires installed stalwart', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:relay rejects an unknown provider', function () {
+test('mail:relay rejects an unknown provider', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d')]);
 
     $this->artisan('mail:relay', ['--provider' => 'sendgrid'])
@@ -32,7 +32,7 @@ test('mail:relay rejects an unknown provider', function () {
         ->expectsOutputToContain("Unknown relay provider 'sendgrid'");
 });
 
-test('mail:relay wires brevo as the outbound relay', function () {
+test('mail:relay wires brevo as the outbound relay', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -62,7 +62,7 @@ test('mail:relay wires brevo as the outbound relay', function () {
         ->doesntExpectOutputToContain('Sign up free');
 });
 
-test('mail:relay wires SES with a region-scoped host on port 2587', function () {
+test('mail:relay wires SES with a region-scoped host on port 2587', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -89,7 +89,7 @@ test('mail:relay wires SES with a region-scoped host on port 2587', function () 
         ->expectsOutputToContain('AKIAEXAMPLE');
 });
 
-test('mail:relay shows onboarding + pricing before prompting for fresh credentials', function () {
+test('mail:relay shows onboarding + pricing before prompting for fresh credentials', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -132,7 +132,7 @@ test('mail:relay shows onboarding + pricing before prompting for fresh credentia
         ->toContain('300 emails/day');
 });
 
-test('mail:relay --remove is a no-op when no relay route exists', function () {
+test('mail:relay --remove is a no-op when no relay route exists', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -145,7 +145,7 @@ test('mail:relay --remove is a no-op when no relay route exists', function () {
         ->expectsOutputToContain('No Brevo relay route is configured');
 });
 
-test('mail:relay --remove reverts to MX and deletes the route', function () {
+test('mail:relay --remove reverts to MX and deletes the route', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -204,7 +204,7 @@ function jmapPayloadFromProcess(mixed $process): ?array
     return null;
 }
 
-test('stalwartSetOutboundRoute sets outbound strategy route', function () {
+test('stalwartSetOutboundRoute sets outbound strategy route', function (): void {
     $callCount = 0;
     $setPayload = null;
 
@@ -291,7 +291,7 @@ function captureRoutePatch(array $existingMatch, string $routeName, string $exis
     return (array) ($setPayload['methodCalls'][0][1]['update']['singleton']['route']['match'] ?? []);
 }
 
-test('the local-domain rule uses Stalwart\'s 1-argument is_local_domain', function () {
+test('the local-domain rule uses Stalwart\'s 1-argument is_local_domain', function (): void {
     $match = captureRoutePatch(
         ['0' => ['if' => 'is_local_domain(rcpt_domain)', 'then' => "'local'"]],
         'ses',

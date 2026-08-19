@@ -25,17 +25,17 @@ function eksConfig(array $envOverrides): ConfigData
 
 // --- Resolution getters (defaults mirror today's behavior) ---
 
-test('overlay knobs default to current Single-Node-Hero behavior', function () {
+test('overlay knobs default to current Single-Node-Hero behavior', function (): void {
     $config = new ConfigData(name: 'plain');
 
     expect($config->getNamespace('production'))->toBe('plain-production')
         ->and($config->getServiceAccount('production'))->toBeNull()
-        ->and($config->getServiceAccountAnnotations('production'))->toBe([])
+        ->and($config->getServiceAccountAnnotations('production'))->toBeEmpty()
         ->and($config->getImagePullSecret('production'))->toBe('ghcr-login')
-        ->and($config->getIngressAnnotations('production'))->toBe([]);
+        ->and($config->getIngressAnnotations('production'))->toBeEmpty();
 });
 
-test('namespace override replaces the derived {name}-{env}', function () {
+test('namespace override replaces the derived {name}-{env}', function (): void {
     $config = eksConfig(['namespace' => 'eksapp']);
 
     expect($config->getNamespace('production'))->toBe('eksapp')
@@ -43,12 +43,10 @@ test('namespace override replaces the derived {name}-{env}', function () {
         ->and($config->getNamespace('local'))->toBe('eksapp-local');
 });
 
-test('imagePullSecret can be overridden or omitted entirely', function () {
+test('imagePullSecret can be overridden or omitted entirely', function (): void {
     expect(eksConfig(['imagePullSecret' => 'dockerhub'])->getImagePullSecret('production'))
-        ->toBe('dockerhub');
-
-    expect(eksConfig(['omitImagePullSecret' => true])->getImagePullSecret('production'))
-        ->toBeNull();
+        ->toBe('dockerhub')
+        ->and(eksConfig(['omitImagePullSecret' => true])->getImagePullSecret('production'))->toBeNull();
 });
 
 // --- Phase 1: imagePullSecret in the manifests ---
@@ -62,24 +60,24 @@ function prodWebPatch(ConfigData $config): array
     return $patch[0] ?? $patch;
 }
 
-test('Phase 1: production deployment-patch uses the default ghcr-login pull secret', function () {
+test('Phase 1: production deployment-patch uses the default ghcr-login pull secret', function (): void {
     $web = prodWebPatch(eksConfig([]));
     expect($web['spec']['template']['spec']['imagePullSecrets'][0]['name'])->toBe('ghcr-login');
 });
 
-test('Phase 1: omitImagePullSecret drops the imagePullSecrets block (ECR/IRSA)', function () {
+test('Phase 1: omitImagePullSecret drops the imagePullSecrets block (ECR/IRSA)', function (): void {
     $web = prodWebPatch(eksConfig(['omitImagePullSecret' => true]));
     expect($web['spec']['template']['spec'])->not->toHaveKey('imagePullSecrets');
 });
 
-test('Phase 1: a custom pull secret name flows into the patch', function () {
+test('Phase 1: a custom pull secret name flows into the patch', function (): void {
     $web = prodWebPatch(eksConfig(['imagePullSecret' => 'ecr-creds']));
     expect($web['spec']['template']['spec']['imagePullSecrets'][0]['name'])->toBe('ecr-creds');
 });
 
 // --- Phase 2: namespace override in the manifests ---
 
-test('Phase 2: namespace override lands the overlay in an existing namespace', function () {
+test('Phase 2: namespace override lands the overlay in an existing namespace', function (): void {
     $manifests = generateManifestsAsArray(eksConfig(['namespace' => 'eksapp']));
 
     // Overlay kustomization sets the overridden namespace…
@@ -92,7 +90,7 @@ test('Phase 2: namespace override lands the overlay in an existing namespace', f
     expect($manifests['overlays/local/kustomization.yaml']['namespace'])->toBe('eksapp-local');
 });
 
-test('Phase 2: in-cluster service FQDNs follow the overridden namespace', function () {
+test('Phase 2: in-cluster service FQDNs follow the overridden namespace', function (): void {
     $config = eksConfig(['namespace' => 'eksapp']);
     $config->setCacheDriver(CacheDriver::REDIS);
 
@@ -106,15 +104,14 @@ test('Phase 2: in-cluster service FQDNs follow the overridden namespace', functi
 
 // --- Phase 3: ServiceAccount + IRSA ---
 
-test('Phase 3: no ServiceAccount is emitted by default (matches today)', function () {
+test('Phase 3: no ServiceAccount is emitted by default (matches today)', function (): void {
     $manifests = generateManifestsAsArray(eksConfig([]));
 
-    expect($manifests)->not->toHaveKey('overlays/production/serviceaccount.yaml');
-    expect(prodWebPatch(eksConfig([]))['spec']['template']['spec'])
-        ->not->toHaveKey('serviceAccountName');
+    expect($manifests)->not->toHaveKey('overlays/production/serviceaccount.yaml')
+        ->and(prodWebPatch(eksConfig([]))['spec']['template']['spec'])->not->toHaveKey('serviceAccountName');
 });
 
-test('Phase 3: opting into a serviceAccount emits the SA + IRSA annotation and binds the pods', function () {
+test('Phase 3: opting into a serviceAccount emits the SA + IRSA annotation and binds the pods', function (): void {
     $config = eksConfig([
         'serviceAccount' => 'eksapp-sa',
         'serviceAccountAnnotations' => ['eks.amazonaws.com/role-arn' => 'arn:aws:iam::123:role/eksapp'],
@@ -139,7 +136,7 @@ test('Phase 3: opting into a serviceAccount emits the SA + IRSA annotation and b
 
 // --- Phase 4: ingress annotation passthrough ---
 
-test('Phase 4: ingress-patch carries only controller defaults when no extras set', function () {
+test('Phase 4: ingress-patch carries only controller defaults when no extras set', function (): void {
     $ingress = generateManifestsAsArray(eksConfig([]))['overlays/production/ingress-patch.yaml'];
     $annotations = $ingress['metadata']['annotations'];
 
@@ -147,7 +144,7 @@ test('Phase 4: ingress-patch carries only controller defaults when no extras set
         ->and($annotations)->not->toHaveKey('alb.ingress.kubernetes.io/certificate-arn');
 });
 
-test('Phase 4: per-env annotations merge in, free-form JSON values survive as valid YAML', function () {
+test('Phase 4: per-env annotations merge in, free-form JSON values survive as valid YAML', function (): void {
     $config = eksConfig(['ingressAnnotations' => [
         'alb.ingress.kubernetes.io/certificate-arn' => 'arn:aws:acm::123:certificate/abc',
         'alb.ingress.kubernetes.io/conditions.web' => '[{"field":"host-header","hostHeaderConfig":{"values":["eksapp.com"]}}]',

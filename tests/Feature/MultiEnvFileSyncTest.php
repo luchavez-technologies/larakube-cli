@@ -2,6 +2,7 @@
 
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Tests\Feature\EnvSyncHelper;
 
 /**
@@ -20,9 +21,9 @@ function configWithEnvs(array $names): ConfigData
     return new ConfigData(name: 'test-app', environments: $envs);
 }
 
-test('syncEnvFile targets .env.<environment> for ANY cloud env (e.g. staging)', function () {
-    $dir = sys_get_temp_dir().'/envsync-staging-'.uniqid();
-    mkdir($dir, 0755, true);
+test('syncEnvFile targets .env.<environment> for ANY cloud env (e.g. staging)', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/.env', "APP_NAME=Test\nASSET_URL=https://app.kube\n");
 
     (new EnvSyncHelper(configWithEnvs(['local', 'staging'])))
@@ -32,12 +33,12 @@ test('syncEnvFile targets .env.<environment> for ANY cloud env (e.g. staging)', 
     expect(file_get_contents($dir.'/.env.staging'))->toContain('APP_URL=https://staging.app.com')
         ->and(file_get_contents($dir.'/.env'))->not->toContain('staging.app.com');
 
-    exec('rm -rf '.escapeshellarg($dir));
+    $temporaryDirectory->delete();
 });
 
-test('a local sync seeds EVERY configured cloud env file, not just production', function () {
-    $dir = sys_get_temp_dir().'/envsync-seed-'.uniqid();
-    mkdir($dir, 0755, true);
+test('a local sync seeds EVERY configured cloud env file, not just production', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/.env', "APP_NAME=Test\n");
 
     (new EnvSyncHelper(configWithEnvs(['local', 'production', 'staging'])))
@@ -49,5 +50,5 @@ test('a local sync seeds EVERY configured cloud env file, not just production', 
         // seeded content carries the local update
         ->and(file_get_contents($dir.'/.env.staging'))->toContain('APP_KEY=base64:abc');
 
-    exec('rm -rf '.escapeshellarg($dir));
+    $temporaryDirectory->delete();
 });

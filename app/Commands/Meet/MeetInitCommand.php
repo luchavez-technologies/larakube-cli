@@ -17,6 +17,7 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MeetInitCommand extends Command
 {
@@ -65,7 +66,7 @@ class MeetInitCommand extends Command
         // Re-read rather than regenerate: consumers already hold these keys in
         // their .env / lk-jwt Deployment, so a re-run must not invalidate them.
         $registry = $this->readMeetKeys($kubectl, $ns);
-        $this->withSpin('Syncing consumer keys...', function () use ($kubectl, $ns, &$registry) {
+        $this->withSpin('Syncing consumer keys...', function () use ($kubectl, $ns, &$registry): void {
             $registry = $this->writeMeetKeys($kubectl, $ns, $registry);
         });
 
@@ -83,11 +84,12 @@ class MeetInitCommand extends Command
                 'jwtWired' => $this->isMeetChatWired($kubectl, $ns),
             ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-meet.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-meet.yaml');
         file_put_contents($tmp, $manifest);
 
         $this->withSpin('Applying LiveKit (Meet) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         $this->withSpin('Waiting for LiveKit (Meet)...', fn () => $this->runStreaming(
             "{$kubectl} rollout status deploy/meet-livekit -n {$ns} --timeout=180s",

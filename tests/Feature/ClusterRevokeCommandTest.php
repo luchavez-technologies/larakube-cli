@@ -9,24 +9,25 @@
 
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 
     // Run outside any project so resolveClusterContext takes the standalone
     // (--context) branch.
-    $this->tempDir = sys_get_temp_dir().'/larakube-clusterrevoke-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    exec('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
-test('full off-board deletes the ClusterRoleBinding, not just namespaced RoleBindings', function () {
+test('full off-board deletes the ClusterRoleBinding, not just namespaced RoleBindings', function (): void {
     Process::fake([
         '*get rolebinding -A*' => Process::result(output: ''),
         '*delete clusterrolebinding*' => Process::result(output: ''),
@@ -43,7 +44,7 @@ test('full off-board deletes the ClusterRoleBinding, not just namespaced RoleBin
         && str_contains($process->command, 'larakube-cluster-user-lloyd'));
 });
 
-test('--cluster revokes only the cluster-wide grant, leaving per-namespace RoleBindings untouched', function () {
+test('--cluster revokes only the cluster-wide grant, leaving per-namespace RoleBindings untouched', function (): void {
     Process::fake([
         '*delete clusterrolebinding*' => Process::result(output: ''),
     ]);

@@ -84,7 +84,7 @@ class SecretsImportCommand extends Command
         }
 
         // ── 3. Enable KV v2 engine at secret/ ────────────────────────────────
-        $this->withSpin('Ensuring KV v2 engine is mounted at secret/...', function () use ($kubectl, $token) {
+        $this->withSpin('Ensuring KV v2 engine is mounted at secret/...', function () use ($kubectl, $token): void {
             // Attempt to mount — 400 = already mounted, which is fine.
             $this->openBaoApi($kubectl, 'POST', '/v1/sys/mounts/secret', [
                 'type' => 'kv',
@@ -98,7 +98,7 @@ class SecretsImportCommand extends Command
 
         foreach ($environments as $envSlug => $secrets) {
             foreach ($secrets as $key => $value) {
-                $this->withSpin("Writing {$envSlug}/{$key}...", function () use ($kubectl, $token, $envSlug, $key, $value, &$result) {
+                $this->withSpin("Writing {$envSlug}/{$key}...", function () use ($kubectl, $token, $envSlug, $key, $value, &$result): void {
                     $result = $this->openBaoApi($kubectl, 'POST', "/v1/secret/data/{$envSlug}/{$key}", [
                         'data' => ['value' => $value],
                     ], $token);

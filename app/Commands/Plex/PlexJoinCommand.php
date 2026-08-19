@@ -16,6 +16,7 @@ use function Laravel\Prompts\multiselect;
 
 use Laravel\Prompts\Prompt;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexJoinCommand extends Command
 {
@@ -174,7 +175,7 @@ class PlexJoinCommand extends Command
 
                 foreach ($existingData as $service => $target) {
                     $released = false;
-                    $this->withSpin("Releasing self-hosted '{$target['label']}' ({$target['pvc']})...", function () use ($kubectl, $namespace, $service, $target, &$released) {
+                    $this->withSpin("Releasing self-hosted '{$target['label']}' ({$target['pvc']})...", function () use ($kubectl, $namespace, $service, $target, &$released): void {
                         $released = $this->releaseSelfHostedPvc($kubectl, $namespace, $target['pvc'], $service);
                     });
 
@@ -549,10 +550,11 @@ class PlexJoinCommand extends Command
             'passwordKey' => 'DB_PASSWORD',
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-eso-db-static-'.$roleName.'.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-eso-db-static-'.$roleName.'.yaml');
         file_put_contents($tmp, $manifest);
         $applied = Process::run("{$kubectl} apply -f ".escapeshellarg($tmp))->successful();
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $applied) {
             return false;

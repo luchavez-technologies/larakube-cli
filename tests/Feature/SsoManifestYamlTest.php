@@ -2,7 +2,7 @@
 
 use Symfony\Component\Yaml\Yaml;
 
-test('zitadel manifest renders as valid multi-doc YAML with a working env anchor', function () {
+test('zitadel manifest renders as valid multi-doc YAML with a working env anchor', function (): void {
     foreach ([false, true] as $noPlex) {
         $rendered = view('k8s.sso.zitadel', [
             'host' => 'sso.example.com',
@@ -34,10 +34,8 @@ test('zitadel manifest renders as valid multi-doc YAML with a working env anchor
 
         // init schema (owner-only) then start-from-setup (no provisioning step).
         expect($init['command'])->toBe(['/app/zitadel', 'init', 'schema']);
-        expect($main['command'])->toBe(['/app/zitadel', 'start-from-setup', '--masterkeyFromEnv', '--tlsMode', 'external']);
-
         // The YAML anchor must resolve: both containers get the SAME env list.
-        expect($main['env'])->toBe($init['env']);
+        expect($main)->toMatchArray(['command' => ['/app/zitadel', 'start-from-setup', '--masterkeyFromEnv', '--tlsMode', 'external'], 'env' => $init['env']]);
 
         // The admin email is the resolved value (not a synthetic admin@host, and
         // not a literal Blade tag from the old @{{ }} escape bug).

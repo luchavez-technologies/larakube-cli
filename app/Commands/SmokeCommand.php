@@ -5,6 +5,7 @@ namespace App\Commands;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
 
 class SmokeCommand extends Command
@@ -51,7 +52,7 @@ class SmokeCommand extends Command
                     }
 
                     if ($i < $maxAttempts) {
-                        sleep(1);
+                        Sleep::sleep(1);
                     }
                 }
 

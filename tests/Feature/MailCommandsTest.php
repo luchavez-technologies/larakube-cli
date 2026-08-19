@@ -13,13 +13,13 @@ use Laravel\Prompts\Prompt;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
-test('mail:accounts is registered', function () {
+test('mail:accounts is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:accounts');
 });
 
-test('mail:accounts shows error when stalwart not installed', function () {
+test('mail:accounts shows error when stalwart not installed', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:accounts')
@@ -27,7 +27,7 @@ test('mail:accounts shows error when stalwart not installed', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:accounts shows empty when no accounts exist', function () {
+test('mail:accounts shows empty when no accounts exist', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -40,7 +40,7 @@ test('mail:accounts shows empty when no accounts exist', function () {
         ->expectsOutputToContain('No accounts found');
 });
 
-test('mail:accounts lists accounts', function () {
+test('mail:accounts lists accounts', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -59,18 +59,18 @@ test('mail:accounts lists accounts', function () {
     $exitCode = Artisan::call('mail:accounts');
     $output = Artisan::output();
 
-    expect($exitCode)->toBe(0);
-    expect($output)->toContain('admin@example.com');
-    expect($output)->toContain('alice@example.com');
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('admin@example.com')
+        ->toContain('alice@example.com');
 });
 
-test('mail:create is registered', function () {
+test('mail:create is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:create');
 });
 
-test('mail:create shows error when no domains configured', function () {
+test('mail:create shows error when no domains configured', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -83,7 +83,7 @@ test('mail:create shows error when no domains configured', function () {
         ->expectsOutputToContain('No domains are configured');
 });
 
-test('mail:create creates account with given args', function () {
+test('mail:create creates account with given args', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -115,13 +115,13 @@ test('mail:create creates account with given args', function () {
         ->expectsOutputToContain('Str0ngP@ssw0rd!');
 });
 
-test('mail:delete is registered', function () {
+test('mail:delete is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:delete');
 });
 
-test('mail:delete deletes account by email', function () {
+test('mail:delete deletes account by email', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -146,13 +146,13 @@ test('mail:delete deletes account by email', function () {
     expect($exitCode)->toBe(0);
 });
 
-test('mail:password is registered', function () {
+test('mail:password is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:password');
 });
 
-test('mail:password resets password', function () {
+test('mail:password resets password', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -178,7 +178,7 @@ test('mail:password resets password', function () {
         ->expectsOutputToContain('NewStr0ngP@ss!');
 });
 
-test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed and the identity exists', function () {
+test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed and the identity exists', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -213,7 +213,7 @@ test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed 
         && ($request['newPassword']['password'] ?? null) === 'NewStr0ngP@ss!');
 });
 
-test('mail:password --no-sso leaves Zitadel untouched', function () {
+test('mail:password --no-sso leaves Zitadel untouched', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -241,7 +241,7 @@ test('mail:password --no-sso leaves Zitadel untouched', function () {
         ->doesntExpectOutputToContain('SSO password updated');
 });
 
-test('mail:password hints (does not error) when no matching SSO identity exists', function () {
+test('mail:password hints (does not error) when no matching SSO identity exists', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -270,7 +270,7 @@ test('mail:password hints (does not error) when no matching SSO identity exists'
         ->expectsOutputToContain('No matching SSO identity for alice@example.com');
 });
 
-test('mail:password without --force asks for confirmation and cancels on decline', function () {
+test('mail:password without --force asks for confirmation and cancels on decline', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -298,20 +298,20 @@ test('mail:password without --force asks for confirmation and cancels on decline
 
     $exitCode = $command->handle();
 
-    expect($exitCode)->toBe(0);
-    expect($output->fetch())->toContain('invalidates');
+    expect($exitCode)->toBe(0)
+        ->and($output->fetch())->toContain('invalidates');
     // Declining the confirmation must stop before the actual update call —
     // only the account-lookup JMAP calls (query + get) should have fired.
     expect($callCount)->toBe(2);
 });
 
-test('mail:quota is registered', function () {
+test('mail:quota is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:quota');
 });
 
-test('mail:quota sets quota', function () {
+test('mail:quota sets quota', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -335,13 +335,13 @@ test('mail:quota sets quota', function () {
     expect($exitCode)->toBe(0);
 });
 
-test('mail:show is registered', function () {
+test('mail:show is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:show');
 });
 
-test('mail:show displays admin credentials', function () {
+test('mail:show displays admin credentials', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
@@ -354,7 +354,7 @@ test('mail:show displays admin credentials', function () {
         ->expectsOutputToContain('s3cret-p@ss');
 });
 
-test('mail:show <email> displays that account\'s client setup, never a password', function () {
+test('mail:show <email> displays that account\'s client setup, never a password', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -380,7 +380,7 @@ test('mail:show <email> displays that account\'s client setup, never a password'
         ->doesntExpectOutputToContain('test-admin-pass');
 });
 
-test('mail:create shows the webmail URL when Bulwark is installed', function () {
+test('mail:create shows the webmail URL when Bulwark is installed', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -410,7 +410,7 @@ test('mail:create shows the webmail URL when Bulwark is installed', function () 
         ->expectsOutputToContain('Or webmail:');
 });
 
-test('mail:show <email> errors when the account does not exist', function () {
+test('mail:show <email> errors when the account does not exist', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -423,13 +423,13 @@ test('mail:show <email> errors when the account does not exist', function () {
         ->expectsOutputToContain("Account 'ghost@example.com' not found");
 });
 
-test('mail:domains is registered', function () {
+test('mail:domains is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:domains');
 });
 
-test('mail:domains shows empty when no domains exist', function () {
+test('mail:domains shows empty when no domains exist', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -442,7 +442,7 @@ test('mail:domains shows empty when no domains exist', function () {
         ->expectsOutputToContain('No domains configured');
 });
 
-test('mail:show requires installed stalwart', function () {
+test('mail:show requires installed stalwart', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:show')
@@ -450,7 +450,7 @@ test('mail:show requires installed stalwart', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:domains requires installed stalwart', function () {
+test('mail:domains requires installed stalwart', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:domains')
@@ -458,7 +458,7 @@ test('mail:domains requires installed stalwart', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:create requires installed stalwart', function () {
+test('mail:create requires installed stalwart', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:create')
@@ -466,7 +466,7 @@ test('mail:create requires installed stalwart', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:delete requires installed stalwart', function () {
+test('mail:delete requires installed stalwart', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:delete')
@@ -474,7 +474,7 @@ test('mail:delete requires installed stalwart', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:password requires installed stalwart', function () {
+test('mail:password requires installed stalwart', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:password')
@@ -482,7 +482,7 @@ test('mail:password requires installed stalwart', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:quota requires installed stalwart', function () {
+test('mail:quota requires installed stalwart', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:quota')
@@ -490,7 +490,7 @@ test('mail:quota requires installed stalwart', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:create --sso creates a matching Zitadel identity', function () {
+test('mail:create --sso creates a matching Zitadel identity', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -511,7 +511,7 @@ test('mail:create --sso creates a matching Zitadel identity', function () {
         },
     ]);
 
-    Http::fake(['*/v2/users/human' => Http::response(['userId' => 'zid-1'])]);
+    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []]), '*/v2/users/human' => Http::response(['userId' => 'zid-1'])]);
 
     $this->artisan('mail:create', [
         '--email' => 'bob@example.com',
@@ -523,7 +523,7 @@ test('mail:create --sso creates a matching Zitadel identity', function () {
         ->expectsOutputToContain('SSO identity created for bob@example.com');
 });
 
-test('mail:create --sso errors when Zitadel is not installed', function () {
+test('mail:create --sso errors when Zitadel is not installed', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -553,7 +553,7 @@ test('mail:create --sso errors when Zitadel is not installed', function () {
         ->expectsOutputToContain('--sso was requested, but Zitadel is not installed');
 });
 
-test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no flag is given', function () {
+test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no flag is given', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -574,7 +574,7 @@ test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no f
         },
     ]);
 
-    Http::fake(['*/v2/users/human' => Http::response(['userId' => 'zid-1'])]);
+    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []]), '*/v2/users/human' => Http::response(['userId' => 'zid-1'])]);
 
     // No --sso, no --no-sso: with Zitadel installed the sync is the default. The
     // non-interactive fallback must resolve to yes, so this needs no prompt.
@@ -593,7 +593,7 @@ test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no f
         && ($request['password']['password'] ?? null) === 'Str0ngP@ssw0rd!');
 });
 
-test('mail:create --no-sso skips the Zitadel identity even when Zitadel is installed', function () {
+test('mail:create --no-sso skips the Zitadel identity even when Zitadel is installed', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -626,7 +626,7 @@ test('mail:create --no-sso skips the Zitadel identity even when Zitadel is insta
         ->doesntExpectOutputToContain('SSO identity created');
 });
 
-test('mail:delete --sso removes the matching Zitadel identity', function () {
+test('mail:delete --sso removes the matching Zitadel identity', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -657,7 +657,7 @@ test('mail:delete --sso removes the matching Zitadel identity', function () {
         ->expectsOutputToContain('SSO identity for admin@example.com removed');
 });
 
-test('mail:show <email> shows the webmail URL when Bulwark is installed', function () {
+test('mail:show <email> shows the webmail URL when Bulwark is installed', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -680,7 +680,7 @@ test('mail:show <email> shows the webmail URL when Bulwark is installed', functi
         ->expectsOutputToContain('Webmail:');
 });
 
-test('mail:show <email> shows SSO status when Zitadel is installed', function () {
+test('mail:show <email> shows SSO status when Zitadel is installed', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -705,7 +705,7 @@ test('mail:show <email> shows SSO status when Zitadel is installed', function ()
         ->expectsOutputToContain('SSO:');
 });
 
-test('mail:init explains why it skipped Commons store auto-config instead of staying silent', function () {
+test('mail:init explains why it skipped Commons store auto-config instead of staying silent', function (): void {
     // No plex-commons ConfigMap on the cluster: a legitimate skip, but it used
     // to print nothing at all, which is indistinguishable from a broken run.
     Process::fake([
@@ -720,7 +720,7 @@ test('mail:init explains why it skipped Commons store auto-config instead of sta
         ->expectsOutputToContain('plex:init');
 });
 
-test('the store hint never mixes the postgres superuser with STALWART_STORE_PASSWORD', function () {
+test('the store hint never mixes the postgres superuser with STALWART_STORE_PASSWORD', function (): void {
     // Two mutually exclusive credential paths used to be printed together:
     // username `postgres` (superuser) alongside "use STALWART_STORE_PASSWORD"
     // (the dedicated `stalwart` role's password). Pairing them fails auth.
@@ -741,7 +741,7 @@ test('the store hint never mixes the postgres superuser with STALWART_STORE_PASS
         ->and($hintSection)->toContain('Username: <fg=blue>postgres');
 });
 
-test('the store hint warns that switching stores empties the directory', function () {
+test('the store hint warns that switching stores empties the directory', function (): void {
     // Accounts, domains and DKIM keys live in Stalwart's data store and are not
     // migrated — an operator who switches mid-flight silently loses them.
     $source = (string) file_get_contents(base_path('app/Traits/InteractsWithPlex.php'));
@@ -785,13 +785,13 @@ function dkimJmapSequence(array $signatures): FakeProcessSequence
         ])));
 }
 
-test('mail:dkim is registered', function () {
+test('mail:dkim is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:dkim');
 });
 
-test('mail:dkim requires installed stalwart', function () {
+test('mail:dkim requires installed stalwart', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:dkim')
@@ -799,7 +799,7 @@ test('mail:dkim requires installed stalwart', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:dkim fails and points at --fix when a domain has two active keys', function () {
+test('mail:dkim fails and points at --fix when a domain has two active keys', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -816,7 +816,7 @@ test('mail:dkim fails and points at --fix when a domain has two active keys', fu
         ->expectsOutputToContain('--fix');
 });
 
-test('mail:dkim passes when a single active key signs the domain', function () {
+test('mail:dkim passes when a single active key signs the domain', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -831,7 +831,7 @@ test('mail:dkim passes when a single active key signs the domain', function () {
         ->expectsOutputToContain('single active key');
 });
 
-test('mail:dkim --fix destroys the Ed25519 key and reports the count', function () {
+test('mail:dkim --fix destroys the Ed25519 key and reports the count', function (): void {
     // --fix prunes first, then re-reads, so the destroy response is spliced in
     // ahead of a second full read that now shows RSA only.
     Process::fake([
@@ -897,7 +897,7 @@ function apiKeyHarness(): object
     };
 }
 
-test('stalwartEnsureApiKey mints and stores a key, creating the automation principal', function () {
+test('stalwartEnsureApiKey mints and stores a key, creating the automation principal', function (): void {
     $callCount = 0;
     Process::fake([
         // No key yet → bootstrap; recovery admin available for the mint's basic auth.
@@ -927,11 +927,11 @@ test('stalwartEnsureApiKey mints and stores a key, creating the automation princ
     Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret mail-secrets'));
 });
 
-test('mail:recover is registered', function () {
+test('mail:recover is registered', function (): void {
     $this->artisan('list')->assertExitCode(0)->expectsOutputToContain('mail:recover');
 });
 
-test('mail:recover errors when stalwart is not installed', function () {
+test('mail:recover errors when stalwart is not installed', function (): void {
     Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:recover', ['--force' => true])
@@ -939,7 +939,7 @@ test('mail:recover errors when stalwart is not installed', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:recover re-mints the automation API key via the recovery admin', function () {
+test('mail:recover re-mints the automation API key via the recovery admin', function (): void {
     $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),

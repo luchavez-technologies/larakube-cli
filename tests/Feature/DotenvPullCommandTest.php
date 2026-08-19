@@ -5,19 +5,20 @@ use App\Enums\DatabaseDriver;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 
-    $this->tempDir = sys_get_temp_dir().'/larakube-dotenv-pull-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    Process::run('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
 function savePullTestConfig(string $dir): void
@@ -38,13 +39,13 @@ function savePullTestConfig(string $dir): void
     $config->saveToFile($dir);
 }
 
-test('dotenv:pull must be run inside a project', function () {
+test('dotenv:pull must be run inside a project', function (): void {
     $this->artisan('dotenv:pull')
         ->assertExitCode(1)
         ->expectsOutputToContain('inside a LaraKube project');
 });
 
-test('dotenv:pull reads directly from the cluster Secret when OpenBao is absent', function () {
+test('dotenv:pull reads directly from the cluster Secret when OpenBao is absent', function (): void {
     savePullTestConfig($this->tempDir);
 
     Process::fake([
@@ -60,7 +61,7 @@ test('dotenv:pull reads directly from the cluster Secret when OpenBao is absent'
     expect(file_get_contents($this->tempDir.'/.env.production'))->toContain('APP_KEY=base64:abc');
 });
 
-test('dotenv:pull reads OpenBao, scoped by app, when it is present', function () {
+test('dotenv:pull reads OpenBao, scoped by app, when it is present', function (): void {
     savePullTestConfig($this->tempDir);
 
     Process::fake([
@@ -81,7 +82,7 @@ test('dotenv:pull reads OpenBao, scoped by app, when it is present', function ()
     expect(file_get_contents($this->tempDir.'/.env.production'))->toContain('APP_KEY=base64:from-openbao');
 });
 
-test('dotenv:pull respects a locked env file', function () {
+test('dotenv:pull respects a locked env file', function (): void {
     savePullTestConfig($this->tempDir);
     $config = ConfigData::loadFromFile($this->tempDir);
     $config->addLockedFile('.env.production');

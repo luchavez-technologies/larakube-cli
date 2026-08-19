@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Process;
  * Regression test for the ClusterTool component refactor — see
  * ChatRemoveCommandTest for the full rationale.
  */
-test('design:remove deletes the same resource set as before the component refactor', function () {
+test('design:remove deletes the same resource set as before the component refactor', function (): void {
     Process::fake([
         '*get secret design-secrets*' => Process::result(output: 'design-secrets   Opaque   1   10d'),
         '*delete *' => Process::result(output: 'deleted'),
@@ -21,9 +21,11 @@ test('design:remove deletes the same resource set as before the component refact
     Process::assertRan(function ($process) use (&$deleteCommand) {
         if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'design-penpot-backend')) {
             $deleteCommand = $process->command;
+
+            return true;
         }
 
-        return true;
+        return false;
     });
 
     expect($deleteCommand)->not->toBeNull();

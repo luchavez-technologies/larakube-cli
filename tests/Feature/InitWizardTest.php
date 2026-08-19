@@ -25,7 +25,7 @@ use App\Enums\StorageDriver;
 use App\Traits\GathersInfrastructureConfig;
 use Laravel\Prompts\Prompt;
 
-test('the init wizard runs every prompt step without a missing-symbol crash', function () {
+test('the init wizard runs every prompt step without a missing-symbol crash', function (): void {
     // 🔍 FIX: Force Laravel Prompts to use its non-interactive fallback mode
     Prompt::interactive(false);
 

@@ -61,7 +61,6 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
                 'STALWART_S3_SECRET_KEY',
                 'STALWART_MAIL_PASSWORD',
                 'STALWART_MAIL_SENDER',
-                'STALWART_CLOUDFLARE_TOKEN',
             ],
         ];
     }

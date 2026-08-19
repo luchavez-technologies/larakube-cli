@@ -85,7 +85,7 @@ class MailRecoverCommand extends Command
         }
 
         $key = null;
-        $this->withSpin('Re-minting automation API key via recovery admin...', function () use (&$key, $kubectl, $ns) {
+        $this->withSpin('Re-minting automation API key via recovery admin...', function () use (&$key, $kubectl, $ns): void {
             // Force recovery-admin auth: the API key we're replacing may be the
             // very thing that's broken, so we must not try to use it.
             $key = $this->withStalwartRecoveryAuth(fn () => $this->stalwartResetApiKey($kubectl, $ns));

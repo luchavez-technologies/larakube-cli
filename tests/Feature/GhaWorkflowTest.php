@@ -94,7 +94,7 @@ function ghaViewData(array $overrides = []): array
     ], $overrides);
 }
 
-test('GHA workflow generation uses correct literal injection syntax', function () {
+test('GHA workflow generation uses correct literal injection syntax', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
 
     // Verify Literal Injections
@@ -104,10 +104,10 @@ test('GHA workflow generation uses correct literal injection syntax', function (
     expect($workflowContent)
         ->not->toContain('ENV_FILE_BASE64')
         ->not->toContain('FINAL_ENV');
-    expect($workflowContent)->toContain('REGISTRY_HOST: ghcr.io');
-    expect($workflowContent)->toContain('IMAGE_NAME: ${{ github.repository }}');
-    expect($workflowContent)->toContain('REGISTRY_PROVIDER: ghcr');
-    expect($workflowContent)->toContain('kubeconfig: ${{ env.K_DATA }}');
+    expect($workflowContent)->toContain('REGISTRY_HOST: ghcr.io')
+        ->toContain('IMAGE_NAME: ${{ github.repository }}')
+        ->toContain('REGISTRY_PROVIDER: ghcr')
+        ->toContain('kubeconfig: ${{ env.K_DATA }}');
 
     // The runner uses a namespace-scoped credential, so the apply must strip the
     // cluster-scoped Namespace doc (the scoped SA can't apply it).
@@ -128,7 +128,7 @@ test('GHA workflow generation uses correct literal injection syntax', function (
     expect($workflowContent)->not->toContain('{{ $upperEnv }}');
 });
 
-test('GHA workflow with default audit config emits security gates and split build', function () {
+test('GHA workflow with default audit config emits security gates and split build', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
 
     // Phase 1 — Audit gates are present. Gitleaks runs as the MIT-licensed
@@ -158,7 +158,7 @@ test('GHA workflow with default audit config emits security gates and split buil
     expect($workflowContent)->toContain('Audit, Build & Push');
 });
 
-test('GHA workflow with --skip-audit produces the lean pipeline without gates', function () {
+test('GHA workflow with --skip-audit produces the lean pipeline without gates', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData([
         'audit' => ['skip' => true],
     ]))->render();
@@ -189,7 +189,7 @@ test('GHA workflow with --skip-audit produces the lean pipeline without gates', 
         ->not->toContain('Audit, Build & Push');
 });
 
-test('a single gate can be dropped without losing the rest of the audit', function () {
+test('a single gate can be dropped without losing the rest of the audit', function (): void {
     // The point of the per-gate switches: Gitleaks' Action needs a paid licence
     // on org repos, and before this the only escape was --skip-audit, which
     // also threw away dependency auditing, SAST, Trivy and the tests.
@@ -210,7 +210,7 @@ test('a single gate can be dropped without losing the rest of the audit', functi
         ->toContain('Audit, Build & Push');
 });
 
-test('each remaining gate can be dropped on its own', function () {
+test('each remaining gate can be dropped on its own', function (): void {
     $render = fn (string $gate) => view('k8s.cloud-pilot-deploy', ghaViewData([
         'audit' => [$gate => false],
     ]))->render();
@@ -218,20 +218,15 @@ test('each remaining gate can be dropped on its own', function () {
     expect($render('semgrep'))
         ->not->toContain('semgrep scan')
         ->toContain('composer audit')
-        ->toContain('Trivy image scan');
-
-    expect($render('dependencyAudit'))
-        ->not->toContain('composer audit')
-        ->not->toContain('npm audit')
-        ->toContain('semgrep scan');
-
-    expect($render('trivy'))
-        ->not->toContain('Trivy')
+        ->toContain('Trivy image scan')
+        ->and($render('dependencyAudit'))->not->toContain('composer audit')->not->toContain('npm audit')
+        ->toContain('semgrep scan')
+        ->and($render('trivy'))->not->toContain('Trivy')
         ->toContain('semgrep scan')
         ->toContain('composer audit');
 });
 
-test('dropping Trivy collapses the split build instead of building twice', function () {
+test('dropping Trivy collapses the split build instead of building twice', function (): void {
     // The load/scan/push split exists only to scan the artifact before
     // publishing it. With no image scan the middle step is dead weight, so it
     // must collapse to one build-and-push rather than building the image twice.
@@ -250,7 +245,7 @@ test('dropping Trivy collapses the split build instead of building twice', funct
     expect(substr_count($workflowContent, 'push: true'))->toBe(1);
 });
 
-test('GHA workflow with --strict uses CRITICAL,HIGH severity', function () {
+test('GHA workflow with --strict uses CRITICAL,HIGH severity', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData([
         'audit' => [
             'strict' => true,
@@ -266,7 +261,7 @@ test('GHA workflow with --strict uses CRITICAL,HIGH severity', function () {
     expect($workflowContent)->toContain('npm audit --audit-level=high');
 });
 
-test('the workflow connects to NetBird VPN before touching kubectl when the cluster has one', function () {
+test('the workflow connects to NetBird VPN before touching kubectl when the cluster has one', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData(['vpnHost' => 'vpn.example.com']))->render();
 
     expect($workflowContent)
@@ -279,14 +274,14 @@ test('the workflow connects to NetBird VPN before touching kubectl when the clus
         ->and($vpnPos)->toBeLessThan($contextPos);
 });
 
-test('the workflow has no VPN step at all when the environment has no VPN', function () {
+test('the workflow has no VPN step at all when the environment has no VPN', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData(['vpnHost' => null]))->render();
 
     expect($workflowContent)->not->toContain('Connect to NetBird VPN')
         ->not->toContain('netbird up');
 });
 
-test('the workflow bakes public env vars as literal echo lines, never a secret', function () {
+test('the workflow bakes public env vars as literal echo lines, never a secret', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
 
     expect($workflowContent)
@@ -296,7 +291,7 @@ test('the workflow bakes public env vars as literal echo lines, never a secret',
         ->not->toContain('E_DATA');
 });
 
-test('the deploy job refuses to proceed when laravel-secrets is missing, and never creates it', function () {
+test('the deploy job refuses to proceed when laravel-secrets is missing, and never creates it', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
 
     expect($workflowContent)

@@ -332,7 +332,7 @@ class UpCommand extends Command
         $this->laraKubeInfo("Targeting environment: {$environment}");
 
         if ($environment === 'local') {
-            $this->withSpin('Ensuring local infrastructure directories exist...', function () use ($projectPath) {
+            $this->withSpin('Ensuring local infrastructure directories exist...', function () use ($projectPath): void {
                 @mkdir($projectPath.'/.infrastructure/volume_data', 0777, true);
                 $dbFile = $projectPath.'/.infrastructure/volume_data/database.sqlite';
                 if (! file_exists($dbFile)) {
@@ -389,7 +389,7 @@ class UpCommand extends Command
         $this->ensureHostDependencies($config, $environment);
 
         // 2. Ensure Namespace exists
-        $this->withSpin("Ensuring namespace '$namespace' exists...", function () use ($namespace) {
+        $this->withSpin("Ensuring namespace '$namespace' exists...", function () use ($namespace): void {
             Process::run("kubectl create namespace $namespace --dry-run=client -o yaml | kubectl apply -f -");
         });
 
@@ -402,7 +402,7 @@ class UpCommand extends Command
         // hostPath mount for instant edits without larakube up.
         // REMOTE: ConfigMap/Secret contain all variables (no hostPath mount exists).
         if (file_exists($envPath)) {
-            $this->withSpin('Injecting configuration and blueprint...', function () use ($namespace, $envPath, $projectPath, $config, $environment) {
+            $this->withSpin('Injecting configuration and blueprint...', function () use ($namespace, $envPath, $projectPath, $config, $environment): void {
                 $envLines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
                 $publicLiterals = '';
                 $secretLiterals = '';
@@ -531,7 +531,7 @@ class UpCommand extends Command
         }
 
         // Scale down to release file locks (Safe transition)
-        $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace) {
+        $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace): void {
             Process::run("kubectl scale deployment --all --replicas=0 -n $namespace");
         });
 
@@ -539,7 +539,7 @@ class UpCommand extends Command
 
         // 5a. If monitoring is active, deploy service-level exporters into this namespace
         if ($this->isMonitoringActive()) {
-            $this->withSpin('Wiring monitoring exporters...', function () use ($config, $namespace) {
+            $this->withSpin('Wiring monitoring exporters...', function () use ($config, $namespace): void {
                 $this->ensureMonitoringExporters($config, $namespace);
             });
         }

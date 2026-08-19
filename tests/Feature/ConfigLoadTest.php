@@ -9,8 +9,9 @@
 
 use App\Data\ConfigData;
 use App\Traits\InteractsWithHosts;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('a current-shape blueprint loads and resolves hosts', function () {
+test('a current-shape blueprint loads and resolves hosts', function (): void {
     $config = ConfigData::from([
         'name' => 'test2',
         'serverVariation' => 'fpm-nginx',
@@ -23,7 +24,7 @@ test('a current-shape blueprint loads and resolves hosts', function () {
         ->and($config->getAllHosts('local'))->toBeArray();
 });
 
-test('a legacy blueprint with the removed productionImage key still loads', function () {
+test('a legacy blueprint with the removed productionImage key still loads', function (): void {
     $config = ConfigData::from([
         'name' => 'legacy',
         'productionImage' => 'ghcr.io/team/legacy',
@@ -34,7 +35,7 @@ test('a legacy blueprint with the removed productionImage key still loads', func
         ->and($config->getAllHosts('local'))->toBeArray();
 });
 
-test('a legacy blueprint with a top-level cloud map still loads', function () {
+test('a legacy blueprint with a top-level cloud map still loads', function (): void {
     $config = ConfigData::from([
         'name' => 'legacy-cloud',
         'environments' => ['local' => [], 'production' => []],
@@ -48,9 +49,9 @@ test('a legacy blueprint with a top-level cloud map still loads', function () {
         ->and($config->getAllHosts('local'))->toBeArray();
 });
 
-test('loadFromFile reads a written blueprint and resolves hosts', function () {
-    $dir = sys_get_temp_dir().'/lk-cfgload-'.bin2hex(random_bytes(4));
-    mkdir($dir, 0755, true);
+test('loadFromFile reads a written blueprint and resolves hosts', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/'.ConfigData::CONFIG_FILE, json_encode([
         'name' => 'fromfile',
         'serverVariation' => 'fpm-nginx',
@@ -63,15 +64,14 @@ test('loadFromFile reads a written blueprint and resolves hosts', function () {
     expect($config->getName())->toBe('fromfile')
         ->and($config->getAllHosts('local'))->toBeArray();
 
-    @unlink($dir.'/'.ConfigData::CONFIG_FILE);
-    @rmdir($dir);
+    $temporaryDirectory->delete();
 });
 
-test('ensureHostsAreSet does not crash when the project config is missing/unreadable', function () {
+test('ensureHostsAreSet does not crash when the project config is missing/unreadable', function (): void {
     // Regression for "Call to getAllHosts() on null" on `up`/`hosts` when
     // .larakube.json can't be loaded: the host step must skip, not fatal.
-    $dir = sys_get_temp_dir().'/lk-nohost-'.bin2hex(random_bytes(4));
-    mkdir($dir, 0755, true);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
 
     $previous = getcwd();
     chdir($dir);
@@ -91,13 +91,13 @@ test('ensureHostsAreSet does not crash when the project config is missing/unread
         expect(fn () => $runner->run())->not->toThrow(Throwable::class);
     } finally {
         chdir($previous);
-        @rmdir($dir);
+        $temporaryDirectory->delete();
     }
 });
 
-test('cloudflareToken persists only to the gitignored local file and wins on load', function () {
-    $dir = sys_get_temp_dir().'/larakube-cftoken-'.uniqid();
-    mkdir($dir, 0755, true);
+test('cloudflareToken persists only to the gitignored local file and wins on load', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
 
     $config = ConfigData::from([
         'name' => 'cf-test',
@@ -110,12 +110,12 @@ test('cloudflareToken persists only to the gitignored local file and wins on loa
     // Committed blueprint must NOT contain the secret; local file must.
     $committed = json_decode((string) file_get_contents("$dir/.larakube.json"), true);
     $local = json_decode((string) file_get_contents("$dir/.larakube.local.json"), true);
-    expect($committed)->not->toHaveKey('cloudflareToken');
-    expect($local['cloudflareToken'])->toBe('cf-project-token-123');
+    expect($committed)->not->toHaveKey('cloudflareToken')
+        ->and($local['cloudflareToken'])->toBe('cf-project-token-123');
 
     // Reload resolves the token from the local file.
     $reloaded = ConfigData::loadFromFile($dir);
     expect($reloaded->getCloudflareToken())->toBe('cf-project-token-123');
 
-    exec('rm -rf '.escapeshellarg($dir));
+    $temporaryDirectory->delete();
 });

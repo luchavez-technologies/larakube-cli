@@ -3,7 +3,7 @@
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 
-test('database driver has correct labels', function () {
+test('database driver has correct labels', function (): void {
     expect(DatabaseDriver::MYSQL->getLabel())->toBe('MySQL')
         ->and(DatabaseDriver::MARIADB->getLabel())->toBe('MariaDB')
         ->and(DatabaseDriver::POSTGRESQL->getLabel())->toBe('PostgreSQL')
@@ -11,7 +11,7 @@ test('database driver has correct labels', function () {
         ->and(DatabaseDriver::SQLITE->getLabel())->toBe('SQLite (Local File)');
 });
 
-test('database driver has correct ports', function () {
+test('database driver has correct ports', function (): void {
     expect(DatabaseDriver::MYSQL->dbPort())->toBe(3306)
         ->and(DatabaseDriver::MARIADB->dbPort())->toBe(3306)
         ->and(DatabaseDriver::POSTGRESQL->dbPort())->toBe(5432)
@@ -19,14 +19,14 @@ test('database driver has correct ports', function () {
         ->and(DatabaseDriver::SQLITE->dbPort())->toBe(0);
 });
 
-test('database driver has correct connections', function () {
+test('database driver has correct connections', function (): void {
     expect(DatabaseDriver::MYSQL->dbConnection())->toBe('mysql')
         ->and(DatabaseDriver::POSTGRESQL->dbConnection())->toBe('pgsql')
         ->and(DatabaseDriver::MONGODB->dbConnection())->toBe('mongodb')
         ->and(DatabaseDriver::SQLITE->dbConnection())->toBe('sqlite');
 });
 
-test('sqlite is hidden when using frankenphp', function () {
+test('sqlite is hidden when using frankenphp', function (): void {
     $config = ConfigData::from(['serverVariation' => 'frankenphp']);
     expect(DatabaseDriver::SQLITE->isHidden($config))->toBeTrue();
 
@@ -34,18 +34,18 @@ test('sqlite is hidden when using frankenphp', function () {
     expect(DatabaseDriver::SQLITE->isHidden($config))->toBeFalse();
 });
 
-test('database driver select options are valid', function () {
+test('database driver select options are valid', function (): void {
     $options = DatabaseDriver::getSelectOptions();
     expect($options)->toBeArray()
         ->and($options)->toHaveKey('mysql', 'MySQL');
 });
 
-test('test database provision command is null for drivers without auto-provisioning', function () {
+test('test database provision command is null for drivers without auto-provisioning', function (): void {
     expect(DatabaseDriver::SQLITE->getTestDatabaseProvisionCommand('app_testing'))->toBeNull()
         ->and(DatabaseDriver::MONGODB->getTestDatabaseProvisionCommand('app_testing'))->toBeNull();
 });
 
-test('mysql test database provision command uses CREATE DATABASE IF NOT EXISTS', function () {
+test('mysql test database provision command uses CREATE DATABASE IF NOT EXISTS', function (): void {
     $cmd = DatabaseDriver::MYSQL->getTestDatabaseProvisionCommand('demo_testing');
 
     expect($cmd)->toContain('CREATE DATABASE IF NOT EXISTS')
@@ -53,14 +53,14 @@ test('mysql test database provision command uses CREATE DATABASE IF NOT EXISTS',
         ->and($cmd)->toContain('$MYSQL_ROOT_PASSWORD');
 });
 
-test('mariadb uses the same provisioning command as mysql', function () {
+test('mariadb uses the same provisioning command as mysql', function (): void {
     $mariadbCmd = DatabaseDriver::MARIADB->getTestDatabaseProvisionCommand('app_testing');
     $mysqlCmd = DatabaseDriver::MYSQL->getTestDatabaseProvisionCommand('app_testing');
 
     expect($mariadbCmd)->toBe($mysqlCmd);
 });
 
-test('postgres test database provision command checks pg_database before createdb', function () {
+test('postgres test database provision command checks pg_database before createdb', function (): void {
     $cmd = DatabaseDriver::POSTGRESQL->getTestDatabaseProvisionCommand('demo_testing');
 
     expect($cmd)->toContain("SELECT 1 FROM pg_database WHERE datname='demo_testing'")
@@ -70,7 +70,7 @@ test('postgres test database provision command checks pg_database before created
         ->and($cmd)->toContain('||');
 });
 
-test('postgres Commons restore connects as the tenant role, not admin', function () {
+test('postgres Commons restore connects as the tenant role, not admin', function (): void {
     // Regression guard: postgresCommonsCreateSql() makes the tenant own its
     // database + public schema, but that ownership doesn't extend to objects
     // a DIFFERENT role's CREATE TABLE (from the restored dump) produces
@@ -86,7 +86,7 @@ test('postgres Commons restore connects as the tenant role, not admin', function
         ->and($cmd)->toContain("-d 'seahorse_local'");
 });
 
-test('mysql/mariadb Commons restore is unaffected by the password param (grant-based, no ownership gap)', function () {
+test('mysql/mariadb Commons restore is unaffected by the password param (grant-based, no ownership gap)', function (): void {
     $mysql = DatabaseDriver::MYSQL->commonsRestoreCommand('demo', 'unused');
     $mariadb = DatabaseDriver::MARIADB->commonsRestoreCommand('demo', 'unused');
 

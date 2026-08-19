@@ -23,6 +23,7 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class FlowInitCommand extends Command
 {
@@ -96,7 +97,7 @@ class FlowInitCommand extends Command
             }
 
             if ($engine === 'windmill') {
-                $this->withSpin('Creating Windmill DB roles (windmill_user, windmill_admin) in the Commons...', function () use ($driver, $kubectl) {
+                $this->withSpin('Creating Windmill DB roles (windmill_user, windmill_admin) in the Commons...', function () use ($driver, $kubectl): void {
                     $sql = implode("\n", [
                         "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'windmill_admin') THEN CREATE ROLE windmill_admin; END IF; END \$\$;",
                         "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'windmill_user') THEN CREATE ROLE windmill_user; END IF; END \$\$;",
@@ -118,7 +119,7 @@ class FlowInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $encryptionKey, $dbPassword) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $encryptionKey, $dbPassword): void {
             Process::run(
                 "{$kubectl} create secret generic flow-secrets -n {$ns} "
                 .'--from-literal=encryption-key='.escapeshellarg($encryptionKey).' '
@@ -138,14 +139,15 @@ class FlowInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-flow.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-flow.yaml');
         file_put_contents($tmp, $manifest);
 
         $engineName = $engine === 'windmill' ? 'Windmill' : 'n8n';
         $deployName = $engine === 'windmill' ? 'deploy/flow-windmill' : 'deploy/flow-n8n';
 
         $this->withSpin("Applying Flow ({$engineName}) manifests...", fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         $this->withSpin("Waiting for Flow ({$engineName})...", fn () => $this->runStreaming(
             "{$kubectl} rollout status {$deployName} -n {$ns} --timeout=120s",

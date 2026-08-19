@@ -14,7 +14,7 @@ function renderDockerfile(array $overrides = []): string
     return view('docker.php', ['config' => $config])->render();
 }
 
-test('Node is always installed in the development stage, regardless of SSR', function () {
+test('Node is always installed in the development stage, regardless of SSR', function (): void {
     foreach ([[], ['features' => ['ssr']], ['features' => ['horizon', 'queues']]] as $overrides) {
         $dockerfile = renderDockerfile($overrides);
 
@@ -29,7 +29,7 @@ test('Node is always installed in the development stage, regardless of SSR', fun
     }
 });
 
-test('Node is included in the deploy stage only when SSR is enabled', function () {
+test('Node is included in the deploy stage only when SSR is enabled', function (): void {
     $deploySection = fn (string $d) => substr($d, strpos($d, 'AS deploy'));
 
     // SSR → deploy runs `node bootstrap/ssr/ssr.js`, so Node is required.
@@ -41,7 +41,7 @@ test('Node is included in the deploy stage only when SSR is enabled', function (
         ->not->toContain('nodejs npm');
 });
 
-test('Node is no longer baked into the base stage', function () {
+test('Node is no longer baked into the base stage', function (): void {
     foreach ([['features' => ['ssr']], ['features' => ['horizon']]] as $overrides) {
         $dockerfile = renderDockerfile($overrides);
         $baseSection = substr($dockerfile, 0, strpos($dockerfile, 'AS development'));

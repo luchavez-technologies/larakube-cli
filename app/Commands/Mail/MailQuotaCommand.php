@@ -84,7 +84,7 @@ class MailQuotaCommand extends Command
         $quotaBytes = (int) $quotaGb * 1073741824;
 
         $updated = false;
-        $this->withSpin('Updating quota...', function () use (&$updated, $kubectl, $ns, $target, $quotaBytes) {
+        $this->withSpin('Updating quota...', function () use (&$updated, $kubectl, $ns, $target, $quotaBytes): void {
             $responses = $this->stalwartJmap($kubectl, $ns, [[
                 'x:Account/set',
                 [

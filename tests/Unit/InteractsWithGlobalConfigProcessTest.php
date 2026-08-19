@@ -11,6 +11,7 @@
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\InteractsWithOs;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function globalConfigHelper(): object
 {
@@ -61,8 +62,9 @@ function globalConfigHelperOnDarwin(): object
     };
 }
 
-test('getGhCommand prefers a real command -v hit over the docker fallback', function () {
-    $fakeGh = sys_get_temp_dir().'/fake-gh-'.uniqid();
+test('getGhCommand prefers a real command -v hit over the docker fallback', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $fakeGh = $temporaryDirectory->path().'/fake-gh';
     file_put_contents($fakeGh, "#!/bin/sh\necho fake-gh\n");
     chmod($fakeGh, 0755);
 
@@ -71,11 +73,11 @@ test('getGhCommand prefers a real command -v hit over the docker fallback', func
 
         expect(globalConfigHelper()->gh())->toBe($fakeGh);
     } finally {
-        unlink($fakeGh);
+        $temporaryDirectory->delete();
     }
 });
 
-test('getGhCommand falls back to the dockerized gh when nothing resolves to a real executable', function () {
+test('getGhCommand falls back to the dockerized gh when nothing resolves to a real executable', function (): void {
     Process::fake(['command -v gh' => Process::result(output: '', exitCode: 1)]);
 
     if (collect(['/usr/local/bin/gh', '/opt/homebrew/bin/gh', '/home/linuxbrew/.linuxbrew/bin/gh'])->contains(fn ($p) => @is_executable($p))) {
@@ -85,11 +87,11 @@ test('getGhCommand falls back to the dockerized gh when nothing resolves to a re
     expect(globalConfigHelper()->gh())->toContain('docker run');
 });
 
-test('acmeEmailError rejects syntactically invalid input without touching the network', function () {
+test('acmeEmailError rejects syntactically invalid input without touching the network', function (): void {
     expect(globalConfigEmailHelper()->error('not-an-email'))->not->toBeNull();
 });
 
-test('acmeEmailError rejects example.com/.net/.org — Let\'s Encrypt refuses their published Null MX record', function () {
+test('acmeEmailError rejects example.com/.net/.org — Let\'s Encrypt refuses their published Null MX record', function (): void {
     $helper = globalConfigEmailHelper();
 
     expect($helper->error('admin@example.com'))->not->toBeNull()
@@ -97,11 +99,11 @@ test('acmeEmailError rejects example.com/.net/.org — Let\'s Encrypt refuses th
         ->and($helper->error('admin@example.org'))->not->toBeNull();
 });
 
-test('acmeEmailError accepts a real, deliverable address', function () {
+test('acmeEmailError accepts a real, deliverable address', function (): void {
     expect(globalConfigEmailHelper()->error('admin@gmail.com'))->toBeNull();
 });
 
-test('validStoredEmail discards a stored-but-undeliverable email, forcing a fresh prompt', function () {
+test('validStoredEmail discards a stored-but-undeliverable email, forcing a fresh prompt', function (): void {
     $helper = globalConfigEmailHelper();
 
     expect($helper->stored('admin@example.com'))->toBeNull()
@@ -109,7 +111,7 @@ test('validStoredEmail discards a stored-but-undeliverable email, forcing a fres
         ->and($helper->stored('admin@gmail.com'))->toBe('admin@gmail.com');
 });
 
-test('checkCaTrust on macOS reflects whether the CA is in the keychain', function () {
+test('checkCaTrust on macOS reflects whether the CA is in the keychain', function (): void {
     Process::fake(['security find-certificate -c "Server Side Up CA"' => "keychain: ...\n"]);
     expect(globalConfigHelperOnDarwin()->caTrusted())->toBeTrue();
 

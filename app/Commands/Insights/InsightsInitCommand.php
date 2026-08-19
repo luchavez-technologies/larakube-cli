@@ -21,6 +21,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class InsightsInitCommand extends Command
 {
@@ -84,7 +85,7 @@ class InsightsInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $encryptionKey, $adminEmail) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $encryptionKey, $adminEmail): void {
             Process::run(
                 "{$kubectl} create secret generic insights-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
@@ -108,14 +109,15 @@ class InsightsInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-insights.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-insights.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Insights (Metabase) manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'insights-metabase', 120),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

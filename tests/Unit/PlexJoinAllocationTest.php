@@ -19,7 +19,7 @@ function plexJoin(): object
     };
 }
 
-test('tenant identifier sanitizes app names to safe SQL identifiers', function () {
+test('tenant identifier sanitizes app names to safe SQL identifiers', function (): void {
     $p = plexJoin();
 
     expect($p->plexTenantIdentifier('app-one'))->toBe('app_one')
@@ -29,7 +29,7 @@ test('tenant identifier sanitizes app names to safe SQL identifiers', function (
         ->and($p->plexTenantIdentifier(''))->toBe('app_');
 });
 
-test('redis index allocation picks the lowest free slot, or null when full', function () {
+test('redis index allocation picks the lowest free slot, or null when full', function (): void {
     $p = plexJoin();
 
     expect($p->allocateRedisDbIndex([]))->toBe(0)
@@ -38,7 +38,7 @@ test('redis index allocation picks the lowest free slot, or null when full', fun
         ->and($p->allocateRedisDbIndex(range(0, 15)))->toBeNull();  // 16 logical DBs, full
 });
 
-test('applyEnvValues replaces in place (even commented) and appends new keys', function () {
+test('applyEnvValues replaces in place (even commented) and appends new keys', function (): void {
     $p = plexJoin();
 
     $content = "APP_NAME=Demo\n# DB_HOST=old\nDB_PASSWORD=keepme";
@@ -52,7 +52,7 @@ test('applyEnvValues replaces in place (even commented) and appends new keys', f
         ->toContain('DB_PASSWORD=keepme');
 });
 
-test('applyEnvValues removeKeys deletes an existing line outright, even if commented', function () {
+test('applyEnvValues removeKeys deletes an existing line outright, even if commented', function (): void {
     $p = plexJoin();
 
     $content = "APP_NAME=Demo\nDB_PASSWORD=stale\n# DB_HOST=old";
@@ -64,7 +64,7 @@ test('applyEnvValues removeKeys deletes an existing line outright, even if comme
         ->not->toContain('DB_PASSWORD');
 });
 
-test('commonsEnvValues emits only the requested services', function () {
+test('commonsEnvValues emits only the requested services', function (): void {
     $p = plexJoin();
 
     $both = $p->commonsEnvValues('app_one', 'secret', 5, ['postgres', 'redis']);
@@ -80,7 +80,7 @@ test('commonsEnvValues emits only the requested services', function () {
         ->and($redisOnly['REDIS_DB'])->toBe(2);
 });
 
-test('commonsEnvValues wires S3 generically from the tenant backend + per-tenant bucket', function () {
+test('commonsEnvValues wires S3 generically from the tenant backend + per-tenant bucket', function (): void {
     $p = plexJoin();
 
     // The caller passes the tenant's OWN backend (service + port) — no hardcoded service.
@@ -107,7 +107,7 @@ test('commonsEnvValues wires S3 generically from the tenant backend + per-tenant
         ->and($p->commonsEnvValues('app_four', 'pw', null, ['seaweedfs'], null))->not->toHaveKey('AWS_BUCKET');
 });
 
-test('commonsEnvValues repoints MEILISEARCH_* at the Commons when search joins', function () {
+test('commonsEnvValues repoints MEILISEARCH_* at the Commons when search joins', function (): void {
     $p = plexJoin();
 
     // Joining Meilisearch must move BOTH the host and the key off the tenant's
@@ -124,7 +124,7 @@ test('commonsEnvValues repoints MEILISEARCH_* at the Commons when search joins',
         ->and($p->commonsEnvValues('app_five', 'pw', null, ['meilisearch'], null, null))->not->toHaveKey('MEILISEARCH_HOST');
 });
 
-test('postgres tenant SQL is idempotent and escapes the password', function () {
+test('postgres tenant SQL is idempotent and escapes the password', function (): void {
     $p = plexJoin();
 
     $sql = $p->buildPostgresTenantSql('app_one', 'app_one', "pa'ss");
@@ -139,7 +139,7 @@ test('postgres tenant SQL is idempotent and escapes the password', function () {
         ->toContain("PASSWORD 'pa''ss'");                                                    // '' escaping
 });
 
-test('drop tenant SQL terminates connections then drops the database and role', function () {
+test('drop tenant SQL terminates connections then drops the database and role', function (): void {
     $p = plexJoin();
 
     $sql = $p->buildDropTenantSql('app_one', 'app_one');
@@ -151,7 +151,7 @@ test('drop tenant SQL terminates connections then drops the database and role', 
         ->toContain('DROP ROLE IF EXISTS "app_one"');                             // then the role
 });
 
-test('registry transforms add, remove, and report used redis indexes', function () {
+test('registry transforms add, remove, and report used redis indexes', function (): void {
     $p = plexJoin();
 
     $r = $p->registryAdd([], 'app_one', ['db' => 'app_one', 'redis_index' => 0]);
@@ -165,7 +165,7 @@ test('registry transforms add, remove, and report used redis indexes', function 
         ->and($p->registryUsedRedisIndexes($r))->toBe([1]);
 });
 
-test('commonsServiceTenants reports who uses a service (the plex:remove guard)', function () {
+test('commonsServiceTenants reports who uses a service (the plex:remove guard)', function (): void {
     $p = plexJoin();
     $registry = ['tenants' => [
         'app_one' => ['db' => 'app_one', 'redis_index' => null],                                  // legacy: no db_service → Postgres
@@ -181,7 +181,7 @@ test('commonsServiceTenants reports who uses a service (the plex:remove guard)',
         ->and($p->commonsServiceTenants($registry, 'postgres'))->toBe(['app_one', 'app_four', 'app_five']); // legacy rows = Postgres, NOT app_six
 });
 
-test('commonsEnvValues points DB_* at the tenant engine service (postgres/mysql/mariadb)', function () {
+test('commonsEnvValues points DB_* at the tenant engine service (postgres/mysql/mariadb)', function (): void {
     $p = plexJoin();
 
     $pg = $p->commonsEnvValues('app_one', 'secret', null, ['postgres']);
@@ -193,30 +193,26 @@ test('commonsEnvValues points DB_* at the tenant engine service (postgres/mysql/
         ->and($my['DB_PORT'])->toBe(3306)
         ->and($my['DB_DATABASE'])->toBe('app_one')
         ->and($my['DB_USERNAME'])->toBe('app_one')
-        ->and($my['DB_PASSWORD'])->toBe('secret');
-
-    expect($p->commonsEnvValues('app_one', 'secret', null, ['mariadb'])['DB_HOST'])
-        ->toBe('mariadb.larakube-plex.svc.cluster.local');
+        ->and($my['DB_PASSWORD'])->toBe('secret')
+        ->and($p->commonsEnvValues('app_one', 'secret', null, ['mariadb'])['DB_HOST'])->toBe('mariadb.larakube-plex.svc.cluster.local');
 });
 
-test('MySQL/MariaDB Commons tenant SQL scopes a db + user and escapes the password', function () {
+test('MySQL/MariaDB Commons tenant SQL scopes a db + user and escapes the password', function (): void {
     $sql = DatabaseDriver::MYSQL->commonsTenantSql('app_one', 'app_one', "pa'ss");
 
     expect($sql)
         ->toContain('CREATE DATABASE IF NOT EXISTS `app_one`')
         ->toContain("CREATE USER IF NOT EXISTS 'app_one'@'%' IDENTIFIED BY 'pa\\'ss'")  // backslash-escaped quote
         ->toContain('GRANT ALL PRIVILEGES ON `app_one`.* TO \'app_one\'@\'%\'')
-        ->toContain('FLUSH PRIVILEGES;');
-
-    expect(DatabaseDriver::MARIADB->commonsDropSql('app_one', 'app_one'))
-        ->toContain('DROP DATABASE IF EXISTS `app_one`')
+        ->toContain('FLUSH PRIVILEGES;')
+        ->and(DatabaseDriver::MARIADB->commonsDropSql('app_one', 'app_one'))->toContain('DROP DATABASE IF EXISTS `app_one`')
         ->toContain("DROP USER IF EXISTS 'app_one'@'%'");
 
     // Non-relational engines aren't Commons DB backends.
     expect(DatabaseDriver::SQLITE->commonsTenantSql('a', 'a', 'a'))->toBeNull();
 });
 
-test('plexBucketName makes a DNS-safe bucket from a tenant id', function () {
+test('plexBucketName makes a DNS-safe bucket from a tenant id', function (): void {
     $p = plexJoin();
 
     expect($p->plexBucketName('app_five'))->toBe('app-five')          // underscores → hyphens (S3/MinIO reject _)
@@ -225,7 +221,7 @@ test('plexBucketName makes a DNS-safe bucket from a tenant id', function () {
         ->and($p->plexBucketName('ab'))->toBe('lk-ab');              // pad to the 3-char S3 minimum
 });
 
-test('Commons bucket commands are per-backend (SeaweedFS weed shell, MinIO mc)', function () {
+test('Commons bucket commands are per-backend (SeaweedFS weed shell, MinIO mc)', function (): void {
     expect(StorageDriver::SEAWEEDFS->commonsBucketCreateCommand('app-five'))
         ->toContain('s3.bucket.create -name app-five')
         ->toContain('weed shell');
@@ -234,8 +230,7 @@ test('Commons bucket commands are per-backend (SeaweedFS weed shell, MinIO mc)',
     expect($mc)
         ->toContain('mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"')  // pod expands creds
         ->toContain('mc mb --ignore-existing local/app-five')
-        ->toContain('MC_CONFIG_DIR=/tmp/mc');
-
-    expect(StorageDriver::MINIO->commonsBucketDeleteCommand('app-five'))->toContain('mc rb --force local/app-five')
+        ->toContain('MC_CONFIG_DIR=/tmp/mc')
+        ->and(StorageDriver::MINIO->commonsBucketDeleteCommand('app-five'))->toContain('mc rb --force local/app-five')
         ->and(StorageDriver::SEAWEEDFS->commonsBucketDeleteCommand('app-five'))->toContain('s3.bucket.delete -name app-five');
 });

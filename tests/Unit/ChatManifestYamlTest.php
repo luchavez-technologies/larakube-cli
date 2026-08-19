@@ -43,7 +43,7 @@ function chatDocuments(string $rendered): array
     );
 }
 
-test('chat manifest renders as valid multi-document YAML', function () {
+test('chat manifest renders as valid multi-document YAML', function (): void {
     $documents = chatDocuments(chatManifest());
 
     expect($documents)->not->toBeEmpty();
@@ -53,7 +53,7 @@ test('chat manifest renders as valid multi-document YAML', function () {
     }
 });
 
-test('every chat image is pinned to an explicit tag — never :latest', function () {
+test('every chat image is pinned to an explicit tag — never :latest', function (): void {
     $rendered = chatManifest();
 
     expect($rendered)
@@ -63,7 +63,7 @@ test('every chat image is pinned to an explicit tag — never :latest', function
         ->not->toContain(':latest');
 });
 
-test('chat no longer ships an SFU — that belongs to the meet tool', function () {
+test('chat no longer ships an SFU — that belongs to the meet tool', function (): void {
     $rendered = chatManifest();
 
     // Both stacks hostPort 7881/7882, so on a single node they can never
@@ -77,7 +77,7 @@ test('chat no longer ships an SFU — that belongs to the meet tool', function (
         ->toContain('chat-coturn');
 });
 
-test('the synapse init container and runtime container run the same image', function () {
+test('the synapse init container and runtime container run the same image', function (): void {
     $synapse = collect(chatDocuments(chatManifest()))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
             && ($doc['metadata']['name'] ?? null) === 'chat-synapse');
@@ -88,7 +88,7 @@ test('the synapse init container and runtime container run the same image', func
     expect($init)->toBe($runtime);
 });
 
-test('synapse enables the MSCs Element Call needs, with a delay ceiling and raised rate limits', function () {
+test('synapse enables the MSCs Element Call needs, with a delay ceiling and raised rate limits', function (): void {
     $config = collect(chatDocuments(chatManifest()))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Secret'
             && ($doc['metadata']['name'] ?? null) === 'chat-synapse-config');
@@ -111,7 +111,7 @@ test('synapse enables the MSCs Element Call needs, with a delay ceiling and rais
         ->toBe('https://meet.example.com/jwt');
 });
 
-test('the RTC experimental block is skipped entirely when Meet is not wired', function () {
+test('the RTC experimental block is skipped entirely when Meet is not wired', function (): void {
     $config = collect(chatDocuments(chatManifest(['meetJwtUrl' => null])))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Secret'
             && ($doc['metadata']['name'] ?? null) === 'chat-synapse-config');
@@ -122,7 +122,7 @@ test('the RTC experimental block is skipped entirely when Meet is not wired', fu
         ->and($homeserver)->not->toHaveKey('max_event_delay_duration');
 });
 
-test('every chat container declares a memory limit', function () {
+test('every chat container declares a memory limit', function (): void {
     $deployments = collect(chatDocuments(chatManifest()))
         ->filter(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
             && str_starts_with($doc['metadata']['name'], 'chat-'));
@@ -137,7 +137,7 @@ test('every chat container declares a memory limit', function () {
     }
 });
 
-test('the S3 prefix ends in a slash — the provider concatenates it without one', function () {
+test('the S3 prefix ends in a slash — the provider concatenates it without one', function (): void {
     // s3_storage_provider composes keys as `prefix + path`, so "media" produces
     // medialocal_content/… instead of a media/ folder. Dropping the slash is a
     // silent rename of every key, orphaning objects already in the bucket.
@@ -150,7 +150,7 @@ test('the S3 prefix ends in a slash — the provider concatenates it without one
     expect($prefix)->toEndWith('/');
 });
 
-test('a media prune CronJob ships whenever S3 offload is on', function () {
+test('a media prune CronJob ships whenever S3 offload is on', function (): void {
     // Without pruning the offload COSTS storage: Synapse writes every file to
     // its own PVC and the provider writes a second copy to SeaweedFS, and both
     // PVCs are directories on the same block device. Two copies, one disk.
@@ -170,21 +170,21 @@ test('a media prune CronJob ships whenever S3 offload is on', function () {
         ->and($spec['concurrencyPolicy'])->toBe('Forbid');
 });
 
-test('the prune retention window is configurable', function () {
+test('the prune retention window is configurable', function (): void {
     $script = collect(chatDocuments(chatManifest(['mediaRetention' => '7d'])))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'CronJob')['spec']['jobTemplate']['spec']['template']['spec']['containers'][0]['command'][2];
 
     expect($script)->toContain('update-db 7d');
 });
 
-test('no prune job when S3 offload is off — there is nothing to prune to', function () {
+test('no prune job when S3 offload is off — there is nothing to prune to', function (): void {
     $cron = collect(chatDocuments(chatManifest(['s3Bucket' => ''])))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'CronJob');
 
     expect($cron)->toBeNull();
 });
 
-test('synapse media offload uses the credentials it is handed, not a hardcoded literal', function () {
+test('synapse media offload uses the credentials it is handed, not a hardcoded literal', function (): void {
     $config = collect(chatDocuments(chatManifest([
         's3AccessKey' => 'larakube',
         's3SecretKey' => 'real-commons-secret',
@@ -197,7 +197,7 @@ test('synapse media offload uses the credentials it is handed, not a hardcoded l
         ->and($s3['secret_access_key'])->toBe('real-commons-secret');
 });
 
-test('rotating the Commons S3 secret changes the synapse config-checksum', function () {
+test('rotating the Commons S3 secret changes the synapse config-checksum', function (): void {
     $checksum = function (string $secret): string {
         $synapse = collect(chatDocuments(chatManifest(['s3SecretKey' => $secret])))
             ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
@@ -211,7 +211,7 @@ test('rotating the Commons S3 secret changes the synapse config-checksum', funct
     expect($checksum('secret-before'))->not->toBe($checksum('secret-after'));
 });
 
-test('the media path pods carry no CPU limit — throttling a relay drops calls', function () {
+test('the media path pods carry no CPU limit — throttling a relay drops calls', function (): void {
     $documents = chatDocuments(chatManifest());
 
     foreach (['chat-coturn'] as $name) {
@@ -224,7 +224,7 @@ test('the media path pods carry no CPU limit — throttling a relay drops calls'
     }
 });
 
-test('the media prune CronJob pins a timezone, like every other scheduled job', function () {
+test('the media prune CronJob pins a timezone, like every other scheduled job', function (): void {
     // Without timeZone, Kubernetes reads 02:41 in the controller-manager's zone
     // — UTC almost everywhere — which is 10:41 in Manila. A maintenance job
     // that deletes local media has no business running mid-morning.

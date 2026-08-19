@@ -26,19 +26,20 @@ use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 
-    $this->tempDir = sys_get_temp_dir().'/larakube-env-audit-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    Process::run('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
 function saveEnvAuditConfig(string $dir): void
@@ -75,7 +76,7 @@ function mockKubectlSecretsAndConfig(): void
     ]);
 }
 
-test('dotenv:audit resolves the environment and targets its saved cluster context', function () {
+test('dotenv:audit resolves the environment and targets its saved cluster context', function (): void {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
@@ -84,7 +85,7 @@ test('dotenv:audit resolves the environment and targets its saved cluster contex
         ->expectsOutputToContain('fake-ctx');
 });
 
-test('dotenv:audit lists a key from laravel-secrets', function () {
+test('dotenv:audit lists a key from laravel-secrets', function (): void {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
@@ -93,7 +94,7 @@ test('dotenv:audit lists a key from laravel-secrets', function () {
         ->expectsOutputToContain('AIRTABLE_API_KEY');
 });
 
-test('dotenv:audit lists a key from laravel-config', function () {
+test('dotenv:audit lists a key from laravel-config', function (): void {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
@@ -102,7 +103,7 @@ test('dotenv:audit lists a key from laravel-config', function () {
         ->expectsOutputToContain('APP_URL');
 });
 
-test('dotenv:audit flags a LaraKube-generated key as managed', function () {
+test('dotenv:audit flags a LaraKube-generated key as managed', function (): void {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
@@ -111,7 +112,7 @@ test('dotenv:audit flags a LaraKube-generated key as managed', function () {
         ->expectsOutputToContain('LaraKube-managed');
 });
 
-test('dotenv:audit flags a human-typed key as custom, never a value', function () {
+test('dotenv:audit flags a human-typed key as custom, never a value', function (): void {
     saveEnvAuditConfig($this->tempDir);
     mockKubectlSecretsAndConfig();
 
@@ -120,7 +121,7 @@ test('dotenv:audit flags a human-typed key as custom, never a value', function (
         ->doesntExpectOutputToContain('key_live_123');
 });
 
-test('dotenv:audit reports nothing deployed yet when both objects are missing', function () {
+test('dotenv:audit reports nothing deployed yet when both objects are missing', function (): void {
     saveEnvAuditConfig($this->tempDir);
     Process::fake(['*' => '']);
 
@@ -129,7 +130,7 @@ test('dotenv:audit reports nothing deployed yet when both objects are missing', 
         ->expectsOutputToContain("No 'laravel-secrets' or 'laravel-config' found");
 });
 
-test('dotenv:audit requires a namespace outside a project', function () {
+test('dotenv:audit requires a namespace outside a project', function (): void {
     // No .larakube.json in this tempDir — getProjectConfig() returns null.
     $this->artisan('dotenv:audit')
         ->assertExitCode(1)

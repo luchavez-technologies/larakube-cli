@@ -10,7 +10,7 @@ function masker(): object
     };
 }
 
-test('maskSecrets redacts high-confidence token shapes without touching ordinary text', function () {
+test('maskSecrets redacts high-confidence token shapes without touching ordinary text', function (): void {
     $m = masker();
 
     // Laravel APP_KEY
@@ -31,7 +31,7 @@ test('maskSecrets redacts high-confidence token shapes without touching ordinary
     expect($m->maskSecrets('deploying app-one to production'))->toBe('deploying app-one to production');
 });
 
-test('registered secrets are redacted by exact match; trivial values are ignored', function () {
+test('registered secrets are redacted by exact match; trivial values are ignored', function (): void {
     $m = masker();
     $m->registerSecret('s3cr3t-Password-Value-123');
 

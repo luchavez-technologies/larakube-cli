@@ -57,7 +57,7 @@ function plexProcessKubectl(): string
     return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 }
 
-test('plexContextReachable reflects cluster-info exit code', function () {
+test('plexContextReachable reflects cluster-info exit code', function (): void {
     $kubectl = plexProcessKubectl();
 
     Process::fake(["{$kubectl} cluster-info --request-timeout=8s" => Process::result(exitCode: 0)]);
@@ -67,26 +67,26 @@ test('plexContextReachable reflects cluster-info exit code', function () {
     expect(plexProcessHelper()->reachable())->toBeFalse();
 });
 
-test('getCommonsSpec is null when the plex-commons ConfigMap does not exist yet', function () {
+test('getCommonsSpec is null when the plex-commons ConfigMap does not exist yet', function (): void {
     Process::fake([plexProcessKubectl()." get configmap plex-commons -n larakube-plex -o jsonpath='{.data.commons\\.json}'" => Process::result(output: '', exitCode: 1)]);
 
     expect(plexProcessHelper()->spec())->toBeNull();
 });
 
-test('getCommonsSpec decodes the live spec JSON', function () {
+test('getCommonsSpec decodes the live spec JSON', function (): void {
     $spec = ['version' => 1, 'services' => ['postgres' => ['enabled' => true]]];
     Process::fake([plexProcessKubectl()." get configmap plex-commons -n larakube-plex -o jsonpath='{.data.commons\\.json}'" => json_encode($spec)]);
 
     expect(plexProcessHelper()->spec())->toBe($spec);
 });
 
-test('getRegistry is an empty array when the plex-registry ConfigMap is absent', function () {
+test('getRegistry is an empty array when the plex-registry ConfigMap is absent', function (): void {
     Process::fake([plexProcessKubectl()." get configmap plex-registry -n larakube-plex -o jsonpath='{.data.registry\\.json}'" => Process::result(output: '', exitCode: 1)]);
 
     expect(plexProcessHelper()->registry())->toBe([]);
 });
 
-test('readCommonsS3Credentials decodes base64 access/secret keys from the Secret', function () {
+test('readCommonsS3Credentials decodes base64 access/secret keys from the Secret', function (): void {
     $kubectl = plexProcessKubectl();
 
     Process::fake([
@@ -97,7 +97,7 @@ test('readCommonsS3Credentials decodes base64 access/secret keys from the Secret
     expect(plexProcessHelper()->s3Credentials())->toBe(['access' => 'AKIA_TEST', 'secret' => 'shh']);
 });
 
-test('readCommonsS3Credentials is null when either key is missing', function () {
+test('readCommonsS3Credentials is null when either key is missing', function (): void {
     $kubectl = plexProcessKubectl();
 
     Process::fake([
@@ -108,7 +108,7 @@ test('readCommonsS3Credentials is null when either key is missing', function () 
     expect(plexProcessHelper()->s3Credentials())->toBeNull();
 });
 
-test('readCommonsMeiliKey decodes the shared master key, or is null when absent', function () {
+test('readCommonsMeiliKey decodes the shared master key, or is null when absent', function (): void {
     $kubectl = plexProcessKubectl();
 
     Process::fake(["{$kubectl} get secret plex-admin -n larakube-plex -o jsonpath='{.data.MEILI_MASTER_KEY}'" => base64_encode('master-key')]);
@@ -118,7 +118,7 @@ test('readCommonsMeiliKey decodes the shared master key, or is null when absent'
     expect(plexProcessHelper()->meiliKey())->toBeNull();
 });
 
-test('resolveCommonsS3Endpoints signs against the Commons public host when one is configured', function () {
+test('resolveCommonsS3Endpoints signs against the Commons public host when one is configured', function (): void {
     $spec = ['services' => ['seaweedfs' => ['enabled' => true, 'host' => 'files.example.com']]];
     Process::fake([plexProcessKubectl()." get configmap plex-commons -n larakube-plex -o jsonpath='{.data.commons\\.json}'" => json_encode($spec)]);
 
@@ -128,7 +128,7 @@ test('resolveCommonsS3Endpoints signs against the Commons public host when one i
         ->and($endpoints['internal'])->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
 });
 
-test('resolveCommonsS3Endpoints falls back to the internal endpoint and warns when no public host is set', function () {
+test('resolveCommonsS3Endpoints falls back to the internal endpoint and warns when no public host is set', function (): void {
     $spec = ['services' => ['seaweedfs' => ['enabled' => true]]];
     Process::fake([plexProcessKubectl()." get configmap plex-commons -n larakube-plex -o jsonpath='{.data.commons\\.json}'" => json_encode($spec)]);
 
@@ -145,7 +145,7 @@ test('resolveCommonsS3Endpoints falls back to the internal endpoint and warns wh
         ->toContain('plex:init --s3-host=');
 });
 
-test('resolveCommonsS3Endpoints uses the right port per storage driver', function () {
+test('resolveCommonsS3Endpoints uses the right port per storage driver', function (): void {
     $spec = ['services' => ['minio' => ['enabled' => true, 'host' => 'files.example.com']]];
     Process::fake([plexProcessKubectl()." get configmap plex-commons -n larakube-plex -o jsonpath='{.data.commons\\.json}'" => json_encode($spec)]);
 

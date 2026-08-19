@@ -8,6 +8,7 @@
 
 use App\Commands\Plex\PlexJoinCommand;
 use App\Data\ConfigData;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /** Subclass that silences output and exposes the protected writer. */
 function tenantConfigWriter(): object
@@ -24,17 +25,17 @@ function tenantConfigWriter(): object
     };
 }
 
-function tmpProject(string $envContents = "APP_NAME=Demo\n"): string
+function tmpProject(string $envContents = "APP_NAME=Demo\n"): TemporaryDirectory
 {
-    $dir = sys_get_temp_dir().'/lk-tenant-'.uniqid();
-    mkdir($dir);
-    file_put_contents($dir.'/.env', $envContents);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    file_put_contents($temporaryDirectory->path('.env'), $envContents);
 
-    return $dir;
+    return $temporaryDirectory;
 }
 
-test('local join writes the Commons connection into .env (not .env.local)', function () {
-    $dir = tmpProject();
+test('local join writes the Commons connection into .env (not .env.local)', function (): void {
+    $temporaryDirectory = tmpProject();
+    $dir = $temporaryDirectory->path();
     $config = ConfigData::from(['name' => 'demo', 'database' => 'mysql']);
 
     tenantConfigWriter()->callWrite($dir, $config, 'local', ['mysql']);
@@ -46,12 +47,12 @@ test('local join writes the Commons connection into .env (not .env.local)', func
         ->and($env)->toContain('APP_NAME=Demo')               // pre-existing keys preserved
         ->and(file_exists($dir.'/.env.local'))->toBeFalse();  // the bug we fixed
 
-    array_map('unlink', glob($dir.'/{.env,.env.local,.larakube.json}', GLOB_BRACE) ?: []);
-    @rmdir($dir);
+    $temporaryDirectory->delete();
 });
 
-test('cloud join writes .env.{env} and leaves .env untouched', function () {
-    $dir = tmpProject();
+test('cloud join writes .env.{env} and leaves .env untouched', function (): void {
+    $temporaryDirectory = tmpProject();
+    $dir = $temporaryDirectory->path();
     $config = ConfigData::from(['name' => 'demo', 'database' => 'mysql']);
 
     tenantConfigWriter()->callWrite($dir, $config, 'production', ['mysql']);
@@ -62,6 +63,5 @@ test('cloud join writes .env.{env} and leaves .env untouched', function () {
     expect($prod)->toContain('DB_PASSWORD=pw-secret-123')
         ->and($base)->not->toContain('DB_PASSWORD=pw-secret-123');
 
-    array_map('unlink', glob($dir.'/{.env,.env.production,.larakube.json}', GLOB_BRACE) ?: []);
-    @rmdir($dir);
+    $temporaryDirectory->delete();
 });

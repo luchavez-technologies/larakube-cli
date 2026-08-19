@@ -3,13 +3,13 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-test('sso:unwire is registered', function () {
+test('sso:unwire is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:unwire');
 });
 
-test('sso:unwire --domain= targets a specific instance instead of always the default', function () {
+test('sso:unwire --domain= targets a specific instance instead of always the default', function (): void {
     // Regression test: sso:unwire had NO instance/domain targeting at all
     // before — it always unwired the tool's single default instance,
     // resolved via oidcEnv($engine) with no $instance argument. This proves
@@ -40,7 +40,7 @@ test('sso:unwire --domain= targets a specific instance instead of always the def
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret data-oidc-blog-example-com'));
 });
 
-test('sso:unwire delegates to sso:wire --remove', function () {
+test('sso:unwire delegates to sso:wire --remove', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
@@ -59,7 +59,7 @@ test('sso:unwire delegates to sso:wire --remove', function () {
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 });
 
-test('sso:unwire deletes a legacy "Login with SSO" Forgejo source', function () {
+test('sso:unwire deletes a legacy "Login with SSO" Forgejo source', function (): void {
     // The unwire matcher used to look for the canonical `zitadel` name only,
     // so a source left behind by an older wiring (named after the display
     // label) was never deleted — `sso:unwire` silently did nothing.

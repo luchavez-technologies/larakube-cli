@@ -6,7 +6,7 @@ use Laravel\Prompts\Prompt;
 
 Prompt::interactive(false);
 
-test('secrets:migrate dry-run shows diff without writing', function () {
+test('secrets:migrate dry-run shows diff without writing', function (): void {
     Process::fake([
         '*' => Process::result(output: base64_encode('hvs.root_token_test')),
     ]);
@@ -27,7 +27,7 @@ test('secrets:migrate dry-run shows diff without writing', function () {
         ->expectsOutputToContain('Dry-run complete');
 });
 
-test('secrets:migrate orchestrates export then import', function () {
+test('secrets:migrate orchestrates export then import', function (): void {
     Process::fake([
         '*' => Process::result(output: base64_encode('hvs.root_token_test')),
     ]);

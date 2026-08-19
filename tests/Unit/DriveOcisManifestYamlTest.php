@@ -18,7 +18,7 @@ function renderOcisManifest(array $overrides = []): string
     ], $overrides))->render();
 }
 
-test('ocis manifest renders as valid multi-document YAML', function () {
+test('ocis manifest renders as valid multi-document YAML', function (): void {
     $rendered = renderOcisManifest();
 
     $documents = array_values(array_filter(
@@ -42,7 +42,7 @@ test('ocis manifest renders as valid multi-document YAML', function () {
         ->toContain('Ingress/drive-ocis');
 });
 
-test('ocis mounts a csp.yaml that lets the browser reach whichever OIDC issuer is wired', function () {
+test('ocis mounts a csp.yaml that lets the browser reach whichever OIDC issuer is wired', function (): void {
     // oCIS web auto-discovers the external IdP by fetching
     // {issuer}/.well-known/openid-configuration and exchanges tokens at
     // {issuer}/oauth/v2/token — both cross-origin fetches the proxy's default
@@ -90,7 +90,7 @@ test('ocis mounts a csp.yaml that lets the browser reach whichever OIDC issuer i
         ]);
 });
 
-test('ocis CSP is identical across hosts — the wired issuer, not the drive subdomain, decides the origin', function () {
+test('ocis CSP is identical across hosts — the wired issuer, not the drive subdomain, decides the origin', function (): void {
     // The csp.yaml must not bake in the tool's own host (a prior version
     // derived "sso.<domain>" by swapping the drive subdomain). That breaks the
     // core product promise: sso:wire points the tool at WHATEVER IdP the
@@ -116,7 +116,7 @@ test('ocis CSP is identical across hosts — the wired issuer, not the drive sub
         ->and($a)->not->toContain('sso.luchtech.dev/');
 });
 
-test('ocis S3 mode drives user blobs through the Plex SeaweedFS bucket via the s3ng driver', function () {
+test('ocis S3 mode drives user blobs through the Plex SeaweedFS bucket via the s3ng driver', function (): void {
     $rendered = renderOcisManifest();
 
     expect($rendered)->toContain('name: STORAGE_USERS_DRIVER')
@@ -129,7 +129,7 @@ test('ocis S3 mode drives user blobs through the Plex SeaweedFS bucket via the s
         ->and($rendered)->not->toContain('STORAGE_SYSTEM_S3_ENDPOINT');
 });
 
-test('ocis mounts the storage PVC even in Plex S3 mode so metadata survives restarts', function () {
+test('ocis mounts the storage PVC even in Plex S3 mode so metadata survives restarts', function (): void {
     $deployment = collect(
         array_map(
             fn (string $doc) => Yaml::parse($doc),
@@ -146,7 +146,7 @@ test('ocis mounts the storage PVC even in Plex S3 mode so metadata survives rest
     ])->and($deployment['spec']['template']['spec']['volumes'][0]['persistentVolumeClaim']['claimName'])->toBe('drive-ocis-storage');
 });
 
-test('ocis cloud ingress requests a real ACME certificate via Traefik\'s certresolver', function () {
+test('ocis cloud ingress requests a real ACME certificate via Traefik\'s certresolver', function (): void {
     $documents = fn (string $rendered): array => array_map(
         fn (string $doc) => Yaml::parse($doc),
         array_values(array_filter(
@@ -171,7 +171,7 @@ test('ocis cloud ingress requests a real ACME certificate via Traefik\'s certres
         ->and($local['metadata']['annotations'])->not->toHaveKey('traefik.ingress.kubernetes.io/router.tls.certresolver');
 });
 
-test('ocis manifest enables Basic auth and app auth for WebDAV clients', function () {
+test('ocis manifest enables Basic auth and app auth for WebDAV clients', function (): void {
     // oCIS 8 ships with PROXY_ENABLE_BASIC_AUTH=false: username/password requests
     // to every protected route silently 401 (confirmed live 2026-07-31 against the
     // proxy config: EnableBasicAuth=false, AllowAppAuth=false). WebDAV clients and
@@ -183,7 +183,7 @@ test('ocis manifest enables Basic auth and app auth for WebDAV clients', functio
         ->and($rendered)->toContain('name: PROXY_ENABLE_APP_AUTH');
 });
 
-test('ocis manifest pins a stable OCIS_ADMIN_USER_ID so the IDM bootstraps the admin user', function () {
+test('ocis manifest pins a stable OCIS_ADMIN_USER_ID so the IDM bootstraps the admin user', function (): void {
     // Without this the IDM only creates the system users (libregraph/idp/reva)
     // and every admin login fails with "Logon failed" — the idm server.go
     // bootstrap appends uid=admin ONLY when AdminUserID is non-empty.
@@ -193,7 +193,7 @@ test('ocis manifest pins a stable OCIS_ADMIN_USER_ID so the IDM bootstraps the a
         ->and($rendered)->toContain('value: "e4f2a7c9-6d3b-4c1a-9f8e-2b5d7a1c3f90"');
 });
 
-test('ocis manifest wires the admin password from the drive-secrets Secret', function () {
+test('ocis manifest wires the admin password from the drive-secrets Secret', function (): void {
     $deployment = collect(
         array_map(
             fn (string $doc) => Yaml::parse($doc),
@@ -213,7 +213,7 @@ test('ocis manifest wires the admin password from the drive-secrets Secret', fun
     ]);
 });
 
-test('ocis proxy verifies opaque access tokens against the IdP userinfo endpoint, not as JWTs', function () {
+test('ocis proxy verifies opaque access tokens against the IdP userinfo endpoint, not as JWTs', function (): void {
     // Zitadel issues opaque access tokens; oCIS's default jwt verify rejects
     // them with "token contains an invalid number of segments" on every API
     // call -> 401 -> the "Not logged in" page (confirmed live 2026-08-01 in the

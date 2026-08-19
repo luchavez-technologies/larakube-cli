@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('notes:remove tears down main\'s resources by their un-suffixed names', function () {
+test('notes:remove tears down main\'s resources by their un-suffixed names', function (): void {
     Process::fake([
         '*get secret notes-secrets*' => Process::result(output: '', exitCode: 1),
         '*delete*' => Process::result(output: 'deleted'),
@@ -20,7 +20,7 @@ test('notes:remove tears down main\'s resources by their un-suffixed names', fun
         && str_contains($process->command, 'secret/notes-outline-smtp'));
 });
 
-test('notes:remove --domain scopes teardown to that instance\'s resources, not main\'s', function () {
+test('notes:remove --domain scopes teardown to that instance\'s resources, not main\'s', function (): void {
     // Regression guard: teardown() used to delete deployment/notes-outline,
     // service/notes, and ingress/notes unconditionally — the exact fixed
     // names main uses — regardless of which instance --domain resolved to.

@@ -11,7 +11,7 @@ function plexPvcHelper(): object
     };
 }
 
-test('releaseSelfHostedPvc returns true when the plain delete finishes immediately', function () {
+test('releaseSelfHostedPvc returns true when the plain delete finishes immediately', function (): void {
     Process::fake([
         '*delete pvc*' => Process::result(),
         '*get pvc*' => Process::result(output: '', exitCode: 1),
@@ -22,7 +22,7 @@ test('releaseSelfHostedPvc returns true when the plain delete finishes immediate
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'scale deployment'));
 });
 
-test('releaseSelfHostedPvc scales the deployment to 0 when the PVC is still mounted, then confirms release', function () {
+test('releaseSelfHostedPvc scales the deployment to 0 when the PVC is still mounted, then confirms release', function (): void {
     Process::fake([
         '*delete pvc*' => Process::result(),
         '*scale deployment*' => Process::result(),
@@ -39,7 +39,7 @@ test('releaseSelfHostedPvc scales the deployment to 0 when the PVC is still moun
         && str_contains($process->command, '--replicas=0'));
 });
 
-test('releaseSelfHostedPvc returns false when the PVC is still terminating after scaling to 0', function () {
+test('releaseSelfHostedPvc returns false when the PVC is still terminating after scaling to 0', function (): void {
     Process::fake([
         '*delete pvc*' => Process::result(),
         '*scale deployment*' => Process::result(),

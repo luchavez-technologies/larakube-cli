@@ -20,6 +20,7 @@ use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class DriveInitCommand extends Command
 {
@@ -95,7 +96,7 @@ class DriveInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $clusterEnv, $adminPassword, $machineAuth, $jwtSecret, $transferSecret, $systemUserApiKey, $serviceAccountSecret, $rekeyKey) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $clusterEnv, $adminPassword, $machineAuth, $jwtSecret, $transferSecret, $systemUserApiKey, $serviceAccountSecret, $rekeyKey): void {
             $cmd = "{$kubectl} create secret generic drive-secrets -n {$ns} "
                 .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
                 .'--from-literal=machine-auth-api-key='.escapeshellarg($machineAuth).' '
@@ -131,14 +132,15 @@ class DriveInitCommand extends Command
             'extensions' => $extensions,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-drive.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-drive.yaml');
         file_put_contents($tmp, $manifest);
 
         $engineName = 'oCIS';
         $deployName = 'deploy/drive-ocis';
 
         $this->withSpin("Applying Drive ({$engineName}) manifests...", fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         $this->withSpin("Waiting for Drive ({$engineName})...", fn () => $this->runStreaming(
             "{$kubectl} rollout status {$deployName} -n {$ns} --timeout=120s",

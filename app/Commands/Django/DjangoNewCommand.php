@@ -165,7 +165,7 @@ class DjangoNewCommand extends Command
         $this->generateDjangoRequirements($projectDir, $database, $cacheDriver, $objectStorage);
 
         // 7. Generate K8s manifests
-        $this->withSpin('Orchestrating Django infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating Django infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

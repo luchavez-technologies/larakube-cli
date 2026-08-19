@@ -10,10 +10,12 @@ use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ShareCommand extends Command
 {
@@ -82,10 +84,11 @@ class ShareCommand extends Command
                 'targetUrl' => null,
             ])->render();
 
-            $tmp = sys_get_temp_dir().'/larakube-share.yaml';
+            $temporaryDirectory = TemporaryDirectory::make();
+            $tmp = $temporaryDirectory->path('larakube-share.yaml');
             file_put_contents($tmp, $manifest);
             Process::run('kubectl apply -f '.escapeshellarg($tmp));
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             return true;
         });
@@ -172,10 +175,11 @@ class ShareCommand extends Command
                     'targetUrl' => $targetUrl,
                 ])->render();
 
-                $tmp = sys_get_temp_dir()."/larakube-share-{$name}.yaml";
+                $temporaryDirectory = TemporaryDirectory::make();
+                $tmp = $temporaryDirectory->path("larakube-share-{$name}.yaml");
                 file_put_contents($tmp, $manifest);
                 Process::run('kubectl apply -f '.escapeshellarg($tmp));
-                @unlink($tmp);
+                $temporaryDirectory->delete();
             }
 
             return true;
@@ -251,7 +255,7 @@ class ShareCommand extends Command
                 if (preg_match($pattern, $logs, $m)) {
                     $found = $m[1];
                 } else {
-                    sleep(2);
+                    Sleep::sleep(2);
                 }
             }
 
@@ -343,14 +347,14 @@ class ShareCommand extends Command
     {
         if (function_exists('pcntl_async_signals')) {
             pcntl_async_signals(true);
-            pcntl_signal(SIGINT, function () use ($namespace) {
+            pcntl_signal(SIGINT, function () use ($namespace): void {
                 $this->laraKubeNewLine();
                 $this->stopShare($namespace);
                 exit(0);
             });
 
             while (true) {
-                sleep(1);
+                Sleep::sleep(1);
             }
         } else {
             $this->confirm('Sharing… press Enter to stop', true);

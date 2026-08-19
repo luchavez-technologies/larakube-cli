@@ -158,7 +158,7 @@ class SpringBootNewCommand extends Command
         $this->generateSpringBootScaffolding($projectDir, $appName, $database, $cacheDriver);
 
         // 7. Generate K8s manifests
-        $this->withSpin('Orchestrating Spring Boot infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating Spring Boot infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

@@ -1,11 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Artisan;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('pipeline:list prints warning when no workflows exist', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-pipe-list-'.uniqid();
-    mkdir($tempDir, 0755, true);
-    $tempDir = realpath($tempDir) ?: $tempDir;
+test('pipeline:list prints warning when no workflows exist', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = realpath($temporaryDirectory->path()) ?: $temporaryDirectory->path();
 
     $originalDir = getcwd();
     chdir($tempDir);
@@ -16,14 +16,13 @@ test('pipeline:list prints warning when no workflows exist', function () {
             ->expectsOutputToContain('No LaraKube workflows/pipelines found in this project.');
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('pipeline:list lists discovered workflows in a table', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-pipe-list-'.uniqid();
-    mkdir($tempDir, 0755, true);
-    $tempDir = realpath($tempDir) ?: $tempDir;
+test('pipeline:list lists discovered workflows in a table', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = realpath($temporaryDirectory->path()) ?: $temporaryDirectory->path();
 
     // Create github workflow directory
     mkdir($tempDir.'/.github/workflows', 0755, true);
@@ -59,6 +58,6 @@ test('pipeline:list lists discovered workflows in a table', function () {
             ->and($output)->toContain('all');
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });

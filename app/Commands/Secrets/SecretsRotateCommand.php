@@ -217,7 +217,7 @@ class SecretsRotateCommand extends Command
         $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ref['namespace'], "{$ref['secret']}-db");
 
         $rotated = false;
-        $this->withSpin("Rotating {$tool->getLabel()}'s DB password in OpenBao...", function () use ($kubectl, $roleName, &$rotated) {
+        $this->withSpin("Rotating {$tool->getLabel()}'s DB password in OpenBao...", function () use ($kubectl, $roleName, &$rotated): void {
             $rotated = $this->rotateStaticRole($kubectl, $roleName);
         });
 
@@ -230,7 +230,7 @@ class SecretsRotateCommand extends Command
         $this->forceExternalSecretReconcile($kubectl, $ref['namespace'], "{$ref['secret']}-db");
 
         $synced = false;
-        $this->withSpin("Waiting for {$ref['secret']} to sync...", function () use ($kubectl, $ref, $refreshTimeBefore, &$synced) {
+        $this->withSpin("Waiting for {$ref['secret']} to sync...", function () use ($kubectl, $ref, $refreshTimeBefore, &$synced): void {
             $synced = $this->waitForExternalSecretSynced($kubectl, $ref['namespace'], "{$ref['secret']}-db", $refreshTimeBefore);
         });
 

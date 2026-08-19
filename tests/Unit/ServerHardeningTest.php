@@ -10,7 +10,7 @@ function hardening(): object
     };
 }
 
-test('the hardening script sets a default-deny firewall and installs fail2ban', function () {
+test('the hardening script sets a default-deny firewall and installs fail2ban', function (): void {
     $script = hardening()->hardenServerScript(22);
 
     expect($script)
@@ -20,18 +20,18 @@ test('the hardening script sets a default-deny firewall and installs fail2ban', 
         ->toContain('systemctl enable fail2ban');
 });
 
-test('the SSH port is allowed BEFORE ufw is enabled (no lockout window)', function () {
+test('the SSH port is allowed BEFORE ufw is enabled (no lockout window)', function (): void {
     $script = hardening()->hardenServerScript(2222);
 
     $allowPos = strpos($script, 'ufw allow 2222/tcp');
     $enablePos = strpos($script, 'ufw --force enable');
 
-    expect($allowPos)->not->toBeFalse();
-    expect($enablePos)->not->toBeFalse();
-    expect($allowPos)->toBeLessThan($enablePos);
+    expect($allowPos)->not->toBeFalse()
+        ->and($enablePos)->not->toBeFalse()
+        ->and($allowPos)->toBeLessThan($enablePos);
 });
 
-test('the firewall opens HTTP/HTTPS/k3s-API and keeps cluster CIDRs flowing', function () {
+test('the firewall opens HTTP/HTTPS/k3s-API and keeps cluster CIDRs flowing', function (): void {
     $script = hardening()->hardenServerScript(22);
 
     expect($script)
@@ -43,22 +43,20 @@ test('the firewall opens HTTP/HTTPS/k3s-API and keeps cluster CIDRs flowing', fu
         ->toContain('ufw allow from 10.43.0.0/16 to any');
 });
 
-test('SSH password auth is disabled by default but can be opted out', function () {
+test('SSH password auth is disabled by default but can be opted out', function (): void {
     expect(hardening()->hardenServerScript(22))
-        ->toContain('PasswordAuthentication no');
-
-    expect(hardening()->hardenServerScript(22, disablePasswordAuth: false))
-        ->not->toContain('PasswordAuthentication no')
+        ->toContain('PasswordAuthentication no')
+        ->and(hardening()->hardenServerScript(22, disablePasswordAuth: false))->not->toContain('PasswordAuthentication no')
         ->toContain('Leaving SSH password auth unchanged');
 });
 
-test('the hardening script enables automatic security updates', function () {
+test('the hardening script enables automatic security updates', function (): void {
     expect(hardening()->hardenServerScript(22))
         ->toContain('unattended-upgrades')
         ->toContain('systemctl enable unattended-upgrades');
 });
 
-test('the root-login script closes SSH root login without deleting the account', function () {
+test('the root-login script closes SSH root login without deleting the account', function (): void {
     $script = hardening()->disableRootLoginScript();
 
     expect($script)
@@ -69,7 +67,7 @@ test('the root-login script closes SSH root login without deleting the account',
         ->not->toContain('deluser');
 });
 
-test('adminCidr restricts SSH + k3s API to that CIDR, but never 80/443', function () {
+test('adminCidr restricts SSH + k3s API to that CIDR, but never 80/443', function (): void {
     $script = hardening()->hardenServerScript(22, adminCidr: '1.2.3.4/32');
 
     expect($script)
@@ -81,7 +79,7 @@ test('adminCidr restricts SSH + k3s API to that CIDR, but never 80/443', functio
         ->toContain('ufw allow 443/tcp');
 });
 
-test('vpnCidr restricts SSH + k3s API the same way adminCidr does, and both can combine', function () {
+test('vpnCidr restricts SSH + k3s API the same way adminCidr does, and both can combine', function (): void {
     $vpnOnly = hardening()->hardenServerScript(22, vpnCidr: '100.64.0.0/10');
 
     expect($vpnOnly)
@@ -98,7 +96,7 @@ test('vpnCidr restricts SSH + k3s API the same way adminCidr does, and both can 
         ->toContain('ufw allow from 100.64.0.0/10 to any port 6443 proto tcp');
 });
 
-test('restricting SSH/k3s-API removes a prior open-to-anyone rule, not just adds the narrower one', function () {
+test('restricting SSH/k3s-API removes a prior open-to-anyone rule, not just adds the narrower one', function (): void {
     // A re-run scenario: cloud:init (or an earlier open cloud:harden) already
     // left `ufw allow 22/tcp` on the box — UFW allows a connection if ANY
     // rule permits it, so the CIDR-scoped rule alone wouldn't restrict
@@ -120,7 +118,7 @@ test('restricting SSH/k3s-API removes a prior open-to-anyone rule, not just adds
     expect($script)->toContain("ufw --force delete allow 22/tcp 2>/dev/null || true\n");
 });
 
-test('joinNetBirdScript installs NetBird only if missing and joins with the given setup key', function () {
+test('joinNetBirdScript installs NetBird only if missing and joins with the given setup key', function (): void {
     $script = hardening()->joinNetBirdScript('nb_setup_key_test', 'vpn.example.com');
 
     expect($script)

@@ -4,7 +4,7 @@ use App\Traits\InteractsWithZitadelApi;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
-test('zitadelAttachActionToFlowTrigger preserves existing actions and appends new action', function () {
+test('zitadelAttachActionToFlowTrigger preserves existing actions and appends new action', function (): void {
     $trait = new class
     {
         use InteractsWithZitadelApi;
@@ -44,7 +44,7 @@ test('zitadelAttachActionToFlowTrigger preserves existing actions and appends ne
     });
 });
 
-test('zitadelAttachActionToFlowTrigger returns true early if action is already attached', function () {
+test('zitadelAttachActionToFlowTrigger returns true early if action is already attached', function (): void {
     $trait = new class
     {
         use InteractsWithZitadelApi;

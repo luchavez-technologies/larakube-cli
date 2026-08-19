@@ -75,7 +75,7 @@ namespace Tests\Feature {
         return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
     }
 
-    test('isLocalContext identifies local clusters', function () {
+    test('isLocalContext identifies local clusters', function (): void {
         $kubectl = fakeKubectl();
         // Each of these names alone satisfies isLocalContextName(), so the
         // fallback "kubectl config view" server check is never reached.
@@ -87,7 +87,7 @@ namespace Tests\Feature {
         }
     });
 
-    test('isLocalContext identifies remote clusters by name, without needing the server fallback', function () {
+    test('isLocalContext identifies remote clusters by name, without needing the server fallback', function (): void {
         $kubectl = fakeKubectl();
         $remoteContexts = ['gke_project_zone_cluster', 'arn:aws:eks:us-west-2:123456789012:cluster/prod', 'do-nyc1-my-cluster'];
 
@@ -100,7 +100,7 @@ namespace Tests\Feature {
         }
     });
 
-    test('isLocalContext falls back to the API server address when the context name is unrecognized', function () {
+    test('isLocalContext falls back to the API server address when the context name is unrecognized', function (): void {
         $kubectl = fakeKubectl();
         Process::fake([
             "{$kubectl} config current-context" => 'default',
@@ -110,13 +110,13 @@ namespace Tests\Feature {
         expect(clusterContext()->testIsLocalContext())->toBeTrue();
     });
 
-    test('isLocalContext returns false when there is no current context', function () {
+    test('isLocalContext returns false when there is no current context', function (): void {
         Process::fake([fakeKubectl().' config current-context' => Process::result(output: '', exitCode: 1)]);
 
         expect(clusterContext()->testIsLocalContext())->toBeFalse();
     });
 
-    test('hasActiveCluster is false without a current context, and reflects cluster-info reachability otherwise', function () {
+    test('hasActiveCluster is false without a current context, and reflects cluster-info reachability otherwise', function (): void {
         $kubectl = fakeKubectl();
         Process::fake(["{$kubectl} config current-context" => Process::result(output: '', exitCode: 1)]);
         expect(clusterContext()->testHasActiveCluster())->toBeFalse();
@@ -134,7 +134,7 @@ namespace Tests\Feature {
         expect(clusterContext()->testHasActiveCluster())->toBeFalse();
     });
 
-    test('hasAnyContext reflects whether kubeconfig has any contexts at all', function () {
+    test('hasAnyContext reflects whether kubeconfig has any contexts at all', function (): void {
         $kubectl = fakeKubectl();
         Process::fake(["{$kubectl} config get-contexts -o name" => "k3s-larakube\norbstack\n"]);
         expect(clusterContext()->testHasAnyContext())->toBeTrue();
@@ -143,7 +143,7 @@ namespace Tests\Feature {
         expect(clusterContext()->testHasAnyContext())->toBeFalse();
     });
 
-    test('findLocalClusterContext prefers a LaraKube-provisioned context over a generic local one', function () {
+    test('findLocalClusterContext prefers a LaraKube-provisioned context over a generic local one', function (): void {
         $kubectl = fakeKubectl();
         Process::fake(["{$kubectl} config get-contexts -o name" => "orbstack\nk3s-larakube\ngke_remote\n"]);
         expect(clusterContext()->testFindLocalClusterContext())->toBe('k3s-larakube');
@@ -155,7 +155,7 @@ namespace Tests\Feature {
         expect(clusterContext()->testFindLocalClusterContext())->toBeNull();
     });
 
-    test('switchClusterContext reflects whether kubectl config use-context succeeded', function () {
+    test('switchClusterContext reflects whether kubectl config use-context succeeded', function (): void {
         $kubectl = fakeKubectl();
         Process::fake(["{$kubectl} config use-context 'k3s-larakube'" => Process::result(exitCode: 0)]);
         expect(clusterContext()->testSwitchClusterContext('k3s-larakube'))->toBeTrue();

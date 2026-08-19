@@ -21,30 +21,30 @@ function domainResolver(): object
     };
 }
 
-test('a base domain gets the service prefix', function () {
+test('a base domain gets the service prefix', function (): void {
     expect(domainResolver()->host(SharedClusterService::SECRETS, 'luchtech.dev'))
         ->toBe('secrets.luchtech.dev');
 });
 
-test('a full host is not prefixed a second time', function () {
+test('a full host is not prefixed a second time', function (): void {
     // The reported bug: this produced secrets.secrets.luchtech.dev.
     expect(domainResolver()->host(SharedClusterService::SECRETS, 'secrets.luchtech.dev'))
         ->toBe('secrets.luchtech.dev');
 });
 
-test('a pasted URL is reduced to a hostname', function () {
+test('a pasted URL is reduced to a hostname', function (): void {
     expect(domainResolver()->host(SharedClusterService::SECRETS, 'https://secrets.luchtech.dev/'))
         ->toBe('secrets.luchtech.dev')
         ->and(domainResolver()->host(SharedClusterService::SECRETS, 'HTTPS://LUCHTECH.DEV'))
         ->toBe('secrets.luchtech.dev');
 });
 
-test('stray dots and whitespace do not create empty labels', function () {
+test('stray dots and whitespace do not create empty labels', function (): void {
     expect(domainResolver()->host(SharedClusterService::SECRETS, '  .luchtech.dev.  '))
         ->toBe('secrets.luchtech.dev');
 });
 
-test('the doubling guard is per-service, not global', function () {
+test('the doubling guard is per-service, not global', function (): void {
     // mail.luchtech.dev is a BASE domain as far as the vault service is
     // concerned — only a matching prefix should suppress prefixing.
     expect(domainResolver()->host(SharedClusterService::VAULT, 'mail.luchtech.dev'))
@@ -53,7 +53,7 @@ test('the doubling guard is per-service, not global', function () {
         ->toBe('vault.luchtech.dev');
 });
 
-test('no service doubles its own prefix for any of its two readings', function () {
+test('no service doubles its own prefix for any of its two readings', function (): void {
     foreach (SharedClusterService::cases() as $service) {
         $prefix = $service->hostPrefix();
         if ($prefix === '') {

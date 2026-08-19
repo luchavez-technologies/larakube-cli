@@ -21,6 +21,7 @@ use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexInitCommand extends Command
 {
@@ -114,10 +115,11 @@ class PlexInitCommand extends Command
         ])->render();
 
         $this->withSpin('Applying Commons manifests...', function () use ($manifest, $ns, $kubectl) {
-            $tmp = sys_get_temp_dir().'/larakube-plex-commons.yaml';
+            $temporaryDirectory = TemporaryDirectory::make();
+            $tmp = $temporaryDirectory->path('larakube-plex-commons.yaml');
             file_put_contents($tmp, $manifest);
             $this->runStreaming("{$kubectl} apply -n {$ns} -f {$tmp}");
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             return true;
         });

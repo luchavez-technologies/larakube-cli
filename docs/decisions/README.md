@@ -30,6 +30,8 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0012](0012-cluster-tool-registry-redesign.md) | Cluster tool registry: flat list, host-as-identity, no `--instance=` | Accepted |
 | [0013](0013-design-init-idempotent-flags.md) | Tool `:init`/`:wire` reconcile feature flags from truth, never union with history | Accepted |
 | [0014](0014-cluster-tools-vs-project-apps-deploy-path.md) | Cluster Tools (`:init`/`:wire`) deploy by direct `kubectl apply`; project apps (`new`/`cloud:deploy`) go through CI/CD | Accepted |
+| [0015](0015-commons-storage-driver-is-runtime-resolved.md) | A tool's Commons S3 backend is resolved at runtime from `plex-commons`, never hardcoded to a specific `StorageDriver` | Accepted |
 | [0016](0016-openbao-auto-unseal-everywhere.md) | OpenBao auto-unseals in every environment, not just `local` | Accepted |
 | [0017](0017-db-password-defers-to-openbao-static-role.md) | `{tool}:init` defers to OpenBao's static-role password before calling `allocateDatabase()`, never after only | Accepted |
 | [0018](0018-wire-commands-never-literal-env.md) | `:wire` commands deliver env changes via Secret + rollout restart, never a literal `kubectl set env` value | Accepted |
+| [0019](0019-test-fidelity-conventions.md) | Tests must faithfully reproduce production behavior: no unfaked I/O, no unstubbed prompts, no ad-hoc temp dirs | Accepted |

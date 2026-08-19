@@ -2,7 +2,7 @@
 
 use Symfony\Component\Yaml\Yaml;
 
-test('vaultwarden manifest renders valid multi-document YAML', function () {
+test('vaultwarden manifest renders valid multi-document YAML', function (): void {
     $rendered = view('k8s.vault.shared', [
         'host' => 'vault.luchtech.dev',
         'adminToken' => 'd7ec8024f301823b687b6e9ad6ba797c',

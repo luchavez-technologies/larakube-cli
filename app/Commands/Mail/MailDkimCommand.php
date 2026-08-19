@@ -101,7 +101,7 @@ class MailDkimCommand extends Command
     {
         $destroyed = null;
 
-        $this->withSpin('Pruning Ed25519 DKIM keys...', function () use ($kubectl, $ns, &$destroyed) {
+        $this->withSpin('Pruning Ed25519 DKIM keys...', function () use ($kubectl, $ns, &$destroyed): void {
             $destroyed = $this->stalwartEnforceSingleRsaDkimSignature($kubectl, $ns);
         });
 

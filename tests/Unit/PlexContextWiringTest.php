@@ -15,7 +15,7 @@
  *
  * So: any command that reads the Commons must also set $plexContext.
  */
-test('every command that reads the Plex Commons also sets plexContext', function () {
+test('every command that reads the Plex Commons also sets plexContext', function (): void {
     $commandFiles = [];
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator(base_path('app/Commands'), FilesystemIterator::SKIP_DOTS),

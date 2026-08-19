@@ -12,10 +12,12 @@
  */
 
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function withFakeKubeHomeForRemove(callable $callback): void
 {
-    $dir = sys_get_temp_dir().'/lk-kube-home-'.uniqid();
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     mkdir($dir.'/.kube', 0755, true);
     file_put_contents($dir.'/.kube/config', "apiVersion: v1\nkind: Config\n");
 
@@ -30,14 +32,12 @@ function withFakeKubeHomeForRemove(callable $callback): void
         } else {
             $_SERVER['HOME'] = $original;
         }
-        @unlink($dir.'/.kube/config');
-        @rmdir($dir.'/.kube');
-        @rmdir($dir);
+        $temporaryDirectory->delete();
     }
 }
 
-test('context:remove targets ~/.kube/config explicitly, not the shell\'s $KUBECONFIG', function () {
-    withFakeKubeHomeForRemove(function (string $home) {
+test('context:remove targets ~/.kube/config explicitly, not the shell\'s $KUBECONFIG', function (): void {
+    withFakeKubeHomeForRemove(function (string $home): void {
         $kubeConfig = $home.'/.kube/config';
         $kc = 'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config';
 
@@ -56,8 +56,8 @@ test('context:remove targets ~/.kube/config explicitly, not the shell\'s $KUBECO
     });
 });
 
-test('context:remove reports failure instead of a stale unrelated kubeconfig error', function () {
-    withFakeKubeHomeForRemove(function (string $home) {
+test('context:remove reports failure instead of a stale unrelated kubeconfig error', function (): void {
+    withFakeKubeHomeForRemove(function (string $home): void {
         $kubeConfig = $home.'/.kube/config';
         $kc = 'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config';
 

@@ -9,13 +9,13 @@ use Laravel\Prompts\Prompt;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
-test('sso:revoke is registered', function () {
+test('sso:revoke is registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:revoke');
 });
 
-test('sso:revoke rejects an explicit role no tool defines', function () {
+test('sso:revoke rejects an explicit role no tool defines', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -31,7 +31,7 @@ test('sso:revoke rejects an explicit role no tool defines', function () {
         ->expectsOutputToContain("isn't a role any wired tool defines");
 });
 
-test('sso:revoke declines to act without --force under non-interactive confirmation', function () {
+test('sso:revoke declines to act without --force under non-interactive confirmation', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -43,13 +43,14 @@ test('sso:revoke declines to act without --force under non-interactive confirmat
     ]);
 
     $this->artisan('sso:revoke', ['--role' => 'openbao-admin', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+        ->expectsConfirmation('Revoke [openbao-admin] from james@luchtech.dev?', 'no')
         ->assertExitCode(0)
         ->expectsOutputToContain('Cancelled');
 
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/users/grants/_search'));
 });
 
-test('sso:revoke --role skips the discovery picker entirely, resolving the owning tool automatically', function () {
+test('sso:revoke --role skips the discovery picker entirely, resolving the owning tool automatically', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -73,7 +74,7 @@ test('sso:revoke --role skips the discovery picker entirely, resolving the ownin
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/roles/_search'));
 });
 
-test('sso:revoke --role resolves a dynamic secrets:grant-issued per-app role key too, with no --tool needed', function () {
+test('sso:revoke --role resolves a dynamic secrets:grant-issued per-app role key too, with no --tool needed', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -100,7 +101,7 @@ test('sso:revoke --role resolves a dynamic secrets:grant-issued per-app role key
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/roles/_search'));
 });
 
-test('sso:revoke reports nothing to do when the user holds no role-gated access', function () {
+test('sso:revoke reports nothing to do when the user holds no role-gated access', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -118,7 +119,7 @@ test('sso:revoke reports nothing to do when the user holds no role-gated access'
         ->expectsOutputToContain('holds no role-gated access');
 });
 
-test('sso:revoke\'s discovery picker defaults to an empty selection under non-interactive mode — no accidental full wipe', function () {
+test('sso:revoke\'s discovery picker defaults to an empty selection under non-interactive mode — no accidental full wipe', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -138,13 +139,21 @@ test('sso:revoke\'s discovery picker defaults to an empty selection under non-in
     // defaulted to, which would leave this test unable to tell the two
     // safety nets apart (confirmed by mutation-testing this exact case).
     $this->artisan('sso:revoke', ['--email' => 'james@luchtech.dev', '--force' => true, '--no-interaction' => true])
+        ->expectsChoice(
+            "james@luchtech.dev's current access — select what to revoke",
+            [],
+            [
+                'openbao-admin' => 'Secrets Manager (OpenBao) — Full read/write on all secrets and Commons database credentials',
+                'grafana-user' => 'Monitoring Stack (Grafana + Loki + Prometheus) — Can log in to Grafana (Viewer role)',
+            ],
+        )
         ->assertExitCode(0);
 
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants/grant-1')
         && in_array($request->method(), ['PUT', 'DELETE'], true));
 });
 
-test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on the shared project', function () {
+test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on the shared project', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -171,7 +180,7 @@ test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on the shared projec
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/_search'));
 });
 
-test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on the shared project beside RBAC roles — and revokes it against its own project", function () {
+test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on the shared project beside RBAC roles — and revokes it against its own project", function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -221,9 +230,8 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on the shared pro
 
     $exitCode = $command->handle();
 
-    expect($exitCode)->toBe(0);
-    expect($output->fetch())
-        ->toContain('Revoked [ocisAdmin] from admin@luchtech.dev')
+    expect($exitCode)->toBe(0)
+        ->and($output->fetch())->toContain('Revoked [ocisAdmin] from admin@luchtech.dev')
         ->toContain('now holds no roles on LaraKube Shared Tools');
 
     // Both projects' roles were offered in ONE picker — the old single-project

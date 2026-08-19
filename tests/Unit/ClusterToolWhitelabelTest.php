@@ -2,7 +2,7 @@
 
 use App\Enums\ClusterTool;
 
-test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools', function () {
+test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools', function (): void {
     $whitelabeledTools = [
         ClusterTool::CHAT,
         ClusterTool::GIT,
@@ -18,7 +18,7 @@ test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools
     }
 });
 
-test('whiteLabel() returns null for unsupported tools like DNS, VPN, SECRETS', function () {
+test('whiteLabel() returns null for unsupported tools like DNS, VPN, SECRETS', function (): void {
     $unsupportedTools = [
         ClusterTool::DNS,
         ClusterTool::VPN,
@@ -32,7 +32,7 @@ test('whiteLabel() returns null for unsupported tools like DNS, VPN, SECRETS', f
     }
 });
 
-test('whiteLabel() specs define valid app_name_key, logo_url_key or sub_filter', function () {
+test('whiteLabel() specs define valid app_name_key, logo_url_key or sub_filter', function (): void {
     foreach (ClusterTool::cases() as $tool) {
         $spec = $tool->whiteLabel();
         if ($spec === null) {

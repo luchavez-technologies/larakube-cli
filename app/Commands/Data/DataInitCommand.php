@@ -26,6 +26,7 @@ use Illuminate\Support\Str;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class DataInitCommand extends Command
 {
@@ -145,7 +146,7 @@ class DataInitCommand extends Command
         ));
 
         if ($engine === 'pocketbase') {
-            $this->withSpin("Ensuring PVC {$pvcName}...", function () use ($kubectl, $ns, $pvcName) {
+            $this->withSpin("Ensuring PVC {$pvcName}...", function () use ($kubectl, $ns, $pvcName): void {
                 $cmd = "{$kubectl} apply -f - <<EOF\n"
                     ."apiVersion: v1\n"
                     ."kind: PersistentVolumeClaim\n"
@@ -163,7 +164,7 @@ class DataInitCommand extends Command
             });
         }
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $secret, $key, $dbPassword, $adminEmail, $adminPassword, $s3Key, $s3Secret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $secret, $key, $dbPassword, $adminEmail, $adminPassword, $s3Key, $s3Secret): void {
             $cmd = "{$kubectl} create secret generic {$secretName} -n {$ns} "
                 .'--from-literal=secret='.escapeshellarg($secret).' '
                 .'--from-literal=key='.escapeshellarg($key).' '
@@ -216,7 +217,8 @@ class DataInitCommand extends Command
             'authProviders' => $ssoWired ? 'local,zitadel' : 'local',
         ])->render();
 
-        $tmp = sys_get_temp_dir()."/larakube-{$deployName}.yaml";
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path("larakube-{$deployName}.yaml");
         file_put_contents($tmp, $manifest);
 
         $engineLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
@@ -225,7 +227,7 @@ class DataInitCommand extends Command
             "Applying {$engineLabel} manifests...",
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deployName, 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

@@ -3,10 +3,11 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 Prompt::interactive(false);
 
-test('secrets:export exports all environments and secrets to a JSON file', function () {
+test('secrets:export exports all environments and secrets to a JSON file', function (): void {
     Process::fake([
         '*' => Process::result(output: base64_encode('hvs.root_token_test')),
     ]);
@@ -18,7 +19,8 @@ test('secrets:export exports all environments and secrets to a JSON file', funct
             ->push(['data' => ['data' => ['value' => 'base64:abc123']]]),
     ]);
 
-    $output = sys_get_temp_dir().'/larakube_export_test_'.uniqid().'.json';
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $output = $temporaryDirectory->path('larakube_export_test.json');
 
     $this->artisan("secrets:export local --output={$output} --no-interaction")
         ->assertExitCode(0)
@@ -26,14 +28,14 @@ test('secrets:export exports all environments and secrets to a JSON file', funct
 
     if (file_exists($output)) {
         $data = json_decode((string) file_get_contents($output), true);
-        expect($data)->toHaveKey('environments');
-        expect($data['environments'])->toHaveKey('production');
+        expect($data)->toHaveKey('environments')
+            ->and($data['environments'])->toHaveKey('production');
     }
 
-    @unlink($output);
+    $temporaryDirectory->delete();
 });
 
-test('secrets:export fails when openbao is not bootstrapped', function () {
+test('secrets:export fails when openbao is not bootstrapped', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(output: ''),

@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -57,32 +58,41 @@ trait InteractsWithZitadelApi
      *                                 cannot. When null, a random unusable password is set: the record still
      *                                 needs some initial credential, but the account is SSO-only.
      */
-    protected function zitadelCreateUser(string $host, string $pat, string $email, string $displayName, ?string $password = null): ?string
+    protected function zitadelCreateUser(string $host, string $pat, string $email, string $displayName, ?string $password = null, ?string $orgId = null): ?string
     {
         $localPart = explode('@', $email)[0];
         [$givenName, $familyName] = $this->splitDisplayName($displayName, $localPart);
 
+        $body = [
+            'username' => $email,
+            'profile' => [
+                'givenName' => $givenName,
+                'familyName' => $familyName,
+                'displayName' => $displayName !== '' ? $displayName : $localPart,
+            ],
+            'email' => [
+                'email' => $email,
+                'isVerified' => true,
+            ],
+            'password' => [
+                // changeRequired stays false even for a supplied password:
+                // forcing a change on first SSO login would immediately break
+                // the mail/SSO password parity the caller asked for.
+                'password' => $password ?? Str::password(32),
+                'changeRequired' => false,
+            ],
+        ];
+
+        // v2's cross-org placement is a BODY field, not the x-zitadel-orgid
+        // header the v1 endpoints below use — the two APIs disagree on
+        // convention here. Omitted, the caller's own (master) org is used.
+        if ($orgId !== null) {
+            $body['organization'] = ['orgId' => $orgId];
+        }
+
         $response = Http::withToken($pat)
             ->timeout(15)
-            ->post("https://{$host}/v2/users/human", [
-                'username' => $email,
-                'profile' => [
-                    'givenName' => $givenName,
-                    'familyName' => $familyName,
-                    'displayName' => $displayName !== '' ? $displayName : $localPart,
-                ],
-                'email' => [
-                    'email' => $email,
-                    'isVerified' => true,
-                ],
-                'password' => [
-                    // changeRequired stays false even for a supplied password:
-                    // forcing a change on first SSO login would immediately break
-                    // the mail/SSO password parity the caller asked for.
-                    'password' => $password ?? Str::password(32),
-                    'changeRequired' => false,
-                ],
-            ]);
+            ->post("https://{$host}/v2/users/human", $body);
 
         if ($response->failed()) {
             return null;
@@ -458,8 +468,15 @@ trait InteractsWithZitadelApi
      * that don't read either claim, but it does mean this touches every
      * existing tool's login, so the script must degrade to a no-op (not an
      * error) for a user with zero grants.
+     *
+     * $orgId targets a NON-default org (e.g. a partner org onboarded via
+     * sso:org) — Actions/Flows are themselves org-scoped, so a second org
+     * needs its own copy of this Action installed; a Project Grant alone
+     * does not make role claims appear in that org's own users' tokens.
+     * Every call below carries x-zitadel-orgid when set; omitted, the
+     * caller's own (master) org is used, unchanged from before.
      */
-    protected function zitadelEnsureRbacAction(string $host, string $pat): bool
+    protected function zitadelEnsureRbacAction(string $host, string $pat, ?string $orgId = null): bool
     {
         $name = 'flattenLaraKubeRoles';
         $script = <<<'JS'
@@ -485,7 +502,9 @@ trait InteractsWithZitadelApi
         // create that then 409'd against the action created manually
         // during this session's testing — masked entirely because
         // ensureRbacGating() didn't check this method's return value).
-        $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/management/v1/actions/_search", ['queries' => []]);
+        $headers = $this->zitadelOrgHeaders($orgId);
+
+        $search = Http::withToken($pat)->withHeaders($headers)->timeout(15)->post("https://{$host}/management/v1/actions/_search", ['queries' => []]);
         $actionId = null;
         $foundScript = null;
         if ($search->successful()) {
@@ -499,7 +518,7 @@ trait InteractsWithZitadelApi
         }
 
         if ($actionId === null) {
-            $create = Http::withToken($pat)->timeout(15)->post("https://{$host}/management/v1/actions", [
+            $create = Http::withToken($pat)->withHeaders($headers)->timeout(15)->post("https://{$host}/management/v1/actions", [
                 'name' => $name,
                 'script' => $script,
                 'timeout' => '10s',
@@ -513,7 +532,7 @@ trait InteractsWithZitadelApi
             // (added 2026-08-06) — push the new script instead of silently
             // leaving the old one in place, same self-heal as
             // zitadelEnsureOcisRolesAction().
-            $update = Http::withToken($pat)->timeout(15)->put(
+            $update = Http::withToken($pat)->withHeaders($headers)->timeout(15)->put(
                 "https://{$host}/management/v1/actions/{$actionId}",
                 ['name' => $name, 'script' => $script, 'fieldMask' => ['paths' => ['name', 'script']]],
             );
@@ -529,7 +548,7 @@ trait InteractsWithZitadelApi
         // A resend with the same actionIds 400s with "No Changes" — that's
         // success, not a failure, so it's treated as such below.
         foreach ([4, 5] as $trigger) {
-            if (! $this->zitadelAttachActionToFlowTrigger($host, $pat, 2, $trigger, $actionId)) {
+            if (! $this->zitadelAttachActionToFlowTrigger($host, $pat, 2, $trigger, $actionId, $orgId)) {
                 return false;
             }
         }
@@ -537,13 +556,21 @@ trait InteractsWithZitadelApi
         return true;
     }
 
+    /** x-zitadel-orgid header, or none — the shared org-targeting helper for every v1 call in this trait. */
+    protected function zitadelOrgHeaders(?string $orgId): array
+    {
+        return $orgId !== null ? ['x-zitadel-orgid' => $orgId] : [];
+    }
+
     /**
      * Attach an action ID to a specific flow trigger type without wiping out
      * other actions already attached to that trigger.
      */
-    protected function zitadelAttachActionToFlowTrigger(string $host, string $pat, int $flowType, int $triggerType, string $actionId): bool
+    protected function zitadelAttachActionToFlowTrigger(string $host, string $pat, int $flowType, int $triggerType, string $actionId, ?string $orgId = null): bool
     {
-        $response = Http::withToken($pat)->timeout(15)->get("https://{$host}/management/v1/flows/{$flowType}");
+        $headers = $this->zitadelOrgHeaders($orgId);
+
+        $response = Http::withToken($pat)->withHeaders($headers)->timeout(15)->get("https://{$host}/management/v1/flows/{$flowType}");
         $existingActionIds = [];
 
         if ($response->successful()) {
@@ -565,7 +592,7 @@ trait InteractsWithZitadelApi
 
         $allActionIds = array_values(array_unique(array_merge($existingActionIds, [$actionId])));
 
-        $set = Http::withToken($pat)->timeout(15)->post(
+        $set = Http::withToken($pat)->withHeaders($headers)->timeout(15)->post(
             "https://{$host}/management/v1/flows/{$flowType}/trigger/{$triggerType}",
             ['actionIds' => $allActionIds],
         );
@@ -755,6 +782,209 @@ trait InteractsWithZitadelApi
             "https://{$host}/management/v1/users/{$userId}/grants/{$existing['id']}",
             ['roleKeys' => $remaining],
         )->successful();
+    }
+
+    /**
+     * Find an org by exact name. Returns its id, or null if not found/on
+     * failure. v2 organizations API — shape confirmed live against a real
+     * Zitadel v4.16.1 instance (2026-08-19): POST /v2/organizations/_search
+     * with a nameQuery filter, same query shape as the long-established v1
+     * project/action searches elsewhere in this trait.
+     */
+    protected function zitadelFindOrgByName(string $host, string $pat, string $name): ?string
+    {
+        $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/v2/organizations/_search", [
+            'queries' => [['nameQuery' => ['name' => $name, 'method' => 'TEXT_QUERY_METHOD_EQUALS']]],
+        ]);
+
+        if ($search->failed()) {
+            return null;
+        }
+
+        return $search->json('result.0.id');
+    }
+
+    /**
+     * Create a new Zitadel organization. Returns its id, or null on failure.
+     * v2 API — AddOrganizationRequest.name confirmed live (empty-body probe
+     * against sso.luchtech.dev returned "invalid AddOrganizationRequest.Name").
+     */
+    protected function zitadelCreateOrg(string $host, string $pat, string $name): ?string
+    {
+        $create = Http::withToken($pat)->timeout(15)->post("https://{$host}/v2/organizations", [
+            'name' => $name,
+        ]);
+
+        if ($create->failed()) {
+            return null;
+        }
+
+        return $create->json('organizationId');
+    }
+
+    /** Find-or-create an org by name — the org-level counterpart to zitadelEnsureProject(). */
+    protected function zitadelEnsureOrg(string $host, string $pat, string $name): ?string
+    {
+        $existing = $this->zitadelFindOrgByName($host, $pat, $name);
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        return $this->zitadelCreateOrg($host, $pat, $name);
+    }
+
+    /**
+     * Add a custom domain claim to $orgId (does not verify it — the org
+     * still needs zitadelGenerateOrgDomainValidation() +
+     * zitadelValidateOrgDomain() before Zitadel treats it as owned).
+     * Idempotent: "already exists" is treated as success. v1 API —
+     * AddOrgDomainRequest.domain confirmed live.
+     */
+    protected function zitadelAddOrgDomain(string $host, string $pat, string $orgId, string $domain): bool
+    {
+        $response = Http::withToken($pat)->withHeaders($this->zitadelOrgHeaders($orgId))->timeout(15)->post(
+            "https://{$host}/management/v1/orgs/me/domains",
+            ['domain' => $domain],
+        );
+
+        return $response->successful() || str_contains($response->body(), 'AlreadyExists');
+    }
+
+    /**
+     * Generate the DNS ownership challenge for $domain on $orgId. Returns
+     * the TXT record's expected value (`token`) and Zitadel's own doc URL
+     * for the record name (`_zitadel-challenge.<domain>`), or null on
+     * failure. v1 API — DOMAIN_VALIDATION_TYPE_DNS confirmed live (the
+     * companion "type must not be UNSPECIFIED" error narrowed this down to
+     * exactly that enum member; a follow-up call with it returned "Domain
+     * doesn't exist on organization" — i.e. accepted the shape, just needed
+     * the domain added first via zitadelAddOrgDomain()).
+     *
+     * @return array{token: string, url: string}|null
+     */
+    protected function zitadelGenerateOrgDomainValidation(string $host, string $pat, string $orgId, string $domain): ?array
+    {
+        $response = Http::withToken($pat)->withHeaders($this->zitadelOrgHeaders($orgId))->timeout(15)->post(
+            "https://{$host}/management/v1/orgs/me/domains/{$domain}/validation/_generate",
+            ['type' => 'DOMAIN_VALIDATION_TYPE_DNS'],
+        );
+
+        if ($response->failed()) {
+            return null;
+        }
+
+        $token = $response->json('token');
+
+        return $token === null ? null : ['token' => $token, 'url' => (string) $response->json('url')];
+    }
+
+    /**
+     * Ask Zitadel to re-check the `_zitadel-challenge.<domain>` TXT record
+     * and mark the domain verified. Retries a few times (DNS propagation
+     * through Cloudflare's edge can lag a few seconds behind the API write
+     * that created the record) before giving up. v1 API — the
+     * `.../validation` route (no `_validate` suffix) confirmed live: it
+     * resolves to a structured "Not Found" for a domain that was never
+     * added, rather than a generic routing 404.
+     */
+    protected function zitadelValidateOrgDomain(string $host, string $pat, string $orgId, string $domain, int $attempts = 5, int $delaySeconds = 3): bool
+    {
+        $headers = $this->zitadelOrgHeaders($orgId);
+
+        for ($i = 0; $i < $attempts; $i++) {
+            if ($i > 0) {
+                Sleep::sleep($delaySeconds);
+            }
+
+            $response = Http::withToken($pat)->withHeaders($headers)->timeout(15)->post(
+                "https://{$host}/management/v1/orgs/me/domains/{$domain}/validation",
+                (object) [],
+            );
+
+            if ($response->successful()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Add a member to an org with the given roles (default: ORG_OWNER, full org admin). v1 API — AddOrgMemberRequest.userId confirmed live. */
+    protected function zitadelAddOrgMember(string $host, string $pat, string $orgId, string $userId, array $roles = ['ORG_OWNER']): bool
+    {
+        $response = Http::withToken($pat)->withHeaders($this->zitadelOrgHeaders($orgId))->timeout(15)->post(
+            "https://{$host}/management/v1/orgs/me/members",
+            ['userId' => $userId, 'roles' => $roles],
+        );
+
+        return $response->successful() || str_contains($response->body(), 'AlreadyExists');
+    }
+
+    /**
+     * Find the existing ProjectGrant from $projectId to $grantedOrgId, or
+     * null if none exists.
+     *
+     * @return array{id: string, roleKeys: list<string>}|null
+     */
+    protected function zitadelFindProjectGrant(string $host, string $pat, string $projectId, string $grantedOrgId): ?array
+    {
+        // Unfiltered search + local match, same as zitadelListProjectRoleKeys()
+        // — this project's grant list is small (one per partner org), and a
+        // server-side filter's exact field name for "by granted org" isn't
+        // documented alongside the other _search endpoints in this trait.
+        $search = Http::withToken($pat)->timeout(15)->post(
+            "https://{$host}/management/v1/projects/{$projectId}/grants/_search",
+            ['queries' => []],
+        );
+
+        if ($search->failed()) {
+            return null;
+        }
+
+        foreach ($search->json('result', []) as $grant) {
+            if (($grant['grantedOrgId'] ?? null) === $grantedOrgId) {
+                return ['id' => $grant['grantId'] ?? $grant['id'], 'roleKeys' => $grant['grantedRoleKeys'] ?? $grant['roleKeys'] ?? []];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Create or update a ProjectGrant from $projectId to $grantedOrgId —
+     * Zitadel's real cross-org sharing primitive: it lets another org's
+     * users hold UserGrants against this project without that org owning
+     * it. Merges $roleKeys into any existing grant (union, not replace) —
+     * same non-destructive idiom as zitadelGrantRole(). Once this exists,
+     * the existing, UNMODIFIED zitadelGrantRole()/zitadelFindUserGrant()
+     * work against the granted-org's own users — Zitadel resolves the
+     * ProjectGrant internally. Returns the grant's id, or null on failure.
+     * v1 API — AddProjectGrantRequest.grantedOrgId confirmed live.
+     */
+    protected function zitadelEnsureProjectGrant(string $host, string $pat, string $projectId, string $grantedOrgId, array $roleKeys): ?string
+    {
+        $existing = $this->zitadelFindProjectGrant($host, $pat, $projectId, $grantedOrgId);
+
+        if ($existing === null) {
+            $create = Http::withToken($pat)->timeout(15)->post(
+                "https://{$host}/management/v1/projects/{$projectId}/grants",
+                ['grantedOrgId' => $grantedOrgId, 'roleKeys' => array_values($roleKeys)],
+            );
+
+            return $create->successful() ? ($create->json('grantId') ?? $create->json('id')) : null;
+        }
+
+        $merged = array_values(array_unique(array_merge($existing['roleKeys'], $roleKeys)));
+        if ($merged === $existing['roleKeys']) {
+            return $existing['id'];
+        }
+
+        $update = Http::withToken($pat)->timeout(15)->put(
+            "https://{$host}/management/v1/projects/{$projectId}/grants/{$existing['id']}",
+            ['roleKeys' => $merged],
+        );
+
+        return $update->successful() ? $existing['id'] : null;
     }
 
     /**

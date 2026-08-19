@@ -26,11 +26,13 @@ use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MailInitCommand extends Command
 {
@@ -110,7 +112,7 @@ class MailInitCommand extends Command
         // existing wizard-driven flow untouched; see bootstrapStalwartStoreForLocal().
         $storeBootstrap = $this->bootstrapStalwartStoreForLocal($kubectl, $env);
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $adminEmail, $storeBootstrap) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $adminEmail, $storeBootstrap): void {
             $cmd = "{$kubectl} create secret generic mail-secrets -n {$ns} "
                 .'--from-literal=recovery-admin='.escapeshellarg('admin:'.$adminPassword).' '
                 .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
@@ -145,14 +147,15 @@ class MailInitCommand extends Command
             'storeBootstrap' => $storeBootstrap,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-mail.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-mail.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Stalwart manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'stalwart', 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;
@@ -595,7 +598,7 @@ class MailInitCommand extends Command
         }
 
         // Wait briefly for the operator to sync the secret
-        usleep(3_000_000);
+        Sleep::usleep(3_000_000);
 
         $this->laraKubeInfo('Stalwart store configured via Plex Commons + OpenBao.');
         $this->laraKubeLine('  Use "Secret read from environment variable" in the wizard and enter "STALWART_STORE_PASSWORD".');

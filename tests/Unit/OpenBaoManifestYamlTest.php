@@ -2,7 +2,7 @@
 
 use Symfony\Component\Yaml\Yaml;
 
-test('openbao manifest renders valid multi-document YAML', function () {
+test('openbao manifest renders valid multi-document YAML', function (): void {
     $rendered = view('k8s.secrets.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
@@ -28,7 +28,7 @@ test('openbao manifest renders valid multi-document YAML', function () {
     }
 });
 
-test('openbao data volume is a PersistentVolumeClaim, not emptyDir', function () {
+test('openbao data volume is a PersistentVolumeClaim, not emptyDir', function (): void {
     // Regression guard: OpenBao's own secret store (storage "file" in
     // bao.hcl, mounted at /openbao/data) was shipped on emptyDir — wiped on
     // any pod restart/reschedule, with nothing to restore from. Found live
@@ -58,19 +58,17 @@ test('openbao data volume is a PersistentVolumeClaim, not emptyDir', function ()
         }
     }
 
-    expect($pvc)->not->toBeNull();
-    expect($pvc['spec']['accessModes'] ?? null)->toBe(['ReadWriteOnce']);
-
-    expect($deployment)->not->toBeNull();
+    expect($pvc)->not->toBeNull()
+        ->and($pvc['spec']['accessModes'] ?? null)->toBe(['ReadWriteOnce'])
+        ->and($deployment)->not->toBeNull();
     $volumes = $deployment['spec']['template']['spec']['volumes'] ?? [];
     $dataVolume = collect($volumes)->firstWhere('name', 'data');
 
-    expect($dataVolume)->not->toBeNull();
-    expect($dataVolume)->not->toHaveKey('emptyDir');
-    expect($dataVolume['persistentVolumeClaim']['claimName'] ?? null)->toBe('openbao-data');
+    expect($dataVolume)->not->toBeNull()->not->toHaveKey('emptyDir')
+        ->and($dataVolume['persistentVolumeClaim']['claimName'] ?? null)->toBe('openbao-data');
 });
 
-test('openbao runs under its own ServiceAccount with a system:auth-delegator binding', function () {
+test('openbao runs under its own ServiceAccount with a system:auth-delegator binding', function (): void {
     // Needed for OpenBao's Vault Kubernetes auth backend to validate other
     // pods' ServiceAccount tokens via the TokenReview API — without this,
     // auth/kubernetes/login rejects every request. Dedicated SA (not the
@@ -103,15 +101,14 @@ test('openbao runs under its own ServiceAccount with a system:auth-delegator bin
         }
     }
 
-    expect($sa)->not->toBeNull();
-    expect($binding)->not->toBeNull();
-    expect($binding['roleRef']['name'] ?? null)->toBe('system:auth-delegator');
-    expect($binding['subjects'][0]['name'] ?? null)->toBe('openbao');
-
-    expect($deployment['spec']['template']['spec']['serviceAccountName'] ?? null)->toBe('openbao');
+    expect($sa)->not->toBeNull()
+        ->and($binding)->not->toBeNull()
+        ->and($binding['roleRef']['name'] ?? null)->toBe('system:auth-delegator')
+        ->and($binding['subjects'][0]['name'] ?? null)->toBe('openbao')
+        ->and($deployment['spec']['template']['spec']['serviceAccountName'] ?? null)->toBe('openbao');
 });
 
-test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default for other callers of this view — SecretsInitCommand always passes it explicitly)', function () {
+test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default for other callers of this view — SecretsInitCommand always passes it explicitly)', function (): void {
     $rendered = view('k8s.secrets.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
@@ -123,7 +120,7 @@ test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default f
         ->and($rendered)->not->toContain('bao operator unseal');
 });
 
-test('openbao gets an auto-unseal postStart hook when autoUnseal is true', function () {
+test('openbao gets an auto-unseal postStart hook when autoUnseal is true', function (): void {
     $rendered = view('k8s.secrets.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',

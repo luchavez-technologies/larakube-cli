@@ -162,7 +162,7 @@ class SecretsUnwireCommand extends Command
         }
 
         $ok = true;
-        $this->withSpin("Unwiring OpenBao DB rotation for {$tool->getLabel()}...", function () use ($kubectl, $ref, $tenant, &$ok) {
+        $this->withSpin("Unwiring OpenBao DB rotation for {$tool->getLabel()}...", function () use ($kubectl, $ref, $tenant, &$ok): void {
             Process::run("{$kubectl} delete externalsecret {$ref['secret']}-db -n {$ref['namespace']} --ignore-not-found");
             Process::run("{$kubectl} delete vaultdynamicsecret.generators.external-secrets.io {$ref['secret']}-db -n {$ref['namespace']} --ignore-not-found");
             $ok = $this->deleteStaticRole($kubectl, $tenant);

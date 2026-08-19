@@ -98,7 +98,7 @@ class DotenvPushCommand extends Command
     protected function pushToOpenBao(string $kubectl, string $namespace, string $env, string $app, array $toPush): int
     {
         $ok = true;
-        $this->withSpin('Pushing '.count($toPush)." secret key(s) to OpenBao ({$app}/{$env})...", function () use (&$ok, $kubectl, $env, $app, $toPush) {
+        $this->withSpin('Pushing '.count($toPush)." secret key(s) to OpenBao ({$app}/{$env})...", function () use (&$ok, $kubectl, $env, $app, $toPush): void {
             foreach ($toPush as $key => $value) {
                 if (! $this->pushClusterSecret($kubectl, "{$app}/{$key}", $value, $env)) {
                     $ok = false;
@@ -112,7 +112,7 @@ class DotenvPushCommand extends Command
             return 1;
         }
 
-        $this->withSpin("Syncing 'laravel-secrets' in '{$namespace}' from OpenBao...", function () use (&$ok, $kubectl, $namespace, $env, $app) {
+        $this->withSpin("Syncing 'laravel-secrets' in '{$namespace}' from OpenBao...", function () use (&$ok, $kubectl, $namespace, $env, $app): void {
             $ok = $this->syncClusterSecretToNamespace($kubectl, $namespace, 'laravel-secrets', $env, prefix: $app);
         });
 

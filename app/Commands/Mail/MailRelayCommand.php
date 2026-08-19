@@ -112,7 +112,7 @@ class MailRelayCommand extends Command
             required: true,
         ));
 
-        $this->withSpin('Caching relay credentials...', function () use ($kubectl, $ns, $provider, $username, $apiKey, $region) {
+        $this->withSpin('Caching relay credentials...', function () use ($kubectl, $ns, $provider, $username, $apiKey, $region): void {
             Process::run(
                 "{$kubectl} create secret generic mail-relay -n {$ns} "
                 .'--from-literal=provider='.escapeshellarg($provider->value).' '
@@ -127,7 +127,7 @@ class MailRelayCommand extends Command
         $port = $this->option('port') !== null ? (int) $this->option('port') : $provider->defaultPort();
 
         $routeId = null;
-        $this->withSpin("Wiring the {$provider->label()} relay into Stalwart...", function () use (&$routeId, $kubectl, $ns, $provider, $relayHost, $port, $username, $apiKey) {
+        $this->withSpin("Wiring the {$provider->label()} relay into Stalwart...", function () use (&$routeId, $kubectl, $ns, $provider, $relayHost, $port, $username, $apiKey): void {
             $routeId = $this->stalwartUpsertRelayRoute(
                 $kubectl,
                 $ns,
@@ -147,7 +147,7 @@ class MailRelayCommand extends Command
         }
 
         $wired = false;
-        $this->withSpin('Pointing outbound delivery at the relay...', function () use (&$wired, $kubectl, $ns, $provider) {
+        $this->withSpin('Pointing outbound delivery at the relay...', function () use (&$wired, $kubectl, $ns, $provider): void {
             $wired = $this->stalwartSetOutboundRoute($kubectl, $ns, $provider->value);
         });
 
@@ -163,7 +163,7 @@ class MailRelayCommand extends Command
         // discarded, so a failed prune was invisible right up until mail
         // started bouncing.
         $pruned = null;
-        $this->withSpin('Enforcing RSA-only DKIM signing...', function () use (&$pruned, $kubectl, $ns) {
+        $this->withSpin('Enforcing RSA-only DKIM signing...', function () use (&$pruned, $kubectl, $ns): void {
             $pruned = $this->stalwartEnforceSingleRsaDkimSignature($kubectl, $ns);
         });
 

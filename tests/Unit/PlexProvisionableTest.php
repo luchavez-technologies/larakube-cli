@@ -22,7 +22,7 @@ function plexCatalog(): object
     };
 }
 
-test('a Commons service name is just the driver value (no remapping)', function () {
+test('a Commons service name is just the driver value (no remapping)', function (): void {
     expect(DatabaseDriver::POSTGRESQL->commonsServiceName())->toBe('postgres')
         ->and(CacheDriver::REDIS->commonsServiceName())->toBe('redis')
         ->and(SearchDriver::MEILISEARCH->commonsServiceName())->toBe('meilisearch')   // the enum value, not a shortened 'meili'
@@ -30,13 +30,13 @@ test('a Commons service name is just the driver value (no remapping)', function 
         ->and(StorageDriver::MINIO->commonsServiceName())->toBe('minio');            // distinct from seaweedfs → can coexist
 });
 
-test('non-shareable drivers have no Commons service', function () {
+test('non-shareable drivers have no Commons service', function (): void {
     expect(DatabaseDriver::SQLITE->commonsServiceName())->toBeNull()   // local file
         ->and(CacheDriver::DATABASE->commonsServiceName())->toBeNull() // runs in the app's own DB
         ->and(SearchDriver::DATABASE->commonsServiceName())->toBeNull();
 });
 
-test('plex-readiness reflects what is actually wired today', function () {
+test('plex-readiness reflects what is actually wired today', function (): void {
     expect(DatabaseDriver::POSTGRESQL->isPlexReady())->toBeTrue()
         ->and(DatabaseDriver::MYSQL->isPlexReady())->toBeTrue()         // wired Commons db backend
         ->and(DatabaseDriver::MARIADB->isPlexReady())->toBeTrue()       // wired Commons db backend
@@ -49,7 +49,7 @@ test('plex-readiness reflects what is actually wired today', function () {
         ->and(StorageDriver::GARAGE->isPlexReady())->toBeTrue();     // wired: shared "commons-admin" key, not a root credential
 });
 
-test('the catalog lists every shareable service, including coexisting S3 backends', function () {
+test('the catalog lists every shareable service, including coexisting S3 backends', function (): void {
     $catalog = plexCatalog()->commonsServiceCatalog();
 
     // ready (wired today) services — both db engines + all three S3 backends
@@ -74,7 +74,7 @@ test('the catalog lists every shareable service, including coexisting S3 backend
         ->and($catalog)->not->toHaveKey('database');
 });
 
-test('projectCommonsServices returns only the project\'s plex-ready services', function () {
+test('projectCommonsServices returns only the project\'s plex-ready services', function (): void {
     $config = new ConfigData(
         name: 'app-four',
         database: DatabaseDriver::POSTGRESQL,    // ready → included

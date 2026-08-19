@@ -5,19 +5,20 @@ use App\Enums\DatabaseDriver;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 
-    $this->tempDir = sys_get_temp_dir().'/larakube-dotenv-push-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    Process::run('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
 function savePushTestConfig(string $dir, array $envOverrides = []): void
@@ -48,13 +49,13 @@ function writePushEnvFile(string $dir, array $lines): void
     file_put_contents($dir.'/.env.production', $body);
 }
 
-test('dotenv:push must be run inside a project', function () {
+test('dotenv:push must be run inside a project', function (): void {
     $this->artisan('dotenv:push')
         ->assertExitCode(1)
         ->expectsOutputToContain('inside a LaraKube project');
 });
 
-test('dotenv:push errors when .env.<environment> does not exist', function () {
+test('dotenv:push errors when .env.<environment> does not exist', function (): void {
     savePushTestConfig($this->tempDir);
 
     $this->artisan('dotenv:push', ['environment' => 'production'])
@@ -62,7 +63,7 @@ test('dotenv:push errors when .env.<environment> does not exist', function () {
         ->expectsOutputToContain('nothing to push');
 });
 
-test('dotenv:push warns and skips a Plex/OpenBao-managed key', function () {
+test('dotenv:push warns and skips a Plex/OpenBao-managed key', function (): void {
     savePushTestConfig($this->tempDir, ['plex' => ['postgres']]);
     writePushEnvFile($this->tempDir, ['DB_PASSWORD' => 'should-not-be-pushed', 'APP_KEY' => 'base64:abc']);
 
@@ -78,7 +79,7 @@ test('dotenv:push warns and skips a Plex/OpenBao-managed key', function () {
         ->expectsOutputToContain('DB_PASSWORD — managed by Plex/OpenBao, excluded from push');
 });
 
-test('dotenv:push writes directly to the cluster Secret when OpenBao is absent', function () {
+test('dotenv:push writes directly to the cluster Secret when OpenBao is absent', function (): void {
     savePushTestConfig($this->tempDir);
     writePushEnvFile($this->tempDir, ['APP_KEY' => 'base64:abc', 'DB_PASSWORD' => 'super-secret']);
 
@@ -99,7 +100,7 @@ test('dotenv:push writes directly to the cluster Secret when OpenBao is absent',
         && str_contains($process->command, 'DB_PASSWORD=super-secret'));
 });
 
-test('dotenv:push writes each secret key into OpenBao, scoped by app, when OpenBao is present', function () {
+test('dotenv:push writes each secret key into OpenBao, scoped by app, when OpenBao is present', function (): void {
     savePushTestConfig($this->tempDir);
     writePushEnvFile($this->tempDir, ['APP_KEY' => 'base64:abc']);
 

@@ -21,6 +21,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class RecordInitCommand extends Command
 {
@@ -119,7 +120,7 @@ class RecordInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $jwtSecret, $clusterEnv) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $jwtSecret, $clusterEnv): void {
             $cmd = "{$kubectl} create secret generic record-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=jwt-secret='.escapeshellarg($jwtSecret).' '
@@ -175,14 +176,15 @@ class RecordInitCommand extends Command
             'allowRegistration' => (bool) $this->option('allow-registration'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-record-sendrec.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-record-sendrec.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Sendrec manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'record-sendrec', 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

@@ -27,7 +27,7 @@ function penpotFlagsReconciler(): object
     };
 }
 
-test('applyDesignPenpotFlags patches the Secret and rolls out a restart when the value changes — never a literal set env', function () {
+test('applyDesignPenpotFlags patches the Secret and rolls out a restart when the value changes — never a literal set env', function (): void {
     Process::fake([
         '*get secret design-oidc*' => Process::result(
             output: base64_encode('enable-access-tokens'),
@@ -51,7 +51,7 @@ test('applyDesignPenpotFlags patches the Secret and rolls out a restart when the
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/design-penpot-backend'));
 });
 
-test('applyDesignPenpotFlags is a no-op restart when the value is unchanged', function () {
+test('applyDesignPenpotFlags is a no-op restart when the value is unchanged', function (): void {
     Process::fake([
         '*get secret design-oidc*' => Process::result(
             output: base64_encode('enable-access-tokens enable-login-with-oidc'),

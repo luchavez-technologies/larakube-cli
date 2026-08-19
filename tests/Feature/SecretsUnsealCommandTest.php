@@ -3,13 +3,13 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-test('secrets:unseal is registered', function () {
+test('secrets:unseal is registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('secrets:unseal');
 });
 
-test('secrets:unseal fails when OpenBao is not deployed', function () {
+test('secrets:unseal fails when OpenBao is not deployed', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -19,7 +19,7 @@ test('secrets:unseal fails when OpenBao is not deployed', function () {
         ->expectsOutputToContain('not deployed');
 });
 
-test('secrets:unseal fails when OpenBao was never initialized', function () {
+test('secrets:unseal fails when OpenBao was never initialized', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -33,7 +33,7 @@ test('secrets:unseal fails when OpenBao was never initialized', function () {
         ->expectsOutputToContain('never been initialized');
 });
 
-test('secrets:unseal unseals a sealed OpenBao', function () {
+test('secrets:unseal unseals a sealed OpenBao', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -59,7 +59,7 @@ test('secrets:unseal unseals a sealed OpenBao', function () {
         ->expectsOutputToContain('is unsealed');
 });
 
-test('secrets:unseal is a no-op when already unsealed', function () {
+test('secrets:unseal is a no-op when already unsealed', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),

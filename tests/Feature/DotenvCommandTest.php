@@ -16,19 +16,20 @@ use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 
-    $this->tempDir = sys_get_temp_dir().'/larakube-dotenv-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    Process::run('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
 function saveDotenvConfig(string $dir): void
@@ -76,7 +77,7 @@ function fakeKubectl(string $canI, array $secret, array $config): void
     ]);
 }
 
-test('dotenv flags a drifted config value', function () {
+test('dotenv flags a drifted config value', function (): void {
     saveDotenvConfig($this->tempDir);
     writeDotenv($this->tempDir, ['APP_URL' => 'https://local.test']);
     fakeKubectl('yes', [], ['APP_URL' => 'https://prod.example']);
@@ -86,7 +87,7 @@ test('dotenv flags a drifted config value', function () {
         ->expectsOutputToContain('drift');
 });
 
-test('dotenv reports in-sync when local and cluster match', function () {
+test('dotenv reports in-sync when local and cluster match', function (): void {
     saveDotenvConfig($this->tempDir);
     writeDotenv($this->tempDir, ['APP_URL' => 'https://same.example']);
     fakeKubectl('yes', [], ['APP_URL' => 'https://same.example']);
@@ -96,7 +97,7 @@ test('dotenv reports in-sync when local and cluster match', function () {
         ->expectsOutputToContain('in sync');
 });
 
-test('dotenv masks secret values by default', function () {
+test('dotenv masks secret values by default', function (): void {
     saveDotenvConfig($this->tempDir);
     writeDotenv($this->tempDir, ['AIRTABLE_API_KEY' => 'key_live_123']);
     fakeKubectl('yes', ['AIRTABLE_API_KEY' => 'key_live_123'], []);
@@ -106,7 +107,7 @@ test('dotenv masks secret values by default', function () {
         ->doesntExpectOutputToContain('key_live_123');
 });
 
-test('dotenv --reveal prints secret values when the context may read secrets', function () {
+test('dotenv --reveal prints secret values when the context may read secrets', function (): void {
     saveDotenvConfig($this->tempDir);
     writeDotenv($this->tempDir, ['AIRTABLE_API_KEY' => 'key_live_123']);
     fakeKubectl('yes', ['AIRTABLE_API_KEY' => 'key_live_123'], []);
@@ -116,7 +117,7 @@ test('dotenv --reveal prints secret values when the context may read secrets', f
         ->expectsOutputToContain('key_live_123');
 });
 
-test('dotenv --reveal is refused when the context cannot read secrets', function () {
+test('dotenv --reveal is refused when the context cannot read secrets', function (): void {
     saveDotenvConfig($this->tempDir);
     writeDotenv($this->tempDir, ['AIRTABLE_API_KEY' => 'key_live_123']);
     fakeKubectl('no', ['AIRTABLE_API_KEY' => 'key_live_123'], []);
@@ -126,7 +127,7 @@ test('dotenv --reveal is refused when the context cannot read secrets', function
         ->doesntExpectOutputToContain('key_live_123');
 });
 
-test('dotenv still compares config values without secret access', function () {
+test('dotenv still compares config values without secret access', function (): void {
     saveDotenvConfig($this->tempDir);
     writeDotenv($this->tempDir, ['APP_URL' => 'https://prod.example', 'AIRTABLE_API_KEY' => 'key_live_123']);
     fakeKubectl('no', [], ['APP_URL' => 'https://prod.example']);
@@ -136,7 +137,7 @@ test('dotenv still compares config values without secret access', function () {
         ->expectsOutputToContain('APP_URL');
 });
 
-test('dotenv notes that secrets are hidden without access', function () {
+test('dotenv notes that secrets are hidden without access', function (): void {
     saveDotenvConfig($this->tempDir);
     writeDotenv($this->tempDir, ['AIRTABLE_API_KEY' => 'key_live_123']);
     fakeKubectl('no', [], []);
@@ -146,7 +147,7 @@ test('dotenv notes that secrets are hidden without access', function () {
         ->expectsOutputToContain('hidden');
 });
 
-test('dotenv warns when the env file is missing', function () {
+test('dotenv warns when the env file is missing', function (): void {
     saveDotenvConfig($this->tempDir);
     fakeKubectl('yes', [], []);
 
@@ -155,14 +156,14 @@ test('dotenv warns when the env file is missing', function () {
         ->expectsOutputToContain('nothing to compare');
 });
 
-test('dotenv must be run inside a project', function () {
+test('dotenv must be run inside a project', function (): void {
     // No .larakube.json in this tempDir — getProjectConfig() returns null.
     $this->artisan('dotenv')
         ->assertExitCode(1)
         ->expectsOutputToContain('inside a LaraKube project');
 });
 
-test('dotenv --strict exits 1 on real drift', function () {
+test('dotenv --strict exits 1 on real drift', function (): void {
     saveDotenvConfig($this->tempDir);
     writeDotenv($this->tempDir, ['APP_URL' => 'https://local.test']);
     fakeKubectl('yes', [], ['APP_URL' => 'https://prod.example']);
@@ -172,7 +173,7 @@ test('dotenv --strict exits 1 on real drift', function () {
         ->expectsOutputToContain('drift');
 });
 
-test('dotenv --strict exits 0 when everything is in sync', function () {
+test('dotenv --strict exits 0 when everything is in sync', function (): void {
     saveDotenvConfig($this->tempDir);
     writeDotenv($this->tempDir, ['APP_URL' => 'https://same.example']);
     fakeKubectl('yes', [], ['APP_URL' => 'https://same.example']);
@@ -181,7 +182,7 @@ test('dotenv --strict exits 0 when everything is in sync', function () {
         ->assertExitCode(0);
 });
 
-test('dotenv --strict never fails on a Plex/OpenBao-rotated key even when it differs', function () {
+test('dotenv --strict never fails on a Plex/OpenBao-rotated key even when it differs', function (): void {
     $config = ConfigData::from([
         'name' => 'dotenv-test',
         'serverVariation' => 'fpm-nginx',

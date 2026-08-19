@@ -55,7 +55,7 @@ function fakeSignInitProcess(?string $s3Host, ?string &$appliedManifest, int $ap
     });
 }
 
-test('sign:init signs Documenso\'s S3 endpoint against the Commons public host, not cluster-internal DNS', function () {
+test('sign:init signs Documenso\'s S3 endpoint against the Commons public host, not cluster-internal DNS', function (): void {
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest);
 
@@ -69,7 +69,7 @@ test('sign:init signs Documenso\'s S3 endpoint against the Commons public host, 
         ->and($appliedManifest)->not->toContain('seaweedfs.larakube-plex.svc.cluster.local');
 });
 
-test('sign:init falls back to the internal S3 endpoint when the Commons has no public host', function () {
+test('sign:init falls back to the internal S3 endpoint when the Commons has no public host', function (): void {
     $appliedManifest = null;
     fakeSignInitProcess(null, $appliedManifest);
 
@@ -82,7 +82,7 @@ test('sign:init falls back to the internal S3 endpoint when the Commons has no p
         ->and($appliedManifest)->toContain('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
 });
 
-test('sign:init declares the mail:wire/sso:wire static keys as literal values, not valueFrom', function () {
+test('sign:init declares the mail:wire/sso:wire static keys as literal values, not valueFrom', function (): void {
     // Regression guard for a real incident (2026-08-05): mail:wire/sso:wire
     // set these 4 names via `kubectl set env NAME=value` (a plain literal),
     // never through the sign-smtp/-oidc Secrets. Declaring them
@@ -110,7 +110,7 @@ test('sign:init declares the mail:wire/sso:wire static keys as literal values, n
     }
 });
 
-test('sign:init returns a failing exit code and does not claim success when kubectl apply is rejected', function () {
+test('sign:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
     // Regression guard: withSpin()'s success check is `!== false`, and the
     // old runStreaming() call returned an int exit code — never `=== false`
     // — so a rejected kubectl apply (like the valueFrom conflict above)
@@ -127,7 +127,7 @@ test('sign:init returns a failing exit code and does not claim success when kube
         ->doesntExpectOutputToContain('Documenso signature stack is live');
 });
 
-test('sign:init --vpn-only names the Traefik Middleware sign-vpn-only, never sign-vpn-only-main', function () {
+test('sign:init --vpn-only names the Traefik Middleware sign-vpn-only, never sign-vpn-only-main', function (): void {
     // Regression guard (2026-08-15): ensureVpnMiddleware()'s $instance
     // default used to be the literal string 'main', which SignTool's
     // vpnMiddlewareTarget() recognized as "no instance" and correctly

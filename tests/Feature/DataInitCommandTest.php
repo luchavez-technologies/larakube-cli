@@ -6,7 +6,7 @@ use App\Commands\Data\DataShowCommand;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 
-test('data:init, data:show, and data:remove are registered', function () {
+test('data:init, data:show, and data:remove are registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('data:init')
@@ -14,7 +14,7 @@ test('data:init, data:show, and data:remove are registered', function () {
         ->expectsOutputToContain('data:remove');
 });
 
-test('data:init deploys Directus with Postgres, Redis, and SeaweedFS S3', function () {
+test('data:init deploys Directus with Postgres, Redis, and SeaweedFS S3', function (): void {
     Process::fake([
         '*plex-commons*' => Process::result(output: '{"services":{"postgres":{"enabled":true},"redis":{"enabled":true},"seaweedfs":{"enabled":true}}}'),
         '*plex-registry*' => Process::result(output: '{"tenants":{}}'),
@@ -40,7 +40,7 @@ test('data:init deploys Directus with Postgres, Redis, and SeaweedFS S3', functi
         ->expectsOutputToContain('https://data.');
 });
 
-test('data manifest wires the Commons Redis via the generic REDIS var, not CACHE_REDIS', function () {
+test('data manifest wires the Commons Redis via the generic REDIS var, not CACHE_REDIS', function (): void {
     // Regression guard for a real incident (2026-08-05): Directus 12's cache/
     // system-cache/deployment-cache/lock-cache namespaces all read a single
     // generic REDIS var (see @directus/api/dist/cache.js) — CACHE_REDIS is
@@ -70,7 +70,7 @@ test('data manifest wires the Commons Redis via the generic REDIS var, not CACHE
     expect($m[1] ?? null)->toBe('redis://redis.larakube-plex.svc.cluster.local:6379/4');
 });
 
-test('data:init returns a failing exit code and does not claim success when kubectl apply is rejected', function () {
+test('data:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
     // Regression guard: withSpin()'s success check is `!== false`, and the
     // old runStreaming() call returned an int exit code — never `=== false`
     // — so a rejected kubectl apply still printed a green check and "Directus
@@ -100,7 +100,7 @@ test('data:init returns a failing exit code and does not claim success when kube
         ->doesntExpectOutputToContain('Directus Headless CMS stack is live');
 });
 
-test('data manifest declares the mail:wire/sso:wire static keys as literals, not valueFrom', function () {
+test('data manifest declares the mail:wire/sso:wire static keys as literals, not valueFrom', function (): void {
     // Regression guard: mail:wire/sso:wire set these 6 keys via plain
     // literals (kubectl set env NAME=value), never through the data-smtp/
     // data-oidc Secrets. Declaring them here as valueFrom made a later
@@ -167,7 +167,7 @@ function fakeDataInitProcess(bool $ssoWired, ?string &$appliedManifest): void
     });
 }
 
-test('data:init omits zitadel from AUTH_PROVIDERS until sso:wire has actually registered it', function () {
+test('data:init omits zitadel from AUTH_PROVIDERS until sso:wire has actually registered it', function (): void {
     // Regression guard for a real incident (2026-08-05): Directus eagerly
     // constructs an OpenIDAuthDriver for every provider named in
     // AUTH_PROVIDERS. Listing "zitadel" unconditionally — before sso:wire
@@ -188,7 +188,7 @@ test('data:init omits zitadel from AUTH_PROVIDERS until sso:wire has actually re
     expect($m[1] ?? null)->toBe('local');
 });
 
-test('data:init includes zitadel in AUTH_PROVIDERS once sso:wire has registered it', function () {
+test('data:init includes zitadel in AUTH_PROVIDERS once sso:wire has registered it', function (): void {
     $appliedManifest = null;
     fakeDataInitProcess(ssoWired: true, appliedManifest: $appliedManifest);
 
@@ -203,7 +203,7 @@ test('data:init includes zitadel in AUTH_PROVIDERS once sso:wire has registered 
     expect($m[1] ?? null)->toBe('local,zitadel');
 });
 
-test('data:show displays status table for Directus', function () {
+test('data:show displays status table for Directus', function (): void {
     Process::fake([
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
     ]);
@@ -214,7 +214,7 @@ test('data:show displays status table for Directus', function () {
         ->assertExitCode(0);
 });
 
-test('data:show displays which engine the instance runs, read from the registry', function () {
+test('data:show displays which engine the instance runs, read from the registry', function (): void {
     $registry = json_encode([
         ['tool' => 'data', 'instance' => 'main', 'host' => 'data.example.test', 'aliases' => [], 'engine' => 'directus'],
     ]);
@@ -236,7 +236,7 @@ test('data:show displays which engine the instance runs, read from the registry'
         ->and($output)->toContain('Directus');
 });
 
-test('data:show --domain=all lists every registered instance', function () {
+test('data:show --domain=all lists every registered instance', function (): void {
     $registry = json_encode([
         ['tool' => 'data', 'instance' => 'main', 'host' => 'data.example.test', 'aliases' => []],
         ['tool' => 'data', 'instance' => 'blog', 'host' => 'data-blog.example.test', 'aliases' => []],
@@ -252,7 +252,7 @@ test('data:show --domain=all lists every registered instance', function () {
         ->expectsOutputToContain('data-blog.example.test');
 });
 
-test('data:show --domain=all on a single-instance tool behaves like the default instance', function () {
+test('data:show --domain=all on a single-instance tool behaves like the default instance', function (): void {
     // SSO can never have a second instance — --domain=all must not try to
     // enumerate a registry that was never meant to hold more than one entry.
     Process::fake([
@@ -263,7 +263,7 @@ test('data:show --domain=all on a single-instance tool behaves like the default 
     $this->artisan('sso:show local --domain=all')->assertExitCode(0);
 });
 
-test('data:remove tears down Directus stack', function () {
+test('data:remove tears down Directus stack', function (): void {
     Process::fake([
         '*data-secrets*' => Process::result(output: 'data-secrets'),
         '*plex-registry*' => Process::result(output: '{"tenants":{}}'),
@@ -279,7 +279,7 @@ test('data:remove tears down Directus stack', function () {
         ->assertExitCode(0);
 });
 
-test('data:init switching engine on the same instance tears down the other engine first', function () {
+test('data:init switching engine on the same instance tears down the other engine first', function (): void {
     // A "data" instance runs one engine's Deployment at a time — running
     // --engine=pocketbase against an instance that already has Directus
     // deployed is a swap, not coexistence. --force bypasses the confirm
@@ -309,7 +309,7 @@ test('data:init switching engine on the same instance tears down the other engin
         && str_contains($process->command, 'ingress/data-directus'));
 });
 
-test('data:init does not touch a different instance\'s resources when switching engine', function () {
+test('data:init does not touch a different instance\'s resources when switching engine', function (): void {
     // The swap teardown is scoped to $otherDeployName only. Main runs
     // Directus (data-directus exists); deploying a SEPARATE instance (via
     // --domain=blog.example.com, whose full-host-derived slug is

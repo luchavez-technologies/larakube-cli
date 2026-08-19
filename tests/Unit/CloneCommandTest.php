@@ -2,10 +2,11 @@
 
 use App\Commands\CloneCommand;
 use App\Traits\ClonesRepositories;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 // ── URL resolution ────────────────────────────────────────────────────────────
 
-test('resolveRepoUrl passes full HTTPS URLs through unchanged', function () {
+test('resolveRepoUrl passes full HTTPS URLs through unchanged', function (): void {
     $trait = new class
     {
         use ClonesRepositories;
@@ -20,7 +21,7 @@ test('resolveRepoUrl passes full HTTPS URLs through unchanged', function () {
         ->toBe('https://github.com/laravel/laravel.git');
 });
 
-test('resolveRepoUrl passes full SSH URLs through unchanged', function () {
+test('resolveRepoUrl passes full SSH URLs through unchanged', function (): void {
     $trait = new class
     {
         use ClonesRepositories;
@@ -35,7 +36,7 @@ test('resolveRepoUrl passes full SSH URLs through unchanged', function () {
         ->toBe('git@github.com:laravel/laravel.git');
 });
 
-test('resolveRepoUrl expands user/repo shorthand to GitHub HTTPS', function () {
+test('resolveRepoUrl expands user/repo shorthand to GitHub HTTPS', function (): void {
     $trait = new class
     {
         use ClonesRepositories;
@@ -52,7 +53,7 @@ test('resolveRepoUrl expands user/repo shorthand to GitHub HTTPS', function () {
 
 // ── Directory name derivation ─────────────────────────────────────────────────
 
-test('deriveDirectoryName strips .git suffix', function () {
+test('deriveDirectoryName strips .git suffix', function (): void {
     $trait = new class
     {
         use ClonesRepositories;
@@ -70,9 +71,9 @@ test('deriveDirectoryName strips .git suffix', function () {
 
 // ── .env bootstrapping ────────────────────────────────────────────────────────
 
-test('bootstrapDotEnv throws when .env.example is missing', function () {
-    $dir = sys_get_temp_dir().'/larakube-clone-test-'.uniqid();
-    mkdir($dir);
+test('bootstrapDotEnv throws when .env.example is missing', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
 
     $trait = new class
     {
@@ -86,12 +87,12 @@ test('bootstrapDotEnv throws when .env.example is missing', function () {
 
     expect(fn () => $trait->bootstrap($dir))->toThrow(RuntimeException::class);
 
-    rmdir($dir);
+    $temporaryDirectory->delete();
 });
 
-test('bootstrapDotEnv copies .env.example to .env', function () {
-    $dir = sys_get_temp_dir().'/larakube-clone-test-'.uniqid();
-    mkdir($dir);
+test('bootstrapDotEnv copies .env.example to .env', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/.env.example', "APP_NAME=Laravel\nAPP_KEY=\n");
 
     $trait = new class
@@ -109,14 +110,12 @@ test('bootstrapDotEnv copies .env.example to .env', function () {
     expect($result)->toBe('copied')
         ->and(file_exists($dir.'/.env'))->toBeTrue();
 
-    unlink($dir.'/.env.example');
-    unlink($dir.'/.env');
-    rmdir($dir);
+    $temporaryDirectory->delete();
 });
 
-test('bootstrapDotEnv returns exists when .env already present', function () {
-    $dir = sys_get_temp_dir().'/larakube-clone-test-'.uniqid();
-    mkdir($dir);
+test('bootstrapDotEnv returns exists when .env already present', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/.env.example', "APP_NAME=Laravel\n");
     file_put_contents($dir.'/.env', "APP_NAME=Existing\n");
 
@@ -135,16 +134,14 @@ test('bootstrapDotEnv returns exists when .env already present', function () {
     expect($result)->toBe('exists')
         ->and(file_get_contents($dir.'/.env'))->toBe("APP_NAME=Existing\n");
 
-    unlink($dir.'/.env.example');
-    unlink($dir.'/.env');
-    rmdir($dir);
+    $temporaryDirectory->delete();
 });
 
 // ── .env patching ─────────────────────────────────────────────────────────────
 
-test('patchDotEnv replaces existing keys and appends new ones', function () {
-    $dir = sys_get_temp_dir().'/larakube-clone-test-'.uniqid();
-    mkdir($dir);
+test('patchDotEnv replaces existing keys and appends new ones', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/.env', "APP_URL=http://localhost\nAPP_KEY=base64:abc\n");
 
     $trait = new class
@@ -169,13 +166,12 @@ test('patchDotEnv replaces existing keys and appends new ones', function () {
         ->toContain('APP_KEY=base64:abc')
         ->not->toContain('APP_URL=http://localhost');
 
-    unlink($dir.'/.env');
-    rmdir($dir);
+    $temporaryDirectory->delete();
 });
 
 // ── Command structure ─────────────────────────────────────────────────────────
 
-test('clone command has repo argument and expected options', function () {
+test('clone command has repo argument and expected options', function (): void {
     $cmd = new CloneCommand;
     $def = $cmd->getDefinition();
 
@@ -188,7 +184,7 @@ test('clone command has repo argument and expected options', function () {
 
 // ── Provider flag (Phase 2) ───────────────────────────────────────────────────
 
-test('resolveRepoUrl expands user/repo to GitLab HTTPS when provider is gitlab', function () {
+test('resolveRepoUrl expands user/repo to GitLab HTTPS when provider is gitlab', function (): void {
     $trait = new class
     {
         use ClonesRepositories;
@@ -203,7 +199,7 @@ test('resolveRepoUrl expands user/repo to GitLab HTTPS when provider is gitlab',
         ->toBe('https://gitlab.com/myorg/myapp.git');
 });
 
-test('resolveRepoUrl expands user/repo to Bitbucket HTTPS when provider is bitbucket', function () {
+test('resolveRepoUrl expands user/repo to Bitbucket HTTPS when provider is bitbucket', function (): void {
     $trait = new class
     {
         use ClonesRepositories;
@@ -218,7 +214,7 @@ test('resolveRepoUrl expands user/repo to Bitbucket HTTPS when provider is bitbu
         ->toBe('https://bitbucket.org/myorg/myapp.git');
 });
 
-test('resolveRepoUrl ignores provider for full URLs', function () {
+test('resolveRepoUrl ignores provider for full URLs', function (): void {
     $trait = new class
     {
         use ClonesRepositories;

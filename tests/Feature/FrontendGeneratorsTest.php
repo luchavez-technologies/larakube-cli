@@ -7,8 +7,9 @@ use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Traits\GeneratesProjectInfrastructure;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('vite:new, astro:new, docs:new, and data:wire commands are registered', function () {
+test('vite:new, astro:new, docs:new, and data:wire commands are registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('vite:new')
@@ -17,32 +18,32 @@ test('vite:new, astro:new, docs:new, and data:wire commands are registered', fun
         ->expectsOutputToContain('data:wire');
 });
 
-test('vite:new command has template and ts options', function () {
+test('vite:new command has template and ts options', function (): void {
     $command = app(ViteNewCommand::class);
     $definition = $command->getDefinition();
 
-    expect($definition->hasOption('template'))->toBeTrue();
-    expect($definition->hasOption('ts'))->toBeTrue();
+    expect($definition->hasOption('template'))->toBeTrue()
+        ->and($definition->hasOption('ts'))->toBeTrue();
 });
 
-test('astro:new command has template option', function () {
+test('astro:new command has template option', function (): void {
     $command = app(AstroNewCommand::class);
     $definition = $command->getDefinition();
 
     expect($definition->hasOption('template'))->toBeTrue();
 });
 
-test('docs:new command has template and typescript options', function () {
+test('docs:new command has template and typescript options', function (): void {
     $command = app(DocsNewCommand::class);
     $definition = $command->getDefinition();
 
-    expect($definition->hasOption('template'))->toBeTrue();
-    expect($definition->hasOption('typescript'))->toBeTrue();
+    expect($definition->hasOption('template'))->toBeTrue()
+        ->and($definition->hasOption('typescript'))->toBeTrue();
 });
 
-test('vite:new scaffolds project and generates .larakube.json blueprint', function () {
-    $tempDir = sys_get_temp_dir().'/test-vite-scaffold-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('vite:new scaffolds project and generates .larakube.json blueprint', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     $oldCwd = getcwd();
 
     try {
@@ -65,13 +66,13 @@ test('vite:new scaffolds project and generates .larakube.json blueprint', functi
         expect($config->framework->value)->toBe('vite');
     } finally {
         chdir($oldCwd);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('astro:new scaffolds project and generates .larakube.json blueprint', function () {
-    $tempDir = sys_get_temp_dir().'/test-astro-scaffold-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('astro:new scaffolds project and generates .larakube.json blueprint', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     $oldCwd = getcwd();
 
     try {
@@ -94,13 +95,13 @@ test('astro:new scaffolds project and generates .larakube.json blueprint', funct
         expect($config->framework->value)->toBe('astro');
     } finally {
         chdir($oldCwd);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('docs:new scaffolds project and generates .larakube.json blueprint', function () {
-    $tempDir = sys_get_temp_dir().'/test-docs-scaffold-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('docs:new scaffolds project and generates .larakube.json blueprint', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     $oldCwd = getcwd();
 
     try {
@@ -123,13 +124,13 @@ test('docs:new scaffolds project and generates .larakube.json blueprint', functi
         expect($config->framework->value)->toBe('docusaurus');
     } finally {
         chdir($oldCwd);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('generateK8sManifests renders spa-s3-ingress for SPA frameworks', function () {
-    $tempDir = sys_get_temp_dir().'/test-spa-ingress-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('generateK8sManifests renders spa-s3-ingress for SPA frameworks', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     $config = new ConfigData(
         id: 'spa-test',
@@ -157,5 +158,5 @@ test('generateK8sManifests renders spa-s3-ingress for SPA frameworks', function 
     expect($content)->toContain('spa-test-spa-ingress')
         ->and($content)->toContain('seaweedfs-s3');
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 });

@@ -21,6 +21,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class TasksInitCommand extends Command
 {
@@ -82,7 +83,7 @@ class TasksInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey): void {
             $cmd = "{$kubectl} create secret generic tasks-planka-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=secret-key='.escapeshellarg($secretKey).' '
@@ -99,14 +100,15 @@ class TasksInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-tasks-planka.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-tasks-planka.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Planka tasks manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'tasks-planka', 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

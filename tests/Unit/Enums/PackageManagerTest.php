@@ -2,31 +2,31 @@
 
 use App\Enums\PackageManager;
 
-test('package manager has correct labels', function () {
+test('package manager has correct labels', function (): void {
     expect(PackageManager::NPM->getLabel())->toBe('NPM')
         ->and(PackageManager::PNPM->getLabel())->toBe('PNPM')
         ->and(PackageManager::BUN->getLabel())->toBe('Bun')
         ->and(PackageManager::YARN->getLabel())->toBe('Yarn');
 });
 
-test('package manager install commands', function () {
+test('package manager install commands', function (): void {
     expect(PackageManager::NPM->installCommand())->toBe('npm install')
         ->and(PackageManager::PNPM->installCommand())->toBe('pnpm install')
         ->and(PackageManager::BUN->installCommand())->toBe('bun install')
         ->and(PackageManager::YARN->installCommand())->toBe('yarn install');
 });
 
-test('package manager build commands', function () {
+test('package manager build commands', function (): void {
     expect(PackageManager::NPM->buildCommand())->toBe('npm run build')
         ->and(PackageManager::YARN->buildCommand())->toBe('yarn build');
 });
 
-test('package manager dev commands', function () {
+test('package manager dev commands', function (): void {
     expect(PackageManager::NPM->devCommand())->toBe('npm run dev --')
         ->and(PackageManager::PNPM->devCommand())->toBe('pnpm dev');
 });
 
-test('package manager select options are valid', function () {
+test('package manager select options are valid', function (): void {
     $options = PackageManager::getSelectOptions();
     expect($options)->toBeArray()
         ->and($options)->toHaveKey('npm', 'NPM');

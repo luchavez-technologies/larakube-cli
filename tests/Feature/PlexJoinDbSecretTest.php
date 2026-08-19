@@ -4,18 +4,9 @@ use App\Commands\Plex\PlexJoinCommand;
 use App\Data\ConfigData;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
-
-function cleanupTestDir(string $dir): void
-{
-    foreach (array_merge(glob($dir.'/*') ?: [], glob($dir.'/.*') ?: []) as $file) {
-        if (is_file($file)) {
-            unlink($file);
-        }
-    }
-    rmdir($dir);
-}
 
 function plexJoinCommand(): object
 {
@@ -55,7 +46,7 @@ function plexJoinCommand(): object
     return $command;
 }
 
-test('wireTenantDbSecret applies the manifest, waits for a fresh sync, and restarts an already-running app', function () {
+test('wireTenantDbSecret applies the manifest, waits for a fresh sync, and restarts an already-running app', function (): void {
     Process::fake([
         '*apply -f *' => Process::result(output: 'applied'),
         '*get deployment web*' => Process::result(output: 'web'),
@@ -86,7 +77,7 @@ test('wireTenantDbSecret applies the manifest, waits for a fresh sync, and resta
         && str_contains($process->command, 'force-sync='));
 });
 
-test('wireTenantDbSecret does not restart when the app has never been deployed', function () {
+test('wireTenantDbSecret does not restart when the app has never been deployed', function (): void {
     Process::fake([
         '*apply -f *' => Process::result(output: 'applied'),
         '*get deployment web*' => Process::result(output: '', exitCode: 1),
@@ -104,7 +95,7 @@ test('wireTenantDbSecret does not restart when the app has never been deployed',
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart'));
 });
 
-test('wireTenantDbSecret returns false and never restarts when the manifest apply fails', function () {
+test('wireTenantDbSecret returns false and never restarts when the manifest apply fails', function (): void {
     Process::fake([
         '*apply -f *' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(),
@@ -115,7 +106,7 @@ test('wireTenantDbSecret returns false and never restarts when the manifest appl
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart'));
 });
 
-test('wireTenantDbSecret returns false and never restarts when the sync never goes fresh', function () {
+test('wireTenantDbSecret returns false and never restarts when the sync never goes fresh', function (): void {
     Process::fake([
         '*apply -f *' => Process::result(output: 'applied'),
         // Stuck: refreshTime never moves past "before".
@@ -130,7 +121,7 @@ test('wireTenantDbSecret returns false and never restarts when the sync never go
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart'));
 })->skip('exercises the full 30s default timeout — covered fast by SecretsWireCommandTest\'s isolated waitForExternalSecretSynced test instead, since the logic is now shared via the trait');
 
-test('handle() wires registerStaticRole and wireTenantDbSecret to the SAME OpenBao role name', function () {
+test('handle() wires registerStaticRole and wireTenantDbSecret to the SAME OpenBao role name', function (): void {
     // Regression guard for the real bug found live 2026-08-01: handle() called
     // registerStaticRole($kubectl, 'tenant-'.$tenant, ...) to CREATE the OpenBao
     // static role, but wireTenantDbSecret($kubectl, $targetNs, $tenant) — the
@@ -186,17 +177,15 @@ test('handle() wires registerStaticRole and wireTenantDbSecret to the SAME OpenB
 
     $command = plexJoinCommand();
 
-    expect($command->callRegisterStaticRole('kubectl', $roleName, 'plex-postgres', $tenant))->toBeTrue();
-    expect($command->callWireTenantDbSecret('kubectl', 'luchtech-local', $roleName))->toBeTrue();
-
-    expect($registrationUrl)->not->toBeNull()
-        ->and($registrationUrl)->toEndWith('/database/static-roles/'.$roleName);
-
-    expect($appliedManifest)->not->toBeNull()
+    expect($command->callRegisterStaticRole('kubectl', $roleName, 'plex-postgres', $tenant))->toBeTrue()
+        ->and($command->callWireTenantDbSecret('kubectl', 'luchtech-local', $roleName))->toBeTrue()
+        ->and($registrationUrl)->not->toBeNull()
+        ->and($registrationUrl)->toEndWith('/database/static-roles/'.$roleName)
+        ->and($appliedManifest)->not->toBeNull()
         ->and($appliedManifest)->toContain('database/static-creds/'.$roleName);
 });
 
-test('handle() passes registerStaticRole\'s $roleName, not the bare $tenant, to wireTenantDbSecret', function () {
+test('handle() passes registerStaticRole\'s $roleName, not the bare $tenant, to wireTenantDbSecret', function (): void {
     // The actual regression guard: registerStaticRole() registers under
     // 'tenant-'.$tenant ($roleName), so wireTenantDbSecret() — which reads
     // that same role back — must be called with $roleName too, not $tenant.
@@ -212,7 +201,7 @@ test('handle() passes registerStaticRole\'s $roleName, not the bare $tenant, to 
         ->and($src)->not->toContain('wireTenantDbSecret($kubectl, $targetNs, $tenant)');
 });
 
-test('plex:join has no --rotate flag and never force-rotates a credential', function () {
+test('plex:join has no --rotate flag and never force-rotates a credential', function (): void {
     // plex:join used to have a --rotate flag that both (a) let you re-run the
     // join to add a service to an already-joined tenant, and (b) forced a
     // credential reset as a side effect — a flag on a JOIN command for
@@ -230,9 +219,9 @@ test('plex:join has no --rotate flag and never force-rotates a credential', func
         ->and($src)->toContain('wireTenantDbSecret($kubectl, $targetNs, $roleName)');
 });
 
-test('writeTenantConfig omits DB_PASSWORD from the env file when OpenBao already owns it', function () {
-    $dir = sys_get_temp_dir().'/larakube-plexjoin-test-'.uniqid();
-    mkdir($dir);
+test('writeTenantConfig omits DB_PASSWORD from the env file when OpenBao already owns it', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
 
     try {
         $config = ConfigData::from(['name' => 'demo']);
@@ -243,22 +232,21 @@ test('writeTenantConfig omits DB_PASSWORD from the env file when OpenBao already
         );
 
         $written = file_get_contents($dir.'/.env.production');
-        expect($written)->not->toContain('super-secret-pw');
-        expect($written)->not->toContain('DB_PASSWORD=');
-        expect($written)->toContain('DB_HOST=');
+        expect($written)->not->toContain('super-secret-pw')->not->toContain('DB_PASSWORD=')
+            ->toContain('DB_HOST=');
     } finally {
-        cleanupTestDir($dir);
+        $temporaryDirectory->delete();
     }
 });
 
-test('writeTenantConfig strips a PRE-EXISTING stale DB_PASSWORD line, not just skips writing a new one', function () {
+test('writeTenantConfig strips a PRE-EXISTING stale DB_PASSWORD line, not just skips writing a new one', function (): void {
     // Regression guard: a tenant that joined BEFORE it was OpenBao-managed
     // already has DB_PASSWORD=<old value> sitting in .env. Omitting the key
     // from what's written left that stale line untouched forever — plex:show
     // then displayed a password that didn't match the real (OpenBao-rotated)
     // one. Caught live 2026-08-02 via a user screenshot.
-    $dir = sys_get_temp_dir().'/larakube-plexjoin-test-'.uniqid();
-    mkdir($dir);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
 
     try {
         $config = ConfigData::from(['name' => 'demo']);
@@ -274,13 +262,13 @@ test('writeTenantConfig strips a PRE-EXISTING stale DB_PASSWORD line, not just s
             ->and($written)->not->toContain('DB_PASSWORD=')
             ->and($written)->toContain('APP_NAME=Demo');
     } finally {
-        cleanupTestDir($dir);
+        $temporaryDirectory->delete();
     }
 });
 
-test('writeTenantConfig writes DB_PASSWORD normally when OpenBao is not involved', function () {
-    $dir = sys_get_temp_dir().'/larakube-plexjoin-test-'.uniqid();
-    mkdir($dir);
+test('writeTenantConfig writes DB_PASSWORD normally when OpenBao is not involved', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
 
     try {
         $config = ConfigData::from(['name' => 'demo']);
@@ -293,6 +281,6 @@ test('writeTenantConfig writes DB_PASSWORD normally when OpenBao is not involved
         $written = file_get_contents($dir.'/.env.production');
         expect($written)->toContain('DB_PASSWORD=super-secret-pw');
     } finally {
-        cleanupTestDir($dir);
+        $temporaryDirectory->delete();
     }
 });

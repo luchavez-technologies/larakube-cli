@@ -20,6 +20,7 @@ use App\Traits\StreamsProcessOutput;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class DashboardInitCommand extends Command
 {
@@ -76,14 +77,15 @@ class DashboardInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-dashboard-headlamp.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-dashboard-headlamp.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Headlamp Control Plane manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'dashboard-headlamp', 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

@@ -11,7 +11,7 @@ function bundleAssembler(): object
     };
 }
 
-test('bundleImages derives the app image + every declared dependency, enum-driven', function () {
+test('bundleImages derives the app image + every declared dependency, enum-driven', function (): void {
     $config = ConfigData::from([
         'name' => 'shop',
         'database' => 'postgres',
@@ -28,13 +28,13 @@ test('bundleImages derives the app image + every declared dependency, enum-drive
         ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'minio')))->toBeTrue();
 });
 
-test('a SQLite + database-cache project adds only the system image (no DB/cache service)', function () {
+test('a SQLite + database-cache project adds only the system image (no DB/cache service)', function (): void {
     $config = ConfigData::from(['name' => 'tiny', 'database' => 'sqlite', 'cacheDriver' => 'database']);
 
     expect(bundleAssembler()->bundleImages($config)['dependencies'])->toBe(['traefik:v3.1']);
 });
 
-test('imageTarName produces filesystem-safe tarball names', function () {
+test('imageTarName produces filesystem-safe tarball names', function (): void {
     $r = bundleAssembler();
 
     expect($r->imageTarName('redis:7.4'))->toBe('redis-7.4.tar')
@@ -42,7 +42,7 @@ test('imageTarName produces filesystem-safe tarball names', function () {
         ->and($r->imageTarName('minio/minio:RELEASE.2025-09-07T16-13-09Z'))->toBe('minio-minio-RELEASE.2025-09-07T16-13-09Z.tar');
 });
 
-test('bundle build app image tag follows {name}:{env}-latest, not :latest', function () {
+test('bundle build app image tag follows {name}:{env}-latest, not :latest', function (): void {
     // AssemblesBundle::bundleImages() returns :latest as the base tag — Kustomize's
     // images: rewrite block in the local/production overlays rewrites it at apply time.
     // BundleBuildCommand::handle() overrides the app key to :{env}-latest before
@@ -58,7 +58,7 @@ test('bundle build app image tag follows {name}:{env}-latest, not :latest', func
         ->and($images['app'])->not->toBe('shop:latest');
 });
 
-test('bundleManifest records app, env, arch and the deduped image list', function () {
+test('bundleManifest records app, env, arch and the deduped image list', function (): void {
     $manifest = bundleAssembler()->bundleManifest(
         ConfigData::from(['name' => 'shop']), 'production', 'amd64', ['shop:latest', 'redis:7.4', 'redis:7.4'],
     );

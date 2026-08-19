@@ -33,25 +33,25 @@ function uptimeReader(): object
     };
 }
 
-test('local Uptime host uses the status subdomain on the dev TLD', function () {
+test('local Uptime host uses the status subdomain on the dev TLD', function (): void {
     expect(uptimeReader()->host('local', null))->toStartWith('status.');
 });
 
-test('cloud Uptime host returns the host persisted for that env', function () {
+test('cloud Uptime host returns the host persisted for that env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from(['hosts' => ['uptime' => 'status.example.com']]);
 
     expect(uptimeReader()->host('production', $config))->toBe('status.example.com');
 });
 
-test('cloud Uptime host is null when none is configured for the env', function () {
+test('cloud Uptime host is null when none is configured for the env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(uptimeReader()->host('production', $config))->toBeNull();
 });
 
-test('uptimeKubectl scopes to a context only when one is given', function () {
+test('uptimeKubectl scopes to a context only when one is given', function (): void {
     $reader = uptimeReader();
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
@@ -60,7 +60,7 @@ test('uptimeKubectl scopes to a context only when one is given', function () {
         ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
-test('isUptimeInstalled reflects whether the uptime-kuma Deployment exists', function () {
+test('isUptimeInstalled reflects whether the uptime-kuma Deployment exists', function (): void {
     Process::fake(['kubectl get deployment uptime-kuma -n larakube-shared --no-headers' => 'uptime-kuma   1/1   1   1   5d']);
     expect(uptimeReader()->installed('kubectl', 'larakube-shared'))->toBeTrue();
 
@@ -68,7 +68,7 @@ test('isUptimeInstalled reflects whether the uptime-kuma Deployment exists', fun
     expect(uptimeReader()->installed('kubectl', 'larakube-shared'))->toBeFalse();
 });
 
-test('uptimeAccess is null when uptime is not installed, populated when it is', function () {
+test('uptimeAccess is null when uptime is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake(["{$kubectl} get deployment uptime-kuma -n larakube-shared --no-headers" => Process::result(output: '', exitCode: 1)]);

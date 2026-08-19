@@ -50,25 +50,25 @@ function gitReader(): object
     };
 }
 
-test('local Git host uses the git subdomain on the dev TLD', function () {
+test('local Git host uses the git subdomain on the dev TLD', function (): void {
     expect(gitReader()->host('local', null))->toStartWith('git.');
 });
 
-test('cloud Git host returns the host persisted for that env', function () {
+test('cloud Git host returns the host persisted for that env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from(['hosts' => ['gitea' => 'git.example.com']]);
 
     expect(gitReader()->host('production', $config))->toBe('git.example.com');
 });
 
-test('cloud Git host is null when none is configured for the env', function () {
+test('cloud Git host is null when none is configured for the env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(gitReader()->host('production', $config))->toBeNull();
 });
 
-test('gitKubectl scopes to a context only when one is given', function () {
+test('gitKubectl scopes to a context only when one is given', function (): void {
     $reader = gitReader();
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
@@ -77,7 +77,7 @@ test('gitKubectl scopes to a context only when one is given', function () {
         ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
-test('isGitInstalled reflects whether the forgejo Deployment exists', function () {
+test('isGitInstalled reflects whether the forgejo Deployment exists', function (): void {
     Process::fake(['kubectl get deployment forgejo -n larakube-shared --no-headers' => 'forgejo   1/1   1   1   5d']);
     expect(gitReader()->installed('kubectl', 'larakube-shared'))->toBeTrue();
 
@@ -85,7 +85,7 @@ test('isGitInstalled reflects whether the forgejo Deployment exists', function (
     expect(gitReader()->installed('kubectl', 'larakube-shared'))->toBeFalse();
 });
 
-test('gitAccess is null when forgejo is not installed, populated when it is', function () {
+test('gitAccess is null when forgejo is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake(["{$kubectl} get deployment forgejo -n larakube-shared --no-headers" => Process::result(output: '', exitCode: 1)]);
@@ -100,7 +100,7 @@ test('gitAccess is null when forgejo is not installed, populated when it is', fu
         ->and($access['label'])->toBe('Forgejo');
 });
 
-test('ensureGiteaPullSecret copies credentials from shared secret to target namespace', function () {
+test('ensureGiteaPullSecret copies credentials from shared secret to target namespace', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([

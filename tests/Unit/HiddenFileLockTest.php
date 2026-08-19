@@ -1,10 +1,11 @@
 <?php
 
 use App\Data\ConfigData;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('it correctly identifies hidden files as locked', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-lock-test-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('it correctly identifies hidden files as locked', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     $config = new ConfigData(name: 'lock-test');
     $config->setPath($tempDir);
@@ -17,9 +18,9 @@ test('it correctly identifies hidden files as locked', function () {
 
     // Test with relative paths
     expect($config->isLocked('.env'))->toBeTrue();
-    expect($config->isLocked('./.env'))->toBeTrue();
-    expect($config->isLocked('Dockerfile.php'))->toBeTrue();
-    expect($config->isLocked('./Dockerfile.php'))->toBeTrue();
+    expect($config->isLocked('./.env'))->toBeTrue()
+        ->and($config->isLocked('Dockerfile.php'))->toBeTrue()
+        ->and($config->isLocked('./Dockerfile.php'))->toBeTrue();
 
     // Test with absolute paths
     expect($config->isLocked($tempDir.'/.env'))->toBeTrue();
@@ -28,5 +29,5 @@ test('it correctly identifies hidden files as locked', function () {
     // Test unlocked files
     expect($config->isLocked('config/app.php'))->toBeFalse();
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 });

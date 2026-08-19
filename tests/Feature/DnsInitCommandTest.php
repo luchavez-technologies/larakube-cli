@@ -28,13 +28,13 @@ function dnsFakes(string $clusterId = 'abc12345', array $overrides = []): array
     );
 }
 
-test('dns:init refuses the local environment', function () {
+test('dns:init refuses the local environment', function (): void {
     $this->artisan('dns:init local')
         ->expectsOutputToContain('only supported on cloud environments')
         ->assertExitCode(1);
 });
 
-test('dns:init requires a zone rather than defaulting to every zone', function () {
+test('dns:init requires a zone rather than defaulting to every zone', function (): void {
     // An unfiltered ExternalDNS under --policy=sync deletes records it does not
     // recognise, so "all zones" must never be reachable by omission.
     Process::fake(dnsFakes());
@@ -42,13 +42,13 @@ test('dns:init requires a zone rather than defaulting to every zone', function (
     $this->artisan('dns:init prod --cloudflare-token=t --no-interaction --force')->run();
 })->throws(MissingFlagException::class, 'Missing required --zone');
 
-test('dns:init requires a token it can scope to that zone', function () {
+test('dns:init requires a token it can scope to that zone', function (): void {
     Process::fake(dnsFakes());
 
     $this->artisan('dns:init prod --zone=example.com --no-interaction --force')->run();
 })->throws(MissingFlagException::class, 'Missing required --cloudflare-token');
 
-test('dns:init confines the instance to one zone and gives it a cluster-unique owner', function () {
+test('dns:init confines the instance to one zone and gives it a cluster-unique owner', function (): void {
     $applied = null;
 
     Process::fake(dnsFakes('abc12345', [
@@ -70,7 +70,7 @@ test('dns:init confines the instance to one zone and gives it a cluster-unique o
         ->and($applied)->toContain('--txt-owner-id=larakube-abc12345-example-com');
 });
 
-test('two clusters managing the same zone get different owner ids', function () {
+test('two clusters managing the same zone get different owner ids', function (): void {
     // This is the exact production symptom: identical owner ids made each
     // cluster treat the other's records as orphans and delete them.
     $owners = [];
@@ -101,7 +101,7 @@ test('two clusters managing the same zone get different owner ids', function () 
         ->and($owners[0])->not->toBe($owners[1]);
 });
 
-test('dns:init refuses to deploy when it cannot establish a cluster identity', function () {
+test('dns:init refuses to deploy when it cannot establish a cluster identity', function (): void {
     // Falling back to a shared constant owner id is the bug — better to refuse.
     Process::fake(dnsFakes('', [
         '*get configmap larakube-cluster*' => Process::result(output: '', exitCode: 1),
@@ -112,7 +112,7 @@ test('dns:init refuses to deploy when it cannot establish a cluster identity', f
         ->assertExitCode(1);
 });
 
-test('each zone gets its own token secret so zones can span Cloudflare accounts', function () {
+test('each zone gets its own token secret so zones can span Cloudflare accounts', function (): void {
     $secretCmd = null;
 
     Process::fake(dnsFakes('abc12345', [
@@ -130,7 +130,7 @@ test('each zone gets its own token secret so zones can span Cloudflare accounts'
         ->and($secretCmd)->toContain('second-account-token');
 });
 
-test('dns:remove is a no-op when the cluster manages nothing', function () {
+test('dns:remove is a no-op when the cluster manages nothing', function (): void {
     Process::fake([
         '*get deployments*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
@@ -141,7 +141,7 @@ test('dns:remove is a no-op when the cluster manages nothing', function () {
         ->assertExitCode(0);
 });
 
-test('dns:remove warns that existing DNS records survive removal', function () {
+test('dns:remove warns that existing DNS records survive removal', function (): void {
     // Removing the controller stops reconciliation; it does not delete records.
     // Assuming otherwise leaves stale records resolving to a dead cluster.
     Process::fake([
@@ -167,7 +167,7 @@ test('dns:remove warns that existing DNS records survive removal', function () {
         ->assertExitCode(0);
 });
 
-test('dns:remove rejects a zone this cluster does not manage', function () {
+test('dns:remove rejects a zone this cluster does not manage', function (): void {
     Process::fake([
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
@@ -185,7 +185,7 @@ test('dns:remove rejects a zone this cluster does not manage', function () {
         ->assertExitCode(1);
 });
 
-test('dns:list surfaces the owner id, which is how zone conflicts are diagnosed', function () {
+test('dns:list surfaces the owner id, which is how zone conflicts are diagnosed', function (): void {
     Process::fake([
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [

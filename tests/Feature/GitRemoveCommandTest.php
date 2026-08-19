@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Process;
  * tool-specific `middleware/forgejo-vpn-only` cleanup (not a k8s resource
  * under the tool's own component list) still runs as a separate step.
  */
-test('git:remove deletes the same resource set as before the component refactor', function () {
+test('git:remove deletes the same resource set as before the component refactor', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
@@ -22,9 +22,11 @@ test('git:remove deletes the same resource set as before the component refactor'
     Process::assertRan(function ($process) use (&$deleteCommand) {
         if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'deployment/forgejo')) {
             $deleteCommand = $process->command;
+
+            return true;
         }
 
-        return true;
+        return false;
     });
 
     expect($deleteCommand)->not->toBeNull();

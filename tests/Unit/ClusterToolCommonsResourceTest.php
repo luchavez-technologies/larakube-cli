@@ -2,24 +2,24 @@
 
 use App\Enums\ClusterTool;
 
-test('forCommonsResource resolves a tool from its Commons DB name', function () {
+test('forCommonsResource resolves a tool from its Commons DB name', function (): void {
     expect(ClusterTool::forCommonsResource('record_sendrec'))->toBe(ClusterTool::RECORD)
         ->and(ClusterTool::forCommonsResource('sign_documenso'))->toBe(ClusterTool::SIGN)
         ->and(ClusterTool::forCommonsResource('zitadel'))->toBe(ClusterTool::SSO);
 });
 
-test('forCommonsResource resolves a tool from its Commons bucket name', function () {
+test('forCommonsResource resolves a tool from its Commons bucket name', function (): void {
     expect(ClusterTool::forCommonsResource('sign-storage'))->toBe(ClusterTool::SIGN)
         ->and(ClusterTool::forCommonsResource('forgejo-lfs'))->toBe(ClusterTool::GIT)
         ->and(ClusterTool::forCommonsResource('drive-ocis'))->toBe(ClusterTool::DRIVE);
 });
 
-test('forCommonsResource returns null for a genuine Application Tenant', function () {
+test('forCommonsResource returns null for a genuine Application Tenant', function (): void {
     expect(ClusterTool::forCommonsResource('luchtech_local'))->toBeNull()
         ->and(ClusterTool::forCommonsResource('demo-production'))->toBeNull();
 });
 
-test('PASSWORDS is wired into openbaoSyncConfig so secrets:init actually maintains vault-secrets', function () {
+test('PASSWORDS is wired into openbaoSyncConfig so secrets:init actually maintains vault-secrets', function (): void {
     // Regression guard, redesigned 2026-08-18: DATABASE_URL now lives in
     // vault-secrets — the Secret passwords:init itself creates and controls
     // (alongside admin-token/plain-token), not the never-created

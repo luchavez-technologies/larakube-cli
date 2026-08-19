@@ -38,25 +38,25 @@ function vpnReader(): object
     };
 }
 
-test('local VPN host uses the vpn subdomain on the dev TLD', function () {
+test('local VPN host uses the vpn subdomain on the dev TLD', function (): void {
     expect(vpnReader()->host('local', null))->toStartWith('vpn.');
 });
 
-test('cloud VPN host returns the host persisted for that env', function () {
+test('cloud VPN host returns the host persisted for that env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from(['hosts' => ['vpn' => 'vpn.example.com']]);
 
     expect(vpnReader()->host('production', $config))->toBe('vpn.example.com');
 });
 
-test('cloud VPN host is null when none is configured for the env', function () {
+test('cloud VPN host is null when none is configured for the env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(vpnReader()->host('production', $config))->toBeNull();
 });
 
-test('vpnKubectl scopes to a context only when one is given', function () {
+test('vpnKubectl scopes to a context only when one is given', function (): void {
     $reader = vpnReader();
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
@@ -65,7 +65,7 @@ test('vpnKubectl scopes to a context only when one is given', function () {
         ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
-test('isVpnInstalled reflects whether the netbird-management Deployment exists', function () {
+test('isVpnInstalled reflects whether the netbird-management Deployment exists', function (): void {
     Process::fake(['kubectl get deployment netbird-management -n larakube-vpn --no-headers' => 'netbird-management   1/1   1   1   5d']);
     expect(vpnReader()->installed('kubectl', 'larakube-vpn'))->toBeTrue();
 
@@ -73,7 +73,7 @@ test('isVpnInstalled reflects whether the netbird-management Deployment exists',
     expect(vpnReader()->installed('kubectl', 'larakube-vpn'))->toBeFalse();
 });
 
-test('vpnAccess is null when vpn is not installed, populated when it is', function () {
+test('vpnAccess is null when vpn is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake(["{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => Process::result(output: '', exitCode: 1)]);
@@ -88,7 +88,7 @@ test('vpnAccess is null when vpn is not installed, populated when it is', functi
         ->and($access['label'])->toBe('NetBird VPN');
 });
 
-test('fetchVpnSetupKey decodes the key from the Secret, null when missing', function () {
+test('fetchVpnSetupKey decodes the key from the Secret, null when missing', function (): void {
     $encoded = base64_encode('nb_setup_key_test');
     Process::fake([
         "kubectl get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => $encoded,

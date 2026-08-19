@@ -78,7 +78,7 @@ class MailSyncSsoCommand extends Command
         $synced = 0;
         $failed = 0;
 
-        $this->withSpin('Syncing Stalwart accounts to Zitadel SSO...', function () use ($accounts, $ssoHost, $pat, &$rows, &$synced, &$failed) {
+        $this->withSpin('Syncing Stalwart accounts to Zitadel SSO...', function () use ($accounts, $ssoHost, $pat, &$rows, &$synced, &$failed): void {
             foreach ($accounts as $acc) {
                 $name = $acc['name'] ?? '';
                 $domainId = $acc['domainId'] ?? '';

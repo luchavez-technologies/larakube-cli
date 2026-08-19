@@ -29,7 +29,7 @@ function plexHelper(): object
     };
 }
 
-test('the default Commons manifest has Postgres + Redis, embeds the spec, and omits Meili', function () {
+test('the default Commons manifest has Postgres + Redis, embeds the spec, and omits Meili', function (): void {
     $yaml = plexManifest(plexHelper()->defaultCommonsSpec());
 
     expect($yaml)
@@ -44,7 +44,7 @@ test('the default Commons manifest has Postgres + Redis, embeds the spec, and om
         ->not->toContain('name: meilisearch');
 });
 
-test('enabling Meilisearch adds it to the manifest', function () {
+test('enabling Meilisearch adds it to the manifest', function (): void {
     $spec = plexHelper()->normalizeCommonsSpec(['services' => ['meilisearch' => ['enabled' => true]]]);
     $yaml = plexManifest($spec);
 
@@ -53,7 +53,7 @@ test('enabling Meilisearch adds it to the manifest', function () {
         ->toContain('claimName: meilisearch-data');
 });
 
-test('enabling object storage adds the SeaweedFS S3 service to the manifest', function () {
+test('enabling object storage adds the SeaweedFS S3 service to the manifest', function (): void {
     $spec = plexHelper()->normalizeCommonsSpec(['services' => ['seaweedfs' => ['enabled' => true]]]);
     $yaml = plexManifest($spec);
 
@@ -64,7 +64,7 @@ test('enabling object storage adds the SeaweedFS S3 service to the manifest', fu
         ->toContain('"-s3"');  // the S3 gateway is enabled
 });
 
-test('MinIO exposes its console port and gets a separate console Ingress when console_host is set', function () {
+test('MinIO exposes its console port and gets a separate console Ingress when console_host is set', function (): void {
     // Regression guard: the S3 Ingress (minio-s3) only ever routed port 9000
     // (the S3 API) — visiting it in a browser expecting the web console
     // showed nothing useful, since the Service didn't even expose 9001 and
@@ -86,7 +86,7 @@ test('MinIO exposes its console port and gets a separate console Ingress when co
     expect($serviceDoc)->toContain('port: 9001');
 });
 
-test('MinIO console_host is absent by default — no console Ingress without it', function () {
+test('MinIO console_host is absent by default — no console Ingress without it', function (): void {
     $spec = plexHelper()->normalizeCommonsSpec(['services' => [
         'minio' => ['enabled' => true, 'host' => 'minio.test'],
     ]]);
@@ -95,7 +95,7 @@ test('MinIO console_host is absent by default — no console Ingress without it'
     expect($yaml)->not->toContain('name: minio-console');
 });
 
-test('SeaweedFS exposes its master port and gets a separate admin Ingress when admin_host is set', function () {
+test('SeaweedFS exposes its master port and gets a separate admin Ingress when admin_host is set', function (): void {
     // Same gap as MinIO: the S3 Ingress only ever routed the S3 gateway port —
     // the master's own admin UI (always running, since `weed server` binds it
     // by default) was never exposed via Service or Ingress.
@@ -114,7 +114,7 @@ test('SeaweedFS exposes its master port and gets a separate admin Ingress when a
     expect($serviceDoc)->toContain('port: 9333');
 });
 
-test('SeaweedFS admin_host is absent by default — no admin Ingress without it', function () {
+test('SeaweedFS admin_host is absent by default — no admin Ingress without it', function (): void {
     $spec = plexHelper()->normalizeCommonsSpec(['services' => [
         'seaweedfs' => ['enabled' => true, 'host' => 's3.test'],
     ]]);
@@ -123,7 +123,7 @@ test('SeaweedFS admin_host is absent by default — no admin Ingress without it'
     expect($yaml)->not->toContain('name: seaweedfs-admin');
 });
 
-test('enabling Garage adds its Commons service (deployment, config, S3 Ingress) to the manifest', function () {
+test('enabling Garage adds its Commons service (deployment, config, S3 Ingress) to the manifest', function (): void {
     $spec = plexHelper()->normalizeCommonsSpec(['services' => [
         'garage' => ['enabled' => true, 'host' => 'garage.test'],
     ]]);
@@ -143,13 +143,13 @@ test('enabling Garage adds its Commons service (deployment, config, S3 Ingress) 
     expect($yaml)->not->toContain('root_domain =');
 });
 
-test('Garage is disabled by default — no manifest at all without enabling it', function () {
+test('Garage is disabled by default — no manifest at all without enabling it', function (): void {
     $yaml = plexManifest(plexHelper()->defaultCommonsSpec());
 
     expect($yaml)->not->toContain('name: garage');
 });
 
-test('the pooler is off by default — the postgres Service still routes straight to the engine, no PgBouncer resources appear', function () {
+test('the pooler is off by default — the postgres Service still routes straight to the engine, no PgBouncer resources appear', function (): void {
     // The whole point of gating on pooler.enabled: a cluster that has never
     // turned this on must render byte-for-byte the same resource set as
     // before the pooler existed, so re-running plex:init/plex:resources is a
@@ -165,7 +165,7 @@ test('the pooler is off by default — the postgres Service still routes straigh
     expect($postgresService)->toContain('app: postgres');
 });
 
-test('enabling the pooler adds PgBouncer and a direct postgres-primary route, and repoints the postgres Service at it', function () {
+test('enabling the pooler adds PgBouncer and a direct postgres-primary route, and repoints the postgres Service at it', function (): void {
     $spec = plexHelper()->normalizeCommonsSpec(['services' => [
         'postgres' => ['pooler' => ['enabled' => true, 'mode' => 'session', 'poolSize' => 15, 'maxClients' => 250]],
     ]]);
@@ -198,7 +198,7 @@ test('enabling the pooler adds PgBouncer and a direct postgres-primary route, an
     expect($yaml)->toContain('name: postgres'."\n")->toContain('image: postgres:17.9');
 });
 
-test('the pooler config comes from the spec, not the target env, and the DB password is never inlined in plaintext', function () {
+test('the pooler config comes from the spec, not the target env, and the DB password is never inlined in plaintext', function (): void {
     $spec = plexHelper()->normalizeCommonsSpec(['services' => ['postgres' => ['pooler' => ['enabled' => true]]]]);
     $yaml = plexManifest($spec);
 
@@ -216,7 +216,7 @@ test('the pooler config comes from the spec, not the target env, and the DB pass
         ->toContain('@postgres-primary');
 });
 
-test('PgBouncer auth_type is scram-sha-256, matching Postgres 17s default password encryption', function () {
+test('PgBouncer auth_type is scram-sha-256, matching Postgres 17s default password encryption', function (): void {
     // Regression guard: shipped as `md5` first, which broke PgBouncer's own
     // backend connection to Postgres with "cannot do SCRAM authentication:
     // wrong password type" — every tenant failed to connect at once

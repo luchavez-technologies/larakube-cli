@@ -38,25 +38,25 @@ function vaultReader(): object
     };
 }
 
-test('local Vault host uses the vault subdomain on the dev TLD', function () {
+test('local Vault host uses the vault subdomain on the dev TLD', function (): void {
     expect(vaultReader()->host('local', null))->toStartWith('vault.');
 });
 
-test('cloud Vault host returns the host persisted for that env', function () {
+test('cloud Vault host returns the host persisted for that env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from(['hosts' => ['vault' => 'vault.example.com']]);
 
     expect(vaultReader()->host('production', $config))->toBe('vault.example.com');
 });
 
-test('cloud Vault host is null when none is configured for the env', function () {
+test('cloud Vault host is null when none is configured for the env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(vaultReader()->host('production', $config))->toBeNull();
 });
 
-test('vaultKubectl scopes to a context only when one is given', function () {
+test('vaultKubectl scopes to a context only when one is given', function (): void {
     $reader = vaultReader();
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
@@ -65,7 +65,7 @@ test('vaultKubectl scopes to a context only when one is given', function () {
         ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
-test('isVaultInstalled reflects whether the vaultwarden Deployment exists', function () {
+test('isVaultInstalled reflects whether the vaultwarden Deployment exists', function (): void {
     Process::fake(['kubectl get deployment vaultwarden -n larakube-vault --no-headers' => 'vaultwarden   1/1   1   1   5d']);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeTrue();
 
@@ -73,7 +73,7 @@ test('isVaultInstalled reflects whether the vaultwarden Deployment exists', func
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeFalse();
 });
 
-test('readVaultAdminToken decodes the admin secret, null when absent', function () {
+test('readVaultAdminToken decodes the admin secret, null when absent', function (): void {
     Process::fake([
         "kubectl get secret vault-secrets -n larakube-vault -o jsonpath='{.data.admin-token}'" => base64_encode('s3cr3t-adm1n'),
     ]);
@@ -85,7 +85,7 @@ test('readVaultAdminToken decodes the admin secret, null when absent', function 
     expect(vaultReader()->vaultToken('kubectl', 'larakube-vault'))->toBeNull();
 });
 
-test('vaultAccess is null when vault is not installed, populated when it is', function () {
+test('vaultAccess is null when vault is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake(["{$kubectl} get deployment vaultwarden -n larakube-vault --no-headers" => Process::result(output: '', exitCode: 1)]);

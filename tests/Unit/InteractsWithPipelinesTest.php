@@ -2,6 +2,7 @@
 
 use App\Traits\InteractsWithPipelines;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function pipelineHelper(): object
 {
@@ -17,17 +18,16 @@ function pipelineHelper(): object
     };
 }
 
-test('parseWorkflowEnv extracts environment name correctly', function () {
+test('parseWorkflowEnv extracts environment name correctly', function (): void {
     $helper = pipelineHelper();
     expect($helper->parseWorkflowEnv('larakube-deploy-production.yml'))->toBe('production')
         ->and($helper->parseWorkflowEnv('larakube-deploy-staging.yml'))->toBe('staging')
         ->and($helper->parseWorkflowEnv('other-file.yml'))->toBeNull();
 });
 
-test('discoverWorkflows scans for generated workflows', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-test-disc-'.uniqid();
-    mkdir($tempDir, 0755, true);
-    $tempDir = realpath($tempDir) ?: $tempDir;
+test('discoverWorkflows scans for generated workflows', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = realpath($temporaryDirectory->path()) ?: $temporaryDirectory->path();
 
     mkdir($tempDir.'/.github/workflows', 0755, true);
     file_put_contents($tempDir.'/.github/workflows/larakube-deploy-production.yml', 'on: push');
@@ -40,21 +40,21 @@ test('discoverWorkflows scans for generated workflows', function () {
         ->and($discovered[0]['file'])->toBe('.github/workflows/larakube-deploy-production.yml')
         ->and($discovered[0]['env'])->toBe('production');
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 });
 
-test('parseWorkflowTrigger resolves triggers from workflow YAML', function () {
+test('parseWorkflowTrigger resolves triggers from workflow YAML', function (): void {
     $helper = pipelineHelper();
 
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+
     // GitLab CI trigger
-    $tempDir = sys_get_temp_dir();
-    $tempGitlab = $tempDir.'/.gitlab-ci.yml';
+    $tempGitlab = $temporaryDirectory->path('.gitlab-ci.yml');
     file_put_contents($tempGitlab, "stages:\n  - deploy\n");
     expect($helper->parseWorkflowTrigger($tempGitlab))->toBe('push');
-    @unlink($tempGitlab);
 
     // GitHub/Gitea mock files
-    $tempGha = $tempDir.'/mock-gha.yml';
+    $tempGha = $temporaryDirectory->path('mock-gha.yml');
 
     // Single string trigger
     file_put_contents($tempGha, "on: push\n");
@@ -64,10 +64,10 @@ test('parseWorkflowTrigger resolves triggers from workflow YAML', function () {
     file_put_contents($tempGha, "on:\n  push:\n    branches: [ main, dev ]\n");
     expect($helper->parseWorkflowTrigger($tempGha))->toBe('push (main, dev)');
 
-    @unlink($tempGha);
+    $temporaryDirectory->delete();
 });
 
-test('extractSecretsFromYaml retrieves secret variables', function () {
+test('extractSecretsFromYaml retrieves secret variables', function (): void {
     $helper = pipelineHelper();
 
     $yaml = [
@@ -91,7 +91,7 @@ test('extractSecretsFromYaml retrieves secret variables', function () {
         ->and($secrets)->toContain('GL_KUBECONFIG');
 });
 
-test('getActPath returns absolute path or null based on execution check', function () {
+test('getActPath returns absolute path or null based on execution check', function (): void {
     Process::fake(['which act' => '/usr/local/bin/act']);
     expect(pipelineHelper()->getActPath())->toBe('/usr/local/bin/act');
 

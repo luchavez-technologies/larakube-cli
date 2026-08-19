@@ -88,7 +88,7 @@ class BackupRestoreCommand extends Command
         // per-item layout: the picker is built from a few hundred bytes, so
         // restoring a 39KB database no longer downloads 55MB first.
         $manifest = null;
-        $this->withSpin("Reading the manifest for {$stamp}...", function () use ($config, $stamp, &$manifest) {
+        $this->withSpin("Reading the manifest for {$stamp}...", function () use ($config, $stamp, &$manifest): void {
             $manifest = $this->fetchManifest($config, $stamp);
         });
 

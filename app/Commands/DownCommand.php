@@ -8,6 +8,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\text;
 
@@ -129,7 +130,7 @@ class DownCommand extends Command
 
         // 4. Cool-down
         $this->withSpin('Ensuring cluster-native volumes are wiped...', function () {
-            sleep(5);
+            Sleep::sleep(5);
 
             return true;
         });

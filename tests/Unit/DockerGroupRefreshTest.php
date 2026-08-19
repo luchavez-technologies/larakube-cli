@@ -36,7 +36,7 @@ function mockDockerGroupCommands(array $responses): void
     ]);
 }
 
-test('dockerGroupNeedsRefresh is true when the user is a member but docker is missing from the active session', function () {
+test('dockerGroupNeedsRefresh is true when the user is a member but docker is missing from the active session', function (): void {
     mockDockerGroupCommands([
         'getent' => "docker:x:989:james\n",
         'un' => "james\n",
@@ -47,7 +47,7 @@ test('dockerGroupNeedsRefresh is true when the user is a member but docker is mi
     expect(dockerGroupHarness()->check())->toBeTrue();
 });
 
-test('dockerGroupNeedsRefresh is false when docker is already active in this session', function () {
+test('dockerGroupNeedsRefresh is false when docker is already active in this session', function (): void {
     mockDockerGroupCommands([
         'getent' => "docker:x:989:james\n",
         'un' => "james\n",
@@ -58,7 +58,7 @@ test('dockerGroupNeedsRefresh is false when docker is already active in this ses
     expect(dockerGroupHarness()->check())->toBeFalse();
 });
 
-test('dockerGroupNeedsRefresh is true via primary group membership even when not listed as a secondary member', function () {
+test('dockerGroupNeedsRefresh is true via primary group membership even when not listed as a secondary member', function (): void {
     mockDockerGroupCommands([
         'getent' => "docker:x:989:\n", // no secondary members listed
         'un' => "james\n",
@@ -69,7 +69,7 @@ test('dockerGroupNeedsRefresh is true via primary group membership even when not
     expect(dockerGroupHarness()->check())->toBeTrue();
 });
 
-test('dockerGroupNeedsRefresh is false when the user is not a docker group member at all', function () {
+test('dockerGroupNeedsRefresh is false when the user is not a docker group member at all', function (): void {
     mockDockerGroupCommands([
         'getent' => "docker:x:989:someoneelse\n",
         'un' => "james\n",
@@ -80,7 +80,7 @@ test('dockerGroupNeedsRefresh is false when the user is not a docker group membe
     expect(dockerGroupHarness()->check())->toBeFalse();
 });
 
-test('dockerGroupNeedsRefresh is false when there is no docker group on this system', function () {
+test('dockerGroupNeedsRefresh is false when there is no docker group on this system', function (): void {
     mockDockerGroupCommands([
         'getent' => null,
         'un' => "james\n",
@@ -91,7 +91,7 @@ test('dockerGroupNeedsRefresh is false when there is no docker group on this sys
     expect(dockerGroupHarness()->check())->toBeFalse();
 });
 
-test('dockerGroupNeedsRefresh is false when id -un fails to resolve a user', function () {
+test('dockerGroupNeedsRefresh is false when id -un fails to resolve a user', function (): void {
     mockDockerGroupCommands([
         'getent' => "docker:x:989:james\n",
         'un' => null,

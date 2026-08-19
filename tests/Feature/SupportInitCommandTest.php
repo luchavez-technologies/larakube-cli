@@ -1,6 +1,6 @@
 <?php
 
-test('support manifest declares SMTP_ENABLE_STARTTLS_AUTO as a literal, not valueFrom, in both containers', function () {
+test('support manifest declares SMTP_ENABLE_STARTTLS_AUTO as a literal, not valueFrom, in both containers', function (): void {
     // Regression guard: mail:wire sets SMTP_ENABLE_STARTTLS_AUTO via a plain
     // literal (kubectl set env NAME=value), never through the
     // support-smtp Secret. Declaring it here as valueFrom made a

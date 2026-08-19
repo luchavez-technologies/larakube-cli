@@ -27,7 +27,7 @@ class SnapshotInitCommand extends Command
 
         $this->laraKubeInfo('Initializing Kubernetes VolumeSnapshot CRDs and CSI Snapshot Controller...');
 
-        $this->withSpin('Deploying VolumeSnapshot CRDs...', function () {
+        $this->withSpin('Deploying VolumeSnapshot CRDs...', function (): void {
             // Apply snapshot CRDs
             $cmd = 'kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.3/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml || true';
             Process::run($cmd);

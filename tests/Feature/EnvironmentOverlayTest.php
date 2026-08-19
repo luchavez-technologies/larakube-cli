@@ -3,7 +3,7 @@
 use App\Data\ConfigData;
 use App\Enums\LaravelFeature;
 
-test('a custom environment generates its own complete overlay', function () {
+test('a custom environment generates its own complete overlay', function (): void {
     $config = ConfigData::from([
         'name' => 'envgen',
         'serverVariation' => 'fpm-nginx',
@@ -37,7 +37,7 @@ test('a custom environment generates its own complete overlay', function () {
         ->toBe('envgen.com');
 });
 
-test('an all-environment feature (Reverb) reaches a custom env', function () {
+test('an all-environment feature (Reverb) reaches a custom env', function (): void {
     // Regression for the bug where defaultEnvironments() hardcoded
     // [local, production], excluding Reverb from staging/qa entirely.
     $config = ConfigData::from([
@@ -67,7 +67,7 @@ test('an all-environment feature (Reverb) reaches a custom env', function () {
         ->and($manifests['overlays/staging/kustomization.yaml']['resources'])->toContain('../../base');
 });
 
-test('a cloud env with a reverb host gets a public websocket Ingress', function () {
+test('a cloud env with a reverb host gets a public websocket Ingress', function (): void {
     // The browser talks to Reverb directly (VITE_REVERB_HOST), so a cloud env
     // needs its own Ingress — the ClusterIP is unreachable from outside and the
     // configured reverb host would otherwise resolve to nothing.
@@ -107,7 +107,7 @@ test('a cloud env with a reverb host gets a public websocket Ingress', function 
         ->toContain('reverb-ingress.yaml');
 });
 
-test('the cloud reverb Ingress follows that env-s ingress controller', function () {
+test('the cloud reverb Ingress follows that env-s ingress controller', function (): void {
     $config = ConfigData::from([
         'name' => 'wsapp',
         'serverVariation' => 'fpm-nginx',
@@ -128,7 +128,7 @@ test('the cloud reverb Ingress follows that env-s ingress controller', function 
     expect($ingress['spec']['ingressClassName'])->toBe('nginx');
 });
 
-test('no reverb Ingress without the feature or without a configured host', function () {
+test('no reverb Ingress without the feature or without a configured host', function (): void {
     // An Ingress rule with an empty host matches EVERY request, so a missing
     // reverb host must skip the file rather than render a catch-all.
     $noHost = generateManifestsAsArray(ConfigData::from([
@@ -156,7 +156,7 @@ test('no reverb Ingress without the feature or without a configured host', funct
     expect($noReverb)->not->toHaveKey('overlays/staging/reverb-ingress.yaml');
 });
 
-test('server-side REVERB_* stays on the in-cluster port and scheme in every env', function () {
+test('server-side REVERB_* stays on the in-cluster port and scheme in every env', function (): void {
     // REVERB_HOST is the cluster FQDN everywhere and the Service is plain HTTP
     // on 8080. 443/https there made Laravel dial a TLS port that does not exist
     // in-cluster; TLS belongs to the browser hop (VITE_REVERB_*).
@@ -181,7 +181,7 @@ test('server-side REVERB_* stays on the in-cluster port and scheme in every env'
     }
 });
 
-test('browser-facing VITE_REVERB_HOST is written for cloud envs, not just local', function () {
+test('browser-facing VITE_REVERB_HOST is written for cloud envs, not just local', function (): void {
     // Cloud used to emit no VITE_REVERB_* at all, on the assumption that the
     // deploy paths append them as build args. They do — and a later duplicate
     // key does win — but it left .env.{env} advertising a *.test host for a
@@ -215,13 +215,13 @@ test('browser-facing VITE_REVERB_HOST is written for cloud envs, not just local'
     expect($local['VITE_REVERB_HOST'])->toBe('reverb.wsapp.'.$config->getLocalTld());
 });
 
-test('SSR applies to every cloud env, not only production', function () {
+test('SSR applies to every cloud env, not only production', function (): void {
     expect(LaravelFeature::SSR->appliesToEnvironment('staging'))->toBeTrue()
         ->and(LaravelFeature::SSR->appliesToEnvironment('production'))->toBeTrue()
         ->and(LaravelFeature::SSR->appliesToEnvironment('local'))->toBeFalse();
 });
 
-test('per-environment strategy lets each cloud env pick its own PVC access mode', function () {
+test('per-environment strategy lets each cloud env pick its own PVC access mode', function (): void {
     // Multi-VPC reality: production is an HA cluster (RWX), staging is a single
     // box (RWO). Local is always single-node regardless.
     $config = ConfigData::from([
@@ -259,7 +259,7 @@ test('per-environment strategy lets each cloud env pick its own PVC access mode'
         ->toBe('ReadWriteOnce');
 });
 
-test('a managed service is removed from the env that manages it via a delete-patch', function () {
+test('a managed service is removed from the env that manages it via a delete-patch', function (): void {
     $config = ConfigData::from([
         'name' => 'mgd',
         'serverVariation' => 'fpm-nginx',
@@ -284,8 +284,7 @@ test('a managed service is removed from the env that manages it via a delete-pat
     // the `patches:` field, so we must never bundle them — the old single
     // `postgres-managed-delete.yaml` shape is gone.
     expect($manifests)
-        ->toHaveKey('overlays/production/postgres-managed-delete-deployment.yaml')
-        ->toHaveKey('overlays/production/postgres-managed-delete-service.yaml')
+        ->toHaveKeys(['overlays/production/postgres-managed-delete-deployment.yaml', 'overlays/production/postgres-managed-delete-service.yaml'])
         ->not->toHaveKey('overlays/production/postgres-managed-delete.yaml');
 
     // Each file is a single doc (parsed to a map, not a list), so kustomize is happy.
@@ -313,7 +312,7 @@ test('a managed service is removed from the env that manages it via a delete-pat
     expect($manifests)->not->toHaveKey('overlays/production/postgres-volumes.yaml');
 });
 
-test('a service managed for local is removed from the local overlay too, independently of cloud envs', function () {
+test('a service managed for local is removed from the local overlay too, independently of cloud envs', function (): void {
     // Regression guard: `managed` used to have NO effect on the local
     // overlay at all — a service marked managed for `local` (e.g. by
     // plex:join/plex:migrate after joining a Commons) kept deploying its own
@@ -341,16 +340,13 @@ test('a service managed for local is removed from the local overlay too, indepen
 
     // Local gets the same per-resource delete-patch shape production does.
     expect($manifests)
-        ->toHaveKey('overlays/local/postgres-managed-delete-deployment.yaml')
-        ->toHaveKey('overlays/local/postgres-managed-delete-service.yaml');
+        ->toHaveKeys(['overlays/local/postgres-managed-delete-deployment.yaml', 'overlays/local/postgres-managed-delete-service.yaml']);
 
     $deploymentDelete = $manifests['overlays/local/postgres-managed-delete-deployment.yaml'];
     expect($deploymentDelete['kind'])->toBe('Deployment')
         ->and($deploymentDelete['$patch'])->toBe('delete')
-        ->and($deploymentDelete['metadata']['name'])->toBe('postgres');
-
-    expect($manifests['overlays/local/kustomization.yaml']['patches'])
-        ->toContain(['path' => 'postgres-managed-delete-deployment.yaml'])
+        ->and($deploymentDelete['metadata']['name'])->toBe('postgres')
+        ->and($manifests['overlays/local/kustomization.yaml']['patches'])->toContain(['path' => 'postgres-managed-delete-deployment.yaml'])
         ->toContain(['path' => 'postgres-managed-delete-service.yaml']);
 
     // Postgres volumes are NOT registered as a local resource, nor written

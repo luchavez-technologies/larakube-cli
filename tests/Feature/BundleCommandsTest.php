@@ -1,8 +1,10 @@
 <?php
 
-test('bundle:zip compresses a directory into a tarball and bundle:unzip extracts it', function () {
-    $tmpDir = sys_get_temp_dir().'/larakube-bundle-test-'.uniqid();
-    mkdir($tmpDir, 0755, true);
+use Spatie\TemporaryDirectory\TemporaryDirectory;
+
+test('bundle:zip compresses a directory into a tarball and bundle:unzip extracts it', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tmpDir = $temporaryDirectory->path();
     mkdir("$tmpDir/dist", 0755, true);
     $bundleDir = "$tmpDir/dist/test-bundle";
     mkdir($bundleDir, 0755, true);
@@ -23,7 +25,7 @@ test('bundle:zip compresses a directory into a tarball and bundle:unzip extracts
         ])->assertExitCode(0);
 
         // Verify the original directory was deleted (--delete)
-        expect(is_dir($bundleDir))->toBeFalse();
+        expect($bundleDir)->not->toBeDirectory();
         // Verify the tarball was created with the custom output name
         expect(file_exists("$tmpDir/dist/my-bundle.tar.gz"))->toBeTrue();
 
@@ -34,14 +36,13 @@ test('bundle:zip compresses a directory into a tarball and bundle:unzip extracts
         ])->assertExitCode(0);
 
         // The tarball contained the folder 'test-bundle', so it should be recreated
-        expect(is_dir($bundleDir))->toBeTrue();
+        expect($bundleDir)->toBeDirectory();
         expect(file_get_contents("$bundleDir/.env"))->toBe('TEST_KEY=123');
         // The archive should be deleted because of --delete
         expect(file_exists("$tmpDir/dist/my-bundle.tar.gz"))->toBeFalse();
 
     } finally {
         chdir($originalCwd);
-        // Cleanup
-        shell_exec('rm -rf '.escapeshellarg($tmpDir));
+        $temporaryDirectory->delete();
     }
 });

@@ -18,7 +18,7 @@ function fakeVpnUsersInstalled(string $pat = 'nbp_test_pat'): void
     ]);
 }
 
-test('vpn:users lists setup keys and connected peers', function () {
+test('vpn:users lists setup keys and connected peers', function (): void {
     fakeVpnUsersInstalled();
 
     Http::fake([
@@ -40,7 +40,7 @@ test('vpn:users lists setup keys and connected peers', function () {
         ->expectsOutputToContain('lloyd');
 });
 
-test('vpn:users shows friendly messages when nothing has been granted or joined yet', function () {
+test('vpn:users shows friendly messages when nothing has been granted or joined yet', function (): void {
     fakeVpnUsersInstalled();
 
     Http::fake([
@@ -54,7 +54,7 @@ test('vpn:users shows friendly messages when nothing has been granted or joined 
         ->expectsOutputToContain('No peers have joined yet');
 });
 
-test('vpn:users errors when the VPN is not installed', function () {
+test('vpn:users errors when the VPN is not installed', function (): void {
     Process::fake([
         vpnUsersKubectl().' get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
     ]);
@@ -66,7 +66,7 @@ test('vpn:users errors when the VPN is not installed', function () {
     Http::assertNothingSent();
 });
 
-test('vpn:users errors when the NetBird API is unreachable', function () {
+test('vpn:users errors when the NetBird API is unreachable', function (): void {
     fakeVpnUsersInstalled();
 
     Http::fake([

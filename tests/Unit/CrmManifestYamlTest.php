@@ -38,7 +38,7 @@ function crmDocuments(string $rendered): array
     );
 }
 
-test('crm manifest renders as valid multi-document YAML', function () {
+test('crm manifest renders as valid multi-document YAML', function (): void {
     $documents = crmDocuments(crmManifest());
 
     expect($documents)->not->toBeEmpty();
@@ -55,7 +55,7 @@ test('crm manifest renders as valid multi-document YAML', function () {
  * loses every attachment on the next pod restart. This pins the exact
  * casing so it can never regress back to the natural-looking "s3".
  */
-test('both server and worker get the S3 storage env block with the exact S_3 casing', function () {
+test('both server and worker get the S3 storage env block with the exact S_3 casing', function (): void {
     $documents = crmDocuments(crmManifest());
     $deployments = collect($documents)->where('kind', 'Deployment');
 
@@ -78,7 +78,7 @@ test('both server and worker get the S3 storage env block with the exact S_3 cas
     }
 });
 
-test('worker Deployment skips migrations so it never races the server\'s boot-time schema init', function () {
+test('worker Deployment skips migrations so it never races the server\'s boot-time schema init', function (): void {
     $documents = crmDocuments(crmManifest());
     $worker = collect($documents)->where('kind', 'Deployment')->firstWhere('metadata.name', 'crm-twenty-worker-crm-example-com');
 

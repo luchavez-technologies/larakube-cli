@@ -6,7 +6,7 @@ use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 
-test('Services: Meilisearch', function () {
+test('Services: Meilisearch', function (): void {
     $config = new ConfigData(name: 'meilisearch-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
@@ -14,7 +14,7 @@ test('Services: Meilisearch', function () {
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Services: Typesense', function () {
+test('Services: Typesense', function (): void {
     $config = new ConfigData(name: 'typesense-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
@@ -22,7 +22,7 @@ test('Services: Typesense', function () {
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Services: MinIO', function () {
+test('Services: MinIO', function (): void {
     $config = new ConfigData(name: 'minio-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
@@ -30,7 +30,7 @@ test('Services: MinIO', function () {
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Services: SeaweedFS', function () {
+test('Services: SeaweedFS', function (): void {
     $config = new ConfigData(name: 'seaweed-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
@@ -38,7 +38,7 @@ test('Services: SeaweedFS', function () {
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Services: Garage', function () {
+test('Services: Garage', function (): void {
     $config = new ConfigData(name: 'garage-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);

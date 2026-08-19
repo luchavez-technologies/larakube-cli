@@ -42,19 +42,19 @@ function plexInitCommand(array $arguments = []): object
     return $command;
 }
 
-test('resolvePlexEnvironment returns the explicit positional immediately, no prompt', function () {
+test('resolvePlexEnvironment returns the explicit positional immediately, no prompt', function (): void {
     $command = plexInitCommand(['environment' => 'production']);
 
     expect($command->callResolvePlexEnvironment(ConfigData::from(['name' => 'demo'])))->toBe('production');
 });
 
-test('resolvePlexEnvironment defaults to local under --no-interaction, matching every other {tool}:init', function () {
+test('resolvePlexEnvironment defaults to local under --no-interaction, matching every other {tool}:init', function (): void {
     $command = plexInitCommand(['--no-interaction' => true]);
 
     expect($command->callResolvePlexEnvironment(ConfigData::from(['name' => 'demo'])))->toBe('local');
 });
 
-test('resolvePlexEnvironment prompts with local + the project\'s known cloud environments when nothing forces a default', function () {
+test('resolvePlexEnvironment prompts with local + the project\'s known cloud environments when nothing forces a default', function (): void {
     // Prompt::interactive(false) makes select() resolve to its `default`
     // (never hang), which is 'local' here — this locks in that the offered
     // option set is genuinely local + the config's cloud envs, not just that
@@ -73,7 +73,7 @@ test('resolvePlexEnvironment prompts with local + the project\'s known cloud env
     expect($command->callResolvePlexEnvironment($config))->toBe('local');
 });
 
-test('resolvePlexEnvironment accepts a null config — plex:rotate/plex:export can run with no project in cwd', function () {
+test('resolvePlexEnvironment accepts a null config — plex:rotate/plex:export can run with no project in cwd', function (): void {
     // No cloud envs to offer without a project, but it still asks rather
     // than silently assuming local — same contract, degraded option list.
     $command = plexInitCommand([]);

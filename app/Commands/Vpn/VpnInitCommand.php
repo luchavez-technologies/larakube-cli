@@ -19,7 +19,9 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class VpnInitCommand extends Command
 {
@@ -64,7 +66,8 @@ class VpnInitCommand extends Command
             'isLocal' => $env === 'local',
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-vpn.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-vpn.yaml');
         file_put_contents($tmp, $manifest);
 
         // Three resources to verify per apply (management/signal/relay), so
@@ -74,7 +77,7 @@ class VpnInitCommand extends Command
         // rejected apply / stuck rollout prints ✔ and this command claims
         // success regardless (confirmed live on Documenso, 2026-08-05).
         $applied = $this->withSpin('Applying NetBird VPN manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $applied) {
             $this->laraKubeError('Could not apply the NetBird VPN manifest — see the output above.');
@@ -105,14 +108,15 @@ class VpnInitCommand extends Command
         $this->bootstrapVpnAuth($kubectl, $ns, $host);
 
         $clientManifest = view('k8s.vpn.client')->render();
-        $clientTmp = sys_get_temp_dir().'/larakube-vpn-client.yaml';
+        $clientTemporaryDirectory = TemporaryDirectory::make();
+        $clientTmp = $clientTemporaryDirectory->path('larakube-vpn-client.yaml');
         file_put_contents($clientTmp, $clientManifest);
 
         $clientRolledOut = $this->withSpin(
             'Deploying NetBird Client...',
             fn () => $this->applyAndVerifyRollout($kubectl, $clientTmp, $ns, 'netbird-client', 120),
         );
-        @unlink($clientTmp);
+        $clientTemporaryDirectory->delete();
 
         if (! $clientRolledOut) {
             return 1;
@@ -143,7 +147,7 @@ class VpnInitCommand extends Command
             return;
         }
 
-        $this->withSpin('Preparing NetBird relay config...', function () use ($kubectl, $ns, $host) {
+        $this->withSpin('Preparing NetBird relay config...', function () use ($kubectl, $ns, $host): void {
             $relaySecret = bin2hex(random_bytes(16));
             $this->registerSecret($relaySecret);
 
@@ -164,7 +168,8 @@ class VpnInitCommand extends Command
                 'dataStoreEncryptionKey' => $dataStoreEncryptionKey,
             ])->render();
 
-            $tmp = sys_get_temp_dir().'/larakube-vpn-management.json';
+            $temporaryDirectory = TemporaryDirectory::make();
+            $tmp = $temporaryDirectory->path('larakube-vpn-management.json');
             file_put_contents($tmp, $managementConfig);
 
             Process::run(
@@ -173,7 +178,7 @@ class VpnInitCommand extends Command
                 .'--from-file=management.json='.escapeshellarg($tmp).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
-            @unlink($tmp);
+            $temporaryDirectory->delete();
         });
     }
 
@@ -193,7 +198,7 @@ class VpnInitCommand extends Command
             return;
         }
 
-        $this->withSpin('Bootstrapping NetBird auth (no dashboard login needed)...', function () use ($kubectl, $ns, $host) {
+        $this->withSpin('Bootstrapping NetBird auth (no dashboard login needed)...', function () use ($kubectl, $ns, $host): void {
             $password = bin2hex(random_bytes(16));
             $email = $this->getEmail() ?: "admin@{$host}";
 
@@ -218,7 +223,7 @@ class VpnInitCommand extends Command
 
                         return;
                     }
-                    sleep(5);
+                    Sleep::sleep(5);
                 }
             }
 
@@ -270,7 +275,7 @@ class VpnInitCommand extends Command
             return;
         }
 
-        $this->withSpin('Waiting for TLS certificate (Let\'s Encrypt)...', function () use ($host) {
+        $this->withSpin('Waiting for TLS certificate (Let\'s Encrypt)...', function () use ($host): void {
             $maxWait = 90;
             $start = time();
 
@@ -281,7 +286,7 @@ class VpnInitCommand extends Command
                     return;
                 }
 
-                sleep(5);
+                Sleep::sleep(5);
             }
 
             $this->laraKubeWarn("TLS not ready after {$maxWait}s — proceeding anyway (auth bootstrap may fail; re-run `vpn:init` if it does).");

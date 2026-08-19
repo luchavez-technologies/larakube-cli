@@ -3,7 +3,7 @@
 use App\Traits\ResolvesStandaloneEnvironment;
 use Illuminate\Support\Facades\Process;
 
-test('resolveStandaloneEnvironmentAndKubectl uses explicit context when provided', function () {
+test('resolveStandaloneEnvironmentAndKubectl uses explicit context when provided', function (): void {
     $trait = new class
     {
         use ResolvesStandaloneEnvironment;
@@ -37,7 +37,7 @@ test('resolveStandaloneEnvironmentAndKubectl uses explicit context when provided
         ->and($kubectl)->toContain('--context \'my-explicit-context\'');
 });
 
-test('resolveStandaloneEnvironmentAndKubectl selects current context in non-interactive standalone mode', function () {
+test('resolveStandaloneEnvironmentAndKubectl selects current context in non-interactive standalone mode', function (): void {
     $trait = new class
     {
         use ResolvesStandaloneEnvironment;

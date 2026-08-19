@@ -20,6 +20,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class LinkInitCommand extends Command
 {
@@ -84,7 +85,7 @@ class LinkInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $jwtSecret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $jwtSecret): void {
             $cmd = "{$kubectl} create secret generic link-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=jwt-secret='.escapeshellarg($jwtSecret).' '
@@ -105,14 +106,15 @@ class LinkInitCommand extends Command
             'redisIndex' => $redisIndex,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-link-kutt.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-link-kutt.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Kutt manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'link-kutt', 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

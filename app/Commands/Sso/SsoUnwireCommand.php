@@ -17,6 +17,7 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoUnwireCommand extends Command
 {
@@ -183,7 +184,7 @@ class SsoUnwireCommand extends Command
         $pairs = implode(' ', array_map(fn (string $key) => $key.'-', $unset));
 
         $ok = true;
-        $this->withSpin("Unwiring {$tool->getLabel()} from Zitadel...", function () use ($kubectl, $schema, $pairs, &$ok) {
+        $this->withSpin("Unwiring {$tool->getLabel()} from Zitadel...", function () use ($kubectl, $schema, $pairs, &$ok): void {
             $ok = Process::run("{$kubectl} set env deployment/{$schema['deployment']} -n {$schema['namespace']} {$pairs}")->successful();
             if ($ok) {
                 Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
@@ -218,7 +219,7 @@ class SsoUnwireCommand extends Command
         Process::run("{$kubectl} delete middleware sso-forwardauth -n {$schema['namespace']} --ignore-not-found");
 
         if ($this->gatedForwardAuthTools($kubectl, $tool) === []) {
-            $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $ssoNs, $ssoHost, $pat) {
+            $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $ssoNs, $ssoHost, $pat): void {
                 $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
                 $appId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
                 if ($projectId !== null && $appId !== null) {
@@ -312,10 +313,11 @@ class SsoUnwireCommand extends Command
 
     protected function applyManifest(string $kubectl, string $yaml, string $name): bool
     {
-        $tmp = sys_get_temp_dir()."/larakube-{$name}.yaml";
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path("larakube-{$name}.yaml");
         file_put_contents($tmp, $yaml);
         $result = Process::run("{$kubectl} apply -f {$tmp}");
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         return $result->successful();
     }

@@ -1,15 +1,16 @@
 <?php
 
-function portableProject(): string
-{
-    $tmp = sys_get_temp_dir().'/larakube-portable-'.uniqid();
-    mkdir($tmp, 0755, true);
-    file_put_contents("$tmp/.larakube.json", json_encode(['name' => 'demo']));
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-    return $tmp;
+function portableProject(): TemporaryDirectory
+{
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    file_put_contents($temporaryDirectory->path('.larakube.json'), json_encode(['name' => 'demo']));
+
+    return $temporaryDirectory;
 }
 
-test('box.json bundles the stubs directory into the PHAR', function () {
+test('box.json bundles the stubs directory into the PHAR', function (): void {
     // Regression guard: if stubs/ is dropped from box.json, `larakube portable`
     // ships broken (the stub isn't inside the binary). This bit us once when a
     // revert reset box.json.
@@ -17,14 +18,15 @@ test('box.json bundles the stubs directory into the PHAR', function () {
     expect($box['directories'] ?? [])->toContain('stubs');
 });
 
-test('portable stubs exist on disk', function () {
+test('portable stubs exist on disk', function (): void {
     expect(file_exists(base_path('stubs/portable/larakube.sh.stub')))->toBeTrue()
         ->and(file_exists(base_path('stubs/portable/LOCAL_DEV.md.stub')))->toBeTrue();
 });
 
-test('portable command writes the wrapper script and guide', function () {
+test('portable command writes the wrapper script and guide', function (): void {
     $original = getcwd();
-    $tmp = portableProject();
+    $temporaryDirectory = portableProject();
+    $tmp = $temporaryDirectory->path();
     chdir($tmp);
 
     try {
@@ -54,13 +56,14 @@ test('portable command writes the wrapper script and guide', function () {
         expect($guide)->toContain('Local development without the LaraKube CLI');
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($tmp));
+        $temporaryDirectory->delete();
     }
 });
 
-test('portable command --script-only writes the script but not the guide', function () {
+test('portable command --script-only writes the script but not the guide', function (): void {
     $original = getcwd();
-    $tmp = portableProject();
+    $temporaryDirectory = portableProject();
+    $tmp = $temporaryDirectory->path();
     chdir($tmp);
 
     try {
@@ -70,13 +73,14 @@ test('portable command --script-only writes the script but not the guide', funct
             ->and(file_exists("$tmp/LOCAL_DEV.md"))->toBeFalse();
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($tmp));
+        $temporaryDirectory->delete();
     }
 });
 
-test('portable command --force overwrites an existing script', function () {
+test('portable command --force overwrites an existing script', function (): void {
     $original = getcwd();
-    $tmp = portableProject();
+    $temporaryDirectory = portableProject();
+    $tmp = $temporaryDirectory->path();
     file_put_contents("$tmp/larakube.sh", "# stale\n");
     chdir($tmp);
 
@@ -87,6 +91,6 @@ test('portable command --force overwrites an existing script', function () {
             ->toContain('cmd_up()');
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($tmp));
+        $temporaryDirectory->delete();
     }
 });

@@ -11,10 +11,12 @@ use App\Enums\StorageDriver;
 use Illuminate\Process\FakeInvokedProcess;
 use Illuminate\Process\InvokedProcess;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Throwable;
 
 /**
@@ -300,7 +302,7 @@ trait InteractsWithPlex
                     break;
                 }
 
-                usleep(500_000);
+                Sleep::usleep(500_000);
             }
         }
 
@@ -666,12 +668,13 @@ trait InteractsWithPlex
 
         $ns = $this->plexNamespace();
         $kubectl = $this->plexKubectl();
-        $tmp = sys_get_temp_dir().'/larakube-plex-commons.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-plex-commons.yaml');
         file_put_contents($tmp, $manifest);
-        Process::run("{$kubectl} apply -n {$ns} -f ".escapeshellarg($tmp), function (string $type, string $output) {
+        Process::run("{$kubectl} apply -n {$ns} -f ".escapeshellarg($tmp), function (string $type, string $output): void {
             echo $output;
         });
-        @unlink($tmp);
+        $temporaryDirectory->delete();
     }
 
     /**
@@ -1058,7 +1061,7 @@ trait InteractsWithPlex
                 return false;
             }
 
-            usleep(200_000);
+            Sleep::usleep(200_000);
         }
 
         return false;

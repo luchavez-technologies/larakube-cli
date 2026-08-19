@@ -32,16 +32,17 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-# Helper to run PHP via Docker
+# Helper to run PHP with phar writes enabled (the default php.ini ships
+# phar.readonly=On, which blocks everything build_phar()/build_standalone()
+# below do).
 run_php() {
-    export SHOW_WELCOME_MESSAGE=false
-    ./php -d phar.readonly=0 "$@"
+    php -d phar.readonly=0 "$@"
 }
 
 build_phar() {
     echo -e "📦 Building PHAR foundation ${BOLD}[$VERSION]${RESET}..."
-    run_php larakube app:build larakube --build-version=$VERSION
-    run_php php -r "copy('builds/larakube', 'builds/larakube.phar');"
+    run_php ./larakube app:build larakube --build-version=$VERSION
+    run_php -r "copy('builds/larakube', 'builds/larakube.phar');"
 }
 
 build_standalone() {
@@ -56,7 +57,7 @@ build_standalone() {
 echo -e "🔍 ${BOLD}Static analysis${RESET} (PHPStan/Larastan)..."
 # --memory-limit must be 4G: the 256M default OOMs a parallel worker, and 1G now
 # OOMs too on the grown codebase — a crashed worker hangs / prints a false error.
-run_php ./vendor/bin/phpstan analyse --no-progress --memory-limit=4G
+./vendor/bin/phpstan analyse --no-progress --memory-limit=4G
 
 case $BUILD_TYPE in
     "--local")
@@ -80,7 +81,7 @@ case $BUILD_TYPE in
             echo "👉 Verify by running: larakube --version"
         else
             echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} built successfully (skipped installation)."
-            echo "👉 Run locally with: ./php builds/larakube.phar"
+            echo "👉 Run locally with: php builds/larakube.phar"
         fi
         ;;
 
@@ -92,7 +93,7 @@ case $BUILD_TYPE in
         build_standalone mac arm
 
         # Cleanup
-        run_php php -r "unlink('builds/larakube.phar');"
+        run_php -r "unlink('builds/larakube.phar');"
 
         echo "✅ All standalone binaries built in builds/standalone/"
         ;;

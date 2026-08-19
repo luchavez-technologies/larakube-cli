@@ -52,11 +52,11 @@ function envContextKubectl(): string
     return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 }
 
-test('environmentContextName matches the name cloud:init creates', function () {
+test('environmentContextName matches the name cloud:init creates', function (): void {
     expect(envContext()->environmentContextName('159.223.43.95'))->toBe('larakube-159.223.43.95');
 });
 
-test('contextKubectl scopes kubectl to a context, or stays plain when null/empty', function () {
+test('contextKubectl scopes kubectl to a context, or stays plain when null/empty', function (): void {
     $e = envContext();
     $kubectl = envContextKubectl();
 
@@ -65,7 +65,7 @@ test('contextKubectl scopes kubectl to a context, or stays plain when null/empty
         ->and($e->contextKubectl(''))->toBe($kubectl);
 });
 
-test('environmentContextReachable is true when cluster-info succeeds and false when it fails', function () {
+test('environmentContextReachable is true when cluster-info succeeds and false when it fails', function (): void {
     $kubectl = envContextKubectl();
 
     Process::fake([
@@ -81,7 +81,7 @@ test('environmentContextReachable is true when cluster-info succeeds and false w
     Process::assertRan("{$kubectl} --context 'larakube-1.2.3.4' cluster-info --request-timeout=5s");
 });
 
-test('availableKubeContexts trims and filters blank lines from kubectl config get-contexts', function () {
+test('availableKubeContexts trims and filters blank lines from kubectl config get-contexts', function (): void {
     Process::fake([
         envContextKubectl().' config get-contexts -o name' => "ctx-a\nctx-b\n\n",
     ]);
@@ -89,13 +89,13 @@ test('availableKubeContexts trims and filters blank lines from kubectl config ge
     expect(envContext()->contexts())->toBe(['ctx-a', 'ctx-b']);
 });
 
-test('availableKubeContexts is empty when kubectl has no contexts (or is not installed)', function () {
+test('availableKubeContexts is empty when kubectl has no contexts (or is not installed)', function (): void {
     Process::fake([envContextKubectl().' config get-contexts -o name' => Process::result(output: '', exitCode: 1)]);
 
     expect(envContext()->contexts())->toBe([]);
 });
 
-test('currentKubeContext trims the active context, empty string when there is none', function () {
+test('currentKubeContext trims the active context, empty string when there is none', function (): void {
     $kubectl = envContextKubectl();
 
     Process::fake(["{$kubectl} config current-context" => "k3s-larakube\n"]);
@@ -105,7 +105,7 @@ test('currentKubeContext trims the active context, empty string when there is no
     expect(envContext()->currentContext())->toBe('');
 });
 
-test('clusterNodeCount counts whitespace-separated node names, zero when unreachable', function () {
+test('clusterNodeCount counts whitespace-separated node names, zero when unreachable', function (): void {
     $kubectl = envContextKubectl();
 
     Process::fake([

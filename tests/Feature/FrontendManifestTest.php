@@ -6,7 +6,7 @@ use App\Enums\FrontendStack;
 use App\Enums\PackageManager;
 use App\Enums\ServerVariation;
 
-test('Frontend: Nginx + SQLite + React', function () {
+test('Frontend: Nginx + SQLite + React', function (): void {
     $config = new ConfigData(name: 'react-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
@@ -15,7 +15,7 @@ test('Frontend: Nginx + SQLite + React', function () {
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Frontend: Nginx + SQLite + Vue', function () {
+test('Frontend: Nginx + SQLite + Vue', function (): void {
     $config = new ConfigData(name: 'vue-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
@@ -24,7 +24,7 @@ test('Frontend: Nginx + SQLite + Vue', function () {
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Frontend: Nginx + SQLite + Svelte', function () {
+test('Frontend: Nginx + SQLite + Svelte', function (): void {
     $config = new ConfigData(name: 'svelte-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
@@ -33,7 +33,7 @@ test('Frontend: Nginx + SQLite + Svelte', function () {
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Frontend: Nginx + SQLite + Livewire', function () {
+test('Frontend: Nginx + SQLite + Livewire', function (): void {
     $config = new ConfigData(name: 'livewire-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);

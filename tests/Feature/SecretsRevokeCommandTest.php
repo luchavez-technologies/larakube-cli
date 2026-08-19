@@ -6,13 +6,13 @@ use Laravel\Prompts\Prompt;
 
 Prompt::interactive(false);
 
-test('secrets:revoke is registered', function () {
+test('secrets:revoke is registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('secrets:revoke');
 });
 
-test('secrets:revoke removes exactly the named role when --role is given', function () {
+test('secrets:revoke removes exactly the named role when --role is given', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -43,7 +43,7 @@ test('secrets:revoke removes exactly the named role when --role is given', funct
         && $request->method() === 'DELETE');
 });
 
-test('secrets:revoke reports nothing to revoke when the user holds no access for this app/env', function () {
+test('secrets:revoke reports nothing to revoke when the user holds no access for this app/env', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -66,7 +66,7 @@ test('secrets:revoke reports nothing to revoke when the user holds no access for
         ->expectsOutputToContain('nothing to revoke');
 });
 
-test('secrets:revoke rejects an invalid role', function () {
+test('secrets:revoke rejects an invalid role', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),

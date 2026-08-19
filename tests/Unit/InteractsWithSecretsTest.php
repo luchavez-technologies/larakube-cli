@@ -33,25 +33,25 @@ function secretsReader(): object
     };
 }
 
-test('local Secrets host uses the secrets subdomain on the dev TLD', function () {
+test('local Secrets host uses the secrets subdomain on the dev TLD', function (): void {
     expect(secretsReader()->host('local', null))->toStartWith('secrets.');
 });
 
-test('cloud Secrets host returns the host persisted for that env', function () {
+test('cloud Secrets host returns the host persisted for that env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from(['hosts' => ['secrets' => 'secrets.example.com']]);
 
     expect(secretsReader()->host('production', $config))->toBe('secrets.example.com');
 });
 
-test('cloud Secrets host is null when none is configured for the env', function () {
+test('cloud Secrets host is null when none is configured for the env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(secretsReader()->host('production', $config))->toBeNull();
 });
 
-test('secretsKubectl scopes to a context only when one is given', function () {
+test('secretsKubectl scopes to a context only when one is given', function (): void {
     $reader = secretsReader();
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
@@ -60,7 +60,7 @@ test('secretsKubectl scopes to a context only when one is given', function () {
         ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
-test('isSecretsInstalled reflects whether the openbao-backend Deployment exists', function () {
+test('isSecretsInstalled reflects whether the openbao-backend Deployment exists', function (): void {
     Process::fake(['kubectl get deployment openbao-backend -n larakube-secrets --no-headers' => 'openbao-backend   1/1   1   1   5d']);
     expect(secretsReader()->installed('kubectl', 'larakube-secrets'))->toBeTrue();
 
@@ -68,7 +68,7 @@ test('isSecretsInstalled reflects whether the openbao-backend Deployment exists'
     expect(secretsReader()->installed('kubectl', 'larakube-secrets'))->toBeFalse();
 });
 
-test('secretsAccess is null when openbao is not installed, populated when it is', function () {
+test('secretsAccess is null when openbao is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake(["{$kubectl} get deployment openbao-backend -n larakube-secrets --no-headers" => Process::result(output: '', exitCode: 1)]);

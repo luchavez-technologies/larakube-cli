@@ -14,7 +14,7 @@ function extConfig(): ConfigData
     return new ConfigData(name: 'ext-test');
 }
 
-test('Redis flips session/cache/queue to redis and the disk to s3 — without writing connection vars', function () {
+test('Redis flips session/cache/queue to redis and the disk to s3 — without writing connection vars', function (): void {
     $values = externalizer()->externalizedEnvValues(CacheDriver::REDIS, hasS3: true, config: extConfig());
 
     expect($values)->toMatchArray([
@@ -28,7 +28,7 @@ test('Redis flips session/cache/queue to redis and the disk to s3 — without wr
         ->and($values)->not->toHaveKey('REDIS_PORT');
 });
 
-test('Memcached flips session/cache to memcached and forces no queue connection', function () {
+test('Memcached flips session/cache to memcached and forces no queue connection', function (): void {
     $values = externalizer()->externalizedEnvValues(CacheDriver::MEMCACHED, hasS3: true, config: extConfig());
 
     expect($values)->toMatchArray([
@@ -40,7 +40,7 @@ test('Memcached flips session/cache to memcached and forces no queue connection'
         ->and($values)->not->toHaveKey('MEMCACHED_HOST');
 });
 
-test('Database reuses the DB and does not force a queue connection', function () {
+test('Database reuses the DB and does not force a queue connection', function (): void {
     $values = externalizer()->externalizedEnvValues(CacheDriver::DATABASE, hasS3: true, config: extConfig());
 
     expect($values)->toMatchArray([
@@ -50,18 +50,16 @@ test('Database reuses the DB and does not force a queue connection', function ()
     ])->and($values)->not->toHaveKey('QUEUE_CONNECTION');
 });
 
-test('the Database cache option is offered only when the primary DB is networked, not SQLite', function () {
+test('the Database cache option is offered only when the primary DB is networked, not SQLite', function (): void {
     expect(externalizer()->offerableCacheDrivers(dbIsExternal: true))
         ->toContain(CacheDriver::DATABASE)
-        ->toContain(CacheDriver::REDIS);
-
-    expect(externalizer()->offerableCacheDrivers(dbIsExternal: false))
-        ->not->toContain(CacheDriver::DATABASE)
+        ->toContain(CacheDriver::REDIS)
+        ->and(externalizer()->offerableCacheDrivers(dbIsExternal: false))->not->toContain(CacheDriver::DATABASE)
         ->toContain(CacheDriver::REDIS)
         ->toContain(CacheDriver::MEMCACHED);
 });
 
-test('backendsPresent detects a backend from Plex membership OR a self-hosted/declared service', function () {
+test('backendsPresent detects a backend from Plex membership OR a self-hosted/declared service', function (): void {
     // Self-hosted: declares MinIO + a Redis cache, not on a Commons.
     $selfHosted = ConfigData::from([
         'name' => 'ext-test',
@@ -87,12 +85,12 @@ test('backendsPresent detects a backend from Plex membership OR a self-hosted/de
     expect(externalizer()->backendsPresent($bare, 'production', CacheDriver::REDIS))->toBe([false, false]);
 });
 
-test('without object storage it leaves FILESYSTEM_DISK alone', function () {
+test('without object storage it leaves FILESYSTEM_DISK alone', function (): void {
     expect(externalizer()->externalizedEnvValues(CacheDriver::DATABASE, hasS3: false, config: extConfig()))
         ->not->toHaveKey('FILESYSTEM_DISK');
 });
 
-test('applying the flips externalizes the drivers without clobbering Commons-owned keys', function () {
+test('applying the flips externalizes the drivers without clobbering Commons-owned keys', function (): void {
     $env = implode("\n", [
         'FILESYSTEM_DISK=local',
         'SESSION_DRIVER=file',

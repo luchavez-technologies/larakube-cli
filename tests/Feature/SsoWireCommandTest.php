@@ -4,26 +4,27 @@ use App\Commands\Sso\SsoWireCommand;
 use App\Data\GlobalConfigData;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('sso:wire is registered', function () {
+test('sso:wire is registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:wire');
 });
 
-test('sso:wire rejects a tool with no OIDC support', function () {
+test('sso:wire rejects a tool with no OIDC support', function (): void {
     $this->artisan('sso:wire', ['--tool' => 'dns', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain("can't be wired to SSO");
 });
 
-test('sso:wire rejects an unknown tool', function () {
+test('sso:wire rejects an unknown tool', function (): void {
     $this->artisan('sso:wire', ['--tool' => 'not-a-real-tool', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain("Unknown tool 'not-a-real-tool'");
 });
 
-test('sso:wire errors when Zitadel is not installed', function () {
+test('sso:wire errors when Zitadel is not installed', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: ''),
     ]);
@@ -33,7 +34,7 @@ test('sso:wire errors when Zitadel is not installed', function () {
         ->expectsOutputToContain('Zitadel is not installed');
 });
 
-test('sso:wire resolves a cloud tool host from the cluster registry when .larakube.json has none', function () {
+test('sso:wire resolves a cloud tool host from the cluster registry when .larakube.json has none', function (): void {
     // Regression for a real live failure 2026-08-06: dashboard:init records
     // Headlamp's host via ResolvesToolHost::promptForCloudHost(), which
     // persists to the CLUSTER REGISTRY, not .larakube.json — the project
@@ -44,8 +45,8 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
     // mirrors that exact state: .larakube.json knows about `sso` (an older
     // tool, wired before the registry migration) but nothing about
     // `dashboard`, whose host lives only in the registry.
-    $dir = sys_get_temp_dir().'/larakube-ssowire-test-'.uniqid();
-    mkdir($dir);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $cwd = getcwd();
 
     try {
@@ -98,12 +99,11 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
             && str_contains($request['redirectUris'][0] ?? '', 'dashboard.luchtech.dev'));
     } finally {
         chdir($cwd);
-        @unlink($dir.'/.larakube.json');
-        @rmdir($dir);
+        $temporaryDirectory->delete();
     }
 });
 
-test('sso:wire registers a new OIDC client and wires it to Grafana', function () {
+test('sso:wire registers a new OIDC client and wires it to Grafana', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
@@ -140,7 +140,7 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
         && $request['redirectUris'][0] === 'https://grafana.'.GlobalConfigData::load()->getLocalTld().'/login/generic_oauth');
 });
 
-test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, never as a literal env override', function () {
+test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, never as a literal env override', function (): void {
     // ADR 0018: sso_only_vars merged into $staticVars must land in the
     // Secret (reached via --from=secret) — a literal `set env KEY=value`
     // pass would desync kubectl apply's bookkeeping for the next
@@ -183,7 +183,7 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
         && str_contains($process->command, 'GF_AUTH_DISABLE_LOGIN_FORM='));
 });
 
-test('sso:wire without --sso-only unsets a previously-written sso_only_var instead of leaving it stuck on', function () {
+test('sso:wire without --sso-only unsets a previously-written sso_only_var instead of leaving it stuck on', function (): void {
     // The one legitimate remaining imperative Deployment touch (ADR 0018
     // point 4): there's no declarative way to remove an env var a PAST
     // --sso-only run may have written, so toggling back off still needs
@@ -225,7 +225,7 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
         && str_contains($process->command, "GF_AUTH_DISABLE_LOGIN_FORM='true'"));
 });
 
-test('sso:wire registers oCIS Drive as a public PKCE client with its real callback URIs', function () {
+test('sso:wire registers oCIS Drive as a public PKCE client with its real callback URIs', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis   1/1   1   1   10d'),
@@ -287,7 +287,7 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
         && ! str_contains($process->command, '--from-literal=client-secret=\'cid-drive'));
 });
 
-test('sso:wire re-registers a Drive app whose Zitadel registration is stale (confidential, wrong redirect URI)', function () {
+test('sso:wire re-registers a Drive app whose Zitadel registration is stale (confidential, wrong redirect URI)', function (): void {
     $tld = GlobalConfigData::load()->getLocalTld();
 
     Process::fake([
@@ -341,7 +341,7 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
         && $request['authMethodType'] !== 'OIDC_AUTH_METHOD_TYPE_NONE');
 });
 
-test('sso:wire re-registers a Drive app whose redirect URIs match but post-logout URIs are missing', function () {
+test('sso:wire re-registers a Drive app whose redirect URIs match but post-logout URIs are missing', function (): void {
     $tld = GlobalConfigData::load()->getLocalTld();
 
     Process::fake([
@@ -395,7 +395,7 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
         && ($request['postLogoutRedirectUris'] ?? null) === ["https://drive.{$tld}/"]);
 });
 
-test('sso:wire for Drive installs the ocisRoles claim Action and grants ocisAdmin via --admin-email', function () {
+test('sso:wire for Drive installs the ocisRoles claim Action and grants ocisAdmin via --admin-email', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis   1/1   1   1   10d'),
@@ -465,7 +465,7 @@ test('sso:wire for Drive installs the ocisRoles claim Action and grants ocisAdmi
     }
 });
 
-test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the existing Action', function () {
+test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the existing Action', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis   1/1   1   1   10d'),
@@ -512,7 +512,7 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
         && ! str_contains($request->url(), '_search'));
 });
 
-test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups claim', function () {
+test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups claim', function (): void {
     // Regression for a real live gap (2026-08-06): granting dashboard-admin
     // in Zitadel did nothing on the cluster, because Headlamp authorizes via
     // Kubernetes impersonation (Impersonate-User/-Group), not its own OIDC
@@ -559,7 +559,7 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
         && $request['fieldMask'] === ['paths' => ['name', 'script']]);
 });
 
-test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssertion', function () {
+test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssertion', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
@@ -597,7 +597,7 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
         && $request['projectRoleCheck'] === true);
 });
 
-test('sso:wire aborts before registering an OIDC client if role-gating setup fails', function () {
+test('sso:wire aborts before registering an OIDC client if role-gating setup fails', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
@@ -624,7 +624,7 @@ test('sso:wire aborts before registering an OIDC client if role-gating setup fai
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/apps/oidc'));
 });
 
-test('sso:wire reuses an already-registered OIDC client', function () {
+test('sso:wire reuses an already-registered OIDC client', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
@@ -667,7 +667,7 @@ test('sso:wire reuses an already-registered OIDC client', function () {
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/apps/oidc'));
 });
 
-test('sso:wire writes three bound_claims-gated roles to OpenBao, not one unconditional-admin role', function () {
+test('sso:wire writes three bound_claims-gated roles to OpenBao, not one unconditional-admin role', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment openbao-backend*' => Process::result(output: 'openbao-backend   1/1   1   1   10d'),
@@ -756,7 +756,7 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
         && str_contains($process->command, '--from-literal=client-id='));
 });
 
-test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0001)', function () {
+test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0001)', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment webmail-bulwark*' => Process::result(output: 'webmail-bulwark   1/1   1   1   10d'),
@@ -767,7 +767,7 @@ test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0
         ->expectsOutputToContain("can't be wired to SSO");
 });
 
-test('sso:wire registers a new OIDC client and wires it to Kutt (link)', function () {
+test('sso:wire registers a new OIDC client and wires it to Kutt (link)', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment link-kutt*' => Process::result(output: 'link-kutt   1/1   1   1   1d'),
@@ -804,7 +804,7 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         && str_contains($process->command, '--from=secret/link-oidc'));
 });
 
-test('sso:wire registers a new OIDC client and wires it to Directus (data)', function () {
+test('sso:wire registers a new OIDC client and wires it to Directus (data)', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   1d'),
@@ -833,7 +833,7 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-directus'));
 });
 
-test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', function () {
+test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
@@ -858,8 +858,8 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
         '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
     ]);
 
-    $dir = sys_get_temp_dir().'/larakube-pb-ssowire-test-'.uniqid();
-    mkdir($dir);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $cwd = getcwd();
 
     try {
@@ -882,10 +882,11 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
             && $request['redirectUris'][0] === 'https://pocket.luchtech.dev/api/oauth2-callback');
     } finally {
         chdir($cwd);
+        $temporaryDirectory->delete();
     }
 });
 
-test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', function () {
+test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
@@ -906,7 +907,7 @@ test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', fu
     Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/proj-1/apps/app-1') && $request->method() === 'DELETE');
 });
 
-test('sso:wire resolves the main DATA instance\'s own engine, not contaminated by a second instance\'s', function () {
+test('sso:wire resolves the main DATA instance\'s own engine, not contaminated by a second instance\'s', function (): void {
     // Regression test: the OLD resolveToolEngine() queried ALL data
     // Deployments in the namespace by label selector with no instance
     // scoping, so a second PocketBase instance's Deployment name containing
@@ -944,7 +945,7 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/data-pocketbase'));
 });
 
-test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC secret (also_patch)', function () {
+test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC secret (also_patch)', function (): void {
     // Regression test for the ClusterTool component refactor: DESIGN's
     // oidcEnv() used to carry a one-off 'frontend_deployment' key that only
     // this tool had; it's now the general 'also_patch' list derived from
@@ -983,7 +984,7 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/design-penpot-frontend'));
 });
 
-test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename to the canonical `zitadel` name)', function () {
+test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename to the canonical `zitadel` name)', function (): void {
     // Live failure 2026-08-12: Forgejo refused `forgejo admin auth add-oauth`
     // with "login source already exists [name: Login with SSO]" because an
     // earlier broken wiring created the source under the display label while
@@ -1021,7 +1022,7 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'admin auth add-oauth'));
 });
 
-test('sso:wire registers the Forgejo login source under the canonical `zitadel` name', function () {
+test('sso:wire registers the Forgejo login source under the canonical `zitadel` name', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),

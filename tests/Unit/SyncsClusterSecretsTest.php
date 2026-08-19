@@ -84,11 +84,11 @@ function syncsClusterSecrets(): object
     };
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     $this->kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 });
 
-test('databaseEngineMounted returns true when the database mount exists', function () {
+test('databaseEngineMounted returns true when the database mount exists', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -108,7 +108,7 @@ test('databaseEngineMounted returns true when the database mount exists', functi
     expect(syncsClusterSecrets()->engineMounted($this->kubectl))->toBeTrue();
 });
 
-test('databaseEngineMounted returns false when the database mount is absent', function () {
+test('databaseEngineMounted returns false when the database mount is absent', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -125,7 +125,7 @@ test('databaseEngineMounted returns false when the database mount is absent', fu
     expect(syncsClusterSecrets()->engineMounted($this->kubectl))->toBeFalse();
 });
 
-test('databaseEngineMounted returns false when no bootstrap secret exists', function () {
+test('databaseEngineMounted returns false when no bootstrap secret exists', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -133,7 +133,7 @@ test('databaseEngineMounted returns false when no bootstrap secret exists', func
     expect(syncsClusterSecrets()->engineMounted($this->kubectl))->toBeFalse();
 });
 
-test('mountDatabaseEngine mounts the database engine and returns true', function () {
+test('mountDatabaseEngine mounts the database engine and returns true', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -146,7 +146,7 @@ test('mountDatabaseEngine mounts the database engine and returns true', function
     expect(syncsClusterSecrets()->mountEngine($this->kubectl))->toBeTrue();
 });
 
-test('mountDatabaseEngine skips mounting when already mounted', function () {
+test('mountDatabaseEngine skips mounting when already mounted', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -167,11 +167,11 @@ test('mountDatabaseEngine skips mounting when already mounted', function () {
         return Http::response([], 204);
     });
 
-    expect(syncsClusterSecrets()->mountEngine($this->kubectl))->toBeTrue();
-    expect($mounted)->toBeFalse();
+    expect(syncsClusterSecrets()->mountEngine($this->kubectl))->toBeTrue()
+        ->and($mounted)->toBeFalse();
 });
 
-test('writeDatabaseEngineConfig writes postgres config and returns true', function () {
+test('writeDatabaseEngineConfig writes postgres config and returns true', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -184,11 +184,11 @@ test('writeDatabaseEngineConfig writes postgres config and returns true', functi
     expect(syncsClusterSecrets()->writeConfig($this->kubectl, 'postgres', 'root-pw'))->toBeTrue();
 });
 
-test('writeDatabaseEngineConfig returns false for unknown driver', function () {
+test('writeDatabaseEngineConfig returns false for unknown driver', function (): void {
     expect(syncsClusterSecrets()->writeConfig($this->kubectl, 'mongodb', 'root-pw'))->toBeFalse();
 });
 
-test('registerStaticRole registers a static role and returns true', function () {
+test('registerStaticRole registers a static role and returns true', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -201,7 +201,7 @@ test('registerStaticRole registers a static role and returns true', function () 
     expect(syncsClusterSecrets()->registerRole($this->kubectl, 'forgejo', 'plex-postgres', 'forgejo'))->toBeTrue();
 });
 
-test('registerStaticRole returns false for a non-existent database user', function () {
+test('registerStaticRole returns false for a non-existent database user', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -220,11 +220,11 @@ test('registerStaticRole returns false for a non-existent database user', functi
         return Http::response([], 204);
     });
 
-    expect(syncsClusterSecrets()->registerRole($this->kubectl, 'nonexistent', 'plex-postgres', 'nonexistent'))->toBeFalse();
-    expect($called)->toBeTrue();
+    expect(syncsClusterSecrets()->registerRole($this->kubectl, 'nonexistent', 'plex-postgres', 'nonexistent'))->toBeFalse()
+        ->and($called)->toBeTrue();
 });
 
-test('registerStaticRole returns false when bootstrap secret is missing', function () {
+test('registerStaticRole returns false when bootstrap secret is missing', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -232,7 +232,7 @@ test('registerStaticRole returns false when bootstrap secret is missing', functi
     expect(syncsClusterSecrets()->registerRole($this->kubectl, 'forgejo', 'plex-postgres', 'forgejo'))->toBeFalse();
 });
 
-test('rotateStaticRole calls the dedicated rotate-role endpoint and returns true', function () {
+test('rotateStaticRole calls the dedicated rotate-role endpoint and returns true', function (): void {
     // Regression guard for the bug found live 2026-08-01: registerStaticRole()
     // only auto-rotates a credential on the role's FIRST creation — a repeat
     // POST with the same config is a no-op for the password. --rotate must
@@ -251,12 +251,12 @@ test('rotateStaticRole calls the dedicated rotate-role endpoint and returns true
         return Http::response([], 204);
     });
 
-    expect(syncsClusterSecrets()->rotateRole($this->kubectl, 'tenant-luchtech_local'))->toBeTrue();
-    expect($calledMethod)->toBe('POST');
-    expect($calledUrl)->toEndWith('/database/rotate-role/tenant-luchtech_local');
+    expect(syncsClusterSecrets()->rotateRole($this->kubectl, 'tenant-luchtech_local'))->toBeTrue()
+        ->and($calledMethod)->toBe('POST')
+        ->and($calledUrl)->toEndWith('/database/rotate-role/tenant-luchtech_local');
 });
 
-test('rotateStaticRole returns false when bootstrap secret is missing', function () {
+test('rotateStaticRole returns false when bootstrap secret is missing', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -264,7 +264,7 @@ test('rotateStaticRole returns false when bootstrap secret is missing', function
     expect(syncsClusterSecrets()->rotateRole($this->kubectl, 'tenant-luchtech_local'))->toBeFalse();
 });
 
-test('staticRoleExists returns true when OpenBao has the role registered', function () {
+test('staticRoleExists returns true when OpenBao has the role registered', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -275,7 +275,7 @@ test('staticRoleExists returns true when OpenBao has the role registered', funct
     expect(syncsClusterSecrets()->roleExists($this->kubectl, 'tenant-luchtech_local'))->toBeTrue();
 });
 
-test('staticRoleExists returns false when OpenBao has no such role', function () {
+test('staticRoleExists returns false when OpenBao has no such role', function (): void {
     // The distinction plex:rotate depends on: a tenant that never went
     // through the static-role path (predates OpenBao, or joined while it
     // was unreachable) must be reported as NOT wired, not treated as an
@@ -290,7 +290,7 @@ test('staticRoleExists returns false when OpenBao has no such role', function ()
     expect(syncsClusterSecrets()->roleExists($this->kubectl, 'tenant-luchtech_local'))->toBeFalse();
 });
 
-test('staticRoleExists returns null (unknown), not false, when it can\'t reach OpenBao', function () {
+test('staticRoleExists returns null (unknown), not false, when it can\'t reach OpenBao', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -298,7 +298,7 @@ test('staticRoleExists returns null (unknown), not false, when it can\'t reach O
     expect(syncsClusterSecrets()->roleExists($this->kubectl, 'tenant-luchtech_local'))->toBeNull();
 });
 
-test('staticRoleExists returns null (unknown), not false, when OpenBao is sealed', function () {
+test('staticRoleExists returns null (unknown), not false, when OpenBao is sealed', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -309,7 +309,7 @@ test('staticRoleExists returns null (unknown), not false, when OpenBao is sealed
     expect(syncsClusterSecrets()->roleExists($this->kubectl, 'tenant-luchtech_local'))->toBeNull();
 });
 
-test('readDatabaseRootPassword returns the password from the database pod env', function () {
+test('readDatabaseRootPassword returns the password from the database pod env', function (): void {
     Process::fake([
         '*exec deploy/postgres -n larakube-plex -- sh -c *' => 'postgres-password-value',
     ]);
@@ -317,7 +317,7 @@ test('readDatabaseRootPassword returns the password from the database pod env', 
     expect(syncsClusterSecrets()->readDbPassword($this->kubectl, 'postgres'))->toBe('postgres-password-value');
 });
 
-test('readDatabaseRootPassword returns null when exec fails', function () {
+test('readDatabaseRootPassword returns null when exec fails', function (): void {
     Process::fake([
         '*exec deploy/postgres -n larakube-plex -- sh -c *' => Process::result(output: '', exitCode: 1),
     ]);
@@ -325,7 +325,7 @@ test('readDatabaseRootPassword returns null when exec fails', function () {
     expect(syncsClusterSecrets()->readDbPassword($this->kubectl, 'postgres'))->toBeNull();
 });
 
-test('wireDatabaseEngineToOpenBao orchestrates mount + config + kubernetes auth for enabled DB services', function () {
+test('wireDatabaseEngineToOpenBao orchestrates mount + config + kubernetes auth for enabled DB services', function (): void {
     $rootPw = 'postgres-root-pw';
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
@@ -363,7 +363,7 @@ test('wireDatabaseEngineToOpenBao orchestrates mount + config + kubernetes auth 
     expect($calls)->toHaveCount(9);
 });
 
-test('wireDatabaseEngineToOpenBao skips config for already-configured engines but still ensures kubernetes auth', function () {
+test('wireDatabaseEngineToOpenBao skips config for already-configured engines but still ensures kubernetes auth', function (): void {
     $rootPw = 'postgres-root-pw';
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
@@ -399,7 +399,7 @@ test('wireDatabaseEngineToOpenBao skips config for already-configured engines bu
     expect($calls)->toHaveCount(6);
 });
 
-test('wireDatabaseEngineToOpenBao warns but does not fail when kubernetes auth setup fails', function () {
+test('wireDatabaseEngineToOpenBao warns but does not fail when kubernetes auth setup fails', function (): void {
     $rootPw = 'postgres-root-pw';
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
@@ -420,7 +420,7 @@ test('wireDatabaseEngineToOpenBao warns but does not fail when kubernetes auth s
     expect(syncsClusterSecrets()->fullWire($this->kubectl, ['postgres']))->toBeTrue();
 });
 
-test('kubernetesAuthEnabled returns true when the kubernetes/ mount exists', function () {
+test('kubernetesAuthEnabled returns true when the kubernetes/ mount exists', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -433,7 +433,7 @@ test('kubernetesAuthEnabled returns true when the kubernetes/ mount exists', fun
     expect(syncsClusterSecrets()->k8sAuthEnabled($this->kubectl))->toBeTrue();
 });
 
-test('kubernetesAuthEnabled returns false when absent', function () {
+test('kubernetesAuthEnabled returns false when absent', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -446,7 +446,7 @@ test('kubernetesAuthEnabled returns false when absent', function () {
     expect(syncsClusterSecrets()->k8sAuthEnabled($this->kubectl))->toBeFalse();
 });
 
-test('ensureKubernetesAuthEnabled enables + configures auth using OpenBao pod\'s own CA cert', function () {
+test('ensureKubernetesAuthEnabled enables + configures auth using OpenBao pod\'s own CA cert', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -466,11 +466,11 @@ test('ensureKubernetesAuthEnabled enables + configures auth using OpenBao pod\'s
     expect(syncsClusterSecrets()->ensureK8sAuth($this->kubectl))->toBeTrue();
 
     $configCall = collect($bodies)->first(fn ($body, $url) => str_contains($url, 'auth/kubernetes/config'));
-    expect($configCall['kubernetes_ca_cert'] ?? null)->toBe('the-ca-cert-contents');
-    expect($configCall['kubernetes_host'] ?? null)->toBe('https://kubernetes.default.svc');
+    expect($configCall['kubernetes_ca_cert'] ?? null)->toBe('the-ca-cert-contents')
+        ->and($configCall['kubernetes_host'] ?? null)->toBe('https://kubernetes.default.svc');
 });
 
-test('ensureKubernetesAuthEnabled fails when the CA cert cannot be read', function () {
+test('ensureKubernetesAuthEnabled fails when the CA cert cannot be read', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -484,7 +484,7 @@ test('ensureKubernetesAuthEnabled fails when the CA cert cannot be read', functi
     expect(syncsClusterSecrets()->ensureK8sAuth($this->kubectl))->toBeFalse();
 });
 
-test('ensureDbStaticCredsReaderRole writes the narrow policy and binds it to eso-controller', function () {
+test('ensureDbStaticCredsReaderRole writes the narrow policy and binds it to eso-controller', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -503,11 +503,11 @@ test('ensureDbStaticCredsReaderRole writes the narrow policy and binds it to eso
     expect($policyCall['policy'] ?? null)->toContain('database/static-creds/*');
 
     $roleCall = collect($bodies)->first(fn ($body, $url) => str_contains($url, 'auth/kubernetes/role/eso-controller'));
-    expect($roleCall['bound_service_account_names'] ?? null)->toBe('external-secrets');
-    expect($roleCall['policies'] ?? null)->toBe('db-static-creds-reader-policy');
+    expect($roleCall['bound_service_account_names'] ?? null)->toBe('external-secrets')
+        ->and($roleCall['policies'] ?? null)->toBe('db-static-creds-reader-policy');
 });
 
-test('forceExternalSecretReconcile annotates the ExternalSecret to nudge ESO into reconciling immediately', function () {
+test('forceExternalSecretReconcile annotates the ExternalSecret to nudge ESO into reconciling immediately', function (): void {
     Process::fake(['*' => Process::result()]);
 
     syncsClusterSecrets()->forceReconcile($this->kubectl, 'luchtech-local', 'laravel-secrets-db');
@@ -526,7 +526,7 @@ test('forceExternalSecretReconcile annotates the ExternalSecret to nudge ESO int
  * database secrets engine already owned that role — see
  * resolveManagedDbPassword()'s own docblock for the full mechanics.
  */
-test('resolveManagedDbPassword falls back to the local password when OpenBao is not bootstrapped', function () {
+test('resolveManagedDbPassword falls back to the local password when OpenBao is not bootstrapped', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -535,7 +535,7 @@ test('resolveManagedDbPassword falls back to the local password when OpenBao is 
         ->toBe('fresh-random-local');
 });
 
-test('resolveManagedDbPassword falls back to the local password when the database engine is not mounted', function () {
+test('resolveManagedDbPassword falls back to the local password when the database engine is not mounted', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -549,7 +549,7 @@ test('resolveManagedDbPassword falls back to the local password when the databas
         ->toBe('fresh-random-local');
 });
 
-test('resolveManagedDbPassword falls back to the local password when OpenBao has no static role for it yet (first-ever creation)', function () {
+test('resolveManagedDbPassword falls back to the local password when OpenBao has no static role for it yet (first-ever creation)', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -567,7 +567,7 @@ test('resolveManagedDbPassword falls back to the local password when OpenBao has
         ->toBe('fresh-random-local');
 });
 
-test('resolveManagedDbPassword defers to OpenBao\'s current static-role password once the role already exists — never the local one', function () {
+test('resolveManagedDbPassword defers to OpenBao\'s current static-role password once the role already exists — never the local one', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),

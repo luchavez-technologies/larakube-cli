@@ -26,7 +26,7 @@ function bindNewCommandInput(string $cli): StringInput
     return $input;
 }
 
-test('flags before the name no longer swallow the name argument', function () {
+test('flags before the name no longer swallow the name argument', function (): void {
     $input = bindNewCommandInput('--teams --fast myapp');
 
     expect($input->getArgument('name'))->toBe('myapp')
@@ -34,7 +34,7 @@ test('flags before the name no longer swallow the name argument', function () {
         ->and($input->getOption('fast'))->toBeTrue();
 });
 
-test('value-taking installer flags consume their values correctly', function () {
+test('value-taking installer flags consume their values correctly', function (): void {
     $input = bindNewCommandInput('--branch develop --using acme/kit myapp');
 
     expect($input->getArgument('name'))->toBe('myapp')
@@ -42,7 +42,7 @@ test('value-taking installer flags consume their values correctly', function () 
         ->and($input->getOption('using'))->toBe('acme/kit');
 });
 
-test('--database stays a LaraKube boolean (cache/scout driver), not the installer value flag', function () {
+test('--database stays a LaraKube boolean (cache/scout driver), not the installer value flag', function (): void {
     // DB selection for the app goes through --mysql/--pgsql/…;
     // runLaravelNew() always scaffolds with --database=sqlite regardless.
     $definition = (new NewCommand)->getDefinition();
@@ -50,7 +50,7 @@ test('--database stays a LaraKube boolean (cache/scout driver), not the installe
     expect($definition->getOption('database')->acceptValue())->toBeFalse();
 });
 
-test('every documented laravel new flag is bindable', function () {
+test('every documented laravel new flag is bindable', function (): void {
     $input = bindNewCommandInput(
         '--dev --git --github --organization acme --react --svelte --vue --livewire '
         .'--livewire-class-components --workos --teams --no-authentication --pest --phpunit '
@@ -63,7 +63,7 @@ test('every documented laravel new flag is bindable', function () {
         ->and($input->getOption('organization'))->toBe('acme');
 });
 
-test('--fast defaults build a config without crashing alongside installer flags', function () {
+test('--fast defaults build a config without crashing alongside installer flags', function (): void {
     // Pre-existing bug surfaced by binding now completing: the --fast branch
     // called ConfigData::hasServerVariation()/hasPackageManager(), which
     // didn't exist — `larakube new --fast x` fataled before this fix.
@@ -88,7 +88,7 @@ test('--fast defaults build a config without crashing alongside installer flags'
         ->and($config->getPackageManager())->toBe(PackageManager::NPM);
 });
 
-test('architectural enum flags coexist with the installer flags (no duplicate-option crash)', function () {
+test('architectural enum flags coexist with the installer flags (no duplicate-option crash)', function (): void {
     // --react/--vue/--npm etc. are registered by addArchitecturalOptions()
     // first; the installer list must skip them, not fatal on redeclaration.
     $definition = (new NewCommand)->getDefinition();

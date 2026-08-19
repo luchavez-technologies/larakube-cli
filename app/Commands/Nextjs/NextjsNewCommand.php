@@ -157,7 +157,7 @@ class NextjsNewCommand extends Command
         $this->generateHealthRoute($projectDir);
 
         // 9. Generate K8s manifests
-        $this->withSpin('Orchestrating Next.js infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating Next.js infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

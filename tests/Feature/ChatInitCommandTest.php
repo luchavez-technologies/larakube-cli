@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('chat:init deploys matrix using plex commons postgres by default', function () {
+test('chat:init deploys matrix using plex commons postgres by default', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -29,7 +29,7 @@ test('chat:init deploys matrix using plex commons postgres by default', function
     });
 });
 
-test('chat:init aborts when the Commons S3 credentials are missing', function () {
+test('chat:init aborts when the Commons S3 credentials are missing', function (): void {
     Process::fake([
         // Specific patterns first — the S3 keys read empty while everything
         // else on plex-admin resolves, so we fail on creds and nothing earlier.
@@ -55,7 +55,7 @@ test('chat:init aborts when the Commons S3 credentials are missing', function ()
         ->expectsOutputToContain('Commons S3 credentials not found');
 });
 
-test('chat:init deploys standalone matrix when --no-plex is passed', function () {
+test('chat:init deploys standalone matrix when --no-plex is passed', function (): void {
     Process::fake([
         '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -69,7 +69,7 @@ test('chat:init deploys standalone matrix when --no-plex is passed', function ()
         ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
 });
 
-test('chat:init --vpn-only creates the Traefik Middleware before applying the manifests', function () {
+test('chat:init --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
     Process::fake([
         '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -83,7 +83,7 @@ test('chat:init --vpn-only creates the Traefik Middleware before applying the ma
         ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
 });
 
-test('chat:init --vpn-only aborts when the Middleware apply fails', function () {
+test('chat:init --vpn-only aborts when the Middleware apply fails', function (): void {
     Process::fake([
         '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -95,7 +95,7 @@ test('chat:init --vpn-only aborts when the Middleware apply fails', function () 
         ->expectsOutputToContain('Failed to create the VPN-only Middleware');
 });
 
-test('chat:remove removes matrix stack and deletes resources', function () {
+test('chat:remove removes matrix stack and deletes resources', function (): void {
     Process::fake([
         '*get deployment chat-synapse-db*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
@@ -108,7 +108,7 @@ test('chat:remove removes matrix stack and deletes resources', function () {
         ->expectsOutputToContain('removed from larakube-shared');
 });
 
-test('chat:remove aborts when a delete step fails', function () {
+test('chat:remove aborts when a delete step fails', function (): void {
     Process::fake([
         '*get deployment chat-synapse-db*' => Process::result(output: 'chat-synapse-db   1/1   1   1   1d'),
         '*delete *' => Process::result(output: '', exitCode: 1),

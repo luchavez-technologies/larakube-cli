@@ -8,6 +8,7 @@ use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\InteractsWithSso;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
 
 class DashboardTrustCommand extends Command
@@ -215,7 +216,7 @@ class DashboardTrustCommand extends Command
             if ($attempt % 3 === 0) {
                 $this->line('  ⏳ Still waiting for the API server... ('.($attempt * $delay).'s)');
             }
-            sleep($delay);
+            Sleep::sleep($delay);
         }
 
         return false;

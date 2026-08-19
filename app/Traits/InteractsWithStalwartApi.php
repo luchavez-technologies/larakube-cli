@@ -801,4 +801,212 @@ trait InteractsWithStalwartApi
             $this->stalwartForceRecoveryAuth = $previous;
         }
     }
+
+    /**
+     * Every configured DNS server (x:DnsServer — automatic-DNS-management
+     * credentials, one per zone/provider account). Not domain-scoped itself;
+     * an x:Domain references one of these by id.
+     */
+    protected function stalwartDnsServers(string $kubectl, string $ns): ?array
+    {
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:DnsServer/query', ['filter' => new stdClass], 'c0'],
+            ['x:DnsServer/get', ['ids' => []], 'c1'],
+        ]);
+
+        if ($responses === null || count($responses) < 2) {
+            return null;
+        }
+
+        $ids = $responses[0][1]['ids'] ?? [];
+        if ($ids === []) {
+            return [];
+        }
+
+        $getResponses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:DnsServer/get', ['ids' => $ids], 'c1'],
+        ]);
+
+        return $getResponses === null ? null : ($getResponses[0][1]['list'] ?? []);
+    }
+
+    /**
+     * The DnsServer whose `description` equals $description, or null.
+     * x:DnsServer has no `name` field — description is the only stable,
+     * human-chosen string on the object, so it doubles as the idempotency key
+     * (callers set it to the exact zone, e.g. "partner.example").
+     */
+    protected function stalwartFindDnsServerByDescription(string $kubectl, string $ns, string $description): ?array
+    {
+        foreach ($this->stalwartDnsServers($kubectl, $ns) ?? [] as $server) {
+            if (($server['description'] ?? null) === $description) {
+                return $server;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Create or update a Cloudflare-backed x:DnsServer for $zone, holding the
+     * zone-scoped API token as its `secret`. Idempotent by `description` (see
+     * stalwartFindDnsServerByDescription()) — re-running with the same zone
+     * patches the existing server's token/email in place rather than creating
+     * a duplicate. Returns the server's id, or null on failure.
+     */
+    protected function stalwartUpsertCloudflareDnsServer(string $kubectl, string $ns, string $zone, string $token, ?string $email = null): ?string
+    {
+        $existing = $this->stalwartFindDnsServerByDescription($kubectl, $ns, $zone);
+
+        $props = [
+            'description' => $zone,
+            'email' => $email,
+            'secret' => ['@type' => 'Value', 'secret' => $token],
+        ];
+
+        if ($existing !== null) {
+            $id = $existing['id'];
+            $responses = $this->stalwartJmap($kubectl, $ns, [
+                ['x:DnsServer/set', ['update' => [$id => $props]], 'c1'],
+            ]);
+
+            $updated = $responses[0][1]['updated'] ?? [];
+
+            return array_key_exists($id, $updated) ? $id : null;
+        }
+
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:DnsServer/set', ['create' => ['d1' => ['@type' => 'Cloudflare'] + $props]], 'c1'],
+        ]);
+
+        return $responses[0][1]['created']['d1']['id'] ?? null;
+    }
+
+    /**
+     * Every configured ACME provider (x:AcmeProvider — a Let's Encrypt-style
+     * account issuing certs, potentially for many domains at once).
+     */
+    protected function stalwartAcmeProviders(string $kubectl, string $ns): ?array
+    {
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:AcmeProvider/query', ['filter' => new stdClass], 'c0'],
+            ['x:AcmeProvider/get', ['ids' => []], 'c1'],
+        ]);
+
+        if ($responses === null || count($responses) < 2) {
+            return null;
+        }
+
+        $ids = $responses[0][1]['ids'] ?? [];
+        if ($ids === []) {
+            return [];
+        }
+
+        $getResponses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:AcmeProvider/get', ['ids' => $ids], 'c1'],
+        ]);
+
+        return $getResponses === null ? null : ($getResponses[0][1]['list'] ?? []);
+    }
+
+    /**
+     * Find-or-create an ACME provider for $directory (default: Let's Encrypt
+     * production). One ACME account legitimately issues certs for many
+     * unrelated domains — `contact`/`directory` are account-level, not
+     * domain-scoped — so a second onboarded domain REUSES the existing
+     * provider instead of registering a new account. Only creates one when no
+     * provider for that directory exists yet.
+     *
+     * Deliberately overrides Stalwart's own default challengeType
+     * (TlsAlpn01, which needs Stalwart itself to answer the raw TLS
+     * handshake on the domain's port 443 — already owned by Traefik on this
+     * cluster) to Dns01, which validates by writing an
+     * `_acme-challenge.<domain>` TXT record through the domain's own
+     * x:DnsServer — fully programmatic, no port contention.
+     *
+     * Returns the provider's id, or null on failure.
+     */
+    protected function stalwartEnsureAcmeProvider(string $kubectl, string $ns, ?string $contactEmail = null, ?string $directory = null): ?string
+    {
+        $directory ??= 'https://acme-v02.api.letsencrypt.org/directory';
+
+        foreach ($this->stalwartAcmeProviders($kubectl, $ns) ?? [] as $provider) {
+            if (($provider['directory'] ?? null) === $directory) {
+                return $provider['id'] ?? null;
+            }
+        }
+
+        $props = [
+            'directory' => $directory,
+            'challengeType' => 'Dns01',
+        ];
+        if ($contactEmail !== null && $contactEmail !== '') {
+            // JMAP Set<String> serializes as an object map (value => true), not
+            // a JSON array — confirmed against the live luchtech.dev provider,
+            // whose own `contact` is `{"mailto:postmaster@luchtech.dev": true}`.
+            // The `mailto:` scheme prefix is required, matching that shape.
+            $props['contact'] = (object) ["mailto:{$contactEmail}" => true];
+        }
+
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:AcmeProvider/set', ['create' => ['a1' => $props]], 'c1'],
+        ]);
+
+        return $responses[0][1]['created']['a1']['id'] ?? null;
+    }
+
+    /**
+     * Create or update the x:Domain for $zone with fully automatic DNS,
+     * certificate, and DKIM management. Idempotent by `name` (via the
+     * existing stalwartDomains()) — re-running patches the existing domain's
+     * dnsServerId/acmeProviderId in place rather than creating a duplicate.
+     *
+     * dkimManagement is explicitly restricted to RSA-only
+     * (Dkim1RsaSha256): Stalwart's own default enables RSA + Ed25519
+     * simultaneously, which is exactly the dual-active-signature condition
+     * that trips SES's 554 duplicate-header rejection (see
+     * stalwartEnforceSingleRsaDkimSignature(), written as a CLEANUP for that
+     * on luchtech.dev). Setting it explicitly at creation avoids ever needing
+     * that cleanup here.
+     *
+     * Returns the domain's id, or null on failure.
+     */
+    protected function stalwartUpsertDomain(string $kubectl, string $ns, string $zone, string $dnsServerId, string $acmeProviderId): ?string
+    {
+        $existing = null;
+        foreach ($this->stalwartDomains($kubectl, $ns) ?? [] as $domain) {
+            if (($domain['name'] ?? null) === $zone) {
+                $existing = $domain;
+                break;
+            }
+        }
+
+        $props = [
+            'isEnabled' => true,
+            'dnsManagement' => ['@type' => 'Automatic', 'dnsServerId' => $dnsServerId],
+            'certificateManagement' => ['@type' => 'Automatic', 'acmeProviderId' => $acmeProviderId],
+            // 'algorithms' is a JMAP Set<enum>, which serializes as an object
+            // map (value => true), not a JSON array — confirmed against the
+            // live luchtech.dev domain's own dkimManagement.algorithms shape
+            // ({"Dkim1Ed25519Sha256": true, "Dkim1RsaSha256": true}).
+            'dkimManagement' => ['@type' => 'Automatic', 'algorithms' => (object) ['Dkim1RsaSha256' => true]],
+        ];
+
+        if ($existing !== null) {
+            $id = $existing['id'];
+            $responses = $this->stalwartJmap($kubectl, $ns, [
+                ['x:Domain/set', ['update' => [$id => $props]], 'c1'],
+            ]);
+
+            $updated = $responses[0][1]['updated'] ?? [];
+
+            return array_key_exists($id, $updated) ? $id : null;
+        }
+
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:Domain/set', ['create' => ['dm1' => ['name' => $zone] + $props]], 'c1'],
+        ]);
+
+        return $responses[0][1]['created']['dm1']['id'] ?? null;
+    }
 }

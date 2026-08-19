@@ -5,37 +5,37 @@ use App\Data\EnvironmentData;
 use App\Data\TunnelData;
 use App\Enums\TunnelProvider;
 
-test('cloudflare has a health probe, localtonet does not', function () {
+test('cloudflare has a health probe, localtonet does not', function (): void {
     expect(TunnelProvider::CLOUDFLARE->hasHealthProbe())->toBeTrue()
         ->and(TunnelProvider::LOCALTONET->hasHealthProbe())->toBeFalse();
 });
 
-test('every provider has a non-empty image', function () {
+test('every provider has a non-empty image', function (): void {
     foreach (TunnelProvider::cases() as $p) {
         expect($p->getImage())->not->toBeEmpty();
     }
 });
 
-test('cloudflare args include run and --token', function () {
+test('cloudflare args include run and --token', function (): void {
     $args = TunnelProvider::CLOUDFLARE->getArgs();
 
     expect($args)->toContain('run')
         ->toContain('--token');
 });
 
-test('localtonet command includes --authtoken', function () {
+test('localtonet command includes --authtoken', function (): void {
     $args = TunnelProvider::LOCALTONET->getArgs();
 
     expect(implode(' ', $args))->toContain('--authtoken');
 });
 
-test('TunnelData round-trips through spatie data', function () {
+test('TunnelData round-trips through spatie data', function (): void {
     $data = TunnelData::from(['provider' => 'cloudflare']);
 
     expect($data->provider)->toBe(TunnelProvider::CLOUDFLARE);
 });
 
-test('cloud:configure:tunnel command has remove option', function () {
+test('cloud:configure:tunnel command has remove option', function (): void {
     $cmd = new CloudConfigureTunnelCommand;
 
     expect($cmd->getDefinition()->hasOption('remove'))->toBeTrue()
@@ -43,7 +43,7 @@ test('cloud:configure:tunnel command has remove option', function () {
         ->and($cmd->getDefinition()->hasOption('token'))->toBeTrue();
 });
 
-test('EnvironmentData tunnel field defaults to null', function () {
+test('EnvironmentData tunnel field defaults to null', function (): void {
     $env = new EnvironmentData;
 
     expect($env->tunnel)->toBeNull();

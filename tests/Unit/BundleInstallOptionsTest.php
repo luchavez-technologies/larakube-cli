@@ -3,14 +3,15 @@
 use App\Commands\Bundle\BundleBuildCommand;
 use App\Commands\Bundle\BundleInstallCommand;
 use App\Traits\GeneratesOfflineCertificates;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('bundle:install --skip-images is a valueless boolean flag', function () {
+test('bundle:install --skip-images is a valueless boolean flag', function (): void {
     $option = (new BundleInstallCommand)->getDefinition()->getOption('skip-images');
 
     expect($option->acceptValue())->toBeFalse();
 });
 
-test('bundle:install --swap accepts a value, defaults to 1G, and normalizes bare numbers', function () {
+test('bundle:install --swap accepts a value, defaults to 1G, and normalizes bare numbers', function (): void {
     $option = (new BundleInstallCommand)->getDefinition()->getOption('swap');
 
     expect($option->acceptValue())->toBeTrue()
@@ -18,7 +19,7 @@ test('bundle:install --swap accepts a value, defaults to 1G, and normalizes bare
         ->and($option->getDefault())->toBe('1G');
 });
 
-test('bundle:install --swap normalizes bare integers to gigabytes', function () {
+test('bundle:install --swap normalizes bare integers to gigabytes', function (): void {
     expect(preg_replace('/^\d+$/', '', '2') === '' ? '2G' : '2')->toBe('2G');
 
     // Explicit normalization rule: digits-only → append G
@@ -36,21 +37,21 @@ test('bundle:install --swap normalizes bare integers to gigabytes', function () 
 
 // --- bundle:build CA options ---
 
-test('bundle:build --ca-cert accepts a value and defaults to null', function () {
+test('bundle:build --ca-cert accepts a value and defaults to null', function (): void {
     $option = (new BundleBuildCommand)->getDefinition()->getOption('ca-cert');
 
     expect($option->acceptValue())->toBeTrue()
         ->and($option->getDefault())->toBeNull();
 });
 
-test('bundle:build --ca-key accepts a value and defaults to null', function () {
+test('bundle:build --ca-key accepts a value and defaults to null', function (): void {
     $option = (new BundleBuildCommand)->getDefinition()->getOption('ca-key');
 
     expect($option->acceptValue())->toBeTrue()
         ->and($option->getDefault())->toBeNull();
 });
 
-test('caMode derivation logic', function () {
+test('caMode derivation logic', function (): void {
     $derive = fn (string $cert, string $key) => match (true) {
         $cert !== '' && $key !== '' => 'full_sign',
         $cert !== '' => 'trust_only',
@@ -65,14 +66,14 @@ test('caMode derivation logic', function () {
 
 // --- GeneratesOfflineCertificates full-sign mode ---
 
-test('generateSanCertificates uses company CA when both cert and key are supplied', function () {
+test('generateSanCertificates uses company CA when both cert and key are supplied', function (): void {
     $trait = new class
     {
         use GeneratesOfflineCertificates;
     };
 
-    $tmpDir = sys_get_temp_dir().'/larakube-ca-test-'.uniqid();
-    mkdir($tmpDir, 0700, true);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tmpDir = $temporaryDirectory->path();
 
     // finally, not a trailing statement: a failing assertion below would skip
     // the cleanup and leave real RSA private keys in the system temp directory,
@@ -100,6 +101,6 @@ test('generateSanCertificates uses company CA when both cert and key are supplie
         exec('openssl verify -CAfile '.escapeshellarg("$tmpDir/company-ca.crt").' '.escapeshellarg($result['tls_crt']).' 2>&1', $output, $code);
         expect($code)->toBe(0);
     } finally {
-        exec('rm -rf '.escapeshellarg($tmpDir));
+        $temporaryDirectory->delete();
     }
 });

@@ -158,7 +158,7 @@ class AxumNewCommand extends Command
         $this->generateAxumScaffolding($projectDir, $appName);
 
         // 7. Generate K8s manifests
-        $this->withSpin('Orchestrating Axum infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating Axum infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

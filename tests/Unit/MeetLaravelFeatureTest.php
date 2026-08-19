@@ -9,17 +9,17 @@ function meetFeatureConfig(string $name = 'speeddating'): ConfigData
     return new ConfigData(id: 'test', name: $name);
 }
 
-test('meet is a selectable Laravel feature with a label', function () {
+test('meet is a selectable Laravel feature with a label', function (): void {
     expect(LaravelFeature::tryFrom('meet'))->toBe(LaravelFeature::MEET)
         ->and(LaravelFeature::MEET->getLabel())->toBe('Video Meetings (LiveKit)');
 });
 
-test('meet installs the LiveKit server SDK', function () {
+test('meet installs the LiveKit server SDK', function (): void {
     expect(LaravelFeature::MEET->getComposerDependencies())
         ->toContain('agence104/livekit-server-sdk');
 });
 
-test('meet points at the shared Meet host, not a project-scoped one', function () {
+test('meet points at the shared Meet host, not a project-scoped one', function (): void {
     // Meet is a cluster-wide tool. getServiceHost() would produce
     // meet.<project>.<tld>, which nothing serves.
     $url = LaravelFeature::MEET->getPublicEnvironmentVariables(meetFeatureConfig())['LIVEKIT_URL'];
@@ -28,7 +28,7 @@ test('meet points at the shared Meet host, not a project-scoped one', function (
         ->and($url)->not->toContain('speeddating');
 });
 
-test('each project gets its own room prefix', function () {
+test('each project gets its own room prefix', function (): void {
     $vars = LaravelFeature::MEET->getPublicEnvironmentVariables(meetFeatureConfig());
 
     // OSS LiveKit cannot scope a key to a room, so this prefix is the only
@@ -36,7 +36,7 @@ test('each project gets its own room prefix', function () {
     expect($vars['LIVEKIT_ROOM_PREFIX'])->toBe('speeddating-');
 });
 
-test('the env accessors never touch the cluster — they are called from render paths', function () {
+test('the env accessors never touch the cluster — they are called from render paths', function (): void {
     // A cluster read here would make every render and test hit kubectl. The
     // real key pair is allocated in onPostInstall() instead.
     Process::fake();
@@ -46,14 +46,14 @@ test('the env accessors never touch the cluster — they are called from render 
     Process::assertNothingRan();
 });
 
-test('credentials are declared but left empty for onPostInstall to fill', function () {
+test('credentials are declared but left empty for onPostInstall to fill', function (): void {
     $secrets = LaravelFeature::MEET->getSecretEnvironmentVariables(meetFeatureConfig());
 
     expect($secrets)->toHaveKeys(['LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'])
         ->and($secrets['LIVEKIT_API_KEY'])->toBe('');
 });
 
-test('post-install guidance states both LiveKit isolation limits', function () {
+test('post-install guidance states both LiveKit isolation limits', function (): void {
     $lines = implode("\n", LaravelFeature::MEET->getPostInstallInstructions(meetFeatureConfig()));
 
     // These are the two things that will bite someone building a multi-tenant
@@ -63,13 +63,13 @@ test('post-install guidance states both LiveKit isolation limits', function () {
         ->and($lines)->toContain('every event is sent to');
 });
 
-test('other features are unaffected by the meet case', function () {
+test('other features are unaffected by the meet case', function (): void {
     expect(LaravelFeature::REVERB->getComposerDependencies())->toContain('laravel/reverb')
         ->and(LaravelFeature::QUEUES->getPublicEnvironmentVariables())
         ->toBe(['QUEUE_CONNECTION' => 'database']);
 });
 
-test('adding meet to a project does not fail when Meet is not installed', function () {
+test('adding meet to a project does not fail when Meet is not installed', function (): void {
     // `larakube add meet` must work offline / before meet:init. Falling back to
     // the declared placeholders is correct; blowing up is not.
     Process::fake([
@@ -82,7 +82,7 @@ test('adding meet to a project does not fail when Meet is not installed', functi
     expect($method->invoke(LaravelFeature::MEET, meetFeatureConfig()))->toBe([]);
 });
 
-test('when Meet is installed the project gets its own consumer key', function () {
+test('when Meet is installed the project gets its own consumer key', function (): void {
     $registry = json_encode(['_system' => [
         'key' => 'LK_system', 'secret' => 's', 'roomPrefix' => 'system-', 'webhookUrl' => null,
     ]]);

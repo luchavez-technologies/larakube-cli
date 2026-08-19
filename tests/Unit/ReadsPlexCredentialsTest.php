@@ -3,6 +3,7 @@
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
 use App\Traits\ReadsPlexCredentials;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function plexCredReader(): object
 {
@@ -25,34 +26,29 @@ function tenantConfig(string $env, array $plex): ConfigData
     return $config;
 }
 
-beforeEach(function () {
-    $this->dir = sys_get_temp_dir().'/lk-plex-'.uniqid();
-    mkdir($this->dir);
+beforeEach(function (): void {
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->dir = $this->temporaryDirectory->path();
 });
 
-afterEach(function () {
-    foreach (glob($this->dir.'/{,.}*', GLOB_BRACE) ?: [] as $f) {
-        if (is_file($f)) {
-            unlink($f);
-        }
-    }
-    @rmdir($this->dir);
+afterEach(function (): void {
+    $this->temporaryDirectory->delete();
 });
 
-test('returns [] when the project is not a Plex tenant for the env', function () {
+test('returns [] when the project is not a Plex tenant for the env', function (): void {
     $config = tenantConfig('production', []);   // empty plex array = not a tenant
     file_put_contents($this->dir.'/.env.production', "DB_HOST=mysql.larakube-plex.svc.cluster.local\n");
 
     expect(plexCredReader()->read($config, $this->dir, 'production'))->toBe([]);
 });
 
-test('returns [] when the env file is missing', function () {
+test('returns [] when the env file is missing', function (): void {
     $config = tenantConfig('production', ['mysql']);
 
     expect(plexCredReader()->read($config, $this->dir, 'production'))->toBe([]);
 });
 
-test('reads DB, Redis and S3 credentials from .env.{env} for a cloud tenant', function () {
+test('reads DB, Redis and S3 credentials from .env.{env} for a cloud tenant', function (): void {
     $config = tenantConfig('production', ['mysql', 'redis']);
     file_put_contents($this->dir.'/.env.production', implode("\n", [
         'DB_HOST=mysql.larakube-plex.svc.cluster.local',
@@ -79,7 +75,7 @@ test('reads DB, Redis and S3 credentials from .env.{env} for a cloud tenant', fu
         ->and($creds['s3']['Secret'])->toBe('secret');
 });
 
-test('omits a redis password of literal "null"', function () {
+test('omits a redis password of literal "null"', function (): void {
     $config = tenantConfig('production', ['redis']);
     file_put_contents($this->dir.'/.env.production', implode("\n", [
         'REDIS_HOST=redis.larakube-plex.svc.cluster.local',
@@ -91,7 +87,7 @@ test('omits a redis password of literal "null"', function () {
     expect($creds['redis'])->not->toHaveKey('Password');
 });
 
-test('local env reads .env, not .env.local', function () {
+test('local env reads .env, not .env.local', function (): void {
     $config = tenantConfig('local', ['mysql']);
     file_put_contents($this->dir.'/.env', "DB_HOST=mysql.larakube-plex.svc.cluster.local\nDB_PASSWORD=localpass\n");
 

@@ -3,7 +3,7 @@
 use App\Commands\Data\DataRemoveCommand;
 use Illuminate\Support\Facades\Process;
 
-test('data:remove tears down single default instance cleanly', function () {
+test('data:remove tears down single default instance cleanly', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'main', 'host' => 'data.dev.test'],
@@ -21,7 +21,7 @@ test('data:remove tears down single default instance cleanly', function () {
     ])->assertExitCode(0);
 });
 
-test('data:remove targets explicit domain instance', function () {
+test('data:remove targets explicit domain instance', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'blog', 'host' => 'blog.dev.test'],
@@ -40,7 +40,7 @@ test('data:remove targets explicit domain instance', function () {
     ])->assertExitCode(0);
 });
 
-test('data:remove hard-errors non-interactively when 2+ instances are registered and neither --domain nor --all was given', function () {
+test('data:remove hard-errors non-interactively when 2+ instances are registered and neither --domain nor --all was given', function (): void {
     // Previously this silently picked $registered[0] and tore that instance
     // down without telling the operator there was a choice to make — the
     // exact same failure class as the DATA duplicate-registration incident
@@ -60,7 +60,7 @@ test('data:remove hard-errors non-interactively when 2+ instances are registered
     ])->run();
 })->throws(RuntimeException::class, 'Pass --domain=<host>');
 
-test('data:remove --all removes all registered instances', function () {
+test('data:remove --all removes all registered instances', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'main', 'host' => 'data.dev.test'],

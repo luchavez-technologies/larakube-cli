@@ -10,7 +10,7 @@ use App\Enums\ClusterToolComponentRole;
  * `kubectl delete` string in each {Tool}RemoveCommand — independent of, and
  * liable to drift from, the Blade manifest that actually deploys them.
  */
-test('every tool declares exactly one PRIMARY component', function () {
+test('every tool declares exactly one PRIMARY component', function (): void {
     foreach (ClusterTool::cases() as $tool) {
         $primaries = array_values(array_filter(
             $tool->components(),
@@ -21,7 +21,7 @@ test('every tool declares exactly one PRIMARY component', function () {
     }
 });
 
-test('deploymentName() is unchanged by delegating to primaryComponent()', function () {
+test('deploymentName() is unchanged by delegating to primaryComponent()', function (): void {
     // Every tool's deploymentName() used to be one flat match. It now
     // delegates to primaryComponent()->deployment — this pins that the
     // refactor produced byte-identical output for every tool, both
@@ -50,7 +50,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         ->and(ClusterTool::DATA->deploymentName())->toBe('data-directus');
 });
 
-test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown deployment names exactly', function () {
+test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown deployment names exactly', function (): void {
     $chatDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::CHAT->components());
     expect($chatDeployments)->toBe(['chat-synapse', 'chat-cinny', 'chat-coturn', 'chat-synapse-db']);
 
@@ -61,7 +61,7 @@ test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown
     expect($designDeployments)->toBe(['design-penpot-backend', 'design-penpot-frontend', 'design-penpot-exporter']);
 });
 
-test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components share the primary\'s wiring secret', function () {
+test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components share the primary\'s wiring secret', function (): void {
     foreach (ClusterTool::cases() as $tool) {
         $shared = array_values(array_filter($tool->components(), fn ($c) => $c->sharesPrimarySecret));
 
@@ -75,7 +75,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('crm-twenty-worker');
         } else {
-            expect($shared)->toBe([]);
+            expect($shared)->toBeEmpty();
         }
     }
 
@@ -84,7 +84,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
         ->and(ClusterTool::CRM->alsoPatchDeployments())->toBe(['crm-twenty-worker']);
 });
 
-test('backupVolume is only true for the components InteractsWithBackup already covers today', function () {
+test('backupVolume is only true for the components InteractsWithBackup already covers today', function (): void {
     // Every other component defaults to backupVolume: false until a future
     // audit pass explicitly opts it in — a false negative here must never
     // silently start (or stop) a backup as a side effect of this refactor.

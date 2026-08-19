@@ -49,7 +49,7 @@ function meetChecksum(string $rendered): string
     return $deployment['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
 }
 
-test('meet manifest renders as valid multi-document YAML with no consumers', function () {
+test('meet manifest renders as valid multi-document YAML with no consumers', function (): void {
     $documents = meetDocuments(meetManifest());
 
     expect($documents)->not->toBeEmpty();
@@ -61,7 +61,7 @@ test('meet manifest renders as valid multi-document YAML with no consumers', fun
     expect(meetLivekitConfig(meetManifest())['keys'])->toBe([]);
 });
 
-test('livekit-server refuses to boot on an empty keys map, so a persisted registry always has one', function () {
+test('livekit-server refuses to boot on an empty keys map, so a persisted registry always has one', function (): void {
     // Verified against livekit/livekit-server:v1.13.5, which exits with
     // "one of key-file or keys must be provided". A registry emptied by the
     // last meet:unwire would otherwise CrashLoopBackOff the SFU.
@@ -85,7 +85,7 @@ test('livekit-server refuses to boot on an empty keys map, so a persisted regist
         ->and($seeded['_system']['secret'])->not->toBeEmpty();
 });
 
-test('every registered consumer gets its own key in the LiveKit config', function () {
+test('every registered consumer gets its own key in the LiveKit config', function (): void {
     $config = meetLivekitConfig(meetManifest([
         'chat' => meetConsumer('LK_chat', 'chatsecret', 'matrix-'),
         'speeddating' => meetConsumer('LK_dating', 'datingsecret', 'speeddating-'),
@@ -97,7 +97,7 @@ test('every registered consumer gets its own key in the LiveKit config', functio
     ]);
 });
 
-test('adding a consumer changes the config-checksum', function () {
+test('adding a consumer changes the config-checksum', function (): void {
     // Without this the Secret is rewritten but the pod never restarts, so
     // LiveKit keeps serving the old key set and rejects the new credentials.
     $before = meetChecksum(meetManifest(['chat' => meetConsumer('LK_chat', 'chatsecret', 'matrix-')]));
@@ -109,7 +109,7 @@ test('adding a consumer changes the config-checksum', function () {
     expect($before)->not->toBe($after);
 });
 
-test('revoking a consumer changes the config-checksum', function () {
+test('revoking a consumer changes the config-checksum', function (): void {
     $both = meetChecksum(meetManifest([
         'chat' => meetConsumer('LK_chat', 'chatsecret', 'matrix-'),
         'app' => meetConsumer('LK_app', 'appsecret', 'app-'),
@@ -119,7 +119,7 @@ test('revoking a consumer changes the config-checksum', function () {
     expect($both)->not->toBe($one);
 });
 
-test('registry ordering does not affect the checksum — an unrelated re-run must not roll the SFU', function () {
+test('registry ordering does not affect the checksum — an unrelated re-run must not roll the SFU', function (): void {
     $a = meetConsumer('LK_a', 'asecret', 'a-');
     $b = meetConsumer('LK_b', 'bsecret', 'b-');
 
@@ -129,7 +129,7 @@ test('registry ordering does not affect the checksum — an unrelated re-run mus
         ->toBe(meetChecksum(meetManifest(['beta' => $b, 'alpha' => $a])));
 });
 
-test('the SFU has a memory limit but no CPU limit', function () {
+test('the SFU has a memory limit but no CPU limit', function (): void {
     $container = collect(meetDocuments(meetManifest()))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
             && ($doc['metadata']['name'] ?? null) === 'meet-livekit')['spec']['template']['spec']['containers'][0];
@@ -139,7 +139,7 @@ test('the SFU has a memory limit but no CPU limit', function () {
         ->and($container['resources']['requests']['cpu'])->not->toBeNull();
 });
 
-test('webhooks are wired for a single subscriber and signed with that consumer key', function () {
+test('webhooks are wired for a single subscriber and signed with that consumer key', function (): void {
     $config = meetLivekitConfig(meetManifest([
         'chat' => meetConsumer('LK_chat', 'chatsecret', 'matrix-'),
         'app' => meetConsumer('LK_app', 'appsecret', 'app-', 'https://app.example.com/livekit/webhook'),
@@ -149,7 +149,7 @@ test('webhooks are wired for a single subscriber and signed with that consumer k
         ->and($config['webhook']['urls'])->toBe(['https://app.example.com/livekit/webhook']);
 });
 
-test('webhooks are omitted when two consumers want them — only one signing key exists', function () {
+test('webhooks are omitted when two consumers want them — only one signing key exists', function (): void {
     // LiveKit signs with a single api_key, so a second subscriber could not
     // verify the payloads. Wiring both would ship silently unverifiable events.
     $config = meetLivekitConfig(meetManifest([
@@ -160,7 +160,7 @@ test('webhooks are omitted when two consumers want them — only one signing key
     expect($config)->not->toHaveKey('webhook');
 });
 
-test('the ingress exposes the Matrix bridge only once it is wired', function () {
+test('the ingress exposes the Matrix bridge only once it is wired', function (): void {
     $paths = function (bool $wired): array {
         $ingress = Yaml::parse(view('k8s.meet.ingress', [
             'host' => 'meet.example.com',
@@ -175,7 +175,7 @@ test('the ingress exposes the Matrix bridge only once it is wired', function () 
         ->and($paths(true))->toBe(['/jwt', '/']);
 });
 
-test('a cloud meet ingress requests a real ACME cert, a local one never does', function () {
+test('a cloud meet ingress requests a real ACME cert, a local one never does', function (): void {
     $render = fn (bool $isLocal) => view('k8s.meet.ingress', [
         'host' => 'meet.example.com',
         'isLocal' => $isLocal,

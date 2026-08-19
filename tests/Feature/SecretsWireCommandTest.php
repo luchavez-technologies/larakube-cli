@@ -21,7 +21,7 @@ function fakeSyncedExternalSecret(): array
     ];
 }
 
-test('secrets:wire fails when OpenBao is not deployed', function () {
+test('secrets:wire fails when OpenBao is not deployed', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(),
@@ -32,7 +32,7 @@ test('secrets:wire fails when OpenBao is not deployed', function () {
         ->expectsOutputToContain('OpenBao is not deployed.');
 });
 
-test('secrets:wire fails when the database engine is not mounted', function () {
+test('secrets:wire fails when the database engine is not mounted', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
@@ -48,7 +48,7 @@ test('secrets:wire fails when the database engine is not mounted', function () {
         ->expectsOutputToContain('database secrets engine is not mounted');
 });
 
-test('secrets:wire fails when Vault Kubernetes auth is not configured', function () {
+test('secrets:wire fails when Vault Kubernetes auth is not configured', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
@@ -68,7 +68,7 @@ test('secrets:wire fails when Vault Kubernetes auth is not configured', function
         ->expectsOutputToContain('Vault Kubernetes auth is not configured');
 });
 
-test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret, waits for sync, and restarts the deployment', function () {
+test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret, waits for sync, and restarts the deployment', function (): void {
     // fakeSyncedExternalSecret()'s patterns must come BEFORE the catch-all
     // '*' below — Process::fake() matches in array declaration order, and a
     // '*' listed first would swallow the more specific refreshTime/status/
@@ -106,7 +106,7 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/sign-documenso'));
 });
 
-test('secrets:wire --tool=link registers a static role for link_kutt and restarts link-kutt', function () {
+test('secrets:wire --tool=link registers a static role for link_kutt and restarts link-kutt', function (): void {
     // fakeSyncedExternalSecret()'s patterns must come BEFORE the catch-all
     // '*' below — Process::fake() matches in array declaration order, and a
     // '*' listed first would swallow the more specific refreshTime/status/
@@ -144,7 +144,7 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/link-kutt'));
 });
 
-test('secrets:wire --tool=support registers a static role for support_chatwoot and restarts support-chatwoot', function () {
+test('secrets:wire --tool=support registers a static role for support_chatwoot and restarts support-chatwoot', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret support-secrets*' => Process::result(output: base64_encode('db-pw')),
@@ -175,7 +175,7 @@ test('secrets:wire --tool=support registers a static role for support_chatwoot a
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/support-chatwoot'));
 });
 
-test('secrets:wire --tool=tasks registers a static role for tasks_planka and restarts tasks-planka', function () {
+test('secrets:wire --tool=tasks registers a static role for tasks_planka and restarts tasks-planka', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret tasks-planka-secrets*' => Process::result(output: base64_encode('db-pw')),
@@ -206,7 +206,7 @@ test('secrets:wire --tool=tasks registers a static role for tasks_planka and res
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/tasks-planka'));
 });
 
-test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', function () {
+test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
@@ -228,7 +228,7 @@ test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', f
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'apply -f'));
 });
 
-test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND a fresh refreshTime', function () {
+test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND a fresh refreshTime', function (): void {
     $command = new class extends SecretsWireCommand
     {
         public function wait(string $kubectl, string $ns, string $name, ?string $before, int $timeout): bool
@@ -266,7 +266,7 @@ test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND
     expect($command->wait('kubectl', 'larakube-shared', 'x-db', '2026-07-30T22:40:49Z', 2))->toBeTrue();
 });
 
-test('secrets:wire rejects a tool with no wireable Commons database password', function () {
+test('secrets:wire rejects a tool with no wireable Commons database password', function (): void {
     // Desk (FreeScout) has a Commons database (HasCommonsDatabases) but no
     // simple single-key password to hand OpenBao (no HasDbSecretRef) — the
     // other reason a tool can be rejected here, distinct from Drive's "no
@@ -291,7 +291,7 @@ test('secrets:wire rejects a tool with no wireable Commons database password', f
         ->expectsOutputToContain('does not have a Commons database password OpenBao can rotate');
 });
 
-test('secrets:wire rejects a tool that is not installed', function () {
+test('secrets:wire rejects a tool that is not installed', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment sign-documenso*' => Process::result(output: '', exitCode: 1),
@@ -310,7 +310,7 @@ test('secrets:wire rejects a tool that is not installed', function () {
         ->expectsOutputToContain('is not installed');
 });
 
-test('secrets:wire --all wires every installed DB-rotatable tool and skips uninstalled ones', function () {
+test('secrets:wire --all wires every installed DB-rotatable tool and skips uninstalled ones', function (): void {
     // fakeSyncedExternalSecret()'s patterns must come BEFORE the catch-all
     // '*' below — Process::fake() matches in array declaration order, and a
     // '*' listed first would swallow the more specific refreshTime/status/
@@ -342,7 +342,7 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/record-sendrec'));
 });
 
-test('secrets:wire rejects Drive (oCIS has no Commons database password to rotate)', function () {
+test('secrets:wire rejects Drive (oCIS has no Commons database password to rotate)', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis'),
@@ -364,7 +364,7 @@ test('secrets:wire rejects Drive (oCIS has no Commons database password to rotat
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/drive'));
 });
 
-test('secrets:wire --tool=data --engine=pocketbase reports no wireable database instead of grabbing Directus\'s secret ref', function () {
+test('secrets:wire --tool=data --engine=pocketbase reports no wireable database instead of grabbing Directus\'s secret ref', function (): void {
     // Regression test for the concrete bug this overhaul exists to fix:
     // dbSecretRef()/commonsDatabases() called with NO engine used to always
     // resolve to Directus's shape (the guard only fires for an EXPLICIT
@@ -390,7 +390,7 @@ test('secrets:wire --tool=data --engine=pocketbase reports no wireable database 
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/data_directus'));
 });
 
-test('secrets:wire --tool=data never trusts a stale registry engine hint over what is actually live', function () {
+test('secrets:wire --tool=data never trusts a stale registry engine hint over what is actually live', function (): void {
     // Same bug, from the other direction: with no --engine= flag, a stale
     // registry entry (still says 'directus' after a switch to pocketbase)
     // must NOT be trusted blindly — resolveInstanceEngine() confirms the
@@ -425,7 +425,7 @@ test('secrets:wire --tool=data never trusts a stale registry engine hint over wh
         ->expectsOutputToContain('is not installed (or has no wireable Commons database) at this instance');
 });
 
-test('secrets:wire requires --tool or --all when it cannot prompt', function () {
+test('secrets:wire requires --tool or --all when it cannot prompt', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment sign-documenso*' => Process::result(output: 'sign-documenso'),
@@ -444,7 +444,7 @@ test('secrets:wire requires --tool or --all when it cannot prompt', function () 
     $this->artisan('secrets:wire local --no-interaction')->run();
 })->throws(MissingFlagException::class, 'Missing required --tool');
 
-test('secrets:wire --tool=mail registers a static role for stalwart and restarts stalwart deployment', function () {
+test('secrets:wire --tool=mail registers a static role for stalwart and restarts stalwart deployment', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret stalwart*' => Process::result(output: base64_encode('store-pw')),
@@ -475,7 +475,7 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/stalwart'));
 });
 
-test('secrets:wire --tool=passwords registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function () {
+test('secrets:wire --tool=passwords registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret vault-secrets*' => Process::result(output: base64_encode('postgresql://vaultwarden:pw@postgres:5432/vaultwarden')),
@@ -506,7 +506,7 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vaultwarden'));
 });
 
-test('secrets:wire supports git, notes, sheets, and chat tools', function () {
+test('secrets:wire supports git, notes, sheets, and chat tools', function (): void {
     foreach (['git' => 'forgejo', 'notes' => 'notes-secrets', 'sheets' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
         expect(App\Enums\ClusterTool::from($toolSlug)->dbSecretRef())->not->toBeNull();
     }

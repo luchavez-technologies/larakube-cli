@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('flow:init deploys n8n by default using plex commons postgres', function () {
+test('flow:init deploys n8n by default using plex commons postgres', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -24,7 +24,7 @@ test('flow:init deploys n8n by default using plex commons postgres', function ()
         ->expectsOutputToContain('Flow (n8n) stack is live.');
 });
 
-test('flow:init deploys windmill using plex commons postgres', function () {
+test('flow:init deploys windmill using plex commons postgres', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -46,7 +46,7 @@ test('flow:init deploys windmill using plex commons postgres', function () {
         ->expectsOutputToContain('Flow (Windmill) stack is live.');
 });
 
-test('flow:remove removes flow stack and deletes resources', function () {
+test('flow:remove removes flow stack and deletes resources', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
         '*get secret flow-secrets*' => Process::result(output: '', exitCode: 1),

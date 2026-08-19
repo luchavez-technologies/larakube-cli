@@ -11,14 +11,15 @@
         }
     ],
     "require": {
-        "php": "^8.2",
-        "illuminate/http": "^12.17",
-        "illuminate/view": "^12.17",
-        "intonate/tinker-zero": "^1.2",
-        "laravel-zero/framework": "^12.0.2",
+        "php": "^8.3",
+        "illuminate/http": "^13.24",
+        "illuminate/view": "^13.24",
+        "laravel-zero/framework": "^13.0",
         "laravel/mcp": "^0.7.0",
         "laravel/prompts": "^0.3.16",
+        "saloonphp/saloon": "^4.0",
         "spatie/laravel-data": "^4.23",
+        "spatie/temporary-directory": "^2.4",
         "symfony/yaml": "^8.0"
     },
     "require-dev": {
@@ -26,9 +27,14 @@
         "laravel/pao": "^1.0",
         "laravel/pint": "^1.25.1",
         "mockery/mockery": "^1.6.12",
-        "pestphp/pest": "^3.8.4|^4.1.2",
-        "phpstan/phpstan-strict-rules": "^2.0",
+        "pestphp/pest": "^5.0",
+        "pestphp/pest-plugin-agent": "^5.0",
+        "pestphp/pest-plugin-phpstan": "^5.0",
+        "pestphp/pest-plugin-rector": "^5.0",
         "phpacker/phpacker": "^0.6.4",
+        "phpstan/phpstan": "^2.2",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "rector/rector": "^2.6",
         "spatie/pest-plugin-snapshots": "^2.3"
     },
     "autoload": {

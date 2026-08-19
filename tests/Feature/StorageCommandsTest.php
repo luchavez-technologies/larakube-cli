@@ -18,7 +18,7 @@ function storageFakes(array $overrides = []): array
     ], $overrides);
 }
 
-test('storage:show refuses when there is no Plex Commons', function () {
+test('storage:show refuses when there is no Plex Commons', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(output: ''),
@@ -29,7 +29,7 @@ test('storage:show refuses when there is no Plex Commons', function () {
         ->expectsOutputToContain('No Plex Commons found');
 });
 
-test('storage:show rejects an unknown driver', function () {
+test('storage:show rejects an unknown driver', function (): void {
     Process::fake(storageFakes());
 
     $this->artisan('storage:show local --driver=invalid')
@@ -37,7 +37,7 @@ test('storage:show rejects an unknown driver', function () {
         ->expectsOutputToContain("Unknown storage driver 'invalid'");
 });
 
-test('storage:show displays storage status and bucket list', function () {
+test('storage:show displays storage status and bucket list', function (): void {
     Process::fake(storageFakes());
 
     $this->artisan('storage:show local')
@@ -47,7 +47,7 @@ test('storage:show displays storage status and bucket list', function () {
         ->expectsOutputToContain('stalwart');
 });
 
-test('storage:buckets renders a table of buckets', function () {
+test('storage:buckets renders a table of buckets', function (): void {
     Process::fake(storageFakes());
 
     $this->artisan('storage:buckets local')
@@ -56,7 +56,7 @@ test('storage:buckets renders a table of buckets', function () {
         ->expectsOutputToContain('stalwart');
 });
 
-test('storage:make-bucket creates a bucket via flag', function () {
+test('storage:make-bucket creates a bucket via flag', function (): void {
     Process::fake(storageFakes());
 
     $this->artisan('storage:make-bucket local --bucket=my-app-uploads')
@@ -64,7 +64,7 @@ test('storage:make-bucket creates a bucket via flag', function () {
         ->expectsOutputToContain("Created bucket 'my-app-uploads'");
 });
 
-test('storage:list lists files inside a bucket', function () {
+test('storage:list lists files inside a bucket', function (): void {
     Process::fake(storageFakes());
 
     $this->artisan('storage:list local --bucket=stalwart')

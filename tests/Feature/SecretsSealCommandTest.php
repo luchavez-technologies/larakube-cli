@@ -3,13 +3,13 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-test('secrets:seal is registered', function () {
+test('secrets:seal is registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('secrets:seal');
 });
 
-test('secrets:seal fails when OpenBao is not deployed', function () {
+test('secrets:seal fails when OpenBao is not deployed', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -19,7 +19,7 @@ test('secrets:seal fails when OpenBao is not deployed', function () {
         ->expectsOutputToContain('not deployed');
 });
 
-test('secrets:seal seals OpenBao with --force, no prompt', function () {
+test('secrets:seal seals OpenBao with --force, no prompt', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),

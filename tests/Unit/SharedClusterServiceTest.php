@@ -11,14 +11,14 @@ use Illuminate\Support\Facades\View;
 // appears to hang on the *previous* test file (alphabetically ServicesManifestTest).
 beforeEach(fn () => Process::fake());
 
-test('every shared service maps to an existing blade template', function () {
+test('every shared service maps to an existing blade template', function (): void {
     foreach (SharedClusterService::cases() as $service) {
-        expect($service->template())->not->toBe('')
+        expect($service->template())->not->toBeEmpty()
             ->and(View::exists($service->template()))->toBeTrue("missing view: {$service->template()}");
     }
 });
 
-test('every shared service renders its manifest with the resolved host', function () {
+test('every shared service renders its manifest with the resolved host', function (): void {
     foreach (SharedClusterService::cases() as $service) {
         $host = $service->hostFor('example.test');
         $params = ['host' => $host];
@@ -59,7 +59,7 @@ test('every shared service renders its manifest with the resolved host', functio
     }
 });
 
-test('hostFor combines the host prefix with the given cluster domain', function () {
+test('hostFor combines the host prefix with the given cluster domain', function (): void {
     expect(SharedClusterService::MAILPIT->hostFor('localhost'))->toBe('mailpit.localhost')
         ->and(SharedClusterService::CONSOLE->hostFor('kube'))->toBe('console.kube')
         ->and(SharedClusterService::GRAFANA->hostFor('example.com'))->toBe('grafana.example.com')
@@ -75,7 +75,7 @@ test('hostFor combines the host prefix with the given cluster domain', function 
         ->and(SharedClusterService::TRAEFIK_DASHBOARD->hostFor('localhost'))->toBe('traefik.localhost');
 });
 
-test('hostFor dash-suffixes the prefix for a named instance, and leaves main unchanged', function () {
+test('hostFor dash-suffixes the prefix for a named instance, and leaves main unchanged', function (): void {
     // The only prefix-derivation convention this codebase already has
     // (ConfigData::getSharedServiceHost()'s web-host fallback,
     // ToolAliasCommand's resource-name suffix) is dash-joined — mirrored
@@ -91,7 +91,7 @@ test('hostFor dash-suffixes the prefix for a named instance, and leaves main unc
     expect(SharedClusterService::DATA->hostFor('data-blog.example.com', 'blog'))->toBe('data-blog.example.com');
 });
 
-test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Gitea, Flow, Sheet, Insights, Mail, Desk, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function () {
+test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Gitea, Flow, Sheet, Insights, Mail, Desk, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function (): void {
     foreach (SharedClusterService::cases() as $service) {
         $localOnly = ! in_array($service, [
             SharedClusterService::GRAFANA,
@@ -131,13 +131,13 @@ test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, G
     }
 });
 
-test('every shared service has a non-empty human label', function () {
+test('every shared service has a non-empty human label', function (): void {
     foreach (SharedClusterService::cases() as $service) {
-        expect($service->label())->not->toBe('');
+        expect($service->label())->not->toBeEmpty();
     }
 });
 
-test('only the Console re-syncs deployment env, carrying the current host', function () {
+test('only the Console re-syncs deployment env, carrying the current host', function (): void {
     foreach (SharedClusterService::cases() as $service) {
         $sync = $service->deploymentEnvSync('console.example.com');
 
@@ -156,7 +156,7 @@ test('only the Console re-syncs deployment env, carrying the current host', func
     }
 });
 
-test('always-on services auto-create a namespace; install-gated ones do not', function () {
+test('always-on services auto-create a namespace; install-gated ones do not', function (): void {
     // The policy that drives applySharedService(): a service with no presence
     // probe is reconciled unconditionally and must own a namespace to create,
     // while a probed service is only re-pointed when already installed (its
@@ -170,8 +170,8 @@ test('always-on services auto-create a namespace; install-gated ones do not', fu
     }
 });
 
-test('every shared service has a non-empty reconcile label', function () {
+test('every shared service has a non-empty reconcile label', function (): void {
     foreach (SharedClusterService::cases() as $service) {
-        expect($service->reconcileLabel())->not->toBe('');
+        expect($service->reconcileLabel())->not->toBeEmpty();
     }
 });

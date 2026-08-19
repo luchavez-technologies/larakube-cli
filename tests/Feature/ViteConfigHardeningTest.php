@@ -1,11 +1,12 @@
 <?php
 
 use App\Data\ConfigData;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Tests\Feature\ViteHardenHelper;
 
-test('Vite Hardening: Preserves Wayfinder and injects K8s config', function () {
-    $tempDir = sys_get_temp_dir().'/vite-harden-test-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('Vite Hardening: Preserves Wayfinder and injects K8s config', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     $viteConfig = <<<'TS'
 import { defineConfig } from 'vite';
@@ -39,15 +40,15 @@ TS;
 
     // Verify K8s config is injected
     expect($result)->toContain("origin: 'https://vite.test-app.kube'");
-    expect($result)->toContain("host: 'vite.test-app.kube'");
-    expect($result)->toContain('cors: true');
+    expect($result)->toContain("host: 'vite.test-app.kube'")
+        ->toContain('cors: true');
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 });
 
-test('Vite Hardening: Re-aligns a managed server block to the current TLD', function () {
-    $tempDir = sys_get_temp_dir().'/vite-realign-test-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('Vite Hardening: Re-aligns a managed server block to the current TLD', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     $viteConfig = <<<'TS'
 import { defineConfig } from 'vite';
@@ -92,13 +93,13 @@ TS;
     expect($result)->toContain("origin: 'https://vite.test-app.test'")
         ->and($result)->toContain("host: 'vite.test-app.test'");
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
     unlink($globalConfigDir.'/config.json');
 });
 
-test('Vite Hardening: Handles Inertia SSR disabling', function () {
-    $tempDir = sys_get_temp_dir().'/vite-ssr-test-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('Vite Hardening: Handles Inertia SSR disabling', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     $viteConfig = <<<'TS'
 import { defineConfig } from 'vite';
@@ -124,5 +125,5 @@ TS;
     // Verify Inertia SSR is disabled
     expect($result)->toContain('inertia({ ssr: false })');
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 });

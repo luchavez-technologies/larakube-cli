@@ -2,7 +2,7 @@
 
 use Symfony\Component\Yaml\Yaml;
 
-test('vpn shared manifest renders as valid multi-document YAML', function () {
+test('vpn shared manifest renders as valid multi-document YAML', function (): void {
     $rendered = view('k8s.vpn.shared', ['host' => 'vpn.example.com'])->render();
 
     $documents = array_values(array_filter(
@@ -25,7 +25,7 @@ test('vpn shared manifest renders as valid multi-document YAML', function () {
         ->toContain('Ingress/netbird-management');
 });
 
-test('vpn ingress requests a real ACME cert for a cloud install, never a local one', function () {
+test('vpn ingress requests a real ACME cert for a cloud install, never a local one', function (): void {
     $cloud = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'isLocal' => false])->render();
     $local = view('k8s.vpn.shared', ['host' => 'vpn.dev.test', 'isLocal' => true])->render();
 
@@ -33,7 +33,7 @@ test('vpn ingress requests a real ACME cert for a cloud install, never a local o
         ->and($local)->not->toContain('router.tls.certresolver');
 });
 
-test('vpn management and signal Services both request h2c backend proxying — both serve gRPC', function () {
+test('vpn management and signal Services both request h2c backend proxying — both serve gRPC', function (): void {
     $rendered = view('k8s.vpn.shared', ['host' => 'vpn.example.com'])->render();
 
     $documents = array_values(array_filter(
@@ -51,7 +51,7 @@ test('vpn management and signal Services both request h2c backend proxying — b
     }
 });
 
-test('vpn client manifest renders as valid multi-document YAML wired to the bootstrapped setup key', function () {
+test('vpn client manifest renders as valid multi-document YAML wired to the bootstrapped setup key', function (): void {
     $rendered = view('k8s.vpn.client')->render();
 
     $documents = array_values(array_filter(

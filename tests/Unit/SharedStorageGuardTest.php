@@ -14,6 +14,7 @@ use App\Enums\DeploymentStrategy;
 use App\Traits\GuardsSharedStorage;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function storageGuard(): object
 {
@@ -40,23 +41,23 @@ function storageGuard(): object
     };
 }
 
-test('multi-node-ha strategy is multi-node without probing the cluster', function () {
+test('multi-node-ha strategy is multi-node without probing the cluster', function (): void {
     $config = new ConfigData(name: 'app');
     $config->setStrategy(DeploymentStrategy::MULTI_NODE_HA);
 
     expect(storageGuard()->multi($config, 'production', null))->toBeTrue();
 });
 
-test('single-node strategy with no cluster context is not multi-node', function () {
+test('single-node strategy with no cluster context is not multi-node', function (): void {
     $config = new ConfigData(name: 'app');
     $config->setStrategy(DeploymentStrategy::SINGLE_NODE);
 
     expect(storageGuard()->multi($config, 'production', null))->toBeFalse();
 });
 
-test('local state drivers flag file-based session/cache and non-object-store uploads', function () {
-    $dir = sys_get_temp_dir().'/lk-guard-'.uniqid();
-    mkdir($dir);
+test('local state drivers flag file-based session/cache and non-object-store uploads', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents("$dir/.env.production", "FILESYSTEM_DISK=local\nSESSION_DRIVER=file\nCACHE_STORE=redis\n");
     $config = new ConfigData(name: 'app', path: $dir);
 
@@ -66,23 +67,21 @@ test('local state drivers flag file-based session/cache and non-object-store upl
         ->and(implode(' ', $risky))->toContain('FILESYSTEM_DISK=local')
         ->and(implode(' ', $risky))->toContain('SESSION_DRIVER=file');
 
-    unlink("$dir/.env.production");
-    rmdir($dir);
+    $temporaryDirectory->delete();
 });
 
-test('local state drivers are clean when uploads use S3 and session/cache are externalized', function () {
-    $dir = sys_get_temp_dir().'/lk-guard-'.uniqid();
-    mkdir($dir);
+test('local state drivers are clean when uploads use S3 and session/cache are externalized', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents("$dir/.env.production", "FILESYSTEM_DISK=s3\nSESSION_DRIVER=database\nCACHE_STORE=redis\n");
     $config = new ConfigData(name: 'app', path: $dir);
 
     expect(storageGuard()->risky($config, 'production'))->toBe([]);
 
-    unlink("$dir/.env.production");
-    rmdir($dir);
+    $temporaryDirectory->delete();
 });
 
-test('nfsStorageClassPresent reflects whether the larakube-nfs StorageClass exists on the cluster', function () {
+test('nfsStorageClassPresent reflects whether the larakube-nfs StorageClass exists on the cluster', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'prod-ctx'";
 
     Process::fake(["{$kubectl} get storageclass 'larakube-nfs' -o name" => Process::result(exitCode: 0)]);

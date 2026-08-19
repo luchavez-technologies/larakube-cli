@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Process;
  * teardown details that were previously only exercised through the init
  * command's --remove branch.
  */
-test('tool:remove takes the environment as its only positional', function () {
+test('tool:remove takes the environment as its only positional', function (): void {
     foreach (ClusterTool::shippedCases() as $tool) {
         $definition = $this->app
             ->make(Kernel::class)
@@ -21,18 +21,16 @@ test('tool:remove takes the environment as its only positional', function () {
     }
 });
 
-test('every tool has a remove command and none of them still accept --remove on init', function () {
+test('every tool has a remove command and none of them still accept --remove on init', function (): void {
     $commands = $this->app->make(Kernel::class)->all();
 
     foreach (ClusterTool::shippedCases() as $tool) {
-        expect($commands)->toHaveKey($tool->removeCommand());
-
-        expect($commands[$tool->initCommand()]->getDefinition()->hasOption('remove'))
-            ->toBeFalse("{$tool->initCommand()} still carries the decoupled --remove flag");
+        expect($commands)->toHaveKey($tool->removeCommand())
+            ->and($commands[$tool->initCommand()]->getDefinition()->hasOption('remove'))->toBeFalse("{$tool->initCommand()} still carries the decoupled --remove flag");
     }
 });
 
-test('flow:remove preserves the Commons database by default', function () {
+test('flow:remove preserves the Commons database by default', function (): void {
     Process::fake([
         '*get secret flow-secrets*' => Process::result(output: 'flow-secrets'),
         '*delete *' => Process::result(output: 'deleted'),
@@ -45,7 +43,7 @@ test('flow:remove preserves the Commons database by default', function () {
         ->expectsOutputToContain('Persistent data (Plex Commons DB + S3 buckets) was preserved.');
 });
 
-test('flow:remove --purge drops both engine databases and deletes the resources', function () {
+test('flow:remove --purge drops both engine databases and deletes the resources', function (): void {
     Process::fake([
         // A non-empty flow-secrets means this install leased a Commons tenant.
         '*get secret flow-secrets*' => Process::result(output: 'flow-secrets'),
@@ -60,7 +58,7 @@ test('flow:remove --purge drops both engine databases and deletes the resources'
         ->expectsOutputToContain('Removing Flow resources...');
 });
 
-test('sheets:remove --purge drops the Commons database AND its S3 buckets, not just the database', function () {
+test('sheets:remove --purge drops the Commons database AND its S3 buckets, not just the database', function (): void {
     // The bug this guards: --purge dropped the Postgres tenant but silently
     // left every tool's S3 bucket (and its contents) behind — commonsBuckets()
     // was declared but never consulted by the teardown path.
@@ -83,7 +81,7 @@ test('sheets:remove --purge drops the Commons database AND its S3 buckets, not j
         ->expectsOutputToContain("Dropping object-storage bucket 'sheet-private' from Plex Commons");
 });
 
-test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when the registry has no record for it', function () {
+test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when the registry has no record for it', function (): void {
     // A pre-registry install (bucket created before the tenant registry
     // tracked s3_service) has nothing to read the backend from — fall back
     // to whichever S3 service the live Commons spec has enabled, the same
@@ -103,7 +101,7 @@ test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when th
         ->expectsOutputToContain("Dropping object-storage bucket 'sheet-public' from Plex Commons");
 });
 
-test('drive:remove --purge does NOT drop its Commons bucket — oCIS encryption keys would orphan the data', function () {
+test('drive:remove --purge does NOT drop its Commons bucket — oCIS encryption keys would orphan the data', function (): void {
     Process::fake([
         '*get configmap plex-registry*' => Process::result(output: json_encode([
             'tenants' => ['drive-ocis' => ['s3_bucket' => 'drive-ocis', 's3_service' => 'seaweedfs']],
@@ -120,7 +118,7 @@ test('drive:remove --purge does NOT drop its Commons bucket — oCIS encryption 
         || str_contains($process->command, 'bucket.delete'));
 });
 
-test('a failed delete exits non-zero instead of reporting success', function () {
+test('a failed delete exits non-zero instead of reporting success', function (): void {
     // The bug this guards: every tool's remove path used to discard the step
     // result and print "removed" regardless of what kubectl actually did.
     Process::fake([
@@ -133,7 +131,7 @@ test('a failed delete exits non-zero instead of reporting success', function () 
         ->expectsOutputToContain('failed to remove');
 });
 
-test('namespace-wholesale tools delete their own namespace and nothing shared', function () {
+test('namespace-wholesale tools delete their own namespace and nothing shared', function (): void {
     foreach ([ClusterTool::PASSWORDS, ClusterTool::VPN] as $tool) {
         Process::fake([
             '*delete namespace*' => Process::result(output: 'deleted'),
@@ -147,7 +145,7 @@ test('namespace-wholesale tools delete their own namespace and nothing shared', 
     }
 });
 
-test('mail:remove closes the firewall ports it opened', function () {
+test('mail:remove closes the firewall ports it opened', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
         '*wait *' => Process::result(output: ''),
@@ -160,7 +158,7 @@ test('mail:remove closes the firewall ports it opened', function () {
     $this->artisan('mail:remove local --force')->assertExitCode(0);
 });
 
-test('--domain on a single-instance tool errors instead of silently no-opping', function () {
+test('--domain on a single-instance tool errors instead of silently no-opping', function (): void {
     // sso:remove/mail:remove/etc. inherit --domain from the shared base
     // unconditionally, but SSO/MAIL's teardown targets fixed resource names
     // — --domain=foo.example.com would do nothing (or a misleading partial
@@ -175,13 +173,13 @@ test('--domain on a single-instance tool errors instead of silently no-opping', 
         ->expectsOutputToContain('does not support multiple instances');
 });
 
-test('omitting --domain is always allowed, even for single-instance tools', function () {
+test('omitting --domain is always allowed, even for single-instance tools', function (): void {
     Process::fake(['*' => Process::result(output: '')]);
 
     $this->artisan('sso:remove local --force')->assertExitCode(0);
 });
 
-test('--domain on a tool without real per-instance teardown errors instead of silently deleting the one real install', function () {
+test('--domain on a tool without real per-instance teardown errors instead of silently deleting the one real install', function (): void {
     // ClusterTool::supportsMultipleInstances() defaults `true` for these —
     // "no known architectural blocker", not "already built". Their :remove
     // commands' teardown() is fully hardcoded and ignores $instance/--domain

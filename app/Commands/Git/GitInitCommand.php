@@ -27,6 +27,7 @@ use Illuminate\Support\Str;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class GitInitCommand extends Command
 {
@@ -232,14 +233,15 @@ class GitInitCommand extends Command
             'vpnOnly' => $vpnOnly,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-forgejo.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-forgejo.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Forgejo core manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'forgejo', 120),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;
@@ -346,7 +348,8 @@ class GitInitCommand extends Command
             'vpnOnly' => $vpnOnly,
         ])->render();
 
-        $tmpFinal = sys_get_temp_dir().'/larakube-forgejo-final.yaml';
+        $finalTemporaryDirectory = TemporaryDirectory::make();
+        $tmpFinal = $finalTemporaryDirectory->path('larakube-forgejo-final.yaml');
         file_put_contents($tmpFinal, $manifestFinal);
 
         // Explicit ->timeout() on both: Laravel's default PHP-level Process
@@ -358,7 +361,7 @@ class GitInitCommand extends Command
             'Applying Forgejo Actions runner...',
             fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmpFinal} --request-timeout=60s")->successful(),
         );
-        @unlink($tmpFinal);
+        $finalTemporaryDirectory->delete();
 
         if (! $finalApplied) {
             $this->laraKubeError('Could not apply the final Forgejo manifest — see the output above.');

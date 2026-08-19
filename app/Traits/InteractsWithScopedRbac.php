@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 /**
  * Mint per-app per-environment, namespace-scoped deploy credentials.
@@ -253,7 +254,7 @@ YAML;
                 $token = (string) base64_decode($b64);
                 break;
             }
-            sleep(1);
+            Sleep::sleep(1);
         }
         if ($token === '') {
             return null;
@@ -290,7 +291,7 @@ YAML;
             if ($b64 !== '') {
                 return (string) base64_decode($b64);
             }
-            sleep(1);
+            Sleep::sleep(1);
         }
 
         return null;

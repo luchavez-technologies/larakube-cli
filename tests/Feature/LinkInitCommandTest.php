@@ -4,7 +4,7 @@ use App\Traits\InteractsWithIngressProxy;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 
-test('link:init deploys Kutt using the Commons postgres and redis', function () {
+test('link:init deploys Kutt using the Commons postgres and redis', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -29,7 +29,7 @@ test('link:init deploys Kutt using the Commons postgres and redis', function () 
         ->expectsOutputToContain('Kutt shortener stack is live.');
 });
 
-test('link manifest pins Kutt to the Commons postgres client and enables redis', function () {
+test('link manifest pins Kutt to the Commons postgres client and enables redis', function (): void {
     $manifest = view('k8s.link.shared', [
         'host' => 'link.example.test',
         'plexNamespace' => 'larakube-plex',
@@ -45,7 +45,7 @@ test('link manifest pins Kutt to the Commons postgres client and enables redis',
         ->toContain('value: "true"');
 });
 
-test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a future kubectl apply never conflicts with mail:wire', function () {
+test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a future kubectl apply never conflicts with mail:wire', function (): void {
     // Regression guard: mail:wire sets MAIL_SECURE via a plain literal
     // `kubectl set env NAME=value`, never through the link-smtp Secret.
     // Declaring it here as valueFrom made a later link:init re-run fail —
@@ -66,7 +66,7 @@ test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a futur
         ->and(trim($m[2] ?? '', '"'))->toBe('true');
 });
 
-test('link ingress proxies through Cloudflare on cloud deploys when proxied, so Kutt receives the cf-ipcountry header', function () {
+test('link ingress proxies through Cloudflare on cloud deploys when proxied, so Kutt receives the cf-ipcountry header', function (): void {
     $cloud = view('k8s.link.shared', [
         'host' => 'link.luchtech.dev',
         'plexNamespace' => 'larakube-plex',
@@ -94,12 +94,12 @@ test('link ingress proxies through Cloudflare on cloud deploys when proxied, so 
         'proxied' => true,
     ])->render();
 
-    expect($cloud)->toContain('external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"');
-    expect($cloudDnsOnly)->not->toContain('cloudflare-proxied');
-    expect($local)->not->toContain('cloudflare-proxied');
+    expect($cloud)->toContain('external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"')
+        ->and($cloudDnsOnly)->not->toContain('cloudflare-proxied')
+        ->and($local)->not->toContain('cloudflare-proxied');
 });
 
-test('resolveProxied honors the --proxied flag value and always yields false on local', function (mixed $raw, bool $expected) {
+test('resolveProxied honors the --proxied flag value and always yields false on local', function (mixed $raw, bool $expected): void {
     $cmd = new class($raw) extends Command
     {
         use InteractsWithIngressProxy;
@@ -117,8 +117,8 @@ test('resolveProxied honors the --proxied flag value and always yields false on 
         }
     };
 
-    expect($cmd->resolveProxied(isLocal: false))->toBe($expected);
-    expect($cmd->resolveProxied(isLocal: true))->toBeFalse();
+    expect($cmd->resolveProxied(isLocal: false))->toBe($expected)
+        ->and($cmd->resolveProxied(isLocal: true))->toBeFalse();
 })->with([
     'default flag off' => [null, false],
     'explicit on' => [true, true],
@@ -128,13 +128,13 @@ test('resolveProxied honors the --proxied flag value and always yields false on 
     'truthy words' => ['yes', true],
 ]);
 
-test('link:init --vpn-only refuses — LINK is public infrastructure with no VPN mode', function () {
+test('link:init --vpn-only refuses — LINK is public infrastructure with no VPN mode', function (): void {
     $this->artisan('link:init local --vpn-only --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain("'link' doesn't have a --vpn-only ingress mode.");
 });
 
-test('link:init --vpn-only aborts without touching kubectl', function () {
+test('link:init --vpn-only aborts without touching kubectl', function (): void {
     Process::fake([
         '*get secret link-secrets*' => Process::result(output: '', exitCode: 1),
         '*apply -f *' => Process::result(output: '', exitCode: 1),

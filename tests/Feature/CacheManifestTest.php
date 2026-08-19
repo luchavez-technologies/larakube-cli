@@ -5,7 +5,7 @@ use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\ServerVariation;
 
-test('Cache: Nginx + SQLite + Redis', function () {
+test('Cache: Nginx + SQLite + Redis', function (): void {
     $config = new ConfigData(name: 'redis-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
@@ -13,7 +13,7 @@ test('Cache: Nginx + SQLite + Redis', function () {
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Cache: Nginx + SQLite + Memcached', function () {
+test('Cache: Nginx + SQLite + Memcached', function (): void {
     $config = new ConfigData(name: 'memcached-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);

@@ -22,6 +22,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ResumeInitCommand extends Command
 {
@@ -112,7 +113,7 @@ class ResumeInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $authSecret, $clusterEnv) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $authSecret, $clusterEnv): void {
             $cmd = "{$kubectl} create secret generic resume-reactive-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=auth-secret='.escapeshellarg($authSecret).' '
@@ -148,14 +149,15 @@ class ResumeInitCommand extends Command
             's3SecretKey' => $s3Creds['secret'],
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-resume-reactive.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-resume-reactive.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Reactive Resume manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'resume-reactive', 180),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

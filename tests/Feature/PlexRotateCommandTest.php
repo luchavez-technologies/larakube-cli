@@ -23,7 +23,7 @@ function rotateFakes(array $overrides = []): array
     ], $overrides);
 }
 
-test('plex:rotate refuses when there is no Commons', function () {
+test('plex:rotate refuses when there is no Commons', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(output: ''),
@@ -34,7 +34,7 @@ test('plex:rotate refuses when there is no Commons', function () {
         ->expectsOutputToContain('No Plex Commons found');
 });
 
-test('plex:rotate rejects an unknown credential kind by name', function () {
+test('plex:rotate rejects an unknown credential kind by name', function (): void {
     Process::fake(rotateFakes());
 
     $this->artisan('plex:rotate local --only=nope --force')
@@ -43,7 +43,7 @@ test('plex:rotate rejects an unknown credential kind by name', function () {
         ->expectsOutputToContain('db, s3, admin, tools');
 });
 
-test('without the secrets backend it says plainly that a redeploy is required', function () {
+test('without the secrets backend it says plainly that a redeploy is required', function (): void {
     // The whole point of the feature is that the weak mode is never mistaken
     // for the strong one.
     Process::fake(rotateFakes());
@@ -53,7 +53,7 @@ test('without the secrets backend it says plainly that a redeploy is required', 
         ->expectsOutputToContain('redeploy IS required');
 });
 
-test('--tenant rejects a name that is not actually a tenant', function () {
+test('--tenant rejects a name that is not actually a tenant', function (): void {
     Process::fake(rotateFakes());
 
     $this->artisan('plex:rotate local --only=db --tenant=ghost --force')
@@ -61,7 +61,7 @@ test('--tenant rejects a name that is not actually a tenant', function () {
         ->expectsOutputToContain("'ghost' is not a tenant");
 });
 
-test('credentials that cannot be rotated yet are reported, never silently skipped', function () {
+test('credentials that cannot be rotated yet are reported, never silently skipped', function (): void {
     Process::fake(rotateFakes());
 
     $this->artisan('plex:rotate local --only=s3,admin --force')
@@ -70,7 +70,7 @@ test('credentials that cannot be rotated yet are reported, never silently skippe
         ->expectsOutputToContain('not rotated automatically yet');
 });
 
-test('plex:rotate routes an OpenBao-wired tenant through rotateStaticRole, never ALTER ROLE', function () {
+test('plex:rotate routes an OpenBao-wired tenant through rotateStaticRole, never ALTER ROLE', function (): void {
     // Regression guard for the real danger found live 2026-08-01: a tenant
     // already wired through OpenBao's static-role mechanism must NEVER be
     // rotated via the legacy ALTER ROLE path — doing so would desync
@@ -119,7 +119,7 @@ test('plex:rotate routes an OpenBao-wired tenant through rotateStaticRole, never
         && str_contains($process->command, 'ALTER ROLE'));
 });
 
-test('plex:rotate falls back to ALTER ROLE for a tenant with no OpenBao static role', function () {
+test('plex:rotate falls back to ALTER ROLE for a tenant with no OpenBao static role', function (): void {
     // The other half of the same guard: a tenant that genuinely predates
     // OpenBao (or joined while it was unreachable) must keep using the
     // legacy path — staticRoleExists() returning false must not be treated
@@ -158,7 +158,7 @@ test('plex:rotate falls back to ALTER ROLE for a tenant with no OpenBao static r
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/database/rotate-role/tenant-demo-production'));
 });
 
-test('plex:rotate finds a cluster-tool tenant under the BARE role name, never the "tenant-" prefix', function () {
+test('plex:rotate finds a cluster-tool tenant under the BARE role name, never the "tenant-" prefix', function (): void {
     // Regression guard for a real bug found live 2026-08-02 checking
     // production: cluster tools (secrets:wire, RecordInit, SignInit, …)
     // register their static role under the bare tenant name, not "tenant-"
@@ -222,7 +222,7 @@ test('plex:rotate finds a cluster-tool tenant under the BARE role name, never th
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/record-sendrec -n larakube-shared'));
 });
 
-test('the per-tenant cluster secret key is namespaced so two tenants never collide', function () {
+test('the per-tenant cluster secret key is namespaced so two tenants never collide', function (): void {
     $a = CommonsSecret::TENANT_DB->clusterSecretKey('shop-production');
     $b = CommonsSecret::TENANT_DB->clusterSecretKey('blog-production');
 
@@ -231,14 +231,14 @@ test('the per-tenant cluster secret key is namespaced so two tenants never colli
         ->and($a)->not->toBe($b);
 });
 
-test('only the tenant database is per-tenant; the rest are cluster-wide', function () {
+test('only the tenant database is per-tenant; the rest are cluster-wide', function (): void {
     expect(CommonsSecret::TENANT_DB->isPerTenant())->toBeTrue()
         ->and(CommonsSecret::COMMONS_S3->isPerTenant())->toBeFalse()
         ->and(CommonsSecret::COMMONS_ADMIN->isPerTenant())->toBeFalse()
         ->and(CommonsSecret::TOOL_STORE->isPerTenant())->toBeFalse();
 });
 
-test('warningLines previews exactly which tenants db rotation will touch, before the confirm prompt', function () {
+test('warningLines previews exactly which tenants db rotation will touch, before the confirm prompt', function (): void {
     // Regression guard: production got "too many, I'm scared" 2026-08-02 —
     // a bare plex:rotate rotated 11 tools in one run with nothing shown
     // beforehand except the credential KIND ("Tenant database"), not who.
@@ -259,8 +259,8 @@ test('warningLines previews exactly which tenants db rotation will touch, before
         ->and(implode("\n", $none))->not->toContain('tenants:')->not->toContain('tenant:');
 });
 
-test('the admin password never leaks into an application env', function () {
+test('the admin password never leaks into an application env', function (): void {
     // It is an operator credential for the Commons superuser — an app that
     // received it would be able to read every other tenant's data.
-    expect(CommonsSecret::COMMONS_ADMIN->envKeys())->toBe([]);
+    expect(CommonsSecret::COMMONS_ADMIN->envKeys())->toBeEmpty();
 });

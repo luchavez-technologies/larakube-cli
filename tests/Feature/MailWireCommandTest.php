@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)', function () {
+test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)', function (): void {
     Process::fake([
         '*delete secret mail-sender*' => Process::result(output: 'secret "mail-sender" deleted'),
     ]);
@@ -15,7 +15,7 @@ test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret mail-sender'));
 });
 
-test('mail:wire --tool=sso configures Zitadel SMTP via API', function () {
+test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
     Http::fake(function ($request) {
         if (str_contains($request->url(), '_activate')) {
             return Http::response([], 200);
@@ -37,7 +37,7 @@ test('mail:wire --tool=sso configures Zitadel SMTP via API', function () {
         ->expectsOutputToContain('Wired to Stalwart: Identity Provider / SSO (Zitadel)');
 });
 
-test('mail:wire local --tool=data configures Directus SMTP via deployment secret', function () {
+test('mail:wire local --tool=data configures Directus SMTP via deployment secret', function (): void {
     Process::fake([
         '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
@@ -53,7 +53,7 @@ test('mail:wire local --tool=data configures Directus SMTP via deployment secret
         ->expectsOutputToContain('Wired to Stalwart: Headless CMS & Data API (PocketBase or Directus)');
 });
 
-test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a PocketBase-only install', function () {
+test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a PocketBase-only install', function (): void {
     // Regression test for the concrete bug this overhaul exists to fix:
     // resolveToolEngine() used to only special-case CHAT — every other
     // multi-engine tool (DATA) got a null $engine, and smtpEnv(null, ...)
@@ -82,7 +82,7 @@ test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'deployment/data-directus'));
 });
 
-test('mail:wire local --tool=design configures Penpot SMTP via deployment secret', function () {
+test('mail:wire local --tool=design configures Penpot SMTP via deployment secret', function (): void {
     Process::fake([
         '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment design-penpot-backend*' => Process::result(output: 'design-penpot-backend   1/1   1   1   10d'),
@@ -102,7 +102,7 @@ test('mail:wire local --tool=design configures Penpot SMTP via deployment secret
     Process::assertRan(fn ($process) => str_contains($process->command, 'PENPOT_SMTP_HOST'));
 });
 
-test('mail:wire local --tool=errors composes GlitchTip EMAIL_URL and patches the worker too', function () {
+test('mail:wire local --tool=errors composes GlitchTip EMAIL_URL and patches the worker too', function (): void {
     Process::fake([
         '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment glitchtip-web*' => Process::result(output: 'glitchtip-web   1/1   1   1   10d'),
@@ -133,7 +133,7 @@ test('mail:wire local --tool=errors composes GlitchTip EMAIL_URL and patches the
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/glitchtip-worker'));
 });
 
-test('mail:wire local --tool=crm resolves the real host-derived instance from the registry and patches the worker too', function () {
+test('mail:wire local --tool=crm resolves the real host-derived instance from the registry and patches the worker too', function (): void {
     // Regression: CRM has no 'main' deployment at all (pure host-derived
     // instance naming, see ClusterTool::CRM->instanceSlugFromHost()) — this
     // pins that mail:wire finds it via the tool registry instead of probing

@@ -27,13 +27,13 @@ function remoteSshRunner(): object
     };
 }
 
-test('runRemoteCommand returns true when the remote script succeeds', function () {
+test('runRemoteCommand returns true when the remote script succeeds', function (): void {
     Process::fake(['ssh *' => Process::result(exitCode: 0)]);
 
     expect(remoteSshRunner()->run('root', '1.2.3.4', '22', '/key', 'echo ok'))->toBeTrue();
 });
 
-test('runRemoteCommand returns false when the remote script fails partway through', function () {
+test('runRemoteCommand returns false when the remote script fails partway through', function (): void {
     Process::fake(['ssh *' => Process::result(output: 'E: Could not get lock', exitCode: 1)]);
 
     expect(remoteSshRunner()->run('root', '1.2.3.4', '22', '/key', 'apt-get upgrade -y'))->toBeFalse();

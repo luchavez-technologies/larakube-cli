@@ -18,6 +18,7 @@ use App\Traits\StreamsProcessOutput;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class UptimeInitCommand extends Command
 {
@@ -55,7 +56,7 @@ class UptimeInitCommand extends Command
         if ($env === 'local') {
             $config = $this->getProjectConfig(getcwd());
             if ($config) {
-                $this->withSpin('Syncing local TLS certificates...', function () use ($config) {
+                $this->withSpin('Syncing local TLS certificates...', function () use ($config): void {
                     $this->refreshTraefikCerts($config->getName(), $config->getLocalTld());
                 });
             }
@@ -80,14 +81,15 @@ class UptimeInitCommand extends Command
             'vpnOnly' => $vpnOnly,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-uptime.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-uptime.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Uptime Kuma manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'uptime-kuma', 120),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

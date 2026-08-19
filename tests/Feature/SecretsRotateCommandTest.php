@@ -18,7 +18,7 @@ function fakeSyncedRotateExternalSecret(): array
     ];
 }
 
-test('secrets:rotate fails when OpenBao is not deployed', function () {
+test('secrets:rotate fails when OpenBao is not deployed', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(),
@@ -29,7 +29,7 @@ test('secrets:rotate fails when OpenBao is not deployed', function () {
         ->expectsOutputToContain('OpenBao is not deployed.');
 });
 
-test('secrets:rotate fails when the database engine is not mounted', function () {
+test('secrets:rotate fails when the database engine is not mounted', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
@@ -45,7 +45,7 @@ test('secrets:rotate fails when the database engine is not mounted', function ()
         ->expectsOutputToContain('database secrets engine is not mounted');
 });
 
-test('secrets:rotate rotates an OpenBao-wired tool immediately', function () {
+test('secrets:rotate rotates an OpenBao-wired tool immediately', function (): void {
     Process::fake(array_merge(fakeSyncedRotateExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment*' => Process::result(output: 'forgejo'),
@@ -71,7 +71,7 @@ test('secrets:rotate rotates an OpenBao-wired tool immediately', function () {
     Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/rotate-role/forgejo'));
 });
 
-test('secrets:rotate rejects an un-wired tool', function () {
+test('secrets:rotate rejects an un-wired tool', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment*' => Process::result(output: 'forgejo'),

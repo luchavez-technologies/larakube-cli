@@ -2,7 +2,7 @@
 
 use Symfony\Component\Yaml\Yaml;
 
-test('stalwart probes hit /healthz/{ready,live}, never a bare tcpSocket check', function () {
+test('stalwart probes hit /healthz/{ready,live}, never a bare tcpSocket check', function (): void {
     // Regression guard: a plain tcpSocket probe only confirms the listener
     // accepts a connection — it stays green even while Stalwart is
     // internally stuck/deadlocked, so Kubernetes never notices or
@@ -40,7 +40,7 @@ test('stalwart probes hit /healthz/{ready,live}, never a bare tcpSocket check', 
         ->and($container['livenessProbe']['httpGet']['path'])->toBe('/healthz/live');
 });
 
-test('storeBootstrap renders a config.json ConfigMap and mounts it, referencing the password by name only', function () {
+test('storeBootstrap renders a config.json ConfigMap and mounts it, referencing the password by name only', function (): void {
     // EXPERIMENTAL local-only wizard-skip: config.json must never embed the
     // actual password — authSecret references STALWART_STORE_PASSWORD by
     // NAME so Stalwart reads it from its own process env at boot.
@@ -97,12 +97,11 @@ test('storeBootstrap renders a config.json ConfigMap and mounts it, referencing 
     $configMount = collect($container['volumeMounts'])->firstWhere('mountPath', '/etc/stalwart/config.json');
     expect($configMount)->not->toBeNull()
         ->and($configMount['name'])->toBe('stalwart-config')
-        ->and($configMount['readOnly'])->toBeTrue();
-
-    expect(collect($container['env'])->firstWhere('name', 'STALWART_SEARCH_MEILI_KEY'))->toBeNull();
+        ->and($configMount['readOnly'])->toBeTrue()
+        ->and(collect($container['env'])->firstWhere('name', 'STALWART_SEARCH_MEILI_KEY'))->toBeNull();
 });
 
-test('storeBootstrap with blob + meilisearch wires STALWART_S3_* and STALWART_SEARCH_MEILI_KEY from mail-secrets', function () {
+test('storeBootstrap with blob + meilisearch wires STALWART_S3_* and STALWART_SEARCH_MEILI_KEY from mail-secrets', function (): void {
     $rendered = view('k8s.mail.stalwart', [
         'host' => 'send.test',
         'vpnOnly' => false,
@@ -156,7 +155,7 @@ test('storeBootstrap with blob + meilisearch wires STALWART_S3_* and STALWART_SE
     expect($meiliKey['valueFrom']['secretKeyRef'])->toBe(['name' => 'mail-secrets', 'key' => 'search-meili-key']);
 });
 
-test('without storeBootstrap, STALWART_STORE_PASSWORD still falls back to the optional stalwart secret', function () {
+test('without storeBootstrap, STALWART_STORE_PASSWORD still falls back to the optional stalwart secret', function (): void {
     $rendered = view('k8s.mail.stalwart', [
         'host' => 'send.luchtech.dev',
         'vpnOnly' => false,

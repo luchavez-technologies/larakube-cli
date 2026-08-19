@@ -263,7 +263,7 @@ class MailWireCommand extends Command
 
         // Cache only a VERIFIED pair.
         $env = (string) $this->argument('environment');
-        $this->withSpin('Caching sender credentials...', function () use ($kubectl, $ns, $sender, $appPassword, $env) {
+        $this->withSpin('Caching sender credentials...', function () use ($kubectl, $ns, $sender, $appPassword, $env): void {
             Process::run(
                 "{$kubectl} create secret generic mail-sender -n {$ns} "
                 .'--from-literal=sender='.escapeshellarg($sender).' '
@@ -407,7 +407,7 @@ class MailWireCommand extends Command
 
         $ok = true;
         $label = $engine ? "{$tool->getLabel()} ({$engine})" : $tool->getLabel();
-        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotSuffix, &$ok) {
+        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotSuffix, &$ok): void {
             Process::run(
                 "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
             );

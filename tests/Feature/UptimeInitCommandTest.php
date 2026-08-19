@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('uptime:init refuses because Uptime Kuma is not yet shipped', function () {
+test('uptime:init refuses because Uptime Kuma is not yet shipped', function (): void {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);
@@ -14,7 +14,7 @@ test('uptime:init refuses because Uptime Kuma is not yet shipped', function () {
     Process::assertNotRan(fn ($process) => true);
 });
 
-test('uptime:remove refuses because Uptime Kuma is not yet shipped', function () {
+test('uptime:remove refuses because Uptime Kuma is not yet shipped', function (): void {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);

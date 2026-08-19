@@ -8,13 +8,14 @@ use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
-function dashboardTrustProjectDir(array $cloud, string $env = 'production'): string
+function dashboardTrustProjectDir(array $cloud, string $env = 'production'): TemporaryDirectory
 {
-    $dir = sys_get_temp_dir().'/larakube-dashtrust-'.uniqid();
-    mkdir($dir, 0755, true);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
 
     // file_exists($keyPath) is a real check in the command — give SSH-path
     // tests a real (if fake-content) key file to point at instead of a
@@ -39,71 +40,71 @@ function dashboardTrustProjectDir(array $cloud, string $env = 'production'): str
     }
     $config->saveToFile($dir);
 
-    return $dir;
+    return $temporaryDirectory;
 }
 
 function withDashboardTrustProject(array $cloud, callable $fn, string $env = 'production'): void
 {
-    $dir = dashboardTrustProjectDir($cloud, $env);
+    $temporaryDirectory = dashboardTrustProjectDir($cloud, $env);
     $original = getcwd();
-    chdir($dir);
+    chdir($temporaryDirectory->path());
 
     try {
         $fn();
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 }
 
-test('dashboard:trust rejects local', function () {
+test('dashboard:trust rejects local', function (): void {
     $this->artisan('dashboard:trust', ['environment' => 'local'])
         ->assertExitCode(1)
         ->expectsOutputToContain('OrbStack, not k3s');
 });
 
-test('dashboard:trust errors when no server is recorded for the environment', function () {
-    withDashboardTrustProject([], function () {
+test('dashboard:trust errors when no server is recorded for the environment', function (): void {
+    withDashboardTrustProject([], function (): void {
         $this->artisan('dashboard:trust', ['environment' => 'production'])
             ->assertExitCode(1)
             ->expectsOutputToContain('No server is recorded');
     });
 });
 
-test('dashboard:trust refuses a managed cluster — there is no node to SSH into', function () {
-    withDashboardTrustProject(['context' => 'do-nyc1-app', 'provider' => 'doks'], function () {
+test('dashboard:trust refuses a managed cluster — there is no node to SSH into', function (): void {
+    withDashboardTrustProject(['context' => 'do-nyc1-app', 'provider' => 'doks'], function (): void {
         $this->artisan('dashboard:trust', ['environment' => 'production'])
             ->assertExitCode(1)
             ->expectsOutputToContain('managed Kubernetes cluster');
     });
 });
 
-test('dashboard:trust errors when Zitadel is not installed', function () {
+test('dashboard:trust errors when Zitadel is not installed', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: ''),
     ]);
 
-    withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function () {
+    withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function (): void {
         $this->artisan('dashboard:trust', ['environment' => 'production'])
             ->assertExitCode(1)
             ->expectsOutputToContain('Zitadel is not installed');
     });
 });
 
-test('dashboard:trust errors when Headlamp has not been wired to Zitadel yet', function () {
+test('dashboard:trust errors when Headlamp has not been wired to Zitadel yet', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-app-dashboard*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function () {
+    withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function (): void {
         $this->artisan('dashboard:trust', ['environment' => 'production'])
             ->assertExitCode(1)
             ->expectsOutputToContain('sso:wire production --tool=dashboard');
     });
 });
 
-test('dashboard:trust is a no-op when the API server already trusts Zitadel', function () {
+test('dashboard:trust is a no-op when the API server already trusts Zitadel', function (): void {
     $desired = <<<'YAML'
     kube-apiserver-arg:
       - "oidc-issuer-url=https://sso.luchtech.dev"
@@ -121,7 +122,7 @@ test('dashboard:trust is a no-op when the API server already trusts Zitadel', fu
         '*larakube@1.2.3.4*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: $desired),
     ]);
 
-    withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function () {
+    withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function (): void {
         $this->artisan('dashboard:trust', ['environment' => 'production'])
             ->assertExitCode(0)
             ->expectsOutputToContain('already trusts Zitadel');
@@ -130,7 +131,7 @@ test('dashboard:trust is a no-op when the API server already trusts Zitadel', fu
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'systemctl restart k3s'));
 });
 
-test('dashboard:trust writes the config and restarts k3s when the OIDC trust is missing', function () {
+test('dashboard:trust writes the config and restarts k3s when the OIDC trust is missing', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-app-dashboard*' => Process::result(output: base64_encode('cid-1')),
@@ -144,12 +145,9 @@ test('dashboard:trust writes the config and restarts k3s when the OIDC trust is 
             : null,
     ]);
 
-    withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function () {
-        // confirm()'s own default is true, and Pest.php pins every prompt
-        // non-interactive — no scripting needed to let it proceed. (Laravel
-        // Prompts is a different mechanism from Symfony's askQuestion(),
-        // so expectsConfirmation() can't observe it either way.)
+    withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function (): void {
         $this->artisan('dashboard:trust', ['environment' => 'production'])
+            ->expectsConfirmation('Proceed?', 'yes')
             ->assertExitCode(0)
             ->expectsOutputToContain('now trusts Zitadel');
     });
@@ -172,7 +170,7 @@ test('dashboard:trust writes the config and restarts k3s when the OIDC trust is 
         && str_contains($process->command, base64_encode($expectedConfig)));
 });
 
-test('dashboard:trust cancels cleanly when the operator declines the restart', function () {
+test('dashboard:trust cancels cleanly when the operator declines the restart', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-app-dashboard*' => Process::result(output: base64_encode('cid-1')),
@@ -180,9 +178,9 @@ test('dashboard:trust cancels cleanly when the operator declines the restart', f
         '*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: ''),
     ]);
 
-    $dir = dashboardTrustProjectDir(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22]);
+    $temporaryDirectory = dashboardTrustProjectDir(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22]);
     $original = getcwd();
-    chdir($dir);
+    chdir($temporaryDirectory->path());
 
     try {
         // confirm()'s non-interactive default is true — actually exercising
@@ -202,11 +200,11 @@ test('dashboard:trust cancels cleanly when the operator declines the restart', f
 
         $exitCode = $command->handle();
 
-        expect($exitCode)->toBe(0);
-        expect($output->fetch())->toContain('Cancelled');
+        expect($exitCode)->toBe(0)
+            ->and($output->fetch())->toContain('Cancelled');
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'systemctl restart k3s'));

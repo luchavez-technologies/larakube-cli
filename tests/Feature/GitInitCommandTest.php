@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('git:init deploys gitea using plex commons seaweedfs by default', function () {
+test('git:init deploys gitea using plex commons seaweedfs by default', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -28,7 +28,7 @@ test('git:init deploys gitea using plex commons seaweedfs by default', function 
         ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 });
 
-test('git:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function () {
+test('git:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
     // {tool}:init must not know or care whether OpenBao is installed; it
     // just writes a locally-generated password directly into git-secrets
     // (see the Deployment template's db-password key, rendered straight
@@ -82,7 +82,7 @@ test('git:init never registers an OpenBao static role itself — only secrets:wi
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/'));
 });
 
-test('git:init deploys standalone gitea when --no-plex is passed', function () {
+test('git:init deploys standalone gitea when --no-plex is passed', function (): void {
     Process::fake([
         '*get secret gitea-admin*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -98,7 +98,7 @@ test('git:init deploys standalone gitea when --no-plex is passed', function () {
         ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 });
 
-test('git:init fails when --admin-email is missing in non-interactive mode', function () {
+test('git:init fails when --admin-email is missing in non-interactive mode', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -111,7 +111,7 @@ test('git:init fails when --admin-email is missing in non-interactive mode', fun
     $this->artisan('git:init local --no-interaction');
 })->throws(App\Exceptions\MissingFlagException::class, 'Missing required --admin-email');
 
-test('git:init registers itself in the cluster tool registry, including the admin email', function () {
+test('git:init registers itself in the cluster tool registry, including the admin email', function (): void {
     // Regression guard: git:init's only registry write was an incidental
     // side effect of resolveToolBranding() saving a custom --app-name/
     // --logo-url — which only fires when one was actually passed. Every
@@ -156,7 +156,7 @@ test('git:init registers itself in the cluster tool registry, including the admi
         ->and($gitEntry['adminEmail'])->toBe('admin@example.com');
 });
 
-test('git:remove removes gitea stack and deletes resources', function () {
+test('git:remove removes gitea stack and deletes resources', function (): void {
     Process::fake([
         // Gitea leases a Commons tenant, so teardown drops it before deleting
         // the workloads — the exec is the psql that runs the DROP.

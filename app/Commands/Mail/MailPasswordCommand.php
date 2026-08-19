@@ -100,7 +100,7 @@ class MailPasswordCommand extends Command
         $newPassword = (string) ($this->option('password') ?: Str::password(24));
 
         $updated = false;
-        $this->withSpin('Updating password...', function () use (&$updated, $kubectl, $ns, $target, $newPassword) {
+        $this->withSpin('Updating password...', function () use (&$updated, $kubectl, $ns, $target, $newPassword): void {
             $responses = $this->stalwartJmap($kubectl, $ns, [[
                 'x:Account/set',
                 [

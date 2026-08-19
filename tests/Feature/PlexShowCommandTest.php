@@ -2,16 +2,7 @@
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
-
-function cleanupPlexShowTestDir(string $dir): void
-{
-    foreach (array_merge(glob($dir.'/*') ?: [], glob($dir.'/.*') ?: []) as $file) {
-        if (is_file($file)) {
-            unlink($file);
-        }
-    }
-    rmdir($dir);
-}
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * A Commons spec with Postgres enabled and one Application Tenant allocated.
@@ -37,7 +28,7 @@ function plexShowFakes(array $overrides = []): array
     ]);
 }
 
-test('plex:show surfaces an OpenBao-wired tenant\'s rotation schedule, never the password', function () {
+test('plex:show surfaces an OpenBao-wired tenant\'s rotation schedule, never the password', function (): void {
     // Regression guard: staticRoleRotationInfo() reads password+username off
     // the same API response too — this proves plex:show's output never
     // contains either, only the schedule.
@@ -77,7 +68,7 @@ test('plex:show surfaces an OpenBao-wired tenant\'s rotation schedule, never the
         ->doesntExpectOutputToContain('super-secret-should-never-print');
 });
 
-test('plex:show marks a tenant with no OpenBao static role as manual (.env)', function () {
+test('plex:show marks a tenant with no OpenBao static role as manual (.env)', function (): void {
     Process::fake(plexShowFakes([
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
@@ -96,14 +87,14 @@ test('plex:show marks a tenant with no OpenBao static role as manual (.env)', fu
         ->expectsOutputToContain('manual (.env) — run');
 });
 
-test('plex:show explains a missing DB password instead of leaving a silent gap, for an OpenBao-managed self tenant', function () {
+test('plex:show explains a missing DB password instead of leaving a silent gap, for an OpenBao-managed self tenant', function (): void {
     // Regression guard for the confusion a user hit live 2026-08-02: a
     // password WAS showing here, but it was stale — writeTenantConfig now
     // strips it from .env once OpenBao owns it, so this asserts plex:show
     // explains the omission rather than either leaving a gap or (the old
     // bug) printing a value that no longer matches the real one.
-    $dir = sys_get_temp_dir().'/larakube-plexshow-test-'.uniqid();
-    mkdir($dir);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $cwd = getcwd();
 
     try {
@@ -145,11 +136,11 @@ test('plex:show explains a missing DB password instead of leaving a silent gap, 
             ->doesntExpectOutputToContain('live-password-should-never-print');
     } finally {
         chdir($cwd);
-        cleanupPlexShowTestDir($dir);
+        $temporaryDirectory->delete();
     }
 });
 
-test('plex:show never touches OpenBao when it is not installed', function () {
+test('plex:show never touches OpenBao when it is not installed', function (): void {
     // Perf/correctness: no bootstrap secret means no port-forward should be
     // attempted at all for the rotation line — the readiness check happens
     // once, up front, not per tenant.

@@ -33,25 +33,25 @@ function laraKubeCliHelper(?string $bin = 'larakube'): object
     };
 }
 
-test('listCliCommands returns the raw command list output', function () {
+test('listCliCommands returns the raw command list output', function (): void {
     Process::fake(['larakube list --raw' => "up\ndown\ninit\n"]);
 
     expect(laraKubeCliHelper()->list())->toBe("up\ndown\ninit\n");
 });
 
-test('getCliCommandHelp returns the help text when present', function () {
+test('getCliCommandHelp returns the help text when present', function (): void {
     Process::fake(['larakube help up' => 'Usage: larakube up'.PHP_EOL]);
 
     expect(laraKubeCliHelper()->help('up'))->toBe('Usage: larakube up'.PHP_EOL);
 });
 
-test('getCliCommandHelp falls back to a friendly message when there is no output', function () {
+test('getCliCommandHelp falls back to a friendly message when there is no output', function (): void {
     Process::fake(['larakube help bogus' => '']);
 
     expect(laraKubeCliHelper()->help('bogus'))->toBe('No help found for command: bogus');
 });
 
-test('executeCliCommand strips a redundant larakube prefix and adds --no-interaction', function () {
+test('executeCliCommand strips a redundant larakube prefix and adds --no-interaction', function (): void {
     Process::fake(['larakube up --no-interaction' => Process::result(output: 'up ok', exitCode: 0)]);
 
     $result = laraKubeCliHelper()->execute('larakube up');
@@ -62,7 +62,7 @@ test('executeCliCommand strips a redundant larakube prefix and adds --no-interac
         ->and($result['success'])->toBeTrue();
 });
 
-test('executeCliCommand forces --force onto a down command', function () {
+test('executeCliCommand forces --force onto a down command', function (): void {
     Process::fake(['larakube down --no-interaction --force' => Process::result(exitCode: 0)]);
 
     $result = laraKubeCliHelper()->execute('down');
@@ -70,7 +70,7 @@ test('executeCliCommand forces --force onto a down command', function () {
     expect($result['command'])->toBe('larakube down --no-interaction --force');
 });
 
-test('executeCliCommand reports failure with combined stdout/stderr on a non-zero exit', function () {
+test('executeCliCommand reports failure with combined stdout/stderr on a non-zero exit', function (): void {
     Process::fake(['larakube heal --no-interaction' => Process::result(output: 'partial output', errorOutput: 'boom', exitCode: 1)]);
 
     $result = laraKubeCliHelper()->execute('heal');

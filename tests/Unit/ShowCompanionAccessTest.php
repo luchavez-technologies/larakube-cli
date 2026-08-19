@@ -3,6 +3,7 @@
 use App\Data\ConfigData;
 use App\Enums\CompanionDriver;
 use App\Traits\ManagesCompanions;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * The connection block renders via Laravel Prompts table() (which writes straight
@@ -63,7 +64,7 @@ function companionRow(array $rows, string $companion): ?array
     return null;
 }
 
-test('companionAccessRows only includes Mailpit when withCompanions is false', function () {
+test('companionAccessRows only includes Mailpit when withCompanions is false', function (): void {
     $config = ConfigData::from(['name' => 'demo', 'database' => 'mariadb', 'withCompanions' => false]);
 
     $rows = companionAccessHarness()->rows($config, 'demo', 'local');
@@ -72,7 +73,7 @@ test('companionAccessRows only includes Mailpit when withCompanions is false', f
         ->and($rows[0][0])->toBe('Mailpit');
 });
 
-test('companionAccessRows includes a phpMyAdmin row when withCompanions is true', function () {
+test('companionAccessRows includes a phpMyAdmin row when withCompanions is true', function (): void {
     $config = ConfigData::from(['name' => 'demo', 'database' => 'mariadb']);
 
     $rows = companionAccessHarness()->rows($config, 'demo', 'local');
@@ -81,7 +82,7 @@ test('companionAccessRows includes a phpMyAdmin row when withCompanions is true'
     expect($names)->toContain('Mailpit')->toContain('phpMyAdmin');
 });
 
-test('showCompanionAccess does nothing for non-local environments', function () {
+test('showCompanionAccess does nothing for non-local environments', function (): void {
     $config = ConfigData::from(['name' => 'demo', 'database' => 'mariadb']);
     $harness = companionAccessHarness();
 
@@ -91,10 +92,10 @@ test('showCompanionAccess does nothing for non-local environments', function () 
     expect($harness->printed)->toBe([]); // no header, no table
 });
 
-test('Plex tenant credentials are read from .env, not the enum defaults', function () {
+test('Plex tenant credentials are read from .env, not the enum defaults', function (): void {
     // Cluster carries no DB_* for a Plex-backed service; the truth lives in .env.
-    $dir = sys_get_temp_dir().'/lk-companion-'.uniqid();
-    mkdir($dir);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/.env', implode("\n", [
         'APP_NAME=PlexReact',
         'DB_HOST=mariadb.larakube-plex.svc.cluster.local',
@@ -116,11 +117,10 @@ test('Plex tenant credentials are read from .env, not the enum defaults', functi
         ->and($pma[5])->toBe('plex_react')                             // Database
         ->and($pma[4])->not->toBe('larakubesecretpassword');
 
-    @unlink($dir.'/.env');
-    @rmdir($dir);
+    $temporaryDirectory->delete();
 });
 
-test('self-hosted cluster Secret/ConfigMap override .env values', function () {
+test('self-hosted cluster Secret/ConfigMap override .env values', function (): void {
     // envFrom wins over .env in the pod, so the live ConfigMap/Secret are truth.
     $config = ConfigData::from(['name' => 'demo', 'database' => 'mariadb']);
     $config->setPath(sys_get_temp_dir()); // no .env here

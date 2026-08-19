@@ -2,7 +2,7 @@
 
 use App\Data\ConfigData;
 
-test('getResources merges code default <- env default <- component override', function () {
+test('getResources merges code default <- env default <- component override', function (): void {
     $config = ConfigData::from([
         'name' => 'res-test',
         'environments' => [
@@ -32,7 +32,7 @@ test('getResources merges code default <- env default <- component override', fu
     expect($bare->getResources('production', 'web'))->toBe(ConfigData::DEFAULT_RESOURCES);
 });
 
-test('isValidQuantity accepts k8s quantities and rejects typos', function () {
+test('isValidQuantity accepts k8s quantities and rejects typos', function (): void {
     expect(ConfigData::isValidQuantity('100m'))->toBeTrue()
         ->and(ConfigData::isValidQuantity('1'))->toBeTrue()
         ->and(ConfigData::isValidQuantity('1.5'))->toBeTrue()
@@ -43,7 +43,7 @@ test('isValidQuantity accepts k8s quantities and rejects typos', function () {
         ->and(ConfigData::isValidQuantity(''))->toBeFalse();
 });
 
-test('setResources updates config and handles unsetting', function () {
+test('setResources updates config and handles unsetting', function (): void {
     $config = ConfigData::from(['name' => 'test-app', 'environments' => ['local' => []]]);
 
     $config->setResources('local', 'horizon', [
@@ -53,10 +53,10 @@ test('setResources updates config and handles unsetting', function () {
     expect($config->environments['local']->resources['horizon'])->toBe(['limits' => ['memory' => '2Gi']]);
 
     $config->setResources('local', 'horizon', null);
-    expect($config->environments['local']->resources)->toBe([]);
+    expect($config->environments['local']->resources)->toBeEmpty();
 });
 
-test('setResources prunes redundant overrides that match inherited fallback', function () {
+test('setResources prunes redundant overrides that match inherited fallback', function (): void {
     $config = ConfigData::from([
         'name' => 'res-test',
         'environments' => [

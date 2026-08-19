@@ -82,7 +82,7 @@ function trustHelperOnDarwin(): object
     };
 }
 
-test('isDnsmasqInstalled reflects whether the dnsmasq binary is on PATH', function () {
+test('isDnsmasqInstalled reflects whether the dnsmasq binary is on PATH', function (): void {
     Process::fake(['which dnsmasq' => "/usr/sbin/dnsmasq\n"]);
     expect(trustHelperOnLinux()->dnsmasqInstalled())->toBeTrue();
 
@@ -90,16 +90,16 @@ test('isDnsmasqInstalled reflects whether the dnsmasq binary is on PATH', functi
     expect(trustHelperOnLinux()->dnsmasqInstalled())->toBeFalse();
 });
 
-test('isCaTrusted on Linux checks for the installed cert files, no shell-out', function () {
+test('isCaTrusted on Linux checks for the installed cert files, no shell-out', function (): void {
     expect(trustHelperOnLinux()->caTrusted())->toBeFalse();
 });
 
-test('getDnsmasqConfPath on macOS resolves under the brew prefix', function () {
+test('getDnsmasqConfPath on macOS resolves under the brew prefix', function (): void {
     Process::fake(['brew --prefix' => "/opt/homebrew\n"]);
 
     expect(trustHelperOnDarwin()->dnsmasqConfPath())->toBe('/opt/homebrew/etc/dnsmasq.d/larakube.conf');
 });
 
-test('isDnsmasqConfigured is false on Linux when the larakube.conf drop-in does not exist', function () {
+test('isDnsmasqConfigured is false on Linux when the larakube.conf drop-in does not exist', function (): void {
     expect(trustHelperOnLinux()->dnsmasqConfigured())->toBeFalse();
 });

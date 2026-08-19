@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Process;
  * set of resources still gets deleted (order doesn't matter to `kubectl
  * delete`, so this compares the resource SET, not a literal string).
  */
-test('chat:remove deletes the same resource set as before the component refactor', function () {
+test('chat:remove deletes the same resource set as before the component refactor', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
@@ -24,9 +24,11 @@ test('chat:remove deletes the same resource set as before the component refactor
     Process::assertRan(function ($process) use (&$deleteCommand) {
         if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'chat-synapse')) {
             $deleteCommand = $process->command;
+
+            return true;
         }
 
-        return true;
+        return false;
     });
 
     expect($deleteCommand)->not->toBeNull();

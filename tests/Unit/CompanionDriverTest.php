@@ -9,7 +9,7 @@ use App\Data\ConfigData;
 use App\Enums\CompanionDriver;
 use Illuminate\Support\Facades\View;
 
-test('installable() returns all companions', function () {
+test('installable() returns all companions', function (): void {
     $installable = CompanionDriver::installable();
 
     expect(array_map(fn ($c) => $c->value, $installable))
@@ -20,36 +20,35 @@ test('installable() returns all companions', function () {
         ->toContain('mongo-express');
 });
 
-test('every companion has a non-empty image', function () {
+test('every companion has a non-empty image', function (): void {
     foreach (CompanionDriver::cases() as $companion) {
         expect($companion->getImage())->not->toBeEmpty("image missing for {$companion->value}");
     }
 });
 
-test('every companion has a port greater than zero', function () {
+test('every companion has a port greater than zero', function (): void {
     foreach (CompanionDriver::cases() as $companion) {
         expect($companion->getPort())->toBeGreaterThan(0, "port missing for {$companion->value}");
     }
 });
 
-test('phpMyAdmin env sets PMA_ARBITRARY to 1', function () {
+test('phpMyAdmin env sets PMA_ARBITRARY to 1', function (): void {
     expect(CompanionDriver::PHPMYADMIN->getEnv()['PMA_ARBITRARY'])->toBe('1');
 });
 
-test('pgAdmin env has default credentials', function () {
+test('pgAdmin env has default credentials', function (): void {
     $env = CompanionDriver::PGADMIN->getEnv();
 
-    expect($env)->toHaveKey('PGADMIN_DEFAULT_EMAIL')
-        ->toHaveKey('PGADMIN_DEFAULT_PASSWORD');
+    expect($env)->toHaveKeys(['PGADMIN_DEFAULT_EMAIL', 'PGADMIN_DEFAULT_PASSWORD']);
 });
 
-test('companion:add command definition has companion argument', function () {
+test('companion:add command definition has companion argument', function (): void {
     $cmd = new CompanionAddCommand;
 
     expect($cmd->getDefinition()->hasArgument('companion'))->toBeTrue();
 });
 
-test('companion:remove command definition has optional companion argument and force option', function () {
+test('companion:remove command definition has optional companion argument and force option', function (): void {
     $cmd = new CompanionRemoveCommand;
     $argument = $cmd->getDefinition()->getArgument('companion');
 
@@ -58,7 +57,7 @@ test('companion:remove command definition has optional companion argument and fo
         ->and($cmd->getDefinition()->hasOption('force'))->toBeTrue();
 });
 
-test('companion:stop and companion:start have an optional companion argument', function () {
+test('companion:stop and companion:start have an optional companion argument', function (): void {
     foreach ([CompanionStopCommand::class, CompanionStartCommand::class] as $class) {
         $cmd = new $class;
 
@@ -67,7 +66,7 @@ test('companion:stop and companion:start have an optional companion argument', f
     }
 });
 
-test('companion commands only call CompanionDriver methods that actually exist', function () {
+test('companion commands only call CompanionDriver methods that actually exist', function (): void {
     // Regression guard for the `isDefault()` crash: both commands called a method
     // that was never implemented on the enum, and it only blew up at runtime with an
     // explicit slug (the tests never invoked handle(), so it slipped through). This
@@ -90,25 +89,25 @@ test('companion commands only call CompanionDriver methods that actually exist',
     }
 });
 
-test('Adminer connection hint uses server param for MySQL', function () {
+test('Adminer connection hint uses server param for MySQL', function (): void {
     expect(CompanionDriver::ADMINER->getConnectionHint())
         ->toBe('mysql.{appname}.svc.cluster.local');
 });
 
-test('getUrl returns https with tld', function () {
+test('getUrl returns https with tld', function (): void {
     $url = CompanionDriver::PHPMYADMIN->getUrl();
 
     expect($url)->toStartWith('https://phpmyadmin.');
 });
 
-test('ManagesCompanions methods are callable on UpCommand', function () {
+test('ManagesCompanions methods are callable on UpCommand', function (): void {
     $cmd = new UpCommand;
 
     expect(method_exists($cmd, 'refreshPhpMyAdminServers'))->toBeTrue()
         ->and(method_exists($cmd, 'showCompanionAccess'))->toBeTrue();
 });
 
-test('companion ingress renders on the explicitly passed TLD, not the shared boot value', function () {
+test('companion ingress renders on the explicitly passed TLD, not the shared boot value', function (): void {
     // Guards the config:tld staleness fix: View::share('localTld', …) is frozen at
     // provider boot, so when config:tld mutates the TLD and chains `up` in the same
     // process, the shared value is stale. deployCompanion() passes a freshly-loaded
@@ -125,7 +124,7 @@ test('companion ingress renders on the explicitly passed TLD, not the shared boo
         ->not->toContain('phpmyadmin.kube');
 });
 
-test('shared Mailpit blade template exists and contains larakube-shared namespace', function () {
+test('shared Mailpit blade template exists and contains larakube-shared namespace', function (): void {
     $content = file_get_contents(resource_path('views/k8s/mailpit/shared.blade.php'));
 
     expect($content)->toContain('larakube-shared')
@@ -134,7 +133,7 @@ test('shared Mailpit blade template exists and contains larakube-shared namespac
         ->toContain('host: {{ $host }}');
 });
 
-test('recommendedFor() leads with pgAdmin then Adminer for a Postgres project', function () {
+test('recommendedFor() leads with pgAdmin then Adminer for a Postgres project', function (): void {
     $config = ConfigData::from(['name' => 'demo', 'database' => 'postgres']);
 
     $recommended = array_map(fn ($c) => $c->value, CompanionDriver::recommendedFor($config));
@@ -142,22 +141,22 @@ test('recommendedFor() leads with pgAdmin then Adminer for a Postgres project', 
     expect($recommended)->toBe(['pgadmin', 'adminer']);
 });
 
-test('recommendedFor() leads with phpMyAdmin then Adminer for a MySQL project', function () {
+test('recommendedFor() leads with phpMyAdmin then Adminer for a MySQL project', function (): void {
     $config = ConfigData::from(['name' => 'demo', 'database' => 'mysql']);
 
     expect(array_map(fn ($c) => $c->value, CompanionDriver::recommendedFor($config)))
         ->toBe(['phpmyadmin', 'adminer']);
 });
 
-test('recommendedFor() adds RedisInsight when the project caches with Redis', function () {
+test('recommendedFor() adds RedisInsight when the project caches with Redis', function (): void {
     $config = ConfigData::from(['name' => 'demo', 'database' => 'postgres', 'cacheDriver' => 'redis']);
 
     expect(array_map(fn ($c) => $c->value, CompanionDriver::recommendedFor($config)))
         ->toBe(['pgadmin', 'adminer', 'redisinsight']);
 });
 
-test('recommendedFor() returns nothing for a SQLite-only project', function () {
+test('recommendedFor() returns nothing for a SQLite-only project', function (): void {
     $config = ConfigData::from(['name' => 'demo', 'database' => 'sqlite']);
 
-    expect(CompanionDriver::recommendedFor($config))->toBe([]);
+    expect(CompanionDriver::recommendedFor($config))->toBeEmpty();
 });

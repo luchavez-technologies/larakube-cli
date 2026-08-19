@@ -22,6 +22,7 @@ use Illuminate\Support\Str;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class DeskInitCommand extends Command
 {
@@ -85,7 +86,7 @@ class DeskInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $adminPassword, $adminEmail) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $adminPassword, $adminEmail): void {
             Process::run(
                 "{$kubectl} create secret generic desk-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
@@ -105,7 +106,8 @@ class DeskInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-desk.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-desk.yaml');
         file_put_contents($tmp, $manifest);
 
         // FreeScout runs its first-boot migrations on start, which can take a
@@ -114,7 +116,7 @@ class DeskInitCommand extends Command
             'Applying FreeScout manifests (first boot runs migrations)...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'desk-freescout', 300),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

@@ -2,13 +2,13 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('webmail:init is registered', function () {
+test('webmail:init is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('webmail:init');
 });
 
-test('webmail:init refuses when Stalwart is not installed', function () {
+test('webmail:init refuses when Stalwart is not installed', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -18,7 +18,7 @@ test('webmail:init refuses when Stalwart is not installed', function () {
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('webmail:init deploys Bulwark and enables CORS when Stalwart is present', function () {
+test('webmail:init deploys Bulwark and enables CORS when Stalwart is present', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret webmail-secrets*' => Process::result(output: '', exitCode: 1),
@@ -42,7 +42,7 @@ test('webmail:init deploys Bulwark and enables CORS when Stalwart is present', f
         ->doesntExpectOutputToContain('Could not auto-enable CORS');
 });
 
-test('webmail bulwark manifest references standard secret keys', function () {
+test('webmail bulwark manifest references standard secret keys', function (): void {
     $manifest = view('k8s.webmail.bulwark', [
         'host' => 'mail.example.com',
         'mailHost' => 'send.example.com',
@@ -51,11 +51,11 @@ test('webmail bulwark manifest references standard secret keys', function () {
         'isLocal' => false,
     ])->render();
 
-    expect($manifest)->toContain('key: WEBMAIL_SESSION_SECRET');
-    expect($manifest)->toContain('key: WEBMAIL_ADMIN_PASSWORD');
+    expect($manifest)->toContain('key: WEBMAIL_SESSION_SECRET')
+        ->toContain('key: WEBMAIL_ADMIN_PASSWORD');
 });
 
-test('webmail:init still succeeds but warns when the CORS flip fails', function () {
+test('webmail:init still succeeds but warns when the CORS flip fails', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret webmail-secrets*' => Process::result(output: '', exitCode: 1),
@@ -74,7 +74,7 @@ test('webmail:init still succeeds but warns when the CORS flip fails', function 
         ->expectsOutputToContain('Could not auto-enable CORS on Stalwart.');
 });
 
-test('webmail:init --vpn-only creates the Traefik Middleware before applying the manifests', function () {
+test('webmail:init --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret webmail-secrets*' => Process::result(output: '', exitCode: 1),
@@ -92,7 +92,7 @@ test('webmail:init --vpn-only creates the Traefik Middleware before applying the
         ->expectsOutputToContain('Bulwark webmail is live.');
 });
 
-test('webmail:remove deletes the Bulwark resources', function () {
+test('webmail:remove deletes the Bulwark resources', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
     ]);
@@ -103,7 +103,7 @@ test('webmail:remove deletes the Bulwark resources', function () {
         ->expectsOutputToContain('removed from larakube-shared');
 });
 
-test('webmail:remove aborts when a delete step fails', function () {
+test('webmail:remove aborts when a delete step fails', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);

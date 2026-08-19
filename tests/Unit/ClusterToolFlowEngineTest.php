@@ -11,19 +11,19 @@ use App\Enums\ClusterTool;
  * (used by teardown, which deliberately wants "both, to guarantee a clean
  * slate") is pinned as unchanged.
  */
-test('FLOW productName() reports the real engine when known, n8n by default', function () {
+test('FLOW productName() reports the real engine when known, n8n by default', function (): void {
     expect(ClusterTool::FLOW->productName())->toBe('n8n')
         ->and(ClusterTool::FLOW->productName('n8n'))->toBe('n8n')
         ->and(ClusterTool::FLOW->productName('windmill'))->toBe('Windmill');
 });
 
-test('FLOW commonsDatabaseList() returns both when the engine is unspecified, only one when known', function () {
+test('FLOW commonsDatabaseList() returns both when the engine is unspecified, only one when known', function (): void {
     expect(ClusterTool::FLOW->commonsDatabases())->toEqualCanonicalizing(['n8n', 'windmill'])
         ->and(ClusterTool::FLOW->commonsDatabases(engine: 'n8n'))->toBe(['n8n'])
         ->and(ClusterTool::FLOW->commonsDatabases(engine: 'windmill'))->toBe(['windmill']);
 });
 
-test('FLOW deploymentName() targets the real per-engine Deployment name, not always flow-n8n', function () {
+test('FLOW deploymentName() targets the real per-engine Deployment name, not always flow-n8n', function (): void {
     // Confirmed against the real Blade manifests: n8n.blade.php deploys
     // "flow-n8n", windmill.blade.php deploys "flow-windmill" — two
     // genuinely different Deployments. deploymentName() ignoring $engine
@@ -34,13 +34,12 @@ test('FLOW deploymentName() targets the real per-engine Deployment name, not alw
         ->and(ClusterTool::FLOW->deploymentName(engine: 'windmill'))->toBe('flow-windmill');
 });
 
-test('FLOW smtpEnv() refuses for a known Windmill engine instead of targeting the n8n Deployment', function () {
+test('FLOW smtpEnv() refuses for a known Windmill engine instead of targeting the n8n Deployment', function (): void {
     $default = ClusterTool::FLOW->smtpEnv();
     expect($default)->not->toBeNull()
         ->and($default['deployment'])->toBe('flow-n8n');
 
     $n8n = ClusterTool::FLOW->smtpEnv('n8n');
-    expect($n8n)->toBe($default);
-
-    expect(ClusterTool::FLOW->smtpEnv('windmill'))->toBeNull();
+    expect($n8n)->toBe($default)
+        ->and(ClusterTool::FLOW->smtpEnv('windmill'))->toBeNull();
 });

@@ -1,6 +1,6 @@
 <?php
 
-test('do/vps template renders valid HCL with restricted sources and no HTML escaping', function () {
+test('do/vps template renders valid HCL with restricted sources and no HTML escaping', function (): void {
     $hcl = view('tofu.do.vps', [
         'region' => 'sgp1',
         'size' => 's-1vcpu-1gb',
@@ -27,7 +27,7 @@ test('do/vps template renders valid HCL with restricted sources and no HTML esca
         ->and($hcl)->toContain('output "ip"');
 });
 
-test('do/vps template leaves API + SSH open when no admin CIDR', function () {
+test('do/vps template leaves API + SSH open when no admin CIDR', function (): void {
     $hcl = view('tofu.do.vps', [
         'region' => 'nyc1',
         'size' => 's-1vcpu-1gb',
@@ -42,7 +42,7 @@ test('do/vps template leaves API + SSH open when no admin CIDR', function () {
     expect(substr_count($hcl, '"0.0.0.0/0", "::/0"'))->toBeGreaterThanOrEqual(4); // ssh + api + 80 + 443
 });
 
-test('do/managed template renders cluster, node pool and a sensitive kubeconfig output', function () {
+test('do/managed template renders cluster, node pool and a sensitive kubeconfig output', function (): void {
     $hcl = view('tofu.do.managed', [
         'region' => 'sgp1',
         'clusterName' => 'larakube-acme',
@@ -59,7 +59,7 @@ test('do/managed template renders cluster, node pool and a sensitive kubeconfig 
         ->not->toContain('&gt;');
 });
 
-test('backend-s3 template renders an S3-compatible backend with per-stack key and native locking', function () {
+test('backend-s3 template renders an S3-compatible backend with per-stack key and native locking', function (): void {
     $hcl = view('tofu.backend-s3', [
         'bucket' => 'larakube-state',
         'endpoint' => 'https://nyc3.digitaloceanspaces.com',

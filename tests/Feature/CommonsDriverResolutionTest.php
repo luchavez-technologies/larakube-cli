@@ -14,19 +14,19 @@ class DriverResolutionTester
     use SupportedDriversTrait;
 }
 
-test('SupportedDriversTrait resolves database driver for single supported tool', function () {
+test('SupportedDriversTrait resolves database driver for single supported tool', function (): void {
     $tester = new DriverResolutionTester;
     $driver = $tester->resolveToolDatabaseDriver('kubectl', ClusterTool::CHAT);
     expect($driver)->toBe(DatabaseDriver::POSTGRESQL);
 });
 
-test('SupportedDriversTrait respects explicit database driver option', function () {
+test('SupportedDriversTrait respects explicit database driver option', function (): void {
     $tester = new DriverResolutionTester;
     $driver = $tester->resolveToolDatabaseDriver('kubectl', ClusterTool::GIT, 'mysql');
     expect($driver)->toBe(DatabaseDriver::MYSQL);
 });
 
-test('SupportedDriversTrait resolves active database driver from cluster probe', function () {
+test('SupportedDriversTrait resolves active database driver from cluster probe', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => Process::result(output: json_encode([
             'services' => [
@@ -41,7 +41,7 @@ test('SupportedDriversTrait resolves active database driver from cluster probe',
     expect($driver)->toBe(DatabaseDriver::MYSQL);
 });
 
-test('SupportedDriversTrait resolves cache driver for tool', function () {
+test('SupportedDriversTrait resolves cache driver for tool', function (): void {
     Process::fake([
         '*get deployment redis*' => Process::result(output: 'redis'),
         '*' => Process::result(),
@@ -52,7 +52,7 @@ test('SupportedDriversTrait resolves cache driver for tool', function () {
     expect($driver)->toBe(CacheDriver::REDIS);
 });
 
-test('SupportedDriversTrait resolves storage driver for tool', function () {
+test('SupportedDriversTrait resolves storage driver for tool', function (): void {
     Process::fake([
         '*get deployment minio*' => Process::result(output: 'minio'),
         '*' => Process::result(),
@@ -63,7 +63,7 @@ test('SupportedDriversTrait resolves storage driver for tool', function () {
     expect($driver)->toBe(StorageDriver::MINIO);
 });
 
-test('SupportedDriversTrait resolves search driver for app framework', function () {
+test('SupportedDriversTrait resolves search driver for app framework', function (): void {
     Process::fake([
         '*get deployment meilisearch*' => Process::result(output: 'meilisearch'),
         '*' => Process::result(),

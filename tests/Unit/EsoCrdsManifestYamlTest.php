@@ -2,7 +2,7 @@
 
 use Symfony\Component\Yaml\Yaml;
 
-test('eso-crds manifest renders valid multi-document YAML', function () {
+test('eso-crds manifest renders valid multi-document YAML', function (): void {
     $rendered = view('k8s.secrets.eso-crds')->render();
 
     $documents = array_values(array_filter(
@@ -23,7 +23,7 @@ test('eso-crds manifest renders valid multi-document YAML', function () {
     }
 });
 
-test('every ESO CRD declares a status subresource', function () {
+test('every ESO CRD declares a status subresource', function (): void {
     // Regression guard: these are hand-rolled CRDs (permissive
     // x-kubernetes-preserve-unknown-fields schema, not pulled from ESO's
     // official manifests), and none of the 5 declared `subresources:
@@ -46,8 +46,8 @@ test('every ESO CRD declares a status subresource', function () {
         $name = $parsed['metadata']['name'] ?? 'unknown';
 
         foreach ($parsed['spec']['versions'] ?? [] as $version) {
-            expect($version)->toHaveKey('subresources');
-            expect($version['subresources'])->toHaveKey('status');
+            expect($version)->toHaveKey('subresources')
+                ->and($version['subresources'])->toHaveKey('status');
         }
     }
 });

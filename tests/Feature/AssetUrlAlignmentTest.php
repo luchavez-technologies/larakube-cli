@@ -1,5 +1,6 @@
 <?php
 
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Tests\Feature\ViteHardenHelper;
 
 /**
@@ -13,7 +14,7 @@ function aligner(): ViteHardenHelper
     return new ViteHardenHelper;
 }
 
-test('rewrites a leaked local *.dev.test ASSET_URL to the production domain', function () {
+test('rewrites a leaked local *.dev.test ASSET_URL to the production domain', function (): void {
     $env = "APP_URL=https://app-two.luchtech.dev\nASSET_URL=https://app-two.dev.test\n";
 
     expect(aligner()->alignAssetUrlValue($env, 'https://app-two.luchtech.dev'))
@@ -21,33 +22,33 @@ test('rewrites a leaked local *.dev.test ASSET_URL to the production domain', fu
         ->not->toContain('dev.test');
 });
 
-test('fills an empty ASSET_URL', function () {
+test('fills an empty ASSET_URL', function (): void {
     expect(aligner()->alignAssetUrlValue("ASSET_URL=\n", 'https://app.luchtech.dev'))
         ->toContain('ASSET_URL=https://app.luchtech.dev');
 });
 
-test('uncomments and aligns a commented local ASSET_URL', function () {
+test('uncomments and aligns a commented local ASSET_URL', function (): void {
     expect(aligner()->alignAssetUrlValue("#ASSET_URL=https://app.dev.test\n", 'https://app.luchtech.dev'))
         ->toContain('ASSET_URL=https://app.luchtech.dev');
 });
 
-test('never clobbers a deliberate CDN/asset host', function () {
+test('never clobbers a deliberate CDN/asset host', function (): void {
     $env = "ASSET_URL=https://cdn.example.com\n";
 
     expect(aligner()->alignAssetUrlValue($env, 'https://app.luchtech.dev'))
         ->toBe($env); // unchanged
 });
 
-test('leaves an absent ASSET_URL alone (assets resolve relative to APP_URL)', function () {
+test('leaves an absent ASSET_URL alone (assets resolve relative to APP_URL)', function (): void {
     $env = "APP_URL=https://app.luchtech.dev\nDB_HOST=postgres\n";
 
     expect(aligner()->alignAssetUrlValue($env, 'https://app.luchtech.dev'))
         ->toBe($env); // unchanged — no ASSET_URL line added
 });
 
-test('aligns a NON-production env file too (.env.staging) — multi-environment', function () {
-    $dir = sys_get_temp_dir().'/asset-staging-'.uniqid();
-    mkdir($dir, 0755, true);
+test('aligns a NON-production env file too (.env.staging) — multi-environment', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/.env.staging', "APP_URL=https://staging.app.com\nASSET_URL=https://app.dev.test\n");
 
     aligner()->alignEnv($dir, 'staging', 'staging.app.com');
@@ -56,12 +57,12 @@ test('aligns a NON-production env file too (.env.staging) — multi-environment'
         ->toContain('ASSET_URL=https://staging.app.com')
         ->not->toContain('dev.test');
 
-    exec('rm -rf '.escapeshellarg($dir));
+    $temporaryDirectory->delete();
 });
 
-test('skips local — the .kube host is correct there', function () {
-    $dir = sys_get_temp_dir().'/asset-local-'.uniqid();
-    mkdir($dir, 0755, true);
+test('skips local — the .kube host is correct there', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $env = "ASSET_URL=https://app.kube\n";
     file_put_contents($dir.'/.env', $env);
 
@@ -71,10 +72,10 @@ test('skips local — the .kube host is correct there', function () {
     expect(file_get_contents($dir.'/.env'))->toBe($env)
         ->and(file_exists($dir.'/.env.local'))->toBeFalse();
 
-    exec('rm -rf '.escapeshellarg($dir));
+    $temporaryDirectory->delete();
 });
 
-test('rewrites a leaked local *.kube ASSET_URL to the production domain', function () {
+test('rewrites a leaked local *.kube ASSET_URL to the production domain', function (): void {
     $env = "APP_URL=https://app-two.luchtech.dev\nASSET_URL=https://app-two.kube\n";
 
     expect(aligner()->alignAssetUrlValue($env, 'https://app-two.luchtech.dev'))

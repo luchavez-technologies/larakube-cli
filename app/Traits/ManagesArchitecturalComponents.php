@@ -63,7 +63,7 @@ trait ManagesArchitecturalComponents
             return;
         }
 
-        $this->withSpin("Adding database '$engine->value'...", function () use ($engine, $config) {
+        $this->withSpin("Adding database '$engine->value'...", function () use ($engine, $config): void {
             $engine->updateK8s($config);
             if ($config->id) {
                 $this->logToConsole($config->id, 'add', "Added database '{$engine->value}'");
@@ -109,7 +109,7 @@ trait ManagesArchitecturalComponents
             return;
         }
 
-        $this->withSpin("Adding cache driver '{$driver->value}'...", function () use ($driver, $config) {
+        $this->withSpin("Adding cache driver '{$driver->value}'...", function () use ($driver, $config): void {
             $driver->updateK8s($config);
             if ($config->id) {
                 $this->logToConsole($config->id, 'add', "Added cache driver '{$driver->value}'");
@@ -151,7 +151,7 @@ trait ManagesArchitecturalComponents
             return;
         }
 
-        $this->withSpin("Adding storage '{$storage->value}'...", function () use ($storage, $config) {
+        $this->withSpin("Adding storage '{$storage->value}'...", function () use ($storage, $config): void {
             $storage->updateK8s($config);
             if ($config->id) {
                 $this->logToConsole($config->id, 'add', "Added storage '{$storage->value}'");
@@ -250,7 +250,7 @@ trait ManagesArchitecturalComponents
             return;
         }
 
-        $this->withSpin("Adding feature '{$feature->value}'...", function () use ($feature, $config) {
+        $this->withSpin("Adding feature '{$feature->value}'...", function () use ($feature, $config): void {
             $feature->updateK8s($config);
             if ($config->id) {
                 $this->logToConsole($config->id, 'add', "Added feature '{$feature->value}'");
@@ -335,7 +335,7 @@ trait ManagesArchitecturalComponents
     {
         $projectPath = $config->getPath();
 
-        $this->withSpin('Updating project DNA and manifests...', function () use ($config, $projectPath) {
+        $this->withSpin('Updating project DNA and manifests...', function () use ($config, $projectPath): void {
             $this->saveProjectConfig($projectPath, $config);
             $this->orchestrateProjectScaffolding($config, false, false);
             $this->generateDockerfiles($config);

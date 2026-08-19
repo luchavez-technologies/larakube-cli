@@ -29,6 +29,7 @@ use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Exceptions\NonInteractiveValidationException;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Same trait stack the real cloud:configure:* commands compose (per
@@ -62,7 +63,7 @@ function configuresCloudEnvironmentRunner(string $gitRemote = ''): object
     };
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 
     Process::fake([
@@ -71,16 +72,16 @@ beforeEach(function () {
     ]);
     Process::preventStrayProcesses();
 
-    $this->tempDir = sys_get_temp_dir().'/larakube-cloudconfigure-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
 
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    exec('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
     gc_collect_cycles();
 });
 
@@ -97,7 +98,7 @@ function saveConsolidationConfig(string $dir, array $environments): ConfigData
     return $config;
 }
 
-test('--only=registry errors cleanly on an environment not yet in the blueprint, without touching a cluster', function () {
+test('--only=registry errors cleanly on an environment not yet in the blueprint, without touching a cluster', function (): void {
     saveConsolidationConfig($this->tempDir, ['local' => []]);
 
     $this->artisan('cloud:configure', ['environment' => 'production', '--only' => 'registry'])
@@ -105,7 +106,7 @@ test('--only=registry errors cleanly on an environment not yet in the blueprint,
         ->expectsOutputToContain('is not in your blueprint');
 });
 
-test('--only=hosts errors cleanly on an environment not yet in the blueprint', function () {
+test('--only=hosts errors cleanly on an environment not yet in the blueprint', function (): void {
     saveConsolidationConfig($this->tempDir, ['local' => []]);
 
     $this->artisan('cloud:configure', ['environment' => 'production', '--only' => 'hosts'])
@@ -113,7 +114,7 @@ test('--only=hosts errors cleanly on an environment not yet in the blueprint', f
         ->expectsOutputToContain('is not in your blueprint');
 });
 
-test('an unknown --only value errors cleanly instead of silently running the guided flow', function () {
+test('an unknown --only value errors cleanly instead of silently running the guided flow', function (): void {
     saveConsolidationConfig($this->tempDir, ['local' => [], 'production' => []]);
 
     $this->artisan('cloud:configure', ['environment' => 'production', '--only' => 'bogus'])
@@ -121,19 +122,21 @@ test('an unknown --only value errors cleanly instead of silently running the gui
         ->expectsOutputToContain('Unknown --only value');
 });
 
-test('--only=hosts leaves a real, already-set host untouched', function () {
+test('--only=hosts leaves a real, already-set host untouched', function (): void {
     $config = saveConsolidationConfig($this->tempDir, ['local' => [], 'production' => []]);
     $config->setHost('production', 'web', 'consoltest.example.com');
     $config->saveToFile($this->tempDir);
 
     $this->artisan('cloud:configure', ['environment' => 'production', '--only' => 'hosts'])
+        ->expectsConfirmation("Keep the web host 'consoltest.example.com' for 'production'?", 'yes')
+        ->expectsQuestion("Any additional hostnames for production's web pod? (optional, comma-separated)", '')
         ->assertExitCode(0);
 
     $reloaded = ConfigData::loadFromFile($this->tempDir);
     expect($reloaded->getHost('production', 'web'))->toBe('consoltest.example.com');
 });
 
-test('configureBase seeds .env.{env}, gitignores it, and gathers DNA for a brand-new environment before the deploy-target prompt', function () {
+test('configureBase seeds .env.{env}, gitignores it, and gathers DNA for a brand-new environment before the deploy-target prompt', function (): void {
     file_put_contents($this->tempDir.'/.env', "APP_NAME=consoltest\n");
     file_put_contents($this->tempDir.'/.gitignore', "vendor/\n");
     saveConsolidationConfig($this->tempDir, ['local' => []]);
@@ -148,18 +151,18 @@ test('configureBase seeds .env.{env}, gitignores it, and gathers DNA for a brand
         // prompt with no default. Everything BEFORE that point already ran.
     }
 
-    expect(file_exists($this->tempDir.'/.env.production'))->toBeTrue();
-    expect(file_get_contents($this->tempDir.'/.env.production'))->toContain('APP_NAME=consoltest');
+    expect(file_exists($this->tempDir.'/.env.production'))->toBeTrue()
+        ->and(file_get_contents($this->tempDir.'/.env.production'))->toContain('APP_NAME=consoltest');
 
     $gitignore = file_get_contents($this->tempDir.'/.gitignore');
     expect($gitignore)->toContain('.env.*');
 
     $reloaded = ConfigData::loadFromFile($this->tempDir);
-    expect($reloaded->hasEnvironment('production'))->toBeTrue();
-    expect($reloaded->getIngress('production'))->not->toBeNull();
+    expect($reloaded->hasEnvironment('production'))->toBeTrue()
+        ->and($reloaded->getIngress('production'))->not->toBeNull();
 });
 
-test('re-running configureBase on an env with an existing deploy target does NOT overwrite it (non-interactive confirm defaults to false)', function () {
+test('re-running configureBase on an env with an existing deploy target does NOT overwrite it (non-interactive confirm defaults to false)', function (): void {
     $config = saveConsolidationConfig($this->tempDir, ['local' => [], 'production' => []]);
     $config->setCloud('production', new CloudData(ip: '203.0.113.10', user: 'deploy'));
     $config->setHost('production', 'web', 'consoltest.example.com');
@@ -176,11 +179,11 @@ test('re-running configureBase on an env with an existing deploy target does NOT
         ->and($reloaded->getCloudUser('production'))->toBe('deploy');
 });
 
-test('detectCiPlatform defaults to github when there is no git remote at all', function () {
+test('detectCiPlatform defaults to github when there is no git remote at all', function (): void {
     expect(configuresCloudEnvironmentRunner('')->detect())->toBe('github');
 });
 
-test('detectCiPlatform routes a gitlab.com remote to gitlab, and anything else to github', function () {
+test('detectCiPlatform routes a gitlab.com remote to gitlab, and anything else to github', function (): void {
     expect(configuresCloudEnvironmentRunner('git@gitlab.com:acme/consoltest.git')->detect())->toBe('gitlab')
         ->and(configuresCloudEnvironmentRunner('git@github.com:acme/consoltest.git')->detect())->toBe('github')
         ->and(configuresCloudEnvironmentRunner('https://gitlab.com/acme/consoltest')->detect())->toBe('gitlab');

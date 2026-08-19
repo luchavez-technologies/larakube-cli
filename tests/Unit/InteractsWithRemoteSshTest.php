@@ -28,7 +28,7 @@ function remoteSshHelper(): object
     };
 }
 
-test('testSsh is true only on the exact "success" echo', function () {
+test('testSsh is true only on the exact "success" echo', function (): void {
     Process::fake(["ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no -i /key -p 22 root@1.2.3.4 'echo success'" => "success\n"]);
     expect(remoteSshHelper()->ssh('root', '1.2.3.4', 22, '/key'))->toBeTrue();
 
@@ -36,7 +36,7 @@ test('testSsh is true only on the exact "success" echo', function () {
     expect(remoteSshHelper()->ssh('root', '1.2.3.4', 22, '/key'))->toBeFalse();
 });
 
-test('canSudo is true only when the remote sudo -n true prints nothing at all', function () {
+test('canSudo is true only when the remote sudo -n true prints nothing at all', function (): void {
     Process::fake(["ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no -i /key -p 22 larakube@1.2.3.4 'sudo -n true'" => '']);
     expect(remoteSshHelper()->sudo('larakube', '1.2.3.4', 22, '/key'))->toBeTrue();
 

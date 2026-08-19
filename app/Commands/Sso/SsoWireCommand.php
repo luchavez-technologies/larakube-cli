@@ -24,6 +24,7 @@ use Illuminate\Support\Str;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoWireCommand extends Command
 {
@@ -221,7 +222,7 @@ class SsoWireCommand extends Command
             $redirectUris = $desiredRedirectUris;
 
             $registered = null;
-            $this->withSpin("Registering {$tool->getLabel()} as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $projectName, $tool, $redirectUris, $publicClient, $desiredPostLogoutRedirectUris, $engine) {
+            $this->withSpin("Registering {$tool->getLabel()} as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $projectName, $tool, $redirectUris, $publicClient, $desiredPostLogoutRedirectUris, $engine): void {
                 $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
                 if ($projectId === null) {
                     return;
@@ -340,7 +341,7 @@ class SsoWireCommand extends Command
     protected function ensureRbacGating(string $ssoHost, string $pat, string $projectId, ClusterTool $tool): bool
     {
         $ok = true;
-        $this->withSpin("Configuring role-gated access for {$tool->getLabel()}...", function () use ($ssoHost, $pat, $projectId, $tool, &$ok) {
+        $this->withSpin("Configuring role-gated access for {$tool->getLabel()}...", function () use ($ssoHost, $pat, $projectId, $tool, &$ok): void {
             $ok = $this->zitadelEnsureRbacProjectSettings($ssoHost, $pat, $projectId);
             if ($ok) {
                 $ok = $this->zitadelEnsureRbacAction($ssoHost, $pat);
@@ -391,7 +392,7 @@ class SsoWireCommand extends Command
     protected function ensureSsoAdminGating(string $ssoHost, string $pat, string $projectId, ClusterTool $tool): bool
     {
         $ok = true;
-        $this->withSpin("Configuring admin-role claims for {$tool->getLabel()}...", function () use ($ssoHost, $pat, $projectId, $tool, &$ok) {
+        $this->withSpin("Configuring admin-role claims for {$tool->getLabel()}...", function () use ($ssoHost, $pat, $projectId, $tool, &$ok): void {
             $ok = $this->zitadelEnsureSsoAdminProjectSettings($ssoHost, $pat, $projectId);
 
             if ($ok) {
@@ -511,7 +512,7 @@ class SsoWireCommand extends Command
         $pairs = implode(' ', array_map(fn (string $key) => $key.'-', $unset));
 
         $ok = true;
-        $this->withSpin("Unwiring {$tool->getLabel()} from Zitadel...", function () use ($kubectl, $schema, $pairs, &$ok) {
+        $this->withSpin("Unwiring {$tool->getLabel()} from Zitadel...", function () use ($kubectl, $schema, $pairs, &$ok): void {
             $ok = Process::run("{$kubectl} set env deployment/{$schema['deployment']} -n {$schema['namespace']} {$pairs}")->successful();
             if ($ok) {
                 Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
@@ -721,7 +722,7 @@ class SsoWireCommand extends Command
 
         // The proxy is SHARED — only tear it down once nothing else is gated.
         if ($this->gatedForwardAuthTools($kubectl, $tool) === []) {
-            $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $ssoNs, $ssoHost, $pat) {
+            $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $ssoNs, $ssoHost, $pat): void {
                 $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
                 $appId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
                 if ($projectId !== null && $appId !== null) {
@@ -768,7 +769,7 @@ class SsoWireCommand extends Command
 
         $projectName = (string) ($this->option('project') ?: 'LaraKube Shared Tools');
         $registered = null;
-        $this->withSpin('Registering the shared SSO proxy in Zitadel...', function () use (&$registered, $ssoHost, $pat, $projectName, $authHost) {
+        $this->withSpin('Registering the shared SSO proxy in Zitadel...', function () use (&$registered, $ssoHost, $pat, $projectName, $authHost): void {
             $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
             if ($projectId === null) {
                 return;
@@ -876,10 +877,11 @@ class SsoWireCommand extends Command
 
     protected function applyManifest(string $kubectl, string $yaml, string $name): bool
     {
-        $tmp = sys_get_temp_dir()."/larakube-{$name}.yaml";
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path("larakube-{$name}.yaml");
         file_put_contents($tmp, $yaml);
         $result = Process::run("{$kubectl} apply -f {$tmp}");
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         return $result->successful();
     }
@@ -979,7 +981,7 @@ class SsoWireCommand extends Command
         $ns = $schema['namespace'];
 
         $ok = true;
-        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotSuffix, $ssoOnlyOption, $unsetPairs, &$ok) {
+        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotSuffix, $ssoOnlyOption, $unsetPairs, &$ok): void {
             Process::run(
                 "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -1276,7 +1278,7 @@ class SsoWireCommand extends Command
         $policies = SecretsBackend::OPENBAO->policies();
 
         $ok = true;
-        $this->withSpin('Enabling OIDC auth backend on OpenBao...', function () use ($exec, $ssoHost, $clientId, $clientSecret, $toolHost, $policies, &$ok) {
+        $this->withSpin('Enabling OIDC auth backend on OpenBao...', function () use ($exec, $ssoHost, $clientId, $clientSecret, $toolHost, $policies, &$ok): void {
             $list = Process::run("{$exec} bao auth list -format=json")->output();
             if (! str_contains($list, '"oidc/"')) {
                 $ok = Process::run("{$exec} bao auth enable oidc")->successful();

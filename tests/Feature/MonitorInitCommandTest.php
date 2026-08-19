@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('monitor:init --no-logs deploys metrics-only stack without loki, promtail and tempo', function () {
+test('monitor:init --no-logs deploys metrics-only stack without loki, promtail and tempo', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -36,7 +36,7 @@ test('monitor:init --no-logs deploys metrics-only stack without loki, promtail a
     Process::assertNotRan('*delete *');
 });
 
-test('monitor:init --with-logs deploys full stack including loki and promtail', function () {
+test('monitor:init --with-logs deploys full stack including loki and promtail', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -65,7 +65,7 @@ test('monitor:init --with-logs deploys full stack including loki and promtail', 
     Process::assertNotRan('*rollout restart*');
 });
 
-test('monitor:init --with-traces --with-logs deploys the full stack including tempo', function () {
+test('monitor:init --with-traces --with-logs deploys the full stack including tempo', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -92,7 +92,7 @@ test('monitor:init --with-traces --with-logs deploys the full stack including te
     Process::assertNotRan('*delete *');
 });
 
-test('monitor:init defaults to metrics-only in non-interactive mode', function () {
+test('monitor:init defaults to metrics-only in non-interactive mode', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -116,7 +116,7 @@ test('monitor:init defaults to metrics-only in non-interactive mode', function (
         ->expectsOutputToContain('Distributed tracing (Tempo) is disabled (~450MB RAM saved).');
 });
 
-test('monitor:init --no-logs removes a previously deployed log aggregation stack and restarts grafana', function () {
+test('monitor:init --no-logs removes a previously deployed log aggregation stack and restarts grafana', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -137,7 +137,15 @@ test('monitor:init --no-logs removes a previously deployed log aggregation stack
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('monitor:init local --no-logs')
+    // confirmComponentRemoval() short-circuits its confirm() prompt behind
+    // `--force || --no-interaction || !stream_isatty(STDIN)` — the last
+    // clause makes the prompt's very presence depend on whether the runner
+    // itself has a real TTY (true under a real terminal or `script`-PTY,
+    // false in a plain non-interactive runner), which would make this
+    // test's expectations non-deterministic across environments. --force
+    // pins it to the same bypass path every time; the removal itself (not
+    // the confirmation UX) is what this test is about.
+    $this->artisan('monitor:init local --no-logs --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Loki...')
         ->expectsOutputToContain('Removing Promtail...')
@@ -151,7 +159,7 @@ test('monitor:init --no-logs removes a previously deployed log aggregation stack
     Process::assertNotRan('*delete deployment,svc,configmap,pvc tempo*');
 });
 
-test('monitor:init --no-traces removes a previously deployed tempo stack and restarts grafana', function () {
+test('monitor:init --no-traces removes a previously deployed tempo stack and restarts grafana', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -171,7 +179,9 @@ test('monitor:init --no-traces removes a previously deployed tempo stack and res
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('monitor:init local --no-traces')
+    // See the --no-logs test above for why --force (not a scripted confirm)
+    // is what keeps this deterministic across TTY/non-TTY runners.
+    $this->artisan('monitor:init local --no-traces --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Tempo...')
         ->expectsOutputToContain('Restarting Grafana to load the updated data sources...')
@@ -182,7 +192,7 @@ test('monitor:init --no-traces removes a previously deployed tempo stack and res
     Process::assertNotRan('*delete deployment,svc,configmap,pvc loki*');
 });
 
-test('monitor:init re-running with matching flags is a no-op — no deletions, no grafana restart', function () {
+test('monitor:init re-running with matching flags is a no-op — no deletions, no grafana restart', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -210,7 +220,7 @@ test('monitor:init re-running with matching flags is a no-op — no deletions, n
     Process::assertNotRan('*rollout restart*');
 });
 
-test('monitor:init allocates a real Commons Postgres database for Grafana instead of leaving it on ephemeral SQLite', function () {
+test('monitor:init allocates a real Commons Postgres database for Grafana instead of leaving it on ephemeral SQLite', function (): void {
     // Previously monitor:init never touched Postgres at all — Grafana's own
     // database (UI-created dashboards, folders, alert rules, users) lived
     // only in its built-in SQLite on the pod's ephemeral filesystem, wiped
@@ -240,7 +250,7 @@ test('monitor:init allocates a real Commons Postgres database for Grafana instea
         && str_contains($p->command, 'deploy/postgres'));
 });
 
-test('monitor:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function () {
+test('monitor:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
     // Same design principle as GitInitCommandTest's sibling: {tool}:init
     // must not know or care whether OpenBao is installed — it just writes
     // the locally-generated password directly into monitor-secrets (see
@@ -285,7 +295,7 @@ test('monitor:init never registers an OpenBao static role itself — only secret
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/'));
 });
 
-test('monitor:init --no-plex skips Commons Postgres entirely and uses a local PVC for SQLite instead', function () {
+test('monitor:init --no-plex skips Commons Postgres entirely and uses a local PVC for SQLite instead', function (): void {
     // The fallback for a cluster with no Plex Commons at all — mirrors
     // git:init's own --no-plex story. Still genuinely persistent (a PVC
     // survives pod recreation, unlike the pre-fix ephemeral-only setup),
@@ -309,7 +319,7 @@ test('monitor:init --no-plex skips Commons Postgres entirely and uses a local PV
     Process::assertNotRan(fn ($p) => str_contains($p->command, 'get configmap plex-commons'));
 });
 
-test('monitoring shared blade view conditionally renders optional components based on withLogs and withTraces', function () {
+test('monitoring shared blade view conditionally renders optional components based on withLogs and withTraces', function (): void {
     $metricsOnlyManifest = view('k8s.monitoring.shared', [
         'host' => 'grafana.dev.test',
         'grafanaPassword' => 'secret123',

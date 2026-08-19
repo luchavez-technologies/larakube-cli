@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('mail:show detects a local wizard-skip install and shows "already configured" instead of wizard instructions', function () {
+test('mail:show detects a local wizard-skip install and shows "already configured" instead of wizard instructions', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
@@ -41,7 +41,7 @@ test('mail:show detects a local wizard-skip install and shows "already configure
         ->doesntExpectOutputToContain('replace Stalwart\'s embedded RocksDB');
 });
 
-test('mail:show falls back to the original wizard hint when stalwart-config does not exist', function () {
+test('mail:show falls back to the original wizard hint when stalwart-config does not exist', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),

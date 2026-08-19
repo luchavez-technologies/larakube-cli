@@ -28,6 +28,7 @@ use Illuminate\Support\Str;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoInitCommand extends Command
 {
@@ -128,7 +129,7 @@ class SsoInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $masterkey, $adminPassword, $adminEmail) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $masterkey, $adminPassword, $adminEmail): void {
             Process::run(
                 "{$kubectl} create secret generic sso-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
@@ -181,7 +182,8 @@ class SsoInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-sso.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-sso.yaml');
         file_put_contents($tmp, $manifest);
 
         // First boot runs Zitadel's own DB init + schema setup before it starts
@@ -191,7 +193,7 @@ class SsoInitCommand extends Command
             'Applying Zitadel manifests (first boot runs schema setup)...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'sso-zitadel', 300),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

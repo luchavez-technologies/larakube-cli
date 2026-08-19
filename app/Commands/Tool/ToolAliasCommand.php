@@ -11,6 +11,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ToolAliasCommand extends Command
 {
@@ -123,10 +124,11 @@ class ToolAliasCommand extends Command
             'proxied' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'cloudflare-proxied'),
         ])->render();
 
-        $tmp = sys_get_temp_dir()."/larakube-alias-{$tool->value}.yaml";
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path("larakube-alias-{$tool->value}.yaml");
         file_put_contents($tmp, $manifest);
         $result = Process::run("{$kubectl} apply -f {$tmp}");
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         return $result->successful();
     }

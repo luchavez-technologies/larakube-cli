@@ -2,6 +2,7 @@
 
 use App\Data\ConfigData;
 use App\Traits\GeneratesProjectInfrastructure;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function manifestSigner(): object
 {
@@ -20,9 +21,10 @@ function sigTestConfig(string $dir): ConfigData
     return $config;
 }
 
-test('a tracked manifest is flagged hand-edited only once it diverges from the recorded hash', function () {
+test('a tracked manifest is flagged hand-edited only once it diverges from the recorded hash', function (): void {
     $s = manifestSigner();
-    $dir = sys_get_temp_dir().'/lk-sig-'.uniqid();
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $config = sigTestConfig($dir);
 
     $rel = 'base/deployment.yaml';
@@ -41,17 +43,18 @@ test('a tracked manifest is flagged hand-edited only once it diverges from the r
     // A file with no recorded hash (pre-feature / external) is never flagged.
     expect($s->manifestHandEdited($config, $abs, 'base/untracked.yaml'))->toBeFalse();
 
-    exec('rm -rf '.escapeshellarg($dir));
+    $temporaryDirectory->delete();
 });
 
-test('the signature sidecar round-trips and stays sorted', function () {
+test('the signature sidecar round-trips and stays sorted', function (): void {
     $s = manifestSigner();
-    $dir = sys_get_temp_dir().'/lk-sig-'.uniqid();
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $config = sigTestConfig($dir);
 
     $s->saveManifestSigs($config, ['b.yaml' => 'h2', 'a.yaml' => 'h1']);
 
     expect($s->loadManifestSigs($config))->toBe(['a.yaml' => 'h1', 'b.yaml' => 'h2']);
 
-    exec('rm -rf '.escapeshellarg($dir));
+    $temporaryDirectory->delete();
 });

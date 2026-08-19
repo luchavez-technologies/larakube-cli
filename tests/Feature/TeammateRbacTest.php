@@ -10,17 +10,17 @@ function teammateRbac(): object
     };
 }
 
-test('presets map to built-in ClusterRoles, defaulting to edit', function () {
+test('presets map to built-in ClusterRoles, defaulting to edit', function (): void {
     $t = teammateRbac();
 
     expect($t->presetClusterRole(read: false, edit: false, admin: false))->toBe('edit');   // default
     expect($t->presetClusterRole(read: false, edit: true, admin: false))->toBe('edit');
-    expect($t->presetClusterRole(read: true, edit: false, admin: false))->toBe('view');
-    expect($t->presetClusterRole(read: false, edit: false, admin: true))->toBe('admin');
-    expect($t->presetClusterRole(read: true, edit: false, admin: true))->toBe('admin');     // admin wins
+    expect($t->presetClusterRole(read: true, edit: false, admin: false))->toBe('view')
+        ->and($t->presetClusterRole(read: false, edit: false, admin: true))->toBe('admin')
+        ->and($t->presetClusterRole(read: true, edit: false, admin: true))->toBe('admin');     // admin wins
 });
 
-test('admin escalates to the real cluster-admin ClusterRole when granted cluster-wide', function () {
+test('admin escalates to the real cluster-admin ClusterRole when granted cluster-wide', function (): void {
     $t = teammateRbac();
 
     // Bound via a ClusterRoleBinding, the built-in `admin` role excludes
@@ -35,19 +35,19 @@ test('admin escalates to the real cluster-admin ClusterRole when granted cluster
     expect($t->presetClusterRole(read: false, edit: true, admin: false, clusterWide: true))->toBe('edit');
 });
 
-test('the context name is meaningful (app+env namespace), not the cluster host', function () {
-    expect(teammateRbac()->teammateContextName('react-test-production'))->toBe('larakube-react-test-production');
-    expect(teammateRbac()->teammateContextName(''))->toBe('larakube-cluster');
+test('the context name is meaningful (app+env namespace), not the cluster host', function (): void {
+    expect(teammateRbac()->teammateContextName('react-test-production'))->toBe('larakube-react-test-production')
+        ->and(teammateRbac()->teammateContextName(''))->toBe('larakube-cluster');
 });
 
-test('a person name becomes a k8s-safe ServiceAccount name', function () {
+test('a person name becomes a k8s-safe ServiceAccount name', function (): void {
     $t = teammateRbac();
 
-    expect($t->teammateSaName('Lloyd'))->toBe('lloyd');
-    expect($t->teammateSaName('Mary Jane'))->toBe('mary-jane');
+    expect($t->teammateSaName('Lloyd'))->toBe('lloyd')
+        ->and($t->teammateSaName('Mary Jane'))->toBe('mary-jane');
 });
 
-test('the identity manifest is a central SA + bound-token Secret, labeled per user', function () {
+test('the identity manifest is a central SA + bound-token Secret, labeled per user', function (): void {
     $yaml = teammateRbac()->teammateIdentityManifest('larakube-access', 'lloyd', 'Lloyd');
 
     expect($yaml)
@@ -57,7 +57,7 @@ test('the identity manifest is a central SA + bound-token Secret, labeled per us
         ->toContain('larakube.dev/access-user: lloyd');
 });
 
-test('the binding lives in the APP namespace and references a built-in ClusterRole', function () {
+test('the binding lives in the APP namespace and references a built-in ClusterRole', function (): void {
     $yaml = teammateRbac()->teammateBindingManifest('blue-production', 'larakube-access', 'lloyd', 'edit');
 
     expect($yaml)
@@ -70,7 +70,7 @@ test('the binding lives in the APP namespace and references a built-in ClusterRo
         ->toContain('larakube.dev/access-user: lloyd');
 });
 
-test('the teammate kubeconfig names the context for the CLUSTER and defaults to the app namespace', function () {
+test('the teammate kubeconfig names the context for the CLUSTER and defaults to the app namespace', function (): void {
     $kubeconfig = teammateRbac()->assembleTeammateKubeconfig(
         contextName: 'larakube-167.71.214.14',
         server: 'https://167.71.214.14:6443',

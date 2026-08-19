@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('meet:init deploys the shared LiveKit SFU', function () {
+test('meet:init deploys the shared LiveKit SFU', function (): void {
     Process::fake([
         '*get secret meet-keys*' => Process::result(output: '', exitCode: 1),
         '*get deployment meet-lk-jwt*' => Process::result(output: ''),
@@ -20,7 +20,7 @@ test('meet:init deploys the shared LiveKit SFU', function () {
     Process::assertRan(fn ($job) => str_contains($job->command, 'apply -f'));
 });
 
-test('a fresh meet:init points you at the wire command instead of pretending it is usable', function () {
+test('a fresh meet:init points you at the wire command instead of pretending it is usable', function (): void {
     Process::fake([
         '*get secret meet-keys*' => Process::result(output: '', exitCode: 1),
         '*get deployment meet-lk-jwt*' => Process::result(output: ''),
@@ -35,7 +35,7 @@ test('a fresh meet:init points you at the wire command instead of pretending it 
         ->expectsOutputToContain('meet:wire local --tool=chat');
 });
 
-test('meet:remove tears down the SFU and its bridge', function () {
+test('meet:remove tears down the SFU and its bridge', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
         '*get *' => Process::result(output: '', exitCode: 1),
@@ -50,7 +50,7 @@ test('meet:remove tears down the SFU and its bridge', function () {
     Process::assertRan(fn ($job) => str_contains($job->command, 'deployment/meet-lk-jwt'));
 });
 
-test('meet:remove aborts when a delete step fails', function () {
+test('meet:remove aborts when a delete step fails', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: '', exitCode: 1),
         '*get *' => Process::result(output: '', exitCode: 1),

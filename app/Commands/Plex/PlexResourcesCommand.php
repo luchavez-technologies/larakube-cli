@@ -17,6 +17,7 @@ use function Laravel\Prompts\table;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexResourcesCommand extends Command
 {
@@ -140,10 +141,11 @@ class PlexResourcesCommand extends Command
         $kubectl = $this->plexKubectl();
 
         $this->withSpin("Applying updated Commons manifests for '{$service}'...", function () use ($manifest, $ns, $kubectl) {
-            $tmp = sys_get_temp_dir().'/larakube-plex-commons.yaml';
+            $temporaryDirectory = TemporaryDirectory::make();
+            $tmp = $temporaryDirectory->path('larakube-plex-commons.yaml');
             file_put_contents($tmp, $manifest);
             $this->runStreaming("{$kubectl} apply -n {$ns} -f {$tmp}");
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             return true;
         });

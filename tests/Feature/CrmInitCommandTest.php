@@ -6,7 +6,7 @@ use App\Commands\Crm\CrmShowCommand;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
-test('crm:init deploys Twenty CRM using commons postgres and redis', function () {
+test('crm:init deploys Twenty CRM using commons postgres and redis', function (): void {
     Process::fake([
         '*plex-commons*' => json_encode([
             'version' => 1,
@@ -34,7 +34,7 @@ test('crm:init deploys Twenty CRM using commons postgres and redis', function ()
         ->expectsOutputToContain('Twenty CRM stack is live.');
 });
 
-test('crm:init detects MinIO rather than assuming SeaweedFS when that\'s what plex:init actually provisioned', function () {
+test('crm:init detects MinIO rather than assuming SeaweedFS when that\'s what plex:init actually provisioned', function (): void {
     // Regression: the Commons S3 backend is an operator choice at plex:init
     // (StorageDriver has 3 options), not a fixed SeaweedFS install — an
     // earlier version of this wiring hardcoded StorageDriver::SEAWEEDFS.
@@ -68,7 +68,7 @@ test('crm:init detects MinIO rather than assuming SeaweedFS when that\'s what pl
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'deploy/seaweedfs'));
 });
 
-test('crm:show displays status table for Twenty CRM', function () {
+test('crm:show displays status table for Twenty CRM', function (): void {
     Process::fake([
         '*get deployment *' => Process::result(output: 'crm-twenty-crm-dev-test   1/1   1   1   10d'),
     ]);
@@ -78,7 +78,7 @@ test('crm:show displays status table for Twenty CRM', function () {
     ])->assertExitCode(0);
 });
 
-test('crm:remove cleans up Twenty CRM resources', function () {
+test('crm:remove cleans up Twenty CRM resources', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => json_encode([
             ['tool' => 'crm', 'instance' => 'crm-dev-test', 'host' => 'crm.dev.test'],
@@ -94,7 +94,7 @@ test('crm:remove cleans up Twenty CRM resources', function () {
     ])->assertExitCode(0);
 });
 
-test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function () {
+test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function (): void {
     expect(ClusterTool::CRM->smtpEnv())->toBe([
         'namespace' => 'larakube-shared',
         'also_patch' => ['crm-twenty-worker'],
@@ -123,7 +123,7 @@ test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function 
  * The zero-arg test above can't catch this; it has to actually pass an
  * instance through the real wrapper call, the way mail:wire does.
  */
-test('smtpEnv() actually suffixes CRM deployment names for a real instance', function () {
+test('smtpEnv() actually suffixes CRM deployment names for a real instance', function (): void {
     expect(ClusterTool::CRM->smtpEnv(instance: 'crm-luchtech-dev'))->toBe([
         'namespace' => 'larakube-shared',
         'also_patch' => ['crm-twenty-worker-crm-luchtech-dev'],
@@ -142,7 +142,7 @@ test('smtpEnv() actually suffixes CRM deployment names for a real instance', fun
     ]);
 });
 
-test('crm does not claim OIDC wiring — Twenty paywalls SSO behind its paid Organization tier', function () {
+test('crm does not claim OIDC wiring — Twenty paywalls SSO behind its paid Organization tier', function (): void {
     // Confirmed live 2026-08-18: sso:wire --tool=crm crashed on a missing
     // 'redirect_path' key CrmTool::oidcEnv() never declared. Rather than
     // guess at Twenty's real OIDC callback shape (its login route embeds a
@@ -156,7 +156,7 @@ test('crm does not claim OIDC wiring — Twenty paywalls SSO behind its paid Org
         ->and(ClusterTool::CRM->hasSsoWire())->toBeFalse();
 });
 
-test('crm:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function () {
+test('crm:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
     // Regression guard for the confirmed live 2026-08-14 duplicate-registration
     // bug: a no-flag re-run's registry lookup under the default 'main' instance
     // never matched CRM's always-derived-slug entries, so it silently derived

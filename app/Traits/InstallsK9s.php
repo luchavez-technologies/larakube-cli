@@ -42,7 +42,7 @@ trait InstallsK9s
             }
 
             $this->laraKubeInfo('Installing k9s via Homebrew...');
-            $code = Process::forever()->run('brew install k9s', function (string $type, string $output) {
+            $code = Process::forever()->run('brew install k9s', function (string $type, string $output): void {
                 echo $output;
             })->exitCode();
 

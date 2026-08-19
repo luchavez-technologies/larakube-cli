@@ -14,11 +14,13 @@ use App\Traits\PromotesIngressDns;
 use App\Traits\ResolvesEnvironmentContext;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class CloudProvisionDoksCommand extends Command
 {
@@ -243,13 +245,14 @@ class CloudProvisionDoksCommand extends Command
             'email' => $email,
             'loadBalancerName' => $this->loadBalancerNameFor($context),
         ])->render();
-        $tmp = sys_get_temp_dir().'/larakube-traefik-managed.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-traefik-managed.yaml');
         file_put_contents($tmp, $manifest);
 
         $kubectl = $this->kubectl().' --context '.escapeshellarg($context);
         $ok = $this->applyAndVerifyRollout($kubectl, $tmp, 'traefik', 'traefik', extraApplyFlags: '--validate=false');
 
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         return $ok ? 0 : 1;
     }
@@ -272,7 +275,7 @@ class CloudProvisionDoksCommand extends Command
             if ($attempt % 5 === 0) {
                 $this->line("  ⏳ Waiting... ({$attempt}s)");
             }
-            sleep(2);
+            Sleep::sleep(2);
         }
 
         return null;

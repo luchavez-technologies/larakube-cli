@@ -5,9 +5,9 @@ use App\Traits\InteractsWithToolRegistry;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-uses(InteractsWithToolRegistry::class);
+pest()->use(InteractsWithToolRegistry::class);
 
-test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support named instances', function () {
+test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support named instances', function (): void {
     expect(ClusterTool::NOTES->deploymentName('sister'))->toBe('notes-outline-sister')
         ->and(ClusterTool::NOTES->commonsDatabases('sister'))->toBe(['outline_sister'])
         ->and(ClusterTool::DATA->dbSecretRef('sister'))->toBe([
@@ -17,7 +17,7 @@ test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support name
         ]);
 });
 
-test('notes:init deploys a named multi-instance with isolated DB and secrets', function () {
+test('notes:init deploys a named multi-instance with isolated DB and secrets', function (): void {
     // A bare, dot-less --domain so ClusterTool::instanceSlugFromHost() derives
     // exactly 'sister' (no dots to dash-ify) — keeps every fixture below
     // (notes-secrets-sister, notes-outline-sister, ...) matching the slug the

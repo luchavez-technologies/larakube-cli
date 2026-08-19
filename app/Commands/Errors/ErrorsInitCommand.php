@@ -20,6 +20,7 @@ use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ErrorsInitCommand extends Command
 {
@@ -112,7 +113,8 @@ class ErrorsInitCommand extends Command
             'vpnOnly' => $vpnOnly,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-errors.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-errors.yaml');
         file_put_contents($tmp, $manifest);
 
         // Multiple resources to verify in sequence (db/cache/job/web/worker),
@@ -127,7 +129,7 @@ class ErrorsInitCommand extends Command
         // and crash this command before kubectl's own timeout ever fires
         // (the exact same incident, same root cause).
         $applied = $this->withSpin('Applying GlitchTip manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $applied) {
             $this->laraKubeError('Could not apply the GlitchTip manifest — see the output above.');

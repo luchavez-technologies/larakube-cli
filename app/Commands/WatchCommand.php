@@ -5,6 +5,7 @@ namespace App\Commands;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use FilesystemIterator;
+use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -52,7 +53,7 @@ class WatchCommand extends Command
         $previous = static::computeHash($paths);
 
         while (true) {
-            usleep($interval);
+            Sleep::usleep($interval);
 
             $current = static::computeHash($paths);
             if ($current === $previous) {

@@ -6,7 +6,7 @@ use Laravel\Prompts\Prompt;
 
 Prompt::interactive(false);
 
-test('secrets:init deploys openbao and external secrets operator, unsealing an already-initialized instance', function () {
+test('secrets:init deploys openbao and external secrets operator, unsealing an already-initialized instance', function (): void {
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
         '*get secret*unseal-key*' => Process::result(output: base64_encode('existing-unseal-key')),
@@ -49,7 +49,7 @@ test('secrets:init deploys openbao and external secrets operator, unsealing an a
         ->expectsOutputToContain('OpenBao:  https://');
 });
 
-test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — no import file required', function () {
+test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — no import file required', function (): void {
     // Regression guard for the real gap found live 2026-07-31: secrets:init
     // used to deploy OpenBao but never initialize it, deferring that
     // entirely to secrets:import — which itself refuses to run without an
@@ -100,7 +100,7 @@ test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — n
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
 });
 
-test('secrets:init creates a new userpass admin and prints the credentials once', function () {
+test('secrets:init creates a new userpass admin and prints the credentials once', function (): void {
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
         '*get secret*unseal-key*' => Process::result(output: base64_encode('existing-unseal-key')),
@@ -141,7 +141,7 @@ test('secrets:init creates a new userpass admin and prints the credentials once'
         && str_contains($process->command, 'admin-password'));
 });
 
-test('secrets:init reuses an existing userpass admin instead of rotating it, and does not reprint credentials', function () {
+test('secrets:init reuses an existing userpass admin instead of rotating it, and does not reprint credentials', function (): void {
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
         '*get secret*unseal-key*' => Process::result(output: base64_encode('existing-unseal-key')),
@@ -178,7 +178,7 @@ test('secrets:init reuses an existing userpass admin instead of rotating it, and
         && ($request['password'] ?? null) === 'do-not-rotate-me');
 });
 
-test('secrets:init keeps deploying OpenBao even if the userpass admin setup fails', function () {
+test('secrets:init keeps deploying OpenBao even if the userpass admin setup fails', function (): void {
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
         '*get secret*unseal-key*' => Process::result(output: base64_encode('existing-unseal-key')),
@@ -206,7 +206,7 @@ test('secrets:init keeps deploying OpenBao even if the userpass admin setup fail
         ->expectsOutputToContain('OpenBao stack & External Secrets Operator are live');
 });
 
-test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently skipping ESO wiring', function () {
+test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently skipping ESO wiring', function (): void {
     Process::fake([
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -221,7 +221,7 @@ test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently 
         ->expectsOutputToContain('Could not initialize/unseal OpenBao');
 });
 
-test('secrets:remove removes openbao deployment and deletes namespace', function () {
+test('secrets:remove removes openbao deployment and deletes namespace', function (): void {
     Process::fake([
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(),

@@ -18,7 +18,7 @@ function shapeExemptPrefixes(): array
     return ['make:', 'app:', 'stub:', 'completion', 'help', 'list', 'test', 'schedule'];
 }
 
-test('no tool command takes a positional other than environment', function () {
+test('no tool command takes a positional other than environment', function (): void {
     $offenders = [];
 
     foreach (app(Kernel::class)->all() as $name => $command) {
@@ -57,7 +57,7 @@ test('no tool command takes a positional other than environment', function () {
         .json_encode($offenders));
 })->skip('Inventory guard — enable once the non-tool commands are swept too.');
 
-test('the mail, sso and vpn suites take environment as their only positional', function () {
+test('the mail, sso and vpn suites take environment as their only positional', function (): void {
     foreach (app(Kernel::class)->all() as $name => $command) {
         if (! preg_match('/^(mail|sso|vpn):/', $name)) {
             continue;
@@ -69,7 +69,7 @@ test('the mail, sso and vpn suites take environment as their only positional', f
     }
 });
 
-test('no command still exposes a --env escape hatch alongside the positional', function () {
+test('no command still exposes a --env escape hatch alongside the positional', function (): void {
     // Two sources for one value is how `mail:relay --env=production` and
     // `mail:relay production` silently disagreed.
     foreach (app(Kernel::class)->all() as $name => $command) {
@@ -82,7 +82,7 @@ test('no command still exposes a --env escape hatch alongside the positional', f
     }
 });
 
-test('every subject a wire command needs is available as a flag', function () {
+test('every subject a wire command needs is available as a flag', function (): void {
     // tool:add calls these with --tool. Before the inversion they only had a
     // {tool} positional, so answering "yes" to the wiring offer threw
     // InvalidOptionException — the offer was dead on arrival.
@@ -94,7 +94,7 @@ test('every subject a wire command needs is available as a flag', function () {
     }
 });
 
-test('tool:add can answer its own wiring prompts from flags', function () {
+test('tool:add can answer its own wiring prompts from flags', function (): void {
     // Without these, tool:add could never run unattended: the mail/SSO offers
     // were unconditional confirm() calls with nothing to answer them.
     $definition = app(Kernel::class)->all()['tool:add']->getDefinition();
@@ -104,7 +104,7 @@ test('tool:add can answer its own wiring prompts from flags', function () {
     }
 });
 
-test('cannotPrompt is true under --no-interaction so the picker guards fire', function () {
+test('cannotPrompt is true under --no-interaction so the picker guards fire', function (): void {
     // The guards in the account pickers all hang off this one predicate — if it
     // ever returns false in a non-interactive run, every guard silently becomes
     // a hang instead of an error.
@@ -130,12 +130,11 @@ test('cannotPrompt is true under --no-interaction so the picker guards fire', fu
         }
     };
 
-    expect($probe->check())->toBeTrue();
-    expect(fn () => $probe->guarded())
-        ->toThrow(MissingFlagException::class, 'Missing required --email');
+    expect($probe->check())->toBeTrue()
+        ->and(fn () => $probe->guarded())->toThrow(MissingFlagException::class, 'Missing required --email');
 });
 
-test('every guarded picker sits behind a cannotPrompt check', function () {
+test('every guarded picker sits behind a cannotPrompt check', function (): void {
     // Source-level guard: a picker that calls select() without first checking
     // cannotPrompt() will hang forever in CI.
     $pickers = [
@@ -156,7 +155,7 @@ test('every guarded picker sits behind a cannotPrompt check', function () {
     }
 });
 
-test('MissingFlagException names a flag that the command actually defines', function () {
+test('MissingFlagException names a flag that the command actually defines', function (): void {
     // A guard that names a nonexistent flag is worse than no guard.
     $commands = app(Kernel::class)->all();
 
@@ -174,7 +173,7 @@ test('MissingFlagException names a flag that the command actually defines', func
     }
 });
 
-test('every cluster-inspecting :show resolves its context from {environment}', function () {
+test('every cluster-inspecting :show resolves its context from {environment}', function (): void {
     // secrets:show production reported "not installed" about a healthy install
     // because it inspected the CURRENT kube-context, using {environment} only to
     // pick a host string. A :show that ignores the environment is worse than no

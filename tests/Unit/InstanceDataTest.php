@@ -3,7 +3,7 @@
 use App\Data\InstanceData;
 use App\Enums\ClusterTool;
 
-test('InstanceData round-trips a raw registry entry onto its properties', function () {
+test('InstanceData round-trips a raw registry entry onto its properties', function (): void {
     // The registry's own raw arrays use these exact camelCase keys (see
     // InteractsWithToolRegistry/ResolvesToolBranding) — matching
     // ConfigData/GlobalConfigData's convention of no name translation
@@ -34,7 +34,7 @@ test('InstanceData round-trips a raw registry entry onto its properties', functi
         ->and($data->updatedAt)->toBe('2026-08-09T12:00:00+00:00');
 });
 
-test('InstanceData stores dates as ISO-8601 strings, not raw timestamps', function () {
+test('InstanceData stores dates as ISO-8601 strings, not raw timestamps', function (): void {
     $data = InstanceData::from([
         'tool' => 'sso',
         'installedAt' => '2026-08-01T09:00:00+00:00',
@@ -46,12 +46,12 @@ test('InstanceData stores dates as ISO-8601 strings, not raw timestamps', functi
         ->and($data->updatedAt)->toBeString();
 });
 
-test('getTool() returns null for an unrecognized or missing tool value', function () {
+test('getTool() returns null for an unrecognized or missing tool value', function (): void {
     expect((new InstanceData(tool: 'not-a-real-tool'))->getTool())->toBeNull()
         ->and((new InstanceData)->getTool())->toBeNull();
 });
 
-test('adminEmail defaults to null for tools that never record one (e.g. mail, flow)', function () {
+test('adminEmail defaults to null for tools that never record one (e.g. mail, flow)', function (): void {
     $data = InstanceData::from([
         'tool' => 'flow',
         'host' => 'flow.example.com',
@@ -61,7 +61,7 @@ test('adminEmail defaults to null for tools that never record one (e.g. mail, fl
     expect($data->adminEmail)->toBeNull();
 });
 
-test('engine defaults to null for tools with no engine concept', function () {
+test('engine defaults to null for tools with no engine concept', function (): void {
     $data = InstanceData::from([
         'tool' => 'sso',
         'host' => 'sso.example.com',

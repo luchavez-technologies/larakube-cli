@@ -17,11 +17,11 @@ LaraKube is designed for the age of AI agents:
 ## 🛠 Technical Standards
 
 ### 🔄 Development Workflow
-Whenever you modify the LaraKube CLI codebase, you **must** proactively run tests and linters to ensure code consistency.
+Whenever you modify the LaraKube CLI codebase, you **must** proactively run tests and linters to ensure code consistency. Requires PHP 8.4 installed locally.
 
 ```bash
-./php vendor/bin/pint
-./php vendor/bin/phpstan
+./vendor/bin/pint
+./vendor/bin/phpstan
 ```
 
 **CRITICAL RULE FOR AI AGENTS**: You are STRICTLY FORBIDDEN from running the `./build` command. When a build is required to update the global binary, you must tell the user to run `./build` and wait for them to do it.
@@ -64,11 +64,9 @@ Whenever you modify the LaraKube CLI codebase, you **must** proactively run test
 - **Always Save Plans in `cli/plans/`**: Whenever creating, writing, or updating an architectural or implementation plan (e.g. via `/plan` or tool artifacts), AI agents MUST ALWAYS save a copy of the plan document inside the repository at `cli/plans/active/<plan-name>.md` (or `cli/plans/` directory).
 - **Zero Scattered Plans**: NEVER output plan markdown files outside of `cli/plans/`. All plans must be persisted in the repo's `cli/plans/` directory for historical tracking and auditing purposes.
 
-### 📦 Development Wrappers
+### 📦 Development Tooling
 -   **Standalone**: Distributed as a Mach-O/Linux binary with embedded PHP runtime.
 -   **K3s Bridge**: Automated image sideloading via `k3s ctr images import` for local builds.
 -   **Total Cleanup**: `larakube uninstall` performs a synchronized wipe of manifests, cluster resources, and Docker images.
--   **Daemon Runner**: Persistent Docker-based development environment for zero-host dependencies:
-    -   **CLI**: `./php` (Daemon: `larakube-php-cli`)
-    -   *Note*: Use `./php stop` to cleanup the daemon.
+-   **Host PHP**: Local development runs directly on a PHP 8.4 install — see CONTRIBUTING.md.
 

@@ -7,7 +7,7 @@ use App\Enums\LaravelFeature;
 use App\Enums\PackageManager;
 use App\Enums\ServerVariation;
 
-test('Feature: Kitchen Sink (Queues + Scheduler + Reverb + MCP + Boost)', function () {
+test('Feature: Kitchen Sink (Queues + Scheduler + Reverb + MCP + Boost)', function (): void {
     $config = new ConfigData(name: 'kitchen-sink');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
@@ -21,18 +21,18 @@ test('Feature: Kitchen Sink (Queues + Scheduler + Reverb + MCP + Boost)', functi
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Feature: Horizon (Auto-resolves Redis)', function () {
+test('Feature: Horizon (Auto-resolves Redis)', function (): void {
     $config = new ConfigData(name: 'horizon-auto-redis');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setDatabase(DatabaseDriver::SQLITE);
     $config->addFeature(LaravelFeature::HORIZON);
 
     $manifests = generateManifests($config);
-    expect($manifests)->toContain('--- FILE: base/redis-deployment.yaml ---');
-    expect($manifests)->toMatchSnapshot();
+    expect($manifests)->toContain('--- FILE: base/redis-deployment.yaml ---')
+        ->toMatchSnapshot();
 });
 
-test('Feature: Octane + Postgres (Auto-resolves FrankenPHP)', function () {
+test('Feature: Octane + Postgres (Auto-resolves FrankenPHP)', function (): void {
     $config = new ConfigData(name: 'octane-auto-franken');
     $config->setDatabase(DatabaseDriver::POSTGRESQL);
     $config->addFeature(LaravelFeature::OCTANE);
@@ -41,7 +41,7 @@ test('Feature: Octane + Postgres (Auto-resolves FrankenPHP)', function () {
     expect($manifests)->toMatchSnapshot();
 });
 
-test('Feature: SSR (Inertia Server-Side Rendering)', function () {
+test('Feature: SSR (Inertia Server-Side Rendering)', function (): void {
     $config = new ConfigData(name: 'ssr-test');
     $config->setServerVariation(ServerVariation::FRANKENPHP);
     $config->setDatabase(DatabaseDriver::SQLITE);

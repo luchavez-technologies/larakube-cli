@@ -4,13 +4,14 @@ use App\Data\CloudData;
 use App\Data\ConfigData;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function vpnInitKubectl(): string
 {
     return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 }
 
-test('vpn:init deploys netbird vpn to larakube-vpn', function () {
+test('vpn:init deploys netbird vpn to larakube-vpn', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([
@@ -40,9 +41,9 @@ test('vpn:init deploys netbird vpn to larakube-vpn', function () {
     Http::assertNothingSent();
 });
 
-test('vpn:init targets the CHOSEN environment\'s own saved context, never the ambient current context', function () {
-    $dir = sys_get_temp_dir().'/vpn-init-'.uniqid();
-    mkdir($dir, 0755, true);
+test('vpn:init targets the CHOSEN environment\'s own saved context, never the ambient current context', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $original = getcwd();
     chdir($dir);
 
@@ -78,11 +79,11 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
         Http::assertNothingSent();
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('vpn:remove removes netbird vpn namespace when --remove is passed', function () {
+test('vpn:remove removes netbird vpn namespace when --remove is passed', function (): void {
     Process::fake([
         vpnInitKubectl().' delete namespace larakube-vpn*' => Process::result(output: 'deleted'),
     ]);
@@ -93,7 +94,7 @@ test('vpn:remove removes netbird vpn namespace when --remove is passed', functio
         ->expectsOutputToContain('removed from larakube-vpn');
 });
 
-test('vpn:init bootstraps NetBird auth non-interactively on first run', function () {
+test('vpn:init bootstraps NetBird auth non-interactively on first run', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([
@@ -120,7 +121,7 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
         && $request->hasHeader('Authorization', 'Token nbp_test_token'));
 });
 
-test('vpn:init warns but does not fail when NetBird auth bootstrap fails', function () {
+test('vpn:init warns but does not fail when NetBird auth bootstrap fails', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([
@@ -142,9 +143,9 @@ test('vpn:init warns but does not fail when NetBird auth bootstrap fails', funct
         ->expectsOutputToContain('Could not bootstrap NetBird auth automatically');
 });
 
-test('vpn:remove also targets the CHOSEN environment\'s own saved context', function () {
-    $dir = sys_get_temp_dir().'/vpn-init-remove-'.uniqid();
-    mkdir($dir, 0755, true);
+test('vpn:remove also targets the CHOSEN environment\'s own saved context', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $original = getcwd();
     chdir($dir);
 
@@ -175,11 +176,11 @@ test('vpn:remove also targets the CHOSEN environment\'s own saved context', func
             ->expectsOutputToContain('removed from larakube-vpn');
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('vpn:init generates the relay secret + management.json on first run', function () {
+test('vpn:init generates the relay secret + management.json on first run', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([

@@ -5,10 +5,11 @@ use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\ServerVariation;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-test('about command displays correct architectural DNA', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-test-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('about command displays correct architectural DNA', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     // Create a dummy .larakube.json
     $config = new ConfigData(name: 'test-app');
@@ -27,13 +28,13 @@ test('about command displays correct architectural DNA', function () {
             ->expectsOutputToContain('test-app');
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('about command correctly handles string values from JSON', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-test-json-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('about command correctly handles string values from JSON', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     // Create a .larakube.json with string values
     $json = json_encode([
@@ -56,12 +57,12 @@ test('about command correctly handles string values from JSON', function () {
             ->expectsOutputToContain('json-app');
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });
-test('about command fails gracefully outside a project', function () {
-    $tempDir = sys_get_temp_dir().'/larakube-test-empty-'.uniqid();
-    mkdir($tempDir, 0755, true);
+test('about command fails gracefully outside a project', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
 
     $originalDir = getcwd();
     chdir($tempDir);
@@ -72,6 +73,6 @@ test('about command fails gracefully outside a project', function () {
             ->expectsOutputToContain('Not a LaraKube project');
     } finally {
         chdir($originalDir);
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });

@@ -55,7 +55,7 @@ function fakeRecordInitProcess(?string $s3Host, ?string &$appliedManifest, int $
     });
 }
 
-test('record:init keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT against the Commons public host', function () {
+test('record:init keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT against the Commons public host', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest);
 
@@ -73,7 +73,7 @@ test('record:init keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT agains
         ->and($public[1] ?? null)->toBe('https://files.example.com');
 });
 
-test('record:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when the Commons has no public host', function () {
+test('record:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when the Commons has no public host', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess(null, $appliedManifest);
 
@@ -91,7 +91,7 @@ test('record:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when th
         ->and($public[1] ?? null)->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
 });
 
-test('record:init sets SMTP_TLS to "tls", not the stale "implicit" value that deadlocks SendRec against Stalwart', function () {
+test('record:init sets SMTP_TLS to "tls", not the stale "implicit" value that deadlocks SendRec against Stalwart', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest);
 
@@ -105,7 +105,7 @@ test('record:init sets SMTP_TLS to "tls", not the stale "implicit" value that de
     expect($m[1] ?? null)->toBe('tls');
 });
 
-test('record:init returns a failing exit code and does not claim success when kubectl apply is rejected', function () {
+test('record:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 

@@ -44,7 +44,7 @@ function cleanupLocalCaFor(string $appName): void
     @unlink("{$dir}/{$appName}-dev.tld");
 }
 
-test('generateAppCert writes a TLD sidecar alongside the cert, covering only that TLD', function () {
+test('generateAppCert writes a TLD sidecar alongside the cert, covering only that TLD', function (): void {
     $appName = 'lc-gen-'.uniqid();
     $harness = localCaHarness();
 
@@ -59,14 +59,14 @@ test('generateAppCert writes a TLD sidecar alongside the cert, covering only tha
     cleanupLocalCaFor($appName);
 });
 
-test('getAppCertTld falls back to the global default when no sidecar exists', function () {
+test('getAppCertTld falls back to the global default when no sidecar exists', function (): void {
     $appName = 'lc-nosidecar-'.uniqid();
     $harness = localCaHarness();
 
     expect($harness->tldFor($appName))->toBe(GlobalConfigData::load()->getLocalTld());
 });
 
-test('ensureAppCertExists regenerates the cert when the requested TLD changes', function () {
+test('ensureAppCertExists regenerates the cert when the requested TLD changes', function (): void {
     $appName = 'lc-switch-'.uniqid();
     $harness = localCaHarness();
 
@@ -83,7 +83,7 @@ test('ensureAppCertExists regenerates the cert when the requested TLD changes', 
     cleanupLocalCaFor($appName);
 });
 
-test('ensureAppCertExists reuses the existing cert when the TLD is unchanged', function () {
+test('ensureAppCertExists reuses the existing cert when the TLD is unchanged', function (): void {
     $appName = 'lc-reuse-'.uniqid();
     $harness = localCaHarness();
 
@@ -98,7 +98,7 @@ test('ensureAppCertExists reuses the existing cert when the TLD is unchanged', f
     cleanupLocalCaFor($appName);
 });
 
-test('generateAppCert SAN covers additional hosts alongside the app wildcard — a genuinely different local name, not just a subdomain', function () {
+test('generateAppCert SAN covers additional hosts alongside the app wildcard — a genuinely different local name, not just a subdomain', function (): void {
     $appName = 'lc-multi-'.uniqid();
     $harness = localCaHarness();
 
@@ -114,7 +114,7 @@ test('generateAppCert SAN covers additional hosts alongside the app wildcard —
     cleanupLocalCaFor($appName);
 });
 
-test('ensureAppCertExists regenerates when a new additional host is added, even though the primary + wildcard still validate', function () {
+test('ensureAppCertExists regenerates when a new additional host is added, even though the primary + wildcard still validate', function (): void {
     $appName = 'lc-addhost-'.uniqid();
     $harness = localCaHarness();
 
@@ -130,7 +130,7 @@ test('ensureAppCertExists regenerates when a new additional host is added, even 
     cleanupLocalCaFor($appName);
 });
 
-test('ensureAppCertExists reuses the cert when the same additional hosts are requested again', function () {
+test('ensureAppCertExists reuses the cert when the same additional hosts are requested again', function (): void {
     $appName = 'lc-samehosts-'.uniqid();
     $harness = localCaHarness();
 

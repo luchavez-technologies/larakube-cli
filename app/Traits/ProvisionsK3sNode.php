@@ -3,8 +3,11 @@
 namespace App\Traits;
 
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\confirm;
+
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * The shared single-node k3s provisioning pipeline: install k3s, create the
@@ -117,7 +120,7 @@ trait ProvisionsK3sNode
             if ($attempt % 3 === 0) {
                 $this->line('  ⏳ Still waiting for k3s... ('.($attempt * $delay).'s)');
             }
-            sleep($delay);
+            Sleep::sleep($delay);
         }
 
         return false;
@@ -376,6 +379,7 @@ BASH;
 
         $kubectl = $this->kubectlPinned($contextName);
         $namespace = 'traefik';
+        $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
 
         if (! Process::run("{$kubectl} create namespace {$namespace} --dry-run=client -o yaml | {$kubectl} apply -f -")->successful()) {
             $this->laraKubeError("Could not create/apply the '{$namespace}' namespace — see the output above.");
@@ -384,10 +388,9 @@ BASH;
         }
 
         // 1. Create ConfigMap for Traefik dynamic configuration
-        $tmpCertsYml = sys_get_temp_dir().'/traefik-certs.yml';
+        $tmpCertsYml = $temporaryDirectory->path('traefik-certs.yml');
         file_put_contents($tmpCertsYml, view('traefik.dev-certs')->render());
         $configMapOk = Process::run("{$kubectl} create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | {$kubectl} apply -f -")->successful();
-        @unlink($tmpCertsYml);
         if (! $configMapOk) {
             $this->laraKubeError('Could not apply the Traefik dynamic-config ConfigMap — see the output above.');
 
@@ -396,8 +399,8 @@ BASH;
 
         // 2. Create Secret for SSL certificates
         $certDir = base_path('resources/views/traefik/certificates');
-        $tmpDevPem = sys_get_temp_dir().'/local-dev.pem';
-        $tmpDevKeyPem = sys_get_temp_dir().'/local-dev-key.pem';
+        $tmpDevPem = $temporaryDirectory->path('local-dev.pem');
+        $tmpDevKeyPem = $temporaryDirectory->path('local-dev-key.pem');
 
         // Ensure paths work in PHAR or Dev
         $devPemContent = @file_get_contents("{$certDir}/local-dev.pem");
@@ -407,8 +410,6 @@ BASH;
             file_put_contents($tmpDevPem, $devPemContent);
             file_put_contents($tmpDevKeyPem, $devKeyPemContent);
             $certsOk = Process::run("{$kubectl} create secret generic traefik-certificates -n {$namespace} --from-file=local-dev.pem={$tmpDevPem} --from-file=local-dev-key.pem={$tmpDevKeyPem} --dry-run=client -o yaml | {$kubectl} apply -f -")->successful();
-            @unlink($tmpDevPem);
-            @unlink($tmpDevKeyPem);
             if (! $certsOk) {
                 $this->laraKubeError('Could not apply the Traefik dev-certificates Secret — see the output above.');
 
@@ -419,13 +420,13 @@ BASH;
         }
 
         // 3. Apply Traefik Cloud manifest
-        $tmpInstall = sys_get_temp_dir().'/traefik-cloud.yaml';
+        $tmpInstall = $temporaryDirectory->path('traefik-cloud.yaml');
         file_put_contents($tmpInstall, view('k8s.traefik-cloud', [
             'email' => $this->getEmail(),
             'ip' => $ip,
         ])->render());
         $ok = $this->applyAndVerifyRollout($kubectl, $tmpInstall, $namespace, 'traefik', extraApplyFlags: '--validate=false');
-        @unlink($tmpInstall);
+        $temporaryDirectory->delete();
         if (! $ok) {
             return false;
         }

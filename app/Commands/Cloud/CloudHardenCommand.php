@@ -9,6 +9,7 @@ use App\Traits\InteractsWithServerHardening;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
@@ -276,7 +277,7 @@ class CloudHardenCommand extends Command
     /** Overridable so tests don't burn 20s waiting out the real retry loop. */
     protected function pollDelay(): void
     {
-        sleep(2);
+        Sleep::sleep(2);
     }
 
     /** Update a kube-context's cluster server URL — the official kubectl-native way to edit it. */

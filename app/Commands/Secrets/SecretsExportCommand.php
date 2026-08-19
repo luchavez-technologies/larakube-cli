@@ -66,7 +66,7 @@ class SecretsExportCommand extends Command
         $rows = [];
         $totalKeys = 0;
 
-        $this->withSpin('Listing secret mounts from OpenBao...', function () use ($kubectl, $token, &$listResponse) {
+        $this->withSpin('Listing secret mounts from OpenBao...', function () use ($kubectl, $token, &$listResponse): void {
             $listResponse = $this->openBaoApi($kubectl, 'GET', '/v1/secret/metadata?list=true', null, $token);
         });
 
@@ -78,7 +78,7 @@ class SecretsExportCommand extends Command
                 continue;
             }
 
-            $this->withSpin("Listing keys for environment \"{$envSlug}\"...", function () use ($kubectl, $token, $envSlug, &$subKeysResponse) {
+            $this->withSpin("Listing keys for environment \"{$envSlug}\"...", function () use ($kubectl, $token, $envSlug, &$subKeysResponse): void {
                 $subKeysResponse = $this->openBaoApi($kubectl, 'GET', "/v1/secret/metadata/{$envSlug}?list=true", null, $token);
             });
 
@@ -91,7 +91,7 @@ class SecretsExportCommand extends Command
                     continue;
                 }
 
-                $this->withSpin("Reading {$envSlug}/{$key}...", function () use ($kubectl, $token, $envSlug, $key, &$secretData) {
+                $this->withSpin("Reading {$envSlug}/{$key}...", function () use ($kubectl, $token, $envSlug, $key, &$secretData): void {
                     $secretData = $this->openBaoApi($kubectl, 'GET', "/v1/secret/data/{$envSlug}/{$key}", null, $token);
                 });
 

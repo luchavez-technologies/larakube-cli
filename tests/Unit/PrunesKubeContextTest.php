@@ -9,6 +9,7 @@
 
 use App\Traits\PrunesKubeContext;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function pruneKubeContextHelper(): object
 {
@@ -25,7 +26,8 @@ function pruneKubeContextHelper(): object
 
 function withFakeKubeHome(callable $callback): void
 {
-    $dir = sys_get_temp_dir().'/lk-kube-home-'.uniqid();
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     mkdir($dir.'/.kube', 0755, true);
     file_put_contents($dir.'/.kube/config', "apiVersion: v1\nkind: Config\n");
 
@@ -40,14 +42,12 @@ function withFakeKubeHome(callable $callback): void
         } else {
             $_SERVER['HOME'] = $original;
         }
-        @unlink($dir.'/.kube/config');
-        @rmdir($dir.'/.kube');
-        @rmdir($dir);
+        $temporaryDirectory->delete();
     }
 }
 
-test('pruneKubeContext deletes the context, cluster, and user entries', function () {
-    withFakeKubeHome(function (string $home) {
+test('pruneKubeContext deletes the context, cluster, and user entries', function (): void {
+    withFakeKubeHome(function (string $home): void {
         $kubeConfig = $home.'/.kube/config';
         $kc = 'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config';
 
@@ -64,8 +64,8 @@ test('pruneKubeContext deletes the context, cluster, and user entries', function
     });
 });
 
-test('pruneKubeContext unsets current-context only when it points at a pruned context', function () {
-    withFakeKubeHome(function (string $home) {
+test('pruneKubeContext unsets current-context only when it points at a pruned context', function (): void {
+    withFakeKubeHome(function (string $home): void {
         $kubeConfig = $home.'/.kube/config';
         $kc = 'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config';
 
@@ -80,8 +80,8 @@ test('pruneKubeContext unsets current-context only when it points at a pruned co
     });
 });
 
-test('pruneKubeContext leaves current-context alone when it points elsewhere', function () {
-    withFakeKubeHome(function (string $home) {
+test('pruneKubeContext leaves current-context alone when it points elsewhere', function (): void {
+    withFakeKubeHome(function (string $home): void {
         $kubeConfig = $home.'/.kube/config';
         $kc = 'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config';
 
@@ -96,9 +96,9 @@ test('pruneKubeContext leaves current-context alone when it points elsewhere', f
     });
 });
 
-test('pruneKubeContext is a no-op when there is no kubeconfig file', function () {
-    $dir = sys_get_temp_dir().'/lk-kube-home-empty-'.uniqid();
-    mkdir($dir);
+test('pruneKubeContext is a no-op when there is no kubeconfig file', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $original = $_SERVER['HOME'] ?? null;
     $_SERVER['HOME'] = $dir;
 
@@ -113,6 +113,6 @@ test('pruneKubeContext is a no-op when there is no kubeconfig file', function ()
         } else {
             $_SERVER['HOME'] = $original;
         }
-        @rmdir($dir);
+        $temporaryDirectory->delete();
     }
 });

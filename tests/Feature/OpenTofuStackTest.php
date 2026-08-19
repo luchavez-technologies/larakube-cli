@@ -3,7 +3,7 @@
 use App\Data\GlobalConfigData;
 use App\Data\StackData;
 
-test('StackData round-trips through spatie data and bind is idempotent', function () {
+test('StackData round-trips through spatie data and bind is idempotent', function (): void {
     $stack = new StackData(
         name: 'larakube-acme-prod-vps',
         kind: 'vps',
@@ -23,7 +23,7 @@ test('StackData round-trips through spatie data and bind is idempotent', functio
         ->and($back->bindings)->toBe(['acme/production', 'acme/staging']);
 });
 
-test('GlobalConfigData stack registry put/find/remove round-trips', function () {
+test('GlobalConfigData stack registry put/find/remove round-trips', function (): void {
     $config = new GlobalConfigData;
     $config->putStack(new StackData(name: 'stack-a', kind: 'vps', region: 'nyc1'));
     $config->putStack(new StackData(name: 'stack-b', kind: 'doks', region: 'ams3', context: 'do-ams3-stack-b'));
@@ -40,7 +40,7 @@ test('GlobalConfigData stack registry put/find/remove round-trips', function () 
         ->and($reloaded->getStacks())->toHaveCount(1);
 });
 
-test('ensureTofuPassphrase mints once and is stable; removeStack drops it', function () {
+test('ensureTofuPassphrase mints once and is stable; removeStack drops it', function (): void {
     $config = new GlobalConfigData;
 
     $first = $config->ensureTofuPassphrase('stack-x');
@@ -55,7 +55,7 @@ test('ensureTofuPassphrase mints once and is stable; removeStack drops it', func
     expect($config->getTofuPassphrase('stack-x'))->toBeNull();
 });
 
-test('DO token setter trims and clears', function () {
+test('DO token setter trims and clears', function (): void {
     $config = new GlobalConfigData;
     $config->setDoToken('  dop_v1_abc  ');
     expect($config->getDoToken())->toBe('dop_v1_abc');
@@ -64,7 +64,7 @@ test('DO token setter trims and clears', function () {
     expect($config->getDoToken())->toBeNull();
 });
 
-test('defaultCloudProvider defaults to do and can be changed', function () {
+test('defaultCloudProvider defaults to do and can be changed', function (): void {
     $config = new GlobalConfigData;
     expect($config->getDefaultCloudProvider())->toBe('do');
 

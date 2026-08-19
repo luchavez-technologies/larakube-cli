@@ -21,6 +21,7 @@ use App\Enums\IngressController;
 use App\Enums\RegistryProvider;
 use App\State;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
 
 function cloudConfigureFlagRunner(array $options = []): CloudConfigureCommand
@@ -73,23 +74,23 @@ function nonInteractiveConfig(array $overrides = []): ConfigData
     ], $overrides));
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     Prompt::interactive(false);
 
-    $this->tempDir = sys_get_temp_dir().'/larakube-cloudconfigure-ni-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    exec('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
 // --- flag parsing (direct harness) ---------------------------------------
 
-test('--ingress skips the prompt and rejects unknown slugs', function () {
+test('--ingress skips the prompt and rejects unknown slugs', function (): void {
     $config = nonInteractiveConfig();
 
     expect(cloudConfigureFlagRunner(['--ingress' => 'traefik'])->ingress($config, 'production'))
@@ -98,7 +99,7 @@ test('--ingress skips the prompt and rejects unknown slugs', function () {
         ->toThrow(InvalidArgumentException::class, "Invalid --ingress 'bogus'");
 });
 
-test('--managed accepts a csv of manageable services, empty means none, unknown services are rejected', function () {
+test('--managed accepts a csv of manageable services, empty means none, unknown services are rejected', function (): void {
     $config = nonInteractiveConfig();
     $manageable = array_keys($config->getManageableServices());
 
@@ -111,7 +112,7 @@ test('--managed accepts a csv of manageable services, empty means none, unknown 
         ->toThrow(InvalidArgumentException::class, 'bogus-service');
 });
 
-test('--web-hosts accepts a csv and an empty value clears', function () {
+test('--web-hosts accepts a csv and an empty value clears', function (): void {
     $config = nonInteractiveConfig();
 
     expect(cloudConfigureFlagRunner(['--web-hosts' => 'admin.example.com, api.example.com'])->webHosts($config, 'production'))
@@ -119,7 +120,7 @@ test('--web-hosts accepts a csv and an empty value clears', function () {
         ->and(cloudConfigureFlagRunner(['--web-hosts' => ''])->webHosts($config, 'production'))->toBe([]);
 });
 
-test('--registry-provider and --image skip both registry prompts', function () {
+test('--registry-provider and --image skip both registry prompts', function (): void {
     $config = nonInteractiveConfig();
 
     $registry = cloudConfigureFlagRunner(['--registry-provider' => 'dockerhub', '--image' => 'acme/flagtest'])
@@ -129,7 +130,7 @@ test('--registry-provider and --image skip both registry prompts', function () {
         ->and($registry->image)->toBe('acme/flagtest');
 });
 
-test('an ownerless --image is rejected when the registry is required', function () {
+test('an ownerless --image is rejected when the registry is required', function (): void {
     $config = nonInteractiveConfig();
 
     expect(fn () => cloudConfigureFlagRunner(['--registry-provider' => 'ghcr', '--image' => 'flagtest'])
@@ -137,7 +138,7 @@ test('an ownerless --image is rejected when the registry is required', function 
         ->toThrow(InvalidArgumentException::class, 'owner/repo');
 });
 
-test('an unknown --registry-provider is rejected', function () {
+test('an unknown --registry-provider is rejected', function (): void {
     $config = nonInteractiveConfig();
 
     expect(fn () => cloudConfigureFlagRunner(['--registry-provider' => 'quay'])->registry($config, 'production', required: true))
@@ -155,7 +156,7 @@ function saveNonInteractiveProject(string $dir): ConfigData
     return $config;
 }
 
-test('cloud:configure --only=registry with flags configures and persists headlessly', function () {
+test('cloud:configure --only=registry with flags configures and persists headlessly', function (): void {
     saveNonInteractiveProject($this->tempDir);
 
     $this->artisan('cloud:configure', [
@@ -171,7 +172,7 @@ test('cloud:configure --only=registry with flags configures and persists headles
         ->and($reloaded->environments['production']->registry->image)->toBe('acme/flagtest');
 });
 
-test('cloud:configure --only=registry with a bad flag exits 1 with a clear error, not a stack trace', function () {
+test('cloud:configure --only=registry with a bad flag exits 1 with a clear error, not a stack trace', function (): void {
     saveNonInteractiveProject($this->tempDir);
 
     $this->artisan('cloud:configure', [

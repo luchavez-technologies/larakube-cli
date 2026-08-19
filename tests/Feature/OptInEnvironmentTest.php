@@ -15,18 +15,19 @@ use App\Enums\DatabaseDriver;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-beforeEach(function () {
-    $this->tempDir = sys_get_temp_dir().'/larakube-optin-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+beforeEach(function (): void {
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
 
     $this->originalDir = getcwd();
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    exec('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
 function saveOptInConfig(string $dir, array $environments): ConfigData
@@ -43,7 +44,7 @@ function saveOptInConfig(string $dir, array $environments): ConfigData
     return $config;
 }
 
-test('bundle:build errors clearly when no environment is given and none is configured', function () {
+test('bundle:build errors clearly when no environment is given and none is configured', function (): void {
     saveOptInConfig($this->tempDir, ['local' => []]);
 
     $this->artisan('bundle:build', ['--arch' => 'amd64', '--dry-run' => true])
@@ -51,7 +52,7 @@ test('bundle:build errors clearly when no environment is given and none is confi
         ->expectsOutputToContain('No cloud environment configured yet.');
 });
 
-test('bundle:build auto-selects the single offline environment without the old production sentinel', function () {
+test('bundle:build auto-selects the single offline environment without the old production sentinel', function (): void {
     saveOptInConfig($this->tempDir, [
         'local' => [],
         'staging' => ['offline' => true],
@@ -62,7 +63,7 @@ test('bundle:build auto-selects the single offline environment without the old p
         ->expectsOutputToContain('Auto-selected offline environment: staging');
 });
 
-test('bundle:build auto-selects the single cloud environment when none is marked offline', function () {
+test('bundle:build auto-selects the single cloud environment when none is marked offline', function (): void {
     saveOptInConfig($this->tempDir, [
         'local' => [],
         'production' => [],
@@ -73,7 +74,7 @@ test('bundle:build auto-selects the single cloud environment when none is marked
         ->expectsOutputToContain('production');
 });
 
-test('askForCloudEnvironment prompts for a brand-new name instead of offering "local" when none exists yet', function () {
+test('askForCloudEnvironment prompts for a brand-new name instead of offering "local" when none exists yet', function (): void {
     // Regression guard: before opt-in environments, this fallback only fired
     // "defensively" (production was always pre-seeded). Now it's the common
     // case for any freshly-scaffolded project, so it must not silently
@@ -98,11 +99,11 @@ test('askForCloudEnvironment prompts for a brand-new name instead of offering "l
     expect($runner->run())->toBe('production');
 });
 
-test('a fresh ConfigData environment list has no cloud environment until one is explicitly added', function () {
+test('a fresh ConfigData environment list has no cloud environment until one is explicitly added', function (): void {
     $config = ConfigData::from(['name' => 'fresh', 'environments' => ['local' => []]]);
 
     expect($config->getEnvironments())->toBe(['local'])
-        ->and($config->getCloudEnvironments())->toBe([]);
+        ->and($config->getCloudEnvironments())->toBeEmpty();
 
     $config->addEnvironment('production', new EnvironmentData);
 

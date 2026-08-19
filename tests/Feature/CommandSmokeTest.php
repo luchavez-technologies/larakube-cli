@@ -3,10 +3,11 @@
 use App\Data\ConfigData;
 use App\Enums\Blueprint;
 use App\Enums\DatabaseDriver;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-beforeEach(function () {
-    $this->tempDir = sys_get_temp_dir().'/larakube-smoke-'.uniqid();
-    mkdir($this->tempDir, 0755, true);
+beforeEach(function (): void {
+    $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $this->tempDir = $this->temporaryDirectory->path();
 
     $config = new ConfigData(name: 'smoke-test');
     $config->addBlueprint(Blueprint::FILAMENT);
@@ -19,35 +20,35 @@ beforeEach(function () {
     chdir($this->tempDir);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     chdir($this->originalDir);
-    exec('rm -rf '.escapeshellarg($this->tempDir));
+    $this->temporaryDirectory->delete();
 });
 
-test('about command smoke test', function () {
+test('about command smoke test', function (): void {
     $this->artisan('about')
         ->assertExitCode(0);
 });
 
-test('doctor command smoke test', function () {
+test('doctor command smoke test', function (): void {
     // doctor might need mocks for external tools, but let's see if it runs
     $this->artisan('doctor')
         ->assertExitCode(0);
 });
 
-test('build command is registered', function () {
+test('build command is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('build');
 });
 
-test('kustomize command is registered', function () {
+test('kustomize command is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('kustomize');
 });
 
-test('dotenv:audit command is registered', function () {
+test('dotenv:audit command is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('dotenv:audit');

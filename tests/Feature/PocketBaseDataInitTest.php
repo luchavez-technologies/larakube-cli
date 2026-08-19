@@ -4,14 +4,14 @@ use App\Exceptions\MissingFlagException;
 use App\Traits\InteractsWithToolRegistry;
 use Illuminate\Support\Facades\Process;
 
-uses(InteractsWithToolRegistry::class);
+pest()->use(InteractsWithToolRegistry::class);
 
-beforeEach(function () {
+beforeEach(function (): void {
     @unlink(getcwd().'/.larakube.local.json');
     @unlink(getcwd().'/.larakube.json');
 });
 
-test('data:init --engine=pocketbase deploys pocketbase stack and creates pvc', function () {
+test('data:init --engine=pocketbase deploys pocketbase stack and creates pvc', function (): void {
     Process::fake([
         '*create namespace*' => Process::result(output: 'created'),
         '*get secret*' => Process::result(output: ''),
@@ -26,7 +26,7 @@ test('data:init --engine=pocketbase deploys pocketbase stack and creates pvc', f
         ->expectsOutputToContain('PocketBase Data / Headless CMS stack is live.');
 });
 
-test('data:init uses engine label override when prompting for host', function () {
+test('data:init uses engine label override when prompting for host', function (): void {
     Process::fake([
         '*create namespace*' => Process::result(output: 'created'),
         '*get secret*' => Process::result(output: ''),
@@ -41,13 +41,17 @@ test('data:init uses engine label override when prompting for host', function ()
         ->expectsOutputToContain('PocketBase Data / Headless CMS stack is live.');
 });
 
-test('data:init --engine=directus deploys directus stack using commons postgres', function () {
+test('data:init --engine=directus deploys directus stack using commons postgres', function (): void {
     Process::fake([
         '*plex-commons*' => Process::result(output: '{"services":{"postgres":{"enabled":true},"redis":{"enabled":true},"seaweedfs":{"enabled":true}}}'),
         '*plex-registry*' => Process::result(output: '{"tenants":{}}'),
         '*plex-admin*' => Process::result(output: base64_encode('s3-access-key')),
         '*create namespace*' => Process::result(output: 'created'),
-        '*get secret*' => Process::result(output: 'secret-val'),
+        // Real code base64_decode()s this — a raw non-base64 string here
+        // silently decodes to garbage binary, which Illuminate 13's HTTP
+        // client correctly rejects at the OpenBao push (json_encode() fails
+        // on invalid UTF-8, previously swallowed silently pre-upgrade).
+        '*get secret*' => Process::result(output: base64_encode('secret-val')),
         '*exec*' => Process::result(output: 'success'),
         '*apply*' => Process::result(output: 'created'),
         '*rollout status*' => Process::result(output: 'successfully rolled out'),
@@ -60,7 +64,7 @@ test('data:init --engine=directus deploys directus stack using commons postgres'
         ->expectsOutputToContain('Directus Data / Headless CMS stack is live.');
 });
 
-test('data:init records which engine an instance runs in the cluster registry', function () {
+test('data:init records which engine an instance runs in the cluster registry', function (): void {
     // Nothing about a Data instance's host or URL reveals which engine it
     // runs — data:show/tool:list --json need this recorded, not just baked
     // into the manifest's env vars.
@@ -93,7 +97,7 @@ test('data:init records which engine an instance runs in the cluster registry', 
         ->and($dataEntry['engine'])->toBe('pocketbase');
 });
 
-test('data:init without --domain errors instead of guessing when an instance is already registered', function () {
+test('data:init without --domain errors instead of guessing when an instance is already registered', function (): void {
     // data:init now resolves host+instance via resolveInstanceAwareHost()
     // (the same pattern CRM/Design/Notes already use) instead of the old
     // split resolveToolHost()+resolveInstanceForDomain() two-step. That old
@@ -119,7 +123,7 @@ test('data:init without --domain errors instead of guessing when an instance is 
         ->run();
 })->throws(RuntimeException::class, 'pass --domain=<host>');
 
-test('data:init --domain re-targets an already-registered instance in place, never spawning a derived duplicate', function () {
+test('data:init --domain re-targets an already-registered instance in place, never spawning a derived duplicate', function (): void {
     // Regression guard (confirmed live 2026-08-09): DATA's default host is
     // pocket.luchtech.dev but the service hostPrefix is 'data', so deriving
     // a slug from the host alone used to yield 'pocket-luchtech-dev' — a
@@ -165,7 +169,7 @@ test('data:init --domain re-targets an already-registered instance in place, nev
         ->and($dataEntries->first()['host'])->toBe('pocket.luchtech.dev');
 });
 
-test('data:init --domain resolves a distinct instance from the given host, not main\'s', function () {
+test('data:init --domain resolves a distinct instance from the given host, not main\'s', function (): void {
     // Regression guard for the incident that started this whole pass
     // (2026-08-08): PocketBase and Directus both defaulted straight to
     // 'main' and collided on the same host. --domain now means "this exact
@@ -186,7 +190,7 @@ test('data:init --domain resolves a distinct instance from the given host, not m
         ->doesntExpectOutputToContain('https://data.');
 });
 
-test('data:init --alias registers an additional hostname on the same instance\'s Ingress', function () {
+test('data:init --alias registers an additional hostname on the same instance\'s Ingress', function (): void {
     Process::fake([
         '*create namespace*' => Process::result(output: 'created'),
         '*get secret*' => Process::result(output: ''),
@@ -200,7 +204,7 @@ test('data:init --alias registers an additional hostname on the same instance\'s
         ->expectsOutputToContain('https://alt.example.com');
 });
 
-test('data:remove --domain derives the same instance data:init would have, not main\'s', function () {
+test('data:remove --domain derives the same instance data:init would have, not main\'s', function (): void {
     // The --domain given here must resolve to the SAME instance identifier
     // (via ClusterTool::instanceSlugFromHost() — the full host, dashed, no
     // auto-prefixing) that data:init would have derived from the identical
@@ -220,7 +224,7 @@ test('data:remove --domain derives the same instance data:init would have, not m
         && ! str_contains($process->command, 'secret/data-secrets '));
 });
 
-test('data:remove --domain removes EVERY instance registered for the host (duplicate cleanup)', function () {
+test('data:remove --domain removes EVERY instance registered for the host (duplicate cleanup)', function (): void {
     // Regression guard for the 2026-08-09 incident: the legacy un-suffixed
     // default instance (instance '') AND the buggy host-derived slug both
     // registered pocket.luchtech.dev. Removal means "take down everything
@@ -270,7 +274,7 @@ test('data:remove --domain removes EVERY instance registered for the host (dupli
         ->and($secondData['instance'])->toBe('');
 });
 
-test('data:remove --engine=pocketbase removes pocketbase resources', function () {
+test('data:remove --engine=pocketbase removes pocketbase resources', function (): void {
     Process::fake([
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
@@ -281,7 +285,7 @@ test('data:remove --engine=pocketbase removes pocketbase resources', function ()
         ->expectsOutputToContain('Removing Data resources...');
 });
 
-test('data:remove tears down pocketbase\'s own Service and Ingress, not just Directus-shaped names', function () {
+test('data:remove tears down pocketbase\'s own Service and Ingress, not just Directus-shaped names', function (): void {
     // Regression guard for a live collision (2026-08-08): teardown() only
     // ever deleted service/data + ingress/data (Directus's actual names) and
     // service/data-{instance} + ingress/data-{instance} — never PocketBase's
@@ -300,7 +304,7 @@ test('data:remove tears down pocketbase\'s own Service and Ingress, not just Dir
         && str_contains($process->command, 'configmap/data-pocketbase-hooks'));
 });
 
-test('data:remove asks which engine when both are deployed for the same instance, rather than guessing', function () {
+test('data:remove asks which engine when both are deployed for the same instance, rather than guessing', function (): void {
     // Regression guard for the exact scare that prompted this redesign
     // (2026-08-08): the old teardown() always deleted BOTH engine-shaped
     // resource sets unconditionally — safe only under the old one-engine-
@@ -321,7 +325,7 @@ test('data:remove asks which engine when both are deployed for the same instance
     $this->artisan('data:remove local --force')->run();
 })->throws(MissingFlagException::class, 'Missing required --engine');
 
-test('data:remove --engine=all removes both when both are genuinely deployed', function () {
+test('data:remove --engine=all removes both when both are genuinely deployed', function (): void {
     Process::fake([
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
         '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
@@ -336,7 +340,7 @@ test('data:remove --engine=all removes both when both are genuinely deployed', f
         && str_contains($process->command, 'deployment/data-pocketbase'));
 });
 
-test('data:remove auto-detects the single engine actually deployed, without needing --engine', function () {
+test('data:remove auto-detects the single engine actually deployed, without needing --engine', function (): void {
     Process::fake([
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
         '*get deployment data-pocketbase*' => Process::result(output: ''),

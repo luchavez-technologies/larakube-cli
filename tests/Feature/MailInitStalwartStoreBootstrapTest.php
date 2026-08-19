@@ -22,7 +22,7 @@ function stalwartStoreBootstrapJmapPayload(mixed $process): ?array
     return null;
 }
 
-test('mail:init local wires BlobStore, InMemoryStore, and SearchStore via JMAP when Commons offers seaweedfs, redis, and meilisearch', function () {
+test('mail:init local wires BlobStore, InMemoryStore, and SearchStore via JMAP when Commons offers seaweedfs, redis, and meilisearch', function (): void {
     $captured = [];
 
     Process::fake([
@@ -96,7 +96,7 @@ test('mail:init local wires BlobStore, InMemoryStore, and SearchStore via JMAP w
         ->and($search['httpAuth'])->toBe(['@type' => 'Bearer', 'bearerToken' => ['@type' => 'EnvironmentVariable', 'variableName' => 'STALWART_SEARCH_MEILI_KEY']]);
 });
 
-test('mail:init local falls back to SearchStore "Default" (reuse Data store) when Meilisearch is not enabled', function () {
+test('mail:init local falls back to SearchStore "Default" (reuse Data store) when Meilisearch is not enabled', function (): void {
     $captured = [];
 
     Process::fake([
@@ -134,7 +134,6 @@ test('mail:init local falls back to SearchStore "Default" (reuse Data store) whe
         ->assertExitCode(0);
 
     expect($captured)->toHaveKey('x:SearchStore/set')
-        ->and($captured)->not->toHaveKeys(['x:BlobStore/set', 'x:InMemoryStore/set']);
-
-    expect($captured['x:SearchStore/set']['update']['singleton'])->toBe(['@type' => 'Default']);
+        ->and($captured)->not->toHaveKeys(['x:BlobStore/set', 'x:InMemoryStore/set'])
+        ->and($captured['x:SearchStore/set']['update']['singleton'])->toBe(['@type' => 'Default']);
 });

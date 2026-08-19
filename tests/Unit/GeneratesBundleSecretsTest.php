@@ -8,7 +8,7 @@ use App\Enums\LaravelFeature;
 use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 
-test('it always generates an app key', function () {
+test('it always generates an app key', function (): void {
     $generator = new SecretsGenerator;
     $config = new ConfigData(name: 'test');
 
@@ -18,17 +18,17 @@ test('it always generates an app key', function () {
         ->and($secrets['APP_KEY'])->toStartWith('base64:');
 });
 
-test('it generates database passwords for external databases', function () {
+test('it generates database passwords for external databases', function (): void {
     $generator = new SecretsGenerator;
     $config = new ConfigData(name: 'test', database: DatabaseDriver::POSTGRESQL);
 
     $secrets = $generator->generateInstallSecrets($config, 'production');
 
     expect($secrets)->toHaveKey('DB_PASSWORD')
-        ->and(strlen($secrets['DB_PASSWORD']))->toBe(32);
+        ->and($secrets['DB_PASSWORD'])->toHaveLength(32);
 });
 
-test('it does not generate database passwords for sqlite', function () {
+test('it does not generate database passwords for sqlite', function (): void {
     $generator = new SecretsGenerator;
     $config = new ConfigData(name: 'test', database: DatabaseDriver::SQLITE);
 
@@ -37,7 +37,7 @@ test('it does not generate database passwords for sqlite', function () {
     expect($secrets)->not->toHaveKey('DB_PASSWORD');
 });
 
-test('it generates mongodb uri with credentials', function () {
+test('it generates mongodb uri with credentials', function (): void {
     $generator = new SecretsGenerator;
     $config = new ConfigData(name: 'test', database: DatabaseDriver::MONGODB);
 
@@ -49,7 +49,7 @@ test('it generates mongodb uri with credentials', function () {
         ->and($secrets['DB_URI'])->toContain('@mongodb.test-production.svc.cluster.local:27017');
 });
 
-test('it generates reverb keys when enabled', function () {
+test('it generates reverb keys when enabled', function (): void {
     $generator = new SecretsGenerator;
     $config = new ConfigData(name: 'test', features: [LaravelFeature::REVERB]);
 
@@ -60,7 +60,7 @@ test('it generates reverb keys when enabled', function () {
         ->and($secrets)->toHaveKey('REVERB_APP_SECRET');
 });
 
-test('it generates storage secrets when enabled', function () {
+test('it generates storage secrets when enabled', function (): void {
     $generator = new SecretsGenerator;
     $config = new ConfigData(name: 'test', objectStorage: StorageDriver::MINIO);
 
@@ -69,7 +69,7 @@ test('it generates storage secrets when enabled', function () {
     expect($secrets)->toHaveKey('AWS_SECRET_ACCESS_KEY');
 });
 
-test('it generates scout secrets when enabled', function () {
+test('it generates scout secrets when enabled', function (): void {
     $generator = new SecretsGenerator;
     $configMeili = new ConfigData(name: 'test', scoutDriver: SearchDriver::MEILISEARCH);
     $secretsMeili = $generator->generateInstallSecrets($configMeili, 'production');
@@ -80,7 +80,7 @@ test('it generates scout secrets when enabled', function () {
     expect($secretsType)->toHaveKey('TYPESENSE_API_KEY');
 });
 
-test('it preserves existing secrets when provided', function () {
+test('it preserves existing secrets when provided', function (): void {
     $generator = new SecretsGenerator;
     $config = new ConfigData(name: 'test', database: DatabaseDriver::POSTGRESQL);
 

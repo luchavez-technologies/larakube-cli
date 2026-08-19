@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
@@ -41,7 +42,7 @@ function hardenVpnKubectl(): string
     return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 }
 
-test('joinVpn repoints the kube-context to the VPS\'s own overlay IP once it joins', function () {
+test('joinVpn repoints the kube-context to the VPS\'s own overlay IP once it joins', function (): void {
     $kubectl = hardenVpnKubectl();
 
     Process::fake([
@@ -66,7 +67,7 @@ test('joinVpn repoints the kube-context to the VPS\'s own overlay IP once it joi
     Process::assertRan("{$kubectl} config set-cluster 'larakube-1.2.3.4' --server='https://100.86.159.244:6443'");
 });
 
-test('joinVpn dials the overlay IP but derives the context name from the public IP on a re-run', function () {
+test('joinVpn dials the overlay IP but derives the context name from the public IP on a re-run', function (): void {
     // Simulates a SECOND cloud:harden run, after a prior one already
     // recorded vpnIp — preferredSshIp() would return it as $sshIp, which
     // must NOT also become what the kube-context name derives from, or a
@@ -98,15 +99,15 @@ test('joinVpn dials the overlay IP but derives the context name from the public 
     Process::assertRan("{$kubectl} config set-cluster 'larakube-1.2.3.4' --server='https://100.86.159.244:6443'");
 });
 
-test('preferredSshIp falls back to the public IP when no environment/project is in scope', function () {
+test('preferredSshIp falls back to the public IP when no environment/project is in scope', function (): void {
     $runner = cloudHardenRunner();
 
     expect($runner->sshIpFor('', '1.2.3.4'))->toBe('1.2.3.4');
 });
 
-test('preferredSshIp prefers the recorded overlay IP once cloud:harden has set one', function () {
-    $dir = sys_get_temp_dir().'/larakube-harden-'.uniqid();
-    mkdir($dir, 0755, true);
+test('preferredSshIp prefers the recorded overlay IP once cloud:harden has set one', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $original = getcwd();
     chdir($dir);
 
@@ -122,11 +123,11 @@ test('preferredSshIp prefers the recorded overlay IP once cloud:harden has set o
         expect(cloudHardenRunner()->sshIpFor('production', '1.2.3.4'))->toBe('100.86.159.244');
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('joinVpn warns instead of failing when the overlay IP can\'t be determined', function () {
+test('joinVpn warns instead of failing when the overlay IP can\'t be determined', function (): void {
     $kubectl = hardenVpnKubectl();
 
     Process::fake([

@@ -23,6 +23,7 @@ use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ChatInitCommand extends Command
 {
@@ -103,7 +104,7 @@ class ChatInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $registrationSecret, $turnSecret) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $registrationSecret, $turnSecret): void {
             Process::run(
                 "{$kubectl} create secret generic chat-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
@@ -155,12 +156,13 @@ class ChatInitCommand extends Command
             'oidc' => $oidc,
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-chat.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-chat.yaml');
         file_put_contents($tmp, $manifest);
 
         $engineLabel = 'Matrix (Synapse + Element)';
         $this->withSpin("Applying {$engineLabel} manifests...", fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         $this->withSpin("Waiting for {$engineLabel}...", fn () => $this->runStreaming(
             "{$kubectl} rollout status deploy/chat-synapse -n {$ns} --timeout=180s",

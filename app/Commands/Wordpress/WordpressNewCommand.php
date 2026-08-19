@@ -204,7 +204,7 @@ class WordpressNewCommand extends Command
         }
 
         // 7. Generate K8s manifests
-        $this->withSpin('Orchestrating WordPress infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating WordPress infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

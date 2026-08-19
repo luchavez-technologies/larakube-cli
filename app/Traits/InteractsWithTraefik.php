@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait InteractsWithTraefik
 {
@@ -30,10 +31,11 @@ trait InteractsWithTraefik
             return true;
         });
 
-        $tmpInstall = sys_get_temp_dir().'/traefik-install.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmpInstall = $temporaryDirectory->path('traefik-install.yaml');
         file_put_contents($tmpInstall, view('k8s.traefik-install')->render());
         $ok = $this->applyAndVerifyRollout('kubectl', $tmpInstall, 'traefik', 'traefik', 120, '--validate=false');
-        @unlink($tmpInstall);
+        $temporaryDirectory->delete();
 
         // Bring up the shared services Traefik fronts (Mailpit + the dashboard
         // ingress) so a standalone `traefik:setup` lands them too. The same
@@ -184,7 +186,8 @@ trait InteractsWithTraefik
             Process::run('kubectl create namespace '.escapeshellarg($service->namespace()).' --dry-run=client -o yaml | kubectl apply -f -');
         }
 
-        $tmp = sys_get_temp_dir()."/larakube-shared-{$service->value}.yaml";
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path("larakube-shared-{$service->value}.yaml");
         $payload = array_merge([
             'host' => $host,
             'isLocal' => true,
@@ -192,7 +195,7 @@ trait InteractsWithTraefik
 
         file_put_contents($tmp, view($service->template(), $payload)->render());
         Process::run("kubectl apply -f {$tmp}");
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         $this->syncSharedServiceDeploymentEnv($service, $host);
     }
@@ -235,12 +238,13 @@ trait InteractsWithTraefik
     protected function applyTraefikCertResources(string $namespace): void
     {
         // 1. ConfigMap — dynamic YAML listing all cert pairs
-        $tmpCertsYml = sys_get_temp_dir().'/traefik-certs.yml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmpCertsYml = $temporaryDirectory->path('traefik-certs.yml');
         file_put_contents($tmpCertsYml, $this->buildTraefikCertsYml());
         // Server-side apply avoids storing base64 cert blobs in the
         // last-applied-configuration annotation (256 KB limit overflows with multiple certs).
         Process::run("kubectl create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply --server-side --field-manager=larakube --force-conflicts -f -");
-        @unlink($tmpCertsYml);
+        $temporaryDirectory->delete();
 
         // 2. Secret — all cert files from ~/.larakube/certificates/
         $fromFiles = ' --from-file=system-dev.pem='.escapeshellarg($this->getSystemCertPath())

@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\State;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
@@ -36,7 +37,7 @@ function vpnJoinRunner(string $environment = 'local'): array
     return [$command, $output];
 }
 
-test('vpn:join errors when the VPN is not installed for the environment', function () {
+test('vpn:join errors when the VPN is not installed for the environment', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
@@ -44,12 +45,12 @@ test('vpn:join errors when the VPN is not installed for the environment', functi
     ]);
 
     [$command, $output] = vpnJoinRunner();
-    expect($command->handle())->toBe(1);
-    expect(State::$lastError)->toContain("NetBird VPN isn't installed for 'local'.");
-    expect($output->fetch())->toContain('larakube vpn:init local');
+    expect($command->handle())->toBe(1)
+        ->and(State::$lastError)->toContain("NetBird VPN isn't installed for 'local'.")
+        ->and($output->fetch())->toContain('larakube vpn:init local');
 });
 
-test('vpn:join errors when no setup key has been bootstrapped yet', function () {
+test('vpn:join errors when no setup key has been bootstrapped yet', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
@@ -58,13 +59,13 @@ test('vpn:join errors when no setup key has been bootstrapped yet', function () 
     ]);
 
     [$command, $output] = vpnJoinRunner();
-    expect($command->handle())->toBe(1);
-    expect(State::$lastError)->toContain('No NetBird setup key found');
+    expect($command->handle())->toBe(1)
+        ->and(State::$lastError)->toContain('No NetBird setup key found');
 });
 
-test('vpn:join targets the CHOSEN environment\'s own saved context, never the ambient current context', function () {
-    $dir = sys_get_temp_dir().'/vpn-join-'.uniqid();
-    mkdir($dir, 0755, true);
+test('vpn:join targets the CHOSEN environment\'s own saved context, never the ambient current context', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $original = getcwd();
     chdir($dir);
 
@@ -86,10 +87,10 @@ test('vpn:join targets the CHOSEN environment\'s own saved context, never the am
         ]);
 
         [$command] = vpnJoinRunner('production');
-        expect($command->handle())->toBe(1);
-        expect(State::$lastError)->toContain('No NetBird setup key found');
+        expect($command->handle())->toBe(1)
+            ->and(State::$lastError)->toContain('No NetBird setup key found');
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 });

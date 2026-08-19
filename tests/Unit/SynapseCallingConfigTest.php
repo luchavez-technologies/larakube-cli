@@ -25,7 +25,7 @@ email:
 
 YAML;
 
-test('an inert well_known block left by an older render is stripped, not preserved', function () {
+test('an inert well_known block left by an older render is stripped, not preserved', function (): void {
     // Older templates wrote `well_known:`, which Synapse ignores entirely.
     // Leaving it behind next to the real key is a trap for the next reader.
     $legacy = BASE_HOMESERVER."well_known:\n  client:\n    \"org.matrix.msc4143.rtc_foci\": []\n";
@@ -37,7 +37,7 @@ test('an inert well_known block left by an older render is stripped, not preserv
         ->toBe('https://meet.example.com/jwt');
 });
 
-test('wiring writes the whole calling block, not just the focus URL', function () {
+test('wiring writes the whole calling block, not just the focus URL', function (): void {
     // Writing the focus alone would point Element Call at a working SFU while
     // leaving MSC4140 off — the exact config that made clients rejoin every 15s.
     $parsed = Yaml::parse(callingRenderer()->render(BASE_HOMESERVER, 'https://meet.example.com/jwt'));
@@ -51,7 +51,7 @@ test('wiring writes the whole calling block, not just the focus URL', function (
         ->toBe('https://meet.example.com/jwt');
 });
 
-test('unwiring strips every part of the calling block', function () {
+test('unwiring strips every part of the calling block', function (): void {
     $wired = callingRenderer()->render(BASE_HOMESERVER, 'https://meet.example.com/jwt');
     $parsed = Yaml::parse(callingRenderer()->render($wired, null));
 
@@ -63,7 +63,7 @@ test('unwiring strips every part of the calling block', function () {
         ->and($parsed)->not->toHaveKey('extra_well_known_client_content');
 });
 
-test('rewriting the calling block preserves unrelated config', function () {
+test('rewriting the calling block preserves unrelated config', function (): void {
     // meet:wire edits the live homeserver.yaml in place; clobbering the mail or
     // database blocks would take Synapse down rather than just calling.
     $parsed = Yaml::parse(callingRenderer()->render(BASE_HOMESERVER, 'https://meet.example.com/jwt'));
@@ -73,7 +73,7 @@ test('rewriting the calling block preserves unrelated config', function () {
         ->and($parsed['email']['notif_from'])->toBe('noreply@example.com');
 });
 
-test('re-wiring is idempotent — the block is replaced, never duplicated', function () {
+test('re-wiring is idempotent — the block is replaced, never duplicated', function (): void {
     $once = callingRenderer()->render(BASE_HOMESERVER, 'https://meet.example.com/jwt');
     $twice = callingRenderer()->render($once, 'https://meet.example.com/jwt');
 
@@ -81,7 +81,7 @@ test('re-wiring is idempotent — the block is replaced, never duplicated', func
         ->and(substr_count($twice, 'extra_well_known_client_content:'))->toBe(1);
 });
 
-test('re-wiring to a different Meet host replaces the old focus', function () {
+test('re-wiring to a different Meet host replaces the old focus', function (): void {
     $first = callingRenderer()->render(BASE_HOMESERVER, 'https://meet.example.com/jwt');
     $parsed = Yaml::parse(callingRenderer()->render($first, 'https://meet.other.com/jwt'));
 

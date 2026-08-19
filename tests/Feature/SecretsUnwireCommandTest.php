@@ -1,11 +1,30 @@
 <?php
 
 use App\Traits\InteractsWithToolRegistry;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-uses(InteractsWithToolRegistry::class);
+pest()->use(InteractsWithToolRegistry::class);
 
-test('secrets:unwire is registered and unwires OpenBao DB rotation for a tool', function () {
+// staticRoleExists()/deleteStaticRole() reach OpenBao over a REAL localhost
+// HTTP call (openBaoApi() port-forwards then makes an actual Http:: request
+// to http://localhost:{port}) — the port-forward Process itself is faked,
+// but without this Http::fake(), the HTTP call was genuinely unmocked, and
+// almost always failed fast (connection refused, interpreted as "role
+// unreachable") by sheer luck. Confirmed live: under `pest --parallel`,
+// this intermittently picked up a REAL response from an unrelated local
+// service that happened to be listening on the random port
+// (30100-31100), returning a real HTTP 404 that flipped
+// staticRoleExists() from null to false and skipped the whole unwire path.
+function fakeOpenBaoUnwireHttp(): void
+{
+    Http::fake([
+        'localhost:*' => Http::response(['data' => ['rotation_period' => '86400s']]),
+    ]);
+}
+
+test('secrets:unwire is registered and unwires OpenBao DB rotation for a tool', function (): void {
+    fakeOpenBaoUnwireHttp();
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-token')),
         '*get secret sign-secrets*' => Process::result(output: 'found'),
@@ -20,7 +39,7 @@ test('secrets:unwire is registered and unwires OpenBao DB rotation for a tool', 
         ->expectsOutputToContain('DB password is now static');
 });
 
-test('secrets:unwire errors when OpenBao is not deployed', function () {
+test('secrets:unwire errors when OpenBao is not deployed', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -30,8 +49,9 @@ test('secrets:unwire errors when OpenBao is not deployed', function () {
         ->expectsOutputToContain('OpenBao is not deployed on this cluster');
 });
 
-test('secrets:unwire supports unwiring git, notes, sheets, and chat tools', function () {
+test('secrets:unwire supports unwiring git, notes, sheets, and chat tools', function (): void {
     foreach (['git' => 'forgejo', 'notes' => 'notes-secrets', 'sheets' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
+        fakeOpenBaoUnwireHttp();
         Process::fake([
             '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-token')),
             "*get secret {$secretName}*" => Process::result(output: 'found'),
@@ -47,7 +67,8 @@ test('secrets:unwire supports unwiring git, notes, sheets, and chat tools', func
     }
 });
 
-test('secrets:unwire resolves environment context correctly for non-local environment (production)', function () {
+test('secrets:unwire resolves environment context correctly for non-local environment (production)', function (): void {
+    fakeOpenBaoUnwireHttp();
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-token')),
         '*get secret sign-secrets*' => Process::result(output: 'found'),

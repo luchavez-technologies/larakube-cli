@@ -30,7 +30,7 @@ function sshKeysHelper(): object
     };
 }
 
-test('generateSshKey mints a usable ED25519 key pair', function () {
+test('generateSshKey mints a usable ED25519 key pair', function (): void {
     $keyPath = home_path('.ssh/larakube_test_'.uniqid());
 
     expect(sshKeysHelper()->generate($keyPath))->toBeTrue()
@@ -38,14 +38,14 @@ test('generateSshKey mints a usable ED25519 key pair', function () {
         ->and(file_get_contents($keyPath.'.pub'))->toStartWith('ssh-ed25519 ');
 })->skip(fn () => trim((string) shell_exec('command -v ssh-keygen')) === '', 'ssh-keygen is not available in this test environment');
 
-test('generateSshKey reports failure when ssh-keygen fails', function () {
+test('generateSshKey reports failure when ssh-keygen fails', function (): void {
     Process::fake(['ssh-keygen *' => Process::result(output: '', exitCode: 1)]);
 
     expect(sshKeysHelper()->generate(home_path('.ssh/never_created')))->toBeFalse()
         ->and(file_exists(home_path('.ssh/never_created')))->toBeFalse();
 });
 
-test('upsertSshConfigHost appends a Host block and preserves existing entries', function () {
+test('upsertSshConfigHost appends a Host block and preserves existing entries', function (): void {
     @mkdir(home_path('.ssh'), 0700, true);
     file_put_contents(home_path('.ssh/config'), "Host work\n    HostName work.example.com\n");
 
@@ -59,7 +59,7 @@ test('upsertSshConfigHost appends a Host block and preserves existing entries', 
         ->and($config)->toContain('IdentityFile '.home_path('.ssh/id_rsa'));
 });
 
-test('upsertSshConfigHost replaces an existing block for the same alias (re-provision updates the IP)', function () {
+test('upsertSshConfigHost replaces an existing block for the same alias (re-provision updates the IP)', function (): void {
     @mkdir(home_path('.ssh'), 0700, true);
     @unlink(home_path('.ssh/config'));
 

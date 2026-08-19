@@ -160,7 +160,7 @@ class NestjsNewCommand extends Command
         }
 
         // 6. Generate K8s manifests
-        $this->withSpin('Orchestrating NestJS infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating NestJS infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

@@ -158,7 +158,7 @@ class GinNewCommand extends Command
         $this->generateGinScaffolding($projectDir, $appName);
 
         // 7. Generate K8s manifests
-        $this->withSpin('Orchestrating Gin infrastructure manifests...', function () use ($config) {
+        $this->withSpin('Orchestrating Gin infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
 

@@ -29,14 +29,14 @@ function kustomizeHarness(?string $bin): object
     };
 }
 
-test('build/apply fall back to kubectl when no standalone kustomize is installed', function () {
+test('build/apply fall back to kubectl when no standalone kustomize is installed', function (): void {
     $h = kustomizeHarness(null);
 
     expect($h->build('overlays/local'))->toBe('kubectl kustomize '.escapeshellarg('overlays/local'))
         ->and($h->apply('overlays/local'))->toBe('kubectl apply -k '.escapeshellarg('overlays/local'));
 });
 
-test('build/apply route through the standalone kustomize when present', function () {
+test('build/apply route through the standalone kustomize when present', function (): void {
     $bin = '/home/u/.larakube/bin/kustomize';
     $h = kustomizeHarness($bin);
 

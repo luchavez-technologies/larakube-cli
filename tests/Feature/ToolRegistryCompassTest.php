@@ -44,7 +44,7 @@ function registryProbe(): object
     };
 }
 
-test('re-registering a tool never wipes metadata a previous write recorded', function () {
+test('re-registering a tool never wipes metadata a previous write recorded', function (): void {
     // The regression: {tool}:init registered WITH its host, then tool:add
     // re-registered the same tool with no metadata moments later. registerTool
     // replaced the whole entry, so the host vanished and {tool}:show could
@@ -73,7 +73,7 @@ test('re-registering a tool never wipes metadata a previous write recorded', fun
     expect($flowEntry['host'])->toBe('flow.example.com');
 });
 
-test('installedAt survives re-registration but updatedAt moves', function () {
+test('installedAt survives re-registration but updatedAt moves', function (): void {
     $saved = null;
 
     Process::fake([
@@ -98,7 +98,7 @@ test('installedAt survives re-registration but updatedAt moves', function () {
         ->and($flowEntry['updatedAt'])->not->toBe('2026-08-01T00:00:00+00:00');
 });
 
-test('an empty host in metadata cannot overwrite a known one', function () {
+test('an empty host in metadata cannot overwrite a known one', function (): void {
     $saved = null;
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
@@ -120,7 +120,7 @@ test('an empty host in metadata cannot overwrite a known one', function () {
     expect($flowEntry['host'])->toBe('flow.example.com');
 });
 
-test('tool:remove proxies to {tool}:remove, not the deleted --remove flag', function () {
+test('tool:remove proxies to {tool}:remove, not the deleted --remove flag', function (): void {
     // tool:remove still called `{tool}:init --remove` after teardown moved to
     // its own command, so every run died with InvalidOptionException.
     $source = (string) file_get_contents(base_path('app/Commands/Tool/ToolRemoveCommand.php'));
@@ -129,7 +129,7 @@ test('tool:remove proxies to {tool}:remove, not the deleted --remove flag', func
         ->and(str_contains($source, "'--remove' => true"))->toBeFalse();
 });
 
-test('tool:list and tool:show exist and read the cluster, not a project file', function () {
+test('tool:list and tool:show exist and read the cluster, not a project file', function (): void {
     $commands = app(Kernel::class)->all();
 
     expect($commands)->toHaveKey('tool:list')
@@ -147,14 +147,14 @@ test('tool:list and tool:show exist and read the cluster, not a project file', f
     }
 });
 
-test('tool:show forwards to the per-tool show command rather than reimplementing it', function () {
+test('tool:show forwards to the per-tool show command rather than reimplementing it', function (): void {
     $source = (string) file_get_contents(base_path('app/Commands/Tool/ToolShowCommand.php'));
 
     expect($source)->toContain('showCommand()')
         ->and($source)->toContain('$this->call(');
 });
 
-test('tool commands work outside a project', function () {
+test('tool commands work outside a project', function (): void {
     // ResolvesStandaloneEnvironment is what makes "no .larakube.json" a
     // supported case rather than a crash.
     foreach (['ToolAddCommand', 'ToolRemoveCommand', 'ToolListCommand', 'ToolShowCommand'] as $class) {

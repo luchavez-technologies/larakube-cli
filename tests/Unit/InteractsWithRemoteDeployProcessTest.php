@@ -44,7 +44,7 @@ function remoteDeployProcessHelper(): object
     };
 }
 
-test('remoteContextReachable reflects cluster-info exit code', function () {
+test('remoteContextReachable reflects cluster-info exit code', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'larakube-1.2.3.4'";
 
     Process::fake(["{$kubectl} cluster-info --request-timeout=5s" => Process::result(exitCode: 0)]);
@@ -54,14 +54,14 @@ test('remoteContextReachable reflects cluster-info exit code', function () {
     expect(remoteDeployProcessHelper()->reachable('larakube-1.2.3.4'))->toBeFalse();
 });
 
-test('detectNodePlatformOverSsh maps the remote uname -m to a docker platform', function () {
+test('detectNodePlatformOverSsh maps the remote uname -m to a docker platform', function (): void {
     $sshBase = "ssh -o StrictHostKeyChecking=no -i '/key' -p 22 'larakube@1.2.3.4'";
     Process::fake(["{$sshBase} 'uname -m'" => "x86_64\n"]);
 
     expect(remoteDeployProcessHelper()->sshPlatform($sshBase))->toBe('linux/amd64');
 });
 
-test('detectNodePlatformViaKubectl only resolves when every node agrees on architecture', function () {
+test('detectNodePlatformViaKubectl only resolves when every node agrees on architecture', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'ctx'";
 
     Process::fake(["{$kubectl} get nodes -o 'jsonpath={.items[*].status.nodeInfo.architecture}'" => "amd64 amd64\n"]);
@@ -71,7 +71,7 @@ test('detectNodePlatformViaKubectl only resolves when every node agrees on archi
     expect(remoteDeployProcessHelper()->kubectlPlatform('ctx'))->toBeNull();
 });
 
-test('resolvePushedDigest only accepts a well-formed sha256 digest', function () {
+test('resolvePushedDigest only accepts a well-formed sha256 digest', function (): void {
     $sha = 'sha256:'.str_repeat('a', 64);
     Process::fake(["docker buildx imagetools inspect 'ghcr.io/me/app:abc' --format '{{.Manifest.Digest}}'" => $sha."\n"]);
     expect(remoteDeployProcessHelper()->digest('ghcr.io/me/app:abc'))->toBe($sha);

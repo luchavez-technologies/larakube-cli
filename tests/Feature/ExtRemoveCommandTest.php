@@ -6,6 +6,7 @@ use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Artisan;
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
@@ -16,8 +17,8 @@ use Symfony\Component\Console\Output\BufferedOutput;
  */
 function extRemoveInProject(array $config, ?string $dockerfile, callable $fn): void
 {
-    $dir = sys_get_temp_dir().'/ext-remove-'.uniqid();
-    mkdir($dir, 0755, true);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     file_put_contents($dir.'/.larakube.json', json_encode($config + ['name' => 'demo']));
     if ($dockerfile !== null) {
         file_put_contents($dir.'/Dockerfile.php', $dockerfile);
@@ -30,13 +31,13 @@ function extRemoveInProject(array $config, ?string $dockerfile, callable $fn): v
         $fn($dir);
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 }
 
-test('ext:remove drops the extension from .larakube.json', function () {
+test('ext:remove drops the extension from .larakube.json', function (): void {
     $config = ['additionalExtensions' => ['gd', 'imagick']];
-    extRemoveInProject($config, "FROM php:8.5\nRUN install-php-extensions gd imagick\n", function (string $dir) {
+    extRemoveInProject($config, "FROM php:8.5\nRUN install-php-extensions gd imagick\n", function (string $dir): void {
         $code = Artisan::call('ext:remove', ['extension' => 'gd']);
 
         expect($code)->toBe(0);
@@ -46,9 +47,9 @@ test('ext:remove drops the extension from .larakube.json', function () {
     });
 });
 
-test('ext:remove strips the extension from the install-php-extensions line, preserving the rest', function () {
+test('ext:remove strips the extension from the install-php-extensions line, preserving the rest', function (): void {
     $config = ['additionalExtensions' => ['gd', 'imagick']];
-    extRemoveInProject($config, "FROM php:8.5\nRUN install-php-extensions gd imagick\n", function (string $dir) {
+    extRemoveInProject($config, "FROM php:8.5\nRUN install-php-extensions gd imagick\n", function (string $dir): void {
         Artisan::call('ext:remove', ['extension' => 'gd']);
 
         $dockerfile = file_get_contents($dir.'/Dockerfile.php');
@@ -57,9 +58,9 @@ test('ext:remove strips the extension from the install-php-extensions line, pres
     });
 });
 
-test('ext:remove is a clean no-op when the extension is not configured', function () {
+test('ext:remove is a clean no-op when the extension is not configured', function (): void {
     $config = ['additionalExtensions' => ['imagick']];
-    extRemoveInProject($config, "FROM php:8.5\nRUN install-php-extensions imagick\n", function (string $dir) {
+    extRemoveInProject($config, "FROM php:8.5\nRUN install-php-extensions imagick\n", function (string $dir): void {
         $code = Artisan::call('ext:remove', ['extension' => 'gd']);
 
         expect($code)->toBe(0);
@@ -69,9 +70,9 @@ test('ext:remove is a clean no-op when the extension is not configured', functio
     });
 });
 
-test('ext:remove fails cleanly outside a LaraKube project', function () {
-    $dir = sys_get_temp_dir().'/ext-remove-noproject-'.uniqid();
-    mkdir($dir, 0755, true);
+test('ext:remove fails cleanly outside a LaraKube project', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
     $original = getcwd();
     chdir($dir);
 
@@ -80,22 +81,22 @@ test('ext:remove fails cleanly outside a LaraKube project', function () {
         expect($code)->toBe(1);
     } finally {
         chdir($original);
-        exec('rm -rf '.escapeshellarg($dir));
+        $temporaryDirectory->delete();
     }
 });
 
-test('ext:remove exits cleanly when no extension is passed and no additional extensions are configured', function () {
+test('ext:remove exits cleanly when no extension is passed and no additional extensions are configured', function (): void {
     $config = ['additionalExtensions' => []];
-    extRemoveInProject($config, null, function (string $dir) {
+    extRemoveInProject($config, null, function (string $dir): void {
         $this->artisan('ext:remove')
             ->assertExitCode(0)
             ->expectsOutputToContain('No custom PHP extensions are currently added to this project.');
     });
 });
 
-test('ext:remove prompts with select dropdown when no extension is passed and additional extensions exist', function () {
+test('ext:remove prompts with select dropdown when no extension is passed and additional extensions exist', function (): void {
     $config = ['additionalExtensions' => ['gd', 'imagick']];
-    extRemoveInProject($config, "FROM php:8.5\nRUN install-php-extensions gd imagick\n", function (string $dir) {
+    extRemoveInProject($config, "FROM php:8.5\nRUN install-php-extensions gd imagick\n", function (string $dir): void {
         Prompt::fake([
             Key::ENTER, // pick the first option (gd) from the list
         ]);

@@ -79,7 +79,7 @@ class MailInboxCommand extends Command
         }
 
         $emails = [];
-        $this->withSpin("Fetching emails for {$target['email']}...", function () use ($kubectl, $ns, $target, $limit, &$emails) {
+        $this->withSpin("Fetching emails for {$target['email']}...", function () use ($kubectl, $ns, $target, $limit, &$emails): void {
             $using = ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap', 'urn:ietf:params:jmap:mail'];
 
             $query = $this->stalwartJmap($kubectl, $ns, [

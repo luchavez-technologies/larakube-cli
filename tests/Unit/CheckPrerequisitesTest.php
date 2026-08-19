@@ -22,7 +22,7 @@ function prerequisitesChecker(): object
     };
 }
 
-test('checkPrerequisites passes when docker, kubectl, and the docker engine are all available', function () {
+test('checkPrerequisites passes when docker, kubectl, and the docker engine are all available', function (): void {
     Process::fake([
         'which docker' => Process::result(exitCode: 0),
         'which kubectl' => Process::result(exitCode: 0),
@@ -32,7 +32,7 @@ test('checkPrerequisites passes when docker, kubectl, and the docker engine are 
     expect(prerequisitesChecker()->check())->toBeTrue();
 });
 
-test('checkPrerequisites fails when docker is missing', function () {
+test('checkPrerequisites fails when docker is missing', function (): void {
     Process::fake([
         'which docker' => Process::result(exitCode: 1),
         'which kubectl' => Process::result(exitCode: 0),
@@ -41,7 +41,7 @@ test('checkPrerequisites fails when docker is missing', function () {
     expect(prerequisitesChecker()->check())->toBeFalse();
 });
 
-test('checkPrerequisites fails when kubectl is missing', function () {
+test('checkPrerequisites fails when kubectl is missing', function (): void {
     Process::fake([
         'which docker' => Process::result(exitCode: 0),
         'which kubectl' => Process::result(exitCode: 1),
@@ -50,7 +50,7 @@ test('checkPrerequisites fails when kubectl is missing', function () {
     expect(prerequisitesChecker()->check())->toBeFalse();
 });
 
-test('checkPrerequisites fails when the Docker engine is not running', function () {
+test('checkPrerequisites fails when the Docker engine is not running', function (): void {
     Process::fake([
         'which docker' => Process::result(exitCode: 0),
         'which kubectl' => Process::result(exitCode: 0),
@@ -60,7 +60,7 @@ test('checkPrerequisites fails when the Docker engine is not running', function 
     expect(prerequisitesChecker()->check())->toBeFalse();
 });
 
-test('checkPrerequisites does not require k9s unless requested', function () {
+test('checkPrerequisites does not require k9s unless requested', function (): void {
     Process::fake([
         'which docker' => Process::result(exitCode: 0),
         'which kubectl' => Process::result(exitCode: 0),

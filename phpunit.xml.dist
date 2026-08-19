@@ -4,6 +4,23 @@
          bootstrap="vendor/autoload.php"
          colors="true"
 >
+    <php>
+        <!-- Host PHP's CLI default (128M) OOMs partway through this suite. -->
+        <ini name="memory_limit" value="2G"/>
+        <!-- Standard Laravel convention, missing until now (root-caused
+        2026-08-19): app()->runningUnitTests() (Illuminate\Foundation\Application)
+        reads $app['env'] === 'testing', which resolves from APP_ENV. Without
+        this, runningUnitTests() is false, and Illuminate\Console\Command's
+        configurePrompts() — called on EVERY real command run, including
+        inside tests — falls back to PURE live TTY detection
+        (Prompt::interactive($input->isInteractive() && stream_isatty(STDIN))),
+        overriding anything set in Tests\TestCase::setUp() every single time.
+        Confirmed live: under a real TTY this makes an unfaked confirm()/
+        text()/etc. genuinely render and block on real keyboard input,
+        exactly what was reported as tests "hanging" in a real terminal
+        while appearing to pass in a non-TTY runner. -->
+        <env name="APP_ENV" value="testing"/>
+    </php>
     <testsuites>
         <testsuite name="Feature">
             <directory>./tests/Feature</directory>

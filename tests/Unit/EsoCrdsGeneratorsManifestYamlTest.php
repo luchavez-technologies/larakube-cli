@@ -2,7 +2,7 @@
 
 use Symfony\Component\Yaml\Yaml;
 
-test('eso-crds-generators manifest renders valid multi-document YAML with both generator CRDs', function () {
+test('eso-crds-generators manifest renders valid multi-document YAML with both generator CRDs', function (): void {
     $rendered = view('k8s.secrets.eso-crds-generators')->render();
 
     $documents = array_values(array_filter(
@@ -24,11 +24,11 @@ test('eso-crds-generators manifest renders valid multi-document YAML with both g
         }
     }
 
-    expect($names)->toContain('clustergenerators.generators.external-secrets.io');
-    expect($names)->toContain('vaultdynamicsecrets.generators.external-secrets.io');
+    expect($names)->toContain('clustergenerators.generators.external-secrets.io')
+        ->toContain('vaultdynamicsecrets.generators.external-secrets.io');
 });
 
-test('neither generator CRD points its conversion strategy at an undeployed webhook', function () {
+test('neither generator CRD points its conversion strategy at an undeployed webhook', function (): void {
     // Regression guard: the official upstream CRD bundle declares
     // conversion.strategy: Webhook pointing at ESO's own conversion webhook
     // service — a component eso.blade.php never deploys (only the core
@@ -45,8 +45,8 @@ test('neither generator CRD points its conversion strategy at an undeployed webh
 
     foreach ($documents as $document) {
         $parsed = Yaml::parse($document);
-        expect($parsed['spec']['versions'] ?? [])->toHaveCount(1);
-        expect($parsed['spec']['conversion']['strategy'] ?? null)->toBe('None');
-        expect($parsed['spec']['conversion'])->not->toHaveKey('webhook');
+        expect($parsed['spec']['versions'] ?? [])->toHaveCount(1)
+            ->and($parsed['spec']['conversion']['strategy'] ?? null)->toBe('None')
+            ->and($parsed['spec']['conversion'])->not->toHaveKey('webhook');
     }
 });

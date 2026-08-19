@@ -10,7 +10,7 @@ use Symfony\Component\Yaml\Yaml;
  * local /user/sign_up form, and ENABLE_AUTO_REGISTRATION keeps a teammate's
  * first Zitadel SSO login working without a manual account-creation step.
  */
-test('forgejo manifest renders valid multi-document YAML with public registration disabled but OIDC auto-registration on', function () {
+test('forgejo manifest renders valid multi-document YAML with public registration disabled but OIDC auto-registration on', function (): void {
     $rendered = view('k8s.git.forgejo', [
         'host' => 'git.luchtech.dev',
         'plexNamespace' => 'larakube-plex',

@@ -4,7 +4,7 @@ use App\Data\ConfigData;
 use App\Enums\DeploymentStrategy;
 use App\Enums\ServerVariation;
 
-test('Strategy: single-node cloud env gets RWO storage + data PVCs', function () {
+test('Strategy: single-node cloud env gets RWO storage + data PVCs', function (): void {
     $config = new ConfigData(name: 'strat-single');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setStrategy(DeploymentStrategy::SINGLE_NODE);
@@ -25,7 +25,7 @@ test('Strategy: single-node cloud env gets RWO storage + data PVCs', function ()
     expect($manifests)->not->toHaveKey('overlays/production/storage-emptydir.yaml');
 });
 
-test('Strategy: multi-node has no shared PVC — app pods use a per-pod emptyDir', function () {
+test('Strategy: multi-node has no shared PVC — app pods use a per-pod emptyDir', function (): void {
     $config = new ConfigData(name: 'strat-multi');
     $config->setServerVariation(ServerVariation::FPM_NGINX);
     $config->setStrategy(DeploymentStrategy::MULTI_NODE_HA);
@@ -42,7 +42,7 @@ test('Strategy: multi-node has no shared PVC — app pods use a per-pod emptyDir
     expect($local[0]['spec']['accessModes'][0])->toBe('ReadWriteOnce');
 });
 
-test('multi-node + sharedStorage keeps a shared RWX PVC on the NFS class (no emptyDir)', function () {
+test('multi-node + sharedStorage keeps a shared RWX PVC on the NFS class (no emptyDir)', function (): void {
     $config = ConfigData::from([
         'name' => 'shared-test',
         'serverVariation' => 'fpm-nginx',
@@ -70,7 +70,7 @@ test('multi-node + sharedStorage keeps a shared RWX PVC on the NFS class (no emp
     expect($manifests)->not->toHaveKey('overlays/production/storage-emptydir.yaml');
 });
 
-test('the NFS server manifest renders with the backing StorageClass and a readiness probe', function () {
+test('the NFS server manifest renders with the backing StorageClass and a readiness probe', function (): void {
     $yaml = view('k8s.nfs.server', ['size' => '10Gi', 'storageClass' => 'do-block-storage'])->render();
 
     expect($yaml)
@@ -80,7 +80,7 @@ test('the NFS server manifest renders with the backing StorageClass and a readin
         ->toContain('readinessProbe');
 });
 
-test('the NFS provisioner manifest renders with the larakube-nfs StorageClass and data-safety options', function () {
+test('the NFS provisioner manifest renders with the larakube-nfs StorageClass and data-safety options', function (): void {
     $yaml = view('k8s.nfs.provisioner', ['archiveOnDelete' => 'true', 'reclaimPolicy' => 'Retain'])->render();
 
     expect($yaml)
@@ -94,7 +94,7 @@ test('the NFS provisioner manifest renders with the larakube-nfs StorageClass an
         ->toContain('nfsvers=4.1');
 });
 
-test('scheduler CronJob gets a cloud wait override that excludes managed services', function () {
+test('scheduler CronJob gets a cloud wait override that excludes managed services', function (): void {
     $config = ConfigData::from([
         'name' => 'sched-test',
         'serverVariation' => 'fpm-nginx',

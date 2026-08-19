@@ -50,7 +50,7 @@ function dockerProcessHelper(): object
     };
 }
 
-test('imageExists reflects whether docker images -q returned an id', function () {
+test('imageExists reflects whether docker images -q returned an id', function (): void {
     Process::fake(["docker images -q 'app:local'" => "sha256:abc123\n"]);
     expect(dockerProcessHelper()->imageExistsCheck('app:local'))->toBeTrue();
 
@@ -58,7 +58,7 @@ test('imageExists reflects whether docker images -q returned an id', function ()
     expect(dockerProcessHelper()->imageExistsCheck('app:local'))->toBeFalse();
 });
 
-test('hostUid/hostGid parse the id command output', function () {
+test('hostUid/hostGid parse the id command output', function (): void {
     Process::fake(['id -u' => "1000\n"]);
     expect(dockerProcessHelper()->uid())->toBe(1000);
 
@@ -66,19 +66,19 @@ test('hostUid/hostGid parse the id command output', function () {
     expect(dockerProcessHelper()->gid())->toBe(1000);
 });
 
-test('hostUid falls back to posix_getuid when id produces no usable digits', function () {
+test('hostUid falls back to posix_getuid when id produces no usable digits', function (): void {
     Process::fake(['id -u' => Process::result(output: '', exitCode: 1)]);
 
     expect(dockerProcessHelper()->uid())->toBeInt();
 });
 
-test('imageInActiveCluster is true (nothing to sideload) for a remote/registry context', function () {
+test('imageInActiveCluster is true (nothing to sideload) for a remote/registry context', function (): void {
     Process::fake(['kubectl config current-context' => "arn:aws:eks:us-east-1:123:cluster/prod\n"]);
 
     expect(dockerProcessHelper()->inActiveCluster('app:local'))->toBeTrue();
 });
 
-test('imageInActiveCluster is null for native k3s when sudo is not cached (never prompts)', function () {
+test('imageInActiveCluster is null for native k3s when sudo is not cached (never prompts)', function (): void {
     Process::fake([
         'kubectl config current-context' => "k3s-larakube\n",
         'sudo -n true' => Process::result(exitCode: 1),
@@ -87,7 +87,7 @@ test('imageInActiveCluster is null for native k3s when sudo is not cached (never
     expect(dockerProcessHelper()->inActiveCluster('app:local'))->toBeNull();
 });
 
-test('resolveSideloadTarget is true only for the local native k3s context', function () {
+test('resolveSideloadTarget is true only for the local native k3s context', function (): void {
     $r = dockerProcessHelper();
 
     expect($r->sideload('k3s-larakube'))->toBeTrue()
@@ -105,7 +105,7 @@ test('resolveSideloadTarget is true only for the local native k3s context', func
  * with how crictl/ctr decorate refs: a docker.io/library/ prefix, or the repo
  * and tag landing in separate columns.
  */
-test('clusterImageListContains matches an image across its decorations', function () {
+test('clusterImageListContains matches an image across its decorations', function (): void {
     $r = dockerProcessHelper();
 
     expect($r->contains("app-two:latest\nredis:7\n", 'app-two:latest'))->toBeTrue()        // exact ref
@@ -113,7 +113,7 @@ test('clusterImageListContains matches an image across its decorations', functio
         ->and($r->contains("IMAGE                TAG\napp-two              latest\n", 'app-two:latest'))->toBeTrue(); // columns
 });
 
-test('clusterImageListContains reports an image absent from the listing', function () {
+test('clusterImageListContains reports an image absent from the listing', function (): void {
     $r = dockerProcessHelper();
 
     expect($r->contains("redis:7\npostgres:16\n", 'app-two:latest'))->toBeFalse() // not listed

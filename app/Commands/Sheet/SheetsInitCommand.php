@@ -20,6 +20,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SheetsInitCommand extends Command
 {
@@ -93,7 +94,7 @@ class SheetsInitCommand extends Command
         $plexNs = $this->plexNamespace();
         $dbUrl = "postgresql://teable:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/teable";
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey, $storage, $dbUrl) {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey, $storage, $dbUrl): void {
             Process::run(
                 "{$kubectl} create secret generic sheet-secrets -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
@@ -118,14 +119,15 @@ class SheetsInitCommand extends Command
             's3PrivateBucket' => $storage['privateBucket'],
         ])->render();
 
-        $tmp = sys_get_temp_dir().'/larakube-sheet.yaml';
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-sheet.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Sheet (Teable) manifests...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'sheet-teable', 300),
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $rolledOut) {
             return 1;

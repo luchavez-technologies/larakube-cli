@@ -9,6 +9,7 @@ use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromptsForHosts;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
 
 /**
@@ -76,7 +77,7 @@ class BundleUpdateCommand extends Command
             if (Process::run('k3s ctr version')->successful()) {
                 break;
             }
-            sleep(1);
+            Sleep::sleep(1);
         }
 
         $this->laraKubeInfo('Importing application and dependency images into containerd...');
@@ -97,11 +98,11 @@ class BundleUpdateCommand extends Command
                     if (Process::run('k3s ctr version')->successful()) {
                         break;
                     }
-                    sleep(1);
+                    Sleep::sleep(1);
                 }
 
                 // Give it an extra 5 seconds of breathing room after the socket responds
-                sleep(5);
+                Sleep::sleep(5);
             }
 
             if (! $success) {
@@ -195,7 +196,7 @@ class BundleUpdateCommand extends Command
             if (Process::run('kubectl get nodes')->successful()) {
                 break;
             }
-            sleep(2);
+            Sleep::sleep(2);
         }
 
         if ($public !== '') {

@@ -4,6 +4,7 @@ use App\Data\ConfigData;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithArchitecturalEngine;
 use Laravel\Prompts\Prompt;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Build a scaffolded project in a temp dir and return [config, k8sPath, harness].
@@ -13,8 +14,8 @@ function scaffoldForPrune(ConfigData $config): array
 {
     Prompt::fallbackUsing(fn () => true);
 
-    $tempDir = sys_get_temp_dir().'/larakube-prune-'.uniqid();
-    mkdir($tempDir, 0755, true);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     $config->setPath($tempDir);
 
     $harness = new class
@@ -51,10 +52,10 @@ function scaffoldForPrune(ConfigData $config): array
 
     $harness->runScaffolding($config);
 
-    return [$config, $config->getK8sPath(), $harness, $tempDir];
+    return [$config, $config->getK8sPath(), $harness, $temporaryDirectory];
 }
 
-test('prune removes a stray manifest but keeps referenced and locked ones', function () {
+test('prune removes a stray manifest but keeps referenced and locked ones', function (): void {
     $config = ConfigData::from([
         'name' => 'prune',
         'serverVariation' => 'fpm-nginx',
@@ -63,7 +64,7 @@ test('prune removes a stray manifest but keeps referenced and locked ones', func
         'environments' => ['local' => [], 'production' => ['hosts' => ['web' => 'prune.com']]],
     ]);
 
-    [$config, $k8sPath, $harness, $tempDir] = scaffoldForPrune($config);
+    [$config, $k8sPath, $harness, $temporaryDirectory] = scaffoldForPrune($config);
 
     // Drop two stray files into the production overlay: one plain, one locked.
     file_put_contents("$k8sPath/overlays/production/orphan.yaml", "kind: ConfigMap\n");
@@ -80,10 +81,10 @@ test('prune removes a stray manifest but keeps referenced and locked ones', func
         ->and(file_exists("$k8sPath/overlays/production/kustomization.yaml"))->toBeTrue()
         ->and(file_exists("$k8sPath/base/kustomization.yaml"))->toBeTrue();
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 });
 
-test('prune removes overlay directories for environments dropped from the blueprint', function () {
+test('prune removes overlay directories for environments dropped from the blueprint', function (): void {
     $config = ConfigData::from([
         'name' => 'prune2',
         'serverVariation' => 'fpm-nginx',
@@ -92,24 +93,24 @@ test('prune removes overlay directories for environments dropped from the bluepr
         'environments' => ['local' => [], 'production' => ['hosts' => ['web' => 'p.com']], 'staging' => []],
     ]);
 
-    [$config, $k8sPath, $harness, $tempDir] = scaffoldForPrune($config);
+    [$config, $k8sPath, $harness, $temporaryDirectory] = scaffoldForPrune($config);
 
-    expect(is_dir("$k8sPath/overlays/staging"))->toBeTrue();
+    expect("$k8sPath/overlays/staging")->toBeDirectory();
 
     // Drop staging from the blueprint, then prune.
     $config->removeEnvironment('staging');
     $pruned = $harness->prune($config);
 
-    expect(is_dir("$k8sPath/overlays/staging"))->toBeFalse()
+    expect("$k8sPath/overlays/staging")->not->toBeDirectory()
         ->and(collect($pruned)->contains(fn ($p) => str_starts_with($p, 'overlays/staging/')))->toBeTrue()
         // Surviving envs untouched.
-        ->and(is_dir("$k8sPath/overlays/production"))->toBeTrue()
-        ->and(is_dir("$k8sPath/overlays/local"))->toBeTrue();
+        ->and("$k8sPath/overlays/production")->toBeDirectory()
+        ->and("$k8sPath/overlays/local")->toBeDirectory();
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 });
 
-test('prune leaves a dropped-env directory in place when it holds a locked file', function () {
+test('prune leaves a dropped-env directory in place when it holds a locked file', function (): void {
     $config = ConfigData::from([
         'name' => 'prune3',
         'serverVariation' => 'fpm-nginx',
@@ -118,7 +119,7 @@ test('prune leaves a dropped-env directory in place when it holds a locked file'
         'environments' => ['local' => [], 'production' => ['hosts' => ['web' => 'p.com']], 'qa' => []],
     ]);
 
-    [$config, $k8sPath, $harness, $tempDir] = scaffoldForPrune($config);
+    [$config, $k8sPath, $harness, $temporaryDirectory] = scaffoldForPrune($config);
 
     $config->addLockedFile("$k8sPath/overlays/qa/kustomization.yaml");
     $config->removeEnvironment('qa');
@@ -127,5 +128,5 @@ test('prune leaves a dropped-env directory in place when it holds a locked file'
     // The locked file (and therefore its directory) is preserved.
     expect(file_exists("$k8sPath/overlays/qa/kustomization.yaml"))->toBeTrue();
 
-    exec('rm -rf '.escapeshellarg($tempDir));
+    $temporaryDirectory->delete();
 });

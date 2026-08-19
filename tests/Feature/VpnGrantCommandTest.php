@@ -18,7 +18,7 @@ function fakeVpnGrantInstalled(string $pat = 'nbp_test_pat'): void
     ]);
 }
 
-test('vpn:grant mints a single-use setup key by default and prints the join command', function () {
+test('vpn:grant mints a single-use setup key by default and prints the join command', function (): void {
     fakeVpnGrantInstalled();
 
     Http::fake([
@@ -39,7 +39,7 @@ test('vpn:grant mints a single-use setup key by default and prints the join comm
         && $request['usage_limit'] === 1);
 });
 
-test('vpn:grant --reusable mints a key with no usage limit', function () {
+test('vpn:grant --reusable mints a key with no usage limit', function (): void {
     fakeVpnGrantInstalled();
 
     Http::fake([
@@ -57,7 +57,7 @@ test('vpn:grant --reusable mints a key with no usage limit', function () {
     Http::assertSent(fn ($request) => $request['usage_limit'] === 0);
 });
 
-test('vpn:grant errors when the VPN is not installed', function () {
+test('vpn:grant errors when the VPN is not installed', function (): void {
     Process::fake([
         vpnGrantKubectl().' get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
     ]);
@@ -69,7 +69,7 @@ test('vpn:grant errors when the VPN is not installed', function () {
     Http::assertNothingSent();
 });
 
-test('vpn:grant errors when no admin PAT has been bootstrapped yet', function () {
+test('vpn:grant errors when no admin PAT has been bootstrapped yet', function (): void {
     $kubectl = vpnGrantKubectl();
 
     Process::fake([
@@ -84,7 +84,7 @@ test('vpn:grant errors when no admin PAT has been bootstrapped yet', function ()
     Http::assertNothingSent();
 });
 
-test('vpn:grant --json emits a machine-readable result and no Termwind output', function () {
+test('vpn:grant --json emits a machine-readable result and no Termwind output', function (): void {
     fakeVpnGrantInstalled();
 
     Http::fake([

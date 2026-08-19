@@ -3,7 +3,7 @@
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
-test('uptime:show refuses because Uptime Kuma is not yet shipped', function () {
+test('uptime:show refuses because Uptime Kuma is not yet shipped', function (): void {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);
@@ -15,6 +15,6 @@ test('uptime:show refuses because Uptime Kuma is not yet shipped', function () {
     Process::assertNotRan(fn ($process) => true);
 });
 
-test('uptime stays hidden from tool:list until shipped', function () {
+test('uptime stays hidden from tool:list until shipped', function (): void {
     expect(ClusterTool::UPTIME->isShipped())->toBeFalse();
 });

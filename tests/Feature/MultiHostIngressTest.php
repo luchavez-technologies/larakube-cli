@@ -18,6 +18,7 @@
 use App\Data\ConfigData;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithArchitecturalEngine;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Yaml\Yaml;
 
 function multiHostConfig(): ConfigData
@@ -40,10 +41,10 @@ function multiHostConfig(): ConfigData
 }
 
 /** Scaffold a real project tree in a temp dir; caller cleans it up. */
-function scaffoldMultiHostProject(ConfigData $config): string
+function scaffoldMultiHostProject(ConfigData $config): TemporaryDirectory
 {
-    $tempDir = sys_get_temp_dir().'/larakube-multihost-'.uniqid();
-    mkdir($tempDir, 0755, true);
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
     $config->setPath($tempDir);
     $config->resolveDependencies();
 
@@ -76,10 +77,10 @@ function scaffoldMultiHostProject(ConfigData $config): string
 
     $scaffolder->run($config);
 
-    return $tempDir;
+    return $temporaryDirectory;
 }
 
-test('production overlay renders one Ingress rule per web host, sharing the same backend, and lists them all under tls.hosts', function () {
+test('production overlay renders one Ingress rule per web host, sharing the same backend, and lists them all under tls.hosts', function (): void {
     $manifests = generateManifestsAsArray(multiHostConfig());
     $ingress = $manifests['overlays/production/ingress-patch.yaml'];
 
@@ -94,7 +95,7 @@ test('production overlay renders one Ingress rule per web host, sharing the same
     expect($ingress['spec']['tls'][0]['hosts'])->toBe(['app.example.com', 'admin.example.com', 'mybrand.io']);
 });
 
-test('a project with no additionalWebHosts renders exactly the old single-rule shape (no regression)', function () {
+test('a project with no additionalWebHosts renders exactly the old single-rule shape (no regression)', function (): void {
     $config = ConfigData::from([
         'name' => 'singlehost',
         'serverVariation' => 'fpm-nginx',
@@ -112,7 +113,7 @@ test('a project with no additionalWebHosts renders exactly the old single-rule s
         ->and($ingress['spec']['tls'][0]['hosts'])->toBe(['app.example.com']);
 });
 
-test('base and local-overlay-patch templates agree on the exact host list and order', function () {
+test('base and local-overlay-patch templates agree on the exact host list and order', function (): void {
     // Pins the invariant a kustomize strategic-merge relies on: both
     // templates must loop the identical getWebHosts('local') list, in the
     // identical order. If the local overlay patch's tls.hosts loop is ever
@@ -122,7 +123,8 @@ test('base and local-overlay-patch templates agree on the exact host list and or
     // that drift dangerous, but isn't itself exercised here since kubectl
     // isn't reliably available in CI or this dev container.
     $config = multiHostConfig();
-    $tempDir = scaffoldMultiHostProject($config);
+    $temporaryDirectory = scaffoldMultiHostProject($config);
+    $tempDir = $temporaryDirectory->path();
 
     try {
         // Both files are multi-document YAML (several resources combined per
@@ -147,6 +149,6 @@ test('base and local-overlay-patch templates agree on the exact host list and or
             ->and($baseIngress['spec']['tls'][0]['hosts'])->toBe($config->getWebHosts('local'))
             ->and($localPatchIngress['spec']['tls'][0]['hosts'])->toBe($baseIngress['spec']['tls'][0]['hosts']);
     } finally {
-        exec('rm -rf '.escapeshellarg($tempDir));
+        $temporaryDirectory->delete();
     }
 });

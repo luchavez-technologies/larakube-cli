@@ -14,7 +14,7 @@ function capturedRegistrationWrite(string $command): ?array
     return json_decode(file_get_contents($m[1]), true);
 }
 
-test('registerDeployedTool merges $extra metadata alongside the host, e.g. adminEmail', function () {
+test('registerDeployedTool merges $extra metadata alongside the host, e.g. adminEmail', function (): void {
     // data:init/sso:init/desk:init all pass adminEmail through this same
     // seam — a regression here silently drops it from the registry for
     // every one of them at once.
@@ -40,9 +40,8 @@ test('registerDeployedTool merges $extra metadata alongside the host, e.g. admin
         },
     ]);
 
-    expect($trait->register('kubectl', ClusterTool::SSO, 'sso.example.com', ['adminEmail' => 'admin@example.com']))->toBeTrue();
-
-    expect($captured)->toHaveCount(1)
+    expect($trait->register('kubectl', ClusterTool::SSO, 'sso.example.com', ['adminEmail' => 'admin@example.com']))->toBeTrue()
+        ->and($captured)->toHaveCount(1)
         ->and($captured[0]['tool'])->toBe('sso')
         ->and($captured[0]['host'])->toBe('sso.example.com')
         ->and($captured[0]['adminEmail'])->toBe('admin@example.com');

@@ -210,7 +210,7 @@ class BackupInitCommand extends Command
         }
 
         $result = ['ok' => false, 'message' => ''];
-        $this->withSpin("Creating R2 bucket '{$bucket}'...", function () use ($accountId, $bucket, $token, &$result) {
+        $this->withSpin("Creating R2 bucket '{$bucket}'...", function () use ($accountId, $bucket, $token, &$result): void {
             $result = $this->createR2Bucket($accountId, $bucket, $token);
         });
 

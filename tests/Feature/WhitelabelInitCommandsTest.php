@@ -3,9 +3,9 @@
 use App\Traits\InteractsWithToolRegistry;
 use Illuminate\Support\Facades\Process;
 
-uses(InteractsWithToolRegistry::class);
+pest()->use(InteractsWithToolRegistry::class);
 
-beforeEach(function () {
+beforeEach(function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -26,37 +26,37 @@ beforeEach(function () {
     ]);
 });
 
-test('chat:init --app-name injects Nginx sub_filter for Cinny app title', function () {
+test('chat:init --app-name injects Nginx sub_filter for Cinny app title', function (): void {
     $this->artisan('chat:init local --no-plex --app-name="Acme Chat" --no-interaction')
         ->assertExitCode(0);
 });
 
-test('git:init --app-name sets FORGEJO__ui__APP_NAME', function () {
+test('git:init --app-name sets FORGEJO__ui__APP_NAME', function (): void {
     $this->artisan('git:init local --no-plex --app-name="Acme Forge" --admin-email=admin@example.com --no-interaction')
         ->assertExitCode(0);
 });
 
-test('support:init --app-name sets Chatwoot INSTALLATION_NAME and BRAND_NAME', function () {
+test('support:init --app-name sets Chatwoot INSTALLATION_NAME and BRAND_NAME', function (): void {
     $this->artisan('support:init local --app-name="Acme Support" --admin-email=admin@example.com --no-interaction')
         ->assertExitCode(0);
 });
 
-test('errors:init --app-name sets GlitchTip GLITCHTIP_INSTANCE_NAME', function () {
+test('errors:init --app-name sets GlitchTip GLITCHTIP_INSTANCE_NAME', function (): void {
     $this->artisan('errors:init local --no-plex --app-name="Acme Errors" --admin-email=admin@example.com --no-interaction')
         ->assertExitCode(0);
 });
 
-test('link:init --app-name sets Kutt SITE_NAME', function () {
+test('link:init --app-name sets Kutt SITE_NAME', function (): void {
     $this->artisan('link:init local --app-name="Acme Links" --no-interaction')
         ->assertExitCode(0);
 });
 
-test('insights:init --app-name sets Metabase MB_SITE_NAME', function () {
+test('insights:init --app-name sets Metabase MB_SITE_NAME', function (): void {
     $this->artisan('insights:init local --no-plex --app-name="Acme BI" --admin-email=admin@example.com --no-interaction')
         ->assertExitCode(0);
 });
 
-test('monitor:init --app-name sets Grafana GF_BRANDING_APP_TITLE', function () {
+test('monitor:init --app-name sets Grafana GF_BRANDING_APP_TITLE', function (): void {
     $this->artisan('monitor:init local --app-name="Acme Monitor" --no-interaction')
         ->assertExitCode(0);
 });

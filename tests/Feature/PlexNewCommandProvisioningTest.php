@@ -76,7 +76,7 @@ function createPlexTestCommand(): object
 // ensurePlexProvisionedForApp — skips for non-Plex databases
 // ---------------------------------------------------------------------------
 
-test('ensurePlexProvisionedForApp returns null for SQLite', function () {
+test('ensurePlexProvisionedForApp returns null for SQLite', function (): void {
     Process::fake();
 
     $config = plexNewTestConfig(['database' => 'sqlite']);
@@ -90,7 +90,7 @@ test('ensurePlexProvisionedForApp returns null for SQLite', function () {
     Process::assertNotRan(fn ($p) => str_contains($p->command, 'cluster-info'));
 });
 
-test('ensurePlexProvisionedForApp returns null when cluster is unreachable', function () {
+test('ensurePlexProvisionedForApp returns null when cluster is unreachable', function (): void {
     Process::fake([
         '*cluster-info*' => Process::result(exitCode: 1),
     ]);
@@ -103,7 +103,7 @@ test('ensurePlexProvisionedForApp returns null when cluster is unreachable', fun
     expect($result)->toBeNull();
 });
 
-test('ensurePlexProvisionedForApp auto-bootstraps Commons when missing and allocates tenant', function () {
+test('ensurePlexProvisionedForApp auto-bootstraps Commons when missing and allocates tenant', function (): void {
     $commonsSpecJson = json_encode([
         'version' => 1,
         'services' => [
@@ -152,7 +152,7 @@ test('ensurePlexProvisionedForApp auto-bootstraps Commons when missing and alloc
         ->and($result['services'])->toContain('postgres', 'redis');
 });
 
-test('ensurePlexProvisionedForApp works with MySQL driver', function () {
+test('ensurePlexProvisionedForApp works with MySQL driver', function (): void {
     $commonsSpecJson = json_encode([
         'version' => 1,
         'services' => [
@@ -184,7 +184,7 @@ test('ensurePlexProvisionedForApp works with MySQL driver', function () {
         ->and($result['port'])->toBe(3306);
 });
 
-test('ensurePlexProvisionedForApp returns null when database service is not enabled in Commons', function () {
+test('ensurePlexProvisionedForApp returns null when database service is not enabled in Commons', function (): void {
     // Commons only has Postgres enabled, but the app needs MySQL
     $commonsSpecJson = json_encode([
         'version' => 1,
@@ -209,7 +209,7 @@ test('ensurePlexProvisionedForApp returns null when database service is not enab
     expect($result)->toBeNull();
 });
 
-test('ensurePlexProvisionedForApp catches exceptions and returns null', function () {
+test('ensurePlexProvisionedForApp catches exceptions and returns null', function (): void {
     Process::fake([
         '*cluster-info*' => Process::result(output: 'OK'),
         '*get configmap plex-commons*' => Process::result(exitCode: 1, errorOutput: 'connection refused'),
@@ -225,7 +225,7 @@ test('ensurePlexProvisionedForApp catches exceptions and returns null', function
     expect($result)->toBeNull();
 });
 
-test('ensurePlexProvisionedForApp uses production suffix for local env tenant identifier', function () {
+test('ensurePlexProvisionedForApp uses production suffix for local env tenant identifier', function (): void {
     $commonsSpecJson = json_encode([
         'version' => 1,
         'services' => [
@@ -258,12 +258,12 @@ test('ensurePlexProvisionedForApp uses production suffix for local env tenant id
 // NewCommand --no-plex flag registration
 // ---------------------------------------------------------------------------
 
-test('new command registers the --no-plex option', function () {
+test('new command registers the --no-plex option', function (): void {
     $this->artisan('new --help')
         ->expectsOutputToContain('--no-plex');
 });
 
-test('statamic:new command registers the --no-plex option', function () {
+test('statamic:new command registers the --no-plex option', function (): void {
     $this->artisan('statamic:new --help')
         ->expectsOutputToContain('--no-plex');
 });
@@ -272,7 +272,7 @@ test('statamic:new command registers the --no-plex option', function () {
 // Plex services include all project commons services
 // ---------------------------------------------------------------------------
 
-test('ensurePlexProvisionedForApp returns all project commons services', function () {
+test('ensurePlexProvisionedForApp returns all project commons services', function (): void {
     $commonsSpecJson = json_encode([
         'version' => 1,
         'services' => [

@@ -24,7 +24,7 @@ function cleanupTrustCheckCertFor(string $appName): void
     @unlink("{$dir}/{$appName}-dev.tld");
 }
 
-test('trust:check reports an app cert as valid for its own pinned TLD, not the global default', function () {
+test('trust:check reports an app cert as valid for its own pinned TLD, not the global default', function (): void {
     $appName = 'tc-app-'.uniqid();
 
     // The test sandbox's global TLD is 'kube' (TestCase points HOME at an
@@ -40,7 +40,7 @@ test('trust:check reports an app cert as valid for its own pinned TLD, not the g
         ->and($output)->toContain('(.test)');
 });
 
-test('trust:check flags a cert that no longer covers its recorded TLD', function () {
+test('trust:check flags a cert that no longer covers its recorded TLD', function (): void {
     $appName = 'tc-stale-'.uniqid();
 
     // Generate a cert for 'kube', then hand-edit the sidecar to claim a TLD

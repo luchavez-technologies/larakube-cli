@@ -11,6 +11,7 @@ use App\Data\GlobalConfigData;
 use App\State;
 use App\Traits\InteractsWithOpenTofu;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function tofuHelper(): object
 {
@@ -55,8 +56,9 @@ function tofuHelper(): object
     };
 }
 
-test('resolveTofuBinary prefers a real tofu binary on PATH over terraform', function () {
-    $fakeTofu = sys_get_temp_dir().'/fake-tofu-'.uniqid();
+test('resolveTofuBinary prefers a real tofu binary on PATH over terraform', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $fakeTofu = $temporaryDirectory->path().'/fake-tofu';
     file_put_contents($fakeTofu, "#!/bin/sh\necho fake-tofu\n");
     chmod($fakeTofu, 0755);
 
@@ -68,12 +70,13 @@ test('resolveTofuBinary prefers a real tofu binary on PATH over terraform', func
 
         expect(tofuHelper()->resolve())->toBe(['path' => $fakeTofu, 'isOpenTofu' => true]);
     } finally {
-        unlink($fakeTofu);
+        $temporaryDirectory->delete();
     }
 });
 
-test('resolveTofuBinary falls back to terraform when tofu is not found', function () {
-    $fakeTerraform = sys_get_temp_dir().'/fake-terraform-'.uniqid();
+test('resolveTofuBinary falls back to terraform when tofu is not found', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $fakeTerraform = $temporaryDirectory->path().'/fake-terraform';
     file_put_contents($fakeTerraform, "#!/bin/sh\necho fake-terraform\n");
     chmod($fakeTerraform, 0755);
 
@@ -87,11 +90,11 @@ test('resolveTofuBinary falls back to terraform when tofu is not found', functio
         expect($res)->not->toBeNull()
             ->and($res['path'])->toBeIn([$fakeTerraform, '/opt/homebrew/bin/tofu', '/usr/local/bin/tofu', '/usr/bin/tofu']);
     } finally {
-        unlink($fakeTerraform);
+        $temporaryDirectory->delete();
     }
 });
 
-test('resolveTofuBinary is null when neither tofu nor terraform resolves to a real executable', function () {
+test('resolveTofuBinary is null when neither tofu nor terraform resolves to a real executable', function (): void {
     Process::fake([
         'command -v tofu' => Process::result(output: '', exitCode: 1),
         'command -v terraform' => Process::result(output: '', exitCode: 1),
@@ -104,7 +107,7 @@ test('resolveTofuBinary is null when neither tofu nor terraform resolves to a re
     expect(tofuHelper()->resolve())->toBeNull();
 });
 
-test('tofuOutput returns the trimmed raw output value, or null on failure/empty', function () {
+test('tofuOutput returns the trimmed raw output value, or null on failure/empty', function (): void {
     // isOpenTofu: false so tofuEncryptionEnv() short-circuits before touching the
     // real global config (ensureTofuPassphrase()/save() would be a real side effect).
     $bin = ['path' => '/usr/local/bin/terraform', 'isOpenTofu' => false];
@@ -117,7 +120,7 @@ test('tofuOutput returns the trimmed raw output value, or null on failure/empty'
     expect(tofuHelper()->output($bin, 'mystack', 'ip'))->toBeNull();
 });
 
-test('tofu env vars travel via Process::env(), not the command string', function () {
+test('tofu env vars travel via Process::env(), not the command string', function (): void {
     $bin = ['path' => '/usr/local/bin/terraform', 'isOpenTofu' => false];
     $dir = home_path('.larakube/tofu/mystack');
     State::$transientDoToken = 'dop_v1_transient-token-abc';
@@ -132,7 +135,7 @@ test('tofu env vars travel via Process::env(), not the command string', function
     });
 });
 
-test('tofuEnv skips the DO token when none is configured and merges extras', function () {
+test('tofuEnv skips the DO token when none is configured and merges extras', function (): void {
     $env = tofuHelper()->env('mystack', false, ['EXTRA_VAR' => 'yes']);
 
     expect($env)->not->toHaveKey('TF_VAR_do_token')
@@ -141,7 +144,7 @@ test('tofuEnv skips the DO token when none is configured and merges extras', fun
         ->and($env['TF_IN_AUTOMATION'])->toBe('1');
 });
 
-test('LARAKUBE_TOFU_PASSPHRASE overrides the global-config passphrase and is never persisted', function () {
+test('LARAKUBE_TOFU_PASSPHRASE overrides the global-config passphrase and is never persisted', function (): void {
     putenv('LARAKUBE_TOFU_PASSPHRASE=orchestrator-supplied-passphrase');
 
     try {
@@ -155,7 +158,7 @@ test('LARAKUBE_TOFU_PASSPHRASE overrides the global-config passphrase and is nev
     }
 });
 
-test('a too-short LARAKUBE_TOFU_PASSPHRASE throws instead of weakly encrypting state', function () {
+test('a too-short LARAKUBE_TOFU_PASSPHRASE throws instead of weakly encrypting state', function (): void {
     putenv('LARAKUBE_TOFU_PASSPHRASE=short');
 
     try {
@@ -165,7 +168,7 @@ test('a too-short LARAKUBE_TOFU_PASSPHRASE throws instead of weakly encrypting s
     }
 });
 
-test('remoteStateConfig requires both bucket and endpoint', function () {
+test('remoteStateConfig requires both bucket and endpoint', function (): void {
     try {
         expect(tofuHelper()->remoteState())->toBeNull();
 
@@ -188,7 +191,7 @@ test('remoteStateConfig requires both bucket and endpoint', function () {
     }
 });
 
-test('writeTofuFiles writes backend.tf when remote state is configured and removes it when not', function () {
+test('writeTofuFiles writes backend.tf when remote state is configured and removes it when not', function (): void {
     try {
         putenv('LARAKUBE_TOFU_STATE_BUCKET=my-bucket');
         putenv('LARAKUBE_TOFU_STATE_ENDPOINT=https://nyc3.digitaloceanspaces.com');
@@ -211,7 +214,7 @@ test('writeTofuFiles writes backend.tf when remote state is configured and remov
     }
 });
 
-test('removeTofuWorkdir deletes the stack dir entirely, including a nested .terraform/ cache and stale state', function () {
+test('removeTofuWorkdir deletes the stack dir entirely, including a nested .terraform/ cache and stale state', function (): void {
     // Defensive: a prior interrupted run of this exact test could have left the
     // fixture dir behind (this is real filesystem I/O against the test HOME).
     tofuHelper()->removeWorkdir('destroy-then-recreate');
@@ -222,14 +225,14 @@ test('removeTofuWorkdir deletes the stack dir entirely, including a nested .terr
     file_put_contents($dir.'/.terraform.lock.hcl', '# lockfile');
     file_put_contents($dir.'/terraform.tfstate', 'encrypted-state-under-a-passphrase-about-to-be-forgotten');
 
-    expect(is_dir($dir))->toBeTrue();
+    expect($dir)->toBeDirectory();
 
     tofuHelper()->removeWorkdir('destroy-then-recreate');
 
-    expect(is_dir($dir))->toBeFalse();
+    expect($dir)->not->toBeDirectory();
 });
 
-test('removeTofuWorkdir is a no-op when the stack was never provisioned', function () {
+test('removeTofuWorkdir is a no-op when the stack was never provisioned', function (): void {
     // No exception, no warning — just nothing to do.
     tofuHelper()->removeWorkdir('never-existed-stack');
     expect(true)->toBeTrue();

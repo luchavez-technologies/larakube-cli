@@ -72,7 +72,7 @@ class MeetWireCommand extends Command
         $registry = $this->allocateMeetKey($registry, 'chat', 'matrix-');
         // withSpin() proxies Laravel Zero's task(), which returns a success
         // bool — never the callback's value. Hand the registry back by ref.
-        $this->withSpin('Allocating a LiveKit key for Chat...', function () use ($kubectl, $ns, &$registry) {
+        $this->withSpin('Allocating a LiveKit key for Chat...', function () use ($kubectl, $ns, &$registry): void {
             $registry = $this->writeMeetKeys($kubectl, $ns, $registry);
         });
 
@@ -163,7 +163,7 @@ class MeetWireCommand extends Command
     {
         $ok = true;
 
-        $this->withSpin('Pointing Synapse at the Meet bridge...', function () use ($kubectl, $ns, $jwtUrl, &$ok) {
+        $this->withSpin('Pointing Synapse at the Meet bridge...', function () use ($kubectl, $ns, $jwtUrl, &$ok): void {
             Process::run(
                 "{$kubectl} create secret generic chat-meet -n {$ns} "
                 .'--from-literal=jwt-url='.escapeshellarg($jwtUrl).' '

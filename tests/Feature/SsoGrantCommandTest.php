@@ -3,13 +3,13 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-test('sso:grant is registered', function () {
+test('sso:grant is registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:grant');
 });
 
-test('sso:grant rejects a tool with no role-gated access', function () {
+test('sso:grant rejects a tool with no role-gated access', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -24,7 +24,7 @@ test('sso:grant rejects a tool with no role-gated access', function () {
         ->expectsOutputToContain('has no role-gated access to grant');
 });
 
-test('sso:grant rejects an unknown tool', function () {
+test('sso:grant rejects an unknown tool', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -39,7 +39,7 @@ test('sso:grant rejects an unknown tool', function () {
         ->expectsOutputToContain("Unknown tool 'not-a-real-tool'");
 });
 
-test('sso:grant\'s picker offers every role-bearing tool — Drive included — without a live-role probe', function () {
+test('sso:grant\'s picker offers every role-bearing tool — Drive included — without a live-role probe', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -58,6 +58,12 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
     // case order) purely from the enum's role schema — the grant succeeds even
     // though Zitadel here knows nothing about any roles yet.
     $this->artisan('sso:grant', ['--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
+        ->expectsChoice('Which tool?', 'drive', [
+            'drive' => 'Cloud Storage & Sync (oCIS)',
+            'monitor' => 'Monitoring Stack (Grafana + Loki + Prometheus)',
+            'secrets' => 'Secrets Manager (OpenBao)',
+            'dashboard' => 'Kubernetes Control Plane (Headlamp)',
+        ])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev");
 
@@ -72,7 +78,7 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
         || str_contains($request->url(), '/management/v1/projects/_search'));
 });
 
-test('sso:grant rejects a role the tool does not define', function () {
+test('sso:grant rejects a role the tool does not define', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -87,7 +93,7 @@ test('sso:grant rejects a role the tool does not define', function () {
         ->expectsOutputToContain("isn't a role");
 });
 
-test('sso:grant errors when Zitadel is not installed', function () {
+test('sso:grant errors when Zitadel is not installed', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: ''),
     ]);
@@ -97,7 +103,7 @@ test('sso:grant errors when Zitadel is not installed', function () {
         ->expectsOutputToContain('Zitadel is not installed');
 });
 
-test('sso:grant errors when Zitadel user cannot be resolved or created', function () {
+test('sso:grant errors when Zitadel user cannot be resolved or created', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -114,7 +120,7 @@ test('sso:grant errors when Zitadel user cannot be resolved or created', functio
         ->expectsOutputToContain('Failed to resolve or create Zitadel user');
 });
 
-test('sso:grant creates a fresh UserGrant when the user holds none on the RBAC project yet', function () {
+test('sso:grant creates a fresh UserGrant when the user holds none on the RBAC project yet', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -140,7 +146,7 @@ test('sso:grant creates a fresh UserGrant when the user holds none on the RBAC p
         && $request['roleKeys'] === ['openbao-admin']);
 });
 
-test('sso:grant merges a new role into an existing UserGrant instead of clobbering it', function () {
+test('sso:grant merges a new role into an existing UserGrant instead of clobbering it', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -164,7 +170,7 @@ test('sso:grant merges a new role into an existing UserGrant instead of clobberi
         && $request['roleKeys'] === ['openbao-admin', 'grafana-user']);
 });
 
-test('sso:grant grants Drive\'s ocisAdmin on the shared project its app is registered under', function () {
+test('sso:grant grants Drive\'s ocisAdmin on the shared project its app is registered under', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -195,7 +201,7 @@ test('sso:grant grants Drive\'s ocisAdmin on the shared project its app is regis
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/_search'));
 });
 
-test('sso:grant for Drive falls back to ensuring the shared project when the app secret has no project-id yet', function () {
+test('sso:grant for Drive falls back to ensuring the shared project when the app secret has no project-id yet', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),

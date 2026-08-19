@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-test('mail:sync-sso imports existing stalwart accounts into zitadel sso', function () {
+test('mail:sync-sso imports existing stalwart accounts into zitadel sso', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart 1/1 1 1 1d'),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel 1/1 1 1 1d'),
@@ -47,7 +47,7 @@ test('mail:sync-sso imports existing stalwart accounts into zitadel sso', functi
         ->expectsOutputToContain('Stalwart → Zitadel SSO Sync Complete');
 });
 
-test('mail:sync-sso refuses when stalwart is not installed', function () {
+test('mail:sync-sso refuses when stalwart is not installed', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: '', exitCode: 1),
     ]);

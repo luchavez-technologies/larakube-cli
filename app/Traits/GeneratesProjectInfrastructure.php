@@ -340,7 +340,7 @@ trait GeneratesProjectInfrastructure
         $binaryPath = realpath($_SERVER['argv'][0]) ?: '/usr/local/bin/larakube';
         $workspacePath = dirname($config->getPath());
 
-        $renderStub = function (string $stub, string $environment, string $namespace, string $viewName) use ($config, $k8sPath, $binaryPath, $workspacePath) {
+        $renderStub = function (string $stub, string $environment, string $namespace, string $viewName) use ($config, $k8sPath, $binaryPath, $workspacePath): void {
             $command = $config->getServerVariation()?->getStartCommand($environment === 'local') ?? '[]';
             $content = view($viewName, [
                 'config' => $config,

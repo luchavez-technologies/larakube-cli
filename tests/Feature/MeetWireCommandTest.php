@@ -28,7 +28,7 @@ function meetWireFakes(array $overrides = []): array
     ], $overrides);
 }
 
-test('meet:wire refuses when Meet is not installed instead of half-wiring chat', function () {
+test('meet:wire refuses when Meet is not installed instead of half-wiring chat', function (): void {
     Process::fake(meetWireFakes(['*get deployment meet-livekit*' => Process::result(output: '')]));
 
     $this->artisan('meet:wire local --tool=chat --no-interaction')
@@ -36,7 +36,7 @@ test('meet:wire refuses when Meet is not installed instead of half-wiring chat',
         ->expectsOutputToContain('Meet is not installed');
 });
 
-test('meet:wire refuses when Team Chat is not installed', function () {
+test('meet:wire refuses when Team Chat is not installed', function (): void {
     Process::fake(meetWireFakes(['*get deployment chat-synapse*' => Process::result(output: '')]));
 
     $this->artisan('meet:wire local --tool=chat --no-interaction')
@@ -44,7 +44,7 @@ test('meet:wire refuses when Team Chat is not installed', function () {
         ->expectsOutputToContain('is not installed on this cluster');
 });
 
-test('meet:wire rejects a tool that cannot be wired to Meet', function () {
+test('meet:wire rejects a tool that cannot be wired to Meet', function (): void {
     Process::fake(meetWireFakes());
 
     $this->artisan('meet:wire local --tool=notes --no-interaction')
@@ -52,7 +52,7 @@ test('meet:wire rejects a tool that cannot be wired to Meet', function () {
         ->expectsOutputToContain('cannot be wired to Meet');
 });
 
-test('meet:wire demands --tool by name when it cannot prompt', function () {
+test('meet:wire demands --tool by name when it cannot prompt', function (): void {
     // Every other wire command does this; a silent default would pick chat and
     // become wrong the moment a second tool is wireable.
     Process::fake(meetWireFakes());
@@ -60,7 +60,7 @@ test('meet:wire demands --tool by name when it cannot prompt', function () {
     $this->artisan('meet:wire local --no-interaction')->run();
 })->throws(MissingFlagException::class, 'Missing required --tool');
 
-test('meet:wire deploys the bridge and points Synapse at it', function () {
+test('meet:wire deploys the bridge and points Synapse at it', function (): void {
     Process::fake(meetWireFakes());
 
     $this->artisan('meet:wire local --tool=chat --no-interaction')
@@ -74,7 +74,7 @@ test('meet:wire deploys the bridge and points Synapse at it', function () {
     Process::assertRan(fn ($job) => str_contains($job->command, 'rollout restart deployment/chat-synapse'));
 });
 
-test('meet:unwire is a no-op when chat was never wired', function () {
+test('meet:unwire is a no-op when chat was never wired', function (): void {
     Process::fake(meetWireFakes());
 
     $this->artisan('meet:unwire local --tool=chat --no-interaction')
@@ -82,7 +82,7 @@ test('meet:unwire is a no-op when chat was never wired', function () {
         ->expectsOutputToContain('not wired to Meet');
 });
 
-test('meet:unwire removes the bridge and revokes the key', function () {
+test('meet:unwire removes the bridge and revokes the key', function (): void {
     $registry = json_encode([
         '_system' => ['key' => 'LK_system', 'secret' => 's1', 'roomPrefix' => 'system-', 'webhookUrl' => null],
         'chat' => ['key' => 'LK_chat', 'secret' => 's2', 'roomPrefix' => 'matrix-', 'webhookUrl' => null],

@@ -46,7 +46,7 @@ function fakeResumeInitProcess(?string $s3Host, ?string &$appliedManifest, int $
     });
 }
 
-test('resume:init deploys Reactive Resume and applies manifests successfully', function () {
+test('resume:init deploys Reactive Resume and applies manifests successfully', function (): void {
     $appliedManifest = null;
     fakeResumeInitProcess('files.example.com', $appliedManifest);
 
@@ -60,7 +60,7 @@ test('resume:init deploys Reactive Resume and applies manifests successfully', f
         ->and($appliedManifest)->toContain('amruthpillai/reactive-resume');
 });
 
-test('resume:init returns a failing exit code when kubectl apply fails', function () {
+test('resume:init returns a failing exit code when kubectl apply fails', function (): void {
     $appliedManifest = null;
     fakeResumeInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 

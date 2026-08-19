@@ -175,7 +175,7 @@ class MailUnwireCommand extends Command
             $pairs = implode(' ', array_map(fn (string $key) => $key.'-', $unset));
 
             $ok = false;
-            $this->withSpin("Unwiring mail from {$tool->getLabel()}...", function () use ($kubectl, $schema, $pairs, &$ok) {
+            $this->withSpin("Unwiring mail from {$tool->getLabel()}...", function () use ($kubectl, $schema, $pairs, &$ok): void {
                 $ok = Process::run("{$kubectl} set env deployment/{$schema['deployment']} -n {$schema['namespace']} {$pairs}")->successful();
                 if ($ok) {
                     Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
@@ -218,7 +218,7 @@ class MailUnwireCommand extends Command
         $ns = $schema['namespace'];
         $ok = true;
 
-        $this->withSpin('Unwiring Matrix (Synapse) mail from homeserver.yaml...', function () use ($kubectl, $ns, &$ok) {
+        $this->withSpin('Unwiring Matrix (Synapse) mail from homeserver.yaml...', function () use ($kubectl, $ns, &$ok): void {
             $oidc = $this->readChatWiredOidc($kubectl, $ns);
 
             $raw = Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output();

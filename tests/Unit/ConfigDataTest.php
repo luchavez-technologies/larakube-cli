@@ -18,6 +18,7 @@ use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Tests\TestCase;
 
 class ConfigDataTest extends TestCase
@@ -36,15 +37,15 @@ class ConfigDataTest extends TestCase
         $config = ConfigData::from($data);
 
         // Single Enums
-        $this->assertEquals(ServerVariation::FPM_NGINX, $config->serverVariation);
-        $this->assertEquals(FrontendStack::REACT, $config->frontend);
-        $this->assertEquals(PhpVersion::PHP_8_5, $config->phpVersion);
-        $this->assertEquals(OperatingSystem::ALPINE, $config->os);
-        $this->assertEquals(DeploymentStrategy::SINGLE_NODE, $config->strategy);
+        expect($config->serverVariation)->toEqual(ServerVariation::FPM_NGINX);
+        expect($config->frontend)->toEqual(FrontendStack::REACT)
+            ->and($config->phpVersion)->toEqual(PhpVersion::PHP_8_5)
+            ->and($config->os)->toEqual(OperatingSystem::ALPINE)
+            ->and($config->strategy)->toEqual(DeploymentStrategy::SINGLE_NODE);
 
         // Array of Enums
-        $this->assertIsArray($config->blueprints);
-        $this->assertEquals(Blueprint::FILAMENT, $config->blueprints[0]);
+        expect($config->blueprints)->toBeArray();
+        expect($config->blueprints[0])->toEqual(Blueprint::FILAMENT);
     }
 
     public function test_it_handles_multiple_enum_values_in_arrays()
@@ -57,31 +58,27 @@ class ConfigDataTest extends TestCase
 
         $config = ConfigData::from($data);
 
-        $this->assertCount(2, $config->databases);
-        $this->assertEquals(DatabaseDriver::MYSQL, $config->databases[0]);
-        $this->assertEquals(DatabaseDriver::POSTGRESQL, $config->databases[1]);
-
-        $this->assertCount(1, $config->cacheDrivers);
-        $this->assertEquals(CacheDriver::REDIS, $config->cacheDrivers[0]);
-
-        $this->assertCount(2, $config->features);
-        $this->assertEquals(LaravelFeature::HORIZON, $config->features[0]);
-        $this->assertEquals(LaravelFeature::REVERB, $config->features[1]);
+        expect($config->databases)->toHaveCount(2)
+            ->toMatchArray([0 => DatabaseDriver::MYSQL, 1 => DatabaseDriver::POSTGRESQL])
+            ->and($config->cacheDrivers)->toHaveCount(1)
+            ->and($config->cacheDrivers[0])->toEqual(CacheDriver::REDIS)
+            ->and($config->features)->toHaveCount(2)
+            ->toMatchArray([0 => LaravelFeature::HORIZON, 1 => LaravelFeature::REVERB]);
     }
 
     public function test_it_maintains_default_values()
     {
         $config = ConfigData::from([]);
 
-        $this->assertEquals(DeploymentStrategy::SINGLE_NODE, $config->strategy);
-        $this->assertSame(['local', 'production'], $config->getEnvironments());
-        $this->assertInstanceOf(EnvironmentData::class, $config->getEnvironment('local'));
-        $this->assertInstanceOf(EnvironmentData::class, $config->getEnvironment('production'));
-        $this->assertEquals(IngressController::TRAEFIK, $config->getIngress('local'));
-        $this->assertEquals(IngressController::TRAEFIK, $config->getIngress('production'));
-        $this->assertTrue($config->githubActions);
-        $this->assertFalse($config->isSystem);
-        $this->assertFalse($config->isScaffolding);
+        expect($config->strategy)->toEqual(DeploymentStrategy::SINGLE_NODE)
+            ->and($config->getEnvironments())->toBe(['local', 'production'])
+            ->and($config->getEnvironment('local'))->toBeInstanceOf(EnvironmentData::class)
+            ->and($config->getEnvironment('production'))->toBeInstanceOf(EnvironmentData::class)
+            ->and($config->getIngress('local'))->toEqual(IngressController::TRAEFIK)
+            ->and($config->getIngress('production'))->toEqual(IngressController::TRAEFIK)
+            ->and($config->githubActions)->toBeTrue()
+            ->and($config->isSystem)->toBeFalse()
+            ->and($config->isScaffolding)->toBeFalse();
     }
 
     public function test_environments_are_promoted_from_json_array_shape()
@@ -96,11 +93,11 @@ class ConfigDataTest extends TestCase
             ],
         ]);
 
-        $this->assertInstanceOf(EnvironmentData::class, $config->getEnvironment('production'));
-        $this->assertSame(['postgres', 'redis'], $config->getManaged('production'));
-        $this->assertSame([], $config->getManaged('local'));
-        $this->assertSame('example.com', $config->getEnvironment('production')->hosts['web']);
-        $this->assertSame('https://example.com', $config->getAppUrl('production'));
+        expect($config->getEnvironment('production'))->toBeInstanceOf(EnvironmentData::class)
+            ->and($config->getManaged('production'))->toBe(['postgres', 'redis'])
+            ->and($config->getManaged('local'))->toBeEmpty()
+            ->and($config->getEnvironment('production')->hosts['web'])->toBe('example.com')
+            ->and($config->getAppUrl('production'))->toBe('https://example.com');
     }
 
     public function test_cloud_envs_deploy_production_safe_app_env_and_debug()
@@ -117,17 +114,15 @@ class ConfigDataTest extends TestCase
         // Cloud envs report APP_ENV=production (hardcoded — Laravel keys its
         // production safeguards on exactly "production") + debug OFF.
         $prod = $config->getAllPublicEnvironmentVariables('production');
-        $this->assertSame('production', $prod['APP_ENV']);
-        $this->assertSame('false', $prod['APP_DEBUG']);
+        expect($prod)->toMatchArray(['APP_ENV' => 'production', 'APP_DEBUG' => 'false']);
 
         // Even a non-production cloud env (staging) reports "production".
         $staging = $config->getAllPublicEnvironmentVariables('staging');
-        $this->assertSame('production', $staging['APP_ENV']);
-        $this->assertSame('false', $staging['APP_DEBUG']);
+        expect($staging)->toMatchArray(['APP_ENV' => 'production', 'APP_DEBUG' => 'false']);
 
         // Local is left alone (keeps Laravel's own APP_ENV=local / APP_DEBUG=true).
         $local = $config->getAllPublicEnvironmentVariables('local');
-        $this->assertArrayNotHasKey('APP_DEBUG', $local);
+        expect($local)->not->toHaveKey('APP_DEBUG');
     }
 
     public function test_features_filter_by_env_with_enum_defaults()
@@ -138,16 +133,13 @@ class ConfigDataTest extends TestCase
         ]);
 
         $local = $config->getFeatures('local');
-        $this->assertContains(LaravelFeature::BOOST, $local);
-        $this->assertContains(LaravelFeature::MCP, $local);
-        $this->assertContains(LaravelFeature::HORIZON, $local);
-        $this->assertNotContains(LaravelFeature::SSR, $local);
+        expect($local)->toContain(LaravelFeature::BOOST)
+            ->toContain(LaravelFeature::MCP)
+            ->toContain(LaravelFeature::HORIZON)->not->toContain(LaravelFeature::SSR);
 
         $prod = $config->getFeatures('production');
-        $this->assertContains(LaravelFeature::HORIZON, $prod);
-        $this->assertContains(LaravelFeature::SSR, $prod);
-        $this->assertNotContains(LaravelFeature::BOOST, $prod);
-        $this->assertNotContains(LaravelFeature::MCP, $prod);
+        expect($prod)->toContain(LaravelFeature::HORIZON)
+            ->toContain(LaravelFeature::SSR)->not->toContain(LaravelFeature::BOOST)->not->toContain(LaravelFeature::MCP);
     }
 
     public function test_environment_overrides_can_add_or_exclude_features()
@@ -164,16 +156,16 @@ class ConfigDataTest extends TestCase
             ],
         ]);
 
-        $this->assertNotContains(LaravelFeature::HORIZON, $config->getFeatures('local'));
-        $this->assertContains(LaravelFeature::BOOST, $config->getFeatures('local'));
-        $this->assertContains(LaravelFeature::HORIZON, $config->getFeatures('production'));
-        $this->assertContains(LaravelFeature::BOOST, $config->getFeatures('production'));
+        expect($config->getFeatures('local'))->not->toContain(LaravelFeature::HORIZON)
+            ->and($config->getFeatures('local'))->toContain(LaravelFeature::BOOST)
+            ->and($config->getFeatures('production'))->toContain(LaravelFeature::HORIZON)
+            ->and($config->getFeatures('production'))->toContain(LaravelFeature::BOOST);
     }
 
     public function test_save_to_file_omits_transient_fields()
     {
-        $tmp = sys_get_temp_dir().'/larakube-save-'.uniqid();
-        mkdir($tmp, 0755, true);
+        $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+        $tmp = $temporaryDirectory->path();
 
         try {
             $config = ConfigData::from(['name' => 'demo', 'isScaffolding' => true]);
@@ -183,16 +175,16 @@ class ConfigDataTest extends TestCase
             $json = json_decode(file_get_contents("{$tmp}/.larakube.json"), true);
 
             // Transient/machine-specific fields are not persisted...
-            $this->assertArrayNotHasKey('isScaffolding', $json);
-            $this->assertArrayNotHasKey('path', $json);
+            expect($json)->not->toHaveKey('isScaffolding');
+            expect($json)->not->toHaveKey('path');
             // ...but real fields are.
-            $this->assertSame('demo', $json['name']);
+            expect($json['name'])->toBe('demo');
 
             // And it still round-trips with sane defaults.
             $reloaded = ConfigData::from($json);
-            $this->assertFalse($reloaded->isScaffolding());
+            expect($reloaded->isScaffolding())->toBeFalse();
         } finally {
-            exec('rm -rf '.escapeshellarg($tmp));
+            $temporaryDirectory->delete();
         }
     }
 
@@ -200,26 +192,26 @@ class ConfigDataTest extends TestCase
     {
         $config = ConfigData::from([]);
 
-        $this->assertFalse($config->hasEnvironment('staging'));
+        expect($config->hasEnvironment('staging'))->toBeFalse();
 
         $config->addEnvironment('staging');
-        $this->assertTrue($config->hasEnvironment('staging'));
-        $this->assertInstanceOf(EnvironmentData::class, $config->getEnvironment('staging'));
+        expect($config->hasEnvironment('staging'))->toBeTrue()
+            ->and($config->getEnvironment('staging'))->toBeInstanceOf(EnvironmentData::class);
 
         $config->getEnvironment('staging')->managed = ['postgres'];
         $config->addEnvironment('staging');
-        $this->assertSame(['postgres'], $config->getManaged('staging'));
+        expect($config->getManaged('staging'))->toBe(['postgres']);
     }
 
     public function test_remove_environment_drops_it_from_the_map()
     {
         $config = ConfigData::from([]);
         $config->addEnvironment('staging');
-        $this->assertTrue($config->hasEnvironment('staging'));
+        expect($config->hasEnvironment('staging'))->toBeTrue();
 
         $config->removeEnvironment('staging');
-        $this->assertFalse($config->hasEnvironment('staging'));
-        $this->assertNotContains('staging', $config->getEnvironments());
+        expect($config->hasEnvironment('staging'))->toBeFalse()
+            ->and($config->getEnvironments())->not->toContain('staging');
     }
 
     public function test_set_host_writes_per_env_and_per_service()
@@ -229,10 +221,10 @@ class ConfigDataTest extends TestCase
         $config->setHost('staging', 'web', 'staging.example.com');
         $config->setHost('staging', 'reverb', 'ws-stg.example.com');
 
-        $this->assertSame('staging.example.com', $config->getHost('staging', 'web'));
-        $this->assertSame('ws-stg.example.com', $config->getHost('staging', 'reverb'));
-        $this->assertNull($config->getHost('staging', 'mailpit'));
-        $this->assertNull($config->getHost('production', 'web'));
+        expect($config->getHost('staging', 'web'))->toBe('staging.example.com')
+            ->and($config->getHost('staging', 'reverb'))->toBe('ws-stg.example.com')
+            ->and($config->getHost('staging', 'mailpit'))->toBeNull()
+            ->and($config->getHost('production', 'web'))->toBeNull();
     }
 
     public function test_get_service_host_honours_explicit_per_service_override()
@@ -250,9 +242,9 @@ class ConfigDataTest extends TestCase
             ],
         ]);
 
-        $this->assertSame('ws.example.com', $config->getServiceHost('reverb', 'production'));
+        expect($config->getServiceHost('reverb', 'production'))->toBe('ws.example.com');
         // Services without explicit overrides still derive from the web host.
-        $this->assertSame('vite-example.com', $config->getServiceHost('vite', 'production'));
+        expect($config->getServiceHost('vite', 'production'))->toBe('vite-example.com');
     }
 
     public function test_get_service_host_works_for_any_non_local_env_not_just_production()
@@ -267,10 +259,10 @@ class ConfigDataTest extends TestCase
             ],
         ]);
 
-        $this->assertSame('vite-qa.example.com', $config->getServiceHost('vite', 'qa'));
-        $this->assertSame('vite-example.com', $config->getServiceHost('vite', 'main'));
-        $this->assertSame('https://qa.example.com', $config->getAppUrl('qa'));
-        $this->assertSame('https://example.com', $config->getAppUrl('main'));
+        expect($config->getServiceHost('vite', 'qa'))->toBe('vite-qa.example.com')
+            ->and($config->getServiceHost('vite', 'main'))->toBe('vite-example.com')
+            ->and($config->getAppUrl('qa'))->toBe('https://qa.example.com')
+            ->and($config->getAppUrl('main'))->toBe('https://example.com');
     }
 
     public function test_get_shared_service_host_honours_a_larakube_json_override()
@@ -288,10 +280,7 @@ class ConfigDataTest extends TestCase
             ],
         ]);
 
-        $this->assertSame(
-            'metrics.example.com',
-            $config->getSharedServiceHost(SharedClusterService::GRAFANA, 'production'),
-        );
+        expect($config->getSharedServiceHost(SharedClusterService::GRAFANA, 'production'))->toBe('metrics.example.com');
     }
 
     public function test_get_shared_service_host_derives_from_web_host_on_cloud_without_override()
@@ -305,10 +294,7 @@ class ConfigDataTest extends TestCase
 
         // Name-less global host, derived off the web host like other services —
         // no project-name segment, unlike getServiceHost().
-        $this->assertSame(
-            'grafana-app.example.com',
-            $config->getSharedServiceHost(SharedClusterService::GRAFANA, 'production'),
-        );
+        expect($config->getSharedServiceHost(SharedClusterService::GRAFANA, 'production'))->toBe('grafana-app.example.com');
     }
 
     public function test_get_shared_service_host_uses_global_tld_locally_without_project_name()
@@ -320,8 +306,7 @@ class ConfigDataTest extends TestCase
         $globalTld = GlobalConfigData::load()->getLocalTld();
         $host = $config->getSharedServiceHost(SharedClusterService::GRAFANA, 'local');
 
-        $this->assertSame("grafana.{$globalTld}", $host);
-        $this->assertStringNotContainsString('demo', $host);
+        expect($host)->toBe("grafana.{$globalTld}")->not->toContain('demo');
     }
 
     public function test_get_manageable_services_lists_all_externalizable_backing_services()
@@ -336,10 +321,8 @@ class ConfigDataTest extends TestCase
         $services = $config->getManageableServices();
 
         // DB, cache, search, and object storage are all offload-able.
-        $this->assertArrayHasKey('postgres', $services);
-        $this->assertArrayHasKey('redis', $services);
-        $this->assertArrayHasKey('meilisearch', $services);
-        $this->assertArrayHasKey('minio', $services);
+        expect($services)->toHaveKey('postgres');
+        expect($services)->toHaveKeys(['redis', 'meilisearch', 'minio']);
     }
 
     public function test_get_manageable_services_excludes_drivers_with_no_network_service()
@@ -352,18 +335,18 @@ class ConfigDataTest extends TestCase
             'scoutDriver' => 'database',
         ]);
 
-        $this->assertSame([], $config->getManageableServices());
+        expect($config->getManageableServices())->toBeEmpty();
     }
 
     public function test_set_host_creates_the_environment_and_writes_into_the_environment_map()
     {
         $config = ConfigData::from(['environments' => ['local' => []]]);
-        $this->assertFalse($config->hasEnvironment('production'));
+        expect($config->hasEnvironment('production'))->toBeFalse();
 
         $config->setHost('production', 'web', 'app.example.com');
 
-        $this->assertSame('app.example.com', $config->getWebHost('production'));
-        $this->assertSame('app.example.com', $config->getEnvironment('production')->hosts['web']);
+        expect($config->getWebHost('production'))->toBe('app.example.com')
+            ->and($config->getEnvironment('production')->hosts['web'])->toBe('app.example.com');
     }
 
     public function test_get_web_hosts_returns_just_the_primary_when_no_additional_hosts_are_set()
@@ -373,7 +356,7 @@ class ConfigDataTest extends TestCase
             'environments' => ['production' => ['hosts' => ['web' => 'app.example.com']]],
         ]);
 
-        $this->assertSame(['app.example.com'], $config->getWebHosts('production'));
+        expect($config->getWebHosts('production'))->toBe(['app.example.com']);
     }
 
     public function test_get_web_hosts_lists_the_primary_first_then_additional_hosts_in_order()
@@ -388,10 +371,7 @@ class ConfigDataTest extends TestCase
             ],
         ]);
 
-        $this->assertSame(
-            ['app.example.com', 'admin.example.com', 'mybrand.io'],
-            $config->getWebHosts('production'),
-        );
+        expect($config->getWebHosts('production'))->toBe(['app.example.com', 'admin.example.com', 'mybrand.io']);
     }
 
     public function test_get_web_hosts_dedupes_an_additional_host_that_matches_the_primary()
@@ -406,18 +386,18 @@ class ConfigDataTest extends TestCase
             ],
         ]);
 
-        $this->assertSame(['app.example.com', 'admin.example.com'], $config->getWebHosts('production'));
+        expect($config->getWebHosts('production'))->toBe(['app.example.com', 'admin.example.com']);
     }
 
     public function test_add_additional_web_host_is_idempotent_and_creates_the_environment_if_missing()
     {
         $config = ConfigData::from(['name' => 'myapp', 'environments' => ['local' => []]]);
-        $this->assertFalse($config->hasEnvironment('production'));
+        expect($config->hasEnvironment('production'))->toBeFalse();
 
         $config->addAdditionalWebHost('production', 'admin.example.com');
         $config->addAdditionalWebHost('production', 'admin.example.com');
 
-        $this->assertSame(['admin.example.com'], $config->getEnvironment('production')->additionalWebHosts);
+        expect($config->getEnvironment('production')->additionalWebHosts)->toBe(['admin.example.com']);
     }
 
     public function test_remove_additional_web_host_is_a_no_op_when_the_environment_or_host_is_missing()
@@ -426,15 +406,15 @@ class ConfigDataTest extends TestCase
 
         // No exception, no side effect, for an environment that doesn't exist.
         $config->removeAdditionalWebHost('production', 'admin.example.com');
-        $this->assertFalse($config->hasEnvironment('production'));
+        expect($config->hasEnvironment('production'))->toBeFalse();
 
         $config->addAdditionalWebHost('production', 'admin.example.com');
         $config->removeAdditionalWebHost('production', 'someone-else.example.com');
 
-        $this->assertSame(['admin.example.com'], $config->getEnvironment('production')->additionalWebHosts);
+        expect($config->getEnvironment('production')->additionalWebHosts)->toBe(['admin.example.com']);
 
         $config->removeAdditionalWebHost('production', 'admin.example.com');
-        $this->assertSame([], $config->getEnvironment('production')->additionalWebHosts);
+        expect($config->getEnvironment('production')->additionalWebHosts)->toBeEmpty();
     }
 
     public function test_each_environment_can_choose_its_own_ingress_controller()
@@ -448,80 +428,78 @@ class ConfigDataTest extends TestCase
             ],
         ]);
 
-        $this->assertEquals(IngressController::TRAEFIK, $config->getIngress('local'));
-        $this->assertEquals(IngressController::TRAEFIK, $config->getIngress('staging'));
-        $this->assertEquals(IngressController::NGINX, $config->getIngress('qa'));
-        $this->assertEquals(IngressController::AWS_ALB, $config->getIngress('production'));
+        expect($config->getIngress('local'))->toEqual(IngressController::TRAEFIK)
+            ->and($config->getIngress('staging'))->toEqual(IngressController::TRAEFIK)
+            ->and($config->getIngress('qa'))->toEqual(IngressController::NGINX)
+            ->and($config->getIngress('production'))->toEqual(IngressController::AWS_ALB);
     }
 
     public function test_get_ingress_defaults_to_traefik_for_unconfigured_environments()
     {
         $config = ConfigData::from(['environments' => ['local' => [], 'production' => []]]);
 
-        $this->assertEquals(IngressController::TRAEFIK, $config->getIngress('local'));
-        $this->assertEquals(IngressController::TRAEFIK, $config->getIngress('production'));
+        expect($config->getIngress('local'))->toEqual(IngressController::TRAEFIK)
+            ->and($config->getIngress('production'))->toEqual(IngressController::TRAEFIK);
     }
 
     public function test_build_wait_for_command()
     {
         // 1. System projects skip external TCP checks but still return null without waitForWeb
         $config = ConfigData::from(['isSystem' => true]);
-        $this->assertNull($config->buildWaitForCommand([DatabaseDriver::MYSQL]));
+        expect($config->buildWaitForCommand([DatabaseDriver::MYSQL]))->toBeNull();
 
         // 2. System project WITH waitForWeb=true returns curl check (not TCP check)
         $command = $config->buildWaitForCommand([DatabaseDriver::MYSQL], waitForWeb: true);
-        $this->assertStringContainsString('curl -sf http://web/up', $command);
-        $this->assertStringNotContainsString('mysql', $command);
+        expect($command)->toContain('curl -sf http://web/up')->not->toContain('mysql');
 
         // 3. Normal project with MySQL returns nc command
         $config = ConfigData::from(['isSystem' => false]);
         $command = $config->buildWaitForCommand([DatabaseDriver::MYSQL]);
-        $this->assertStringContainsString('mysql 3306', $command);
+        expect($command)->toContain('mysql 3306');
 
         // 4. Normal project with MySQL + waitForWeb includes BOTH checks
         $command = $config->buildWaitForCommand([DatabaseDriver::MYSQL], waitForWeb: true);
-        $this->assertStringContainsString('curl -sf http://web/up', $command);
-        $this->assertStringContainsString('mysql 3306', $command);
+        expect($command)->toContain('curl -sf http://web/up')
+            ->toContain('mysql 3306');
 
         // 5. SQLite returns null (no external service)
-        $this->assertNull($config->buildWaitForCommand([DatabaseDriver::SQLITE]));
+        expect($config->buildWaitForCommand([DatabaseDriver::SQLITE]))->toBeNull();
 
         // 6. SQLite + waitForWeb returns only curl check
         $command = $config->buildWaitForCommand([DatabaseDriver::SQLITE], waitForWeb: true);
-        $this->assertStringContainsString('curl -sf http://web/up', $command);
-        $this->assertStringNotContainsString('sqlite', $command);
+        expect($command)->toContain('curl -sf http://web/up')->not->toContain('sqlite');
 
         // 7. Redis cache returns command on port 6379
         $command = $config->buildWaitForCommand([CacheDriver::REDIS]);
-        $this->assertStringContainsString('redis 6379', $command);
+        expect($command)->toContain('redis 6379');
 
         // 8. Memcached cache returns command on port 11211
         $command = $config->buildWaitForCommand([CacheDriver::MEMCACHED]);
-        $this->assertStringContainsString('memcached 11211', $command);
+        expect($command)->toContain('memcached 11211');
 
         // 9. Database cache returns null
-        $this->assertNull($config->buildWaitForCommand([CacheDriver::DATABASE]));
+        expect($config->buildWaitForCommand([CacheDriver::DATABASE]))->toBeNull();
 
         // 10. Meilisearch scout returns command on port 7700
         $command = $config->buildWaitForCommand([SearchDriver::MEILISEARCH]);
-        $this->assertStringContainsString('meilisearch 7700', $command);
+        expect($command)->toContain('meilisearch 7700');
 
         // 11. Typesense scout returns command on port 8108
         $command = $config->buildWaitForCommand([SearchDriver::TYPESENSE]);
-        $this->assertStringContainsString('typesense 8108', $command);
+        expect($command)->toContain('typesense 8108');
 
         // 12. Database scout returns null
-        $this->assertNull($config->buildWaitForCommand([SearchDriver::DATABASE]));
+        expect($config->buildWaitForCommand([SearchDriver::DATABASE]))->toBeNull();
 
         // 13. Storage drivers return command on correct ports
         $command = $config->buildWaitForCommand([StorageDriver::MINIO]);
-        $this->assertStringContainsString('minio 9000', $command);
+        expect($command)->toContain('minio 9000');
 
         $command = $config->buildWaitForCommand([StorageDriver::SEAWEEDFS]);
-        $this->assertStringContainsString('seaweedfs 8333', $command);
+        expect($command)->toContain('seaweedfs 8333');
 
         $command = $config->buildWaitForCommand([StorageDriver::GARAGE]);
-        $this->assertStringContainsString('garage 3900', $command);
+        expect($command)->toContain('garage 3900');
     }
 
     public function test_is_scaffolding_getter_works_as_method()
@@ -529,10 +507,10 @@ class ConfigDataTest extends TestCase
         // Ensures isScaffolding() can be called as a method (not just as a property).
         // This would have caught the BadMethodCallException thrown during `larakube new`.
         $config = ConfigData::from(['isScaffolding' => false]);
-        $this->assertFalse($config->isScaffolding());
+        expect($config->isScaffolding())->toBeFalse();
 
         $config->setIsScaffolding(true);
-        $this->assertTrue($config->isScaffolding());
+        expect($config->isScaffolding())->toBeTrue();
     }
 
     public function test_php_version_is_hidden_respects_scaffolding()
@@ -542,30 +520,27 @@ class ConfigDataTest extends TestCase
         $scaffolding = ConfigData::from(['isScaffolding' => true]);
 
         // Old versions should be hidden when scaffolding a new project (Laravel 13 requires 8.3+)
-        $this->assertTrue(PhpVersion::PHP_8_2->isHidden($scaffolding));
-        $this->assertTrue(PhpVersion::PHP_8_1->isHidden($scaffolding));
-        $this->assertTrue(PhpVersion::PHP_8_0->isHidden($scaffolding));
-        $this->assertTrue(PhpVersion::PHP_7_4->isHidden($scaffolding));
+        expect(PhpVersion::PHP_8_2->isHidden($scaffolding))->toBeTrue();
+        expect(PhpVersion::PHP_8_1->isHidden($scaffolding))->toBeTrue()
+            ->and(PhpVersion::PHP_8_0->isHidden($scaffolding))->toBeTrue()
+            ->and(PhpVersion::PHP_7_4->isHidden($scaffolding))->toBeTrue();
 
         // Modern versions must remain visible when scaffolding
-        $this->assertFalse(PhpVersion::PHP_8_5->isHidden($scaffolding));
-        $this->assertFalse(PhpVersion::PHP_8_4->isHidden($scaffolding));
-        $this->assertFalse(PhpVersion::PHP_8_3->isHidden($scaffolding));
+        expect(PhpVersion::PHP_8_5->isHidden($scaffolding))->toBeFalse();
+        expect(PhpVersion::PHP_8_4->isHidden($scaffolding))->toBeFalse()
+            ->and(PhpVersion::PHP_8_3->isHidden($scaffolding))->toBeFalse();
 
         // Without scaffolding, old versions are visible
         $existing = ConfigData::from(['isScaffolding' => false]);
-        $this->assertFalse(PhpVersion::PHP_8_2->isHidden($existing));
-        $this->assertFalse(PhpVersion::PHP_8_1->isHidden($existing));
+        expect(PhpVersion::PHP_8_2->isHidden($existing))->toBeFalse()
+            ->and(PhpVersion::PHP_8_1->isHidden($existing))->toBeFalse();
     }
 
     public function test_watch_paths_default_to_standard_laravel_dirs()
     {
         $config = ConfigData::from([]);
 
-        $this->assertSame(
-            ['app', 'bootstrap', 'config', 'database', 'public', 'resources', 'routes', 'composer.lock', '.env'],
-            $config->getWatchPaths(),
-        );
+        expect($config->getWatchPaths())->toBe(['app', 'bootstrap', 'config', 'database', 'public', 'resources', 'routes', 'composer.lock', '.env']);
     }
 
     public function test_watch_paths_can_be_overridden_via_blueprint()
@@ -574,39 +549,39 @@ class ConfigDataTest extends TestCase
             'watchPaths' => ['app', 'domain', 'modules'],
         ]);
 
-        $this->assertSame(['app', 'domain', 'modules'], $config->getWatchPaths());
+        expect($config->getWatchPaths())->toBe(['app', 'domain', 'modules']);
     }
 
     public function test_provision_test_db_defaults_to_false()
     {
         $config = ConfigData::from([]);
 
-        $this->assertFalse($config->getProvisionTestDb());
+        expect($config->getProvisionTestDb())->toBeFalse();
     }
 
     public function test_provision_test_db_can_be_enabled_via_blueprint()
     {
         $config = ConfigData::from(['provisionTestDb' => true]);
 
-        $this->assertTrue($config->getProvisionTestDb());
+        expect($config->getProvisionTestDb())->toBeTrue();
     }
 
     public function test_local_tld_defaults_to_global_when_project_has_no_override()
     {
         $config = ConfigData::from(['name' => 'demo']);
 
-        $this->assertFalse($config->hasLocalTld());
-        $this->assertSame('kube', $config->getLocalTld());
+        expect($config->hasLocalTld())->toBeFalse()
+            ->and($config->getLocalTld())->toBe('kube');
     }
 
     public function test_local_tld_override_wins_over_the_global_default()
     {
         $config = ConfigData::from(['name' => 'demo', 'localTld' => 'test']);
 
-        $this->assertTrue($config->hasLocalTld());
-        $this->assertSame('test', $config->getLocalTld());
-        $this->assertSame('https://demo.test', $config->getAppUrl('local'));
-        $this->assertSame('vite.demo.test', $config->getServiceHost('vite', 'local'));
+        expect($config->hasLocalTld())->toBeTrue()
+            ->and($config->getLocalTld())->toBe('test')
+            ->and($config->getAppUrl('local'))->toBe('https://demo.test')
+            ->and($config->getServiceHost('vite', 'local'))->toBe('vite.demo.test');
     }
 
     public function test_set_local_tld_normalizes_and_can_be_cleared()
@@ -614,11 +589,11 @@ class ConfigDataTest extends TestCase
         $config = ConfigData::from(['name' => 'demo']);
 
         $config->setLocalTld('.TEST');
-        $this->assertSame('test', $config->getLocalTld());
+        expect($config->getLocalTld())->toBe('test');
 
         $config->setLocalTld(null);
-        $this->assertFalse($config->hasLocalTld());
-        $this->assertSame('kube', $config->getLocalTld());
+        expect($config->hasLocalTld())->toBeFalse()
+            ->and($config->getLocalTld())->toBe('kube');
     }
 
     public function test_add_additional_extension_appends_uniquely()
@@ -629,7 +604,7 @@ class ConfigDataTest extends TestCase
         $config->addAdditionalExtension('gd');
         $config->addAdditionalExtension('imagick'); // duplicate — must not double up
 
-        $this->assertSame(['imagick', 'gd'], $config->getAdditionalExtensions());
+        expect($config->getAdditionalExtensions())->toBe(['imagick', 'gd']);
     }
 
     public function test_remove_additional_extension_drops_and_reindexes()
@@ -639,7 +614,7 @@ class ConfigDataTest extends TestCase
         $config->removeAdditionalExtension('gd');
         $config->removeAdditionalExtension('missing'); // no-op — must not error
 
-        $this->assertSame(['imagick', 'redis'], $config->getAdditionalExtensions());
+        expect($config->getAdditionalExtensions())->toBe(['imagick', 'redis']);
     }
 
     public function test_service_connection_variable_names_include_plex_backed_drivers()
@@ -664,10 +639,7 @@ class ConfigDataTest extends TestCase
             ],
         ]);
 
-        $this->assertContains('DB_HOST', $selfHosted->getServiceConnectionVariableNames('local'));
-        $this->assertSame(
-            $selfHosted->getServiceConnectionVariableNames('local'),
-            $plexBacked->getServiceConnectionVariableNames('local'),
-        );
+        expect($selfHosted->getServiceConnectionVariableNames('local'))->toContain('DB_HOST')
+            ->and($plexBacked->getServiceConnectionVariableNames('local'))->toBe($selfHosted->getServiceConnectionVariableNames('local'));
     }
 }

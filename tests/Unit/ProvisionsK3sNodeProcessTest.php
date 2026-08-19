@@ -24,7 +24,7 @@ function k3sNodeHelper(): object
     };
 }
 
-test('traefikInstalledOnContext reflects whether the traefik Deployment exists on that context', function () {
+test('traefikInstalledOnContext reflects whether the traefik Deployment exists on that context', function (): void {
     // Pinned to ~/.kube/config explicitly (see kubectlPinned()) so this never
     // silently follows a shell $KUBECONFIG pointed elsewhere.
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'larakube-1.2.3.4'";
