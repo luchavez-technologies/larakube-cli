@@ -128,6 +128,38 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
     expect($dnsRow['sync'])->toBe('N/A');
 });
 
+test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, not just the bare legacy name', function () {
+    // Regression guard: secrets:init's static KV-mirror sweep deliberately
+    // skips creating the bare-named ExternalSecret once a tool's dynamic
+    // '{secret}-db' one exists (secrets:wire's own, to avoid racing it) — so
+    // a properly secrets:wire'd tool only ever HAS the '-db' name. Checking
+    // just the bare name showed "unsynced" forever for every correctly
+    // rotated tool, right next to Rotation showing the opposite.
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'design', 'instance' => 'design-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'design.luchtech.dev'],
+            ])),
+        ),
+        '*get externalsecret design-secrets-design-luchtech-dev-db*' => Process::result(output: 'design-secrets-design-luchtech-dev-db  1m  True  SecretSynced'),
+        '*get externalsecret design-secrets-design-luchtech-dev *' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*port-forward*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Http::fake([
+        '*static-roles/*' => Http::response(['data' => ['db_name' => 'plex-postgres']], 200),
+    ]);
+
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0);
+    $designRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'design'))[0] ?? null;
+    expect($designRow['sync'])->toBe('synced');
+});
+
 test('tool:list --installed filters out uninstalled tools', function () {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(

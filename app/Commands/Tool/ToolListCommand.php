@@ -3,8 +3,8 @@
 namespace App\Commands\Tool;
 
 use App\Contracts\ClusterToolVendor;
-use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasOidcWiring;
+use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\UsesForwardAuth;
 use App\Enums\ClusterTool;
@@ -112,7 +112,7 @@ class ToolListCommand extends Command
         }
 
         // Readiness checks up front
-        $openBaoReady = collect($rows)->contains(fn ($r) => $r['installed'] && $r['vendor'] instanceof HasDbSecretRef)
+        $openBaoReady = collect($rows)->contains(fn ($r) => $r['installed'] && $r['vendor'] instanceof HasRotatableDatabasePassword)
             ? $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())
             : false;
 
@@ -152,11 +152,17 @@ class ToolListCommand extends Command
                 $r['sso'] = $wired ? 'wired' : 'unwired';
             }
 
-            // 3. Rotation (OpenBao DB static role)
-            $dbRole = ($vendor instanceof HasDbSecretRef && $vendor->dbSecretRef() !== null) ? ($toolEnum->commonsDatabases($instance)[0] ?? null) : null;
+            // 3. Rotation (OpenBao DB static role). HasRotatableDatabasePassword,
+            // not the broader HasDbSecretRef it extends — the latter can exist
+            // on a tool whose password isn't actually rotation-safe (e.g. baked
+            // into a composed connection string), which is exactly the
+            // distinction supportsDatabasePasswordRotation() enforces elsewhere.
+            // Using the wrong one here would show "Rotation" as available for a
+            // tool secrets:wire actually refuses to touch.
+            $dbRole = ($vendor instanceof HasRotatableDatabasePassword && $vendor->dbSecretRef() !== null) ? ($toolEnum->commonsDatabases($instance)[0] ?? null) : null;
             $r['db_role'] = $dbRole;
 
-            if (! ($vendor instanceof HasDbSecretRef) || $vendor->dbSecretRef() === null) {
+            if (! ($vendor instanceof HasRotatableDatabasePassword) || $vendor->dbSecretRef() === null) {
                 $r['rotation'] = 'N/A';
             } elseif (! $installed) {
                 $r['rotation'] = '—';
@@ -165,14 +171,25 @@ class ToolListCommand extends Command
                 $r['rotation'] = $this->rotationCell($openBaoReady, $wired);
             }
 
-            // 4. Secrets (OpenBao KV → ExternalSecret sync)
+            // 4. Secrets (OpenBao KV → ExternalSecret sync). Two different
+            // ExternalSecrets can carry this: the bare-named one secrets:init's
+            // static KV-mirror sweep maintains, or the dynamic '{secret}-db' one
+            // secrets:wire creates — and secrets:init deliberately skips the
+            // static one once the dynamic one exists (they'd otherwise race),
+            // so a tool that's actually been secrets:wire'd only ever has the
+            // '-db' name. Checking just the bare name meant this column showed
+            // "unsynced" forever for every properly-rotated tool, right next to
+            // Rotation showing the opposite — checking either name reflects
+            // "is some form of OpenBao sync active," which is what this column
+            // is actually meant to answer.
             $syncConfig = $toolEnum->openbaoSyncConfig($instance);
             if ($syncConfig === null) {
                 $r['sync'] = 'N/A';
             } elseif (! $installed) {
                 $r['sync'] = '—';
             } else {
-                $wired = trim(Process::run("{$kubectl} get externalsecret {$syncConfig['secret']} -n {$syncConfig['namespace']} --no-headers --ignore-not-found")->output()) !== '';
+                $staticWired = trim(Process::run("{$kubectl} get externalsecret {$syncConfig['secret']} -n {$syncConfig['namespace']} --no-headers --ignore-not-found")->output()) !== '';
+                $wired = $staticWired || trim(Process::run("{$kubectl} get externalsecret {$syncConfig['secret']}-db -n {$syncConfig['namespace']} --no-headers --ignore-not-found")->output()) !== '';
                 $r['sync'] = $wired ? 'synced' : 'unsynced';
             }
 
