@@ -254,12 +254,13 @@ BASH;
         }
 
         // Fetch remote config
-        $tmpRemoteConfig = tempnam(sys_get_temp_dir(), 'k3s_remote');
+        $remoteConfigTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmpRemoteConfig = $remoteConfigTemporaryDirectory->path().'/k3s-remote-config';
         Process::run("scp -i {$keyPath} -P {$port} {$user}@{$ip}:/etc/rancher/k3s/k3s.yaml {$tmpRemoteConfig}");
 
         if (! file_exists($tmpRemoteConfig) || filesize($tmpRemoteConfig) === 0) {
             $this->laraKubeError('Failed to fetch remote kubeconfig — k3s may not be fully ready yet. Re-run once it is.');
-            @unlink($tmpRemoteConfig);
+            $remoteConfigTemporaryDirectory->delete();
 
             return false;
         }
@@ -285,7 +286,7 @@ BASH;
             // file. Confirm the new context name actually made it in.
             if ($mergedContent === '' || ! str_contains($mergedContent, $contextName)) {
                 $this->laraKubeError("Failed to merge kubeconfig — '{$contextName}' is missing from the merged result. Manual intervention required.");
-                unlink($tmpRemoteConfig);
+                $remoteConfigTemporaryDirectory->delete();
 
                 return false;
             }
@@ -298,18 +299,18 @@ BASH;
             if (file_put_contents($staged, $mergedContent) === false || ! rename($staged, $localKubeConfig)) {
                 $this->laraKubeError("Failed to write the merged kubeconfig to {$localKubeConfig} — check file permissions/ownership.");
                 @unlink($staged);
-                unlink($tmpRemoteConfig);
+                $remoteConfigTemporaryDirectory->delete();
 
                 return false;
             }
         } elseif (! copy($tmpRemoteConfig, $localKubeConfig)) {
             $this->laraKubeError("Failed to write {$localKubeConfig} — check that ~/.kube is writable.");
-            unlink($tmpRemoteConfig);
+            $remoteConfigTemporaryDirectory->delete();
 
             return false;
         }
 
-        unlink($tmpRemoteConfig);
+        $remoteConfigTemporaryDirectory->delete();
 
         // Final read-back: confirm the context that's supposed to be there
         // actually is, catching any write-succeeded-but-wrong-content case the

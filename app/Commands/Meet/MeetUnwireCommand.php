@@ -14,6 +14,7 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Disconnect a consumer from the shared LiveKit SFU.
@@ -95,10 +96,11 @@ class MeetUnwireCommand extends Command
                         'jwtWired' => false,
                     ])->render();
 
-                $tmp = tempnam(sys_get_temp_dir(), 'meet_unwire');
+                $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+                $tmp = $temporaryDirectory->path().'/meet-unwire.yaml';
                 file_put_contents($tmp, $manifest);
                 Process::run("{$kubectl} apply -f {$tmp}");
-                @unlink($tmp);
+                $temporaryDirectory->delete();
             });
         }
 
@@ -130,14 +132,15 @@ class MeetUnwireCommand extends Command
 
             $homeserver = $this->renderSynapseCalling((string) base64_decode(trim($raw)), null);
 
-            $tmp = tempnam(sys_get_temp_dir(), 'synapse_cfg');
+            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+            $tmp = $temporaryDirectory->path().'/homeserver.yaml';
             file_put_contents($tmp, $homeserver);
             $result = Process::run(
                 "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
                 ."--from-file=homeserver.yaml={$tmp} "
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             $ok = $result->successful();
             if ($ok) {

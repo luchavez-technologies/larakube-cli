@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Spatie\LaravelData\Data;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ConfigData extends Data
 {
@@ -1873,12 +1874,13 @@ class ConfigData extends Data
     public function backupToCluster(string $namespace): bool
     {
         $json = $this->toJson(JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        $tmpFile = tempnam(sys_get_temp_dir(), 'larakube-cfg');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmpFile = $temporaryDirectory->path().'/larakube-cfg.json';
         file_put_contents($tmpFile, $json);
         $appName = $this->getName();
         $command = "kubectl create secret generic larakube-blueprint -n {$namespace} --from-file=.larakube.json={$tmpFile} --dry-run=client -o yaml | kubectl label -f - --local larakube.io/project={$appName} larakube.io/config=blueprint -o yaml | kubectl apply -f -";
         $result = Process::run($command)->successful();
-        @unlink($tmpFile);
+        $temporaryDirectory->delete();
 
         return $result;
     }

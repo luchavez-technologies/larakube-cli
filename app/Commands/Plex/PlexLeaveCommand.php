@@ -15,6 +15,7 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexLeaveCommand extends Command
 {
@@ -340,7 +341,8 @@ class PlexLeaveCommand extends Command
      */
     protected function restoreDatabaseToSelfHosted(string $namespace, string $ns, DatabaseDriver $driver, string $db): bool
     {
-        $dumpFile = tempnam(sys_get_temp_dir(), 'larakube_plex_leave_dump');
+        $dumpTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $dumpFile = $dumpTemporaryDirectory->path().'/dump.sql';
         $dumpCode = 0;
 
         $this->withSpin("Dumping tenant database '{$db}' from the Commons...", function () use ($ns, $driver, $db, $dumpFile, &$dumpCode) {
@@ -354,7 +356,7 @@ class PlexLeaveCommand extends Command
         });
 
         if ($dumpCode !== 0 || ! file_exists($dumpFile) || filesize($dumpFile) === 0) {
-            @unlink($dumpFile);
+            $dumpTemporaryDirectory->delete();
 
             return false;
         }
@@ -370,7 +372,7 @@ class PlexLeaveCommand extends Command
             return $restoreCode === 0;
         });
 
-        @unlink($dumpFile);
+        $dumpTemporaryDirectory->delete();
 
         return $restoreCode === 0;
     }
@@ -460,7 +462,8 @@ class PlexLeaveCommand extends Command
             return true; // non-relational engine — nothing to drop.
         }
 
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/drop.sql';
         file_put_contents($tmp, $sql);
 
         $service = $driver->value;
@@ -478,7 +481,7 @@ class PlexLeaveCommand extends Command
             return $code === 0;
         });
 
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if ($code !== 0) {
             $this->laraKubeError('Could not drop the tenant database/login from the Commons.');

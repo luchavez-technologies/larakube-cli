@@ -779,7 +779,8 @@ trait InteractsWithPlex
             return true;
         }
 
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_sql');
+        $sqlTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $sqlTemporaryDirectory->path().'/plex.sql';
         file_put_contents($tmp, $sql);
 
         $service = $driver->value;
@@ -794,7 +795,7 @@ trait InteractsWithPlex
             return $result->successful();
         });
 
-        @unlink($tmp);
+        $sqlTemporaryDirectory->delete();
 
         if (! $result->successful()) {
             $this->laraKubeError("Could not allocate the tenant database in the Commons {$driver->getLabel()}.");
@@ -863,7 +864,8 @@ trait InteractsWithPlex
         $client = DatabaseDriver::POSTGRESQL->commonsAdminClient();
         $service = DatabaseDriver::POSTGRESQL->value;
 
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_grant');
+        $grantTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $grantTemporaryDirectory->path().'/grant.sql';
         file_put_contents($tmp, 'ALTER ROLE "'.$role.'" CREATEDB;');
 
         $ok = false;
@@ -876,7 +878,7 @@ trait InteractsWithPlex
             return $ok;
         });
 
-        @unlink($tmp);
+        $grantTemporaryDirectory->delete();
 
         return $ok;
     }
@@ -1170,7 +1172,8 @@ trait InteractsWithPlex
     protected function saveRegistry(array $registry): void
     {
         $ns = $this->plexNamespace();
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_registry');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/registry.json';
         file_put_contents($tmp, (string) json_encode($registry, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         $kubectl = $this->plexKubectl();
@@ -1180,7 +1183,7 @@ trait InteractsWithPlex
             " --dry-run=client -o yaml | {$kubectl} apply -f -",
         );
 
-        @unlink($tmp);
+        $temporaryDirectory->delete();
     }
 
     /**

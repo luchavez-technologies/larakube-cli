@@ -6,6 +6,7 @@ use App\Traits\LaraKubeOutput;
 use Exception;
 use Illuminate\Support\Facades\Http;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class UpdateCommand extends Command
 {
@@ -133,9 +134,18 @@ class UpdateCommand extends Command
         $this->laraKubeInfo("Downloading $binaryName for $os ($arch)...");
 
         // A hardcoded /tmp path would let any local user race it with a
-        // symlink before `sudo mv` moves it into place — tempnam() picks an
-        // unpredictable name so there's nothing to pre-place.
-        $tempPath = (string) tempnam(sys_get_temp_dir(), 'larakube_update');
+        // symlink before `sudo mv` moves it into place. tempnam() used to
+        // defend against this by picking an OS-unpredictable name; a 0700
+        // directory (no group/other execute bit — no traversal, so nothing
+        // to symlink over) plus a cryptographically random name (not
+        // TemporaryDirectory's default mt_rand()+microtime(), which a local
+        // attacker could feasibly predict) gives the same guarantee.
+        $temporaryDirectory = (new TemporaryDirectory)
+            ->name(bin2hex(random_bytes(16)))
+            ->permission(0700)
+            ->deleteWhenDestroyed()
+            ->create();
+        $tempPath = $temporaryDirectory->path().'/larakube-update';
 
         try {
             $binaryContent = file_get_contents($downloadUrl);
@@ -154,6 +164,7 @@ class UpdateCommand extends Command
         // Atomic swap via sudo
         $installCmd = 'sudo mv '.escapeshellarg($tempPath).' /usr/local/bin/larakube && sudo chmod +x /usr/local/bin/larakube';
         passthru($installCmd, $exitCode);
+        $temporaryDirectory->delete();
 
         if ($exitCode !== 0) {
             $this->laraKubeError('Installation failed. Please check your permissions.');

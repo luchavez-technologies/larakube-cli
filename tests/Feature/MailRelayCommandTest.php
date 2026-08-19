@@ -174,13 +174,14 @@ test('mail:relay --remove reverts to MX and deletes the route', function (): voi
 // ---------------------------------------------------------------------------
 // Guard-injection unit tests — pure Process::fake() approach
 //
-// stalwartJmap() writes its JMAP payload to a temp file and pipes it via:
-//   < escapeshellarg($tmp)  →  < '/tmp/larakube_stalwart_Abc123'
+// stalwartJmap() writes its JMAP payload to a scratch file inside its own
+// Spatie\TemporaryDirectory and pipes it via:
+//   < escapeshellarg($tmp)  →  < '/tmp/{random}/stalwart-payload'
 //
 // Process::fake closures receive the PendingProcess as $process.
 // $process->command is the public string property for the full shell command.
-// The file still exists inside the closure because @unlink() runs only after
-// Process::run() returns — and the fake is fully synchronous.
+// The file still exists inside the closure because ->delete() runs only
+// after Process::run() returns — and the fake is fully synchronous.
 // We capture the path inside the single quotes (no surrounding quote chars)
 // so file_exists() sees the real path.
 // ---------------------------------------------------------------------------
@@ -196,8 +197,10 @@ function jmapPayloadFromProcess(mixed $process): ?array
         ? $process->command
         : implode(' ', (array) $process->command);
 
-    // Matches: < '/tmp/larakube_stalwart_Abc123'
-    if (preg_match("!< '([^']+larakube_stalwart[^']+)'!", $cmd, $m) && file_exists($m[1])) {
+    // Matches the stdin redirect on ANY exec'd command, not a specific
+    // temp-filename prefix. A non-JMAP exec's redirect falls through
+    // safely via the ?: null below.
+    if (preg_match("!< '([^']+)'!", $cmd, $m) && file_exists($m[1])) {
         return json_decode(file_get_contents($m[1]), true) ?: null;
     }
 

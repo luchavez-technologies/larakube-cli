@@ -13,6 +13,7 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\table;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SecretsMigrateCommand extends Command
 {
@@ -28,6 +29,8 @@ class SecretsMigrateCommand extends Command
         {--context=             : Target a specific kube-context}';
 
     protected $description = 'Migrate secrets from one engine to another (export → diff → import)';
+
+    private ?TemporaryDirectory $migrateTemporaryDirectory = null;
 
     public function handle(): int
     {
@@ -48,7 +51,14 @@ class SecretsMigrateCommand extends Command
         $environment = (string) $this->argument('environment');
 
         // ── 1. Export from source engine ──────────────────────────────────────
-        $exportFile = $keepOutput !== '' ? $keepOutput : tempnam(sys_get_temp_dir(), 'larakube_migrate_');
+        // Holds a full secrets export — 0700-protected when we own the temp
+        // file (never when --output points at a user-chosen path).
+        if ($keepOutput !== '') {
+            $exportFile = $keepOutput;
+        } else {
+            $this->migrateTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+            $exportFile = $this->migrateTemporaryDirectory->path().'/export.json';
+        }
 
         $this->laraKubeInfo("Step 1/3: Exporting secrets from {$from}...");
 
@@ -169,8 +179,8 @@ class SecretsMigrateCommand extends Command
 
     private function cleanupTempFile(string $file, string $keepOutput): void
     {
-        if ($keepOutput === '' && file_exists($file)) {
-            @unlink($file);
+        if ($keepOutput === '') {
+            $this->migrateTemporaryDirectory?->delete();
         }
     }
 }

@@ -22,6 +22,7 @@ use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Provision real infrastructure with OpenTofu, then hand off to the existing
@@ -663,7 +664,8 @@ class CloudCreateCommand extends Command
             copy($local, home_path('.kube/config.bak.'.time()));
         }
 
-        $tmp = tempnam(sys_get_temp_dir(), 'doks_kube');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/doks-kubeconfig';
         file_put_contents($tmp, $rawYaml);
 
         if (file_exists($local) && filesize($local) > 0) {
@@ -676,7 +678,7 @@ class CloudCreateCommand extends Command
         } else {
             copy($tmp, $local);
         }
-        @unlink($tmp);
+        $temporaryDirectory->delete();
     }
 
     // --- prompts ------------------------------------------------------------

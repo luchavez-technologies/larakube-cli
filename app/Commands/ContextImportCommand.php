@@ -7,6 +7,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ContextImportCommand extends Command
 {
@@ -15,6 +16,13 @@ class ContextImportCommand extends Command
     protected $signature = 'context:import {file : Path to the kubeconfig you were given (e.g. lloyd.kubeconfig)}';
 
     protected $description = 'Import a kubeconfig (from `cluster:grant`) into your ~/.kube/config and switch to it';
+
+    // alignContextToEnvironment() returns a bare path string (its return tuple
+    // is a public method contract), so the TemporaryDirectory holding that
+    // path must be kept alive on the command instance — a purely local
+    // variable would be garbage-collected (and its 0700 directory deleted)
+    // the moment the method returns, before the caller ever reads the file.
+    private ?TemporaryDirectory $importTemporaryDirectory = null;
 
     public function handle(): int
     {
@@ -115,11 +123,12 @@ class ContextImportCommand extends Command
             return null;   // already aligned (VPS), or no env-specific context
         }
 
-        $tmp = tempnam(sys_get_temp_dir(), 'lk_import_');
+        $this->importTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $this->importTemporaryDirectory->path().'/kubeconfig';
         copy($file, $tmp);
         $success = Process::run('kubectl config rename-context '.escapeshellarg($incoming).' '.escapeshellarg($target).' --kubeconfig='.escapeshellarg($tmp))->successful();
         if (! $success) {
-            @unlink($tmp);
+            $this->importTemporaryDirectory->delete();
 
             return null;
         }
@@ -130,8 +139,8 @@ class ContextImportCommand extends Command
     /** Remove the throwaway copy used for context-renaming (never the original). */
     protected function cleanupTemp(string $source, string $original): void
     {
-        if ($source !== $original && is_file($source)) {
-            @unlink($source);
+        if ($source !== $original) {
+            $this->importTemporaryDirectory?->delete();
         }
     }
 }

@@ -17,6 +17,7 @@ use Laravel\Prompts\Prompt;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexMigrateCommand extends Command
 {
@@ -257,13 +258,15 @@ class PlexMigrateCommand extends Command
             );
 
             $dumpFile = null;
+            $dumpTemporaryDirectory = null;
             $dumpCode = 0;
             $mirrorCode = 0;
             $mirrorOutput = [];
 
             try {
                 if ($driver !== null && ! $skipDbCopy) {
-                    $dumpFile = tempnam(sys_get_temp_dir(), 'larakube_plex_dump');
+                    $dumpTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+                    $dumpFile = $dumpTemporaryDirectory->path().'/dump.sql';
 
                     $this->withSpin('Dumping data from self-hosted database...', function () use ($selfHostedKubectl, $namespace, $driver, $dumpFile, &$dumpCode) {
                         $dumpCode = Process::run(
@@ -293,9 +296,7 @@ class PlexMigrateCommand extends Command
             }
 
             if ($driver !== null && ! $skipDbCopy && ($dumpCode !== 0 || ! file_exists($dumpFile) || filesize($dumpFile) === 0)) {
-                if ($dumpFile !== null) {
-                    @unlink($dumpFile);
-                }
+                $dumpTemporaryDirectory?->delete();
                 $this->laraKubeError("Dump from self-hosted {$driver->getLabel()} failed.");
 
                 return 1;
@@ -309,9 +310,7 @@ class PlexMigrateCommand extends Command
                 if ($this->mirrorFailedBecauseBucketMissing($mirrorOutput)) {
                     $this->laraKubeInfo("Self-hosted {$storage->getLabel()} has no bucket yet — nothing to migrate for storage, skipping.");
                 } else {
-                    if ($dumpFile !== null) {
-                        @unlink($dumpFile);
-                    }
+                    $dumpTemporaryDirectory?->delete();
                     $this->laraKubeError("Mirroring self-hosted {$storage->getLabel()} into the Commons failed.");
                     foreach (array_slice($mirrorOutput, -6) as $line) {
                         $this->laraKubeLine('    '.$line);
@@ -347,7 +346,7 @@ class PlexMigrateCommand extends Command
                     return $restoreCode === 0;
                 });
 
-                @unlink($dumpFile);
+                $dumpTemporaryDirectory?->delete();
 
                 if ($restoreCode !== 0) {
                     $this->laraKubeError("Restore into Commons {$driver->getLabel()} failed.");

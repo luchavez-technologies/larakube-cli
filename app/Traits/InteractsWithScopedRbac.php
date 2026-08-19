@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Mint per-app per-environment, namespace-scoped deploy credentials.
@@ -214,10 +215,11 @@ YAML;
      */
     public function ensureScopedRbac(string $adminContext, string $namespace, string $app, string $env): bool
     {
-        $file = tempnam(sys_get_temp_dir(), 'lk_rbac_');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $file = $temporaryDirectory->path().'/rbac.yaml';
         file_put_contents($file, $this->scopedRbacManifest($namespace, $app, $env));
         $result = Process::run($this->rbacKubectl($adminContext).' apply -f '.escapeshellarg($file));
-        @unlink($file);
+        $temporaryDirectory->delete();
 
         return $result->successful();
     }
@@ -238,10 +240,11 @@ YAML;
         $secret = escapeshellarg($secretName);
 
         // 1. Apply the bound-token Secret (admin).
-        $file = tempnam(sys_get_temp_dir(), 'lk_tok_');
+        $tokenTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $file = $tokenTemporaryDirectory->path().'/token-secret.yaml';
         file_put_contents($file, $this->tokenSecretManifest($namespace, $sa, $secretName));
         $applied = Process::run($ctx.' apply -f '.escapeshellarg($file));
-        @unlink($file);
+        $tokenTemporaryDirectory->delete();
         if (! $applied->successful()) {
             return null;
         }

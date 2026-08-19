@@ -419,9 +419,10 @@ class MonitorInitCommand extends Command
         // resource_path() resolves inside the phar when running from the
         // compiled binary — kubectl is a separate process and can't read
         // phar:// paths, so each file is copied out to a real tmp path first.
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $tmpFiles = [];
         foreach ($files as $file) {
-            $tmp = tempnam(sys_get_temp_dir(), 'lk_dash_');
+            $tmp = $temporaryDirectory->path().'/'.$file;
             copy("{$dir}/{$file}", $tmp);
             $tmpFiles[$file] = $tmp;
         }
@@ -437,9 +438,7 @@ class MonitorInitCommand extends Command
             fn () => Process::timeout(70)->run("{$kubectl} create configmap grafana-dashboards {$fromFiles} -n {$ns} --dry-run=client -o yaml | {$kubectl} apply -f - --request-timeout=60s")->successful(),
         );
 
-        foreach ($tmpFiles as $tmp) {
-            @unlink($tmp);
-        }
+        $temporaryDirectory->delete();
 
         return $result;
     }

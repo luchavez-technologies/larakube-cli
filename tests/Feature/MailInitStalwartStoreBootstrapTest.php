@@ -15,7 +15,12 @@ function stalwartStoreBootstrapJmapPayload(mixed $process): ?array
         ? $process->command
         : implode(' ', (array) $process->command);
 
-    if (preg_match("!< '([^']+larakube_stalwart[^']+)'!", $cmd, $m) && file_exists($m[1])) {
+    // Matches the stdin redirect on ANY exec'd command, not just a specific
+    // temp-filename prefix — stalwartJmap()'s scratch file lives in its own
+    // Spatie\TemporaryDirectory now, named for readability, not for this
+    // regex. A non-JMAP exec's redirect (e.g. a piped SQL dump) still falls
+    // through safely: json_decode() on non-JSON content returns null.
+    if (preg_match("!< '([^']+)'!", $cmd, $m) && file_exists($m[1])) {
         return json_decode(file_get_contents($m[1]), true) ?: null;
     }
 

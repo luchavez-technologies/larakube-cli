@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Enums\SecretsBackend;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Reusable primitive for pushing secrets into the secrets manager and syncing
@@ -158,10 +159,11 @@ trait SyncsClusterSecrets
         }
 
         $yaml = implode("\n", $lines);
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_openbao_sync_');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/openbao-sync.yaml';
         file_put_contents($tmp, $yaml);
         $ok = Process::run("{$kubectl} apply -f ".escapeshellarg($tmp))->successful();
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         // Apply ESO SecretStore & ExternalSecret CRDs if ESO is present
         $authName = "{$secretName}-openbao-auth";
@@ -176,10 +178,11 @@ trait SyncsClusterSecrets
             'hostAPI' => "http://openbao-backend.{$secretsNs}.svc.cluster.local:8200",
         ])->render();
 
-        $tmpEso = tempnam(sys_get_temp_dir(), 'larakube_eso_sync_');
+        $esoTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmpEso = $esoTemporaryDirectory->path().'/eso-sync.yaml';
         file_put_contents($tmpEso, $esoManifest);
         Process::run("{$kubectl} apply -f ".escapeshellarg($tmpEso));
-        @unlink($tmpEso);
+        $esoTemporaryDirectory->delete();
 
         return $ok;
     }

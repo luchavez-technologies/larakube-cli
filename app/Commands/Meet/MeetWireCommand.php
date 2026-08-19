@@ -14,6 +14,7 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Connect a consumer to the shared LiveKit SFU.
@@ -88,10 +89,11 @@ class MeetWireCommand extends Command
                 'livekitApiSecret' => $creds['secret'],
             ])->render();
 
-            $tmp = tempnam(sys_get_temp_dir(), 'meet_lkjwt');
+            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+            $tmp = $temporaryDirectory->path().'/meet-lkjwt.yaml';
             file_put_contents($tmp, $manifest);
             $result = Process::run("{$kubectl} apply -f {$tmp}");
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             return $result->successful();
         });
@@ -140,10 +142,11 @@ class MeetWireCommand extends Command
                     'jwtWired' => true,
                 ])->render();
 
-            $tmp = tempnam(sys_get_temp_dir(), 'meet_reapply');
+            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+            $tmp = $temporaryDirectory->path().'/meet-reapply.yaml';
             file_put_contents($tmp, $manifest);
             $result = Process::run("{$kubectl} apply -f {$tmp}");
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             return $result->successful();
         });
@@ -182,14 +185,15 @@ class MeetWireCommand extends Command
 
             $homeserver = $this->renderSynapseCalling((string) base64_decode(trim($raw)), $jwtUrl);
 
-            $tmp = tempnam(sys_get_temp_dir(), 'synapse_cfg');
+            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+            $tmp = $temporaryDirectory->path().'/homeserver.yaml';
             file_put_contents($tmp, $homeserver);
             $result = Process::run(
                 "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
                 ."--from-file=homeserver.yaml={$tmp} "
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             $ok = $result->successful();
             if ($ok) {

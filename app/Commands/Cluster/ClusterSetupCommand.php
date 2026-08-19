@@ -11,6 +11,7 @@ use App\Traits\PrunesKubeContext;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ClusterSetupCommand extends Command
 {
@@ -210,21 +211,39 @@ class ClusterSetupCommand extends Command
         chmod 644 "$FILE"
         SH;
 
+        // Both files below are read by a `sudo cp` — a hardcoded /tmp path
+        // would let any local user race it with a symlink before sudo reads
+        // it, installing attacker-controlled content at a system-owned
+        // destination. A 0700 directory (no group/other execute bit — no
+        // traversal, so nothing to symlink over) plus a cryptographically
+        // random name (not TemporaryDirectory's default
+        // mt_rand()+microtime(), which a local attacker could feasibly
+        // predict) closes that race.
         $scriptPath = '/usr/local/bin/larakube-rename-k3s-context.sh';
-        $tmpScript = tempnam(sys_get_temp_dir(), 'larakube_hook');
+        $temporaryDirectory = (new TemporaryDirectory)
+            ->name(bin2hex(random_bytes(16)))
+            ->permission(0700)
+            ->deleteWhenDestroyed()
+            ->create();
+        $tmpScript = $temporaryDirectory->path().'/rename-context.sh';
         file_put_contents($tmpScript, $script);
         passthru('sudo cp '.escapeshellarg($tmpScript).' '.escapeshellarg($scriptPath));
         passthru('sudo chmod 755 '.escapeshellarg($scriptPath));
-        @unlink($tmpScript);
+        $temporaryDirectory->delete();
 
         $unit = "[Service]\nExecStartPost={$scriptPath}\n";
         $dropInDir = '/etc/systemd/system/k3s.service.d';
         $dropInFile = $dropInDir.'/larakube-rename-context.conf';
-        $tmpUnit = tempnam(sys_get_temp_dir(), 'larakube_unit');
+        $unitTemporaryDirectory = (new TemporaryDirectory)
+            ->name(bin2hex(random_bytes(16)))
+            ->permission(0700)
+            ->deleteWhenDestroyed()
+            ->create();
+        $tmpUnit = $unitTemporaryDirectory->path().'/larakube-rename-context.conf';
         file_put_contents($tmpUnit, $unit);
         passthru('sudo mkdir -p '.escapeshellarg($dropInDir));
         passthru('sudo cp '.escapeshellarg($tmpUnit).' '.escapeshellarg($dropInFile));
-        @unlink($tmpUnit);
+        $unitTemporaryDirectory->delete();
 
         passthru('sudo systemctl daemon-reload');
 
@@ -253,7 +272,15 @@ class ClusterSetupCommand extends Command
         }
 
         $rule = "{$user} ALL=(root) NOPASSWD: /usr/local/bin/k3s ctr *\n";
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_sudoers');
+        // sudo cp reads this file — same symlink-race exposure as the hook
+        // script/systemd unit above, higher stakes (a sudoers entry). 0700 +
+        // cryptographically random name closes it.
+        $temporaryDirectory = (new TemporaryDirectory)
+            ->name(bin2hex(random_bytes(16)))
+            ->permission(0700)
+            ->deleteWhenDestroyed()
+            ->create();
+        $tmp = $temporaryDirectory->path().'/larakube-k3s-ctr';
         file_put_contents($tmp, $rule);
         chmod($tmp, 0440);
 
@@ -261,14 +288,14 @@ class ClusterSetupCommand extends Command
         // as a real sudoers file — a malformed /etc/sudoers.d entry can break sudo
         // entirely, so this check is not optional.
         if (! Process::run('visudo -c -f '.escapeshellarg($tmp))->successful()) {
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             return;
         }
 
         $installed = Process::run('sudo cp '.escapeshellarg($tmp).' /etc/sudoers.d/larakube-k3s-ctr')->successful()
             && Process::run('sudo chmod 440 /etc/sudoers.d/larakube-k3s-ctr')->successful();
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         // Best-effort per the docblock above — silent on failure rather than
         // an error, since sideload just falls back to prompting for a sudo
@@ -321,7 +348,8 @@ class ClusterSetupCommand extends Command
             @mkdir($kubeDir, 0755, true);
         }
 
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_k3s');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/k3s-kubeconfig';
         file_put_contents($tmp, $raw);
 
         // List the existing config first so its other contexts survive the merge;
@@ -329,7 +357,7 @@ class ClusterSetupCommand extends Command
         $kubeconfigEnv = file_exists($kubeConfig) ? $kubeConfig.':'.$tmp : $tmp;
         $merged = Process::run('KUBECONFIG='.escapeshellarg($kubeconfigEnv).' kubectl config view --flatten')->output();
 
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if ($merged === '') {
             $this->laraKubeWarn('Failed to merge the k3s kubeconfig automatically.');

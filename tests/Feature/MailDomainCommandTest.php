@@ -18,7 +18,11 @@ function mailDomainJmapPayload(mixed $process): ?array
         ? $process->command
         : implode(' ', (array) $process->command);
 
-    if (preg_match("!< '([^']+larakube_stalwart[^']+)'!", $cmd, $m) && file_exists($m[1])) {
+    // Matches the stdin redirect on ANY exec'd command, not a specific
+    // temp-filename prefix — stalwartJmap()'s scratch file lives in its own
+    // Spatie\TemporaryDirectory now. A non-JMAP exec's redirect falls
+    // through safely via the ?: null below.
+    if (preg_match("!< '([^']+)'!", $cmd, $m) && file_exists($m[1])) {
         return json_decode(file_get_contents($m[1]), true) ?: null;
     }
 

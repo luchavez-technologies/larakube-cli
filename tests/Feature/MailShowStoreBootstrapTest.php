@@ -14,11 +14,20 @@ test('mail:show detects a local wizard-skip install and shows "already configure
         ]),
         '*exec *' => function ($process) {
             $cmd = is_string($process->command) ? $process->command : implode(' ', (array) $process->command);
-            if (! preg_match("!< '([^']+larakube_stalwart[^']+)'!", $cmd, $m) || ! file_exists($m[1])) {
+            // Matches the stdin redirect on ANY exec'd command, not a specific
+            // temp-filename prefix — stalwartJmap()'s scratch file lives in its
+            // own Spatie\TemporaryDirectory now. A non-JMAP exec's redirect
+            // (e.g. a piped SQL dump) is filtered out by the $payload === null
+            // check below, since json_decode() on non-JSON content returns null.
+            if (! preg_match("!< '([^']+)'!", $cmd, $m) || ! file_exists($m[1])) {
                 return Process::result(output: 'success');
             }
 
             $payload = json_decode(file_get_contents($m[1]), true);
+            if ($payload === null) {
+                return Process::result(output: 'success');
+            }
+
             $method = $payload['methodCalls'][0][0] ?? '';
 
             $store = match ($method) {

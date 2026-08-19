@@ -35,6 +35,7 @@ use function Laravel\Prompts\info;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class UpCommand extends Command
 {
@@ -794,12 +795,23 @@ systemctl enable docker 2>/dev/null || true
 systemctl start docker 2>/dev/null || true
 BASH;
 
-        $tmpFile = tempnam(sys_get_temp_dir(), 'larakube_docker_install');
+        // A hardcoded /tmp path would let any local user race it with a
+        // symlink before `sudo bash` executes it. A 0700 directory (no
+        // group/other execute bit — no traversal, so nothing to symlink
+        // over) plus a cryptographically random name (not TemporaryDirectory's
+        // default mt_rand()+microtime(), which a local attacker could
+        // feasibly predict) closes that race.
+        $temporaryDirectory = (new TemporaryDirectory)
+            ->name(bin2hex(random_bytes(16)))
+            ->permission(0700)
+            ->deleteWhenDestroyed()
+            ->create();
+        $tmpFile = $temporaryDirectory->path().'/docker-install.sh';
         file_put_contents($tmpFile, $installScript);
 
         $code = 0;
         passthru('sudo bash '.escapeshellarg($tmpFile), $code);
-        @unlink($tmpFile);
+        $temporaryDirectory->delete();
 
         if ($code !== 0) {
             $this->laraKubeError('Docker installation failed. Please review the output above.');

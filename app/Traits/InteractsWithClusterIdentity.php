@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * A stable, per-cluster identifier, generated once and stored in the cluster.
@@ -59,14 +60,15 @@ trait InteractsWithClusterIdentity
             "  cluster-id: {$id}",
         ]);
 
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_cluster_id_');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/cluster-id.yaml';
         file_put_contents($tmp, $manifest);
 
         // create (not apply) so a concurrent writer can't silently overwrite an
         // ID another process just claimed — losing it would orphan every DNS
         // record already tagged with the old owner.
         $ok = Process::run("{$kubectl} create -f ".escapeshellarg($tmp).' 2>/dev/null')->successful();
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $ok) {
             // Lost the race (or the namespace is missing) — re-read.

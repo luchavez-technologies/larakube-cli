@@ -104,13 +104,14 @@ class FlowInitCommand extends Command
                         'GRANT windmill_user TO windmill;',
                         'GRANT windmill_admin TO windmill;',
                     ]);
-                    $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_windmill_roles');
+                    $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+                    $tmp = $temporaryDirectory->path().'/windmill-roles.sql';
                     file_put_contents($tmp, $sql);
                     Process::run(
                         $kubectl.' exec -i -n '.escapeshellarg($this->plexNamespace()).' deploy/'.$driver->value.' -- '
                         .'sh -c '.escapeshellarg($driver->commonsAdminClient()).' < '.escapeshellarg($tmp),
                     );
-                    @unlink($tmp);
+                    $temporaryDirectory->delete();
                 });
             }
         }

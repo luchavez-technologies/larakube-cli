@@ -18,6 +18,7 @@ use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MailUnwireCommand extends Command
 {
@@ -231,12 +232,13 @@ class MailUnwireCommand extends Command
 
             $homeserver = $this->renderSynapseConfig($rawYaml, null, $oidc);
 
-            $tmp = tempnam(sys_get_temp_dir(), 'synapse_cfg');
+            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+            $tmp = $temporaryDirectory->path().'/homeserver.yaml';
             file_put_contents($tmp, $homeserver);
             $result = Process::run(
                 "{$kubectl} create secret generic chat-synapse-config -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
             );
-            @unlink($tmp);
+            $temporaryDirectory->delete();
 
             $ok = $result->successful();
             if ($ok) {

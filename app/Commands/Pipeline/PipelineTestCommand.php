@@ -20,6 +20,7 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PipelineTestCommand extends Command
 {
@@ -146,7 +147,8 @@ class PipelineTestCommand extends Command
             "KUBECONFIG={$kubeconfig}",
         ]);
 
-        $secretsFile = tempnam(sys_get_temp_dir(), 'act_secrets');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $secretsFile = $temporaryDirectory->path().'/act-secrets';
         file_put_contents($secretsFile, $secretsContent);
 
         // 5. Build and execute act command
@@ -161,7 +163,7 @@ class PipelineTestCommand extends Command
         $this->laraKubeInfo("Executing local 'act' runner for job '{$job}'...");
         $exitCode = $this->runStreaming($actCmd);
 
-        @unlink($secretsFile);
+        $temporaryDirectory->delete();
 
         if ($exitCode === 0) {
             $this->laraKubeInfo('✅ Local act workflow completed successfully.');

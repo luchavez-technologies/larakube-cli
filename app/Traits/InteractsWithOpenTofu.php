@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Process;
 use function Laravel\Prompts\confirm;
 
 use RuntimeException;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Drives OpenTofu (or a Terraform fallback) for the `cloud:create` / `cloud:destroy`
@@ -113,9 +114,19 @@ trait InteractsWithOpenTofu
                 return false;
             }
             // A hardcoded /tmp path here would let any local user race it with a
-            // symlink before `sudo` executes it — tempnam() picks an
-            // unpredictable name so there's nothing to pre-place.
-            $scriptPath = (string) tempnam(sys_get_temp_dir(), 'larakube_opentofu_install');
+            // symlink before `sudo` executes it. tempnam() used to defend
+            // against this by picking an OS-unpredictable name; a 0700
+            // directory (no group/other execute bit — no traversal, so
+            // nothing to symlink over) plus a cryptographically random name
+            // (not TemporaryDirectory's default mt_rand()+microtime(), which
+            // a local attacker could feasibly predict) gives the same
+            // guarantee.
+            $temporaryDirectory = (new TemporaryDirectory)
+                ->name(bin2hex(random_bytes(16)))
+                ->permission(0700)
+                ->deleteWhenDestroyed()
+                ->create();
+            $scriptPath = $temporaryDirectory->path().'/install.sh';
 
             // Official standalone installer — picks deb/rpm/standalone automatically.
             $script = 'curl -fsSL https://get.opentofu.org/install-opentofu.sh -o '.escapeshellarg($scriptPath)
@@ -123,6 +134,7 @@ trait InteractsWithOpenTofu
                 .' && sudo '.escapeshellarg($scriptPath).' --install-method standalone'
                 .'; rm -f '.escapeshellarg($scriptPath);
             passthru($script, $code);
+            $temporaryDirectory->delete();
 
             return $code === 0;
         }

@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
+use Spatie\TemporaryDirectory\TemporaryDirectory;
+
 trait InteractsWithHosts
 {
     use DetectsWsl, InteractsWithOs, InteractsWithProjectConfig, InteractsWithTrust, LaraKubeOutput;
@@ -294,11 +296,12 @@ trait InteractsWithHosts
      */
     protected function writeToEtcHosts(string $content): bool
     {
-        $tmpPath = (string) tempnam(sys_get_temp_dir(), 'larakube_hosts');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmpPath = $temporaryDirectory->path().'/hosts';
         file_put_contents($tmpPath, $content);
 
         $ok = Process::run('sudo cp '.escapeshellarg($tmpPath).' /etc/hosts')->successful();
-        @unlink($tmpPath);
+        $temporaryDirectory->delete();
 
         return $ok;
     }
@@ -430,14 +433,14 @@ trait InteractsWithHosts
      */
     protected function syncWindowsHostsFile(string $content, string $entry): bool
     {
-        $contentTmp = (string) tempnam(sys_get_temp_dir(), 'larakube_win_hosts');
-        $scriptTmp = (string) tempnam(sys_get_temp_dir(), 'larakube_win_hosts_sync');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $contentTmp = $temporaryDirectory->path().'/win-hosts';
+        $scriptTmp = $temporaryDirectory->path().'/win-hosts-sync.ps1';
         file_put_contents($contentTmp, $content);
 
         $winContent = trim(Process::run('wslpath -w '.escapeshellarg($contentTmp))->output());
         if ($winContent === '') {
-            @unlink($contentTmp);
-            @unlink($scriptTmp);
+            $temporaryDirectory->delete();
             $this->printWindowsHostsManualHelp($entry);
 
             return false;
@@ -450,8 +453,7 @@ trait InteractsWithHosts
         $winScript = trim(Process::run('wslpath -w '.escapeshellarg($scriptTmp))->output());
 
         if ($winScript === '') {
-            @unlink($contentTmp);
-            @unlink($scriptTmp);
+            $temporaryDirectory->delete();
             $this->printWindowsHostsManualHelp($entry);
 
             return false;
@@ -467,8 +469,7 @@ trait InteractsWithHosts
 
         $ok = Process::run('powershell.exe -NoProfile -Command '.escapeshellarg($startProcess))->successful();
 
-        @unlink($contentTmp);
-        @unlink($scriptTmp);
+        $temporaryDirectory->delete();
 
         // Trust, but verify: Copy-Item reporting success doesn't guarantee the
         // file actually changed — a declined/dismissed UAC prompt or security

@@ -6,6 +6,7 @@ use App\Data\InstanceData;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait InteractsWithToolRegistry
 {
@@ -307,7 +308,8 @@ trait InteractsWithToolRegistry
     {
         Process::run("{$kubectl} create namespace larakube-shared --dry-run=client -o yaml | {$kubectl} apply -f -");
 
-        $tmpFile = tempnam(sys_get_temp_dir(), 'larakube-registry');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmpFile = $temporaryDirectory->path().'/registry.json';
         file_put_contents($tmpFile, json_encode(array_values($registry)));
 
         $cmd = "{$kubectl} create secret generic larakube-tools-registry -n larakube-shared "
@@ -315,7 +317,7 @@ trait InteractsWithToolRegistry
             ."--dry-run=client -o yaml | {$kubectl} apply -f -";
 
         $result = Process::run($cmd)->successful();
-        @unlink($tmpFile);
+        $temporaryDirectory->delete();
 
         return $result;
     }

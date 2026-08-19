@@ -18,6 +18,7 @@ use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ClusterGrantCommand extends Command
 {
@@ -208,10 +209,11 @@ class ClusterGrantCommand extends Command
 
     protected function applyManifest(string $adminContext, string $manifest, array &$output = []): bool
     {
-        $file = tempnam(sys_get_temp_dir(), 'lk_grant_');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $file = $temporaryDirectory->path().'/grant.yaml';
         file_put_contents($file, $manifest);
         $result = Process::run($this->contextKubectl($adminContext).' apply -f '.escapeshellarg($file));
-        @unlink($file);
+        $temporaryDirectory->delete();
 
         $output = explode("\n", trim($result->output().$result->errorOutput()));
 

@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use stdClass;
 
 trait InteractsWithStalwartApi
@@ -125,7 +126,8 @@ trait InteractsWithStalwartApi
             return null;
         }
 
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube_stalwart_');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/stalwart-payload';
         file_put_contents($tmp, $payload);
 
         $pod = $this->stalwartPodName($kubectl, $ns);
@@ -141,7 +143,7 @@ trait InteractsWithStalwartApi
             .' < '.escapeshellarg($tmp),
         );
 
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if (! $result->successful()) {
             return null;

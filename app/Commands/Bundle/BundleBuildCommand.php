@@ -203,11 +203,12 @@ class BundleBuildCommand extends Command
         //    VITE_* vars are appended to the .env secret so they are baked into the
         //    JS bundle inside the Docker assets stage without touching public/build/.
         $this->laraKubeInfo("Building app image for {$platform}…");
-        $dotenvPath = $this->createDotenvBuildSecret($config, $env, $reverbAppKey);
+        $dotenvTemporaryDirectory = $this->createDotenvBuildSecret($config, $env, $reverbAppKey);
+        $dotenvPath = $dotenvTemporaryDirectory->path().'/dotenv-build-secret';
         try {
             $code = $this->runStreaming($this->buildProductionImageCommand($images['app'], $config->getPath().'/Dockerfile.php', $config->getPath(), $platform, $dotenvPath));
         } finally {
-            @unlink($dotenvPath);
+            $dotenvTemporaryDirectory->delete();
         }
         if ($code !== 0) {
             $this->laraKubeError('App image build failed.');

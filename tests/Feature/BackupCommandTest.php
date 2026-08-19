@@ -8,6 +8,7 @@ use App\Traits\InteractsWithBackup;
 use App\Traits\SchedulesCronJobs;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Yaml\Yaml;
 
@@ -370,7 +371,8 @@ test('the recovery card appends and never destroys an older passphrase', functio
     // A rebuilt cluster has no config, so backup:init mints a fresh passphrase.
     // Overwriting here would make every archive already in the bucket
     // permanently unreadable — discovered only during a recovery.
-    $card = tempnam(sys_get_temp_dir(), 'card');
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $card = $temporaryDirectory->path().'/card';
     file_put_contents($card, "Issued earlier\n  passphrase  OLD-PASSPHRASE-KEEP-ME\n");
 
     $cmd = new class($card)
@@ -390,7 +392,7 @@ test('the recovery card appends and never destroys an older passphrase', functio
     expect($contents)->toContain('OLD-PASSPHRASE-KEEP-ME')
         ->and($contents)->toContain('NEW-PASSPHRASE');
 
-    @unlink($card);
+    $temporaryDirectory->delete();
 });
 
 test('backup:schedule refuses before a destination exists', function (): void {

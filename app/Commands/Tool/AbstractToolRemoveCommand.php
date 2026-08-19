@@ -19,6 +19,7 @@ use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
 use RuntimeException;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Base for every `{tool}:remove {environment}` command.
@@ -334,7 +335,8 @@ abstract class AbstractToolRemoveCommand extends Command
 
         foreach ($databases as $database) {
             $sql = $this->buildDropTenantSql($database, $database);
-            $tmp = tempnam(sys_get_temp_dir(), 'larakube_plex_drop_'.$tool->value);
+            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+            $tmp = $temporaryDirectory->path().'/drop.sql';
             file_put_contents($tmp, $sql);
 
             $ok = $this->removeResources(
@@ -347,7 +349,7 @@ abstract class AbstractToolRemoveCommand extends Command
 
             $this->unregisterTenant($database);
 
-            @unlink($tmp);
+            $temporaryDirectory->delete();
         }
 
         $tenantKey = ($instance === null || $instance === '') ? $tool->value : "{$tool->value}_{$instance}";

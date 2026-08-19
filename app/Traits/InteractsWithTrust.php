@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\GlobalConfigData;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait InteractsWithTrust
 {
@@ -11,7 +12,8 @@ trait InteractsWithTrust
 
     protected function installCaToKeychain(string $caPath): int
     {
-        $tmpCa = (string) tempnam(sys_get_temp_dir(), 'larakube-ca');
+        $caTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmpCa = $caTemporaryDirectory->path().'/larakube-ca.crt';
         file_put_contents($tmpCa, file_get_contents($caPath));
 
         $os = PHP_OS_FAMILY;
@@ -20,7 +22,7 @@ trait InteractsWithTrust
             @mkdir(home_path('.larakube'), 0755, true);
             $caFile = home_path('.larakube/larakube-local-ca.crt');
             file_put_contents($caFile, file_get_contents($caPath));
-            @unlink($tmpCa);
+            $caTemporaryDirectory->delete();
 
             if (! $this->hasWslInterop()) {
                 $this->warnWslInteropDown();
@@ -90,7 +92,7 @@ trait InteractsWithTrust
             $this->info("  👉 Manually trust: {$caPath}");
         }
 
-        @unlink($tmpCa);
+        $caTemporaryDirectory->delete();
 
         return 0;
     }
@@ -117,10 +119,11 @@ trait InteractsWithTrust
             $caPath = $this->getLocalCaCertPath();
 
             if (file_exists($caPath)) {
-                $tmpCa = (string) tempnam(sys_get_temp_dir(), 'larakube-untrust');
+                $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+                $tmpCa = $temporaryDirectory->path().'/larakube-untrust.crt';
                 file_put_contents($tmpCa, file_get_contents($caPath));
                 $fingerprint = trim(Process::run("openssl x509 -noout -fingerprint -sha1 -in {$tmpCa} | cut -d'=' -f2 | sed 's/://g'")->output());
-                @unlink($tmpCa);
+                $temporaryDirectory->delete();
 
                 if ($fingerprint) {
                     passthru("sudo security delete-certificate -Z {$fingerprint} /Library/Keychains/System.keychain 2>/dev/null || sudo security delete-certificate -c \"LaraKube Local CA\" /Library/Keychains/System.keychain");
@@ -285,10 +288,11 @@ trait InteractsWithTrust
                 if (file_exists('/etc/resolver/'.$coveredTld)) {
                     continue;
                 }
-                $tmpResolver = (string) tempnam(sys_get_temp_dir(), 'lk-resolver');
+                $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+                $tmpResolver = $temporaryDirectory->path().'/resolver';
                 file_put_contents($tmpResolver, "nameserver 127.0.0.1\n");
                 passthru('sudo cp '.escapeshellarg($tmpResolver).' /etc/resolver/'.escapeshellarg($coveredTld));
-                @unlink($tmpResolver);
+                $temporaryDirectory->delete();
             }
 
             // Stop any user-level instance first (can't bind port 53 without root).
@@ -297,11 +301,12 @@ trait InteractsWithTrust
             // Must run as root so dnsmasq can bind port 53.
             passthru('sudo brew services restart dnsmasq');
         } else {
-            $tmpConf = (string) tempnam(sys_get_temp_dir(), 'lk-dnsmasq');
+            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+            $tmpConf = $temporaryDirectory->path().'/dnsmasq.conf';
             file_put_contents($tmpConf, $conf);
             passthru('sudo mkdir -p /etc/dnsmasq.d');
             passthru('sudo cp '.escapeshellarg($tmpConf).' '.escapeshellarg($confPath));
-            @unlink($tmpConf);
+            $temporaryDirectory->delete();
             passthru('sudo systemctl restart dnsmasq');
         }
 

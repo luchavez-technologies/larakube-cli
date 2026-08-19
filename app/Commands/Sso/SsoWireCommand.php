@@ -1176,14 +1176,15 @@ class SsoWireCommand extends Command
         $rawYaml = (string) base64_decode($raw);
         $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, $oidc);
 
-        $tmp = tempnam(sys_get_temp_dir(), 'synapse_config');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/homeserver.yaml';
         file_put_contents($tmp, $homeserver);
         $result = Process::run(
             "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
             ."--from-file=homeserver.yaml={$tmp} "
             ."--dry-run=client -o yaml | {$kubectl} apply -f -",
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if ($result->successful()) {
             Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
@@ -1216,14 +1217,15 @@ class SsoWireCommand extends Command
         $rawYaml = (string) base64_decode($raw);
         $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, null);
 
-        $tmp = tempnam(sys_get_temp_dir(), 'synapse_config');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/homeserver.yaml';
         file_put_contents($tmp, $homeserver);
         $result = Process::run(
             "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
             ."--from-file=homeserver.yaml={$tmp} "
             ."--dry-run=client -o yaml | {$kubectl} apply -f -",
         );
-        @unlink($tmp);
+        $temporaryDirectory->delete();
 
         if ($result->successful()) {
             Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");

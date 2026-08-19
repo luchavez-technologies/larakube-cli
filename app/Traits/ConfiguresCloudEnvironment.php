@@ -13,6 +13,8 @@ use function Laravel\Prompts\password;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\text;
 
+use Spatie\TemporaryDirectory\TemporaryDirectory;
+
 /**
  * The individual cloud-setup steps behind the unified `cloud:configure`
  * command — the bare command chains all of them (configureAll); `--only=`
@@ -739,12 +741,13 @@ trait ConfiguresCloudEnvironment
 
     protected function setGithubSecret(string $gh, string $name, string $value, string $repoFlag): void
     {
-        $tmpFile = tempnam(sys_get_temp_dir(), 'gh_secret');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmpFile = $temporaryDirectory->path().'/gh-secret';
         file_put_contents($tmpFile, $value);
 
         $command = 'cat '.escapeshellarg($tmpFile)." | {$gh} secret set ".escapeshellarg($name)." {$repoFlag}";
         $result = Process::run($command);
-        @unlink($tmpFile);
+        $temporaryDirectory->delete();
 
         if (! $result->successful()) {
             $this->laraKubeError("Failed to set GitHub secret: {$name}");

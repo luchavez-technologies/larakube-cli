@@ -17,6 +17,8 @@ use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
 
+use Spatie\TemporaryDirectory\TemporaryDirectory;
+
 trait InteractsWithSecrets
 {
     use ReadsClusterSecrets;
@@ -303,10 +305,11 @@ trait InteractsWithSecrets
                     '  unseal-key: '.base64_encode($unsealKey),
                 ]);
 
-                $tmp = tempnam(sys_get_temp_dir(), 'larakube_openbao_bootstrap_');
+                $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+                $tmp = $temporaryDirectory->path().'/openbao-bootstrap.yaml';
                 file_put_contents($tmp, $yaml);
                 Process::run("{$kubectl} apply -f {$tmp}");
-                @unlink($tmp);
+                $temporaryDirectory->delete();
             });
 
             $this->withSpin('Unsealing OpenBao...', function () use ($kubectl, $unsealKey): void {

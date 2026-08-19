@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait DeploysMonitoringExporters
 {
@@ -53,9 +54,10 @@ trait DeploysMonitoringExporters
 
     private function applyExporterManifest(string $yaml, string $kubectl): void
     {
-        $tmp = tempnam(sys_get_temp_dir(), 'larakube-exporter-');
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/exporter.yaml';
         file_put_contents($tmp, $yaml);
         Process::run("{$kubectl} apply -f {$tmp}");
-        @unlink($tmp);
+        $temporaryDirectory->delete();
     }
 }

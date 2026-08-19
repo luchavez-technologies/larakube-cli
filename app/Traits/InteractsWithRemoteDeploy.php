@@ -8,6 +8,7 @@ use App\Enums\LaravelFeature;
 use App\Enums\RegistryProvider;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Deploy a project to a remote VPS WITHOUT a container registry: build the image
@@ -290,10 +291,11 @@ trait InteractsWithRemoteDeploy
      * Create a temporary .env file for the Docker assets stage BuildKit secret.
      * Reads the project's .env.{environment} (APP_KEY and all runtime vars), then
      * appends the VITE_* values derived from the project config so they are baked
-     * into the JS bundle. The caller is responsible for deleting the temp file
-     * (use a try/finally block). Returns the absolute path to the temp file.
+     * into the JS bundle. Holds real secrets, so the containing directory is
+     * 0700 (owner-only). The caller is responsible for deleting it (use a
+     * try/finally block calling ->delete()).
      */
-    public function createDotenvBuildSecret(ConfigData $config, string $environment, ?string $reverbAppKey = null): string
+    public function createDotenvBuildSecret(ConfigData $config, string $environment, ?string $reverbAppKey = null): TemporaryDirectory
     {
         $envPath = $config->getPath().'/.env.'.$environment;
         $content = file_exists($envPath) ? (string) file_get_contents($envPath) : '';
@@ -303,10 +305,10 @@ trait InteractsWithRemoteDeploy
             $content .= "\n{$key}={$value}";
         }
 
-        $tmpPath = (string) tempnam(sys_get_temp_dir(), 'lk_dotenv_build_');
-        file_put_contents($tmpPath, $content);
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        file_put_contents($temporaryDirectory->path().'/dotenv-build-secret', $content);
 
-        return $tmpPath;
+        return $temporaryDirectory;
     }
 
     /**
@@ -458,12 +460,13 @@ trait InteractsWithRemoteDeploy
         // 1. Build the production image for the node's architecture (resolved
         //    over SSH, so an arm64 node gets a native arm64 build).
         $platform = $this->resolveDeployPlatform($cloud, $context, $ssh);
-        $dotenvPath = $this->createDotenvBuildSecret($config, $environment);
+        $dotenvTemporaryDirectory = $this->createDotenvBuildSecret($config, $environment);
+        $dotenvPath = $dotenvTemporaryDirectory->path().'/dotenv-build-secret';
         $this->laraKubeInfo("Building production image '{$image}' ({$platform})...");
         try {
             $code = $this->runStreaming($this->buildProductionImageCommand($image, $dockerfile, $path, $platform, $dotenvPath));
         } finally {
-            @unlink($dotenvPath);
+            $dotenvTemporaryDirectory->delete();
         }
         if ($code !== 0) {
             $this->laraKubeError('Image build failed.');
@@ -546,12 +549,13 @@ trait InteractsWithRemoteDeploy
         // 2. Build and push the production image to registry, for the cluster's
         //    node architecture (no SSH here — read it from the nodes via kubectl).
         $platform = $this->resolveDeployPlatform($config->getCloud($environment), $context, null);
-        $dotenvPath = $this->createDotenvBuildSecret($config, $environment);
+        $dotenvTemporaryDirectory = $this->createDotenvBuildSecret($config, $environment);
+        $dotenvPath = $dotenvTemporaryDirectory->path().'/dotenv-build-secret';
         $this->laraKubeInfo("Building and pushing image to {$registry->getRegistryHost()} ({$platform})...");
         try {
             $code = $this->runStreaming($this->buildAndPushImageCommand($registryImage, $dockerfile, $path, $platform, $dotenvPath));
         } finally {
-            @unlink($dotenvPath);
+            $dotenvTemporaryDirectory->delete();
         }
         if ($code !== 0) {
             $this->laraKubeError('Image build/push failed. Ensure Docker credentials are configured and you have push access.');
@@ -712,9 +716,11 @@ trait InteractsWithRemoteDeploy
             return 1;
         }
 
-        // 4. Write the namespace-locked kubeconfig to a 0600 temp file.
+        // 4. Write the namespace-locked kubeconfig to a 0700-directory-protected
+        //    0600 temp file.
         $kubeconfig = $this->assembleScopedKubeconfig($adminContext, $server, $caData, $namespace, $token);
-        $kubeconfigPath = tempnam(sys_get_temp_dir(), 'lk_kubeconfig_');
+        $kubeconfigTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $kubeconfigPath = $kubeconfigTemporaryDirectory->path().'/kubeconfig';
         file_put_contents($kubeconfigPath, $kubeconfig);
         @chmod($kubeconfigPath, 0600);
 
@@ -754,7 +760,7 @@ trait InteractsWithRemoteDeploy
             // own --timeout=180s so kubectl's own timeout fires first.
             $this->runStreaming('KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s', 190);
         } finally {
-            @unlink($kubeconfigPath);
+            $kubeconfigTemporaryDirectory->delete();
         }
 
         // Deploy monitoring exporters if monitoring is active on this cluster.
