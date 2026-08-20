@@ -141,7 +141,7 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
         // Order follows ClusterTool::cases() declaration order, filtered to
         // role-bearing tools — link/notes/passwords/record/sheets/sign
         // joined the list 2026-08-20, git and drive's rbacRoles() joined
-        // the same day (see ClusterTool::rbacRoles()).
+        // the same day, design's joined 2026-08-21 (see ClusterTool::rbacRoles()).
         ->expectsChoice('Which tool?', 'drive', [
             'drive' => 'Cloud Storage & Sync (oCIS)',
             'git' => 'Git Forge & CI/CD (Forgejo)',
@@ -154,6 +154,7 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
             'sheets' => 'Spreadsheet Database (Teable)',
             'sign' => 'Document Signing (Documenso)',
             'dashboard' => 'Kubernetes Control Plane (Headlamp)',
+            'design' => 'Design & Prototyping (Penpot)',
             'resume' => 'Resume Builder (Reactive Resume)',
         ])
         ->assertExitCode(0)

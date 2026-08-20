@@ -695,6 +695,12 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::RESUME => ['reactive-resume-user' => 'Can log in to Reactive Resume'],
             self::SIGN => ['documenso-user' => 'Can log in to Documenso'],
             self::SHEETS => ['teable-user' => 'Can log in to Teable'],
+            // Confirmed live 2026-08-21: admin@ourfridays.com (a partner-org
+            // identity, same one Outline's incident involved) hit Penpot's
+            // auto-provision-on-first-login prompt via plain Zitadel SSO —
+            // access must be something LaraKube grants, not anyone with any
+            // Zitadel account in the org.
+            self::DESIGN => ['penpot-user' => 'Can log in to Penpot'],
             // ForwardAuth (ADR 0006), not native OIDC — wireForwardAuth()
             // reads this to also gate the shared sso-proxy's
             // --allowed-groups, not just to route onto rbacProjectName().

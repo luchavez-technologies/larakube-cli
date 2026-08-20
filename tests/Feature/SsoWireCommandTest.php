@@ -1181,6 +1181,16 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
         '*projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
         '*/apps/oidc' => Http::response(['appId' => 'app-design', 'clientId' => 'cid-design', 'clientSecret' => 'csecret-design']),
+        // Design (Penpot) is RBAC-gated (added 2026-08-21 — confirmed live
+        // that a partner-org identity could reach it via plain Zitadel SSO,
+        // same exposure Outline had).
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'design-penpot', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects/proj-1/roles' => Http::response([]),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'design', '--no-interaction' => true])
