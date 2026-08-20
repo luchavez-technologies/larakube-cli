@@ -18,6 +18,7 @@ class SsoGrantCommand extends Command
         {environment=local : Environment whose Zitadel to target}
         {--email= : Email of the Zitadel user to grant a role to}
         {--tool= : The grantable tool (secrets, monitor, drive)}
+        {--domain= : The instance to target for a multi-instance tool (e.g. --domain=blog.example.com) — required whenever that tool has no single unnamed instance, e.g. notes}
         {--role= : The role key to grant}
         {--context= : Target a specific kube-context}';
 
@@ -38,7 +39,30 @@ class SsoGrantCommand extends Command
             return 1;
         }
 
-        $projectId = $this->resolveSsoProject($tool, $ssoHost, $pat, $kubectl);
+        // rbacProjectName() is per (tool, instance) now — omitting --domain=
+        // for a tool with no single unnamed instance (e.g. notes, whose only
+        // real instance is already named) would silently target a DIFFERENT,
+        // empty project instead of erroring, so auto-resolve the one
+        // unambiguous case and refuse the ambiguous one rather than guess.
+        $domainOption = (string) ($this->option('domain') ?: '');
+        $instance = null;
+        if ($domainOption !== '') {
+            $instance = $this->resolveInstanceForDomain($kubectl, $tool, $this->normalizeTargetHost($domainOption));
+        } elseif ($tool->supportsMultipleInstances()) {
+            $named = array_values(array_unique(array_filter(
+                $this->getToolInstances($kubectl, $tool),
+                fn (?string $i) => $i !== null && $i !== '' && $i !== 'main',
+            )));
+            if (count($named) === 1) {
+                $instance = $named[0];
+            } elseif (count($named) > 1) {
+                $this->laraKubeError("'{$tool->value}' has multiple instances — pass --domain= to pick one.");
+
+                return 1;
+            }
+        }
+
+        $projectId = $this->resolveSsoProject($tool, $ssoHost, $pat, $kubectl, $instance);
         if ($projectId === null) {
             return 1;
         }
@@ -71,7 +95,7 @@ class SsoGrantCommand extends Command
         $grant = $this->zitadelFindUserGrant($ssoHost, $pat, $userId, $projectId);
         $current = $grant['roleKeys'] ?? [];
 
-        $projectName = $tool->requiresRbacGating() ? ClusterTool::rbacProjectName() : ClusterTool::ssoAdminProjectName();
+        $projectName = $tool->requiresRbacGating() ? $tool->rbacProjectName($instance) : ClusterTool::ssoAdminProjectName();
 
         $this->laraKubeInfo("✅ Granted '{$roleKey}' to {$email}.");
         $this->newLine();

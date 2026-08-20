@@ -754,10 +754,52 @@ enum ClusterTool: string implements HasWorkloadComponents
         return $this->rbacRoles() + $this->ssoAdminRoles();
     }
 
-    /** The Zitadel project role-gated tools register under, instead of the shared open project. */
-    public static function rbacProjectName(): string
+    /**
+     * The Zitadel project THIS tool (and, when given, this specific
+     * instance) registers under, instead of the shared open project.
+     *
+     * One project per (tool, instance), not one shared project for every
+     * RBAC-gated tool — confirmed live against Zitadel's own docs
+     * (2026-08-20): projectRoleCheck is project-wide, not per-role or
+     * per-application ("either a user has at least one role in the
+     * project, or authentication fails entirely"). Sharing one project
+     * meant anyone granted even a single role on it — say, just
+     * kutt-user — could already authenticate into every other tool on
+     * that same project too, since the login gate never inspected WHICH
+     * role existed, only that one did. Secrets/Monitor/Dashboard stayed
+     * meaningfully protected only because they ALSO filter the specific
+     * role claim themselves (OpenBao bound_claims, Grafana
+     * role_attribute_path); Kutt/Outline/Documenso/Vaultwarden do not, so
+     * passing the coarse project-level gate was full access for those.
+     *
+     * The claim-flattening Action (zitadelEnsureRbacAction()) already
+     * flattens grants from EVERY project a user holds into one
+     * larakube_roles/groups claim, so splitting projects needs no change
+     * there or in how OpenBao/Grafana trust the resulting claim — only
+     * the login gate itself becomes meaningful again.
+     *
+     * $instance is ignored (never suffixed) for a tool that doesn't
+     * actually supportsMultipleInstances() — confirmed live (2026-08-20):
+     * resolveInstanceForDomain() unconditionally derives SOME non-null
+     * slug from the resolved host for every tool, single-instance ones
+     * included, once nothing is registered yet (instanceSlugFromHost()'s
+     * fallback). Honoring that blindly here would have given
+     * Secrets/Monitor/Dashboard a spuriously instance-suffixed project on
+     * their very first wire, splitting their OWN grants across two
+     * projects for no reason. Each vendor's oidcEnv()/smtpEnv() already
+     * self-gates the same way by choosing whether to use the parameter at
+     * all; this is the equivalent gate for the one method that lives on
+     * the enum itself rather than a per-vendor override.
+     */
+    public function rbacProjectName(?string $instance = null): string
     {
-        return 'LaraKube RBAC';
+        $name = "LaraKube RBAC: {$this->brandName()}";
+
+        if (! $this->supportsMultipleInstances() || $instance === null || $instance === '') {
+            return $name;
+        }
+
+        return "{$name} ({$instance})";
     }
 
     /**

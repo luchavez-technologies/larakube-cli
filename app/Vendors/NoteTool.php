@@ -53,9 +53,11 @@ final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommo
 
     public function smtpEnv(?string $instance = null): ?array
     {
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+
         return [
-            'deployment' => 'notes-outline',
-            'secret' => 'notes-outline-smtp',
+            'deployment' => $name('notes-outline'),
+            'secret' => $name('notes-outline-smtp'),
             // Stalwart submissions is port 465 (implicit TLS). Outline
             // defaults SMTP_SECURE to true, but pin it so the 465 intent
             // survives any future default change.
@@ -74,9 +76,11 @@ final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommo
 
     public function oidcEnv(?string $instance = null): ?array
     {
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+
         return [
-            'deployment' => 'notes-outline',
-            'secret' => 'notes-outline-oidc',
+            'deployment' => $name('notes-outline'),
+            'secret' => $name('notes-outline-oidc'),
             'static' => [
                 'FORCE_HTTPS' => 'true',
             ],

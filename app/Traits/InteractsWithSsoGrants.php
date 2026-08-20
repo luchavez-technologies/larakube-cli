@@ -66,19 +66,22 @@ trait InteractsWithSsoGrants
     }
 
     /**
-     * Resolve the Zitadel project to grant/revoke on, now that the tool is
-     * known. RBAC-gated tools live on rbacProjectName(); open-to-org tools
-     * with ssoAdminRoles() live on their OWN project — resolved from the
-     * sso-app-<tool> secret sso:wire writes at registration time (so a
-     * `--project=` override on the wire is honoured too), falling back to
-     * ensuring the default shared project when the secret has no id yet.
+     * Resolve the Zitadel project to grant/revoke on, now that the tool (and,
+     * for role-gated tools, the instance) is known. RBAC-gated tools live on
+     * their OWN rbacProjectName($instance) — one project per (tool,
+     * instance), not one shared project, see ClusterTool::rbacProjectName()'s
+     * docblock — open-to-org tools with ssoAdminRoles() live on their OWN
+     * project — resolved from the sso-app-<tool> secret sso:wire writes at
+     * registration time (so a `--project=` override on the wire is honoured
+     * too), falling back to ensuring the default shared project when the
+     * secret has no id yet.
      */
-    protected function resolveSsoProject(ClusterTool $tool, string $ssoHost, string $pat, string $kubectl): ?string
+    protected function resolveSsoProject(ClusterTool $tool, string $ssoHost, string $pat, string $kubectl, ?string $instance = null): ?string
     {
         if ($tool->requiresRbacGating()) {
-            $projectId = $this->zitadelEnsureProject($ssoHost, $pat, ClusterTool::rbacProjectName());
+            $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $tool->rbacProjectName($instance));
             if ($projectId === null) {
-                $this->laraKubeError('Could not reach the '.ClusterTool::rbacProjectName().' Zitadel project.');
+                $this->laraKubeError('Could not reach the '.$tool->rbacProjectName($instance).' Zitadel project.');
             }
 
             return $projectId;

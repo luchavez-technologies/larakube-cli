@@ -78,7 +78,7 @@ class SecretsGrantCommand extends Command
         $roleKey = $this->appSecretsRoleKey($app, $environment, $role);
 
         if (! $this->zitadelEnsureProjectRole($ssoHost, $pat, $projectId, $roleKey, "Secrets: {$app}/{$environment} ({$role})")) {
-            $this->laraKubeError("Could not ensure the '{$roleKey}' role exists on ".ClusterTool::rbacProjectName().'.');
+            $this->laraKubeError("Could not ensure the '{$roleKey}' role exists on ".ClusterTool::SECRETS->rbacProjectName().'.');
 
             return 1;
         }

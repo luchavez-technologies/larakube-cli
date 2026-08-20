@@ -138,6 +138,15 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
         && $request['redirectUris'][0] === 'https://grafana.'.GlobalConfigData::load()->getLocalTld().'/login/generic_oauth');
+
+    // The actual point of the 2026-08-20 per-tool-project change: Monitor
+    // registers under its OWN project, not the old shared 'LaraKube RBAC'
+    // bucket every RBAC-gated tool used to share (which meant a grant for
+    // ANY one of them authenticated into ALL of them — projectRoleCheck is
+    // project-wide in Zitadel, not per-role).
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
+        && $request->method() === 'POST'
+        && $request['name'] === 'LaraKube RBAC: Monitor');
 });
 
 test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, never as a literal env override', function (): void {
@@ -941,6 +950,20 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         && str_contains($process->command, 'OIDC_ENABLED'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/link-kutt')
         && str_contains($process->command, '--from=secret/link-oidc'));
+
+    // Link registers under its OWN project, not the shared 'LaraKube RBAC'
+    // bucket Monitor is also on — the two must be DIFFERENT projects, or a
+    // grant for one would keep authenticating into the other. Unlike
+    // Monitor (single-instance, always unsuffixed), Link genuinely
+    // supportsMultipleInstances() — resolveInstanceForDomain() derives a
+    // real slug from its host the moment nothing's registered yet (the
+    // exact same mechanism that gave Outline its 'notes-luchtech-dev' name
+    // on its very first wire), so its project name carries that suffix
+    // from day one too, not just once a literal second instance exists.
+    $expectedSlug = 'link-'.GlobalConfigData::load()->getLocalTld();
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
+        && $request->method() === 'POST'
+        && $request['name'] === "LaraKube RBAC: Links ({$expectedSlug})");
 });
 
 test('sso:wire registers a new OIDC client and wires it to Directus (data)', function (): void {

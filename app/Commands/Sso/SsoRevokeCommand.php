@@ -19,7 +19,8 @@ class SsoRevokeCommand extends Command
     protected $signature = 'sso:revoke
         {environment=local : Environment whose Zitadel to target}
         {--email= : Email of the Zitadel user to revoke access from}
-        {--role= : Revoke exactly this role key (skips the discovery picker)}
+        {--role= : Revoke exactly this role key (skips the discovery picker) — its owning tool is derived from the key itself}
+        {--domain= : The instance to target for a multi-instance tool, used with --role (e.g. --domain=blog.example.com) — required whenever that tool has no single unnamed instance, e.g. notes}
         {--context= : Target a specific kube-context}
         {--force : Skip the confirmation prompt}';
 
@@ -50,12 +51,14 @@ class SsoRevokeCommand extends Command
         }
 
         // The fast/scripted path: --role names the exact role key, and the
-        // owning tool (and therefore the project it lives under) resolves
-        // from the key itself — no --tool needed, grantableRoles() keys are
-        // globally unique by construction. Every role carries its owning
-        // project with it, because role-gated roles (secrets, monitor) live on
-        // the RBAC project while open-to-org admin roles (drive's ocisAdmin)
-        // live on the shared project.
+        // owning tool resolves from the key itself — no --tool needed,
+        // grantableRoles() keys are globally unique TODAY (no tool has 2+
+        // live instances yet — see ClusterTool::forGrantableRoleKey()'s
+        // docblock for the deliberate limitation this carries once one
+        // does). The PROJECT that role lives under is no longer derivable
+        // from the tool alone, though — rbacProjectName() is per (tool,
+        // instance) now, so --domain= disambiguates which instance's
+        // project to look on, same as sso:grant.
         $explicitRole = (string) ($this->option('role') ?: '');
         $toRevoke = null;
 
@@ -66,14 +69,33 @@ class SsoRevokeCommand extends Command
 
                 return 1;
             }
-            $projectId = $this->resolveSsoProject($tool, $ssoHost, $pat, $kubectl);
+
+            $domainOption = (string) ($this->option('domain') ?: '');
+            $instance = null;
+            if ($domainOption !== '') {
+                $instance = $this->resolveInstanceForDomain($kubectl, $tool, $this->normalizeTargetHost($domainOption));
+            } elseif ($tool->supportsMultipleInstances()) {
+                $named = array_values(array_unique(array_filter(
+                    $this->getToolInstances($kubectl, $tool),
+                    fn (?string $i) => $i !== null && $i !== '' && $i !== 'main',
+                )));
+                if (count($named) === 1) {
+                    $instance = $named[0];
+                } elseif (count($named) > 1) {
+                    $this->laraKubeError("'{$tool->value}' has multiple instances — pass --domain= to pick one.");
+
+                    return 1;
+                }
+            }
+
+            $projectId = $this->resolveSsoProject($tool, $ssoHost, $pat, $kubectl, $instance);
             if ($projectId === null) {
                 return 1;
             }
-            $projectName = $tool->requiresRbacGating() ? ClusterTool::rbacProjectName() : ClusterTool::ssoAdminProjectName();
+            $projectName = $tool->requiresRbacGating() ? $tool->rbacProjectName($instance) : ClusterTool::ssoAdminProjectName();
             $toRevoke = [['role' => $explicitRole, 'projectId' => $projectId, 'projectName' => $projectName]];
         } else {
-            $toRevoke = $this->resolveRolesFromCurrentAccess($ssoHost, $pat, $userId, $email);
+            $toRevoke = $this->resolveRolesFromCurrentAccess($ssoHost, $pat, $kubectl, $userId, $email);
             if ($toRevoke === null) {
                 return 1;
             }
@@ -122,31 +144,58 @@ class SsoRevokeCommand extends Command
      * test mode means nothing gets revoked without an explicit selection — no
      * accidental full wipe from an unattended run.
      *
-     * Roles live on TWO projects and both are inspected: role-gated roles
-     * (secrets, monitor) on the RBAC project, open-to-org admin roles
-     * (drive's ocisAdmin) on the shared project. Each returned item carries
-     * the project its role lives under, because a role key alone can't tell
-     * the revoke path where to look — grantableRoles() keys are globally
-     * unique, but the owning project isn't derivable from the key.
+     * Roles used to live on exactly TWO fixed projects, both hardcoded here.
+     * Since rbacProjectName() went per (tool, instance) — see its docblock —
+     * that's no longer true: every RBAC-gated tool has its OWN project, and a
+     * multi-instance tool has one PER INSTANCE. Missing one here would mean
+     * a compromised account's real access is silently under-reported, which
+     * defeats the entire purpose of this command — so this walks every
+     * RBAC-gated ClusterTool case, its null (unnamed) instance, AND every
+     * instance the tool registry knows about for it, plus the one shared
+     * open-to-org project. Checking a project that turns out to hold no
+     * grant for this user is harmless (an empty result); skipping a real one
+     * is not.
      *
      * @return list<array{role: string, projectId: string, projectName: string}>|null
-     *                                                                                null only when neither project could be reached at all —
+     *                                                                                null only when NO project could be reached at all —
      *                                                                                a connectivity failure, not "nothing to revoke".
      */
-    protected function resolveRolesFromCurrentAccess(string $ssoHost, string $pat, string $userId, string $email): ?array
+    protected function resolveRolesFromCurrentAccess(string $ssoHost, string $pat, string $kubectl, string $userId, string $email): ?array
     {
         $projects = [];
-        $rbacId = $this->zitadelEnsureProject($ssoHost, $pat, ClusterTool::rbacProjectName());
-        if ($rbacId !== null) {
-            $projects[ClusterTool::rbacProjectName()] = $rbacId;
+        foreach (ClusterTool::shippedCases() as $tool) {
+            if (! $tool->requiresRbacGating()) {
+                continue;
+            }
+
+            $instances = [null];
+            if ($tool->supportsMultipleInstances()) {
+                foreach ($this->getToolInstances($kubectl, $tool) as $i) {
+                    if ($i !== null && $i !== '' && $i !== 'main') {
+                        $instances[] = $i;
+                    }
+                }
+            }
+
+            foreach (array_unique($instances, SORT_REGULAR) as $instance) {
+                $projectName = $tool->rbacProjectName($instance);
+                if (array_key_exists($projectName, $projects)) {
+                    continue;
+                }
+                $id = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
+                if ($id !== null) {
+                    $projects[$projectName] = $id;
+                }
+            }
         }
+
         $sharedId = $this->zitadelEnsureProject($ssoHost, $pat, ClusterTool::ssoAdminProjectName());
         if ($sharedId !== null) {
             $projects[ClusterTool::ssoAdminProjectName()] = $sharedId;
         }
 
         if ($projects === []) {
-            $this->laraKubeError('Could not reach the Zitadel projects holding role-gated access.');
+            $this->laraKubeError('Could not reach any Zitadel project holding role-gated access.');
 
             return null;
         }

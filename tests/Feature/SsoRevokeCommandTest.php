@@ -119,6 +119,61 @@ test('sso:revoke reports nothing to do when the user holds no role-gated access'
         ->expectsOutputToContain('holds no role-gated access');
 });
 
+test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project, not two fixed ones', function (): void {
+    // The actual point of the 2026-08-20 per-tool-project change, proven
+    // precisely: unlike the other discovery tests in this file (which use
+    // static/uniform fakes that happen to tolerate the sweep querying the
+    // same fake data repeatedly), this gives each tool project a genuinely
+    // DIFFERENT id and DIFFERENT grant, so the test fails outright if any
+    // tool's project is silently skipped — the exact failure mode the old
+    // fixed-2-project sweep couldn't have caught for a tool like Kutt.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+    ]);
+
+    $searchedNames = [];
+    Http::fake([
+        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
+        '*/management/v1/projects/_search' => function ($request) use (&$searchedNames) {
+            $name = data_get($request, 'queries.0.nameQuery.name', '');
+            $searchedNames[] = $name;
+
+            return Http::response(['result' => [['id' => 'proj-'.md5($name)]]]);
+        },
+        '*/management/v1/users/grants/_search' => function ($request) {
+            $projectId = data_get($request, 'queries.1.projectIdQuery.projectId', '');
+
+            // Only Kutt's own project actually holds a grant for this user —
+            // every other project (including the shared one) is empty. If
+            // the sweep skipped Kutt's project, this role would never
+            // surface at all.
+            return Http::response(['result' => $projectId === 'proj-'.md5('LaraKube RBAC: Links')
+                ? [['id' => 'grant-kutt', 'roleKeys' => ['kutt-user']]]
+                : []]);
+        },
+    ]);
+
+    $this->artisan('sso:revoke', ['--email' => 'jamescarloluchavez@gmail.com', '--no-interaction' => true])
+        ->expectsChoice(
+            "jamescarloluchavez@gmail.com's current access — select what to revoke",
+            [],
+            ['kutt-user' => 'Link Management (Kutt) — Can log in to Kutt'],
+        )
+        ->assertExitCode(0);
+
+    // Confirms the sweep actually reached every RBAC-gated tool's project,
+    // not just the two the old code hardcoded.
+    expect($searchedNames)->toContain('LaraKube RBAC: Secrets')
+        ->and($searchedNames)->toContain('LaraKube RBAC: Monitor')
+        ->and($searchedNames)->toContain('LaraKube RBAC: Dashboard')
+        ->and($searchedNames)->toContain('LaraKube RBAC: Links')
+        ->and($searchedNames)->toContain('LaraKube RBAC: Notes')
+        ->and($searchedNames)->toContain('LaraKube RBAC: Sign')
+        ->and($searchedNames)->toContain('LaraKube RBAC: Passwords')
+        ->and($searchedNames)->toContain('LaraKube Shared Tools');
+});
+
 test('sso:revoke\'s discovery picker defaults to an empty selection under non-interactive mode — no accidental full wipe', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),

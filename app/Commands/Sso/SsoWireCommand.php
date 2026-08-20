@@ -113,27 +113,27 @@ class SsoWireCommand extends Command
             return 1;
         }
 
-        return $this->wire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env, $engine);
+        return $this->wire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env, $engine, $instance);
     }
 
-    protected function wire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env, ?string $engine = null): int
+    protected function wire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env, ?string $engine = null, ?string $instance = null): int
     {
         // ForwardAuth tools have no native OIDC to configure — gating happens at
         // the ingress, so they never get a per-tool Zitadel app or env vars.
         if ($tool->usesForwardAuth()) {
-            return $this->wireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env);
+            return $this->wireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env, $instance);
         }
 
         $appSecret = "sso-app-{$tool->value}";
         $clientId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-id');
         $clientSecret = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-secret');
 
-        $defaultProject = $tool->requiresRbacGating() ? ClusterTool::rbacProjectName() : 'LaraKube Shared Tools';
+        $defaultProject = $tool->requiresRbacGating() ? $tool->rbacProjectName($instance) : 'LaraKube Shared Tools';
         $projectName = (string) ($this->option('project') ?: $defaultProject);
         $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
 
         if ($tool->requiresRbacGating()) {
-            if ($projectId === null || ! $this->ensureRbacGating($ssoHost, $pat, $projectId, $tool)) {
+            if ($projectId === null || ! $this->ensureRbacGating($ssoHost, $pat, $projectId, $tool, $instance !== null ? $toolHost : null)) {
                 $this->laraKubeError(
                     "Could not set up role-gated access for {$tool->getLabel()} — the claim-flattening Action, ".
                     'project roles, or role assertion failed to apply. Wiring bound_claims/role_attribute_path '.
@@ -338,7 +338,14 @@ class SsoWireCommand extends Command
      * bug) while `sso:wire` printed success regardless. Confirmed live
      * 2026-07-30 — caught by `sso:grant`, not by this command's own tests.
      */
-    protected function ensureRbacGating(string $ssoHost, string $pat, string $projectId, ClusterTool $tool): bool
+    /**
+     * $domainHint: the target instance's real host (e.g. 'notes.luchtech.dev'),
+     * non-null only when this tool was wired against a named instance — shown
+     * in the printed sso:grant hint as --domain=, since rbacProjectName()
+     * being per-instance now means omitting it there would target a
+     * DIFFERENT (empty) project than the one just configured here.
+     */
+    protected function ensureRbacGating(string $ssoHost, string $pat, string $projectId, ClusterTool $tool, ?string $domainHint = null): bool
     {
         $ok = true;
         $this->withSpin("Configuring role-gated access for {$tool->getLabel()}...", function () use ($ssoHost, $pat, $projectId, $tool, &$ok): void {
@@ -359,12 +366,14 @@ class SsoWireCommand extends Command
             return false;
         }
 
+        $domainFlag = $domainHint !== null ? " --domain={$domainHint}" : '';
+
         $this->newLine();
         $this->line('  <fg=yellow>⚠ Role-gated tool — login is denied until you grant a role:</>');
         foreach ($tool->rbacRoles() as $roleKey => $label) {
             $this->line("    <fg=blue>{$roleKey}</> — {$label}");
         }
-        $this->line("  <fg=gray>larakube sso:grant --tool={$tool->value} --role=<role> --email=<user></>");
+        $this->line("  <fg=gray>larakube sso:grant --tool={$tool->value}{$domainFlag} --role=<role> --email=<user></>");
         $this->line("  <fg=gray>Nobody, including you, can SSO into {$tool->getLabel()} until then — its own non-SSO admin access (if any) is unaffected.</>");
         $this->newLine();
 
@@ -601,7 +610,7 @@ class SsoWireCommand extends Command
      *
      * @param  array{deployment: string, namespace: string, secret: string, vars: array<string, string>, redirect_path: string}  $schema
      */
-    protected function wireForwardAuth(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env): int
+    protected function wireForwardAuth(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env, ?string $instance = null): int
     {
         $apex = $this->apexDomain($ssoHost);
         if ($apex === null) {
@@ -636,8 +645,8 @@ class SsoWireCommand extends Command
         // that let a partner org read internal Outline docs (2026-08-20).
         $rbacRole = null;
         if ($tool->requiresRbacGating()) {
-            $projectId = $this->zitadelEnsureProject($ssoHost, $pat, ClusterTool::rbacProjectName());
-            if ($projectId === null || ! $this->ensureRbacGating($ssoHost, $pat, $projectId, $tool)) {
+            $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $tool->rbacProjectName($instance));
+            if ($projectId === null || ! $this->ensureRbacGating($ssoHost, $pat, $projectId, $tool, $instance !== null ? $toolHost : null)) {
                 $this->laraKubeError(
                     "Could not set up role-gated access for {$tool->getLabel()} — the claim-flattening Action, ".
                     'project roles, or role assertion failed to apply. Gating the shared SSO proxy without '.

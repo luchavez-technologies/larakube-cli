@@ -26,6 +26,84 @@ test('sso:grant rejects a tool with no role-gated access', function (): void {
         ->expectsOutputToContain('has no role-gated access to grant');
 });
 
+test('sso:grant auto-resolves --domain= when a multi-instance tool has exactly one registered instance', function (): void {
+    // rbacProjectName() is per (tool, instance) now — Notes' only real
+    // instance is already named ('notes-luchtech-dev'), not the default, so
+    // omitting --domain= must not silently target a DIFFERENT (empty)
+    // project. With exactly one registered instance there's nothing
+    // genuinely ambiguous, so this resolves it automatically instead of
+    // forcing the operator to already know and type the domain.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+            ])),
+        ),
+    ]);
+
+    Http::fake([
+        '*/management/v1/projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-notes-instance']),
+        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
+        '*/management/v1/users/grants' => Http::response([]),
+        '*/management/v1/users/grants/_search' => Http::response(['result' => [['id' => 'grant-1', 'roleKeys' => ['outline-user']]]]),
+    ]);
+
+    $this->artisan('sso:grant', ['--tool' => 'notes', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
+        && $request->method() === 'POST'
+        && $request['name'] === 'LaraKube RBAC: Notes (notes-luchtech-dev)');
+});
+
+test('sso:grant refuses to guess when a multi-instance tool has more than one registered instance and no --domain', function (): void {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'notes', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
+            ])),
+        ),
+    ]);
+
+    $this->artisan('sso:grant', ['--tool' => 'notes', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+        ->assertExitCode(1)
+        ->expectsOutputToContain('has multiple instances — pass --domain=');
+});
+
+test('sso:grant --domain= resolves the exact named instance\'s project', function (): void {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'notes', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
+            ])),
+        ),
+    ]);
+
+    Http::fake([
+        '*/management/v1/projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-blog-instance']),
+        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
+        '*/management/v1/users/grants' => Http::response([]),
+        '*/management/v1/users/grants/_search' => Http::response(['result' => [['id' => 'grant-1', 'roleKeys' => ['outline-user']]]]),
+    ]);
+
+    $this->artisan('sso:grant', ['--tool' => 'notes', '--domain' => 'blog.example.com', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
+        && $request->method() === 'POST'
+        && $request['name'] === 'LaraKube RBAC: Notes (blog-example-com)');
+});
+
 test('sso:grant rejects an unknown tool', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
