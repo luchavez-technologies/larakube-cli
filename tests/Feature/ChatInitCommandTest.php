@@ -95,26 +95,7 @@ test('chat:init --vpn-only aborts when the Middleware apply fails', function ():
         ->expectsOutputToContain('Failed to create the VPN-only Middleware');
 });
 
-test('chat:remove removes matrix stack and deletes resources', function (): void {
-    Process::fake([
-        '*get deployment chat-synapse-db*' => Process::result(output: '', exitCode: 1),
-        '*exec *' => Process::result(output: 'success'),
-        '*delete *' => Process::result(output: 'deleted'),
-    ]);
-
-    $this->artisan('chat:remove local --force')
-        ->assertExitCode(0)
-        ->expectsOutputToContain('Removing Matrix (Synapse + Element) resources...')
-        ->expectsOutputToContain('removed from larakube-shared');
-});
-
-test('chat:remove aborts when a delete step fails', function (): void {
-    Process::fake([
-        '*get deployment chat-synapse-db*' => Process::result(output: 'chat-synapse-db   1/1   1   1   1d'),
-        '*delete *' => Process::result(output: '', exitCode: 1),
-    ]);
-
-    $this->artisan('chat:remove local --force')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('failed to remove');
-});
+// chat:remove's own coverage lives in ChatRemoveCommandTest.php (the
+// happy-path resource-set regression test) and the failure-path test moved
+// there below — kept together per-command instead of split across the
+// init and remove test files.

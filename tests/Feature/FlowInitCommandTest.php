@@ -46,14 +46,6 @@ test('flow:init deploys windmill using plex commons postgres', function (): void
         ->expectsOutputToContain('Flow (Windmill) stack is live.');
 });
 
-test('flow:remove removes flow stack and deletes resources', function (): void {
-    Process::fake([
-        '*delete *' => Process::result(output: 'deleted'),
-        '*get secret flow-secrets*' => Process::result(output: '', exitCode: 1),
-    ]);
-
-    $this->artisan('flow:remove local --force')
-        ->assertExitCode(0)
-        ->expectsOutputToContain('Removing Flow resources...')
-        ->expectsOutputToContain('removed from larakube-shared');
-});
+// flow:remove's own coverage lives in ToolRemoveCommandTest.php (shared
+// AbstractToolRemoveCommand behavior tested once across tools, including
+// flow) rather than duplicated here.

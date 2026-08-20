@@ -221,15 +221,5 @@ test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently 
         ->expectsOutputToContain('Could not initialize/unseal OpenBao');
 });
 
-test('secrets:remove removes openbao deployment and deletes namespace', function (): void {
-    Process::fake([
-        '*delete *' => Process::result(output: 'deleted'),
-        '*' => Process::result(),
-    ]);
-
-    $this->artisan('secrets:remove local --force')
-        ->assertExitCode(0)
-        ->expectsOutputToContain('Removing OpenBao Deployment...')
-        ->expectsOutputToContain('Removing OpenBao Service...')
-        ->expectsOutputToContain('Removing External Secrets Operator...');
-});
+// secrets:remove's own coverage lives in SecretsRemoveCommandTest.php (a
+// stricter test asserting the exact teardown set) rather than duplicated here.

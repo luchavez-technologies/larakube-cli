@@ -61,3 +61,14 @@ test('chat:remove deletes the same resource set as before the component refactor
 
     expect($resources)->toBe($expected);
 });
+
+test('chat:remove aborts when a delete step fails', function (): void {
+    Process::fake([
+        '*get deployment chat-synapse-db*' => Process::result(output: 'chat-synapse-db   1/1   1   1   1d'),
+        '*delete *' => Process::result(output: '', exitCode: 1),
+    ]);
+
+    $this->artisan('chat:remove local --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('failed to remove');
+});

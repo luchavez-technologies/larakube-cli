@@ -4,8 +4,6 @@ use Illuminate\Support\Facades\Process;
 
 /**
  * Extract and JSON-decode the JMAP payload written to a temp file by stalwartJmap().
- * Mirrors MailRelayCommandTest's helper — kept separate here (a global function
- * declared in two loaded test files would fatal on redeclaration).
  *
  * @return array<string, mixed>|null
  */
@@ -141,4 +139,106 @@ test('mail:init local falls back to SearchStore "Default" (reuse Data store) whe
     expect($captured)->toHaveKey('x:SearchStore/set')
         ->and($captured)->not->toHaveKeys(['x:BlobStore/set', 'x:InMemoryStore/set'])
         ->and($captured['x:SearchStore/set']['update']['singleton'])->toBe(['@type' => 'Default']);
+});
+
+test('mail:init explains why it skipped Commons store auto-config instead of staying silent', function (): void {
+    // No plex-commons ConfigMap on the cluster: a legitimate skip, but it used
+    // to print nothing at all, which is indistinguishable from a broken run.
+    Process::fake([
+        '*get configmap plex-commons*' => Process::result(output: '', exitCode: 1),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('pw')),
+        '*rollout*' => Process::result(output: 'rolled out'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('mail:init local --domain=example.com --no-interaction --force')
+        ->expectsOutputToContain('no Plex Commons')
+        ->expectsOutputToContain('plex:init');
+});
+
+test('mail:show detects a local wizard-skip install and shows "already configured" instead of wizard instructions', function (): void {
+    Process::fake([
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*get configmap stalwart-config*' => Process::result(output: 'stalwart-config   1   1d'),
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*exec *' => function ($process) {
+            $payload = stalwartStoreBootstrapJmapPayload($process);
+
+            if ($payload === null) {
+                return Process::result(output: 'success');
+            }
+
+            $method = $payload['methodCalls'][0][0] ?? '';
+
+            $store = match ($method) {
+                'x:BlobStore/get' => ['@type' => 'S3', 'region' => ['customEndpoint' => 'http://seaweedfs.larakube-plex.svc.cluster.local:8333']],
+                'x:InMemoryStore/get' => ['@type' => 'Redis'],
+                'x:SearchStore/get' => ['@type' => 'Meilisearch'],
+                default => null,
+            };
+
+            return Process::result(output: json_encode([
+                'methodResponses' => [[$method, ['list' => $store !== null ? [$store] : []], 'c1']],
+            ]));
+        },
+        '*' => Process::result(),
+    ]);
+
+    $this->artisan('mail:show')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('already configured')
+        ->doesntExpectOutputToContain('replace Stalwart\'s embedded RocksDB');
+});
+
+test('mail:show falls back to the original wizard hint when stalwart-config does not exist', function (): void {
+    Process::fake([
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*get configmap stalwart-config*' => Process::result(output: '', exitCode: 1),
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => ['postgres' => ['enabled' => true]],
+        ]),
+        '*' => Process::result(),
+    ]);
+
+    $this->artisan('mail:show')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('replace Stalwart\'s embedded RocksDB');
+});
+
+test('the store hint never mixes the postgres superuser with STALWART_STORE_PASSWORD', function (): void {
+    // Two mutually exclusive credential paths used to be printed together:
+    // username `postgres` (superuser) alongside "use STALWART_STORE_PASSWORD"
+    // (the dedicated `stalwart` role's password). Pairing them fails auth.
+    $source = (string) file_get_contents(base_path('app/Traits/InteractsWithPlex.php'));
+
+    // The superuser username and the env-var advice must sit in opposite
+    // branches of the same conditional, never in one straight-line block.
+    expect($source)->toContain('$openBaoBootstrapped')
+        ->and(substr_count($source, 'STALWART_STORE_PASSWORD'))->toBeGreaterThan(0);
+
+    $hintSection = substr($source, (int) strpos($source, '7. Configure stores'));
+    $hintSection = substr($hintSection, 0, (int) strpos($hintSection, 'mail:restart'));
+
+    // Both credentials still appear (one per branch), but the block must carry
+    // the explicit warning against combining them.
+    expect($hintSection)->toContain('Do NOT use the postgres superuser here')
+        ->and($hintSection)->toContain('STALWART_STORE_PASSWORD')
+        ->and($hintSection)->toContain('Username: <fg=blue>postgres');
+});
+
+test('the store hint warns that switching stores empties the directory', function (): void {
+    // Accounts, domains and DKIM keys live in Stalwart's data store and are not
+    // migrated — an operator who switches mid-flight silently loses them.
+    $source = (string) file_get_contents(base_path('app/Traits/InteractsWithPlex.php'));
+
+    expect($source)->toContain('EMPTY directory')
+        ->and($source)->toContain('are NOT migrated');
 });

@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -130,4 +131,223 @@ test('mail:create falls back to the first configured domain when non-interactive
 
     $create = $accountCreatePayload['methodCalls'][0][1]['create']['new1'];
     expect($create['domainId'])->toBe('d-luchtech');
+});
+
+test('mail:create requires installed stalwart', function (): void {
+    Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
+
+    $this->artisan('mail:create')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('Stalwart is not installed');
+});
+
+test('mail:create shows error when no domains configured', function (): void {
+    Process::fake([
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*' => Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":[]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}'),
+    ]);
+
+    $this->artisan('mail:create')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('No domains are configured');
+});
+
+test('mail:create creates account with given args', function (): void {
+    $callCount = 0;
+    Process::fake([
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*get deployment sso-zitadel*' => Process::result(output: ''),
+        '*get deployment webmail-bulwark*' => Process::result(output: ''),
+        '*' => function () use (&$callCount) {
+            $callCount++;
+            if ($callCount === 1) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+            if ($callCount === 2) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+
+            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
+        },
+    ]);
+
+    $this->artisan('mail:create', [
+        '--email' => 'bob@example.com',
+        '--name' => 'Bob Smith',
+        '--password' => 'Str0ngP@ssw0rd!',
+        '--quota' => 5,
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('bob@example.com')
+        ->expectsOutputToContain('Str0ngP@ssw0rd!');
+});
+
+test('mail:create shows the webmail URL when Bulwark is installed', function (): void {
+    $callCount = 0;
+    Process::fake([
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*get deployment sso-zitadel*' => Process::result(output: ''),
+        '*get deployment webmail-bulwark*' => Process::result(output: 'webmail-bulwark   1/1   1   1   10d'),
+        '*' => function () use (&$callCount) {
+            $callCount++;
+            if ($callCount === 1) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+            if ($callCount === 2) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+
+            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
+        },
+    ]);
+
+    $this->artisan('mail:create', [
+        '--email' => 'bob@example.com',
+        '--name' => 'Bob Smith',
+        '--password' => 'Str0ngP@ssw0rd!',
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Or webmail:');
+});
+
+test('mail:create --sso creates a matching Zitadel identity', function (): void {
+    $callCount = 0;
+    Process::fake([
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*' => function () use (&$callCount) {
+            $callCount++;
+            if ($callCount === 1) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+            if ($callCount === 2) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+
+            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
+        },
+    ]);
+
+    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []]), '*/v2/users/human' => Http::response(['userId' => 'zid-1'])]);
+
+    $this->artisan('mail:create', [
+        '--email' => 'bob@example.com',
+        '--name' => 'Bob Smith',
+        '--password' => 'Str0ngP@ssw0rd!',
+        '--sso' => true,
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('SSO identity created for bob@example.com');
+});
+
+test('mail:create --sso errors when Zitadel is not installed', function (): void {
+    $callCount = 0;
+    Process::fake([
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*get deployment sso-zitadel*' => Process::result(output: ''),
+        '*' => function () use (&$callCount) {
+            $callCount++;
+            if ($callCount === 1) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+            if ($callCount === 2) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+
+            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
+        },
+    ]);
+
+    $this->artisan('mail:create', [
+        '--email' => 'bob@example.com',
+        '--name' => 'Bob Smith',
+        '--password' => 'Str0ngP@ssw0rd!',
+        '--sso' => true,
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('--sso was requested, but Zitadel is not installed');
+});
+
+test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no flag is given', function (): void {
+    $callCount = 0;
+    Process::fake([
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*' => function () use (&$callCount) {
+            $callCount++;
+            if ($callCount === 1) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+            if ($callCount === 2) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+
+            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
+        },
+    ]);
+
+    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []]), '*/v2/users/human' => Http::response(['userId' => 'zid-1'])]);
+
+    // No --sso, no --no-sso: with Zitadel installed the sync is the default. The
+    // non-interactive fallback must resolve to yes, so this needs no prompt.
+    $this->artisan('mail:create', [
+        '--email' => 'bob@example.com',
+        '--name' => 'Bob Smith',
+        '--password' => 'Str0ngP@ssw0rd!',
+        '--no-interaction' => true,
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('SSO identity created for bob@example.com');
+
+    // The Zitadel identity must be created with the SAME password as the mailbox,
+    // so one credential logs into both mail and SSO.
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/users/human')
+        && ($request['password']['password'] ?? null) === 'Str0ngP@ssw0rd!');
+});
+
+test('mail:create --no-sso skips the Zitadel identity even when Zitadel is installed', function (): void {
+    $callCount = 0;
+    Process::fake([
+        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*' => function () use (&$callCount) {
+            $callCount++;
+            if ($callCount === 1) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+            if ($callCount === 2) {
+                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
+            }
+
+            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
+        },
+    ]);
+
+    // --no-sso wins over the default; the command must return before any Zitadel
+    // call, so no Http::fake is needed — an attempted call would fail the test.
+    $this->artisan('mail:create', [
+        '--email' => 'shared@example.com',
+        '--name' => 'Shared Mailbox',
+        '--password' => 'Str0ngP@ssw0rd!',
+        '--no-sso' => true,
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('shared@example.com')
+        ->doesntExpectOutputToContain('SSO identity created');
 });

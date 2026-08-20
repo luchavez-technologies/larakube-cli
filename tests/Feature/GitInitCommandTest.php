@@ -156,16 +156,5 @@ test('git:init registers itself in the cluster tool registry, including the admi
         ->and($gitEntry['adminEmail'])->toBe('admin@example.com');
 });
 
-test('git:remove removes gitea stack and deletes resources', function (): void {
-    Process::fake([
-        // Gitea leases a Commons tenant, so teardown drops it before deleting
-        // the workloads — the exec is the psql that runs the DROP.
-        '*exec *' => Process::result(output: 'dropped'),
-        '*delete *' => Process::result(output: 'deleted'),
-    ]);
-
-    $this->artisan('git:remove local --force')
-        ->assertExitCode(0)
-        ->expectsOutputToContain('Removing Forgejo resources...')
-        ->expectsOutputToContain('removed from larakube-shared');
-});
+// git:remove's own coverage lives in GitRemoveCommandTest.php (the
+// resource-set regression test) rather than duplicated here.
