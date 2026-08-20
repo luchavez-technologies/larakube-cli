@@ -45,6 +45,7 @@ use App\Vendors\SupportTool;
 use App\Vendors\UptimeTool;
 use App\Vendors\VpnTool;
 use App\Vendors\WebmailTool;
+use App\Vendors\YopassTool;
 use LogicException;
 
 enum ClusterTool: string implements HasWorkloadComponents
@@ -88,6 +89,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::VPN => new VpnTool,
             self::DASHBOARD => new DashboardTool,
             self::RESUME => new ResumeTool,
+            self::PASTE => new YopassTool,
         };
     }
 
@@ -124,6 +126,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::MEET => 'Video Meetings (LiveKit)',
             self::DESIGN => 'Design & Prototyping (Penpot)',
             self::RESUME => 'Resume Builder (Reactive Resume)',
+            self::PASTE => 'Secure Paste Sharing (Yopass)',
         };
     }
 
@@ -169,6 +172,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::MEET => '🎥',
             self::DESIGN => '🎨',
             self::RESUME => '📄',
+            self::PASTE => '🔥',
         };
     }
 
@@ -212,6 +216,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::MEET => 'Meet',
             self::DESIGN => 'Design',
             self::RESUME => 'Resume',
+            self::PASTE => 'Paste',
         };
     }
 
@@ -273,6 +278,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::MEET => SharedClusterService::MEET,
             self::DESIGN => SharedClusterService::DESIGN,
             self::RESUME => SharedClusterService::RESUME,
+            self::PASTE => SharedClusterService::PASTE,
         };
     }
 
@@ -520,11 +526,14 @@ enum ClusterTool: string implements HasWorkloadComponents
      *    it cannot join the fleet's identity or mail story yet.
      *  - UPTIME (Uptime Kuma): no OIDC/SSO integration and no programmatic SMTP
      *    story (its mail settings are UI-only, over SQLite) — nothing to wire.
+     *  - PASTE (Yopass): zero-knowledge/no-account secret sharing is the whole
+     *    point of the tool — permanently no OIDC/SSO story by design, same
+     *    category of gap as UPTIME, not a temporary one.
      */
     public function isShipped(): bool
     {
         return match ($this) {
-            self::ANALYTICS, self::UPTIME => false,
+            self::ANALYTICS, self::UPTIME, self::PASTE => false,
             default => true,
         };
     }
@@ -1250,4 +1259,5 @@ enum ClusterTool: string implements HasWorkloadComponents
     case DASHBOARD = 'dashboard';
     case DESIGN = 'design';
     case RESUME = 'resume';
+    case PASTE = 'paste';
 }
