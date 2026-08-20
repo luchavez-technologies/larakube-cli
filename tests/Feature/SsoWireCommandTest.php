@@ -470,6 +470,11 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
         // every other RBAC-gated tool prints.
         ->expectsOutputToContain('Role-gated tool — login is denied until you grant a role')
         ->expectsOutputToContain('ocisUser')
+        // The admin-tier section must NOT claim the tool is open-to-org —
+        // that was true before Drive also had rbacRoles(), and printing it
+        // now would directly contradict the role-gated warning above.
+        ->expectsOutputToContain('Admin tiers on top of the role-gated login above')
+        ->doesntExpectOutputToContain('Open-to-org tool')
         ->expectsOutputToContain("Granted 'ocisAdmin', 'ocisSpaceAdmin' to admin@luchtech.dev");
 
     // The ocisUser role (rbacRoles()) is created on Drive's own project —

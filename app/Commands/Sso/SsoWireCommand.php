@@ -420,8 +420,14 @@ class SsoWireCommand extends Command
             return false;
         }
 
+        // "Open to org" is only true when this tool has NO rbacRoles() of its
+        // own — Drive (2026-08-20) is the exception that has both: login
+        // itself is already closed by the rbacRoles() gate printed above,
+        // these are just the elevated tiers on top of it.
         $this->newLine();
-        $this->line('  <fg=blue>Open-to-org tool — every org member can log in. Admin roles:</>');
+        $this->line($tool->requiresRbacGating()
+            ? '  <fg=blue>Admin tiers on top of the role-gated login above:</>'
+            : '  <fg=blue>Open-to-org tool — every org member can log in. Admin roles:</>');
         foreach ($tool->ssoAdminRoles() as $roleKey => $label) {
             $this->line("    <fg=blue>{$roleKey}</> — {$label}");
         }
