@@ -123,10 +123,10 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret sso-app-drive*' => Process::result(output: base64_encode('shared-proj-1')),
     ]);
 
     Http::fake([
+        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'drive-proj-1']]]),
         '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => []])
@@ -140,9 +140,11 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
     $this->artisan('sso:grant', ['--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
         // Order follows ClusterTool::cases() declaration order, filtered to
         // role-bearing tools — link/notes/passwords/record/sheets/sign
-        // joined the list 2026-08-20 (see ClusterTool::rbacRoles()).
+        // joined the list 2026-08-20, git and drive's rbacRoles() joined
+        // the same day (see ClusterTool::rbacRoles()).
         ->expectsChoice('Which tool?', 'drive', [
             'drive' => 'Cloud Storage & Sync (oCIS)',
+            'git' => 'Git Forge & CI/CD (Forgejo)',
             'link' => 'Link Management (Kutt)',
             'monitor' => 'Monitoring Stack (Grafana + Loki + Prometheus)',
             'notes' => 'Team Wiki & Knowledge Base (Outline)',
@@ -157,15 +159,15 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev");
 
-    // The grant targets the drive app's own project — and the picker never
-    // consulted the live RBAC/shared project role lists at all.
+    // The grant targets Drive's own project (found by name, requiresRbacGating()
+    // resolves it — no sso-app-drive secret read) — and the picker never
+    // consulted the live role lists at all.
     Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants')
         && ! str_contains($request->url(), '_search')
         && $request->method() === 'POST'
-        && $request['projectId'] === 'shared-proj-1'
+        && $request['projectId'] === 'drive-proj-1'
         && $request['roleKeys'] === ['ocisAdmin']);
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/roles/_search')
-        || str_contains($request->url(), '/management/v1/projects/_search'));
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/roles/_search'));
 });
 
 test('sso:grant rejects a role the tool does not define', function (): void {
@@ -260,15 +262,21 @@ test('sso:grant merges a new role into an existing UserGrant instead of clobberi
         && $request['roleKeys'] === ['openbao-admin', 'grafana-user']);
 });
 
-test('sso:grant grants Drive\'s ocisAdmin on the shared project its app is registered under', function (): void {
+test('sso:grant grants Drive\'s ocisAdmin on Drive\'s own project, found by name', function (): void {
+    // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 (at the
+    // user's explicit request) — requiresRbacGating() is now checked FIRST
+    // in resolveSsoProject(), so every Drive grant resolves via
+    // zitadelEnsureProject(rbacProjectName()) (search-or-create by name),
+    // never the sso-app-drive secret's cached project-id (that path is only
+    // reachable for a tool with ssoAdminRoles() and no rbacRoles() at all —
+    // Drive no longer qualifies).
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        // sso:wire persisted which project the drive app lives on.
-        '*get secret sso-app-drive*' => Process::result(output: base64_encode('shared-proj-1')),
     ]);
 
     Http::fake([
+        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'drive-proj-1']]]),
         '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => []])
@@ -279,28 +287,26 @@ test('sso:grant grants Drive\'s ocisAdmin on the shared project its app is regis
     $this->artisan('sso:grant', ['--tool' => 'drive', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev")
-        ->expectsOutputToContain('LaraKube Shared Tools');
+        ->expectsOutputToContain('drive-ocis');
 
-    // The grant targets the drive app's own project — and never touches the
-    // RBAC project's ensure/search.
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/_search')
+        && $request['queries'][0]['nameQuery']['name'] === 'drive-ocis');
     Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants')
         && ! str_contains($request->url(), '_search')
         && $request->method() === 'POST'
-        && $request['projectId'] === 'shared-proj-1'
+        && $request['projectId'] === 'drive-proj-1'
         && $request['roleKeys'] === ['ocisAdmin']);
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/_search'));
 });
 
-test('sso:grant for Drive falls back to ensuring the shared project when the app secret has no project-id yet', function (): void {
+test('sso:grant for Drive creates its own project when none exists yet', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret sso-app-drive*' => Process::result(output: ''),
     ]);
 
     Http::fake([
         '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'shared-proj-1']),
+        '*/management/v1/projects' => Http::response(['id' => 'drive-proj-1']),
         '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => []])
@@ -312,9 +318,10 @@ test('sso:grant for Drive falls back to ensuring the shared project when the app
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev");
 
-    // The fallback ensured the shared project by name before granting.
+    // The fallback created Drive's own project by name before granting —
+    // not the shared LaraKube Shared Tools project.
     Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects')
         && ! str_contains($request->url(), '_search')
         && $request->method() === 'POST'
-        && $request['name'] === 'LaraKube Shared Tools');
+        && $request['name'] === 'drive-ocis');
 });

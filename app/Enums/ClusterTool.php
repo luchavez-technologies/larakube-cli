@@ -699,6 +699,24 @@ enum ClusterTool: string implements HasWorkloadComponents
             // reads this to also gate the shared sso-proxy's
             // --allowed-groups, not just to route onto rbacProjectName().
             self::RECORD => ['record-user' => 'Can log in to Sendrec'],
+            // Added 2026-08-20 at the user's explicit request — a git forge
+            // holding real source/CI credentials must not be reachable by
+            // every org member (a future partner-org identity included).
+            self::GIT => ['git-user' => 'Can log in to Forgejo'],
+            // DRIVE keeps its ssoAdminRoles() (ocisAdmin/ocisSpaceAdmin) —
+            // this base role is the ONLY thing that changes: it's what an
+            // operator grants for plain "can log in, no admin tier" access.
+            // Genuinely coexists with ssoAdminRoles() here (see that
+            // method's docblock) — requiresRbacGating() becoming true
+            // routes BOTH sets of roles onto Drive's own rbacProjectName()
+            // project; flattenOcisRoles() (OCIS_ROLES_SCRIPT) scans a
+            // user's grants by role NAME across every project they hold,
+            // not by project id, so moving ocisAdmin/ocisSpaceAdmin here
+            // doesn't change how that Action finds them. Added 2026-08-20
+            // at the user's request — a future partner given Drive access
+            // (their stated plan) must not thereby get default access to
+            // every other open-to-org tool sharing LaraKube Shared Tools.
+            self::DRIVE => ['ocisUser' => 'Can log in to oCIS (regular access, no admin)'],
             default => [],
         };
     }
@@ -716,8 +734,10 @@ enum ClusterTool: string implements HasWorkloadComponents
      * with only ssoAdminRoles() is open to every org member and merely
      * distinguishes elevated privileges (e.g. oCIS admin vs. regular user).
      *
-     * sso:wire creates these on the tool's OWN project (the shared one, not
-     * the RBAC project), and — unlike rbacRoles(), whose grants are a manual
+     * sso:wire creates these on the tool's OWN project — the shared
+     * LaraKube Shared Tools project for a tool with only ssoAdminRoles(),
+     * or the tool's own rbacProjectName() project when requiresRbacGating()
+     * is also true (DRIVE) — and, unlike rbacRoles(), whose grants are a manual
      * `sso:grant` step — accepts an --admin-email= to grant the first one
      * right away. The claim-flattening Action (flattenOcisRoles) turns these
      * grants into the ocisRoles claim oCIS's PROXY_ROLE_ASSIGNMENT_DRIVER=oidc
@@ -744,8 +764,13 @@ enum ClusterTool: string implements HasWorkloadComponents
 
     /**
      * Every role key this tool supports granting — rbacRoles() plus
-     * ssoAdminRoles(). Disjoint by construction: a tool is either gated
-     * (rbacRoles) or open-to-org (ssoAdminRoles), never both.
+     * ssoAdminRoles(). Disjoint for most tools (a tool is either gated by
+     * rbacRoles or open-to-org via ssoAdminRoles) — DRIVE is the one
+     * deliberate exception (2026-08-20): it needs both simultaneously,
+     * rbacRoles() gating login itself while ssoAdminRoles() still
+     * distinguishes admin tiers once someone's granted in. requiresRbacGating()
+     * only checks rbacRoles() !== [], so this combination routes correctly:
+     * both role sets land on the tool's own rbacProjectName() project.
      *
      * @return array<string, string>
      */

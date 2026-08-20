@@ -249,26 +249,29 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
 
     // Public SPA clients have no clientSecret — Zitadel omits it from the
     // create response. The wire must accept that and not choke.
+    //
+    // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 (at
+    // the user's explicit request — a future partner given Drive access
+    // must not thereby get default access to every other open-to-org tool)
+    // — both ensureRbacGating() and ensureSsoAdminGating() now run against
+    // Drive's own project, so this fakes both: the flattenLaraKubeRoles AND
+    // flattenOcisRoles Actions, and all three roles (ocisUser from
+    // rbacRoles(), ocisAdmin/ocisSpaceAdmin from ssoAdminRoles()).
     Http::fake([
         '*apps/_search' => Http::response(['result' => []]),
         '*projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
         '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
-        // Drive ships PROXY_ROLE_ASSIGNMENT_DRIVER=oidc, so sso:wire must
-        // ensure the flattenOcisRoles Action is attached to the token flow
-        // and the ocisAdmin role already exists on the shared project.
-        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        // projectRoleAssertion is what lets the Action see user grants at
-        // runtime (the "no + New Space button" root cause) — a shared
-        // project without the flag must be upgraded by the wire.
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]),
-        '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
-            $key = data_get($request, 'queries.0.keyQuery.key', '');
-
-            return Http::response(['result' => [['key' => $key]]]);
-        },
+        // Already asserted (both flags true) — this test isn't about the
+        // projectRoleAssertion/projectRoleCheck state-transition dance,
+        // that has its own dedicated coverage below.
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects/proj-1/roles' => Http::response([]),
     ]);
 
     $tld = GlobalConfigData::load()->getLocalTld();
@@ -322,11 +325,15 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
         '*/management/v1/projects/proj-1/apps/app-stale' => Http::response(['app' => ['id' => 'app-stale', 'oidcConfig' => ['redirectUris' => ["https://drive.{$tld}/"]]]]),
         '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         // The ocisRoles Action must be ensured (and found already attached),
-        // and the ocisAdmin role must already exist on the shared project.
+        // and the ocisAdmin role must already exist on the tool's own
+        // project — Drive is rbacRoles()+ssoAdminRoles() together
+        // (2026-08-20), so flattenLaraKubeRoles must also be ensured
+        // (falls through to a fresh create, not found in this fake).
         '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-larakube']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]),
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
             $key = data_get($request, 'queries.0.keyQuery.key', '');
 
@@ -384,9 +391,10 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
         ]]]]),
         '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-larakube']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]),
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
             $key = data_get($request, 'queries.0.keyQuery.key', '');
 
@@ -406,7 +414,7 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
         && ($request['postLogoutRedirectUris'] ?? null) === ["https://drive.{$tld}/"]);
 });
 
-test('sso:wire for Drive installs the ocisRoles claim Action and grants ocisAdmin via --admin-email', function (): void {
+test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rbacRoles(), and grants ocisAdmin via --admin-email', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis   1/1   1   1   10d'),
@@ -417,21 +425,37 @@ test('sso:wire for Drive installs the ocisRoles claim Action and grants ocisAdmi
         '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
     ]);
 
+    // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 (at
+    // the user's explicit request) — ensureRbacGating() runs FIRST and sets
+    // projectRoleAssertion+projectRoleCheck both true; ensureSsoAdminGating()
+    // runs second and, seeing assertion already true, does NOT re-PUT (its
+    // own check is satisfied by the first step alone) — this stateful fake
+    // mirrors that real sequential dependency instead of a static snapshot.
+    $projectGated = false;
     Http::fake([
         '*apps/_search' => Http::response(['result' => []]),
         '*projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
         '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
-        // flattenOcisRoles does not exist yet — it must be created and its
-        // script attached to the token flow (triggers 4 and 5). The ocisAdmin
-        // role does not exist yet either, so the wire creates it too.
+        // Neither Action exists yet — both must be created.
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-ocis']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        // Shared project without projectRoleAssertion — the wire must flip it
-        // (without projectRoleCheck, which would lock out zero-role members).
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]),
+        '*/management/v1/projects/proj-1' => function ($request) use (&$projectGated) {
+            if ($request->method() === 'PUT') {
+                $projectGated = true;
+
+                return Http::response(['details' => []]);
+            }
+
+            return Http::response(['project' => [
+                'id' => 'proj-1',
+                'name' => 'drive-ocis',
+                'projectRoleAssertion' => $projectGated,
+                'projectRoleCheck' => $projectGated,
+            ]]);
+        },
         '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
         '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
@@ -442,11 +466,22 @@ test('sso:wire for Drive installs the ocisRoles claim Action and grants ocisAdmi
     $this->artisan('sso:wire', ['--tool' => 'drive', '--admin-email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO')
+        // rbacRoles() now gates Drive's login itself — the same warning
+        // every other RBAC-gated tool prints.
+        ->expectsOutputToContain('Role-gated tool — login is denied until you grant a role')
+        ->expectsOutputToContain('ocisUser')
         ->expectsOutputToContain("Granted 'ocisAdmin', 'ocisSpaceAdmin' to admin@luchtech.dev");
 
-    // The org-wide Action was created with the ocisUser fallback so nobody
-    // gets locked out under PROXY_ROLE_ASSIGNMENT_DRIVER=oidc — and with the
-    // ocisSpaceAdmin upgrade path beside ocisAdmin (admin outranks spaceadmin).
+    // The ocisUser role (rbacRoles()) is created on Drive's own project —
+    // the base gate an operator grants for plain "can log in" access.
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects/proj-1/roles')
+        && $request->method() === 'POST'
+        && $request['roleKey'] === 'ocisUser');
+
+    // The org-wide flattenOcisRoles Action was created with the ocisUser
+    // fallback so nobody gets locked out under PROXY_ROLE_ASSIGNMENT_DRIVER=
+    // oidc — and with the ocisSpaceAdmin upgrade path beside ocisAdmin
+    // (admin outranks spaceadmin).
     Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/actions')
         && ! str_contains($request->url(), '_search')
         && $request->method() === 'POST'
@@ -456,18 +491,16 @@ test('sso:wire for Drive installs the ocisRoles claim Action and grants ocisAdmi
         && str_contains($request['script'], 'roles[0] !== "ocisAdmin"')
         && str_contains($request['script'], 'setClaim("ocisRoles"'));
 
-    // The shared project gains projectRoleAssertion — without it Zitadel
-    // resolves an empty grants list into the Action context at runtime and
-    // the ocisUser fallback fires for everyone (the "no + New Space button"
-    // root cause). projectRoleCheck must stay off: zero-role members rely on
-    // the ocisUser fallback to log in at all.
+    // Drive's own project gains BOTH flags — projectRoleCheck is the actual
+    // login gate, unlike a plain ssoAdminRoles()-only tool (e.g. a future
+    // one) where it must stay off so zero-role members can still log in.
     Http::assertSent(fn ($request) => $request->method() === 'PUT'
         && str_contains($request->url(), '/management/v1/projects/proj-1')
         && $request['projectRoleAssertion'] === true
-        && ($request['projectRoleCheck'] ?? null) !== true);
+        && $request['projectRoleCheck'] === true);
 
-    // Both drive admin roles were granted to the --admin-email user on the
-    // shared project the drive app registers under — each as its own grant.
+    // Both drive admin roles were granted to the --admin-email user on
+    // Drive's own project.
     foreach (['ocisAdmin', 'ocisSpaceAdmin'] as $roleKey) {
         Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants')
             && ! str_contains($request->url(), '_search')
@@ -496,11 +529,15 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
         '*projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
         '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
+        // Only flattenOcisRoles exists (stale script) — flattenLaraKubeRoles
+        // (needed now that Drive also has rbacRoles()) doesn't, so it gets
+        // freshly created via the generic '/management/v1/actions' POST.
         '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => 'function flattenOcisRoles(ctx, api) { let roles = ["ocisUser"]; }']]]),
         '*/management/v1/actions/action-ocis' => Http::response([]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-larakube']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]),
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
             $key = data_get($request, 'queries.0.keyQuery.key', '');
 
@@ -518,9 +555,13 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
         && str_contains($request->url(), '/management/v1/actions/action-ocis')
         && str_contains($request['script'], '"ocisSpaceAdmin"')
         && $request['fieldMask'] === ['paths' => ['name', 'script']]);
-    Http::assertNotSent(fn ($request) => $request->method() === 'POST'
-        && str_contains($request->url(), '/management/v1/actions')
-        && ! str_contains($request->url(), '_search'));
+    // flattenOcisRoles specifically is never recreated — the create POST
+    // that does happen (flattenLaraKubeRoles, since it didn't exist yet) is
+    // for a different Action and carries a different script entirely.
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/management/v1/actions')
+        && ! str_contains($request->url(), '_search')
+        && $request->method() === 'POST'
+        && str_contains($request['script'] ?? '', 'flattenOcisRoles'));
 });
 
 test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups claim', function (): void {
@@ -1172,6 +1213,16 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
         '*projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
         '*/apps/oidc' => Http::response(['appId' => 'app-git', 'clientId' => 'cid-git', 'clientSecret' => 'csecret-git']),
+        // Git is RBAC-gated (added 2026-08-20 at the user's explicit
+        // request — a git forge holding real source/CI credentials must
+        // not be reachable by every org member, e.g. a future partner).
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'forgejo', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects/proj-1/roles' => Http::response([]),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'git', '--no-interaction' => true])
@@ -1202,6 +1253,13 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
         '*projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
         '*/apps/oidc' => Http::response(['appId' => 'app-git', 'clientId' => 'cid-git', 'clientSecret' => 'csecret-git']),
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'forgejo', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects/proj-1/roles' => Http::response([]),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'git', '--no-interaction' => true])

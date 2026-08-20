@@ -208,14 +208,18 @@ test('sso:revoke\'s discovery picker defaults to an empty selection under non-in
         && in_array($request->method(), ['PUT', 'DELETE'], true));
 });
 
-test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on the shared project', function (): void {
+test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on Drive\'s own project', function (): void {
+    // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 (at the
+    // user's explicit request) — requiresRbacGating() is now checked FIRST
+    // in resolveSsoProject(), so this resolves via zitadelEnsureProject(the
+    // 'drive-ocis' name), never the sso-app-drive secret's cached project-id.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret sso-app-drive*' => Process::result(output: base64_encode('shared-proj-1')),
     ]);
 
     Http::fake([
+        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'drive-proj-1']]]),
         '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]])
@@ -226,53 +230,68 @@ test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on the shared projec
     $this->artisan('sso:revoke', ['--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--force' => true, '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('Revoked [ocisAdmin] from admin@luchtech.dev')
-        ->expectsOutputToContain('LaraKube Shared Tools');
+        ->expectsOutputToContain('drive-ocis');
 
-    // The ocisAdmin grant was the user's last one on the shared project, so
-    // the grant is deleted outright on the drive app's own project.
+    // The ocisAdmin grant was the user's last one on Drive's project, so
+    // the grant is deleted outright.
     Http::assertSent(fn ($request) => $request->method() === 'DELETE'
         && str_contains($request->url(), '/users/uid-1/grants/grant-1'));
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/_search'));
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/_search')
+        && $request['queries'][0]['nameQuery']['name'] === 'drive-ocis');
 });
 
-test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on the shared project beside RBAC roles — and revokes it against its own project", function (): void {
+test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own project beside another tool's RBAC role", function (): void {
+    // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 — the
+    // sweep now walks every RBAC-gated tool's OWN project (a dozen of them,
+    // not "the one RBAC project" vs "the one shared project" as before), so
+    // this routes by EXACT project name: drive-ocis holds ocisAdmin,
+    // openbao-backend holds openbao-admin, everything else (every other
+    // role-bearing tool's project, plus the shared LaraKube Shared Tools
+    // project) is empty. DRIVE is declared before SECRETS in ClusterTool's
+    // case order, so ocisAdmin surfaces FIRST in the picker now, not second.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    // The discovery path consults BOTH role-bearing projects: the RBAC one
-    // (role-gated roles) and the shared one (drive's ocisAdmin). Count the
-    // shared-project grant lookups so the post-revoke summary reflects the
-    // deletion instead of echoing the pre-revoke grant forever.
-    $sharedGrantLookups = 0;
+    $driveGrantLookups = 0;
     Http::fake([
         '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/projects/_search' => function ($request) {
             $name = data_get($request, 'queries.0.nameQuery.name', '');
 
-            return Http::response(['result' => [['id' => $name === 'LaraKube Shared Tools' ? 'proj-shared' : 'proj-rbac']]]);
+            return Http::response(['result' => [['id' => "proj-{$name}"]]]);
         },
-        '*/management/v1/users/grants/_search' => function ($request) use (&$sharedGrantLookups) {
+        '*/management/v1/users/grants/_search' => function ($request) use (&$driveGrantLookups) {
             $projectId = data_get($request, 'queries.1.projectIdQuery.projectId', '');
-            if ($projectId === 'proj-shared') {
-                $sharedGrantLookups++;
 
-                return Http::response(['result' => $sharedGrantLookups >= 3
+            if ($projectId === 'proj-drive-ocis') {
+                $driveGrantLookups++;
+
+                // Three lookups happen before this grant is truly gone:
+                // (1) discovery's own sweep, (2) zitadelRevokeRole()'s
+                // internal zitadelFindUserGrant() check (decides DELETE vs
+                // PUT), (3) the post-revoke summary readback. Only the
+                // third should see it gone.
+                return Http::response(['result' => $driveGrantLookups >= 3
                     ? []
                     : [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]);
             }
 
-            return Http::response(['result' => [['id' => 'grant-2', 'roleKeys' => ['openbao-admin']]]]);
+            if ($projectId === 'proj-openbao-backend') {
+                return Http::response(['result' => [['id' => 'grant-2', 'roleKeys' => ['openbao-admin']]]]);
+            }
+
+            return Http::response(['result' => []]);
         },
         '*/management/v1/users/uid-1/grants/grant-1' => Http::response([]),
     ]);
 
-    // The picker iterates the RBAC project first, so ocisAdmin is the SECOND
-    // option (openbao-admin is first) — DOWN then SPACE selects it, ENTER submits.
+    // ocisAdmin is now the FIRST option (Drive precedes Secrets in
+    // ClusterTool's declaration order) — SPACE selects it, ENTER submits.
     // The command runs directly (not via artisan()) so Prompt::fake's mocked
     // terminal isn't clobbered by the Kernel's configurePrompts() fallbacks.
-    Prompt::fake([Key::DOWN, Key::SPACE, Key::ENTER]);
+    Prompt::fake([Key::SPACE, Key::ENTER]);
 
     $command = app(SsoRevokeCommand::class);
     $input = new ArrayInput(['--email' => 'admin@luchtech.dev', '--force' => true]);
@@ -287,15 +306,15 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on the shared pro
 
     expect($exitCode)->toBe(0)
         ->and($output->fetch())->toContain('Revoked [ocisAdmin] from admin@luchtech.dev')
-        ->toContain('now holds no roles on LaraKube Shared Tools');
+        ->toContain('now holds no roles on drive-ocis');
 
-    // Both projects' roles were offered in ONE picker — the old single-project
+    // Both tools' roles were offered in ONE picker — the old single-project
     // discovery never even saw ocisAdmin, which is the bug this locks in.
     Prompt::assertStrippedOutputContains('Cloud Storage & Sync (oCIS) — oCIS administrator');
     Prompt::assertStrippedOutputContains('Secrets Manager (OpenBao)');
 
-    // ocisAdmin was the user's last role on the shared project → the grant is
-    // deleted outright, and the revoke never touched the RBAC project's grant.
+    // ocisAdmin was the user's last role on Drive's project → the grant is
+    // deleted outright, and the revoke never touched Secrets' grant.
     Http::assertSent(fn ($request) => $request->method() === 'DELETE'
         && str_contains($request->url(), '/users/uid-1/grants/grant-1'));
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants/grant-2'));
