@@ -7,7 +7,15 @@ trait InteractsWithJsonFile
     /** Read and decode a JSON file into an array, or null if missing/invalid. */
     protected static function readJsonFile(string $path): ?array
     {
-        if (! file_exists($path)) {
+        // is_file(), not file_exists(): the latter is also true for a
+        // directory, and file_get_contents() on one is an uncaught
+        // engine-level error, not a graceful false/null — confirmed live
+        // (2026-08-20) when a stray directory literally named .larakube.json
+        // crashed every caller of this trait (ConfigData::loadFromFile(),
+        // GlobalConfigData::load()) with "Read of N bytes failed... Is a
+        // directory" instead of the "missing/invalid" null this already
+        // handles for every other bad-path case.
+        if (! is_file($path)) {
             return null;
         }
 
