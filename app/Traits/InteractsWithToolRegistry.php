@@ -344,8 +344,19 @@ trait InteractsWithToolRegistry
     /**
      * Resolve the host for an installed tool by checking the registry first,
      * then probing live cluster Ingress resources if not registered or missing a host.
+     *
+     * $instance defaults to null, not 'main': registry entries for a
+     * single-instance tool are stored with instance: '' (see
+     * registerDeployedTool()'s own default), and findToolInstanceEntry()
+     * only treats null as "match the legacy bare/'main' entry" — passing the
+     * literal string 'main' does NOT match a ''-stored entry, so every
+     * caller here that omitted $instance (targetHost() for sso:wire, the
+     * mail/sso wiring traits) was silently missing the real registered host
+     * and falling through to a live-ingress probe instead. Confirmed live
+     * 2026-08-20: this is how a stale/wrong Ingress host for chat leaked
+     * into sso:wire's resolved $toolHost.
      */
-    protected function resolveLiveToolHost(string $kubectl, ClusterTool $tool, string $instance = 'main'): ?string
+    protected function resolveLiveToolHost(string $kubectl, ClusterTool $tool, ?string $instance = null): ?string
     {
         $registeredHost = $this->getToolHost($kubectl, $tool, $instance);
         if ($registeredHost !== null && $registeredHost !== '') {
@@ -354,7 +365,7 @@ trait InteractsWithToolRegistry
 
         $namespaces = array_unique([$tool->namespace(), 'larakube-shared']);
         $prefix = $tool->service()?->hostPrefix() ?? $tool->value;
-        if ($instance !== '' && $instance !== 'main') {
+        if ($instance !== null && $instance !== '' && $instance !== 'main') {
             $prefix = "{$prefix}-{$instance}";
         }
 
@@ -372,7 +383,7 @@ trait InteractsWithToolRegistry
                 }
             }
 
-            if ($instance === 'main' && count($hosts) === 1 && $ns !== 'larakube-shared') {
+            if (($instance === null || $instance === '' || $instance === 'main') && count($hosts) === 1 && $ns !== 'larakube-shared') {
                 return reset($hosts) ?: null;
             }
         }
