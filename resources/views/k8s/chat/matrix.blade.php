@@ -123,6 +123,19 @@ stringData:
         cp_max: 10
     enable_registration: false
     registration_shared_secret: "{{ $registrationSecret }}"
+    # Unconditional (not gated behind meetJwtUrl like rc_message below) —
+    # upload abuse doesn't depend on whether Meet is wired. Without a cap,
+    # Synapse accepts an upload of ANY size; a single large file (or a
+    # handful) can fill the 5Gi chat-synapse-data PVC in one shot and crash
+    # the pod — the 30d media-prune CronJob only clears cold files, it does
+    # nothing against a live burst. 100M keeps normal workshop-style sharing
+    # (screenshots, PDFs, short recordings) working while capping the
+    # single-file blast radius; rc_media_create caps how many uploads land
+    # per second so a burst of smaller files can't add up just as fast.
+    max_upload_size: "100M"
+    rc_media_create:
+      per_second: 0.5
+      burst_count: 10
 @if($turnSecret ?? null)
     turn_shared_secret: "{{ $turnSecret }}"
     turn_uris:

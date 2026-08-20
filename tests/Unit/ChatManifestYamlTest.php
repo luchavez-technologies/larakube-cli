@@ -122,6 +122,23 @@ test('the RTC experimental block is skipped entirely when Meet is not wired', fu
         ->and($homeserver)->not->toHaveKey('max_event_delay_duration');
 });
 
+test('uploads are capped and rate-limited even when Meet is not wired', function (): void {
+    // Unlike rc_message (only set inside the meetJwtUrl block above), upload
+    // abuse doesn't depend on Meet being wired — an unbounded upload can fill
+    // the 5Gi chat-synapse-data PVC and crash the pod regardless. This must
+    // hold with meetJwtUrl null, the exact case the previous test proves
+    // skips the experimental/rc_message block entirely.
+    $config = collect(chatDocuments(chatManifest(['meetJwtUrl' => null])))
+        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Secret'
+            && ($doc['metadata']['name'] ?? null) === 'chat-synapse-config');
+
+    $homeserver = Yaml::parse($config['stringData']['homeserver.yaml']);
+
+    expect($homeserver['max_upload_size'])->toBe('100M')
+        ->and($homeserver['rc_media_create']['per_second'])->toBe(0.5)
+        ->and($homeserver['rc_media_create']['burst_count'])->toBe(10);
+});
+
 test('every chat container declares a memory limit', function (): void {
     $deployments = collect(chatDocuments(chatManifest()))
         ->filter(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
