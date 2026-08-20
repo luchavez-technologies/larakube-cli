@@ -82,40 +82,50 @@ class SsoOrgCommand extends Command
             return 1;
         }
 
-        $challenge = null;
-        $this->withSpin("Generating the DNS ownership challenge for {$zone}...", function () use (&$challenge, $ssoHost, $pat, $orgId, $zone): void {
-            $challenge = $this->zitadelGenerateOrgDomainValidation($ssoHost, $pat, $orgId, $zone);
-        });
+        // Some callers (our own machine-pat included) get the domain
+        // auto-verified by Zitadel the instant it's added — see
+        // zitadelAddOrgDomain()'s docblock. Asking Zitadel to generate a
+        // fresh DNS challenge for an already-verified domain fails outright,
+        // so check first and skip the whole challenge/TXT/validate dance
+        // when there's nothing left to prove.
+        $alreadyVerified = $this->zitadelOrgDomainVerified($ssoHost, $pat, $orgId, $zone);
 
-        if ($challenge === null) {
-            $this->laraKubeError('Failed to generate the domain ownership challenge.');
+        if ($alreadyVerified !== true) {
+            $challenge = null;
+            $this->withSpin("Generating the DNS ownership challenge for {$zone}...", function () use (&$challenge, $ssoHost, $pat, $orgId, $zone): void {
+                $challenge = $this->zitadelGenerateOrgDomainValidation($ssoHost, $pat, $orgId, $zone);
+            });
 
-            return 1;
-        }
+            if ($challenge === null) {
+                $this->laraKubeError('Failed to generate the domain ownership challenge.');
 
-        $zoneId = $this->cloudflareZoneId($zone, $token);
-        if ($zoneId === null) {
-            $this->laraKubeError("Could not find the '{$zone}' zone with the supplied Cloudflare token — check the token is scoped to this zone.");
+                return 1;
+            }
 
-            return 1;
-        }
+            $zoneId = $this->cloudflareZoneId($zone, $token);
+            if ($zoneId === null) {
+                $this->laraKubeError("Could not find the '{$zone}' zone with the supplied Cloudflare token — check the token is scoped to this zone.");
 
-        $txtName = "_zitadel-challenge.{$zone}";
-        if (! $this->cloudflareUpsertTxtRecord($zoneId, $token, $txtName, $challenge['token'])) {
-            $this->laraKubeError("Failed to write the {$txtName} TXT record via the Cloudflare API.");
+                return 1;
+            }
 
-            return 1;
-        }
+            $txtName = "_zitadel-challenge.{$zone}";
+            if (! $this->cloudflareUpsertTxtRecord($zoneId, $token, $txtName, $challenge['token'])) {
+                $this->laraKubeError("Failed to write the {$txtName} TXT record via the Cloudflare API.");
 
-        $verified = false;
-        $this->withSpin('Waiting for DNS propagation and verifying domain ownership...', function () use (&$verified, $ssoHost, $pat, $orgId, $zone): void {
-            $verified = $this->zitadelValidateOrgDomain($ssoHost, $pat, $orgId, $zone);
-        });
+                return 1;
+            }
 
-        if (! $verified) {
-            $this->laraKubeError("Could not verify {$zone} yet — DNS may still be propagating. Re-run this command in a minute; the TXT record and organization are already in place.");
+            $verified = false;
+            $this->withSpin('Waiting for DNS propagation and verifying domain ownership...', function () use (&$verified, $ssoHost, $pat, $orgId, $zone): void {
+                $verified = $this->zitadelValidateOrgDomain($ssoHost, $pat, $orgId, $zone);
+            });
 
-            return 1;
+            if (! $verified) {
+                $this->laraKubeError("Could not verify {$zone} yet — DNS may still be propagating. Re-run this command in a minute; the TXT record and organization are already in place.");
+
+                return 1;
+            }
         }
 
         if (! $this->zitadelEnsureRbacAction($ssoHost, $pat, $orgId)) {

@@ -94,11 +94,22 @@ trait InteractsWithZitadelApi
             ->timeout(15)
             ->post("https://{$host}/v2/users/human", $body);
 
-        if ($response->failed()) {
-            return null;
+        if ($response->successful()) {
+            return $response->json('userId');
         }
 
-        return $response->json('userId');
+        // Idempotent, matching zitadelAddOrgDomain()'s "AlreadyExists" handling:
+        // confirmed live (2026-08-20) that a create call can fail with "User
+        // already exists" even on what the caller believed was a first attempt
+        // — e.g. a prior run's response never made it back to the CLI (network
+        // blip, timeout) even though Zitadel's write went through. Retrying the
+        // whole command previously meant a permanent, unrecoverable failure;
+        // now it resolves and reuses the existing user instead.
+        if (str_contains(strtolower($response->body()), 'already exists')) {
+            return $this->zitadelFindUserByEmail($host, $pat, $email);
+        }
+
+        return null;
     }
 
     /** Find an existing Zitadel user by email. Returns their user ID, or null if not found/on failure. */
@@ -834,11 +845,23 @@ trait InteractsWithZitadelApi
     }
 
     /**
-     * Add a custom domain claim to $orgId (does not verify it — the org
-     * still needs zitadelGenerateOrgDomainValidation() +
-     * zitadelValidateOrgDomain() before Zitadel treats it as owned).
-     * Idempotent: "already exists" is treated as success. v1 API —
-     * AddOrgDomainRequest.domain confirmed live.
+     * Add a custom domain claim to $orgId. Idempotent: "already exists" is
+     * treated as success. v1 API — AddOrgDomainRequest.domain confirmed
+     * live.
+     *
+     * Does NOT always leave the domain unverified: confirmed live (2026-08-20,
+     * repeatable on a freshly created org) that Zitadel auto-verifies the
+     * domain the instant it's added — `isVerified` flips true with
+     * `creationDate === changeDate` on the domain object, zero DNS round
+     * trip — when the calling PAT already holds instance-level admin rights
+     * (our `machine-pat` does). Zitadel reasonably treats a caller that
+     * privileged as not needing DNS-01 proof of ownership. Callers MUST call
+     * zitadelOrgDomainVerified() after this and skip
+     * zitadelGenerateOrgDomainValidation() when it's already true — asking
+     * Zitadel to generate a fresh challenge for an already-verified domain
+     * fails outright ("Domain is already verified", ORG-HGw21). The
+     * generate/validate path stays in place as a fallback for callers or
+     * PAT scopes that don't get the auto-verify treatment.
      */
     protected function zitadelAddOrgDomain(string $host, string $pat, string $orgId, string $domain): bool
     {
@@ -848,6 +871,33 @@ trait InteractsWithZitadelApi
         );
 
         return $response->successful() || str_contains($response->body(), 'AlreadyExists');
+    }
+
+    /**
+     * Whether $domain is already verified on $orgId. v1 API —
+     * confirmed live via /management/v1/orgs/me/domains/_search
+     * (result[].domainName / result[].isVerified). Returns null on a
+     * transport/API failure so the caller can distinguish "confirmed not
+     * verified" from "couldn't check" rather than treating both the same.
+     */
+    protected function zitadelOrgDomainVerified(string $host, string $pat, string $orgId, string $domain): ?bool
+    {
+        $response = Http::withToken($pat)->withHeaders($this->zitadelOrgHeaders($orgId))->timeout(15)->post(
+            "https://{$host}/management/v1/orgs/me/domains/_search",
+            (object) [],
+        );
+
+        if ($response->failed()) {
+            return null;
+        }
+
+        foreach ((array) $response->json('result', []) as $entry) {
+            if (($entry['domainName'] ?? null) === $domain) {
+                return (bool) ($entry['isVerified'] ?? false);
+            }
+        }
+
+        return false;
     }
 
     /**

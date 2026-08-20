@@ -18,6 +18,13 @@ function ssoOrgHappyPathHttpFakes(): array
     return [
         '*/v2/organizations/_search' => Http::response(['result' => []]),
         '*/v2/organizations' => Http::response(['organizationId' => 'org-1']),
+        // Not-yet-verified by default — exercises the full DNS-challenge
+        // path in the existing happy-path tests below. The "already
+        // verified" skip-ahead path (see zitadelAddOrgDomain()'s docblock —
+        // some PAT scopes get the domain auto-verified by Zitadel the
+        // instant it's added) has its own dedicated test with this
+        // overridden to isVerified: true.
+        '*/orgs/me/domains/_search' => Http::response(['result' => [['domainName' => 'partner.example', 'isVerified' => false]]]),
         '*/orgs/me/domains/*/validation/_generate' => Http::response(['token' => 'zitadel-challenge-abc', 'url' => 'https://zitadel.example/docs']),
         '*/orgs/me/domains/*/validation' => Http::response([]),
         '*/orgs/me/domains' => Http::response([]),
@@ -101,6 +108,32 @@ test('sso:org creates an ORG_OWNER admin when --admin-email is given', function 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/orgs/me/members')
         && $request['userId'] === 'user-1'
         && $request['roles'] === ['ORG_OWNER']);
+});
+
+test('sso:org skips the DNS challenge entirely when the domain is already verified', function (): void {
+    // Confirmed live (2026-08-20): Zitadel auto-verifies a domain the
+    // instant it's added when the calling PAT already holds instance-level
+    // admin rights — asking it to generate a fresh challenge for an
+    // already-verified domain fails outright ("Domain is already
+    // verified", ORG-HGw21). The command must detect this and skip
+    // straight to the RBAC Action + admin steps.
+    Process::fake(ssoOrgBaseProcessFakes());
+    Http::fake(array_merge(ssoOrgHappyPathHttpFakes(), [
+        '*/orgs/me/domains/_search' => Http::response(['result' => [['domainName' => 'partner.example', 'isVerified' => true]]]),
+    ]));
+
+    $this->artisan('sso:org', ['--zone' => 'partner.example', '--cloudflare-token' => 'cf-token', '--force' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('partner.example is a real Zitadel organization')
+        ->expectsOutputToContain('verified');
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'validation/_generate'));
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'api.cloudflare.com'));
+
+    // The RBAC Action install still has to run — that's the whole point of
+    // not bailing out.
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/actions')
+        && ! str_contains($request->url(), '_search'));
 });
 
 test('zitadelValidateOrgDomain retries on failure and succeeds once the challenge is verifiable', function (): void {
