@@ -1,19 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\Process;
-
-test('paste:init refuses because Yopass is not yet shipped', function (): void {
-    Process::fake([
-        '*' => Process::result(output: ''),
-    ]);
-
-    $this->artisan('paste:init local')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('Secure Paste Sharing (Yopass) is not yet shipped');
-
-    Process::assertNotRan(fn ($process) => true);
-});
-
 test('paste manifest wires Yopass to the Commons Redis at the allocated index, one-time-read, one-day default expiry, no PVC', function (): void {
     $manifest = view('k8s.paste.shared', [
         'host' => 'paste.example.test',

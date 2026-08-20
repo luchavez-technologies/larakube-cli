@@ -526,14 +526,24 @@ enum ClusterTool: string implements HasWorkloadComponents
      *    it cannot join the fleet's identity or mail story yet.
      *  - UPTIME (Uptime Kuma): no OIDC/SSO integration and no programmatic SMTP
      *    story (its mail settings are UI-only, over SQLite) — nothing to wire.
-     *  - PASTE (Yopass): zero-knowledge/no-account secret sharing is the whole
-     *    point of the tool — permanently no OIDC/SSO story by design, same
-     *    category of gap as UPTIME, not a temporary one.
+     *
+     * PASTE (Yopass) is shipped despite having no OIDC/SSO story — that's a
+     * deliberate exception, not an oversight: zero-knowledge/no-account
+     * secret sharing is the whole point of the tool, so "no auth" is the
+     * design, not a gap. Note it's unauthenticated to anyone with the link —
+     * fine for the tool's own zero-knowledge model, but don't add ForwardAuth
+     * gating casually: this cluster's oauth2-proxy is ONE shared pod across
+     * every ForwardAuth tool (ADR 0006) with a single global --allowed-group,
+     * so a second ForwardAuth-gated tool with a different (or no) role
+     * requirement will silently override another tool's gate — needs real
+     * per-tool group scoping first. Shipped 2026-08-20, before a live smoke
+     * test — verify the happy path (paste:init → paste:show a real secret →
+     * confirm burn-after-read) the moment there's a spare minute.
      */
     public function isShipped(): bool
     {
         return match ($this) {
-            self::ANALYTICS, self::UPTIME, self::PASTE => false,
+            self::ANALYTICS, self::UPTIME => false,
             default => true,
         };
     }

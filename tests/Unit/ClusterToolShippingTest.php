@@ -2,12 +2,11 @@
 
 use App\Enums\ClusterTool;
 
-test('only ANALYTICS, UPTIME, and PASTE are unshipped', function (): void {
+test('only ANALYTICS and UPTIME are unshipped', function (): void {
     expect(ClusterTool::ANALYTICS->isShipped())->toBeFalse()
-        ->and(ClusterTool::UPTIME->isShipped())->toBeFalse()
-        ->and(ClusterTool::PASTE->isShipped())->toBeFalse();
+        ->and(ClusterTool::UPTIME->isShipped())->toBeFalse();
 
-    $unshipped = [ClusterTool::ANALYTICS, ClusterTool::UPTIME, ClusterTool::PASTE];
+    $unshipped = [ClusterTool::ANALYTICS, ClusterTool::UPTIME];
 
     foreach (ClusterTool::cases() as $tool) {
         if (! in_array($tool, $unshipped, true)) {
@@ -21,18 +20,17 @@ test('shippedCases() excludes the unshipped tools and keeps every other case', f
     $shipped = ClusterTool::shippedCases();
 
     expect($shipped)->not->toContain(ClusterTool::ANALYTICS)
-        ->not->toContain(ClusterTool::UPTIME)
-        ->not->toContain(ClusterTool::PASTE);
+        ->not->toContain(ClusterTool::UPTIME);
 
     $slugs = array_map(fn ($t) => $t->value, $shipped);
     expect($slugs)->toBe(array_values(array_diff(
         array_map(fn ($t) => $t->value, ClusterTool::cases()),
-        ['analytics', 'uptime', 'paste'],
+        ['analytics', 'uptime'],
     )));
 });
 
 test('options() no longer advertises unshipped tools', function (): void {
-    expect(ClusterTool::options())->not->toHaveKeys(['analytics', 'uptime', 'paste']);
+    expect(ClusterTool::options())->not->toHaveKeys(['analytics', 'uptime']);
 });
 
 test('reverse lookups still recognise unshipped tools so live installs stay manageable', function (): void {

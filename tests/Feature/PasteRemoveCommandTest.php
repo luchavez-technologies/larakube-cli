@@ -2,14 +2,15 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('paste:remove refuses because Yopass is not yet shipped', function (): void {
+test('paste:remove deletes Yopass resources', function (): void {
     Process::fake([
+        '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
     $this->artisan('paste:remove local --force')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('Secure Paste Sharing (Yopass) is not yet shipped');
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Removing Yopass resources...');
 
-    Process::assertNotRan(fn ($process) => true);
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete deployment/paste-yopass service/paste-yopass ingress/paste-yopass secret/paste-yopass-secrets'));
 });

@@ -1,20 +1,15 @@
 <?php
 
-use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
-test('paste:show refuses because Yopass is not yet shipped', function (): void {
+test('paste:show exits non-zero and points at init when Yopass is not installed', function (): void {
     Process::fake([
+        '*larakube-tools-registry*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
 
     $this->artisan('paste:show local')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Secure Paste Sharing (Yopass) is not yet shipped');
-
-    Process::assertNotRan(fn ($process) => true);
-});
-
-test('paste stays hidden from tool:list until shipped', function (): void {
-    expect(ClusterTool::PASTE->isShipped())->toBeFalse();
+        ->expectsOutputToContain('is not installed')
+        ->expectsOutputToContain('paste:init local');
 });
