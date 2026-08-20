@@ -123,6 +123,7 @@ test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, G
             SharedClusterService::MEET,
             SharedClusterService::DESIGN,
             SharedClusterService::RESUME,
+            SharedClusterService::PASTE,
         ]);
 
         expect($service->isLocalOnly())->toBe($localOnly)
