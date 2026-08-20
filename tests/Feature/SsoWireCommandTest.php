@@ -624,6 +624,134 @@ test('sso:wire aborts before registering an OIDC client if role-gating setup fai
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/apps/oidc'));
 });
 
+test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated tool', function (): void {
+    // Record (Sendrec) has no native OIDC of its own — it's gated at the
+    // ingress via the shared sso-proxy (ADR 0006). Added 2026-08-20: that
+    // ADR's own "non-goals" section already named this gap
+    // ("--email-domain=* admits any Zitadel user... for real authz, add
+    // --allowed-groups fed by Zitadel project roles") — this proves it's
+    // actually wired now, not just documented as a TODO.
+    $proxyManifest = null;
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment record-sendrec*' => Process::result(output: 'record-sendrec   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get crd middlewares.traefik.io*' => Process::result(output: 'middlewares.traefik.io   2026-01-01T00:00:00Z'),
+        '*get secret sso-app-proxy*' => Process::result(output: '', exitCode: 1),
+        // applyManifest() deletes its temp file before this test can read it
+        // back, so capture the content here — while it still exists, inside
+        // the same synchronous Process::run() call that writes it.
+        '*apply -f *larakube-sso-proxy.yaml' => function ($process) use (&$proxyManifest) {
+            $file = trim(substr($process->command, strrpos($process->command, ' ') + 1));
+            $proxyManifest = file_get_contents($file);
+
+            return Process::result(output: 'applied');
+        },
+        '*apply -f *' => Process::result(output: 'applied'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'proxy-cid', 'clientSecret' => 'proxy-csecret']),
+        // record's own RBAC gating, same mechanism as the native-OIDC path.
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects/proj-1/roles' => Http::response([]),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'record', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('is gated behind Zitadel SSO')
+        ->expectsOutputToContain('record-user')
+        ->expectsOutputToContain('Nobody, including you, can reach');
+
+    expect($proxyManifest)->not->toBeNull()
+        ->and($proxyManifest)->toContain('--oidc-groups-claim=larakube_roles')
+        ->and($proxyManifest)->toContain('--allowed-group=record-user');
+});
+
+test('sso:wire aborts before deploying the ForwardAuth proxy if role-gating setup fails', function (): void {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment record-sendrec*' => Process::result(output: 'record-sendrec   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get crd middlewares.traefik.io*' => Process::result(output: 'middlewares.traefik.io   2026-01-01T00:00:00Z'),
+        '*apply -f *' => Process::result(output: 'applied'),
+    ]);
+
+    Http::fake([
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/actions/_search' => Http::response(['code' => 3, 'message' => 'proto: syntax error'], 400),
+        '*/management/v1/actions' => Http::response(['code' => 6, 'message' => 'Errors.Action.AlreadyExists'], 409),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'record', '--no-interaction' => true])
+        ->assertExitCode(1)
+        ->expectsOutputToContain('Could not set up role-gated access');
+
+    // Never gets as far as registering the shared proxy's own OIDC app.
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/apps/oidc'));
+});
+
+test('sso:wire gates Outline behind Zitadel roles — the actual tool from the live 2026-08-20 incident', function (): void {
+    // A partner org's ORG_OWNER (created by sso:org, a real and legitimate
+    // Zitadel identity) could read internal Outline docs, because Outline
+    // had no rbacRoles() and every SSO-wired tool without one admits any
+    // authenticated Zitadel user regardless of org. This is the direct
+    // regression guard for that incident, not just a generic RBAC test.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment notes-outline*' => Process::result(output: 'notes-outline   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-notes*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*set env deployment/notes-outline*' => Process::result(output: 'deployment.apps/notes-outline env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/notes-outline restarted'),
+    ]);
+
+    Http::fake([
+        '*apps/_search' => Http::response(['result' => []]),
+        '*projects/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        // Deliberately reports both flags off, unlike the other RBAC tests
+        // in this file — so the PUT that actually turns them on gets
+        // exercised and asserted below, instead of short-circuiting.
+        '*/management/v1/projects/proj-1' => Http::sequence()
+            ->push(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => false, 'projectRoleCheck' => false]])
+            ->whenEmpty(Http::response([])),
+        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects/proj-1/roles' => Http::response([]),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'notes', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('wired to Zitadel SSO');
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
+        && $request['redirectUris'][0] === 'https://notes.'.GlobalConfigData::load()->getLocalTld().'/auth/oidc.callback');
+
+    // The project role check must actually get turned on — this is what
+    // would have stopped the incident: a zero-role login denied at the
+    // Zitadel layer, before Outline's own app is ever reached.
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/proj-1')
+        && $request->method() === 'PUT'
+        && ($request['projectRoleCheck'] ?? null) === true
+        && ($request['projectRoleAssertion'] ?? null) === true);
+});
+
 test('sso:wire reuses an already-registered OIDC client', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
@@ -783,6 +911,18 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         '*projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
         '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        // Kutt is RBAC-gated (ClusterTool::requiresRbacGating, added
+        // 2026-08-20 — a partner org's SSO login could otherwise reach ANY
+        // login-only-wired tool) — sso:wire also ensures the LaraKube RBAC
+        // project's role-assertion, the kutt-user role, and the org-wide
+        // claim-flattening Action.
+        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
+        '*/management/v1/projects/proj-1/roles' => Http::response([]),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'link', '--no-interaction' => true])
@@ -793,11 +933,10 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
     Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
         && $request['redirectUris'][0] === 'https://link.'.GlobalConfigData::load()->getLocalTld().'/login/oidc');
 
-    // Kutt is an open-to-org tool: wiring must patch the deployment with the
-    // link-oidc secret and flip OIDC_ENABLED on — no RBAC roles. Per ADR
-    // 0018, OIDC_ENABLED reaches the Deployment declaratively (in the
-    // link-oidc Secret, pulled in via --from=secret), never as a literal
-    // `set env KEY=value` override.
+    // Wiring must still patch the deployment with the link-oidc secret and
+    // flip OIDC_ENABLED on. Per ADR 0018, OIDC_ENABLED reaches the
+    // Deployment declaratively (in the link-oidc Secret, pulled in via
+    // --from=secret), never as a literal `set env KEY=value` override.
     Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic link-oidc')
         && str_contains($process->command, 'OIDC_ENABLED'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/link-kutt')

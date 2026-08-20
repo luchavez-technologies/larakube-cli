@@ -630,6 +630,25 @@ class SsoWireCommand extends Command
             return 1;
         }
 
+        // Mirrors wire()'s native-OIDC RBAC gating (see requiresRbacGating()) —
+        // without this, --email-domain=* on the shared proxy below admits any
+        // authenticated Zitadel user regardless of org, same class of gap
+        // that let a partner org read internal Outline docs (2026-08-20).
+        $rbacRole = null;
+        if ($tool->requiresRbacGating()) {
+            $projectId = $this->zitadelEnsureProject($ssoHost, $pat, ClusterTool::rbacProjectName());
+            if ($projectId === null || ! $this->ensureRbacGating($ssoHost, $pat, $projectId, $tool)) {
+                $this->laraKubeError(
+                    "Could not set up role-gated access for {$tool->getLabel()} — the claim-flattening Action, ".
+                    'project roles, or role assertion failed to apply. Gating the shared SSO proxy without '.
+                    'confirmed authorization would risk denying every login, so this stops here.',
+                );
+
+                return 1;
+            }
+            $rbacRole = array_key_first($tool->rbacRoles());
+        }
+
         $app = $this->ensureProxyOidcApp($kubectl, $ssoNs, $ssoHost, $authHost, $pat, $env);
         if ($app === null) {
             return 1;
@@ -647,7 +666,7 @@ class SsoWireCommand extends Command
         }
 
         $ok = true;
-        $this->withSpin('Deploying the shared SSO proxy...', function () use ($kubectl, $ssoHost, $authHost, $app, $cookieSecret, $cookieDomain, $env, &$ok) {
+        $this->withSpin('Deploying the shared SSO proxy...', function () use ($kubectl, $ssoHost, $authHost, $app, $cookieSecret, $cookieDomain, $env, $rbacRole, &$ok) {
             $ok = $this->applyManifest($kubectl, view('k8s.sso.proxy', [
                 'namespace' => $this->proxyNamespace(),
                 'ssoHost' => $ssoHost,
@@ -658,7 +677,15 @@ class SsoWireCommand extends Command
                 'cookieDomain' => $cookieDomain,
                 'isLocal' => $env === 'local',
                 'proxied' => $this->ingressIsProxied($kubectl, 'sso-proxy', $this->proxyNamespace()),
-                'secretChecksum' => substr(hash('sha256', $app['clientId'].$app['clientSecret'].$cookieSecret), 0, 16),
+                // sso-proxy is ONE shared pod across every ForwardAuth-gated
+                // tool (ADR 0006) — this only stays correct while RECORD is
+                // the sole ForwardAuth tool, which is true today. A second
+                // ForwardAuth tool with a DIFFERENT role would silently
+                // overwrite this on its own wire, since oauth2-proxy's
+                // legacy single-provider mode has no per-route group scoping.
+                // Needs real per-tool group scoping before that happens.
+                'rbacRole' => $rbacRole,
+                'secretChecksum' => substr(hash('sha256', $app['clientId'].$app['clientSecret'].$cookieSecret.($rbacRole ?? '')), 0, 16),
             ])->render(), 'sso-proxy');
 
             // task() only marks a step failed on an explicit false — without
@@ -694,8 +721,15 @@ class SsoWireCommand extends Command
         $this->line("  <fg=gray>Auth host:</>  <fg=blue>https://{$authHost}</> <fg=gray>— must resolve to this cluster (DNS).</>");
         $this->line("  <fg=gray>Gated URL:</>  <fg=blue>https://{$toolHost}</>");
         $this->newLine();
-        $this->line('  <fg=yellow>Note:</> this is an access gate, not an app login — anyone with a Zitadel');
-        $this->line("  <fg=gray>      </> account can reach it, and {$tool->productName()} keeps its own accounts.");
+        if ($rbacRole !== null) {
+            $this->line('  <fg=yellow>⚠ Role-gated tool — login is denied until you grant a role:</>');
+            $this->line("    <fg=blue>{$rbacRole}</> — {$tool->rbacRoles()[$rbacRole]}");
+            $this->line("  <fg=gray>larakube sso:grant --tool={$tool->value} --role={$rbacRole} --email=<user></>");
+            $this->line("  <fg=gray>Nobody, including you, can reach {$tool->getLabel()} until then — its own non-SSO admin access (if any) is unaffected.</>");
+        } else {
+            $this->line('  <fg=yellow>Note:</> this is an access gate, not an app login — anyone with a Zitadel');
+            $this->line("  <fg=gray>      </> account can reach it, and {$tool->productName()} keeps its own accounts.");
+        }
         $this->newLine();
 
         return 0;

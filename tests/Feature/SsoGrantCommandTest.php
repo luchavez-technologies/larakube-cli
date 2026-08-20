@@ -19,7 +19,9 @@ test('sso:grant rejects a tool with no role-gated access', function (): void {
         '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'passwords', '--role' => 'whatever', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+    // mail has neither rbacRoles() nor ssoAdminRoles() — genuinely open,
+    // unlike passwords (gated 2026-08-20 after the Outline incident).
+    $this->artisan('sso:grant', ['--tool' => 'mail', '--role' => 'whatever', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('has no role-gated access to grant');
 });
@@ -58,11 +60,21 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
     // case order) purely from the enum's role schema — the grant succeeds even
     // though Zitadel here knows nothing about any roles yet.
     $this->artisan('sso:grant', ['--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
+        // Order follows ClusterTool::cases() declaration order, filtered to
+        // role-bearing tools — link/notes/passwords/record/sheets/sign
+        // joined the list 2026-08-20 (see ClusterTool::rbacRoles()).
         ->expectsChoice('Which tool?', 'drive', [
             'drive' => 'Cloud Storage & Sync (oCIS)',
+            'link' => 'Link Management (Kutt)',
             'monitor' => 'Monitoring Stack (Grafana + Loki + Prometheus)',
+            'notes' => 'Team Wiki & Knowledge Base (Outline)',
+            'passwords' => 'Password Manager (Vaultwarden)',
+            'record' => 'Screen Recording & Sharing (Sendrec)',
             'secrets' => 'Secrets Manager (OpenBao)',
+            'sheets' => 'Spreadsheet Database (Teable)',
+            'sign' => 'Document Signing (Documenso)',
             'dashboard' => 'Kubernetes Control Plane (Headlamp)',
+            'resume' => 'Resume Builder (Reactive Resume)',
         ])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev");

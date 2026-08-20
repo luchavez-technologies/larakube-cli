@@ -70,6 +70,23 @@ spec:
             - --cookie-secure=true
             - --cookie-samesite=lax
             - --silence-ping-logging=true
+@if($rbacRole ?? null)
+            # Role-gated tool (see ClusterTool::rbacRoles()) — --email-domain=*
+            # above only proves WHO logged in, not that they're authorized;
+            # these two together deny anyone without this specific role,
+            # sourced from the same larakube_roles claim ensureRbacAction()
+            # already flattens project-role grants into.
+            #
+            # CAVEAT: this proxy is ONE shared pod across every ForwardAuth
+            # tool (ADR 0006). A single global --allowed-groups is only
+            # correct while this is the sole ForwardAuth-gated tool. A
+            # second ForwardAuth tool with a DIFFERENT role would silently
+            # overwrite this on its own wire — oauth2-proxy's
+            # single-provider mode has no per-route group scoping. Needs
+            # real per-tool group scoping before that happens.
+            - --oidc-groups-claim=larakube_roles
+            - --allowed-group={{ $rbacRole }}
+@endif
 @if($cookieDomain)
             # Shares one session across every gated subdomain, and permits the
             # post-login redirect back to them.

@@ -669,6 +669,26 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DASHBOARD => [
                 'dashboard-admin' => 'Full cluster-admin access via the Headlamp Kubernetes dashboard',
             ],
+            // Single login-gate role, not admin/viewer tiers: confirmed none
+            // of these six apps' native OIDC consumes a Zitadel role/group
+            // claim to set in-app permission tiers (unlike oCIS's
+            // ocisRoles-driven admin/user split) — a second Zitadel-level
+            // tier would be purely decorative. Each app's own admin panel is
+            // where finer-grained in-app roles get set once someone's in.
+            // Added 2026-08-20 after a partner org's ORG_OWNER (created by
+            // sso:org) could read internal Outline docs — every SSO-wired
+            // tool without a rbacRoles() entry admits ANY authenticated
+            // Zitadel user, regardless of which org they belong to.
+            self::NOTES => ['outline-user' => 'Can log in to Outline'],
+            self::PASSWORDS => ['vaultwarden-user' => 'Can log in to Vaultwarden'],
+            self::LINK => ['kutt-user' => 'Can log in to Kutt'],
+            self::RESUME => ['reactive-resume-user' => 'Can log in to Reactive Resume'],
+            self::SIGN => ['documenso-user' => 'Can log in to Documenso'],
+            self::SHEETS => ['teable-user' => 'Can log in to Teable'],
+            // ForwardAuth (ADR 0006), not native OIDC — wireForwardAuth()
+            // reads this to also gate the shared sso-proxy's
+            // --allowed-groups, not just to route onto rbacProjectName().
+            self::RECORD => ['record-user' => 'Can log in to Sendrec'],
             default => [],
         };
     }
