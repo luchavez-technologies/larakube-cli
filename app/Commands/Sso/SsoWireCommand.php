@@ -595,6 +595,18 @@ class SsoWireCommand extends Command
                 .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
+
+            // Gitea/Forgejo caches login sources in memory (a periodic
+            // background sync, not an immediate reload) — update-oauth/
+            // add-oauth only writes the DB row. Confirmed live 2026-08-21:
+            // a freshly-rotated client-id 400'd with Zitadel's
+            // "Errors.App.NotFound" for a real, unknown stretch of time
+            // after the CLI reported success, because the running process
+            // kept authorizing against the OLD client id it already had
+            // cached. Every other OIDC-wired tool in this codebase restarts
+            // after a config change for exactly this reason — this path
+            // was the one exception.
+            Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$ns}");
         }
 
         return $ok;

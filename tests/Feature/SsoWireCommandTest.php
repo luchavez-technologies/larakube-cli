@@ -1221,6 +1221,7 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
         // Type, Enabled) — the legacy source holds the display label.
         '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n".'1'."\t"."Login with SSO\t".'OpenID Connect'."\t".'true'),
         '*admin auth update-oauth*' => Process::result(output: 'source updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/forgejo restarted'),
     ]);
 
     Http::fake([
@@ -1250,6 +1251,12 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
     Process::assertRan(fn ($process) => str_contains($process->command, 'admin auth update-oauth --id 1')
         && str_contains($process->command, "--name 'zitadel'"));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'admin auth add-oauth'));
+
+    // Confirmed live 2026-08-21: Forgejo caches login sources in memory and
+    // kept authorizing against the OLD client-id for a real, unknown
+    // stretch of time after update-oauth reported success — a restart is
+    // required to make the new client-id take effect immediately.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/forgejo'));
 });
 
 test('sso:wire registers the Forgejo login source under the canonical `zitadel` name', function (): void {
@@ -1261,6 +1268,7 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n"),
         '*admin auth add-oauth*' => Process::result(output: 'source created'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/forgejo restarted'),
     ]);
 
     Http::fake([
