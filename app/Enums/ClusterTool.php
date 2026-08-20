@@ -778,28 +778,34 @@ enum ClusterTool: string implements HasWorkloadComponents
      * there or in how OpenBao/Grafana trust the resulting claim — only
      * the login gate itself becomes meaningful again.
      *
-     * $instance is ignored (never suffixed) for a tool that doesn't
-     * actually supportsMultipleInstances() — confirmed live (2026-08-20):
-     * resolveInstanceForDomain() unconditionally derives SOME non-null
-     * slug from the resolved host for every tool, single-instance ones
-     * included, once nothing is registered yet (instanceSlugFromHost()'s
-     * fallback). Honoring that blindly here would have given
-     * Secrets/Monitor/Dashboard a spuriously instance-suffixed project on
-     * their very first wire, splitting their OWN grants across two
-     * projects for no reason. Each vendor's oidcEnv()/smtpEnv() already
-     * self-gates the same way by choosing whether to use the parameter at
-     * all; this is the equivalent gate for the one method that lives on
-     * the enum itself rather than a per-vendor override.
+     * The name itself is just deploymentName($instance) — the exact live
+     * Kubernetes Deployment name (2026-08-20, replacing an earlier
+     * "LaraKube RBAC: {brand} ({instance})" scheme). Reusing it instead of
+     * inventing a parallel naming convention means the project name always
+     * matches what an operator actually sees in `kubectl get pods`/
+     * `tool:list` — no separate scheme to keep in sync, no guessing which
+     * project backs which tool. A tool's own Deployment naming may itself
+     * be inconsistent (e.g. MONITOR's is bare `grafana`, not
+     * `monitor-grafana`) — that's a pre-existing convention gap in the
+     * Deployment name, not something this method should paper over by
+     * diverging from reality.
+     *
+     * $instance IS explicitly gated on supportsMultipleInstances() here,
+     * unlike a plain pass-through to deploymentName() — resolveInstanceForDomain()
+     * unconditionally derives SOME non-null slug from the resolved host for
+     * every tool, single-instance ones included, once nothing is registered
+     * yet (instanceSlugFromHost()'s fallback; confirmed live 2026-08-20).
+     * deploymentName() itself has no concept of "this tool can't actually
+     * have a second instance" — it suffixes whatever it's given. Passing a
+     * spurious derived slug through for Secrets/Monitor/Dashboard would
+     * split their OWN grants across two projects on their very first wire,
+     * for a tool that will never have a real second instance.
      */
     public function rbacProjectName(?string $instance = null): string
     {
-        $name = "LaraKube RBAC: {$this->brandName()}";
+        $realInstance = $this->supportsMultipleInstances() ? $instance : null;
 
-        if (! $this->supportsMultipleInstances() || $instance === null || $instance === '') {
-            return $name;
-        }
-
-        return "{$name} ({$instance})";
+        return $this->deploymentName($realInstance);
     }
 
     /**

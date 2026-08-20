@@ -143,10 +143,12 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
     // registers under its OWN project, not the old shared 'LaraKube RBAC'
     // bucket every RBAC-gated tool used to share (which meant a grant for
     // ANY one of them authenticated into ALL of them — projectRoleCheck is
-    // project-wide in Zitadel, not per-role).
+    // project-wide in Zitadel, not per-role). The project name is the exact
+    // live Deployment name (2026-08-20, replacing the earlier "LaraKube
+    // RBAC: {brand}" scheme) — no separate naming convention to keep in sync.
     Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
         && $request->method() === 'POST'
-        && $request['name'] === 'LaraKube RBAC: Monitor');
+        && $request['name'] === 'grafana');
 });
 
 test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, never as a literal env override', function (): void {
@@ -963,7 +965,7 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
     $expectedSlug = 'link-'.GlobalConfigData::load()->getLocalTld();
     Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
         && $request->method() === 'POST'
-        && $request['name'] === "LaraKube RBAC: Links ({$expectedSlug})");
+        && $request['name'] === "link-kutt-{$expectedSlug}");
 });
 
 test('sso:wire registers a new OIDC client and wires it to Directus (data)', function (): void {

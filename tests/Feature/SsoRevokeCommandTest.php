@@ -148,7 +148,7 @@ test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project,
             // every other project (including the shared one) is empty. If
             // the sweep skipped Kutt's project, this role would never
             // surface at all.
-            return Http::response(['result' => $projectId === 'proj-'.md5('LaraKube RBAC: Links')
+            return Http::response(['result' => $projectId === 'proj-'.md5('link-kutt')
                 ? [['id' => 'grant-kutt', 'roleKeys' => ['kutt-user']]]
                 : []]);
         },
@@ -164,13 +164,13 @@ test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project,
 
     // Confirms the sweep actually reached every RBAC-gated tool's project,
     // not just the two the old code hardcoded.
-    expect($searchedNames)->toContain('LaraKube RBAC: Secrets')
-        ->and($searchedNames)->toContain('LaraKube RBAC: Monitor')
-        ->and($searchedNames)->toContain('LaraKube RBAC: Dashboard')
-        ->and($searchedNames)->toContain('LaraKube RBAC: Links')
-        ->and($searchedNames)->toContain('LaraKube RBAC: Notes')
-        ->and($searchedNames)->toContain('LaraKube RBAC: Sign')
-        ->and($searchedNames)->toContain('LaraKube RBAC: Passwords')
+    expect($searchedNames)->toContain('openbao-backend')
+        ->and($searchedNames)->toContain('grafana')
+        ->and($searchedNames)->toContain('dashboard-headlamp')
+        ->and($searchedNames)->toContain('link-kutt')
+        ->and($searchedNames)->toContain('notes-outline')
+        ->and($searchedNames)->toContain('sign-documenso')
+        ->and($searchedNames)->toContain('vaultwarden')
         ->and($searchedNames)->toContain('LaraKube Shared Tools');
 });
 

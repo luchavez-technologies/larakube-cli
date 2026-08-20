@@ -56,7 +56,7 @@ test('sso:grant auto-resolves --domain= when a multi-instance tool has exactly o
 
     Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
         && $request->method() === 'POST'
-        && $request['name'] === 'LaraKube RBAC: Notes (notes-luchtech-dev)');
+        && $request['name'] === 'notes-outline-notes-luchtech-dev');
 });
 
 test('sso:grant refuses to guess when a multi-instance tool has more than one registered instance and no --domain', function (): void {
@@ -101,7 +101,7 @@ test('sso:grant --domain= resolves the exact named instance\'s project', functio
 
     Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
         && $request->method() === 'POST'
-        && $request['name'] === 'LaraKube RBAC: Notes (blog-example-com)');
+        && $request['name'] === 'notes-outline-blog-example-com');
 });
 
 test('sso:grant rejects an unknown tool', function (): void {

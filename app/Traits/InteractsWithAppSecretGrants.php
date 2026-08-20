@@ -11,8 +11,9 @@ use App\Enums\ClusterTool;
  * up. Those are cluster-wide; this lets `secrets:grant` hand a developer
  * read-write on exactly one app's one environment (secret/data/{env}/{app}/*)
  * without seeing any other app's or environment's secrets — the same
- * OIDC auth backend, policy engine, and RBAC project (LaraKube RBAC) as the
- * fixed tiers, just a dynamically-minted role key per (app, environment,
+ * OIDC auth backend, policy engine, and RBAC project (ClusterTool::SECRETS->
+ * rbacProjectName(), 'openbao-backend') as the fixed tiers, just a
+ * dynamically-minted role key per (app, environment,
  * tier) instead of one of the three static ones.
  *
  * Deliberately reuses InteractsWithSsoGrants' connection/project resolution
