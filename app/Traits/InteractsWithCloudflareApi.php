@@ -2,7 +2,15 @@
 
 namespace App\Traits;
 
+use App\Http\Integrations\Cloudflare\CloudflareConnector;
+use App\Http\Integrations\Cloudflare\Requests\GetZoneByNameRequest;
+use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
+use JsonException;
+use Saloon\Exceptions\Request\FatalRequestException;
+use Saloon\Exceptions\Request\RequestException;
 
 /**
  * Thin, one-off wrapper over Cloudflare's DNS API — used for writes that
@@ -16,18 +24,59 @@ use Illuminate\Support\Facades\Http;
  */
 trait InteractsWithCloudflareApi
 {
-    /** The zone id for $zone, or null if the token can't see it (wrong zone, wrong token scope, or it doesn't exist). */
+    /**
+     * @throws ConnectionException|FatalRequestException|RequestException|JsonException
+     */
     protected function cloudflareZoneId(string $zone, string $token): ?string
     {
-        $response = Http::withToken($token)
-            ->timeout(15)
-            ->get('https://api.cloudflare.com/client/v4/zones', ['name' => $zone]);
+        $response = CloudflareConnector::make($token)->send(GetZoneByNameRequest::make($zone));
+        $data = $response->json();
 
-        if ($response->failed() || ($response->json('success') !== true)) {
+        // Cloudflare's v4 envelope can report `"success": false` on an HTTP
+        // 200 — $response->failed() alone only catches HTTP-level (>=400)
+        // failures, not this API-level one. Same envelope check
+        // cloudflareUpsertTxtRecord() below already relies on.
+        if ($response->failed() || Arr::get($data, 'success') !== true) {
             return null;
         }
 
-        return $response->json('result.0.id');
+        return Arr::get($data, 'result.0.id');
+    }
+
+    /**
+     * Every zone this token can see — unfiltered `GET /zones`, paginated.
+     * A token's own Cloudflare-side scope IS the authoritative zone list; this
+     * is what lets dns:init discover "which zones does this token cover"
+     * instead of requiring the operator to retype a list that can drift out
+     * of sync with the token's real scope.
+     *
+     * @return array<string, string> [zoneId => zoneName]
+     */
+    protected function cloudflareListZones(string $token): array
+    {
+        $connector = CloudflareConnector::make($token);
+        $zones = [];
+        $page = 1;
+
+        do {
+            $response = $connector->send(ListZonesRequest::make($page));
+            $data = $response->json();
+
+            if ($response->failed() || Arr::get($data, 'success') !== true) {
+                return $zones;
+            }
+
+            foreach (Arr::get($data, 'result', []) as $zone) {
+                if (isset($zone['id'], $zone['name'])) {
+                    $zones[$zone['id']] = $zone['name'];
+                }
+            }
+
+            $totalPages = (int) (Arr::get($data, 'result_info.total_pages') ?? 1);
+            $page++;
+        } while ($page <= $totalPages);
+
+        return $zones;
     }
 
     /**

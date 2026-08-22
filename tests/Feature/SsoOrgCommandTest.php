@@ -1,7 +1,11 @@
 <?php
 
+use App\Http\Integrations\Cloudflare\Requests\GetZoneByNameRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 /** Common kubectl fakes every sso:org test needs — a healthy, reachable Zitadel. */
 function ssoOrgBaseProcessFakes(): array
@@ -28,7 +32,11 @@ function ssoOrgHappyPathHttpFakes(): array
         '*/orgs/me/domains/*/validation/_generate' => Http::response(['token' => 'zitadel-challenge-abc', 'url' => 'https://zitadel.example/docs']),
         '*/orgs/me/domains/*/validation' => Http::response([]),
         '*/orgs/me/domains' => Http::response([]),
-        '*api.cloudflare.com/client/v4/zones?*' => Http::response(['success' => true, 'result' => [['id' => 'zone-1']]]),
+        // cloudflareZoneId() (the zone-id lookup) is Saloon-based now — see
+        // ssoOrgSaloonFakes() below, faked separately from this Http::fake()
+        // array (docs/decisions/0020-saloonphp-for-new-api-integrations.md).
+        // cloudflareUpsertTxtRecord() (the TXT-record write) is still
+        // Http::-based, so it stays here.
         '*api.cloudflare.com/client/v4/zones/*/dns_records*' => Http::sequence()
             ->push(['success' => true, 'result' => []])
             ->push(['success' => true, 'result' => ['id' => 'rec-1']]),
@@ -41,6 +49,18 @@ function ssoOrgHappyPathHttpFakes(): array
     ];
 }
 
+/** cloudflareZoneId()'s Saloon-based zone lookup — see ssoOrgHappyPathHttpFakes()'s docblock. */
+function ssoOrgSaloonFakes(): array
+{
+    return [
+        GetZoneByNameRequest::class => MockResponse::make(['success' => true, 'result' => [['id' => 'zone-1']]]),
+    ];
+}
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
+
 test('sso:org is registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
@@ -50,6 +70,7 @@ test('sso:org is registered', function (): void {
 test('sso:org creates a new org, verifies the domain, and installs the RBAC action', function (): void {
     Process::fake(ssoOrgBaseProcessFakes());
     Http::fake(ssoOrgHappyPathHttpFakes());
+    Saloon::fake(ssoOrgSaloonFakes());
 
     $this->artisan('sso:org', ['--zone' => 'partner.example', '--cloudflare-token' => 'cf-token', '--force' => true])
         ->assertExitCode(0)
@@ -79,6 +100,7 @@ test('sso:org reuses an existing org instead of creating a duplicate', function 
     Http::fake(array_merge(ssoOrgHappyPathHttpFakes(), [
         '*/v2/organizations/_search' => Http::response(['result' => [['id' => 'org-existing']]]),
     ]));
+    Saloon::fake(ssoOrgSaloonFakes());
 
     $this->artisan('sso:org', ['--zone' => 'partner.example', '--cloudflare-token' => 'cf-token', '--force' => true])
         ->assertExitCode(0);
@@ -91,6 +113,7 @@ test('sso:org reuses an existing org instead of creating a duplicate', function 
 test('sso:org creates an ORG_OWNER admin when --admin-email is given', function (): void {
     Process::fake(ssoOrgBaseProcessFakes());
     Http::fake(ssoOrgHappyPathHttpFakes());
+    Saloon::fake(ssoOrgSaloonFakes());
 
     $this->artisan('sso:org', [
         '--zone' => 'partner.example',

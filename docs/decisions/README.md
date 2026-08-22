@@ -35,3 +35,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0017](0017-db-password-defers-to-openbao-static-role.md) | `{tool}:init` defers to OpenBao's static-role password before calling `allocateDatabase()`, never after only | Accepted |
 | [0018](0018-wire-commands-never-literal-env.md) | `:wire` commands deliver env changes via Secret + rollout restart, never a literal `kubectl set env` value | Accepted |
 | [0019](0019-test-fidelity-conventions.md) | Tests must faithfully reproduce production behavior: no unfaked I/O, no unstubbed prompts, no ad-hoc temp dirs | Accepted |
+| [0020](0020-saloonphp-for-new-api-integrations.md) | New external API integrations use SaloonPHP, not the `Http` facade | Accepted |
