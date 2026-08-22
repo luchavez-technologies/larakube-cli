@@ -35,8 +35,7 @@
         "phpacker/phpacker": "^0.6.4",
         "phpstan/phpstan": "^2.2",
         "phpstan/phpstan-strict-rules": "^2.0",
-        "rector/rector": "^2.6",
-        "spatie/pest-plugin-snapshots": "^2.3"
+        "rector/rector": "^2.6"
     },
     "autoload": {
         "psr-4": {
