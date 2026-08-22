@@ -53,7 +53,7 @@ class DnsListCommand extends Command
 
         if ($zones === []) {
             $this->laraKubeInfo('This cluster manages no Cloudflare zones.');
-            $this->line('  <fg=gray>Add one with</> <fg=blue>larakube dns:init '.$env.' --zone=example.com</><fg=gray>.</>');
+            $this->line('  <fg=gray>Add one with</> <fg=blue>larakube dns:init '.$env.' --cloudflare-token=…</><fg=gray>.</>');
 
             return 0;
         }

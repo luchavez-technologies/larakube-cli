@@ -15,7 +15,14 @@ use Illuminate\Support\Facades\Process;
 trait InteractsWithDnsZones
 {
     /**
-     * Every zone instance on this cluster, newest listing order irrelevant.
+     * Every zone this cluster manages, one row per zone — newest listing
+     * order irrelevant. A single dns:init instance can now cover 2+ zones
+     * that share one Cloudflare token (`larakube.io/dns-domain` is a
+     * comma-joined list in that case); this splits it back out so each zone
+     * still gets its own row, with multiple rows naturally sharing the same
+     * `slug`/`owner`/`ready` when they're served by the same instance —
+     * `dns:list`'s table reads that sharing directly off repeated values in
+     * the "Instance" column, no separate grouped-view UI needed.
      *
      * @return list<array{zone: string, slug: string, owner: string, ready: bool}>
      */
@@ -42,21 +49,30 @@ trait InteractsWithDnsZones
             $annotations = $meta['annotations'] ?? [];
             $labels = $meta['labels'] ?? [];
 
-            $zone = $annotations['larakube.io/dns-domain'] ?? null;
+            $domainAnnotation = $annotations['larakube.io/dns-domain'] ?? null;
             $slug = $labels['larakube.io/dns-zone'] ?? null;
 
-            if ($zone === null || $slug === null) {
+            if ($domainAnnotation === null || $slug === null) {
                 continue;
             }
 
             $status = $item['status'] ?? [];
+            $owner = (string) ($annotations['larakube.io/dns-owner-id'] ?? '');
+            $ready = (int) ($status['readyReplicas'] ?? 0) > 0;
 
-            $zones[] = [
-                'zone' => (string) $zone,
-                'slug' => (string) $slug,
-                'owner' => (string) ($annotations['larakube.io/dns-owner-id'] ?? ''),
-                'ready' => (int) ($status['readyReplicas'] ?? 0) > 0,
-            ];
+            foreach (explode(',', (string) $domainAnnotation) as $zone) {
+                $zone = trim($zone);
+                if ($zone === '') {
+                    continue;
+                }
+
+                $zones[] = [
+                    'zone' => $zone,
+                    'slug' => (string) $slug,
+                    'owner' => $owner,
+                    'ready' => $ready,
+                ];
+            }
         }
 
         usort($zones, fn ($a, $b) => strcmp($a['zone'], $b['zone']));

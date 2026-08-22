@@ -1,19 +1,25 @@
 {{--
-  One ExternalDNS instance per Cloudflare zone.
+  One ExternalDNS instance per dns:init GROUP — one or more Cloudflare zones
+  that share a single API token (docs/decisions — see dns:init's own docblock
+  for why token-sharing, not zone count, is the actual isolation boundary).
 
-  Every name is suffixed with the zone slug so several zones — including zones
-  in DIFFERENT Cloudflare accounts, each with its own API token — coexist on one
-  cluster. Two args carry the safety properties:
+  Every name is suffixed with the group slug so several groups — including
+  zones in DIFFERENT Cloudflare accounts, each with its own API token —
+  coexist on one cluster. Two things carry the safety properties:
 
-    --domain-filter   confines this instance to a single zone. Without it,
+    --domain-filter   one flag PER zone in this group. Without at least one,
                       ExternalDNS manages every zone the token can see, and with
                       --policy=sync it DELETES records it doesn't recognise.
+                      Multiple --domain-filter flags in one process is native
+                      ExternalDNS behavior, not a LaraKube extension.
 
     --txt-owner-id    the ownership registry. It must be unique per (cluster,
-                      zone). LaraKube previously hardcoded `larakube`, so two
-                      clusters pointed at one zone each treated the other's
-                      records as their own orphans and deleted them — records
-                      flapping between two clusters forever.
+                      group) — inherently ONE owner ID per process, shared by
+                      every zone that process's --domain-filter covers.
+                      LaraKube previously hardcoded `larakube`, so two clusters
+                      pointed at one zone each treated the other's records as
+                      their own orphans and deleted them — records flapping
+                      between two clusters forever.
 
   The ClusterRole is cluster-scoped and read-only, so all instances share one;
   each instance gets its own ServiceAccount and binding.
@@ -66,7 +72,7 @@ metadata:
     app.kubernetes.io/name: external-dns
     larakube.io/dns-zone: {{ $slug }}
   annotations:
-    larakube.io/dns-domain: {{ $zone }}
+    larakube.io/dns-domain: {{ implode(',', $zones) }}
     larakube.io/dns-owner-id: {{ $ownerId }}
 spec:
   strategy:
@@ -89,7 +95,9 @@ spec:
             - --provider=cloudflare
             - --policy=sync
             - --registry=txt
+@foreach($zones as $zone)
             - --domain-filter={{ $zone }}
+@endforeach
             - --txt-owner-id={{ $ownerId }}
           env:
             - name: CF_API_TOKEN

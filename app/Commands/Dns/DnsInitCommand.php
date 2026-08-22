@@ -6,8 +6,10 @@ use App\Enums\ClusterTool;
 use App\Exceptions\MissingFlagException;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
+use App\Traits\InteractsWithCloudflareApi;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithClusterIdentity;
+use App\Traits\InteractsWithDnsZones;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
 use App\Traits\RequiresFlagsWhenNonInteractive;
@@ -20,7 +22,8 @@ use function Laravel\Prompts\text;
 use LaravelZero\Framework\Commands\Command;
 
 /**
- * Deploy one ExternalDNS instance per Cloudflare zone.
+ * Deploy one ExternalDNS instance per dns:init GROUP — a stable name covering
+ * one or more Cloudflare zones that share a single API token.
  *
  * Previously a singleton: fixed resource names, no `--domain-filter`, and a
  * hardcoded `--txt-owner-id=larakube`. Three consequences, all real:
@@ -33,24 +36,38 @@ use LaravelZero\Framework\Commands\Command;
  *      treated the other's records as their own orphans and deleted them —
  *      records flapping between clusters indefinitely.
  *
- * Zones are keyed by domain, one instance each, with a per-(cluster, zone)
- * owner ID. State lives in the cluster, never in a project file: DNS is cluster
+ * That was fixed with a strict one-instance-per-zone design. This command now
+ * relaxes that one further step: ExternalDNS itself already supports several
+ * `--domain-filter` values in one process — the only real constraint is that
+ * one instance holds exactly one provider credential (one Cloudflare token).
+ * So a --group= now means "one ExternalDNS instance, one token, N zones that
+ * token can see" — --zone= (repeatable) is entirely optional: omit it and
+ * every zone the given token has access to is discovered and managed. This
+ * is what actually lets `ourfridays.com` + `larakube.app` (one Cloudflare
+ * account) run as one Deployment instead of two, while a genuinely separate
+ * account (a different token) stays a fully separate instance — the
+ * isolation that matters is ownership (--txt-owner-id, one per group) and
+ * scope (--domain-filter, still one per zone), never process count.
+ *
+ * State lives in the cluster, never in a project file: DNS is cluster
  * infrastructure and has nothing to do with any Laravel app.
  */
 class DnsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext,
-        InteractsWithClusterIdentity, LaraKubeOutput, PromotesIngressDns,
-        RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi,
+        InteractsWithClusterContext, InteractsWithClusterIdentity, InteractsWithDnsZones,
+        LaraKubeOutput, PromotesIngressDns, RequiresFlagsWhenNonInteractive,
+        ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'dns:init
         {environment?        : Environment this install targets (a cloud env — ExternalDNS is not supported locally)}
-        {--zone=             : The Cloudflare zone to manage, e.g. example.com}
-        {--cloudflare-token= : API token for THIS zone (scope it to this zone only)}
+        {--cloudflare-token= : API token — every zone it can see is discovered and managed, unless --zone= narrows that}
+        {--zone=*            : Optional — restrict to a subset of what the token can see. Omit to manage every zone the token has access to.}
+        {--group=            : Stable name for this instance. Default: the sole zone\'s own slug (unchanged single-zone behavior) — required when 2+ zones are in scope}
         {--context=          : Target a specific kube-context}
         {--force             : Skip the confirmation prompt}';
 
-    protected $description = 'Deploy an ExternalDNS instance for one Cloudflare zone';
+    protected $description = 'Deploy an ExternalDNS instance for one or more Cloudflare zones sharing a token';
 
     public function handle(): int
     {
@@ -68,8 +85,23 @@ class DnsInitCommand extends Command
         $kubectl = $this->contextKubectl($context);
         $ns = 'larakube-shared';
 
-        $zone = $this->resolveZone();
-        $slug = $this->zoneSlug($zone);
+        $token = $this->resolveToken();
+
+        $zones = $this->resolveZones($token);
+        if ($zones === []) {
+            return 1;
+        }
+
+        $group = $this->resolveGroup($zones);
+        if ($group === false) {
+            return 1;
+        }
+
+        $groupSlug = $this->groupSlug($zones, $group);
+
+        if (! $this->checkForConflicts($kubectl, $zones, $groupSlug)) {
+            return 1;
+        }
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -85,31 +117,31 @@ class DnsInitCommand extends Command
             return 1;
         }
 
-        $ownerId = $this->dnsOwnerId($clusterId, $zone);
-        $token = $this->resolveToken($zone);
+        $ownerId = $this->dnsOwnerId($clusterId, $groupSlug);
+        $zoneList = implode(', ', $zones);
 
         if (! $this->confirmDestructive([
-            "ExternalDNS will manage the '{$zone}' zone from '{$env}':",
+            "ExternalDNS will manage {$zoneList} from '{$env}':",
             "Records are created and DELETED to match this cluster's ingresses.",
             "Only records owned by {$ownerId} are touched.",
         ])) {
             return 0;
         }
 
-        $this->withSpin("Syncing the Cloudflare token for {$zone}...", fn () => Process::run(
-            "{$kubectl} create secret generic cloudflare-token-{$slug} -n {$ns} "
+        $this->withSpin("Syncing the Cloudflare token for {$groupSlug}...", fn () => Process::run(
+            "{$kubectl} create secret generic cloudflare-token-{$groupSlug} -n {$ns} "
             .'--from-literal=token='.escapeshellarg($token).' '
             ."--dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
         $manifest = view('k8s.dns.zone', [
             'namespace' => $ns,
-            'zone' => $zone,
-            'slug' => $slug,
+            'zones' => $zones,
+            'slug' => $groupSlug,
             'ownerId' => $ownerId,
         ])->render();
 
-        $this->line("  Applying ExternalDNS for {$zone}...");
+        $this->line("  Applying ExternalDNS for {$zoneList}...");
         $this->newLine();
 
         $exit = $this->runStreaming(
@@ -122,14 +154,14 @@ class DnsInitCommand extends Command
         }
 
         $this->newLine();
-        $this->laraKubeInfo("✅ ExternalDNS is managing {$zone}.");
+        $this->laraKubeInfo("✅ ExternalDNS is managing {$zoneList}.");
         $this->newLine();
-        $this->line("  <fg=gray>Zone:</>       <fg=blue>{$zone}</>");
+        $this->line("  <fg=gray>Zones:</>      <fg=blue>{$zoneList}</>");
         $this->line("  <fg=gray>Owner ID:</>   <fg=blue>{$ownerId}</> <fg=gray>(this cluster only)</>");
-        $this->line("  <fg=gray>Instance:</>   <fg=blue>external-dns-{$slug}</>");
+        $this->line("  <fg=gray>Instance:</>   <fg=blue>external-dns-{$groupSlug}</>");
         $this->newLine();
-        $this->line('  <fg=gray>Add another zone (even in a different Cloudflare account):</>');
-        $this->line("  <fg=blue>larakube dns:init {$env} --zone=other.example --cloudflare-token=…</>");
+        $this->line('  <fg=gray>A zone with a different Cloudflare account (different token) needs its own group:</>');
+        $this->line("  <fg=blue>larakube dns:init {$env} --cloudflare-token=…</>");
         $this->line('  <fg=gray>See everything this cluster manages:</> <fg=blue>larakube dns:list '.$env.'</>');
         $this->newLine();
 
@@ -137,32 +169,11 @@ class DnsInitCommand extends Command
     }
 
     /**
-     * The zone this instance manages. Required — an unfiltered ExternalDNS is
-     * the destructive configuration this command exists to avoid, so there is
-     * deliberately no "all zones" default.
+     * The Cloudflare API token driving discovery. No zone is known yet at
+     * this point — the token's own Cloudflare-side scope IS what determines
+     * which zone(s) this instance ends up managing (see resolveZones()).
      */
-    protected function resolveZone(): string
-    {
-        return $this->flagOrPrompt(
-            'zone',
-            fn () => text(
-                label: 'Which Cloudflare zone should this cluster manage?',
-                placeholder: 'example.com',
-                required: true,
-                hint: 'One instance per zone. Re-run for additional zones.',
-            ),
-            'the Cloudflare zone to manage',
-            'larakube dns:init production --zone=example.com',
-        );
-    }
-
-    /**
-     * The API token for this zone. Never persisted to a project or global
-     * config file — it goes straight into a per-zone cluster Secret, because a
-     * zone-scoped credential belongs to the cluster that uses it, and different
-     * zones legitimately come from different Cloudflare accounts.
-     */
-    protected function resolveToken(string $zone): string
+    protected function resolveToken(): string
     {
         $token = (string) ($this->option('cloudflare-token') ?? '');
         if ($token !== '') {
@@ -172,21 +183,121 @@ class DnsInitCommand extends Command
         if ($this->cannotPrompt()) {
             throw new MissingFlagException(
                 'cloudflare-token',
-                "the Cloudflare API token for {$zone}",
-                "larakube dns:init production --zone={$zone} --cloudflare-token=…",
+                'the Cloudflare API token for the zone(s) to manage',
+                'larakube dns:init production --cloudflare-token=…',
             );
         }
 
         $this->newLine();
-        $this->info("Create a Cloudflare API token scoped to {$zone}:");
+        $this->info('Create a Cloudflare API token scoped to the zone(s) you want this instance to manage:');
         $this->line('  1. <fg=blue>https://dash.cloudflare.com/profile/api-tokens</>');
         $this->line('  2. Create Token → Create Custom Token');
         $this->line('  3. Permissions: <fg=yellow>Zone</> · <fg=yellow>DNS</> · <fg=yellow>Edit</>');
-        $this->line("  4. Zone Resources: <fg=yellow>Include</> · <fg=yellow>Specific Zone</> · <fg=yellow>{$zone}</>");
-        $this->line('     <fg=gray>Scoping to this one zone is a second line of defence behind</>');
-        $this->line('     <fg=gray>--domain-filter, which this command always sets.</>');
+        $this->line('  4. Zone Resources: <fg=yellow>Include</> · one row per zone this instance should manage');
+        $this->line('     <fg=gray>Every zone this token can see is what gets discovered and managed below —</>');
+        $this->line('     <fg=gray>scope it deliberately, the same second line of defence --domain-filter always adds.</>');
         $this->newLine();
 
-        return (string) text(label: "Cloudflare API token for {$zone}", required: true);
+        return (string) text(label: 'Cloudflare API token', required: true);
+    }
+
+    /**
+     * The zone(s) this instance will manage: every zone the token can see,
+     * narrowed to an explicit --zone= subset when given. Returns [] (having
+     * already printed its own error) on a bad token, a token with no zone
+     * access, or a --zone= naming something the token can't actually see —
+     * never guesses or silently drops an unrecognised zone.
+     *
+     * @return list<string>
+     */
+    protected function resolveZones(string $token): array
+    {
+        $discovered = array_values($this->cloudflareListZones($token));
+
+        if ($discovered === []) {
+            $this->laraKubeError("This token has no zone access — check it's valid and scoped correctly in Cloudflare.");
+
+            return [];
+        }
+
+        $requested = array_values(array_filter((array) ($this->option('zone') ?: [])));
+
+        if ($requested === []) {
+            return $discovered;
+        }
+
+        $missing = array_diff($requested, $discovered);
+        if ($missing !== []) {
+            $this->laraKubeError("This token can't see: ".implode(', ', $missing));
+            $this->line('  <fg=gray>Zones it can see: </>'.implode(', ', $discovered));
+
+            return [];
+        }
+
+        return $requested;
+    }
+
+    /**
+     * The stable --group= name for this instance. Required whenever 2+
+     * zones are in scope — never silently derived from the zone set (see
+     * groupSlug()'s own docblock for why). false signals "already errored,
+     * abort" — the same tri-state shape resolveInstanceForTool() uses
+     * elsewhere in this codebase, kept consistent rather than inventing a
+     * second convention for the same kind of decision.
+     *
+     * @param  list<string>  $zones
+     */
+    protected function resolveGroup(array $zones): string|false|null
+    {
+        $group = (string) ($this->option('group') ?: '');
+        if ($group !== '') {
+            return $group;
+        }
+
+        if (count($zones) === 1) {
+            return null;
+        }
+
+        if ($this->cannotPrompt()) {
+            throw new MissingFlagException(
+                'group',
+                'a stable name for this multi-zone instance ('.implode(', ', $zones).')',
+                'larakube dns:init production --group=shared --cloudflare-token=…',
+            );
+        }
+
+        return (string) text(
+            label: 'This token manages '.count($zones).' zones ('.implode(', ', $zones).') — name this instance',
+            placeholder: 'shared',
+            required: true,
+        );
+    }
+
+    /**
+     * Refuse to create/update a group that would claim a zone another,
+     * differently-named instance already manages — the exact `--txt-owner-id`
+     * collision the original multi-zone rebuild fixed, reachable again here
+     * if two groups both listed the same zone.
+     *
+     * @param  list<string>  $zones
+     */
+    protected function checkForConflicts(string $kubectl, array $zones, string $groupSlug): bool
+    {
+        $installed = $this->installedDnsZones($kubectl);
+
+        foreach ($zones as $zone) {
+            foreach ($installed as $entry) {
+                if ($entry['zone'] === $zone && $entry['slug'] !== $groupSlug) {
+                    $this->laraKubeError(
+                        "'{$zone}' is already managed by 'external-dns-{$entry['slug']}' — remove it there first "
+                        ."(dns:remove --zone={$zone}), or pass --group={$entry['slug']} here to fold it into that instance.",
+                    );
+
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }

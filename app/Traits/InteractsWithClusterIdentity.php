@@ -83,18 +83,40 @@ trait InteractsWithClusterIdentity
     }
 
     /**
-     * The ExternalDNS ownership ID for one zone on this cluster. Unique across
-     * BOTH axes: two clusters sharing a zone, and one cluster managing several
-     * zones, both need distinct owners.
+     * The ExternalDNS ownership ID for one dns:init instance on this cluster.
+     * Unique across BOTH axes: two clusters sharing a zone, and one cluster
+     * managing several instances, both need distinct owners. $identity is
+     * the instance's groupSlug() — a single zone's own slug, or an explicit
+     * --group name for a multi-zone instance — never a raw, un-slugified
+     * zone list (idempotent either way since zoneSlug() is applied here
+     * regardless of whether the caller already slugified it).
      */
-    protected function dnsOwnerId(string $clusterId, string $zone): string
+    protected function dnsOwnerId(string $clusterId, string $identity): string
     {
-        return 'larakube-'.$clusterId.'-'.$this->zoneSlug($zone);
+        return 'larakube-'.$clusterId.'-'.$this->zoneSlug($identity);
     }
 
-    /** DNS-safe slug for a zone, used in resource names and the owner ID. */
+    /** DNS-safe slug for a zone (or any other identifier), used in resource names and the owner ID. */
     protected function zoneSlug(string $zone): string
     {
         return Str::of($zone)->lower()->replaceMatches('/[^a-z0-9]+/', '-')->trim('-')->value();
+    }
+
+    /**
+     * The identity slug for a dns:init instance — an explicit --group name
+     * when given, otherwise the sole zone's own slug (byte-for-byte the
+     * single-zone default that existed before groups did). Deliberately
+     * never derived by hashing/joining the whole zone set: that identity
+     * would change on every membership change (a zone added or removed from
+     * the token's scope, or from an explicit --zone= subset), silently
+     * orphaning the previous Deployment instead of updating it in place.
+     *
+     * @param  list<string>  $zones
+     */
+    protected function groupSlug(array $zones, ?string $group): string
+    {
+        return $group !== null && $group !== ''
+            ? $this->zoneSlug($group)
+            : $this->zoneSlug($zones[0]);
     }
 }
