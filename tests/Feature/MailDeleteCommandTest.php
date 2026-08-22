@@ -1,8 +1,16 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\DeleteUserRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('mail:delete is registered', function (): void {
     $this->artisan('list')
@@ -64,9 +72,9 @@ test('mail:delete --sso removes the matching Zitadel identity', function (): voi
         },
     ]);
 
-    Http::fake([
-        '*/v2/users/*' => Http::response(['details' => []]),
-        '*/v2/users' => Http::response(['result' => [['userId' => 'zid-1']]]),
+    Saloon::fake([
+        DeleteUserRequest::class => MockResponse::make(['details' => []]),
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'zid-1']]]),
     ]);
 
     $this->artisan('mail:delete', ['--email' => 'admin@example.com', '--force' => true, '--sso' => true])

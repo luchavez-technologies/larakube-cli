@@ -1,13 +1,21 @@
 <?php
 
 use App\Commands\Mail\MailPasswordCommand;
+use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
+use App\Http\Integrations\Zitadel\Requests\SetUserPasswordRequest;
 use Illuminate\Console\OutputStyle;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('mail:password is registered', function (): void {
     $this->artisan('list')
@@ -70,9 +78,9 @@ test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed 
         },
     ]);
 
-    Http::fake([
-        '*/v2/users/*/password' => Http::response([], 200),
-        '*/v2/users' => Http::response(['result' => [['userId' => 'zid-1']]]),
+    Saloon::fake([
+        SetUserPasswordRequest::class => MockResponse::make([], 200),
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'zid-1']]]),
     ]);
 
     $this->artisan('mail:password', ['--email' => 'alice@example.com', '--password' => 'NewStr0ngP@ss!', '--force' => true, '--no-interaction' => true])
@@ -80,8 +88,9 @@ test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed 
         ->expectsOutputToContain('SSO password updated for alice@example.com');
 
     // The SSO password must be set to the SAME new value as the mailbox.
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/users/zid-1/password')
-        && ($request['newPassword']['password'] ?? null) === 'NewStr0ngP@ss!');
+    Saloon::assertSent(fn ($request) => $request instanceof SetUserPasswordRequest
+        && $request->resolveEndpoint() === 'v2/users/zid-1/password'
+        && $request->body()->get('newPassword')['password'] === 'NewStr0ngP@ss!');
 });
 
 test('mail:password --no-sso leaves Zitadel untouched', function (): void {
@@ -134,7 +143,7 @@ test('mail:password hints (does not error) when no matching SSO identity exists'
     ]);
 
     // Zitadel is up, but the email has no identity (empty search result).
-    Http::fake(['*/v2/users' => Http::response(['result' => []])]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => []])]);
 
     $this->artisan('mail:password', ['--email' => 'alice@example.com', '--password' => 'NewStr0ngP@ss!', '--force' => true, '--no-interaction' => true])
         ->assertExitCode(0)

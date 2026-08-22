@@ -1,7 +1,14 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('mail:sync-sso imports existing stalwart accounts into zitadel sso', function (): void {
     Process::fake([
@@ -38,8 +45,8 @@ test('mail:sync-sso imports existing stalwart accounts into zitadel sso', functi
         ]),
     ]);
 
-    Http::fake([
-        '*' => Http::response(['userId' => 'user-123'], 200),
+    Saloon::fake([
+        CreateUserRequest::class => MockResponse::make(['userId' => 'user-123'], 200),
     ]);
 
     $this->artisan('mail:sync-sso local')

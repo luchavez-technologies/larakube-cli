@@ -1,10 +1,18 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 Prompt::interactive(false);
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 /** The Process fakes secrets:grant needs beyond sso:grant's own connection resolution. */
 function fakeOpenBaoWiring(): array
@@ -32,7 +40,6 @@ test('secrets:grant wires an app-scoped OpenBao policy/role and grants the Zitad
         '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'rbac-proj-1']]]),
         '*/management/v1/projects/rbac-proj-1/roles/_search' => Http::response(['result' => []]),
         '*/management/v1/projects/rbac-proj-1/roles' => Http::response([]),
-        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => []])
             ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-my-app-local-developer']]]]),
@@ -40,6 +47,7 @@ test('secrets:grant wires an app-scoped OpenBao policy/role and grants the Zitad
         'localhost:*/v1/sys/policies/acl/*' => Http::response([]),
         'localhost:*/v1/auth/oidc/role/*' => Http::response([]),
     ]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('secrets:grant', [
         'environment' => 'local',

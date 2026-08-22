@@ -1,7 +1,16 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('sso:grant is registered', function (): void {
     $this->artisan('list --no-interaction')
@@ -46,10 +55,10 @@ test('sso:grant auto-resolves --domain= when a multi-instance tool has exactly o
     Http::fake([
         '*/management/v1/projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'proj-notes-instance']),
-        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants' => Http::response([]),
         '*/management/v1/users/grants/_search' => Http::response(['result' => [['id' => 'grant-1', 'roleKeys' => ['outline-user']]]]),
     ]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'notes', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0);
@@ -91,10 +100,10 @@ test('sso:grant --domain= resolves the exact named instance\'s project', functio
     Http::fake([
         '*/management/v1/projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'proj-blog-instance']),
-        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants' => Http::response([]),
         '*/management/v1/users/grants/_search' => Http::response(['result' => [['id' => 'grant-1', 'roleKeys' => ['outline-user']]]]),
     ]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'notes', '--domain' => 'blog.example.com', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0);
@@ -127,12 +136,12 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
 
     Http::fake([
         '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'drive-proj-1']]]),
-        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => []])
             ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]),
         '*/management/v1/users/uid-1/grants' => Http::response([]),
     ]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     // No --tool: the picker resolves Drive (the first role-bearing tool in
     // case order) purely from the enum's role schema — the grant succeeds even
@@ -204,8 +213,10 @@ test('sso:grant errors when Zitadel user cannot be resolved or created', functio
 
     Http::fake([
         '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/v2/users' => Http::response(['result' => []]),
-        '*/v2/users/human' => Http::response(null, 500),
+    ]);
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => []]),
+        CreateUserRequest::class => MockResponse::make([], 500),
     ]);
 
     $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-admin', '--email' => 'ghost@luchtech.dev', '--no-interaction' => true])
@@ -220,13 +231,13 @@ test('sso:grant creates a fresh UserGrant when the user holds none on the RBAC p
     ]);
 
     Http::fake([
-        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => []]) // no existing grant → create path
             ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin']]]]), // post-write readback
         '*/management/v1/users/uid-1/grants' => Http::response([]),
     ]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-admin', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
@@ -246,13 +257,13 @@ test('sso:grant merges a new role into an existing UserGrant instead of clobberi
     ]);
 
     Http::fake([
-        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin']]]])
             ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin', 'grafana-user']]]]),
         '*/management/v1/users/uid-1/grants/grant-1' => Http::response([]),
     ]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'monitor', '--role' => 'grafana-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
@@ -278,12 +289,12 @@ test('sso:grant grants Drive\'s ocisAdmin on Drive\'s own project, found by name
 
     Http::fake([
         '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'drive-proj-1']]]),
-        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => []])
             ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]),
         '*/management/v1/users/uid-1/grants' => Http::response([]),
     ]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'drive', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
@@ -308,12 +319,12 @@ test('sso:grant for Drive creates its own project when none exists yet', functio
     Http::fake([
         '*projects/_search' => Http::response(['result' => []]),
         '*/management/v1/projects' => Http::response(['id' => 'drive-proj-1']),
-        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants/_search' => Http::sequence()
             ->push(['result' => []])
             ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]),
         '*/management/v1/users/uid-1/grants' => Http::response([]),
     ]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'drive', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)

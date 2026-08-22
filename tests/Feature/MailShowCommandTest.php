@@ -1,7 +1,14 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('mail:show is registered', function (): void {
     $this->artisan('list')
@@ -110,7 +117,7 @@ test('mail:show <email> shows SSO status when Zitadel is installed', function ()
         },
     ]);
 
-    Http::fake(['*/v2/users' => Http::response(['result' => [['userId' => 'zid-1']]])]);
+    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'zid-1']]])]);
 
     $this->artisan('mail:show', ['--email' => 'alice@example.com'])
         ->assertExitCode(0)

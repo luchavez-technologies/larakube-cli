@@ -2,6 +2,12 @@
 
 namespace App\Traits;
 
+use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\DeactivateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\DeleteUserRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
+use App\Http\Integrations\Zitadel\Requests\SetUserPasswordRequest;
+use App\Http\Integrations\Zitadel\ZitadelConnector;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
@@ -63,36 +69,17 @@ trait InteractsWithZitadelApi
         $localPart = explode('@', $email)[0];
         [$givenName, $familyName] = $this->splitDisplayName($displayName, $localPart);
 
-        $body = [
-            'username' => $email,
-            'profile' => [
-                'givenName' => $givenName,
-                'familyName' => $familyName,
-                'displayName' => $displayName !== '' ? $displayName : $localPart,
-            ],
-            'email' => [
-                'email' => $email,
-                'isVerified' => true,
-            ],
-            'password' => [
-                // changeRequired stays false even for a supplied password:
-                // forcing a change on first SSO login would immediately break
-                // the mail/SSO password parity the caller asked for.
-                'password' => $password ?? Str::password(32),
-                'changeRequired' => false,
-            ],
-        ];
-
-        // v2's cross-org placement is a BODY field, not the x-zitadel-orgid
-        // header the v1 endpoints below use — the two APIs disagree on
-        // convention here. Omitted, the caller's own (master) org is used.
-        if ($orgId !== null) {
-            $body['organization'] = ['orgId' => $orgId];
-        }
-
-        $response = Http::withToken($pat)
-            ->timeout(15)
-            ->post("https://{$host}/v2/users/human", $body);
+        $response = ZitadelConnector::make($host, $pat)->send(CreateUserRequest::make(
+            $email,
+            $givenName,
+            $familyName,
+            $displayName !== '' ? $displayName : $localPart,
+            // changeRequired stays false even for a supplied password:
+            // forcing a change on first SSO login would immediately break
+            // the mail/SSO password parity the caller asked for.
+            $password ?? Str::password(32),
+            $orgId,
+        ));
 
         if ($response->successful()) {
             return $response->json('userId');
@@ -115,13 +102,7 @@ trait InteractsWithZitadelApi
     /** Find an existing Zitadel user by email. Returns their user ID, or null if not found/on failure. */
     protected function zitadelFindUserByEmail(string $host, string $pat, string $email): ?string
     {
-        $response = Http::withToken($pat)
-            ->timeout(15)
-            ->post("https://{$host}/v2/users", [
-                'queries' => [
-                    ['emailQuery' => ['emailAddress' => $email, 'method' => 'TEXT_QUERY_METHOD_EQUALS']],
-                ],
-            ]);
+        $response = ZitadelConnector::make($host, $pat)->send(SearchUsersRequest::make($email));
 
         if ($response->failed()) {
             return null;
@@ -139,14 +120,8 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelSetPassword(string $host, string $pat, string $userId, string $password): bool
     {
-        return Http::withToken($pat)
-            ->timeout(15)
-            ->post("https://{$host}/v2/users/{$userId}/password", [
-                'newPassword' => [
-                    'password' => $password,
-                    'changeRequired' => false,
-                ],
-            ])
+        return ZitadelConnector::make($host, $pat)
+            ->send(SetUserPasswordRequest::make($userId, $password))
             ->successful();
     }
 
@@ -223,14 +198,14 @@ trait InteractsWithZitadelApi
     /** Delete (or deactivate, if delete is refused) a Zitadel user by ID. */
     protected function zitadelDeleteUser(string $host, string $pat, string $userId): bool
     {
-        $response = Http::withToken($pat)->timeout(15)->delete("https://{$host}/v2/users/{$userId}");
+        $connector = ZitadelConnector::make($host, $pat);
 
-        if ($response->successful()) {
+        if ($connector->send(DeleteUserRequest::make($userId))->successful()) {
             return true;
         }
 
         // Fall back to deactivation — some org policies refuse hard deletes.
-        return Http::withToken($pat)->timeout(15)->post("https://{$host}/v2/users/{$userId}/deactivate")->successful();
+        return $connector->send(DeactivateUserRequest::make($userId))->successful();
     }
 
     /**

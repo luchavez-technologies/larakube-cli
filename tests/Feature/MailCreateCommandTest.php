@@ -1,7 +1,15 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 /**
  * Extract and JSON-decode the JMAP payload written to a temp file by
@@ -237,7 +245,8 @@ test('mail:create --sso creates a matching Zitadel identity', function (): void 
         },
     ]);
 
-    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []]), '*/v2/users/human' => Http::response(['userId' => 'zid-1'])]);
+    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []])]);
+    Saloon::fake([CreateUserRequest::class => MockResponse::make(['userId' => 'zid-1'])]);
 
     $this->artisan('mail:create', [
         '--email' => 'bob@example.com',
@@ -300,7 +309,8 @@ test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no f
         },
     ]);
 
-    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []]), '*/v2/users/human' => Http::response(['userId' => 'zid-1'])]);
+    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []])]);
+    Saloon::fake([CreateUserRequest::class => MockResponse::make(['userId' => 'zid-1'])]);
 
     // No --sso, no --no-sso: with Zitadel installed the sync is the default. The
     // non-interactive fallback must resolve to yes, so this needs no prompt.
@@ -315,8 +325,8 @@ test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no f
 
     // The Zitadel identity must be created with the SAME password as the mailbox,
     // so one credential logs into both mail and SSO.
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/users/human')
-        && ($request['password']['password'] ?? null) === 'Str0ngP@ssw0rd!');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateUserRequest
+        && $request->body()->get('password')['password'] === 'Str0ngP@ssw0rd!');
 });
 
 test('mail:create --no-sso skips the Zitadel identity even when Zitadel is installed', function (): void {

@@ -1,8 +1,17 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use App\Traits\InteractsWithZitadelApi;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('zitadelAttachActionToFlowTrigger preserves existing actions and appends new action', function (): void {
     $trait = new class
@@ -60,12 +69,12 @@ test('zitadelCreateUser resolves and returns the existing user id when Zitadel r
         }
     };
 
-    Http::fake([
-        'https://sso.test/v2/users/human' => Http::response([
+    Saloon::fake([
+        CreateUserRequest::class => MockResponse::make([
             'code' => 6,
             'message' => 'User already exists (V3-DKcYh)',
         ], 409),
-        'https://sso.test/v2/users' => Http::response([
+        SearchUsersRequest::class => MockResponse::make([
             'result' => [['userId' => 'existing-uid-789']],
         ]),
     ]);
@@ -84,15 +93,15 @@ test('zitadelCreateUser returns null on a genuine failure unrelated to already-e
         }
     };
 
-    Http::fake([
-        'https://sso.test/v2/users/human' => Http::response([
+    Saloon::fake([
+        CreateUserRequest::class => MockResponse::make([
             'code' => 3,
             'message' => 'Domain is already reserved and cannot be used (COMMAND-SFd21)',
         ], 400),
     ]);
 
     expect($trait->create('sso.test', 'pat123', 'nobody@partner.example'))->toBeNull();
-    Http::assertNotSent(fn ($request) => $request->url() === 'https://sso.test/v2/users');
+    Saloon::assertNotSent(SearchUsersRequest::class);
 });
 
 test('zitadelAttachActionToFlowTrigger returns true early if action is already attached', function (): void {

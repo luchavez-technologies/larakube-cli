@@ -1,8 +1,16 @@
 <?php
 
 use App\Commands\Sso\SsoCreateCommand;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('sso:create is registered', function (): void {
     $this->artisan('list --no-interaction')
@@ -17,9 +25,9 @@ test('sso:create provisions a new human user in Zitadel', function (): void {
         '*get ingress sso-zitadel*' => Process::result(output: 'sso.example.com'),
     ]);
 
-    Http::fake([
-        '*/v2/users' => Http::response(['result' => []]),
-        '*/v2/users/human' => Http::response(['userId' => 'new-uid-123']),
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => []]),
+        CreateUserRequest::class => MockResponse::make(['userId' => 'new-uid-123']),
     ]);
 
     $this->artisan(SsoCreateCommand::class, [
@@ -32,8 +40,8 @@ test('sso:create provisions a new human user in Zitadel', function (): void {
         ->expectsOutputToContain('Zitadel SSO user account created successfully')
         ->expectsOutputToContain('client@acme.com');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/users/human')
-        && $request['email']['email'] === 'client@acme.com');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateUserRequest
+        && $request->body()->get('email')['email'] === 'client@acme.com');
 });
 
 test('sso:create reports if user already exists', function (): void {
@@ -43,8 +51,8 @@ test('sso:create reports if user already exists', function (): void {
         '*get ingress sso-zitadel*' => Process::result(output: 'sso.example.com'),
     ]);
 
-    Http::fake([
-        '*/v2/users' => Http::response(['result' => [['userId' => 'existing-uid-456']]]),
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'existing-uid-456']]]),
     ]);
 
     $this->artisan(SsoCreateCommand::class, [

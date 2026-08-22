@@ -3,6 +3,7 @@
 use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneByNameRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListDnsRecordsRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
@@ -43,17 +44,17 @@ function ssoOrgHappyPathHttpFakes(): array
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
         '*/orgs/me/members' => Http::response([]),
-        '*/v2/users/human' => Http::response(['userId' => 'user-1']),
     ];
 }
 
-/** cloudflareZoneId()/cloudflareUpsertTxtRecord()'s Saloon-based calls — see ssoOrgHappyPathHttpFakes()'s docblock. */
+/** cloudflareZoneId()/cloudflareUpsertTxtRecord()/zitadelCreateUser()'s Saloon-based calls — see ssoOrgHappyPathHttpFakes()'s docblock. */
 function ssoOrgSaloonFakes(): array
 {
     return [
         GetZoneByNameRequest::class => MockResponse::make(['success' => true, 'result' => [['id' => 'zone-1']]]),
         ListDnsRecordsRequest::class => MockResponse::make(['success' => true, 'result' => []]),
         CreateDnsRecordRequest::class => MockResponse::make(['success' => true, 'result' => ['id' => 'rec-1']]),
+        CreateUserRequest::class => MockResponse::make(['userId' => 'user-1']),
     ];
 }
 
@@ -122,9 +123,9 @@ test('sso:org creates an ORG_OWNER admin when --admin-email is given', function 
         ->assertExitCode(0)
         ->expectsOutputToContain('admin@partner.example');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/users/human')
-        && $request['username'] === 'admin@partner.example'
-        && $request['organization']['orgId'] === 'org-1');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateUserRequest
+        && $request->body()->get('username') === 'admin@partner.example'
+        && $request->body()->get('organization')['orgId'] === 'org-1');
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/orgs/me/members')
         && $request['userId'] === 'user-1'

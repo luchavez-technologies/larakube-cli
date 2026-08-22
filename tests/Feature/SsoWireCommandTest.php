@@ -2,9 +2,17 @@
 
 use App\Commands\Sso\SsoWireCommand;
 use App\Data\GlobalConfigData;
+use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('sso:wire is registered', function (): void {
     $this->artisan('list --no-interaction')
@@ -458,9 +466,11 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
         },
         '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
         '*/management/v1/projects/proj-1/roles' => Http::response([]),
-        '*/v2/users' => Http::response(['result' => [['userId' => 'uid-1']]]),
         '*/management/v1/users/grants/_search' => Http::response(['result' => []]),
         '*/management/v1/users/uid-1/grants' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'drive', '--admin-email' => 'admin@luchtech.dev', '--no-interaction' => true])
