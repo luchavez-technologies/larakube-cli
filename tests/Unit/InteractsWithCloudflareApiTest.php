@@ -1,7 +1,10 @@
 <?php
 
+use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneByNameRequest;
+use App\Http\Integrations\Cloudflare\Requests\ListDnsRecordsRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
+use App\Http\Integrations\Cloudflare\Requests\PatchDnsRecordRequest;
 use App\Traits\InteractsWithCloudflareApi;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
@@ -21,6 +24,11 @@ function cloudflareApiHarness(): object
         public function listZones(string $token): array
         {
             return $this->cloudflareListZones($token);
+        }
+
+        public function upsertTxtRecord(string $zoneId, string $token, string $name, string $content, int $ttl = 120): bool
+        {
+            return $this->cloudflareUpsertTxtRecord($zoneId, $token, $name, $content, $ttl);
         }
     };
 }
@@ -121,4 +129,41 @@ test('cloudflareListZones returns an empty array on failure', function (): void 
     ]);
 
     expect(cloudflareApiHarness()->listZones('wrong-token'))->toBe([]);
+});
+
+test('cloudflareUpsertTxtRecord creates a record when none exists yet', function (): void {
+    Saloon::fake([
+        ListDnsRecordsRequest::class => MockResponse::make(['success' => true, 'result' => []]),
+        CreateDnsRecordRequest::class => MockResponse::make(['success' => true, 'result' => ['id' => 'rec-1']]),
+    ]);
+
+    expect(cloudflareApiHarness()->upsertTxtRecord('zone-1', 'test-token', '_challenge.example.com', 'abc'))->toBeTrue();
+
+    Saloon::assertSent(fn ($request) => $request instanceof CreateDnsRecordRequest
+        && $request->body()->get('type') === 'TXT'
+        && $request->body()->get('name') === '_challenge.example.com'
+        && $request->body()->get('content') === 'abc');
+    Saloon::assertNotSent(PatchDnsRecordRequest::class);
+});
+
+test('cloudflareUpsertTxtRecord patches the existing record instead of duplicating it', function (): void {
+    Saloon::fake([
+        ListDnsRecordsRequest::class => MockResponse::make(['success' => true, 'result' => [['id' => 'rec-1']]]),
+        PatchDnsRecordRequest::class => MockResponse::make(['success' => true]),
+    ]);
+
+    expect(cloudflareApiHarness()->upsertTxtRecord('zone-1', 'test-token', '_challenge.example.com', 'new-value'))->toBeTrue();
+
+    Saloon::assertSent(fn ($request) => $request instanceof PatchDnsRecordRequest
+        && $request->body()->get('content') === 'new-value');
+    Saloon::assertNotSent(CreateDnsRecordRequest::class);
+});
+
+test('cloudflareUpsertTxtRecord returns false when the write fails', function (): void {
+    Saloon::fake([
+        ListDnsRecordsRequest::class => MockResponse::make(['success' => true, 'result' => []]),
+        CreateDnsRecordRequest::class => MockResponse::make(['success' => false, 'errors' => []], 400),
+    ]);
+
+    expect(cloudflareApiHarness()->upsertTxtRecord('zone-1', 'test-token', '_challenge.example.com', 'abc'))->toBeFalse();
 });

@@ -3,11 +3,13 @@
 namespace App\Traits;
 
 use App\Http\Integrations\Cloudflare\CloudflareConnector;
+use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneByNameRequest;
+use App\Http\Integrations\Cloudflare\Requests\ListDnsRecordsRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
+use App\Http\Integrations\Cloudflare\Requests\PatchDnsRecordRequest;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Http;
 use JsonException;
 use Saloon\Exceptions\Request\FatalRequestException;
 use Saloon\Exceptions\Request\RequestException;
@@ -88,37 +90,21 @@ trait InteractsWithCloudflareApi
      */
     protected function cloudflareUpsertTxtRecord(string $zoneId, string $token, string $name, string $content, int $ttl = 120): bool
     {
-        $search = Http::withToken($token)
-            ->timeout(15)
-            ->get("https://api.cloudflare.com/client/v4/zones/{$zoneId}/dns_records", [
-                'type' => 'TXT',
-                'name' => $name,
-            ]);
+        $connector = CloudflareConnector::make($token);
 
-        $existingId = ($search->successful() && $search->json('success') === true)
-            ? $search->json('result.0.id')
+        $search = $connector->send(ListDnsRecordsRequest::make($zoneId, 'TXT', $name));
+        $existingId = ($search->successful() && Arr::get($search->json(), 'success') === true)
+            ? Arr::get($search->json(), 'result.0.id')
             : null;
 
         if ($existingId !== null) {
-            $update = Http::withToken($token)
-                ->timeout(15)
-                ->patch("https://api.cloudflare.com/client/v4/zones/{$zoneId}/dns_records/{$existingId}", [
-                    'content' => $content,
-                    'ttl' => $ttl,
-                ]);
+            $update = $connector->send(PatchDnsRecordRequest::make($zoneId, $existingId, $content, $ttl));
 
-            return $update->successful() && $update->json('success') === true;
+            return $update->successful() && Arr::get($update->json(), 'success') === true;
         }
 
-        $create = Http::withToken($token)
-            ->timeout(15)
-            ->post("https://api.cloudflare.com/client/v4/zones/{$zoneId}/dns_records", [
-                'type' => 'TXT',
-                'name' => $name,
-                'content' => $content,
-                'ttl' => $ttl,
-            ]);
+        $create = $connector->send(CreateDnsRecordRequest::make($zoneId, 'TXT', $name, $content, $ttl));
 
-        return $create->successful() && $create->json('success') === true;
+        return $create->successful() && Arr::get($create->json(), 'success') === true;
     }
 }

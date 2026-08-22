@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneByNameRequest;
+use App\Http\Integrations\Cloudflare\Requests\ListDnsRecordsRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
@@ -32,14 +34,10 @@ function ssoOrgHappyPathHttpFakes(): array
         '*/orgs/me/domains/*/validation/_generate' => Http::response(['token' => 'zitadel-challenge-abc', 'url' => 'https://zitadel.example/docs']),
         '*/orgs/me/domains/*/validation' => Http::response([]),
         '*/orgs/me/domains' => Http::response([]),
-        // cloudflareZoneId() (the zone-id lookup) is Saloon-based now — see
-        // ssoOrgSaloonFakes() below, faked separately from this Http::fake()
-        // array (docs/decisions/0020-saloonphp-for-new-api-integrations.md).
-        // cloudflareUpsertTxtRecord() (the TXT-record write) is still
-        // Http::-based, so it stays here.
-        '*api.cloudflare.com/client/v4/zones/*/dns_records*' => Http::sequence()
-            ->push(['success' => true, 'result' => []])
-            ->push(['success' => true, 'result' => ['id' => 'rec-1']]),
+        // cloudflareZoneId() AND cloudflareUpsertTxtRecord() are both
+        // Saloon-based now — see ssoOrgSaloonFakes() below, faked separately
+        // from this Http::fake() array
+        // (docs/decisions/0020-saloonphp-for-new-api-integrations.md).
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
@@ -49,11 +47,13 @@ function ssoOrgHappyPathHttpFakes(): array
     ];
 }
 
-/** cloudflareZoneId()'s Saloon-based zone lookup — see ssoOrgHappyPathHttpFakes()'s docblock. */
+/** cloudflareZoneId()/cloudflareUpsertTxtRecord()'s Saloon-based calls — see ssoOrgHappyPathHttpFakes()'s docblock. */
 function ssoOrgSaloonFakes(): array
 {
     return [
         GetZoneByNameRequest::class => MockResponse::make(['success' => true, 'result' => [['id' => 'zone-1']]]),
+        ListDnsRecordsRequest::class => MockResponse::make(['success' => true, 'result' => []]),
+        CreateDnsRecordRequest::class => MockResponse::make(['success' => true, 'result' => ['id' => 'rec-1']]),
     ];
 }
 
@@ -87,12 +87,10 @@ test('sso:org creates a new org, verifies the domain, and installs the RBAC acti
         && ! str_contains($request->url(), 'validation')
         && $request->hasHeader('x-zitadel-orgid', 'org-1'));
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), 'api.cloudflare.com')
-        && str_contains($request->url(), 'dns_records')
-        && $request->method() === 'POST'
-        && $request['type'] === 'TXT'
-        && $request['name'] === '_zitadel-challenge.partner.example'
-        && $request['content'] === 'zitadel-challenge-abc');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateDnsRecordRequest
+        && $request->body()->get('type') === 'TXT'
+        && $request->body()->get('name') === '_zitadel-challenge.partner.example'
+        && $request->body()->get('content') === 'zitadel-challenge-abc');
 });
 
 test('sso:org reuses an existing org instead of creating a duplicate', function (): void {

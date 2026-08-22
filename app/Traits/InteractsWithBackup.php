@@ -4,7 +4,9 @@ namespace App\Traits;
 
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Cloudflare\CloudflareConnector;
+use App\Http\Integrations\Cloudflare\Requests\CreateR2BucketRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -279,15 +281,11 @@ trait InteractsWithBackup
      */
     protected function createR2Bucket(string $accountId, string $bucket, string $token): array
     {
-        $response = Http::withToken($token)
-            ->timeout(30)
-            ->post("https://api.cloudflare.com/client/v4/accounts/{$accountId}/r2/buckets", [
-                'name' => $bucket,
-            ]);
+        $response = CloudflareConnector::make($token)->send(CreateR2BucketRequest::make($accountId, $bucket));
 
         $body = $response->json();
 
-        if (($body['success'] ?? false) === true) {
+        if (Arr::get($body, 'success') === true) {
             return ['ok' => true, 'message' => "Created R2 bucket '{$bucket}'."];
         }
 

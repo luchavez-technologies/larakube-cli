@@ -1,8 +1,12 @@
 <?php
 
+use App\Http\Integrations\Cloudflare\Requests\CreateR2BucketRequest;
 use App\Traits\InteractsWithBackup;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
@@ -44,6 +48,10 @@ function backupInitFakes(array $overrides = []): array
         '*get deployment -n larakube-plex -o jsonpath*' => Process::result(output: 'seaweedfs postgres'),
     ], $overrides, ['*' => Process::result(output: '')]);
 }
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('backup:init refuses a destination inside the cluster', function (): void {
     // The seductive wrong answer, and the one both earlier plans reached for:
@@ -142,8 +150,8 @@ test('the R2 account id is read from the endpoint, not asked for again', functio
 
 test('creating a bucket that already exists is success, not an error', function (): void {
     // Re-running backup:init against a configured destination is normal.
-    Http::fake([
-        'api.cloudflare.com/*' => Http::response([
+    Saloon::fake([
+        CreateR2BucketRequest::class => MockResponse::make([
             'success' => false,
             'errors' => [['code' => 10004, 'message' => 'The bucket you tried to create already exists.']],
         ], 400),
@@ -165,8 +173,8 @@ test('creating a bucket that already exists is success, not an error', function 
 });
 
 test('a token without R2 permission says exactly which scope is missing', function (): void {
-    Http::fake([
-        'api.cloudflare.com/*' => Http::response([
+    Saloon::fake([
+        CreateR2BucketRequest::class => MockResponse::make([
             'success' => false,
             'errors' => [['code' => 10000, 'message' => 'Authentication error']],
         ], 403),
