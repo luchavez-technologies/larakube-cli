@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Http\Integrations\Zitadel\Requests\AddOrgDomainRequest;
 use App\Http\Integrations\Zitadel\Requests\AddOrgMemberRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateOidcAppRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateOrganizationRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectGrantRequest;
@@ -16,7 +17,9 @@ use App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteUserRequest;
 use App\Http\Integrations\Zitadel\Requests\GenerateOrgDomainValidationRequest;
+use App\Http\Integrations\Zitadel\Requests\GetFlowRequest;
 use App\Http\Integrations\Zitadel\Requests\GetProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchActionsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrgDomainsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectAppsRequest;
@@ -25,7 +28,9 @@ use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
+use App\Http\Integrations\Zitadel\Requests\SetFlowTriggerActionsRequest;
 use App\Http\Integrations\Zitadel\Requests\SetUserPasswordRequest;
+use App\Http\Integrations\Zitadel\Requests\UpdateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateProjectGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateProjectRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateUserGrantRequest;
@@ -473,17 +478,19 @@ trait InteractsWithZitadelApi
         JS;
 
         // Zitadel's _search endpoints want a JSON OBJECT body even with no
-        // filters — a bare [] (which is what Http::post(..., []) sends,
-        // since PHP's json_encode([]) produces a JSON array, not {}) 400s
-        // with "proto: syntax error... unexpected token [". Confirmed live
-        // 2026-07-30: this exact bug had been silently breaking this call
-        // since it was written (search always failed, fell through to a
-        // create that then 409'd against the action created manually
-        // during this session's testing — masked entirely because
-        // ensureRbacGating() didn't check this method's return value).
-        $headers = $this->zitadelOrgHeaders($orgId);
+        // filters — a bare [] (which is what an empty PHP array always
+        // json_encodes to, regardless of client) 400s with "proto: syntax
+        // error... unexpected token [". Confirmed live 2026-07-30: this
+        // exact bug had been silently breaking this call since it was
+        // written (search always failed, fell through to a create that then
+        // 409'd against the action created manually during this session's
+        // testing — masked entirely because ensureRbacGating() didn't check
+        // this method's return value). SearchActionsRequest's own
+        // ['queries' => []] body sidesteps it — a real key with an empty
+        // array value encodes fine, unlike a bare top-level [].
+        $connector = ZitadelConnector::make($host, $pat);
 
-        $search = Http::withToken($pat)->withHeaders($headers)->timeout(15)->post("https://{$host}/management/v1/actions/_search", ['queries' => []]);
+        $search = $connector->send(SearchActionsRequest::make($orgId));
         $actionId = null;
         $foundScript = null;
         if ($search->successful()) {
@@ -497,11 +504,7 @@ trait InteractsWithZitadelApi
         }
 
         if ($actionId === null) {
-            $create = Http::withToken($pat)->withHeaders($headers)->timeout(15)->post("https://{$host}/management/v1/actions", [
-                'name' => $name,
-                'script' => $script,
-                'timeout' => '10s',
-            ]);
+            $create = $connector->send(CreateActionRequest::make($name, $script, $orgId));
             if ($create->failed()) {
                 return false;
             }
@@ -511,10 +514,7 @@ trait InteractsWithZitadelApi
             // (added 2026-08-06) — push the new script instead of silently
             // leaving the old one in place, same self-heal as
             // zitadelEnsureOcisRolesAction().
-            $update = Http::withToken($pat)->withHeaders($headers)->timeout(15)->put(
-                "https://{$host}/management/v1/actions/{$actionId}",
-                ['name' => $name, 'script' => $script, 'fieldMask' => ['paths' => ['name', 'script']]],
-            );
+            $update = $connector->send(UpdateActionRequest::make($actionId, $name, $script, $orgId));
             if ($update->failed() && ! str_contains($update->body(), 'No Changes')) {
                 return false;
             }
@@ -535,21 +535,15 @@ trait InteractsWithZitadelApi
         return true;
     }
 
-    /** x-zitadel-orgid header, or none — the shared org-targeting helper for every v1 call in this trait. */
-    protected function zitadelOrgHeaders(?string $orgId): array
-    {
-        return $orgId !== null ? ['x-zitadel-orgid' => $orgId] : [];
-    }
-
     /**
      * Attach an action ID to a specific flow trigger type without wiping out
      * other actions already attached to that trigger.
      */
     protected function zitadelAttachActionToFlowTrigger(string $host, string $pat, int $flowType, int $triggerType, string $actionId, ?string $orgId = null): bool
     {
-        $headers = $this->zitadelOrgHeaders($orgId);
+        $connector = ZitadelConnector::make($host, $pat);
 
-        $response = Http::withToken($pat)->withHeaders($headers)->timeout(15)->get("https://{$host}/management/v1/flows/{$flowType}");
+        $response = $connector->send(GetFlowRequest::make($flowType, $orgId));
         $existingActionIds = [];
 
         if ($response->successful()) {
@@ -571,10 +565,7 @@ trait InteractsWithZitadelApi
 
         $allActionIds = array_values(array_unique(array_merge($existingActionIds, [$actionId])));
 
-        $set = Http::withToken($pat)->withHeaders($headers)->timeout(15)->post(
-            "https://{$host}/management/v1/flows/{$flowType}/trigger/{$triggerType}",
-            ['actionIds' => $allActionIds],
-        );
+        $set = $connector->send(SetFlowTriggerActionsRequest::make($flowType, $triggerType, $allActionIds, $orgId));
 
         return $set->successful() || str_contains($set->body(), 'No Changes');
     }
@@ -610,7 +601,9 @@ trait InteractsWithZitadelApi
         $name = 'flattenOcisRoles';
         $script = self::OCIS_ROLES_SCRIPT;
 
-        $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/management/v1/actions/_search", ['queries' => []]);
+        $connector = ZitadelConnector::make($host, $pat);
+
+        $search = $connector->send(SearchActionsRequest::make());
         $actionId = null;
         $foundScript = null;
         if ($search->successful()) {
@@ -624,11 +617,7 @@ trait InteractsWithZitadelApi
         }
 
         if ($actionId === null) {
-            $create = Http::withToken($pat)->timeout(15)->post("https://{$host}/management/v1/actions", [
-                'name' => $name,
-                'script' => $script,
-                'timeout' => '10s',
-            ]);
+            $create = $connector->send(CreateActionRequest::make($name, $script));
             if ($create->failed()) {
                 return false;
             }
@@ -638,10 +627,7 @@ trait InteractsWithZitadelApi
             // schema (e.g. the ocisSpaceAdmin upgrade) — push the new script
             // via PUT /management/v1/actions/{id} with a fieldMask instead of
             // silently leaving the stale claim emitter in place.
-            $update = Http::withToken($pat)->timeout(15)->put(
-                "https://{$host}/management/v1/actions/{$actionId}",
-                ['name' => $name, 'script' => $script, 'fieldMask' => ['paths' => ['name', 'script']]],
-            );
+            $update = $connector->send(UpdateActionRequest::make($actionId, $name, $script));
             if ($update->failed() && ! str_contains($update->body(), 'No Changes')) {
                 return false;
             }

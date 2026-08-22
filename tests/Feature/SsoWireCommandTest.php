@@ -2,20 +2,24 @@
 
 use App\Commands\Sso\SsoWireCommand;
 use App\Data\GlobalConfigData;
+use App\Http\Integrations\Zitadel\Requests\CreateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateOidcAppRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectRoleRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest;
+use App\Http\Integrations\Zitadel\Requests\GetFlowRequest;
 use App\Http\Integrations\Zitadel\Requests\GetProjectAppRequest;
 use App\Http\Integrations\Zitadel\Requests\GetProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchActionsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectAppsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
+use App\Http\Integrations\Zitadel\Requests\SetFlowTriggerActionsRequest;
+use App\Http\Integrations\Zitadel\Requests\UpdateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateProjectRequest;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
@@ -96,13 +100,11 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
             '*rollout restart*' => Process::result(output: 'deployment.apps/dashboard-headlamp restarted'),
         ]);
 
-        Http::fake([
-            '*/management/v1/actions/_search' => Http::response(['result' => []]),
-            '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-            '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-            '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        ]);
         Saloon::fake([
+            SearchActionsRequest::class => MockResponse::make(['result' => []]),
+            CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+            GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+            SetFlowTriggerActionsRequest::class => MockResponse::make([]),
             SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
             SearchProjectsRequest::class => MockResponse::make(['result' => []]),
             CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -136,13 +138,11 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
         '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -189,13 +189,11 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
         '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -234,13 +232,11 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
         '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -284,13 +280,11 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
     // Drive's own project, so this fakes both: the flattenLaraKubeRoles AND
     // flattenOcisRoles Actions, and all three roles (ocisUser from
     // rbacRoles(), ocisAdmin/ocisSpaceAdmin from ssoAdminRoles()).
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -348,18 +342,16 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
         '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
     ]);
 
-    Http::fake([
+    Saloon::fake([
         // The ocisRoles Action must be ensured (and found already attached),
         // and the ocisAdmin role must already exist on the tool's own
         // project — Drive is rbacRoles()+ssoAdminRoles() together
         // (2026-08-20), so flattenLaraKubeRoles must also be ensured
         // (falls through to a fresh create, not found in this fake).
-        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-larakube']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
-    Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-larakube']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         // SsoWireCommand's own staleness pre-check GET (by the CACHED app-id).
         GetProjectAppRequest::class => MockResponse::make(['app' => ['id' => 'app-stale', 'oidcConfig' => ['redirectUris' => ["https://drive.{$tld}/"]]]]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => [['id' => 'app-stale']]]),
@@ -413,13 +405,11 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
     // and every logout 400s with "post_logout_redirect_uri invalid". Matching
     // redirect URIs alone must NOT gate reuse — the post-logout set has to be
     // compared too, or re-wiring silently leaves logout broken.
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-larakube']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-larakube']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         GetProjectAppRequest::class => MockResponse::make(['app' => ['id' => 'app-live', 'oidcConfig' => ['redirectUris' => [
             "https://drive.{$tld}/oidc-callback.html",
             "https://drive.{$tld}/oidc-silent-redirect.html",
@@ -467,15 +457,13 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
     // runs second and, seeing assertion already true, does NOT re-PUT (its
     // own check is satisfied by the first step alone) — this stateful fake
     // mirrors that real sequential dependency instead of a static snapshot.
-    Http::fake([
-        // Neither Action exists yet — both must be created.
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-ocis']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     $projectGated = false;
     Saloon::fake([
+        // Neither Action exists yet — both must be created.
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-ocis']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -523,14 +511,12 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
     // fallback so nobody gets locked out under PROXY_ROLE_ASSIGNMENT_DRIVER=
     // oidc — and with the ocisSpaceAdmin upgrade path beside ocisAdmin
     // (admin outranks spaceadmin).
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/actions')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && str_contains($request['script'], '"ocisUser"')
-        && str_contains($request['script'], '"ocisAdmin"')
-        && str_contains($request['script'], '"ocisSpaceAdmin"')
-        && str_contains($request['script'], 'roles[0] !== "ocisAdmin"')
-        && str_contains($request['script'], 'setClaim("ocisRoles"'));
+    Saloon::assertSent(fn ($request) => $request instanceof CreateActionRequest
+        && str_contains($request->body()->get('script'), '"ocisUser"')
+        && str_contains($request->body()->get('script'), '"ocisAdmin"')
+        && str_contains($request->body()->get('script'), '"ocisSpaceAdmin"')
+        && str_contains($request->body()->get('script'), 'roles[0] !== "ocisAdmin"')
+        && str_contains($request->body()->get('script'), 'setClaim("ocisRoles"'));
 
     // Drive's own project gains BOTH flags — projectRoleCheck is the actual
     // login gate, unlike a plain ssoAdminRoles()-only tool (e.g. a future
@@ -562,17 +548,15 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
     // live state this upgrade ships over. sso:wire must PUT the new script
     // rather than treating the name match as "already done" (the old bug would
     // have left the claim emitter permanently stuck on ocisAdmin/ocisUser).
-    Http::fake([
+    Saloon::fake([
         // Only flattenOcisRoles exists (stale script) — flattenLaraKubeRoles
         // (needed now that Drive also has rbacRoles()) doesn't, so it gets
-        // freshly created via the generic '/management/v1/actions' POST.
-        '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => 'function flattenOcisRoles(ctx, api) { let roles = ["ocisUser"]; }']]]),
-        '*/management/v1/actions/action-ocis' => Http::response([]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-larakube']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
-    Saloon::fake([
+        // freshly created via the generic CreateActionRequest.
+        SearchActionsRequest::class => MockResponse::make(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => 'function flattenOcisRoles(ctx, api) { let roles = ["ocisUser"]; }']]]),
+        UpdateActionRequest::class => MockResponse::make([]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-larakube']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -591,17 +575,15 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
 
     // The stale script is updated in place with the new ocisSpaceAdmin-aware
     // emitter — never recreated, never silently left behind.
-    Http::assertSent(fn ($request) => $request->method() === 'PUT'
-        && str_contains($request->url(), '/management/v1/actions/action-ocis')
-        && str_contains($request['script'], '"ocisSpaceAdmin"')
-        && $request['fieldMask'] === ['paths' => ['name', 'script']]);
-    // flattenOcisRoles specifically is never recreated — the create POST
-    // that does happen (flattenLaraKubeRoles, since it didn't exist yet) is
-    // for a different Action and carries a different script entirely.
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/management/v1/actions')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && str_contains($request['script'] ?? '', 'flattenOcisRoles'));
+    Saloon::assertSent(fn ($request) => $request instanceof UpdateActionRequest
+        && $request->resolveEndpoint() === 'management/v1/actions/action-ocis'
+        && str_contains($request->body()->get('script'), '"ocisSpaceAdmin"')
+        && $request->body()->get('fieldMask') === ['paths' => ['name', 'script']]);
+    // flattenOcisRoles specifically is never recreated — the create that does
+    // happen (flattenLaraKubeRoles, since it didn't exist yet) is for a
+    // different Action and carries a different script entirely.
+    Saloon::assertNotSent(fn ($request) => $request instanceof CreateActionRequest
+        && str_contains($request->body()->get('script') ?? '', 'flattenOcisRoles'));
 });
 
 test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups claim', function (): void {
@@ -622,15 +604,13 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
         '*rollout restart*' => Process::result(output: 'deployment.apps/dashboard-headlamp restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => [
+    Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => [
             ['id' => 'action-rbac', 'name' => 'flattenLaraKubeRoles', 'script' => 'function flattenLaraKubeRoles(ctx, api) { api.v1.claims.setClaim("larakube_roles", []); }'],
         ]]),
-        '*/management/v1/actions/action-rbac' => Http::response([]),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
-    Saloon::fake([
+        UpdateActionRequest::class => MockResponse::make([]),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -647,10 +627,10 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
-    Http::assertSent(fn ($request) => $request->method() === 'PUT'
-        && str_contains($request->url(), '/management/v1/actions/action-rbac')
-        && str_contains($request['script'], 'setClaim("groups", roles)')
-        && $request['fieldMask'] === ['paths' => ['name', 'script']]);
+    Saloon::assertSent(fn ($request) => $request instanceof UpdateActionRequest
+        && $request->resolveEndpoint() === 'management/v1/actions/action-rbac'
+        && str_contains($request->body()->get('script'), 'setClaim("groups", roles)')
+        && $request->body()->get('fieldMask') === ['paths' => ['name', 'script']]);
 });
 
 test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssertion', function (): void {
@@ -664,13 +644,11 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
         '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -705,11 +683,9 @@ test('sso:wire aborts before registering an OIDC client if role-gating setup fai
     // hard failure instead of silently proceeding to register an OIDC app
     // and wire bound_claims/role_attribute_path against infrastructure that
     // was never confirmed to exist.
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['code' => 3, 'message' => 'proto: syntax error'], 400),
-        '*/management/v1/actions' => Http::response(['code' => 6, 'message' => 'Errors.Action.AlreadyExists'], 409),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['code' => 3, 'message' => 'proto: syntax error'], 400),
+        CreateActionRequest::class => MockResponse::make(['code' => 6, 'message' => 'Errors.Action.AlreadyExists'], 409),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
         GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
@@ -748,13 +724,11 @@ test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -785,11 +759,9 @@ test('sso:wire aborts before deploying the ForwardAuth proxy if role-gating setu
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['code' => 3, 'message' => 'proto: syntax error'], 400),
-        '*/management/v1/actions' => Http::response(['code' => 6, 'message' => 'Errors.Action.AlreadyExists'], 409),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['code' => 3, 'message' => 'proto: syntax error'], 400),
+        CreateActionRequest::class => MockResponse::make(['code' => 6, 'message' => 'Errors.Action.AlreadyExists'], 409),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
         GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
@@ -819,13 +791,11 @@ test('sso:wire gates Outline behind Zitadel roles — the actual tool from the l
         '*rollout restart*' => Process::result(output: 'deployment.apps/notes-outline restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -871,13 +841,11 @@ test('sso:wire reuses an already-registered OIDC client', function (): void {
     // client id, so faking that URL only ever agreed with the bug.
     $tld = GlobalConfigData::load()->getLocalTld();
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         // The GET returns the registered app's current redirect URIs — the wire
         // command compares them against the tool's desired set and only reuses
         // when they still match (a stale registration, like drive's old
@@ -916,13 +884,11 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
         '*bao write auth/oidc/role/*' => Process::result(),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -1013,13 +979,11 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         '*rollout restart*' => Process::result(output: 'deployment.apps/link-kutt restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -1228,13 +1192,11 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -1278,13 +1240,11 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
         '*rollout restart*' => Process::result(output: 'deployment.apps/forgejo restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
@@ -1327,13 +1287,11 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
         '*rollout restart*' => Process::result(output: 'deployment.apps/forgejo restarted'),
     ]);
 
-    Http::fake([
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
-    ]);
     Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),

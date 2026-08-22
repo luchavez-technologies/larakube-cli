@@ -1,10 +1,10 @@
 <?php
 
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\GetFlowRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
+use App\Http\Integrations\Zitadel\Requests\SetFlowTriggerActionsRequest;
 use App\Traits\InteractsWithZitadelApi;
-use Illuminate\Http\Client\Request;
-use Illuminate\Support\Facades\Http;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
 use Saloon\Laravel\Facades\Saloon;
@@ -24,8 +24,8 @@ test('zitadelAttachActionToFlowTrigger preserves existing actions and appends ne
         }
     };
 
-    Http::fake([
-        'https://sso.test/management/v1/flows/2' => Http::response([
+    Saloon::fake([
+        GetFlowRequest::class => MockResponse::make([
             'flow' => [
                 'triggerActions' => [
                     [
@@ -37,20 +37,15 @@ test('zitadelAttachActionToFlowTrigger preserves existing actions and appends ne
                 ],
             ],
         ]),
-        'https://sso.test/management/v1/flows/2/trigger/4' => Http::response(['details' => ['sequence' => '1']]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make(['details' => ['sequence' => '1']]),
     ]);
 
     $result = $trait->attach('sso.test', 'pat123', 2, 4, 'new-action-2');
 
     expect($result)->toBeTrue();
 
-    Http::assertSent(function (Request $request) {
-        if ($request->url() === 'https://sso.test/management/v1/flows/2/trigger/4') {
-            return $request['actionIds'] === ['existing-action-1', 'new-action-2'];
-        }
-
-        return true;
-    });
+    Saloon::assertSent(fn ($request) => $request instanceof SetFlowTriggerActionsRequest
+        && $request->body()->get('actionIds') === ['existing-action-1', 'new-action-2']);
 });
 
 test('zitadelCreateUser resolves and returns the existing user id when Zitadel reports the user already exists', function (): void {
@@ -115,8 +110,8 @@ test('zitadelAttachActionToFlowTrigger returns true early if action is already a
         }
     };
 
-    Http::fake([
-        'https://sso.test/management/v1/flows/2' => Http::response([
+    Saloon::fake([
+        GetFlowRequest::class => MockResponse::make([
             'flow' => [
                 'triggerActions' => [
                     [
@@ -133,5 +128,5 @@ test('zitadelAttachActionToFlowTrigger returns true early if action is already a
     $result = $trait->attach('sso.test', 'pat123', 2, 4, 'existing-action-1');
 
     expect($result)->toBeTrue();
-    Http::assertNotSent(fn (Request $request) => $request->url() === 'https://sso.test/management/v1/flows/2/trigger/4');
+    Saloon::assertNotSent(SetFlowTriggerActionsRequest::class);
 });
