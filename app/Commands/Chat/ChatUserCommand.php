@@ -30,7 +30,8 @@ class ChatUserCommand extends Command
         {--context=      : Target a specific kube-context}
         {--username=      : Local part of the Matrix ID, e.g. alice (full id becomes @alice:<server_name>)}
         {--password=      : Account password (auto-generated if omitted)}
-        {--display-name=  : Display name for the account}';
+        {--display-name=  : Display name for the account}
+        {--admin          : Grant this account Synapse server-admin rights (needed to use the Element Admin console)}';
 
     protected $description = 'Create or update a Matrix account on the shared chat homeserver';
 
@@ -86,9 +87,11 @@ class ChatUserCommand extends Command
         $password = (string) ($this->option('password') ?: Str::password(24));
         $userId = "@{$username}:{$host}";
 
+        $admin = (bool) $this->option('admin');
+
         $result = null;
-        $this->withSpin("Creating/updating {$userId}...", function () use (&$result, $host, $adminToken, $userId, $password, $displayName): void {
-            $result = $this->matrixSetUserAccount($host, $adminToken, $userId, $password, $displayName !== '' ? $displayName : null);
+        $this->withSpin("Creating/updating {$userId}...", function () use (&$result, $host, $adminToken, $userId, $password, $displayName, $admin): void {
+            $result = $this->matrixSetUserAccount($host, $adminToken, $userId, $password, $displayName !== '' ? $displayName : null, $admin);
         });
 
         if ($result === null) {
@@ -103,6 +106,9 @@ class ChatUserCommand extends Command
         $this->line("  <fg=gray>User ID:</>  <fg=blue>{$userId}</>");
         $this->line("  <fg=gray>Password:</> <fg=yellow>{$password}</>");
         $this->line("  <fg=gray>Homeserver:</> <fg=blue>https://{$host}</>");
+        if ($admin) {
+            $this->line('  <fg=gray>Synapse admin:</> <fg=green>granted</>');
+        }
         $this->newLine();
         $this->line('  <fg=gray>Invite into a room:</>');
         $this->line("  <fg=blue>larakube chat:room {$env} --invite={$userId}</>");

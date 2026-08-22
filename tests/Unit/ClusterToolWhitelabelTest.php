@@ -32,7 +32,7 @@ test('whiteLabel() returns null for unsupported tools like DNS, VPN, SECRETS', f
     }
 });
 
-test('whiteLabel() specs define valid app_name_key, logo_url_key or sub_filter', function (): void {
+test('whiteLabel() specs define valid app_name_key, logo_url_key, sub_filter, or blade_variables', function (): void {
     foreach (ClusterTool::cases() as $tool) {
         $spec = $tool->whiteLabel();
         if ($spec === null) {
@@ -40,7 +40,7 @@ test('whiteLabel() specs define valid app_name_key, logo_url_key or sub_filter',
         }
 
         expect(
-            isset($spec['app_name_key']) || isset($spec['sub_filter']),
-        )->toBeTrue("{$tool->name} whiteLabel spec must declare app_name_key or sub_filter");
+            isset($spec['app_name_key']) || isset($spec['sub_filter']) || isset($spec['blade_variables']),
+        )->toBeTrue("{$tool->name} whiteLabel spec must declare app_name_key, sub_filter, or blade_variables");
     }
 });

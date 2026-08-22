@@ -222,10 +222,10 @@ enum ClusterTool: string implements HasWorkloadComponents
 
     /**
      * Whitelabeling specification for tools that support custom branding (app name / logo)
-     * via environment variables, config keys, or Nginx sub_filter injection.
-     * null for tools with no env-var-driven whitelabeling support.
+     * via environment variables, Nginx sub_filter injection, or the tool's own Blade
+     * template variables. null for tools with no whitelabeling support.
      *
-     * @return array{app_name_key?: string, logo_url_key?: string, sub_filter?: bool}|null
+     * @return array{app_name_key?: string, logo_url_key?: string, sub_filter?: bool, blade_variables?: bool}|null
      */
     public function whiteLabel(): ?array
     {

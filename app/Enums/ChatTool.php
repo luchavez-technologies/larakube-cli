@@ -70,11 +70,12 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
                 backupPath: '/data/chat.luchtech.dev.signing.key',
             ),
             new ClusterToolComponentData(
-                key: 'cinny',
+                key: 'web',
                 role: ClusterToolComponentRole::INGRESS,
-                deployment: $name('chat-cinny'),
+                deployment: $name('chat-web'),
                 resources: [
-                    ['kind' => 'service', 'name' => 'chat-cinny'],
+                    ['kind' => 'service', 'name' => 'chat-web'],
+                    ['kind' => 'configmap', 'name' => 'chat-web-config'],
                     ['kind' => 'ingress', 'name' => 'chat-ingress'],
                 ],
             ),
@@ -95,6 +96,53 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
                 resources: [
                     ['kind' => 'service', 'name' => 'chat-synapse-db'],
                     ['kind' => 'pvc', 'name' => 'chat-synapse-db-storage'],
+                ],
+            ),
+            // Matrix Authentication Service — deployed unconditionally by
+            // `chat:init` once Zitadel is available (Element X requires
+            // MSC3861/MAS-native OIDC; it does not speak the classic
+            // oidc_providers: flow the `synapse` component above uses).
+            // Stateless: its state lives entirely in its own Postgres
+            // tenant (Commons-backed, or chat-mas-db on --no-plex),
+            // so it carries no backupVolume of its own.
+            new ClusterToolComponentData(
+                key: 'mas',
+                role: ClusterToolComponentRole::AUTH,
+                deployment: $name('chat-mas'),
+                container: 'mas',
+                // sso-app-chat-mas is NOT listed here — it lives in the SSO
+                // namespace, not chat's, and this list is same-namespace-only
+                // (see ClusterToolComponentData's own docblock). Deregistering
+                // it from Zitadel is a separate concern from tearing down
+                // chat's own resources.
+                resources: [
+                    ['kind' => 'service', 'name' => 'chat-mas'],
+                    ['kind' => 'ingress', 'name' => 'chat-mas-ingress'],
+                    ['kind' => 'secret', 'name' => 'chat-mas-config'],
+                    ['kind' => 'secret', 'name' => 'chat-mas-secrets'],
+                ],
+            ),
+            new ClusterToolComponentData(
+                key: 'mas-db',
+                role: ClusterToolComponentRole::DATABASE,
+                deployment: $name('chat-mas-db'),
+                bundledOnly: true,
+                resources: [
+                    ['kind' => 'service', 'name' => 'chat-mas-db'],
+                    ['kind' => 'pvc', 'name' => 'chat-mas-db-storage'],
+                ],
+            ),
+            // Element Admin — a static SPA with no data of its own (it acts
+            // entirely through the logged-in operator's own session against
+            // Synapse's/MAS's Admin APIs), so no DB/PVC entry. Deployed only
+            // once MAS is active (see ChatInitCommand's admin deploy step).
+            new ClusterToolComponentData(
+                key: 'admin',
+                role: ClusterToolComponentRole::WORKER,
+                deployment: $name('chat-admin'),
+                resources: [
+                    ['kind' => 'service', 'name' => 'chat-admin'],
+                    ['kind' => 'ingress', 'name' => 'chat-admin-ingress'],
                 ],
             ),
         ];
@@ -145,7 +193,11 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
 
     public function whiteLabel(): array
     {
-        return ['sub_filter' => true];
+        // Element Web takes brand/auth_header_logo_url directly in its own
+        // config.json (rendered in matrix.blade.php's chat-web-config, via
+        // $appName/$logoUrl already threaded through ChatInitCommand) — no
+        // nginx sub_filter injection needed, unlike Cinny before it.
+        return ['blade_variables' => true];
     }
 
     public function openbaoSyncConfig(): array

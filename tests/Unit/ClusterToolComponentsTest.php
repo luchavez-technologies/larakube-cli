@@ -52,7 +52,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
 
 test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown deployment names exactly', function (): void {
     $chatDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::CHAT->components());
-    expect($chatDeployments)->toBe(['chat-synapse', 'chat-cinny', 'chat-coturn', 'chat-synapse-db']);
+    expect($chatDeployments)->toBe(['chat-synapse', 'chat-web', 'chat-coturn', 'chat-synapse-db', 'chat-mas', 'chat-mas-db', 'chat-admin']);
 
     $gitDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::GIT->components());
     expect($gitDeployments)->toBe(['forgejo', 'forgejo-runner']);

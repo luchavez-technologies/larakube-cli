@@ -26,7 +26,7 @@ beforeEach(function (): void {
     ]);
 });
 
-test('chat:init --app-name injects Nginx sub_filter for Cinny app title', function (): void {
+test('chat:init --app-name sets Element Web brand in config.json', function (): void {
     $this->artisan('chat:init local --no-plex --app-name="Acme Chat" --no-interaction')
         ->assertExitCode(0);
 });

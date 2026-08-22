@@ -40,6 +40,13 @@ class NextjsNewCommand extends Command
     protected $description = 'Scaffold a new Next.js application with Kubernetes infrastructure (standalone output + Redis cache handler)';
 
     /**
+     * Backward-compatible alias for those who prefer the shorthand.
+     *
+     * @var array<int, string>
+     */
+    protected $aliases = ['next:new'];
+
+    /**
      * Execute the console command.
      *
      * @throws RandomException

@@ -221,6 +221,7 @@ class MailUnwireCommand extends Command
 
         $this->withSpin('Unwiring Matrix (Synapse) mail from homeserver.yaml...', function () use ($kubectl, $ns, &$ok): void {
             $oidc = $this->readChatWiredOidc($kubectl, $ns);
+            $mas = $this->readChatWiredMas($kubectl, $ns);
 
             $raw = Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output();
             if (trim($raw) === '') {
@@ -230,7 +231,7 @@ class MailUnwireCommand extends Command
             }
             $rawYaml = (string) base64_decode(trim($raw));
 
-            $homeserver = $this->renderSynapseConfig($rawYaml, null, $oidc);
+            $homeserver = $this->renderSynapseConfig($rawYaml, null, $oidc, $mas);
 
             $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
             $tmp = $temporaryDirectory->path().'/homeserver.yaml';

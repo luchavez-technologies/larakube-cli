@@ -130,7 +130,10 @@ class MeetUnwireCommand extends Command
                 return;
             }
 
-            $homeserver = $this->renderSynapseCalling((string) base64_decode(trim($raw)), null);
+            // Read back MAS's public issuer so this doesn't clobber Element
+            // X's auth-discovery well-known key when unwiring calling only.
+            $masPublicIssuer = $this->readChatWiredMas($kubectl, $ns)['public_issuer'] ?? null;
+            $homeserver = $this->renderSynapseCalling((string) base64_decode(trim($raw)), null, $masPublicIssuer ?: null);
 
             $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
             $tmp = $temporaryDirectory->path().'/homeserver.yaml';

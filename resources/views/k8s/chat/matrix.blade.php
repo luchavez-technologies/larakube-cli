@@ -166,18 +166,27 @@ stringData:
     rc_delayed_event_mgmt:
       per_second: 1
       burst_count: 20
-    # Points at the shared Meet tool's Matrix bridge, not at anything chat owns.
-    # Written by `meet:wire --tool=chat` and read back on re-run from the
-    # chat-meet Secret, same discipline as the SMTP/OIDC wiring below.
-    #
-    # The key is `extra_well_known_client_content` — NOT a `well_known: client:`
-    # block. Synapse silently ignores unknown top-level keys, so the wrong
-    # spelling serves a well-known with no focus and Element Call reports
-    # "Your homeserver does not support calling" with nothing in any log.
+@endif
+{{-- extra_well_known_client_content is shared by two independently-wired
+     concerns (Meet's rtc_foci focus and MAS's auth-discovery issuer) — NOT a
+     `well_known: client:` block. Synapse silently ignores unknown top-level
+     keys, so the wrong spelling serves a well-known with no focus/issuer and
+     Element Call/Element X report the homeserver as unsupported with
+     nothing in any log. Mirrors InteractsWithChat::renderSynapseCalling(),
+     which is what meet:wire/meet:unwire patch on a LIVE instance without a
+     full chat:init re-render — keep both in lockstep. --}}
+@if(($meetJwtUrl ?? null) || ($mas ?? null))
     extra_well_known_client_content:
+@if($meetJwtUrl ?? null)
       "org.matrix.msc4143.rtc_foci":
         - type: livekit
           livekit_service_url: "{{ $meetJwtUrl }}"
+@endif
+@if($mas ?? null)
+      "org.matrix.msc2965.authentication":
+        issuer: "{{ $mas['public_issuer'] }}"
+        account: "{{ $mas['public_issuer'] }}account/"
+@endif
 @endif
 @if($s3Bucket ?? null)
     media_storage_providers:
@@ -206,7 +215,19 @@ stringData:
       smtp_user: "{{ $smtp['user'] }}"
       smtp_pass: "{{ $smtp['password'] }}"
 @endif
-@if($oidc ?? null)
+{{-- $mas and $oidc are mutually exclusive — Synapse cannot run classic
+     oidc_providers: and MAS-delegated auth (matrix_authentication_service:)
+     at the same time for the same users. ChatInitCommand::deployChat()
+     enforces this by only ever computing $mas when $oidc is null in the
+     first place (see its own comment on that read), so this @if/@elseif
+     ordering is a defense-in-depth mirror of that invariant, not the
+     primary place it's enforced. --}}
+@if($mas ?? null)
+    matrix_authentication_service:
+      enabled: true
+      endpoint: "{{ $mas['endpoint'] }}"
+      secret: "{{ $mas['secret'] }}"
+@elseif($oidc ?? null)
     oidc_providers:
       - idp_id: zitadel
         idp_name: "{{ $oidc['name'] ?? 'Zitadel' }}"
@@ -347,7 +368,7 @@ spec:
 @if($s3Bucket ?? null)
       initContainers:
         - name: install-s3-provider
-          image: matrixdotorg/synapse:v1.158.0
+          image: matrixdotorg/synapse:v1.159.0
           command: ["sh", "-c", "mkdir -p /data/site-packages && pip install --no-deps --no-cache-dir --target=/data/site-packages synapse-s3-storage-provider boto3 botocore humanize tqdm s3transfer jmespath"]
           volumeMounts:
             - name: data
@@ -355,7 +376,7 @@ spec:
 @endif
       containers:
         - name: synapse
-          image: matrixdotorg/synapse:v1.158.0
+          image: matrixdotorg/synapse:v1.159.0
 @if($s3Bucket ?? null)
           env:
             - name: PYTHONPATH
@@ -397,75 +418,61 @@ spec:
       port: 8008
       targetPort: 8008
 ---
+{{-- Official Element Web image (vectorim/element-web) ships its own
+     working nginx config with SPA-fallback routing already handled — unlike
+     Cinny, it needs no custom nginx ConfigMap of our own, and branding goes
+     through real config.json keys (brand/auth_header_logo_url) instead of
+     an nginx sub_filter hack on <title>. --}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: chat-cinny-config
+  name: chat-web-config
   namespace: larakube-shared
 data:
-  default.conf: |
-    server {
-      listen 80;
-      listen [::]:80;
-
-      location /.well-known/matrix/client {
-        root /usr/share/nginx/html;
-        default_type application/json;
-        add_header Access-Control-Allow-Origin *;
-      }
-
-      location / {
-        root /usr/share/nginx/html;
-@if(($appName ?? null) && $appName !== 'Chat')
-        sub_filter '<title>Cinny</title>' '<title>{{ $appName }}</title>';
-        sub_filter_once on;
-        sub_filter_types text/html;
-@endif
-
-        rewrite ^/\.well-known/matrix/client$ /.well-known/matrix/client break;
-        rewrite ^/config.json$ /config.json break;
-        rewrite ^/manifest.json$ /manifest.json break;
-
-        rewrite ^/sw.js$ /sw.js break;
-        rewrite ^/pdf.worker.min.js$ /pdf.worker.min.js break;
-
-        rewrite ^/public/(.*)$ /public/$1 break;
-        rewrite ^/assets/(.*)$ /assets/$1 break;
-
-        rewrite ^(.+)$ /index.html break;
-      }
-    }
+  {{-- No /.well-known/matrix/client handling needed here either: Element
+       Web reads default_server_config directly rather than doing its own
+       well-known discovery, and chat-ingress's /.well-known/matrix rule
+       (routed to chat-synapse) is the sole effective well-known owner
+       regardless — see the extra_well_known_client_content block above for
+       MAS's org.matrix.msc2965.authentication discovery key. --}}
   config.json: |
     {
-      "defaultHomeserver": 0,
-      "homeserverList": [
-        "{{ $host }}"
-      ]
+      "default_server_config": {
+        "m.homeserver": {
+          "base_url": "https://{{ $host }}",
+          "server_name": "{{ $host }}"
+        }
+      },
+      "brand": "{{ $appName ?? 'Chat' }}",
+@if($logoUrl ?? null)
+      "auth_header_logo_url": "{{ $logoUrl }}",
+@endif
+      "disable_guests": true
     }
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chat-cinny
+  name: chat-web
   namespace: larakube-shared
   labels:
-    app: chat-cinny
+    app: chat-web
     app.kubernetes.io/part-of: chat
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: chat-cinny
+      app: chat-web
   template:
     metadata:
       labels:
-        app: chat-cinny
+        app: chat-web
       annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $host.$__tplHash), 0, 16) }}"
+        larakube.io/config-checksum: "{{ substr(hash('sha256', $host.($appName ?? '').($logoUrl ?? '').$__tplHash), 0, 16) }}"
     spec:
       containers:
-        - name: cinny
-          image: ghcr.io/cinnyapp/cinny:v4.12.3
+        - name: web
+          image: vectorim/element-web:v1.12.26
           resources:
             requests:
               memory: 32Mi
@@ -476,25 +483,22 @@ spec:
           ports:
             - containerPort: 80
           volumeMounts:
-            - name: cinny-config
-              mountPath: /etc/nginx/conf.d/default.conf
-              subPath: default.conf
-            - name: cinny-config
+            - name: web-config
               mountPath: /app/config.json
               subPath: config.json
       volumes:
-        - name: cinny-config
+        - name: web-config
           configMap:
-            name: chat-cinny-config
+            name: chat-web-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: chat-cinny
+  name: chat-web
   namespace: larakube-shared
 spec:
   selector:
-    app: chat-cinny
+    app: chat-web
   ports:
     - protocol: TCP
       port: 80
@@ -522,6 +526,28 @@ spec:
     - host: {{ $host }}
       http:
         paths:
+{{--  MAS's official reverse-proxy guide carves these three EXISTING Synapse
+      client-API paths out to MAS instead — it does not add new endpoints of
+      its own on this host (that's chat-mas-ingress's job, on its own
+      subdomain, below). Core networking.k8s.io/v1 Ingress can't wildcard the
+      API version segment (no regex path matching), so the two currently
+      live versions are enumerated explicitly; these Prefix rules win over
+      the generic /_matrix rule below purely by being a longer/more-specific
+      prefix — Ingress/Traefik match longest-prefix, not first-in-list, so
+      order here doesn't matter, but they're kept first for readability. --}}
+@if($mas ?? null)
+@foreach(['v3', 'r0'] as $apiVersion)
+@foreach(['login', 'logout', 'refresh'] as $authPath)
+          - path: /_matrix/client/{{ $apiVersion }}/{{ $authPath }}
+            pathType: Prefix
+            backend:
+              service:
+                name: chat-mas
+                port:
+                  number: 8080
+@endforeach
+@endforeach
+@endif
           - path: /_matrix
             pathType: Prefix
             backend:
@@ -547,12 +573,21 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: chat-cinny
+                name: chat-web
                 port:
                   number: 80
   tls:
     - hosts:
         - {{ $host }}
+{{--  chat-mas-ingress (MAS's own subdomain — OAuth authorize/token,
+      discovery, account-management UI, GraphQL, assets) is a SEPARATE
+      resource applied by ChatInitCommand::deployMas() from its own
+      resources/views/k8s/chat/mas.blade.php, not this file — this file's
+      own main render has no business generating MAS's DB password/
+      encryption keys, so it never renders MAS's own component here. Only
+      the compat-endpoint carve-out above (gated on $mas, the active-auth
+      state) belongs here, since it's a routing change to Synapse's own
+      host. --}}
 @if($s3Bucket ?? null)
 ---
 # Media pruning. Without this the S3 offload COSTS storage instead of saving it:
@@ -596,7 +631,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: prune
-              image: matrixdotorg/synapse:v1.158.0
+              image: matrixdotorg/synapse:v1.159.0
               # Credentials come from homeserver.yaml, which already carries the
               # Commons S3 keys — no second Secret to keep in sync or rotate.
               command:

@@ -325,13 +325,18 @@ class SsoUnwireCommand extends Command
     protected function unwireSynapseOidc(string $kubectl, string $ns): void
     {
         $smtp = $this->readChatWiredSmtp($kubectl, $ns);
+        // Read back MAS state so this doesn't clobber an already-active MAS
+        // mode — renderSynapseConfig() always prefers $mas over oidc_providers:, so
+        // this is a safe no-op on the auth block whenever MAS is active
+        // (there's no oidc_providers: block for it to unwire in that case).
+        $mas = $this->readChatWiredMas($kubectl, $ns);
         $raw = trim(Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output());
         if ($raw === '') {
             return;
         }
 
         $rawYaml = (string) base64_decode($raw);
-        $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, null);
+        $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, null, $mas);
 
         $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $tmp = $temporaryDirectory->path().'/homeserver.yaml';

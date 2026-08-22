@@ -57,9 +57,9 @@ test('every chat image is pinned to an explicit tag — never :latest', function
     $rendered = chatManifest();
 
     expect($rendered)
-        ->toContain('image: matrixdotorg/synapse:v1.158.0')
+        ->toContain('image: matrixdotorg/synapse:v1.159.0')
         ->toContain('image: coturn/coturn:4.6.3-alpine')
-        ->toContain('image: ghcr.io/cinnyapp/cinny:v4.12.3')
+        ->toContain('image: vectorim/element-web:v1.12.26')
         ->not->toContain(':latest');
 });
 

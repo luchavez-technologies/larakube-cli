@@ -183,7 +183,12 @@ class MeetWireCommand extends Command
                 return;
             }
 
-            $homeserver = $this->renderSynapseCalling((string) base64_decode(trim($raw)), $jwtUrl);
+            // Read back MAS's public issuer (if chat:init has already
+            // activated MAS-native auth) so wiring calling here doesn't
+            // clobber Element X's auth-discovery well-known key — the two
+            // concerns share one YAML top-level key.
+            $masPublicIssuer = $this->readChatWiredMas($kubectl, $ns)['public_issuer'] ?? null;
+            $homeserver = $this->renderSynapseCalling((string) base64_decode(trim($raw)), $jwtUrl, $masPublicIssuer ?: null);
 
             $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
             $tmp = $temporaryDirectory->path().'/homeserver.yaml';

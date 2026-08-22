@@ -8,7 +8,7 @@ use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
 /**
- * Helpers for the Team Chat tool (Matrix / Synapse + Cinny).
+ * Helpers for the Team Chat tool (Matrix / Synapse + Element Web).
  */
 trait InteractsWithChat
 {
@@ -121,9 +121,17 @@ trait InteractsWithChat
      * working SFU while leaving MSC4140 off, which is the exact configuration
      * that made every client rejoin on a ~15s loop.
      *
-     * Passing null strips the block, which is what unwire wants.
+     * Passing null for either argument strips just that argument's sub-key —
+     * the two concerns share the single `extra_well_known_client_content:`
+     * top-level key (Synapse ignores unknown top-level keys, so they cannot
+     * each own a separate one), so this method is the SOLE owner of that key
+     * and every caller (meet:wire/unwire, ChatInitCommand's own
+     * activateMasAuthMode()) must read back and pass through the OTHER
+     * concern's current state or it
+     * will silently clobber it — same discipline as renderSynapseConfig()'s
+     * email/oidc juggling.
      */
-    protected function renderSynapseCalling(string $rawYaml, ?string $meetJwtUrl): string
+    protected function renderSynapseCalling(string $rawYaml, ?string $meetJwtUrl, ?string $masPublicIssuer = null): string
     {
         // Same strip-then-append shape as renderSynapseConfig(): drop each
         // top-level key and everything indented under it, then re-add.
@@ -135,34 +143,17 @@ trait InteractsWithChat
             $yaml = (string) preg_replace('/^[ \t]*'.$key.':\n(?:[ \t]+[^\n]*\n)*/m', '', $yaml);
         }
         $yaml = (string) preg_replace('/^[ \t]*max_event_delay_duration:[^\n]*\n/m', '', $yaml);
-        $yaml = rtrim($yaml);
+        $yaml = rtrim($yaml)."\n";
 
-        if ($meetJwtUrl === null) {
-            return $yaml."\n";
-        }
-
-        $yaml .= "\nexperimental_features:\n";
-        $yaml .= "  msc3401_enabled: true\n";
-        $yaml .= "  msc3266_enabled: true\n";
-        $yaml .= "  msc4140_enabled: true\n";
-        // msc4140_enabled without a delay ceiling makes Synapse reject every
-        // delayed event, which reads to the client as "unsupported".
-        $yaml .= "max_event_delay_duration: 24h\n";
-        $yaml .= "rc_message:\n";
-        $yaml .= "  per_second: 0.5\n";
-        $yaml .= "  burst_count: 30\n";
-        $yaml .= "rc_delayed_event_mgmt:\n";
-        $yaml .= "  per_second: 1\n";
-        $yaml .= "  burst_count: 20\n";
-        // Must be `extra_well_known_client_content` — Synapse ignores unknown
-        // top-level keys, so a `well_known:` block serves a focus-less
-        // well-known and Element Call says the homeserver cannot call.
-        $yaml .= "extra_well_known_client_content:\n";
-        $yaml .= "  \"org.matrix.msc4143.rtc_foci\":\n";
-        $yaml .= "    - type: livekit\n";
-        $yaml .= '      livekit_service_url: "'.$meetJwtUrl."\"\n";
-
-        return $yaml;
+        // Rendered via Blade, not string-built here: Blade's own line
+        // structure makes the "does this block need a leading newline"
+        // bookkeeping a non-issue by construction — the exact class of bug
+        // the hand-built version of this had (missing newline between the
+        // stripped YAML and whichever block ran first).
+        return $yaml.view('k8s.chat.partials.calling-block', [
+            'meetJwtUrl' => $meetJwtUrl,
+            'masPublicIssuer' => $masPublicIssuer,
+        ])->render();
     }
 
     /**
@@ -198,47 +189,121 @@ trait InteractsWithChat
 
     /**
      * Re-render a raw homeserver.yaml string with updated optional email and
-     * oidc_providers blocks.
+     * auth-delegation blocks. `$mas` and `$oidc` are mutually exclusive —
+     * Synapse cannot run classic oidc_providers: and MAS-delegated auth
+     * (matrix_authentication_service:) at the same time for the same users.
+     * When both are somehow present (should never happen — $oidc's presence
+     * is what gates ChatInitCommand from ever activating $mas in the first
+     * place), `$mas` wins, since it represents the more recently activated
+     * state.
      *
      * @param  array{host: string, port: string, user: string, password: string, from: string}|null  $smtp
      * @param  array{issuer: string, client_id: string, client_secret: string, name: string}|null  $oidc
+     * @param  array{endpoint: string, secret: string}|null  $mas
      */
-    protected function renderSynapseConfig(string $rawYaml, ?array $smtp, ?array $oidc): string
+    protected function renderSynapseConfig(string $rawYaml, ?array $smtp, ?array $oidc, ?array $mas = null): string
     {
-        // Strip any existing email: and oidc_providers: blocks so we can
-        // re-render cleanly (handles both 0-indent and malformed 4-indent blocks).
+        // Strip any existing email:, oidc_providers:, and
+        // matrix_authentication_service: blocks so we can re-render cleanly
+        // (handles both 0-indent and malformed 4-indent blocks).
         $yaml = (string) preg_replace('/^[ \t]*email:\n(?:[ \t]+[^\n]*\n)*/m', '', $rawYaml);
         $yaml = (string) preg_replace('/^[ \t]*oidc_providers:\n(?:[ \t]+[^\n]*\n)*/m', '', $yaml);
-        $yaml = rtrim($yaml);
+        $yaml = (string) preg_replace('/^[ \t]*matrix_authentication_service:\n(?:[ \t]+[^\n]*\n)*/m', '', $yaml);
+        $yaml = rtrim($yaml)."\n";
 
-        if ($smtp !== null) {
-            $yaml .= "\nemail:\n";
-            $yaml .= "  enable_notifs: true\n";
-            $yaml .= '  notif_from: "'.$smtp['from']."\"\n";
-            $yaml .= '  smtp_host: "'.$smtp['host']."\"\n";
-            $yaml .= '  smtp_port: '.((int) $smtp['port'])."\n";
-            $yaml .= '  smtp_user: "'.$smtp['user']."\"\n";
-            $yaml .= '  smtp_pass: "'.$smtp['password']."\"\n";
+        // Rendered via Blade, not string-built here — see renderSynapseCalling()'s
+        // comment for why: it removes the "does this need a leading newline"
+        // bookkeeping that produced a real, previously-undetected bug
+        // (missing newline whenever $smtp was null and $oidc/$mas wasn't).
+        $yaml .= view('k8s.chat.partials.email-block', ['smtp' => $smtp])->render();
+        $yaml .= $mas !== null
+            ? view('k8s.chat.partials.mas-auth-block', ['mas' => $mas])->render()
+            : view('k8s.chat.partials.oidc-providers-block', ['oidc' => $oidc])->render();
+
+        return $yaml;
+    }
+
+    /**
+     * Whether MAS is deployed AND currently the active auth mode for
+     * Synapse, read from the SAME `chat-mas-secrets` Secret `chat:init`'s
+     * own deployMas() writes when it deploys the component — no separate
+     * "cutover" marker Secret. `public_issuer` (MAS's own public subdomain,
+     * needed for the org.matrix.msc2965.authentication well-known key) is
+     * written there too, once, at deploy time — this method has no host
+     * argument, so it never re-derives it.
+     *
+     * The precedence invariant that keeps an ALREADY-live install (with an
+     * existing chat-oidc from classic Zitadel wiring) from silently
+     * flipping to MAS out from under its real users lives in the CALLER
+     * (ChatInitCommand::deployChat()), not here: it only ever passes this
+     * method's result into rendering when readChatWiredOidc() is null. A
+     * fresh install has no chat-oidc to begin with, so it activates MAS
+     * immediately, in the same chat:init run that first deploys it — no
+     * separate migration step exists or is needed for that case.
+     *
+     * @return array{endpoint: string, secret: string, public_issuer: string}|null
+     */
+    protected function readChatWiredMas(string $kubectl, string $ns): ?array
+    {
+        $read = function (string $key) use ($kubectl, $ns): ?string {
+            $out = trim(Process::run(
+                "{$kubectl} get secret chat-mas-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
+            )->output());
+
+            return $out !== '' ? (string) base64_decode($out) : null;
+        };
+
+        $secret = $read('trust-secret');
+        if ($secret === null) {
+            return null;
         }
 
-        if ($oidc !== null) {
-            $yaml .= "oidc_providers:\n";
-            $yaml .= "  - idp_id: zitadel\n";
-            $yaml .= '    idp_name: "'.$oidc['name']."\"\n";
-            $yaml .= "    discover: true\n";
-            $yaml .= '    issuer: "'.$oidc['issuer']."\"\n";
-            $yaml .= '    client_id: "'.$oidc['client_id']."\"\n";
-            $yaml .= '    client_secret: "'.$oidc['client_secret']."\"\n";
-            $yaml .= "    scopes: [\"openid\", \"profile\", \"email\"]\n";
-            $yaml .= "    allow_existing_users: true\n";
-            $yaml .= "    user_mapping_provider:\n";
-            $yaml .= "      config:\n";
-            $yaml .= "        localpart_template: \"{{ user.preferred_username }}\"\n";
-            $yaml .= "        display_name_template: \"{{ user.name }}\"\n";
-            $yaml .= "        email_template: \"{{ user.email }}\"\n";
-        }
+        return [
+            'endpoint' => 'http://chat-mas:8080/',
+            'secret' => $secret,
+            'public_issuer' => $read('public-issuer') ?? '',
+        ];
+    }
 
-        return $yaml."\n";
+    /**
+     * Patch MAS's own config.yaml with our real values, preserving
+     * everything `mas-cli config generate` produced that we have no
+     * business overwriting — most importantly `secrets:` (encryption +
+     * signing keys): those are real cryptographic material this trait must
+     * never fabricate or regenerate, since regenerating them on a re-run
+     * would invalidate every existing session/cookie. Only `database:`,
+     * `matrix:`, and `upstream_oauth2:` are ours to own — `http:`,
+     * `secrets:`, `clients:`, `passwords:`, `account:` etc. stay whatever
+     * the generated base file already has. Same strip-then-append idiom as
+     * renderSynapseConfig(), applied to a generated base instead of a
+     * hand-written skeleton.
+     *
+     * @param  array{host: string, user: string, password: string, database: string}  $database
+     * @param  array{homeserver: string, secret: string}  $matrixTrust  homeserver = Synapse's server_name (chat host); secret = the Synapse↔MAS shared trust secret, NOT an OIDC value.
+     * @param  array{id: string, issuer: string, client_id: string, client_secret: string}  $upstream  Zitadel as MAS's upstream IdP.
+     */
+    protected function renderMasConfig(string $baseYaml, array $database, array $matrixTrust, array $upstream): string
+    {
+        $yaml = $baseYaml;
+        foreach (['database', 'matrix', 'upstream_oauth2'] as $key) {
+            $yaml = (string) preg_replace('/^[ \t]*'.$key.':\n(?:[ \t]+[^\n]*\n)*/m', '', $yaml);
+        }
+        $yaml = rtrim($yaml)."\n";
+
+        // Rendered via Blade — see renderSynapseCalling()'s comment for why.
+        // `endpoint` in the `matrix` section below is cluster-internal only,
+        // never exposed publicly: Synapse reaches MAS over it. The public
+        // issuer Element X talks to is a separate concern (mas.{host}, see
+        // readChatWiredMas()). `token_endpoint_auth_method: client_secret_basic`
+        // matches what InteractsWithZitadelApi::zitadelCreateOidcApp() always
+        // registers (OIDC_AUTH_METHOD_TYPE_BASIC) for confidential clients —
+        // verify this is valid for the pinned MAS version before relying on
+        // it; some MAS doc versions only show client_secret_post in examples.
+        return $yaml.view('k8s.chat.partials.mas-config-sections', [
+            'database' => $database,
+            'matrixTrust' => $matrixTrust,
+            'upstream' => $upstream,
+        ])->render();
     }
 
     /** Read-only Chat host for the given environment. */

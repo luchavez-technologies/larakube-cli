@@ -1,12 +1,15 @@
 <?php
 
+namespace Tests\Feature;
+
 use App\Commands\Backup\BackupPruneCommand;
+use ReflectionClass;
 use Symfony\Component\Console\Input\ArrayInput;
 
 /**
  * Reaches the retention maths without a cluster or a destination.
  */
-class BackupPruneCommandProbe extends BackupPruneCommand
+class BackupPruneCommandTest extends BackupPruneCommand
 {
     /** @param array<int, string> $stamps */
     public function keepers(array $stamps, int $keepDaily, int $keepWeekly, int $keepMonthly): array
@@ -22,7 +25,7 @@ class BackupPruneCommandProbe extends BackupPruneCommand
 }
 
 test('backup:prune keeps the newest run per period, GFS style', function (): void {
-    $cmd = new BackupPruneCommandProbe;
+    $cmd = new BackupPruneCommandTest;
 
     // Two runs on the same day: only the newer one should hold the daily slot.
     $keep = $cmd->keepers([
@@ -40,7 +43,7 @@ test('backup:prune keeps the newest run per period, GFS style', function (): voi
 });
 
 test('backup:prune never deletes a run id it cannot parse', function (): void {
-    $keep = (new BackupPruneCommandProbe)->keepers(
+    $keep = (new BackupPruneCommandTest)->keepers(
         ['something-else', '2026-03-15-031700'],
         keepDaily: 0, keepWeekly: 0, keepMonthly: 0,
     );
@@ -53,7 +56,7 @@ test('backup:prune never deletes a run id it cannot parse', function (): void {
 test('backup:prune shows before it deletes', function (): void {
     // The only command in the suite that destroys backups. --apply is required,
     // so a bare run can never remove anything.
-    $signature = (new ReflectionClass(BackupPruneCommand::class))
+    $signature = new ReflectionClass(BackupPruneCommand::class)
         ->getDefaultProperties()['signature'];
 
     expect($signature)->toContain('--apply')

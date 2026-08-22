@@ -1225,6 +1225,13 @@ class SsoWireCommand extends Command
             'client_secret' => $clientSecret,
             'name' => 'Zitadel',
         ];
+        // If chat:init has already activated MAS-delegated auth (chat-oidc
+        // was absent when it ran), a plain `sso:wire chat` re-run must not
+        // silently regress it back to
+        // classic oidc_providers: — renderSynapseConfig() always prefers
+        // $mas when both are present, so re-registering the (now-inert)
+        // Synapse-native Zitadel app above stays harmless.
+        $mas = $this->readChatWiredMas($kubectl, $ns);
 
         $raw = trim(Process::run(
             "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
@@ -1235,7 +1242,7 @@ class SsoWireCommand extends Command
         }
 
         $rawYaml = (string) base64_decode($raw);
-        $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, $oidc);
+        $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, $oidc, $mas);
 
         $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $tmp = $temporaryDirectory->path().'/homeserver.yaml';
@@ -1266,6 +1273,7 @@ class SsoWireCommand extends Command
         Process::run("{$kubectl} delete secret chat-oidc -n {$ns} --ignore-not-found");
 
         $smtp = $this->readChatWiredSmtp($kubectl, $ns);
+        $mas = $this->readChatWiredMas($kubectl, $ns);
 
         $raw = trim(Process::run(
             "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
@@ -1276,7 +1284,7 @@ class SsoWireCommand extends Command
         }
 
         $rawYaml = (string) base64_decode($raw);
-        $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, null);
+        $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, null, $mas);
 
         $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $tmp = $temporaryDirectory->path().'/homeserver.yaml';

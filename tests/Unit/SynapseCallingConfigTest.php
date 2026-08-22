@@ -9,9 +9,9 @@ function callingRenderer(): object
     {
         use InteractsWithChat;
 
-        public function render(string $yaml, ?string $url): string
+        public function render(string $yaml, ?string $url, ?string $masPublicIssuer = null): string
         {
-            return $this->renderSynapseCalling($yaml, $url);
+            return $this->renderSynapseCalling($yaml, $url, $masPublicIssuer);
         }
     };
 }
@@ -89,4 +89,44 @@ test('re-wiring to a different Meet host replaces the old focus', function (): v
 
     expect($foci)->toHaveCount(1)
         ->and($foci[0]['livekit_service_url'])->toBe('https://meet.other.com/jwt');
+});
+
+test('MAS auth-discovery key and Meet focus coexist under the same shared well-known key', function (): void {
+    // extra_well_known_client_content is the ONE thing meet:wire and
+    // ChatInitCommand's activateMasAuthMode() both write into — this is the
+    // "must not clobber each other" invariant both of them depend on.
+    $parsed = Yaml::parse(callingRenderer()->render(
+        BASE_HOMESERVER,
+        'https://meet.example.com/jwt',
+        'https://mas.chat.example.com/',
+    ));
+
+    expect($parsed['extra_well_known_client_content']['org.matrix.msc4143.rtc_foci'][0]['livekit_service_url'])
+        ->toBe('https://meet.example.com/jwt')
+        ->and($parsed['extra_well_known_client_content']['org.matrix.msc2965.authentication']['issuer'])
+        ->toBe('https://mas.chat.example.com/')
+        ->and($parsed['extra_well_known_client_content']['org.matrix.msc2965.authentication']['account'])
+        ->toBe('https://mas.chat.example.com/account/');
+});
+
+test('MAS auth-discovery key alone does not pull in the Meet-only experimental_features block', function (): void {
+    $parsed = Yaml::parse(callingRenderer()->render(BASE_HOMESERVER, null, 'https://mas.chat.example.com/'));
+
+    expect($parsed)->not->toHaveKey('experimental_features')
+        ->and($parsed)->not->toHaveKey('rc_message')
+        ->and($parsed['extra_well_known_client_content']['org.matrix.msc2965.authentication']['issuer'])
+        ->toBe('https://mas.chat.example.com/')
+        ->and($parsed['extra_well_known_client_content'])->not->toHaveKey('org.matrix.msc4143.rtc_foci');
+});
+
+test('unwiring Meet while MAS is active preserves the MAS discovery key', function (): void {
+    // meet:unwire must never silently disable Element X's auth discovery —
+    // the two concerns are independent and share one YAML key.
+    $wired = callingRenderer()->render(BASE_HOMESERVER, 'https://meet.example.com/jwt', 'https://mas.chat.example.com/');
+    $parsed = Yaml::parse(callingRenderer()->render($wired, null, 'https://mas.chat.example.com/'));
+
+    expect($parsed)->not->toHaveKey('experimental_features')
+        ->and($parsed['extra_well_known_client_content'])->not->toHaveKey('org.matrix.msc4143.rtc_foci')
+        ->and($parsed['extra_well_known_client_content']['org.matrix.msc2965.authentication']['issuer'])
+        ->toBe('https://mas.chat.example.com/');
 });
