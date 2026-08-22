@@ -2,9 +2,13 @@
 
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 beforeEach(function (): void {
@@ -19,6 +23,7 @@ beforeEach(function (): void {
 afterEach(function (): void {
     chdir($this->originalDir);
     $this->temporaryDirectory->delete();
+    MockClient::destroyGlobal();
 });
 
 function savePushTestConfig(string $dir, array $envOverrides = []): void
@@ -112,18 +117,18 @@ test('dotenv:push writes each secret key into OpenBao, scoped by app, when OpenB
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*/v1/secret/data/production/push-test/APP_KEY' => Http::response([]),
-        'localhost:*/v1/secret/metadata/production/push-test*' => Http::response(['data' => ['keys' => ['APP_KEY']]]),
-        'localhost:*/v1/secret/data/production/push-test/APP_KEY?*' => Http::response(['data' => ['data' => ['value' => 'base64:abc']]]),
-        'localhost:*' => Http::response(['data' => ['data' => ['value' => 'base64:abc']]]),
+    Saloon::fake([
+        DynamicRequest::class => MockResponse::make([]),
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/v1/secret/metadata/production/push-test*' => ['data' => ['keys' => ['APP_KEY']]],
+        ], default: ['data' => ['data' => ['value' => 'base64:abc']]]),
     ]);
 
     $this->artisan('dotenv:push', ['environment' => 'production'])
         ->assertExitCode(0)
         ->expectsOutputToContain("synced 'laravel-secrets'");
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/secret/data/production/push-test/APP_KEY')
-        && $request->method() === 'POST'
-        && $request['data']['value'] === 'base64:abc');
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/v1/secret/data/production/push-test/APP_KEY')
+        && $request->body()->get('data')['value'] === 'base64:abc');
 });

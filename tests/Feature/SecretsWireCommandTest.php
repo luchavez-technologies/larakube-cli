@@ -2,11 +2,18 @@
 
 use App\Commands\Secrets\SecretsWireCommand;
 use App\Exceptions\MissingFlagException;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 Prompt::interactive(false);
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 /** Fakes a fully-synced ExternalSecret poll: refreshTime differs the instant after "before" is read. */
 function fakeSyncedExternalSecret(): array
@@ -39,8 +46,8 @@ test('secrets:wire fails when the database engine is not mounted', function (): 
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response(['data' => ['secret/' => ['type' => 'kv']]]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
     ]);
 
     $this->artisan('secrets:wire local --tool=sign --force')
@@ -55,12 +62,11 @@ test('secrets:wire fails when Vault Kubernetes auth is not configured', function
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            // databaseEngineMounted()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            // kubernetesAuthEnabled() -> no kubernetes/ key
-            ->push(['data' => ['token/' => ['type' => 'token']]]),
+    Saloon::fake([
+        // databaseEngineMounted()
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        // kubernetesAuthEnabled() -> no kubernetes/ key
+        MockResponse::make(['data' => ['token/' => ['type' => 'token']]]),
     ]);
 
     $this->artisan('secrets:wire local --tool=sign --force')
@@ -83,23 +89,23 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            // databaseEngineMounted()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            // kubernetesAuthEnabled()
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
-            // registerStaticRole() -> POST /v1/database/static-roles/sign_documenso
-            ->push([]),
+    Saloon::fake([
+        // databaseEngineMounted()
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        // kubernetesAuthEnabled()
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        // registerStaticRole() -> POST /v1/database/static-roles/sign_documenso
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --tool=sign --force')
         ->assertExitCode(0)
         ->expectsOutputToContain("Document Signing (Documenso)'s DB password is now rotated by OpenBao every 168h");
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/sign_documenso')
-        && ($request['username'] ?? null) === 'sign_documenso'
-        && ($request['db_name'] ?? null) === 'plex-postgres');
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/sign_documenso')
+        && ($request->body()->get('username') ?? null) === 'sign_documenso'
+        && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret sign-secrets-db'));
@@ -121,23 +127,23 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            // databaseEngineMounted()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            // kubernetesAuthEnabled()
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
-            // registerStaticRole() -> POST /v1/database/static-roles/link_kutt
-            ->push([]),
+    Saloon::fake([
+        // databaseEngineMounted()
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        // kubernetesAuthEnabled()
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        // registerStaticRole() -> POST /v1/database/static-roles/link_kutt
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --tool=link --force')
         ->assertExitCode(0)
         ->expectsOutputToContain("Link Management (Kutt)'s DB password is now rotated by OpenBao every 168h");
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/link_kutt')
-        && ($request['username'] ?? null) === 'link_kutt'
-        && ($request['db_name'] ?? null) === 'plex-postgres');
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/link_kutt')
+        && ($request->body()->get('username') ?? null) === 'link_kutt'
+        && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret link-secrets-db'));
@@ -155,20 +161,20 @@ test('secrets:wire --tool=support registers a static role for support_chatwoot a
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
-            ->push([]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --tool=support --force')
         ->assertExitCode(0)
         ->expectsOutputToContain("Customer Support (Chatwoot)'s DB password is now rotated by OpenBao every 168h");
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/support_chatwoot')
-        && ($request['username'] ?? null) === 'support_chatwoot'
-        && ($request['db_name'] ?? null) === 'plex-postgres');
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/support_chatwoot')
+        && ($request->body()->get('username') ?? null) === 'support_chatwoot'
+        && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret support-secrets-db'));
@@ -186,20 +192,20 @@ test('secrets:wire --tool=tasks registers a static role for tasks_planka and res
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
-            ->push([]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --tool=tasks --force')
         ->assertExitCode(0)
         ->expectsOutputToContain("Project Management (Planka)'s DB password is now rotated by OpenBao every 168h");
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/tasks_planka')
-        && ($request['username'] ?? null) === 'tasks_planka'
-        && ($request['db_name'] ?? null) === 'plex-postgres');
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/tasks_planka')
+        && ($request->body()->get('username') ?? null) === 'tasks_planka'
+        && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret tasks-planka-secrets-db'));
@@ -213,12 +219,11 @@ test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', f
         '*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            // databaseEngineMounted()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            // kubernetesAuthEnabled()
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    Saloon::fake([
+        // databaseEngineMounted()
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        // kubernetesAuthEnabled()
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
     $this->artisan('secrets:wire local --tool=analytics --force')
@@ -280,10 +285,9 @@ test('secrets:wire rejects a tool with no wireable Commons database password', f
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
     $this->artisan('secrets:wire local --tool=desk --force')
@@ -299,10 +303,9 @@ test('secrets:wire rejects a tool that is not installed', function (): void {
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
     $this->artisan('secrets:wire local --tool=sign --force')
@@ -327,11 +330,10 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
-            ->push([]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --all --force')
@@ -351,17 +353,16 @@ test('secrets:wire rejects Drive (oCIS has no Commons database password to rotat
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
     $this->artisan('secrets:wire local --tool=drive --force')
         ->assertExitCode(1)
         ->expectsOutputToContain("'drive' does not have a Commons database password OpenBao can rotate.");
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/drive'));
+    Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/drive'));
 });
 
 test('secrets:wire --tool=data --engine=pocketbase reports no wireable database instead of grabbing Directus\'s secret ref', function (): void {
@@ -377,17 +378,16 @@ test('secrets:wire --tool=data --engine=pocketbase reports no wireable database 
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
     $this->artisan('secrets:wire local --tool=data --engine=pocketbase --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('is not installed (or has no wireable Commons database) at this instance');
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/data_directus'));
+    Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/data_directus'));
 });
 
 test('secrets:wire --tool=data never trusts a stale registry engine hint over what is actually live', function (): void {
@@ -412,10 +412,9 @@ test('secrets:wire --tool=data never trusts a stale registry engine hint over wh
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
     // The registry says 'directus', but only data-pocketbase is actually
@@ -435,10 +434,9 @@ test('secrets:wire requires --tool or --all when it cannot prompt', function ():
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
     $this->artisan('secrets:wire local --no-interaction')->run();
@@ -455,20 +453,20 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
-            ->push([]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --tool=mail --force')
         ->assertExitCode(0)
         ->expectsOutputToContain("Mail Server (Stalwart)'s DB password is now rotated by OpenBao every 168h");
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/stalwart')
-        && ($request['username'] ?? null) === 'stalwart'
-        && ($request['db_name'] ?? null) === 'plex-postgres');
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/stalwart')
+        && ($request->body()->get('username') ?? null) === 'stalwart'
+        && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret stalwart-db'));
@@ -486,20 +484,20 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            ->push(['data' => ['kubernetes/' => ['type' => 'kubernetes']]])
-            ->push([]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --tool=passwords --force')
         ->assertExitCode(0)
         ->expectsOutputToContain("Password Manager (Vaultwarden)'s DB password is now rotated by OpenBao every 168h");
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/vaultwarden')
-        && ($request['username'] ?? null) === 'vaultwarden'
-        && ($request['db_name'] ?? null) === 'plex-postgres');
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/vaultwarden')
+        && ($request->body()->get('username') ?? null) === 'vaultwarden'
+        && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret vault-secrets-db'));

@@ -1,9 +1,35 @@
 <?php
 
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use App\Traits\LaraKubeOutput;
 use App\Traits\SyncsClusterSecrets;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
+
+/**
+ * Shared by both DynamicRequest and DynamicNoBodyRequest fakes in the tests
+ * below that need to observe every OpenBao call made (method + endpoint, and
+ * for body-bearing calls the body itself) rather than just canning one fixed
+ * response — mirrors the old closure-based Http::fake(function ($request) {...}).
+ */
+function syncsClusterSecretsResponder(array &$calls, callable $router): callable
+{
+    return function ($pendingRequest) use (&$calls, $router) {
+        $request = $pendingRequest->getRequest();
+        $method = $request->getMethod()->value;
+        $endpoint = $request->resolveEndpoint();
+        $calls[] = "{$method} {$endpoint}";
+
+        return $router($method, $endpoint, $request instanceof DynamicRequest ? $request->body()->all() : null);
+    };
+}
 
 function syncsClusterSecrets(): object
 {
@@ -94,8 +120,8 @@ test('databaseEngineMounted returns true when the database mount exists', functi
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response([
+    Saloon::fake([
+        DynamicNoBodyRequest::class => MockResponse::make([
             'data' => [
                 'database/' => [
                     'type' => 'database',
@@ -114,8 +140,8 @@ test('databaseEngineMounted returns false when the database mount is absent', fu
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response([
+    Saloon::fake([
+        DynamicNoBodyRequest::class => MockResponse::make([
             'data' => [
                 'secret/' => ['type' => 'kv'],
             ],
@@ -139,8 +165,9 @@ test('mountDatabaseEngine mounts the database engine and returns true', function
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response([], 204),
+    Saloon::fake([
+        DynamicRequest::class => MockResponse::make([], 204),
+        DynamicNoBodyRequest::class => MockResponse::make([], 204),
     ]);
 
     expect(syncsClusterSecrets()->mountEngine($this->kubectl))->toBeTrue();
@@ -153,19 +180,16 @@ test('mountDatabaseEngine skips mounting when already mounted', function (): voi
     ]);
 
     $mounted = false;
-    Http::fake(function ($request) use (&$mounted) {
-        if ($request->method() === 'GET' && str_contains($request->url(), 'sys/mounts')) {
-            return Http::response([
-                'data' => [
-                    'database/' => ['type' => 'database'],
-                ],
-            ]);
-        }
+    Saloon::fake([
+        DynamicNoBodyRequest::class => MockResponse::make([
+            'data' => ['database/' => ['type' => 'database']],
+        ]),
+        DynamicRequest::class => function () use (&$mounted) {
+            $mounted = true;
 
-        $mounted = true;
-
-        return Http::response([], 204);
-    });
+            return MockResponse::make([], 204);
+        },
+    ]);
 
     expect(syncsClusterSecrets()->mountEngine($this->kubectl))->toBeTrue()
         ->and($mounted)->toBeFalse();
@@ -177,9 +201,7 @@ test('writeDatabaseEngineConfig writes postgres config and returns true', functi
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response([], 204),
-    ]);
+    Saloon::fake([DynamicRequest::class => MockResponse::make([], 204)]);
 
     expect(syncsClusterSecrets()->writeConfig($this->kubectl, 'postgres', 'root-pw'))->toBeTrue();
 });
@@ -194,9 +216,7 @@ test('registerStaticRole registers a static role and returns true', function ():
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response([], 204),
-    ]);
+    Saloon::fake([DynamicRequest::class => MockResponse::make([], 204)]);
 
     expect(syncsClusterSecrets()->registerRole($this->kubectl, 'forgejo', 'plex-postgres', 'forgejo'))->toBeTrue();
 });
@@ -208,17 +228,21 @@ test('registerStaticRole returns false for a non-existent database user', functi
     ]);
 
     $called = false;
-    Http::fake(function ($request) use (&$called) {
-        if ($request->method() === 'POST' && str_contains($request->url(), 'static-roles')) {
-            $called = true;
+    Saloon::fake([
+        DynamicRequest::class => function ($pendingRequest) use (&$called) {
+            $endpoint = $pendingRequest->getRequest()->resolveEndpoint();
 
-            return Http::response([
-                'errors' => ['role "nonexistent" does not exist (SQLSTATE 42704)'],
-            ], 500);
-        }
+            if (str_contains($endpoint, 'static-roles')) {
+                $called = true;
 
-        return Http::response([], 204);
-    });
+                return MockResponse::make([
+                    'errors' => ['role "nonexistent" does not exist (SQLSTATE 42704)'],
+                ], 500);
+            }
+
+            return MockResponse::make([], 204);
+        },
+    ]);
 
     expect(syncsClusterSecrets()->registerRole($this->kubectl, 'nonexistent', 'plex-postgres', 'nonexistent'))->toBeFalse()
         ->and($called)->toBeTrue();
@@ -242,18 +266,21 @@ test('rotateStaticRole calls the dedicated rotate-role endpoint and returns true
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    $calledUrl = null;
+    $calledEndpoint = null;
     $calledMethod = null;
-    Http::fake(function ($request) use (&$calledUrl, &$calledMethod) {
-        $calledUrl = $request->url();
-        $calledMethod = $request->method();
+    Saloon::fake([
+        DynamicNoBodyRequest::class => function ($pendingRequest) use (&$calledEndpoint, &$calledMethod) {
+            $request = $pendingRequest->getRequest();
+            $calledEndpoint = $request->resolveEndpoint();
+            $calledMethod = $request->getMethod()->value;
 
-        return Http::response([], 204);
-    });
+            return MockResponse::make([], 204);
+        },
+    ]);
 
     expect(syncsClusterSecrets()->rotateRole($this->kubectl, 'tenant-luchtech_local'))->toBeTrue()
         ->and($calledMethod)->toBe('POST')
-        ->and($calledUrl)->toEndWith('/database/rotate-role/tenant-luchtech_local');
+        ->and($calledEndpoint)->toEndWith('/database/rotate-role/tenant-luchtech_local');
 });
 
 test('rotateStaticRole returns false when bootstrap secret is missing', function (): void {
@@ -270,7 +297,7 @@ test('staticRoleExists returns true when OpenBao has the role registered', funct
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake(['localhost:*' => Http::response(['data' => ['db_name' => 'plex-postgres']], 200)]);
+    Saloon::fake([DynamicNoBodyRequest::class => MockResponse::make(['data' => ['db_name' => 'plex-postgres']], 200)]);
 
     expect(syncsClusterSecrets()->roleExists($this->kubectl, 'tenant-luchtech_local'))->toBeTrue();
 });
@@ -285,7 +312,7 @@ test('staticRoleExists returns false when OpenBao has no such role', function ()
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake(['localhost:*' => Http::response(['errors' => ['no role found at ...']], 404)]);
+    Saloon::fake([DynamicNoBodyRequest::class => MockResponse::make(['errors' => ['no role found at ...']], 404)]);
 
     expect(syncsClusterSecrets()->roleExists($this->kubectl, 'tenant-luchtech_local'))->toBeFalse();
 });
@@ -304,7 +331,7 @@ test('staticRoleExists returns null (unknown), not false, when OpenBao is sealed
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake(['localhost:*' => Http::response(['errors' => ['Vault is sealed']], 503)]);
+    Saloon::fake([DynamicNoBodyRequest::class => MockResponse::make(['errors' => ['Vault is sealed']], 503)]);
 
     expect(syncsClusterSecrets()->roleExists($this->kubectl, 'tenant-luchtech_local'))->toBeNull();
 });
@@ -335,27 +362,25 @@ test('wireDatabaseEngineToOpenBao orchestrates mount + config + kubernetes auth 
     ]);
 
     $calls = [];
-    Http::fake(function ($request) use (&$calls) {
-        $calls[] = $request->method().' '.$request->url();
-
-        if ($request->method() === 'GET' && str_contains($request->url(), 'sys/mounts')) {
-            return Http::response([
-                'data' => [
-                    'secret/' => ['type' => 'kv'],
-                ],
-            ]);
+    $responder = syncsClusterSecretsResponder($calls, function ($method, $endpoint) {
+        if ($method === 'GET' && str_contains($endpoint, 'sys/mounts')) {
+            return MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]);
         }
 
-        if ($request->method() === 'GET' && str_contains($request->url(), 'database/config/plex-postgres')) {
-            return Http::response([], 404);
+        if ($method === 'GET' && str_contains($endpoint, 'database/config/plex-postgres')) {
+            return MockResponse::make([], 404);
         }
 
-        if ($request->method() === 'GET' && str_contains($request->url(), 'sys/auth')) {
-            return Http::response(['data' => ['token/' => ['type' => 'token']]]);
+        if ($method === 'GET' && str_contains($endpoint, 'sys/auth')) {
+            return MockResponse::make(['data' => ['token/' => ['type' => 'token']]]);
         }
 
-        return Http::response([], 204);
+        return MockResponse::make([], 204);
     });
+    Saloon::fake([
+        DynamicRequest::class => $responder,
+        DynamicNoBodyRequest::class => $responder,
+    ]);
 
     expect(syncsClusterSecrets()->fullWire($this->kubectl, ['postgres', 'redis']))->toBeTrue();
     // mount check, mount write, config check, config write, sys/auth check,
@@ -373,23 +398,21 @@ test('wireDatabaseEngineToOpenBao skips config for already-configured engines bu
     ]);
 
     $calls = [];
-    Http::fake(function ($request) use (&$calls) {
-        $calls[] = $request->method().' '.$request->url();
-
-        if ($request->method() === 'GET' && str_contains($request->url(), 'sys/mounts')) {
-            return Http::response([
-                'data' => [
-                    'database/' => ['type' => 'database'],
-                ],
-            ]);
+    $responder = syncsClusterSecretsResponder($calls, function ($method, $endpoint) {
+        if ($method === 'GET' && str_contains($endpoint, 'sys/mounts')) {
+            return MockResponse::make(['data' => ['database/' => ['type' => 'database']]]);
         }
 
-        if ($request->method() === 'GET' && str_contains($request->url(), 'sys/auth')) {
-            return Http::response(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]);
+        if ($method === 'GET' && str_contains($endpoint, 'sys/auth')) {
+            return MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]);
         }
 
-        return Http::response([], 204);
+        return MockResponse::make([], 204);
     });
+    Saloon::fake([
+        DynamicRequest::class => $responder,
+        DynamicNoBodyRequest::class => $responder,
+    ]);
 
     expect(syncsClusterSecrets()->fullWire($this->kubectl, ['postgres']))->toBeTrue();
     // mount check (already mounted, no write), config check (already
@@ -409,13 +432,18 @@ test('wireDatabaseEngineToOpenBao warns but does not fail when kubernetes auth s
         '*exec deploy/openbao-backend*ca.crt*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    Http::fake(function ($request) {
-        if ($request->method() === 'GET' && str_contains($request->url(), 'sys/mounts')) {
-            return Http::response(['data' => ['database/' => ['type' => 'database']]]);
+    $calls = [];
+    $responder = syncsClusterSecretsResponder($calls, function ($method, $endpoint) {
+        if ($method === 'GET' && str_contains($endpoint, 'sys/mounts')) {
+            return MockResponse::make(['data' => ['database/' => ['type' => 'database']]]);
         }
 
-        return Http::response([], 204);
+        return MockResponse::make([], 204);
     });
+    Saloon::fake([
+        DynamicRequest::class => $responder,
+        DynamicNoBodyRequest::class => $responder,
+    ]);
 
     expect(syncsClusterSecrets()->fullWire($this->kubectl, ['postgres']))->toBeTrue();
 });
@@ -426,8 +454,8 @@ test('kubernetesAuthEnabled returns true when the kubernetes/ mount exists', fun
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+    Saloon::fake([
+        DynamicNoBodyRequest::class => MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
     expect(syncsClusterSecrets()->k8sAuthEnabled($this->kubectl))->toBeTrue();
@@ -439,8 +467,8 @@ test('kubernetesAuthEnabled returns false when absent', function (): void {
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response(['data' => ['token/' => ['type' => 'token']]]),
+    Saloon::fake([
+        DynamicNoBodyRequest::class => MockResponse::make(['data' => ['token/' => ['type' => 'token']]]),
     ]);
 
     expect(syncsClusterSecrets()->k8sAuthEnabled($this->kubectl))->toBeFalse();
@@ -454,18 +482,19 @@ test('ensureKubernetesAuthEnabled enables + configures auth using OpenBao pod\'s
     ]);
 
     $bodies = [];
-    Http::fake(function ($request) use (&$bodies) {
-        if ($request->method() === 'GET' && str_contains($request->url(), 'sys/auth')) {
-            return Http::response(['data' => []]);
-        }
-        $bodies[$request->url()] = $request->data();
+    Saloon::fake([
+        DynamicNoBodyRequest::class => MockResponse::make(['data' => []]),
+        DynamicRequest::class => function ($pendingRequest) use (&$bodies) {
+            $request = $pendingRequest->getRequest();
+            $bodies[$request->resolveEndpoint()] = $request->body()->all();
 
-        return Http::response([], 204);
-    });
+            return MockResponse::make([], 204);
+        },
+    ]);
 
     expect(syncsClusterSecrets()->ensureK8sAuth($this->kubectl))->toBeTrue();
 
-    $configCall = collect($bodies)->first(fn ($body, $url) => str_contains($url, 'auth/kubernetes/config'));
+    $configCall = collect($bodies)->first(fn ($body, $endpoint) => str_contains($endpoint, 'auth/kubernetes/config'));
     expect($configCall['kubernetes_ca_cert'] ?? null)->toBe('the-ca-cert-contents')
         ->and($configCall['kubernetes_host'] ?? null)->toBe('https://kubernetes.default.svc');
 });
@@ -477,8 +506,9 @@ test('ensureKubernetesAuthEnabled fails when the CA cert cannot be read', functi
         '*exec deploy/openbao-backend*ca.crt*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response(['data' => []]),
+    Saloon::fake([
+        DynamicNoBodyRequest::class => MockResponse::make(['data' => []]),
+        DynamicRequest::class => MockResponse::make(['data' => []]),
     ]);
 
     expect(syncsClusterSecrets()->ensureK8sAuth($this->kubectl))->toBeFalse();
@@ -491,18 +521,21 @@ test('ensureDbStaticCredsReaderRole writes the narrow policy and binds it to eso
     ]);
 
     $bodies = [];
-    Http::fake(function ($request) use (&$bodies) {
-        $bodies[$request->url()] = $request->data();
+    Saloon::fake([
+        DynamicRequest::class => function ($pendingRequest) use (&$bodies) {
+            $request = $pendingRequest->getRequest();
+            $bodies[$request->resolveEndpoint()] = $request->body()->all();
 
-        return Http::response([], 204);
-    });
+            return MockResponse::make([], 204);
+        },
+    ]);
 
     expect(syncsClusterSecrets()->ensureReaderRole($this->kubectl))->toBeTrue();
 
-    $policyCall = collect($bodies)->first(fn ($body, $url) => str_contains($url, 'sys/policies/acl/db-static-creds-reader-policy'));
+    $policyCall = collect($bodies)->first(fn ($body, $endpoint) => str_contains($endpoint, 'sys/policies/acl/db-static-creds-reader-policy'));
     expect($policyCall['policy'] ?? null)->toContain('database/static-creds/*');
 
-    $roleCall = collect($bodies)->first(fn ($body, $url) => str_contains($url, 'auth/kubernetes/role/eso-controller'));
+    $roleCall = collect($bodies)->first(fn ($body, $endpoint) => str_contains($endpoint, 'auth/kubernetes/role/eso-controller'));
     expect($roleCall['bound_service_account_names'] ?? null)->toBe('external-secrets')
         ->and($roleCall['policies'] ?? null)->toBe('db-static-creds-reader-policy');
 });
@@ -541,8 +574,8 @@ test('resolveManagedDbPassword falls back to the local password when the databas
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response(['data' => ['secret/' => ['type' => 'kv']]]),
+    Saloon::fake([
+        DynamicNoBodyRequest::class => MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
     ]);
 
     expect(syncsClusterSecrets()->managedDbPassword($this->kubectl, 'vaultwarden', 'fresh-random-local'))
@@ -555,13 +588,11 @@ test('resolveManagedDbPassword falls back to the local password when OpenBao has
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake(function ($request) {
-        if (str_contains($request->url(), 'sys/mounts')) {
-            return Http::response(['data' => ['database/' => ['type' => 'database']]]);
-        }
-
-        return Http::response(['errors' => ['no static role found at database/static-creds/brand-new-role']], 400);
-    });
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*sys/mounts*' => ['data' => ['database/' => ['type' => 'database']]],
+        ], default: MockResponse::make(['errors' => ['no static role found at database/static-creds/brand-new-role']], 400)),
+    ]);
 
     expect(syncsClusterSecrets()->managedDbPassword($this->kubectl, 'brand-new-role', 'fresh-random-local'))
         ->toBe('fresh-random-local');
@@ -573,16 +604,12 @@ test('resolveManagedDbPassword defers to OpenBao\'s current static-role password
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    Http::fake(function ($request) {
-        if (str_contains($request->url(), 'sys/mounts')) {
-            return Http::response(['data' => ['database/' => ['type' => 'database']]]);
-        }
-        if (str_contains($request->url(), 'database/static-creds/vaultwarden')) {
-            return Http::response(['data' => ['password' => 'openbao-managed-password']]);
-        }
-
-        return Http::response([], 404);
-    });
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*sys/mounts*' => ['data' => ['database/' => ['type' => 'database']]],
+            '*database/static-creds/vaultwarden*' => ['data' => ['password' => 'openbao-managed-password']],
+        ], default: MockResponse::make([], 404)),
+    ]);
 
     expect(syncsClusterSecrets()->managedDbPassword($this->kubectl, 'vaultwarden', 'fresh-random-local'))
         ->toBe('openbao-managed-password');

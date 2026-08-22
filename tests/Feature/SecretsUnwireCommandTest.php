@@ -1,15 +1,22 @@
 <?php
 
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use App\Traits\InteractsWithToolRegistry;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 pest()->use(InteractsWithToolRegistry::class);
 
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
+
 // staticRoleExists()/deleteStaticRole() reach OpenBao over a REAL localhost
-// HTTP call (openBaoApi() port-forwards then makes an actual Http:: request
-// to http://localhost:{port}) — the port-forward Process itself is faked,
-// but without this Http::fake(), the HTTP call was genuinely unmocked, and
+// HTTP call (openBaoApi() port-forwards then sends a Saloon request to
+// http://localhost:{port}) — the port-forward Process itself is faked, but
+// without this Saloon::fake(), the HTTP call was genuinely unmocked, and
 // almost always failed fast (connection refused, interpreted as "role
 // unreachable") by sheer luck. Confirmed live: under `pest --parallel`,
 // this intermittently picked up a REAL response from an unrelated local
@@ -18,8 +25,8 @@ pest()->use(InteractsWithToolRegistry::class);
 // staticRoleExists() from null to false and skipped the whole unwire path.
 function fakeOpenBaoUnwireHttp(): void
 {
-    Http::fake([
-        'localhost:*' => Http::response(['data' => ['rotation_period' => '86400s']]),
+    Saloon::fake([
+        DynamicNoBodyRequest::class => MockResponse::make(['data' => ['rotation_period' => '86400s']]),
     ]);
 }
 

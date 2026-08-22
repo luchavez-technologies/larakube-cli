@@ -1,8 +1,17 @@
 <?php
 
 use App\Commands\Sso\SsoInitCommand;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('sso:init deploys zitadel using plex commons postgres by default', function (): void {
     Process::fake([
@@ -66,8 +75,9 @@ test('sso:remove aborts when the namespace delete fails', function (): void {
 });
 
 test('sso:init registers zitadel as a static role when the OpenBao DB engine is mounted', function (): void {
-    Http::fake([
-        'localhost:*' => Http::response([], 204),
+    Saloon::fake([
+        DynamicRequest::class => MockResponse::make([], 204),
+        DynamicNoBodyRequest::class => MockResponse::make([], 204),
     ]);
 
     Process::fake([
@@ -111,12 +121,9 @@ test('sso:init falls back to KV push when the OpenBao DB engine is not mounted',
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response([
-            'data' => [
-                'secret/' => ['type' => 'kv'],
-            ],
-        ]),
+    Saloon::fake([
+        DynamicRequest::class => MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
+        DynamicNoBodyRequest::class => MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
     ]);
 
     $this->artisan('sso:init local --admin-email=admin@example.com')

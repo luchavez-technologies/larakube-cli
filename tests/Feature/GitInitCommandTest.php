@@ -1,6 +1,13 @@
 <?php
 
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('git:init deploys gitea using plex commons seaweedfs by default', function (): void {
     Process::fake([
@@ -64,22 +71,19 @@ test('git:init never registers an OpenBao static role itself — only secrets:wi
 
     // Only resolveManagedDbPassword()'s read-only lookup should ever hit
     // OpenBao's HTTP API from :init — nothing here is a static-role write.
-    Http::fake(function (Illuminate\Http\Client\Request $request) {
-        $path = parse_url($request->url(), PHP_URL_PATH);
-
-        return match (true) {
-            $path === '/v1/sys/mounts' => Http::response(['data' => ['database/' => ['type' => 'database']]]),
-            $path === '/v1/database/static-creds/forgejo' => Http::response(['data' => []]),
-            default => Http::response(['data' => []]),
-        };
-    });
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/v1/sys/mounts' => ['data' => ['database/' => ['type' => 'database']]],
+            '*/v1/database/static-creds/forgejo' => ['data' => []],
+        ], default: ['data' => []]),
+    ]);
 
     $this->artisan('git:init local --no-interaction --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'externalsecret'));
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/'));
+    Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/'));
 });
 
 test('git:init deploys standalone gitea when --no-plex is passed', function (): void {

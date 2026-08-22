@@ -1,7 +1,15 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('secrets:unseal is registered', function (): void {
     $this->artisan('list --no-interaction')
@@ -26,7 +34,7 @@ test('secrets:unseal fails when OpenBao was never initialized', function (): voi
         '*' => Process::result(output: ''),
     ]);
 
-    Http::fake(['localhost:*' => Http::response(['initialized' => false], 200)]);
+    Saloon::fake([DynamicNoBodyRequest::class => MockResponse::make(['initialized' => false])]);
 
     $this->artisan('secrets:unseal local')
         ->assertExitCode(1)
@@ -40,19 +48,12 @@ test('secrets:unseal unseals a sealed OpenBao', function (): void {
         '*' => Process::result(output: ''),
     ]);
 
-    Http::fake(function ($request) {
-        $body = $request->data();
-
-        if (isset($body['key'])) {
-            return Http::response(['sealed' => false], 200);
-        }
-
-        if (str_contains($request->url(), 'seal-status')) {
-            return Http::response(['sealed' => true], 200);
-        }
-
-        return Http::response(['initialized' => true], 200);
-    });
+    Saloon::fake([
+        DynamicRequest::class => MockResponse::make(['sealed' => false]),
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*seal-status' => ['sealed' => true],
+        ], default: ['initialized' => true]),
+    ]);
 
     $this->artisan('secrets:unseal local')
         ->assertExitCode(0)
@@ -66,15 +67,13 @@ test('secrets:unseal is a no-op when already unsealed', function (): void {
         '*' => Process::result(output: ''),
     ]);
 
-    Http::fake(function ($request) {
-        if (str_contains($request->url(), 'seal-status')) {
-            return Http::response(['sealed' => false], 200);
-        }
-
-        return Http::response(['initialized' => true], 200);
-    });
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*seal-status' => ['sealed' => false],
+        ], default: ['initialized' => true]),
+    ]);
 
     $this->artisan('secrets:unseal local')->assertExitCode(0);
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/sys/unseal'));
+    Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/sys/unseal'));
 });

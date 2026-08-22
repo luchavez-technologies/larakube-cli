@@ -2,9 +2,11 @@
 
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 beforeEach(function (): void {
@@ -19,6 +21,7 @@ beforeEach(function (): void {
 afterEach(function (): void {
     chdir($this->originalDir);
     $this->temporaryDirectory->delete();
+    MockClient::destroyGlobal();
 });
 
 function savePullTestConfig(string $dir): void
@@ -70,9 +73,10 @@ test('dotenv:pull reads OpenBao, scoped by app, when it is present', function ()
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*/v1/secret/metadata/production/pull-test*' => Http::response(['data' => ['keys' => ['APP_KEY']]]),
-        'localhost:*' => Http::response(['data' => ['data' => ['value' => 'base64:from-openbao']]]),
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/v1/secret/metadata/production/pull-test*' => ['data' => ['keys' => ['APP_KEY']]],
+        ], default: ['data' => ['data' => ['value' => 'base64:from-openbao']]]),
     ]);
 
     $this->artisan('dotenv:pull', ['environment' => 'production'])

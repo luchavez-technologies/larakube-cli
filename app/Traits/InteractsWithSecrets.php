@@ -7,16 +7,18 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
 use App\Enums\SharedClusterService;
+use App\Http\Integrations\OpenBao\OpenBaoConnector;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Contracts\Process\InvokedProcess;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Process\FakeInvokedProcess;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
 
+use Saloon\Exceptions\Request\FatalRequestException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait InteractsWithSecrets
@@ -191,20 +193,12 @@ trait InteractsWithSecrets
         }
 
         try {
-            $url = "http://localhost:{$port}{$path}";
+            $connector = new OpenBaoConnector($port, $token);
+            $request = $data !== null
+                ? new DynamicRequest($method, $path, $data)
+                : new DynamicNoBodyRequest($method, $path);
 
-            $request = Http::timeout(15)->withoutVerifying();
-
-            if ($token !== null) {
-                // OpenBao uses X-Vault-Token, not Bearer.
-                $request = $request->withHeaders(['X-Vault-Token' => $token]);
-            }
-
-            if ($data !== null) {
-                $response = $request->withBody(json_encode($data), 'application/json')->send($method, $url);
-            } else {
-                $response = $request->send($method, $url);
-            }
+            $response = $connector->send($request);
 
             if ($response->failed()) {
                 $this->lastSecretsBackendError = trim(sprintf(
@@ -220,7 +214,7 @@ trait InteractsWithSecrets
             $this->lastSecretsBackendError = null;
 
             return $response->json() ?? [];
-        } catch (ConnectionException $e) {
+        } catch (FatalRequestException $e) {
             $this->lastSecretsBackendError = 'could not reach openbao-backend — '.Str::limit($e->getMessage(), 200);
 
             return null;

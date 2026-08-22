@@ -2,8 +2,42 @@
 
 use App\Commands\Plex\PlexRotateCommand;
 use App\Enums\CommonsSecret;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
+
+/**
+ * openBaoApi() collapses every OpenBao endpoint onto two Saloon Request
+ * classes (see their docblocks), so this closure — shared by both classes'
+ * fakes — replicates the old Http::fake(closure)'s per-request routing:
+ * $rules is a list of [endpoint-substring, response, status] tuples checked
+ * in order; the first match wins, same as the original if/elseif chain.
+ * Every request's [method, endpoint] is appended to $requests for tests that
+ * assert on call order/shape afterward.
+ */
+function plexRotateOpenBaoResponder(array &$requests, array $rules = []): callable
+{
+    return function ($pendingRequest) use (&$requests, $rules) {
+        $request = $pendingRequest->getRequest();
+        $endpoint = $request->resolveEndpoint();
+        $requests[] = [$request->getMethod()->value, $endpoint];
+
+        foreach ($rules as [$needle, $response, $status]) {
+            if (str_contains($endpoint, $needle)) {
+                return MockResponse::make($response, $status);
+            }
+        }
+
+        return MockResponse::make([], 204);
+    };
+}
 
 /** A Commons spec with Postgres enabled and one tenant allocated. */
 function rotateFakes(array $overrides = []): array
@@ -93,15 +127,13 @@ test('plex:rotate routes an OpenBao-wired tenant through rotateStaticRole, never
     ]);
 
     $requests = [];
-    Http::fake(function ($request) use (&$requests) {
-        $requests[] = [$request->method(), $request->url()];
-
-        if (str_contains($request->url(), '/database/static-roles/tenant-demo-production')) {
-            return Http::response(['data' => ['db_name' => 'plex-postgres']], 200);
-        }
-
-        return Http::response([], 204);
-    });
+    $responder = plexRotateOpenBaoResponder($requests, [
+        ['/database/static-roles/tenant-demo-production', ['data' => ['db_name' => 'plex-postgres']], 200],
+    ]);
+    Saloon::fake([
+        DynamicRequest::class => $responder,
+        DynamicNoBodyRequest::class => $responder,
+    ]);
 
     $this->artisan('plex:rotate local --only=db --tenant=demo-production --force')
         ->assertExitCode(0)
@@ -137,16 +169,17 @@ test('plex:rotate falls back to ALTER ROLE for a tenant with no OpenBao static r
         '*' => Process::result(output: ''),
     ]);
 
-    Http::fake(function ($request) {
-        // Neither naming convention has this role — confirmed absent under
-        // both, not just the "tenant-" prefixed one.
-        if (str_contains($request->url(), '/database/static-roles/tenant-demo-production')
-            || str_contains($request->url(), '/database/static-roles/demo-production')) {
-            return Http::response(['errors' => ['no role found']], 404);
-        }
-
-        return Http::response([], 204);
-    });
+    // Neither naming convention has this role — confirmed absent under both,
+    // not just the "tenant-" prefixed one.
+    $unusedRequests = [];
+    $responder = plexRotateOpenBaoResponder($unusedRequests, [
+        ['/database/static-roles/tenant-demo-production', ['errors' => ['no role found']], 404],
+        ['/database/static-roles/demo-production', ['errors' => ['no role found']], 404],
+    ]);
+    Saloon::fake([
+        DynamicRequest::class => $responder,
+        DynamicNoBodyRequest::class => $responder,
+    ]);
 
     $this->artisan('plex:rotate local --only=db --tenant=demo-production --force')
         ->assertExitCode(0)
@@ -155,7 +188,7 @@ test('plex:rotate falls back to ALTER ROLE for a tenant with no OpenBao static r
     Process::assertRan(fn ($process) => str_contains($process->command, 'exec -i')
         && str_contains($process->command, 'deploy/postgres'));
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/database/rotate-role/tenant-demo-production'));
+    Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/database/rotate-role/tenant-demo-production'));
 });
 
 test('plex:rotate finds a cluster-tool tenant under the BARE role name, never the "tenant-" prefix', function (): void {
@@ -194,18 +227,14 @@ test('plex:rotate finds a cluster-tool tenant under the BARE role name, never th
     ]);
 
     $requests = [];
-    Http::fake(function ($request) use (&$requests) {
-        $requests[] = [$request->method(), $request->url()];
-
-        if (str_contains($request->url(), '/database/static-roles/tenant-record_sendrec')) {
-            return Http::response(['errors' => ['no role found']], 404);
-        }
-        if (str_contains($request->url(), '/database/static-roles/record_sendrec')) {
-            return Http::response(['data' => ['db_name' => 'plex-postgres']], 200);
-        }
-
-        return Http::response([], 204);
-    });
+    $responder = plexRotateOpenBaoResponder($requests, [
+        ['/database/static-roles/tenant-record_sendrec', ['errors' => ['no role found']], 404],
+        ['/database/static-roles/record_sendrec', ['data' => ['db_name' => 'plex-postgres']], 200],
+    ]);
+    Saloon::fake([
+        DynamicRequest::class => $responder,
+        DynamicNoBodyRequest::class => $responder,
+    ]);
 
     $this->artisan('plex:rotate local --only=db --tenant=record_sendrec --force')
         ->assertExitCode(0)

@@ -24,6 +24,10 @@ use Tests\TestCase;
 // global-namespace code in a matching `namespace { ... }` block).
 require_once __DIR__.'/Support/KubectlExecMock.php';
 
+// openBaoFake() — path-pattern-keyed Saloon fake for openBaoApi(), used
+// across every test that exercises the OpenBao-backed secrets manager.
+require_once __DIR__.'/Support/OpenBaoFakes.php';
+
 pest()->extend(TestCase::class)->in('Feature', 'Unit');
 
 // Prompt::interactive(false) and Sleep::fake() both live in

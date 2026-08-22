@@ -1,12 +1,12 @@
 <?php
 
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectRoleRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
 use Saloon\Http\Faking\MockClient;
@@ -41,12 +41,9 @@ test('secrets:grant wires an app-scoped OpenBao policy/role and grants the Zitad
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        'localhost:*/v1/sys/policies/acl/*' => Http::response([]),
-        'localhost:*/v1/auth/oidc/role/*' => Http::response([]),
-    ]);
     $grantSearchCallCount = 0;
     Saloon::fake([
+        DynamicRequest::class => MockResponse::make([]),
         SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
         SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'rbac-proj-1']]]),
         SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
@@ -72,13 +69,15 @@ test('secrets:grant wires an app-scoped OpenBao policy/role and grants the Zitad
         ->expectsOutputToContain("Granted dev@example.com 'developer' access to 'my-app' secrets in 'local'")
         ->expectsOutputToContain('secret/data/local/my-app/*');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/sys/policies/acl/secrets-my-app-local-developer-policy')
-        && $request->method() === 'PUT'
-        && str_contains($request['policy'], 'secret/data/local/my-app/*'));
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/v1/sys/policies/acl/secrets-my-app-local-developer-policy')
+        && $request->getMethod()->value === 'PUT'
+        && str_contains($request->body()->get('policy'), 'secret/data/local/my-app/*'));
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/auth/oidc/role/secrets-my-app-local-developer')
-        && $request->method() === 'PUT'
-        && $request['bound_claims']['larakube_roles'] === 'secrets-my-app-local-developer');
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/v1/auth/oidc/role/secrets-my-app-local-developer')
+        && $request->getMethod()->value === 'PUT'
+        && $request->body()->get('bound_claims')['larakube_roles'] === 'secrets-my-app-local-developer');
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateUserGrantRequest
         && $request->body()->get('roleKeys') === ['secrets-my-app-local-developer']);

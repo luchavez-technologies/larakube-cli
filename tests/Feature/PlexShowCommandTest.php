@@ -1,8 +1,15 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 /**
  * A Commons spec with Postgres enabled and one Application Tenant allocated.
@@ -37,25 +44,18 @@ test('plex:show surfaces an OpenBao-wired tenant\'s rotation schedule, never the
         '*port-forward*' => Process::result(output: ''),
     ]));
 
-    Http::fake(function ($request) {
-        if (str_contains($request->url(), '/database/static-roles/tenant-demo_production')) {
-            return Http::response(['data' => ['db_name' => 'plex-postgres']], 200);
-        }
-
-        if (str_contains($request->url(), '/database/static-creds/tenant-demo_production')) {
-            return Http::response([
-                'data' => [
-                    'password' => 'super-secret-should-never-print',
-                    'username' => 'demo_production',
-                    'rotation_period' => 604800,
-                    'ttl' => 604000,
-                    'last_vault_rotation' => '2026-07-31T23:16:38Z',
-                ],
-            ], 200);
-        }
-
-        return Http::response([], 204);
-    });
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/database/static-roles/tenant-demo_production' => ['data' => ['db_name' => 'plex-postgres']],
+            '*/database/static-creds/tenant-demo_production' => ['data' => [
+                'password' => 'super-secret-should-never-print',
+                'username' => 'demo_production',
+                'rotation_period' => 604800,
+                'ttl' => 604000,
+                'last_vault_rotation' => '2026-07-31T23:16:38Z',
+            ]],
+        ]),
+    ]);
 
     $this->artisan('plex:show local --context=test-ctx')
         ->assertExitCode(0)
@@ -74,13 +74,11 @@ test('plex:show marks a tenant with no OpenBao static role as manual (.env)', fu
         '*port-forward*' => Process::result(output: ''),
     ]));
 
-    Http::fake(function ($request) {
-        if (str_contains($request->url(), '/database/static-roles/tenant-demo_production')) {
-            return Http::response(['errors' => ['no role found']], 404);
-        }
-
-        return Http::response([], 204);
-    });
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/database/static-roles/tenant-demo_production' => MockResponse::make(['errors' => ['no role found']], 404),
+        ]),
+    ]);
 
     $this->artisan('plex:show local --context=test-ctx')
         ->assertExitCode(0)
@@ -114,21 +112,17 @@ test('plex:show explains a missing DB password instead of leaving a silent gap, 
             '*port-forward*' => Process::result(output: ''),
         ]));
 
-        Http::fake(function ($request) {
-            if (str_contains($request->url(), '/database/static-roles/tenant-demo_local')) {
-                return Http::response(['data' => ['db_name' => 'plex-postgres']], 200);
-            }
-            if (str_contains($request->url(), '/database/static-creds/tenant-demo_local')) {
-                return Http::response(['data' => [
+        Saloon::fake([
+            DynamicNoBodyRequest::class => openBaoFake([
+                '*/database/static-roles/tenant-demo_local' => ['data' => ['db_name' => 'plex-postgres']],
+                '*/database/static-creds/tenant-demo_local' => ['data' => [
                     'password' => 'live-password-should-never-print',
                     'rotation_period' => 604800,
                     'ttl' => 604000,
                     'last_vault_rotation' => '2026-08-02T00:00:00Z',
-                ]], 200);
-            }
-
-            return Http::response([], 204);
-        });
+                ]],
+            ]),
+        ]);
 
         $this->artisan('plex:show --context=test-ctx')
             ->assertExitCode(0)

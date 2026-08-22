@@ -1,10 +1,17 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 Prompt::interactive(false);
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('secrets:init deploys openbao and external secrets operator, unsealing an already-initialized instance', function (): void {
     Process::fake([
@@ -20,20 +27,19 @@ test('secrets:init deploys openbao and external secrets operator, unsealing an a
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            // GET /v1/sys/init → already initialized
-            ->push(['initialized' => true])
-            // GET /v1/sys/seal-status → already unsealed
-            ->push(['sealed' => false])
-            // GET /v1/sys/mounts → secret/ KV already mounted
-            ->push(['data' => ['secret/' => ['type' => 'kv']]])
-            // GET /v1/sys/auth → userpass already enabled
-            ->push(['userpass/' => ['type' => 'userpass']])
-            // PUT /v1/sys/policies/acl/admin-policy
-            ->push([])
-            // POST /v1/auth/userpass/users/admin
-            ->push([]),
+    Saloon::fake([
+        // GET /v1/sys/init → already initialized
+        MockResponse::make(['initialized' => true]),
+        // GET /v1/sys/seal-status → already unsealed
+        MockResponse::make(['sealed' => false]),
+        // GET /v1/sys/mounts → secret/ KV already mounted
+        MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
+        // GET /v1/sys/auth → userpass already enabled
+        MockResponse::make(['userpass/' => ['type' => 'userpass']]),
+        // PUT /v1/sys/policies/acl/admin-policy
+        MockResponse::make([]),
+        // POST /v1/auth/userpass/users/admin
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:init local --no-interaction')
@@ -66,26 +72,25 @@ test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — n
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            // GET /v1/sys/init → never initialized
-            ->push(['initialized' => false])
-            // POST /v1/sys/init
-            ->push(['root_token' => 'hvs.fresh-root', 'keys' => ['fresh-unseal-key']])
-            // POST /v1/sys/unseal
-            ->push(['sealed' => false])
-            // GET /v1/sys/mounts → secret/ not yet mounted
-            ->push(['data' => []])
-            // POST /v1/sys/mounts/secret
-            ->push([])
-            // GET /v1/sys/auth → userpass not yet enabled
-            ->push([])
-            // POST /v1/sys/auth/userpass
-            ->push([])
-            // PUT /v1/sys/policies/acl/admin-policy
-            ->push([])
-            // POST /v1/auth/userpass/users/admin
-            ->push([]),
+    Saloon::fake([
+        // GET /v1/sys/init → never initialized
+        MockResponse::make(['initialized' => false]),
+        // POST /v1/sys/init
+        MockResponse::make(['root_token' => 'hvs.fresh-root', 'keys' => ['fresh-unseal-key']]),
+        // POST /v1/sys/unseal
+        MockResponse::make(['sealed' => false]),
+        // GET /v1/sys/mounts → secret/ not yet mounted
+        MockResponse::make(['data' => []]),
+        // POST /v1/sys/mounts/secret
+        MockResponse::make([]),
+        // GET /v1/sys/auth → userpass not yet enabled
+        MockResponse::make([]),
+        // POST /v1/sys/auth/userpass
+        MockResponse::make([]),
+        // PUT /v1/sys/policies/acl/admin-policy
+        MockResponse::make([]),
+        // POST /v1/auth/userpass/users/admin
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:init local --no-interaction')
@@ -114,20 +119,19 @@ test('secrets:init creates a new userpass admin and prints the credentials once'
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['initialized' => true])
-            ->push(['sealed' => false])
-            // GET /v1/sys/mounts → secret/ KV already mounted
-            ->push(['data' => ['secret/' => ['type' => 'kv']]])
-            // GET /v1/sys/auth → userpass not yet enabled
-            ->push([])
-            // POST /v1/sys/auth/userpass
-            ->push([])
-            // PUT /v1/sys/policies/acl/admin-policy
-            ->push([])
-            // POST /v1/auth/userpass/users/admin
-            ->push([]),
+    Saloon::fake([
+        MockResponse::make(['initialized' => true]),
+        MockResponse::make(['sealed' => false]),
+        // GET /v1/sys/mounts → secret/ KV already mounted
+        MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
+        // GET /v1/sys/auth → userpass not yet enabled
+        MockResponse::make([]),
+        // POST /v1/sys/auth/userpass
+        MockResponse::make([]),
+        // PUT /v1/sys/policies/acl/admin-policy
+        MockResponse::make([]),
+        // POST /v1/auth/userpass/users/admin
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:init local --no-interaction')
@@ -155,15 +159,14 @@ test('secrets:init reuses an existing userpass admin instead of rotating it, and
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['initialized' => true])
-            ->push(['sealed' => false])
-            // GET /v1/sys/mounts → secret/ KV already mounted
-            ->push(['data' => ['secret/' => ['type' => 'kv']]])
-            ->push(['userpass/' => ['type' => 'userpass']])
-            ->push([])
-            ->push([]),
+    Saloon::fake([
+        MockResponse::make(['initialized' => true]),
+        MockResponse::make(['sealed' => false]),
+        // GET /v1/sys/mounts → secret/ KV already mounted
+        MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
+        MockResponse::make(['userpass/' => ['type' => 'userpass']]),
+        MockResponse::make([]),
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:init local --no-interaction')
@@ -174,8 +177,9 @@ test('secrets:init reuses an existing userpass admin instead of rotating it, and
     // point is a STABLE credential across repeated runs, not a rotating one.
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'patch secret openbao-bootstrap'));
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/auth/userpass/users/admin')
-        && ($request['password'] ?? null) === 'do-not-rotate-me');
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_contains($request->resolveEndpoint(), '/auth/userpass/users/admin')
+        && $request->body()->get('password') === 'do-not-rotate-me');
 });
 
 test('secrets:init keeps deploying OpenBao even if the userpass admin setup fails', function (): void {
@@ -190,14 +194,13 @@ test('secrets:init keeps deploying OpenBao even if the userpass admin setup fail
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['initialized' => true])
-            ->push(['sealed' => false])
-            // GET /v1/sys/mounts → secret/ KV already mounted
-            ->push(['data' => ['secret/' => ['type' => 'kv']]])
-            // GET /v1/sys/auth fails
-            ->push(['errors' => ['denied']], 500),
+    Saloon::fake([
+        MockResponse::make(['initialized' => true]),
+        MockResponse::make(['sealed' => false]),
+        // GET /v1/sys/mounts → secret/ KV already mounted
+        MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
+        // GET /v1/sys/auth fails
+        MockResponse::make(['errors' => ['denied']], 500),
     ]);
 
     $this->artisan('secrets:init local --no-interaction')

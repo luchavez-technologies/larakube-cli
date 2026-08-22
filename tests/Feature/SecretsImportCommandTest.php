@@ -1,11 +1,17 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 Prompt::interactive(false);
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -38,20 +44,19 @@ test('secrets:import initializes and unseals openbao, then writes secrets', func
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            // GET /v1/sys/init → not initialized
-            ->push(['initialized' => false])
-            // POST /v1/sys/init
-            ->push(['root_token' => 'hvs.root', 'keys' => ['unseal-key-abc']])
-            // POST /v1/sys/unseal
-            ->push(['sealed' => false])
-            // POST /v1/sys/mounts/secret (enable KV)
-            ->push([])
-            // POST /v1/secret/data/production/APP_KEY
-            ->push(['data' => ['created_time' => now()->toIso8601String()]])
-            // POST /v1/secret/data/production/DB_PASSWORD
-            ->push(['data' => ['created_time' => now()->toIso8601String()]]),
+    Saloon::fake([
+        // GET /v1/sys/init → not initialized
+        MockResponse::make(['initialized' => false]),
+        // POST /v1/sys/init
+        MockResponse::make(['root_token' => 'hvs.root', 'keys' => ['unseal-key-abc']]),
+        // POST /v1/sys/unseal
+        MockResponse::make(['sealed' => false]),
+        // POST /v1/sys/mounts/secret (enable KV)
+        MockResponse::make([]),
+        // POST /v1/secret/data/production/APP_KEY
+        MockResponse::make(['data' => ['created_time' => now()->toIso8601String()]]),
+        // POST /v1/secret/data/production/DB_PASSWORD
+        MockResponse::make(['data' => ['created_time' => now()->toIso8601String()]]),
     ]);
 
     $this->artisan("secrets:import local --engine=openbao --input={$input} --force --no-interaction")
@@ -72,18 +77,17 @@ test('secrets:import unseals an already-initialized but sealed openbao', functio
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            // GET /v1/sys/init → already initialized
-            ->push(['initialized' => true])
-            // GET /v1/sys/seal-status → sealed
-            ->push(['sealed' => true])
-            // POST /v1/sys/unseal
-            ->push(['sealed' => false])
-            // POST /v1/sys/mounts/secret
-            ->push([])
-            // POST /v1/secret/data/production/APP_KEY
-            ->push(['data' => []]),
+    Saloon::fake([
+        // GET /v1/sys/init → already initialized
+        MockResponse::make(['initialized' => true]),
+        // GET /v1/sys/seal-status → sealed
+        MockResponse::make(['sealed' => true]),
+        // POST /v1/sys/unseal
+        MockResponse::make(['sealed' => false]),
+        // POST /v1/sys/mounts/secret
+        MockResponse::make([]),
+        // POST /v1/secret/data/production/APP_KEY
+        MockResponse::make(['data' => []]),
     ]);
 
     $this->artisan("secrets:import local --engine=openbao --input={$input} --force --no-interaction")

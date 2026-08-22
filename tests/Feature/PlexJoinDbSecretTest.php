@@ -2,11 +2,19 @@
 
 use App\Commands\Plex\PlexJoinCommand;
 use App\Data\ConfigData;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 function plexJoinCommand(): object
 {
@@ -167,13 +175,17 @@ test('handle() wires registerStaticRole and wireTenantDbSecret to the SAME OpenB
     });
 
     $registrationUrl = null;
-    Http::fake(function ($request) use (&$registrationUrl) {
-        if ($request->method() === 'POST' && str_contains($request->url(), '/database/static-roles/')) {
-            $registrationUrl = $request->url();
-        }
+    Saloon::fake([
+        DynamicRequest::class => function ($pendingRequest) use (&$registrationUrl) {
+            $endpoint = $pendingRequest->getRequest()->resolveEndpoint();
 
-        return Http::response([], 204);
-    });
+            if (str_contains($endpoint, '/database/static-roles/')) {
+                $registrationUrl = $endpoint;
+            }
+
+            return MockResponse::make([], 204);
+        },
+    ]);
 
     $command = plexJoinCommand();
 

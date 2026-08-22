@@ -1,7 +1,14 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('secrets:seal is registered', function (): void {
     $this->artisan('list --no-interaction')
@@ -27,13 +34,17 @@ test('secrets:seal seals OpenBao with --force, no prompt', function (): void {
     ]);
 
     $sealCalled = false;
-    Http::fake(function ($request) use (&$sealCalled) {
-        if ($request->method() === 'PUT' && str_contains($request->url(), '/sys/seal')) {
-            $sealCalled = true;
-        }
+    Saloon::fake([
+        DynamicNoBodyRequest::class => function ($pendingRequest) use (&$sealCalled) {
+            $request = $pendingRequest->getRequest();
 
-        return Http::response([], 204);
-    });
+            if ($request->getMethod()->value === 'PUT' && str_contains($request->resolveEndpoint(), '/sys/seal')) {
+                $sealCalled = true;
+            }
+
+            return MockResponse::make([], 204);
+        },
+    ]);
 
     $this->artisan('secrets:seal local --force')
         ->assertExitCode(0)

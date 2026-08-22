@@ -1,8 +1,14 @@
 <?php
 
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('tool:list detects tools live on the cluster even if missing from registry secret and auto-reconciles their host', function (): void {
     Process::fake([
@@ -44,13 +50,11 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
         '*' => Process::result(output: ''),
     ]);
 
-    Http::fake(function ($request) {
-        if (str_contains($request->url(), '/database/static-roles/stalwart')) {
-            return Http::response(['data' => ['db_name' => 'plex-postgres']], 200);
-        }
-
-        return Http::response([], 204);
-    });
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/database/static-roles/stalwart' => ['data' => ['db_name' => 'plex-postgres']],
+        ]),
+    ]);
 
     $exit = Artisan::call('tool:list local --json');
     $output = json_decode(Artisan::output(), true);
@@ -109,8 +113,10 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
         '*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        '*static-roles/*' => Http::response(['data' => ['db_name' => 'plex-postgres']], 200),
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*static-roles/*' => ['data' => ['db_name' => 'plex-postgres']],
+        ]),
     ]);
 
     $exit = Artisan::call('tool:list local --json');
@@ -148,8 +154,10 @@ test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, 
         '*' => Process::result(output: ''),
     ]);
 
-    Http::fake([
-        '*static-roles/*' => Http::response(['data' => ['db_name' => 'plex-postgres']], 200),
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*static-roles/*' => ['data' => ['db_name' => 'plex-postgres']],
+        ]),
     ]);
 
     $exit = Artisan::call('tool:list local --json');

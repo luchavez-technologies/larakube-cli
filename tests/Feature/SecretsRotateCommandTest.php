@@ -1,10 +1,16 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 Prompt::interactive(false);
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 function fakeSyncedRotateExternalSecret(): array
 {
@@ -36,9 +42,7 @@ test('secrets:rotate fails when the database engine is not mounted', function ()
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::response(['data' => ['secret/' => ['type' => 'kv']]]),
-    ]);
+    Saloon::fake([MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]])]);
 
     $this->artisan('secrets:rotate local --tool=git --force')
         ->assertExitCode(1)
@@ -55,20 +59,19 @@ test('secrets:rotate rotates an OpenBao-wired tool immediately', function (): vo
         '*' => Process::result(),
     ]));
 
-    Http::fake([
-        '*' => Http::sequence()
-            // databaseEngineMounted()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            // staticRoleExists('forgejo') -> GET /v1/database/static-roles/forgejo
-            ->push(['data' => ['username' => 'forgejo']])
-            // rotateStaticRole('forgejo') -> POST /v1/database/rotate-role/forgejo
-            ->push([]),
+    Saloon::fake([
+        // databaseEngineMounted()
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        // staticRoleExists('forgejo') -> GET /v1/database/static-roles/forgejo
+        MockResponse::make(['data' => ['username' => 'forgejo']]),
+        // rotateStaticRole('forgejo') -> POST /v1/database/rotate-role/forgejo
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:rotate local --tool=git --force')
         ->assertExitCode(0);
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/database/rotate-role/forgejo'));
+    Saloon::assertSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/rotate-role/forgejo'));
 });
 
 test('secrets:rotate rejects an un-wired tool', function (): void {
@@ -79,14 +82,13 @@ test('secrets:rotate rejects an un-wired tool', function (): void {
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        '*' => Http::sequence()
-            // databaseEngineMounted()
-            ->push(['data' => ['database/' => ['type' => 'database']]])
-            // staticRoleExists('forgejo') -> GET /v1/database/static-roles/forgejo (404)
-            ->push([], 404)
-            // staticRoleExists('tenant-forgejo') -> GET /v1/database/static-roles/tenant-forgejo (404)
-            ->push([], 404),
+    Saloon::fake([
+        // databaseEngineMounted()
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        // staticRoleExists('forgejo') -> GET /v1/database/static-roles/forgejo (404)
+        MockResponse::make([], 404),
+        // staticRoleExists('tenant-forgejo') -> GET /v1/database/static-roles/tenant-forgejo (404)
+        MockResponse::make([], 404),
     ]);
 
     $this->artisan('secrets:rotate local --tool=git --force')

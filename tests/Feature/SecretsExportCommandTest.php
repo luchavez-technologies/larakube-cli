@@ -1,22 +1,27 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 Prompt::interactive(false);
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('secrets:export exports all environments and secrets to a JSON file', function (): void {
     Process::fake([
         '*' => Process::result(output: base64_encode('hvs.root_token_test')),
     ]);
 
-    Http::fake([
-        'localhost:*' => Http::sequence()
-            ->push(['data' => ['keys' => ['production/']]])
-            ->push(['data' => ['keys' => ['APP_KEY']]])
-            ->push(['data' => ['data' => ['value' => 'base64:abc123']]]),
+    Saloon::fake([
+        MockResponse::make(['data' => ['keys' => ['production/']]]),
+        MockResponse::make(['data' => ['keys' => ['APP_KEY']]]),
+        MockResponse::make(['data' => ['data' => ['value' => 'base64:abc123']]]),
     ]);
 
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();

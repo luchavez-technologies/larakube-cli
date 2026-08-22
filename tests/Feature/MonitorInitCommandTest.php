@@ -1,6 +1,13 @@
 <?php
 
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('monitor:init --no-logs deploys metrics-only stack without loki, promtail and tempo', function (): void {
     Process::fake([
@@ -278,21 +285,18 @@ test('monitor:init never registers an OpenBao static role itself — only secret
 
     // Only resolveManagedDbPassword()'s read-only lookup should ever hit
     // OpenBao's HTTP API from :init — nothing here is a static-role write.
-    Http::fake(function (Illuminate\Http\Client\Request $request) {
-        $path = parse_url($request->url(), PHP_URL_PATH);
-
-        return match (true) {
-            $path === '/v1/sys/mounts' => Http::response(['data' => ['database/' => ['type' => 'database']]]),
-            $path === '/v1/database/static-creds/grafana' => Http::response(['data' => []]),
-            default => Http::response(['data' => []]),
-        };
-    });
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/v1/sys/mounts' => ['data' => ['database/' => ['type' => 'database']]],
+            '*/v1/database/static-creds/grafana' => ['data' => []],
+        ], default: ['data' => []]),
+    ]);
 
     $this->artisan('monitor:init local --no-logs')
         ->assertExitCode(0);
 
     Process::assertNotRan(fn ($p) => str_contains($p->command, 'externalsecret'));
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/'));
+    Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/'));
 });
 
 test('monitor:init --no-plex skips Commons Postgres entirely and uses a local PVC for SQLite instead', function (): void {

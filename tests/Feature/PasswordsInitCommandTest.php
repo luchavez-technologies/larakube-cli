@@ -1,6 +1,13 @@
 <?php
 
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('passwords:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
     // Same design principle enforced for git:init/monitor:init: {tool}:init
@@ -28,20 +35,17 @@ test('passwords:init never registers an OpenBao static role itself — only secr
 
     // Only resolveManagedDbPassword()'s read-only lookup should ever hit
     // OpenBao's HTTP API from :init — nothing here is a static-role write.
-    Http::fake(function (Illuminate\Http\Client\Request $request) {
-        $path = parse_url($request->url(), PHP_URL_PATH);
-
-        return match (true) {
-            $path === '/v1/sys/mounts' => Http::response(['data' => ['database/' => ['type' => 'database']]]),
-            $path === '/v1/database/static-creds/vaultwarden' => Http::response(['data' => []]),
-            default => Http::response(['data' => []]),
-        };
-    });
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/v1/sys/mounts' => ['data' => ['database/' => ['type' => 'database']]],
+            '*/v1/database/static-creds/vaultwarden' => ['data' => []],
+        ], default: ['data' => []]),
+    ]);
 
     $this->artisan('passwords:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Vaultwarden stack is live.');
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'externalsecret'));
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/database/static-roles/'));
+    Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/'));
 });
