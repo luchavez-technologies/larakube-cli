@@ -2,12 +2,16 @@
 
 namespace App\Traits;
 
+use App\Http\Integrations\Stalwart\Requests\JmapRequest;
+use App\Http\Integrations\Stalwart\StalwartConnector;
 use Illuminate\Support\Facades\Process;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
+use Saloon\Exceptions\Request\FatalRequestException;
 use stdClass;
 
 trait InteractsWithStalwartApi
 {
+    use PortForwardsToCluster;
+
     /**
      * Stalwart's "is this a domain we host" routing test. The directory
      * argument is REQUIRED — `is_local_domain('', rcpt_domain)` (empty string =
@@ -112,46 +116,37 @@ trait InteractsWithStalwartApi
 
     protected function stalwartJmap(string $kubectl, string $ns, array $methodCalls, array $using = ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap']): ?array
     {
-        // JSON_UNESCAPED_SLASHES matters here: Stalwart's JMAP parser rejects the
-        // request outright (400 notRequest) when method names like "x:Account/set"
-        // arrive as the default-escaped "x:Account\/set" — valid JSON, but not what
-        // its parser expects.
-        $payload = json_encode([
-            'methodCalls' => $methodCalls,
-            'using' => $using,
-        ], JSON_UNESCAPED_SLASHES);
-
         $auth = $this->stalwartAuthHeader($kubectl, $ns);
         if ($auth === null) {
             return null;
         }
 
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $temporaryDirectory->path().'/stalwart-payload';
-        file_put_contents($tmp, $payload);
+        $port = random_int(30100, 31100);
+        $pf = Process::start("{$kubectl} port-forward -n {$ns} svc/stalwart {$port}:8080");
 
-        $pod = $this->stalwartPodName($kubectl, $ns);
+        if (! $this->awaitLocalPort($port, $pf)) {
+            if ($pf->running()) {
+                $pf->stop(0, 2);
+            }
 
-        $result = Process::run(
-            "{$kubectl} exec -i -n {$ns} {$pod} -- "
-            .'sh -c '.escapeshellarg(
-                'curl -s -X POST http://localhost:8080/jmap '
-                ."-H 'Content-Type: application/json' "
-                ."-H 'Authorization: {$auth}' "
-                .'-d @-',
-            )
-            .' < '.escapeshellarg($tmp),
-        );
-
-        $temporaryDirectory->delete();
-
-        if (! $result->successful()) {
             return null;
         }
 
-        $response = json_decode($result->output(), true);
+        try {
+            $response = (new StalwartConnector($port, $auth))->send(new JmapRequest($methodCalls, $using));
 
-        return $response['methodResponses'] ?? null;
+            if (! $response->successful()) {
+                return null;
+            }
+
+            return $response->json('methodResponses');
+        } catch (FatalRequestException) {
+            return null;
+        } finally {
+            if ($pf->running()) {
+                $pf->stop(0, 2);
+            }
+        }
     }
 
     /**

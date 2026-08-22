@@ -1,28 +1,23 @@
 <?php
 
+use App\Http\Integrations\Stalwart\Requests\JmapRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 /**
- * Extract and JSON-decode the JMAP payload written to a temp file by stalwartJmap().
- *
- * @return array<string, mixed>|null
+ * Normalize a JmapRequest's in-memory body through JSON — some fields
+ * (dkimManagement.algorithms and similar) are stdClass in memory, cast to
+ * plain arrays by encoding/decoding, matching Stalwart's own wire shape.
  */
-function stalwartStoreBootstrapJmapPayload(mixed $process): ?array
+function stalwartJmapBody(mixed $pendingRequest): array
 {
-    $cmd = is_string($process->command)
-        ? $process->command
-        : implode(' ', (array) $process->command);
-
-    // Matches the stdin redirect on ANY exec'd command, not just a specific
-    // temp-filename prefix — stalwartJmap()'s scratch file lives in its own
-    // Spatie\TemporaryDirectory now, named for readability, not for this
-    // regex. A non-JMAP exec's redirect (e.g. a piped SQL dump) still falls
-    // through safely: json_decode() on non-JSON content returns null.
-    if (preg_match("!< '([^']+)'!", $cmd, $m) && file_exists($m[1])) {
-        return json_decode(file_get_contents($m[1]), true) ?: null;
-    }
-
-    return null;
+    return json_decode(json_encode($pendingRequest->getRequest()->body()->all()), true);
 }
 
 test('mail:init local wires BlobStore, InMemoryStore, and SearchStore via JMAP when Commons offers seaweedfs, redis, and meilisearch', function (): void {
@@ -44,33 +39,31 @@ test('mail:init local wires BlobStore, InMemoryStore, and SearchStore via JMAP w
         '*get secret mail-secrets*api-key*' => Process::result(output: base64_encode('already-minted-key')),
         '*get secret mail-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret generic mail-secrets*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
-        '*exec *' => function ($process) use (&$captured) {
-            $payload = stalwartStoreBootstrapJmapPayload($process);
+        '*exec *' => Process::result(output: 'success'),
+        '*' => Process::result(),
+    ]);
 
-            if ($payload === null) {
-                // Non-JMAP exec: Commons DB allocation / bucket creation.
-                return Process::result(output: 'success');
-            }
-
-            $method = $payload['methodCalls'][0][0] ?? '';
-            $captured[$method] = $payload['methodCalls'][0][1] ?? [];
+    Saloon::fake([
+        JmapRequest::class => function ($pendingRequest) use (&$captured) {
+            $body = stalwartJmapBody($pendingRequest);
+            $method = $body['methodCalls'][0][0] ?? '';
+            $captured[$method] = $body['methodCalls'][0][1] ?? [];
 
             return match ($method) {
-                'x:BlobStore/set', 'x:InMemoryStore/set', 'x:SearchStore/set', 'x:Http/set' => Process::result(
-                    output: json_encode(['methodResponses' => [[$method, ['updated' => ['singleton' => null]], 'c1']]]),
+                'x:BlobStore/set', 'x:InMemoryStore/set', 'x:SearchStore/set', 'x:Http/set' => MockResponse::make(
+                    ['methodResponses' => [[$method, ['updated' => ['singleton' => null]], 'c1']]],
                 ),
-                default => Process::result(
-                    output: json_encode(['methodResponses' => [[$method, ['created' => ['r1' => ['id' => 'a1']]], 'c1']]]),
+                default => MockResponse::make(
+                    ['methodResponses' => [[$method, ['created' => ['r1' => ['id' => 'a1']]], 'c1']]],
                 ),
             };
         },
-        '*' => Process::result(),
     ]);
 
     $this->artisan('mail:init local --admin-email=admin@luchtech.dev --no-interaction')
@@ -110,27 +103,24 @@ test('mail:init local falls back to SearchStore "Default" (reuse Data store) whe
         '*get secret mail-secrets*api-key*' => Process::result(output: base64_encode('already-minted-key')),
         '*get secret mail-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret generic mail-secrets*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
-        '*exec *' => function ($process) use (&$captured) {
-            $payload = stalwartStoreBootstrapJmapPayload($process);
-
-            if ($payload === null) {
-                return Process::result(output: 'success');
-            }
-
-            $method = $payload['methodCalls'][0][0] ?? '';
-            $captured[$method] = $payload['methodCalls'][0][1] ?? [];
-
-            return Process::result(
-                output: json_encode(['methodResponses' => [[$method, ['updated' => ['singleton' => null]], 'c1']]]),
-            );
-        },
+        '*exec *' => Process::result(output: 'success'),
         '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        JmapRequest::class => function ($pendingRequest) use (&$captured) {
+            $body = stalwartJmapBody($pendingRequest);
+            $method = $body['methodCalls'][0][0] ?? '';
+            $captured[$method] = $body['methodCalls'][0][1] ?? [];
+
+            return MockResponse::make(['methodResponses' => [[$method, ['updated' => ['singleton' => null]], 'c1']]]);
+        },
     ]);
 
     $this->artisan('mail:init local --admin-email=admin@luchtech.dev --no-interaction')
@@ -160,20 +150,20 @@ test('mail:show detects a local wizard-skip install and shows "already configure
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get configmap stalwart-config*' => Process::result(output: 'stalwart-config   1   1d'),
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
             'services' => ['postgres' => ['enabled' => true]],
         ]),
-        '*exec *' => function ($process) {
-            $payload = stalwartStoreBootstrapJmapPayload($process);
+        '*exec *' => Process::result(output: 'success'),
+        '*' => Process::result(),
+    ]);
 
-            if ($payload === null) {
-                return Process::result(output: 'success');
-            }
-
-            $method = $payload['methodCalls'][0][0] ?? '';
+    Saloon::fake([
+        JmapRequest::class => function ($pendingRequest) {
+            $body = stalwartJmapBody($pendingRequest);
+            $method = $body['methodCalls'][0][0] ?? '';
 
             $store = match ($method) {
                 'x:BlobStore/get' => ['@type' => 'S3', 'region' => ['customEndpoint' => 'http://seaweedfs.larakube-plex.svc.cluster.local:8333']],
@@ -182,11 +172,10 @@ test('mail:show detects a local wizard-skip install and shows "already configure
                 default => null,
             };
 
-            return Process::result(output: json_encode([
+            return MockResponse::make([
                 'methodResponses' => [[$method, ['list' => $store !== null ? [$store] : []], 'c1']],
-            ]));
+            ]);
         },
-        '*' => Process::result(),
     ]);
 
     $this->artisan('mail:show')
@@ -199,7 +188,7 @@ test('mail:show falls back to the original wizard hint when stalwart-config does
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get configmap stalwart-config*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,

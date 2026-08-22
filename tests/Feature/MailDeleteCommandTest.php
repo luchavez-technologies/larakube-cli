@@ -27,23 +27,18 @@ test('mail:delete requires installed stalwart', function (): void {
 });
 
 test('mail:delete deletes account by email', function (): void {
-    $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
-        '*' => function () use (&$callCount) {
-            $callCount++;
-            if ($callCount === 1) {
-                return Process::result(output: '{"methodResponses":[["x:Account/query",{"ids":["b"]},"c0"],["x:Account/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-            if ($callCount === 2) {
-                return Process::result(output: '{"methodResponses":[["x:Account/get",{"list":[{"id":"b","name":"admin","description":"Admin","emailAddress":"admin@example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
+        '*' => Process::result(),
+    ]);
 
-            return Process::result(output: '{"methodResponses":[["x:Account/set",{"destroyed":["b"]},"c1"]],"sessionState":"x"}');
-        },
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Account/query', ['ids' => ['b']], 'c0'], ['x:Account/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/get', ['list' => [['id' => 'b', 'name' => 'admin', 'description' => 'Admin', 'emailAddress' => 'admin@example.com']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['destroyed' => ['b']], 'c1']], 'sessionState' => 'x']),
     ]);
 
     $exitCode = Artisan::call('mail:delete', ['--email' => 'admin@example.com', '--force' => true]);
@@ -52,27 +47,19 @@ test('mail:delete deletes account by email', function (): void {
 });
 
 test('mail:delete --sso removes the matching Zitadel identity', function (): void {
-    $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*' => function () use (&$callCount) {
-            $callCount++;
-            if ($callCount === 1) {
-                return Process::result(output: '{"methodResponses":[["x:Account/query",{"ids":["b"]},"c0"],["x:Account/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-            if ($callCount === 2) {
-                return Process::result(output: '{"methodResponses":[["x:Account/get",{"list":[{"id":"b","name":"admin","description":"Admin","emailAddress":"admin@example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-
-            return Process::result(output: '{"methodResponses":[["x:Account/set",{"destroyed":["b"]},"c1"]],"sessionState":"x"}');
-        },
+        '*' => Process::result(),
     ]);
 
     Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Account/query', ['ids' => ['b']], 'c0'], ['x:Account/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/get', ['list' => [['id' => 'b', 'name' => 'admin', 'description' => 'Admin', 'emailAddress' => 'admin@example.com']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['destroyed' => ['b']], 'c1']], 'sessionState' => 'x']),
         DeleteUserRequest::class => MockResponse::make(['details' => []]),
         SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'zid-1']]]),
     ]);

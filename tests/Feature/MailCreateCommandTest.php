@@ -2,7 +2,6 @@
 
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
@@ -12,31 +11,6 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-/**
- * Extract and JSON-decode the JMAP payload written to a temp file by
- * stalwartJmap() — mirrors MailDomainCommandTest's helper of the same
- * shape (kept separate — a global function declared in two loaded test
- * files fatals on redeclaration).
- *
- * @return array<string, mixed>|null
- */
-function mailCreateJmapPayload(mixed $process): ?array
-{
-    $cmd = is_string($process->command)
-        ? $process->command
-        : implode(' ', (array) $process->command);
-
-    // Matches the stdin redirect on ANY exec'd command, not a specific
-    // temp-filename prefix — stalwartJmap()'s scratch file lives in its own
-    // Spatie\TemporaryDirectory now. A non-JMAP exec's redirect falls
-    // through safely via the ?: null below.
-    if (preg_match("!< '([^']+)'!", $cmd, $m) && file_exists($m[1])) {
-        return json_decode(file_get_contents($m[1]), true) ?: null;
-    }
-
-    return null;
-}
-
 /** Common non-account-creation fakes every mail:create test needs. */
 function mailCreateBaseFakes(): array
 {
@@ -45,7 +19,7 @@ function mailCreateBaseFakes(): array
         '*part-of=webmail*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
     ];
 }
 
@@ -56,21 +30,12 @@ test('mail:create is registered', function (): void {
 });
 
 test('mail:create --domain= selects the given domain over the default first-configured one', function (): void {
-    $callCount = 0;
-    $accountCreatePayload = null;
+    Process::fake(mailCreateBaseFakes() + ['*' => Process::result()]);
 
-    Process::fake(mailCreateBaseFakes() + [
-        '*' => function ($process) use (&$callCount, &$accountCreatePayload) {
-            $callCount++;
-
-            return match ($callCount) {
-                1 => Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["d-luchtech","d-partner"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}'),
-                2 => Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"d-luchtech","name":"luchtech.dev"},{"id":"d-partner","name":"partner.example"}],"notFound":[]},"c1"]],"sessionState":"x"}'),
-                default => tap(Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"acc1"}}},"c1"]],"sessionState":"x"}'), function () use ($process, &$accountCreatePayload): void {
-                    $accountCreatePayload = mailCreateJmapPayload($process);
-                }),
-            };
-        },
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => ['d-luchtech', 'd-partner']], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Domain/get', ['list' => [['id' => 'd-luchtech', 'name' => 'luchtech.dev'], ['id' => 'd-partner', 'name' => 'partner.example']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['created' => ['new1' => ['id' => 'acc1']]], 'c1']], 'sessionState' => 'x']),
     ]);
 
     $this->artisan('mail:create', [
@@ -84,22 +49,16 @@ test('mail:create --domain= selects the given domain over the default first-conf
         ->assertExitCode(0)
         ->expectsOutputToContain('alice@partner.example');
 
-    $create = $accountCreatePayload['methodCalls'][0][1]['create']['new1'];
-    expect($create['domainId'])->toBe('d-partner');
+    Saloon::assertSent(fn ($request) => ($request->body()->get('methodCalls')[0][0] ?? null) === 'x:Account/set'
+        && $request->body()->get('methodCalls')[0][1]['create']['new1']['domainId'] === 'd-partner');
 });
 
 test('mail:create rejects an unknown --domain=', function (): void {
-    $callCount = 0;
+    Process::fake(mailCreateBaseFakes() + ['*' => Process::result()]);
 
-    Process::fake(mailCreateBaseFakes() + [
-        '*' => function () use (&$callCount) {
-            $callCount++;
-
-            return match ($callCount) {
-                1 => Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["d-luchtech"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}'),
-                default => Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"d-luchtech","name":"luchtech.dev"}],"notFound":[]},"c1"]],"sessionState":"x"}'),
-            };
-        },
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => ['d-luchtech']], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Domain/get', ['list' => [['id' => 'd-luchtech', 'name' => 'luchtech.dev']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
     ]);
 
     $this->artisan('mail:create', ['--domain' => 'partner.example', '--no-sso' => true])
@@ -108,21 +67,12 @@ test('mail:create rejects an unknown --domain=', function (): void {
 });
 
 test('mail:create falls back to the first configured domain when non-interactive with no domain hint', function (): void {
-    $callCount = 0;
-    $accountCreatePayload = null;
+    Process::fake(mailCreateBaseFakes() + ['*' => Process::result()]);
 
-    Process::fake(mailCreateBaseFakes() + [
-        '*' => function ($process) use (&$callCount, &$accountCreatePayload) {
-            $callCount++;
-
-            return match ($callCount) {
-                1 => Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["d-luchtech","d-partner"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}'),
-                2 => Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"d-luchtech","name":"luchtech.dev"},{"id":"d-partner","name":"partner.example"}],"notFound":[]},"c1"]],"sessionState":"x"}'),
-                default => tap(Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"acc1"}}},"c1"]],"sessionState":"x"}'), function () use ($process, &$accountCreatePayload): void {
-                    $accountCreatePayload = mailCreateJmapPayload($process);
-                }),
-            };
-        },
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => ['d-luchtech', 'd-partner']], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Domain/get', ['list' => [['id' => 'd-luchtech', 'name' => 'luchtech.dev'], ['id' => 'd-partner', 'name' => 'partner.example']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['created' => ['new1' => ['id' => 'acc1']]], 'c1']], 'sessionState' => 'x']),
     ]);
 
     // No --domain, and the email's own domain (example.com) matches neither
@@ -138,8 +88,8 @@ test('mail:create falls back to the first configured domain when non-interactive
         ->expectsQuestion('Display name', '')
         ->assertExitCode(0);
 
-    $create = $accountCreatePayload['methodCalls'][0][1]['create']['new1'];
-    expect($create['domainId'])->toBe('d-luchtech');
+    Saloon::assertSent(fn ($request) => ($request->body()->get('methodCalls')[0][0] ?? null) === 'x:Account/set'
+        && $request->body()->get('methodCalls')[0][1]['create']['new1']['domainId'] === 'd-luchtech');
 });
 
 test('mail:create requires installed stalwart', function (): void {
@@ -154,8 +104,12 @@ test('mail:create shows error when no domains configured', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
-        '*' => Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":[]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}'),
+        '*port-forward*' => Process::result(output: ''),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => []], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
     ]);
 
     $this->artisan('mail:create')
@@ -164,24 +118,19 @@ test('mail:create shows error when no domains configured', function (): void {
 });
 
 test('mail:create creates account with given args', function (): void {
-    $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
         '*part-of=webmail*' => Process::result(output: ''),
-        '*' => function () use (&$callCount) {
-            $callCount++;
-            if ($callCount === 1) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-            if ($callCount === 2) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
+        '*' => Process::result(),
+    ]);
 
-            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
-        },
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => ['b']], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Domain/get', ['list' => [['id' => 'b', 'name' => 'example.com']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['created' => ['new1' => ['id' => 'd']]], 'c1']], 'sessionState' => 'x']),
     ]);
 
     $this->artisan('mail:create', [
@@ -196,24 +145,19 @@ test('mail:create creates account with given args', function (): void {
 });
 
 test('mail:create shows the webmail URL when Bulwark is installed', function (): void {
-    $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
         '*part-of=webmail*' => Process::result(output: 'webmail-bulwark   1/1   1   1   10d'),
-        '*' => function () use (&$callCount) {
-            $callCount++;
-            if ($callCount === 1) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-            if ($callCount === 2) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
+        '*' => Process::result(),
+    ]);
 
-            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
-        },
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => ['b']], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Domain/get', ['list' => [['id' => 'b', 'name' => 'example.com']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['created' => ['new1' => ['id' => 'd']]], 'c1']], 'sessionState' => 'x']),
     ]);
 
     $this->artisan('mail:create', [
@@ -226,27 +170,19 @@ test('mail:create shows the webmail URL when Bulwark is installed', function ():
 });
 
 test('mail:create --sso creates a matching Zitadel identity', function (): void {
-    $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*' => function () use (&$callCount) {
-            $callCount++;
-            if ($callCount === 1) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-            if ($callCount === 2) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-
-            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
-        },
+        '*' => Process::result(),
     ]);
 
     Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => ['b']], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Domain/get', ['list' => [['id' => 'b', 'name' => 'example.com']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['created' => ['new1' => ['id' => 'd']]], 'c1']], 'sessionState' => 'x']),
         SearchOrganizationsRequest::class => MockResponse::make(['result' => []]),
         CreateUserRequest::class => MockResponse::make(['userId' => 'zid-1']),
     ]);
@@ -262,23 +198,18 @@ test('mail:create --sso creates a matching Zitadel identity', function (): void 
 });
 
 test('mail:create --sso errors when Zitadel is not installed', function (): void {
-    $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
-        '*' => function () use (&$callCount) {
-            $callCount++;
-            if ($callCount === 1) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-            if ($callCount === 2) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
+        '*' => Process::result(),
+    ]);
 
-            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
-        },
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => ['b']], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Domain/get', ['list' => [['id' => 'b', 'name' => 'example.com']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['created' => ['new1' => ['id' => 'd']]], 'c1']], 'sessionState' => 'x']),
     ]);
 
     $this->artisan('mail:create', [
@@ -292,27 +223,19 @@ test('mail:create --sso errors when Zitadel is not installed', function (): void
 });
 
 test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no flag is given', function (): void {
-    $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*' => function () use (&$callCount) {
-            $callCount++;
-            if ($callCount === 1) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-            if ($callCount === 2) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-
-            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
-        },
+        '*' => Process::result(),
     ]);
 
     Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => ['b']], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Domain/get', ['list' => [['id' => 'b', 'name' => 'example.com']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['created' => ['new1' => ['id' => 'd']]], 'c1']], 'sessionState' => 'x']),
         SearchOrganizationsRequest::class => MockResponse::make(['result' => []]),
         CreateUserRequest::class => MockResponse::make(['userId' => 'zid-1']),
     ]);
@@ -335,27 +258,23 @@ test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no f
 });
 
 test('mail:create --no-sso skips the Zitadel identity even when Zitadel is installed', function (): void {
-    $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
+        '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*' => function () use (&$callCount) {
-            $callCount++;
-            if ($callCount === 1) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/query",{"ids":["b"]},"c0"],["x:Domain/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
-            if ($callCount === 2) {
-                return Process::result(output: '{"methodResponses":[["x:Domain/get",{"list":[{"id":"b","name":"example.com"}],"notFound":[]},"c1"]],"sessionState":"x"}');
-            }
+        '*' => Process::result(),
+    ]);
 
-            return Process::result(output: '{"methodResponses":[["x:Account/set",{"created":{"new1":{"id":"d"}}},"c1"]],"sessionState":"x"}');
-        },
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Domain/query', ['ids' => ['b']], 'c0'], ['x:Domain/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Domain/get', ['list' => [['id' => 'b', 'name' => 'example.com']], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/set', ['created' => ['new1' => ['id' => 'd']]], 'c1']], 'sessionState' => 'x']),
     ]);
 
     // --no-sso wins over the default; the command must return before any Zitadel
-    // call, so no Http::fake is needed — an attempted call would fail the test.
+    // call, so no Saloon fake for CreateUserRequest is needed — an attempted
+    // call would fail the test.
     $this->artisan('mail:create', [
         '--email' => 'shared@example.com',
         '--name' => 'Shared Mailbox',

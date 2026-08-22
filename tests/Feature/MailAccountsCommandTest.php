@@ -1,7 +1,15 @@
 <?php
 
+use App\Http\Integrations\Stalwart\Requests\JmapRequest;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('mail:accounts is registered', function (): void {
     $this->artisan('list')
@@ -21,8 +29,12 @@ test('mail:accounts shows empty when no accounts exist', function (): void {
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
-        '*' => Process::result(output: '{"methodResponses":[["x:Account/query",{"ids":[],"queryState":"n"},"c0"],["x:Account/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}'),
+        '*port-forward*' => Process::result(output: ''),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Account/query', ['ids' => [], 'queryState' => 'n'], 'c0'], ['x:Account/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
     ]);
 
     $this->artisan('mail:accounts')
@@ -31,18 +43,26 @@ test('mail:accounts shows empty when no accounts exist', function (): void {
 });
 
 test('mail:accounts lists accounts', function (): void {
-    $callCount = 0;
     Process::fake([
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
-        '*' => function () use (&$callCount) {
-            $callCount++;
-            if ($callCount === 1) {
-                return Process::result(output: '{"methodResponses":[["x:Account/query",{"ids":["b","c"]},"c0"],["x:Account/get",{"list":[],"notFound":[]},"c1"]],"sessionState":"x"}');
+        '*port-forward*' => Process::result(output: ''),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        JmapRequest::class => function ($pendingRequest) {
+            $body = json_decode(json_encode($pendingRequest->getRequest()->body()->all()), true);
+            $method = $body['methodCalls'][0][0] ?? '';
+
+            if ($method === 'x:Account/query') {
+                return MockResponse::make(['methodResponses' => [['x:Account/query', ['ids' => ['b', 'c']], 'c0'], ['x:Account/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']);
             }
 
-            return Process::result(output: '{"methodResponses":[["x:Account/get",{"list":[{"id":"b","name":"admin","description":"System administrator","emailAddress":"admin@example.com","roles":{"@type":"Admin"},"quotas":{},"usedDiskQuota":486},{"id":"c","name":"alice","description":"Alice Smith","emailAddress":"alice@example.com","roles":{"@type":"User"},"quotas":{"maxDiskQuota":1073741824},"usedDiskQuota":1048576}],"notFound":[]},"c1"]],"sessionState":"x"}');
+            return MockResponse::make(['methodResponses' => [['x:Account/get', ['list' => [
+                ['id' => 'b', 'name' => 'admin', 'description' => 'System administrator', 'emailAddress' => 'admin@example.com', 'roles' => ['@type' => 'Admin'], 'quotas' => [], 'usedDiskQuota' => 486],
+                ['id' => 'c', 'name' => 'alice', 'description' => 'Alice Smith', 'emailAddress' => 'alice@example.com', 'roles' => ['@type' => 'User'], 'quotas' => ['maxDiskQuota' => 1073741824], 'usedDiskQuota' => 1048576],
+            ], 'notFound' => []], 'c1']], 'sessionState' => 'x']);
         },
     ]);
 

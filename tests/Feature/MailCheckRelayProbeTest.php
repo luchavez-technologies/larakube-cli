@@ -2,6 +2,13 @@
 
 use App\Commands\Mail\MailCheckCommand;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 /**
  * mail:check no longer trusts the mere presence of the mail-relay secret — it
@@ -29,9 +36,19 @@ function fakeRelayEnv(string $opensslOutput, ?string $routeList = null): void
         '*mail-relay*username*' => Process::result(output: base64_encode('b262c1001@smtp-brevo.com')),
         '*mail-relay*password*' => Process::result(output: base64_encode('xsmtpsib-fullkey')),
         '*mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
-        '*localhost:8080/jmap*' => Process::result(output: '{"methodResponses":[["x:MtaRoute/query",{"ids":["rt1"]},"c0"],["x:MtaRoute/get",{"list":'.$routeList.',"notFound":[]},"c1"]],"sessionState":"x"}'),
+        '*port-forward*' => Process::result(output: ''),
         '*openssl s_client*' => Process::result(output: $opensslOutput),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        MockResponse::make([
+            'methodResponses' => [
+                ['x:MtaRoute/query', ['ids' => ['rt1']], 'c0'],
+                ['x:MtaRoute/get', ['list' => json_decode($routeList, true), 'notFound' => []], 'c1'],
+            ],
+            'sessionState' => 'x',
+        ]),
     ]);
 }
 

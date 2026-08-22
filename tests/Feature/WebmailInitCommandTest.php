@@ -1,6 +1,13 @@
 <?php
 
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('webmail:init is registered', function (): void {
     $this->artisan('list')
@@ -23,16 +30,16 @@ test('webmail:init deploys Bulwark and enables CORS when Stalwart is present', f
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret webmail-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
-        // CORS is now written as a JMAP update on the x:Http singleton, so the
-        // in-pod curl has to return a real JMAP envelope — an opaque "ok" is
-        // exactly what the dead REST endpoint used to accept.
-        '*exec *' => Process::result(output: json_encode([
-            'methodResponses' => [['x:Http/set', ['updated' => ['singleton' => null]], 'c1']],
-        ])),
+        '*port-forward*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
+        '*' => Process::result(),
+    ]);
+
+    // CORS is written as a JMAP update on the x:Http singleton.
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Http/set', ['updated' => ['singleton' => null]], 'c1']]]),
     ]);
 
     $this->artisan('webmail:init local')
@@ -60,12 +67,16 @@ test('webmail:init still succeeds but warns when the CORS flip fails', function 
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret webmail-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
-        // The in-pod curl that writes the CORS setting fails (e.g. endpoint moved).
-        '*exec *' => Process::result(output: '', exitCode: 1),
+        '*port-forward*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
+        '*' => Process::result(),
+    ]);
+
+    // The JMAP call that writes the CORS setting fails (e.g. endpoint moved).
+    Saloon::fake([
+        MockResponse::make(['errors' => ['internal error']], 500),
     ]);
 
     $this->artisan('webmail:init local')
@@ -79,11 +90,15 @@ test('webmail:init --vpn-only creates the Traefik Middleware before applying the
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret webmail-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
-        '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
-        '*exec *' => Process::result(output: 'ok'),
+        '*port-forward*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Http/set', ['updated' => ['singleton' => null]], 'c1']]]),
     ]);
 
     $this->artisan('webmail:init local --vpn-only')
