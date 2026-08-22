@@ -1,11 +1,20 @@
 <?php
 
 use App\Enums\ClusterTool;
+use App\Http\Integrations\Zitadel\Requests\CreateOidcAppRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectAppsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
 use App\Traits\InteractsWithToolRegistry;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 pest()->use(InteractsWithToolRegistry::class);
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support named instances', function (): void {
     expect(ClusterTool::NOTES->deploymentName('sister'))->toBe('notes-outline-sister')
@@ -27,10 +36,10 @@ test('notes:init deploys a named multi-instance with isolated DB and secrets', f
         ['tool' => 'sso', 'instance' => 'main', 'host' => 'sso.kube', 'installedAt' => '2026-08-01T00:00:00+00:00'],
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]], 200),
-        '*/management/v1/projects/proj-1/apps/_search' => Http::response(['result' => []], 200),
-        '*/management/v1/projects/proj-1/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'client-1', 'clientSecret' => 'secret-1'], 200),
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1', 'name' => 'LaraKube Shared Tools']]], 200),
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []], 200),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'client-1', 'clientSecret' => 'secret-1'], 200),
     ]);
 
     Process::fake([

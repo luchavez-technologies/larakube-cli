@@ -1,7 +1,11 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\CreateProjectGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectGrantsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
+use App\Http\Integrations\Zitadel\Requests\UpdateProjectGrantRequest;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
@@ -45,66 +49,61 @@ test('sso:org-grant fails cleanly when the org does not exist', function (): voi
 
 test('sso:org-grant creates a project grant using every role defined on the project by default', function (): void {
     Process::fake(ssoOrgGrantProcessFakes());
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => [['key' => 'reader'], ['key' => 'editor']]]),
-        '*/management/v1/projects/proj-1/grants/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/grants' => Http::response(['grantId' => 'grant-1']),
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => [['key' => 'reader'], ['key' => 'editor']]]),
+        SearchProjectGrantsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectGrantRequest::class => MockResponse::make(['grantId' => 'grant-1']),
     ]);
-    Saloon::fake([SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]])]);
 
     $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--project' => 'LaraKube Shared Tools', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("'partner.example' now has scoped access to 'LaraKube Shared Tools'")
         ->expectsOutputToContain('reader, editor');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/projects/proj-1/grants')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && $request['grantedOrgId'] === 'org-1'
-        && $request['roleKeys'] === ['reader', 'editor']);
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectGrantRequest
+        && $request->body()->get('grantedOrgId') === 'org-1'
+        && $request->body()->get('roleKeys') === ['reader', 'editor']);
 });
 
 test('sso:org-grant merges new roles into an existing grant instead of replacing it', function (): void {
     Process::fake(ssoOrgGrantProcessFakes());
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/projects/proj-1/grants/_search' => Http::response(['result' => [
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchProjectGrantsRequest::class => MockResponse::make(['result' => [
             ['grantId' => 'grant-1', 'grantedOrgId' => 'org-1', 'grantedRoleKeys' => ['reader']],
         ]]),
-        '*/management/v1/projects/proj-1/grants/grant-1' => Http::response([]),
+        UpdateProjectGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]])]);
 
     $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--project' => 'LaraKube Shared Tools', '--role' => ['editor'], '--no-interaction' => true])
         ->assertExitCode(0);
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/projects/proj-1/grants/grant-1')
-        && $request->method() === 'PUT'
-        && $request['roleKeys'] === ['reader', 'editor']);
+    Saloon::assertSent(fn ($request) => $request instanceof UpdateProjectGrantRequest
+        && $request->body()->get('roleKeys') === ['reader', 'editor']);
 });
 
 test('sso:org-grant --tool= resolves the project the same way sso:grant does', function (): void {
     Process::fake(ssoOrgGrantProcessFakes());
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-secrets']]]),
-        '*/management/v1/projects/proj-secrets/roles/_search' => Http::response(['result' => [['key' => 'openbao-admin']]]),
-        '*/management/v1/projects/proj-secrets/grants/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-secrets/grants' => Http::response(['grantId' => 'grant-1']),
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-secrets']]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => [['key' => 'openbao-admin']]]),
+        SearchProjectGrantsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectGrantRequest::class => MockResponse::make(['grantId' => 'grant-1']),
     ]);
-    Saloon::fake([SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]])]);
 
     $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--tool' => 'secrets', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("'partner.example' now has scoped access to 'openbao-backend'");
 
-    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects/_search')
-        && $request['queries'][0]['nameQuery']['name'] === 'openbao-backend');
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/projects/proj-secrets/grants')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && $request['grantedOrgId'] === 'org-1'
-        && $request['roleKeys'] === ['openbao-admin']);
+    Saloon::assertSent(fn ($request) => $request instanceof SearchProjectsRequest
+        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'openbao-backend');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectGrantRequest
+        && $request->body()->get('grantedOrgId') === 'org-1'
+        && $request->body()->get('roleKeys') === ['openbao-admin']);
 });
 
 test('sso:org-grant --tool= on a multi-instance tool without --domain= refuses to guess', function (): void {
@@ -125,16 +124,16 @@ test('sso:org-grant --tool= on a multi-instance tool without --domain= refuses t
 
 test('sso:org-grant prompts for an org when --org is omitted and orgs exist', function (): void {
     Process::fake(ssoOrgGrantProcessFakes());
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => [['key' => 'reader']]]),
-        '*/management/v1/projects/proj-1/grants/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/grants' => Http::response(['grantId' => 'grant-1']),
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make(['result' => [
+            ['id' => 'org-1', 'name' => 'partner.example'],
+            ['id' => 'org-2', 'name' => 'other.example'],
+        ]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => [['key' => 'reader']]]),
+        SearchProjectGrantsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectGrantRequest::class => MockResponse::make(['grantId' => 'grant-1']),
     ]);
-    Saloon::fake([SearchOrganizationsRequest::class => MockResponse::make(['result' => [
-        ['id' => 'org-1', 'name' => 'partner.example'],
-        ['id' => 'org-2', 'name' => 'other.example'],
-    ]])]);
 
     $this->artisan('sso:org-grant', ['--project' => 'LaraKube Shared Tools', '--no-interaction' => true])
         ->expectsChoice('Which org?', 'org-1', [
@@ -143,8 +142,6 @@ test('sso:org-grant prompts for an org when --org is omitted and orgs exist', fu
         ])
         ->assertExitCode(0);
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/projects/proj-1/grants')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && $request['grantedOrgId'] === 'org-1');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectGrantRequest
+        && $request->body()->get('grantedOrgId') === 'org-1');
 });

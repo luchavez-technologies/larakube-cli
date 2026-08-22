@@ -6,6 +6,8 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
+use App\Http\Integrations\Zitadel\Requests\GetProjectAppRequest;
+use App\Http\Integrations\Zitadel\ZitadelConnector;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
@@ -17,7 +19,6 @@ use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -180,7 +181,7 @@ class SsoWireCommand extends Command
         $registeredRedirectUris = null;
         $registeredPostLogoutRedirectUris = null;
         if ($appId !== null && $appId !== '' && $projectId !== null && $projectId !== '') {
-            $checkApp = Http::withToken($pat)->timeout(10)->get("https://{$ssoHost}/management/v1/projects/{$projectId}/apps/{$appId}");
+            $checkApp = ZitadelConnector::make($ssoHost, $pat)->send(GetProjectAppRequest::make($projectId, $appId));
             if ($checkApp->successful()) {
                 $appExistsInZitadel = true;
                 $registeredRedirectUris = $checkApp->json('app.oidcConfig.redirectUris');
@@ -824,7 +825,7 @@ class SsoWireCommand extends Command
         $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
 
         if ($clientId !== null && $clientSecret !== null && $appId !== null && $projectId !== null
-            && Http::withToken($pat)->timeout(10)->get("https://{$ssoHost}/management/v1/projects/{$projectId}/apps/{$appId}")->successful()) {
+            && ZitadelConnector::make($ssoHost, $pat)->send(GetProjectAppRequest::make($projectId, $appId))->successful()) {
             return ['clientId' => $clientId, 'clientSecret' => $clientSecret];
         }
 

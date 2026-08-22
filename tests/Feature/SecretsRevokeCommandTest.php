@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\DeleteUserGrantRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
 use Saloon\Http\Faking\MockClient;
@@ -27,14 +29,19 @@ test('secrets:revoke removes exactly the named role when --role is given', funct
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'rbac-proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-my-app-local-developer']]]])
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => []]]]),
-        '*/management/v1/users/uid-1/grants/grant-1' => Http::response([]),
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'rbac-proj-1']]]),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-my-app-local-developer']]]])
+                : MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => []]]]);
+        },
+        DeleteUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('secrets:revoke', [
         'environment' => 'local',
@@ -47,8 +54,7 @@ test('secrets:revoke removes exactly the named role when --role is given', funct
         ->assertExitCode(0)
         ->expectsOutputToContain('Revoked [secrets-my-app-local-developer] from dev@example.com');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants/grant-1')
-        && $request->method() === 'DELETE');
+    Saloon::assertSent(DeleteUserGrantRequest::class);
 });
 
 test('secrets:revoke reports nothing to revoke when the user holds no access for this app/env', function (): void {
@@ -58,11 +64,11 @@ test('secrets:revoke reports nothing to revoke when the user holds no access for
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'rbac-proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::response(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-other-app-local-developer']]]]),
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'rbac-proj-1']]]),
+        SearchUserGrantsRequest::class => MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-other-app-local-developer']]]]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('secrets:revoke', [
         'environment' => 'local',
@@ -81,10 +87,10 @@ test('secrets:revoke rejects an invalid role', function (): void {
         '*' => Process::result(),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'rbac-proj-1']]]),
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'rbac-proj-1']]]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('secrets:revoke', [
         'environment' => 'local',

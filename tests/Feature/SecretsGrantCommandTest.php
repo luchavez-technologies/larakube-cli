@@ -1,5 +1,10 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\CreateProjectRoleRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateUserGrantRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -37,17 +42,24 @@ test('secrets:grant wires an app-scoped OpenBao policy/role and grants the Zitad
     ]));
 
     Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'rbac-proj-1']]]),
-        '*/management/v1/projects/rbac-proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/rbac-proj-1/roles' => Http::response([]),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => []])
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-my-app-local-developer']]]]),
-        '*/management/v1/users/uid-1/grants' => Http::response([]),
         'localhost:*/v1/sys/policies/acl/*' => Http::response([]),
         'localhost:*/v1/auth/oidc/role/*' => Http::response([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'rbac-proj-1']]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => []])
+                : MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-my-app-local-developer']]]]);
+        },
+        CreateUserGrantRequest::class => MockResponse::make([]),
+    ]);
 
     $this->artisan('secrets:grant', [
         'environment' => 'local',
@@ -68,9 +80,8 @@ test('secrets:grant wires an app-scoped OpenBao policy/role and grants the Zitad
         && $request->method() === 'PUT'
         && $request['bound_claims']['larakube_roles'] === 'secrets-my-app-local-developer');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants')
-        && ! str_contains($request->url(), '_search')
-        && $request['roleKeys'] === ['secrets-my-app-local-developer']);
+    Saloon::assertSent(fn ($request) => $request instanceof CreateUserGrantRequest
+        && $request->body()->get('roleKeys') === ['secrets-my-app-local-developer']);
 });
 
 test('secrets:grant rejects an invalid role', function (): void {

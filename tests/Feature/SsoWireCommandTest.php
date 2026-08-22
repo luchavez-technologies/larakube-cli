@@ -2,7 +2,19 @@
 
 use App\Commands\Sso\SsoWireCommand;
 use App\Data\GlobalConfigData;
+use App\Http\Integrations\Zitadel\Requests\CreateOidcAppRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateProjectRoleRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateUserGrantRequest;
+use App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest;
+use App\Http\Integrations\Zitadel\Requests\GetProjectAppRequest;
+use App\Http\Integrations\Zitadel\Requests\GetProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectAppsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
+use App\Http\Integrations\Zitadel\Requests\UpdateProjectRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
@@ -85,17 +97,19 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
         ]);
 
         Http::fake([
-            '*apps/_search' => Http::response(['result' => []]),
-            '*projects/_search' => Http::response(['result' => []]),
-            '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-            '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
-            '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-            '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-            '*/management/v1/projects/proj-1/roles' => Http::response([]),
             '*/management/v1/actions/_search' => Http::response(['result' => []]),
             '*/management/v1/actions' => Http::response(['id' => 'action-1']),
             '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
             '*/management/v1/flows/2/trigger/*' => Http::response([]),
+        ]);
+        Saloon::fake([
+            SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+            SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+            CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+            CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+            GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+            SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+            CreateProjectRoleRequest::class => MockResponse::make([]),
         ]);
 
         $this->artisan('sso:wire', ['environment' => 'production', '--tool' => 'dashboard', '--no-interaction' => true])
@@ -103,8 +117,8 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
             ->doesntExpectOutputToContain('No host is configured')
             ->expectsOutputToContain('wired to Zitadel SSO');
 
-        Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-            && str_contains($request['redirectUris'][0] ?? '', 'dashboard.luchtech.dev'));
+        Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+            && str_contains($request->body()->get('redirectUris')[0] ?? '', 'dashboard.luchtech.dev'));
     } finally {
         chdir($cwd);
         $temporaryDirectory->delete();
@@ -123,20 +137,22 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
-        // Grafana is RBAC-gated (ClusterTool::requiresRbacGating) — sso:wire
-        // also ensures the LaraKube RBAC project's role-assertion, the
-        // grafana-user role, and the org-wide claim-flattening Action.
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        // Grafana is RBAC-gated (ClusterTool::requiresRbacGating) — sso:wire
+        // also ensures the LaraKube RBAC project's role-assertion, the
+        // grafana-user role, and the org-wide claim-flattening Action.
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
@@ -144,8 +160,8 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
         ->expectsOutputToContain('Registering Monitoring Stack (Grafana + Loki + Prometheus) as an OIDC client in Zitadel')
         ->expectsOutputToContain('wired to Zitadel SSO');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['redirectUris'][0] === 'https://grafana.'.GlobalConfigData::load()->getLocalTld().'/login/generic_oauth');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+        && $request->body()->get('redirectUris')[0] === 'https://grafana.'.GlobalConfigData::load()->getLocalTld().'/login/generic_oauth');
 
     // The actual point of the 2026-08-20 per-tool-project change: Monitor
     // registers under its OWN project, not the old shared 'LaraKube RBAC'
@@ -154,9 +170,8 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
     // project-wide in Zitadel, not per-role). The project name is the exact
     // live Deployment name (2026-08-20, replacing the earlier "LaraKube
     // RBAC: {brand}" scheme) — no separate naming convention to keep in sync.
-    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
-        && $request->method() === 'POST'
-        && $request['name'] === 'grafana');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
+        && $request->body()->get('name') === 'grafana');
 });
 
 test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, never as a literal env override', function (): void {
@@ -175,17 +190,19 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'monitor', '--sso-only' => true, '--no-interaction' => true])
@@ -218,17 +235,19 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
@@ -266,20 +285,22 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
     // flattenOcisRoles Actions, and all three roles (ocisUser from
     // rbacRoles(), ocisAdmin/ocisSpaceAdmin from ssoAdminRoles()).
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         // Already asserted (both flags true) — this test isn't about the
         // projectRoleAssertion/projectRoleCheck state-transition dance,
         // that has its own dedicated coverage below.
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $tld = GlobalConfigData::load()->getLocalTld();
@@ -294,13 +315,13 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
     // RP-initiated logout also sends its origin root to end_session, so that
     // root is registered as the post-logout redirect URI (missing it 400s every
     // logout — the live bug fixed 2026-08-01).
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['authMethodType'] === 'OIDC_AUTH_METHOD_TYPE_NONE'
-        && $request['redirectUris'] === [
+    Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+        && $request->body()->get('authMethodType') === 'OIDC_AUTH_METHOD_TYPE_NONE'
+        && $request->body()->get('redirectUris') === [
             "https://drive.{$tld}/oidc-callback.html",
             "https://drive.{$tld}/oidc-silent-redirect.html",
         ]
-        && ($request['postLogoutRedirectUris'] ?? null) === ["https://drive.{$tld}/"]);
+        && ($request->body()->get('postLogoutRedirectUris') ?? null) === ["https://drive.{$tld}/"]);
 
     // No client secret is stored for the public client, so nothing stale leaks
     // onto the deployment when applyToolEnv rewrites the secret.
@@ -328,10 +349,6 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => [['id' => 'app-stale']]]),
-        '*projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/projects/proj-1/apps/app-stale' => Http::response(['app' => ['id' => 'app-stale', 'oidcConfig' => ['redirectUris' => ["https://drive.{$tld}/"]]]]),
-        '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         // The ocisRoles Action must be ensured (and found already attached),
         // and the ocisAdmin role must already exist on the tool's own
         // project — Drive is rbacRoles()+ssoAdminRoles() together
@@ -341,11 +358,19 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
         '*/management/v1/actions' => Http::response(['id' => 'action-larakube']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
-            $key = data_get($request, 'queries.0.keyQuery.key', '');
+    ]);
+    Saloon::fake([
+        // SsoWireCommand's own staleness pre-check GET (by the CACHED app-id).
+        GetProjectAppRequest::class => MockResponse::make(['app' => ['id' => 'app-stale', 'oidcConfig' => ['redirectUris' => ["https://drive.{$tld}/"]]]]),
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => [['id' => 'app-stale']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        DeleteProjectAppRequest::class => MockResponse::make([]),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => function ($pendingRequest) {
+            $key = $pendingRequest->getRequest()->body()->get('queries')[0]['keyQuery']['key'] ?? '';
 
-            return Http::response(['result' => [['key' => $key]]]);
+            return MockResponse::make(['result' => [['key' => $key]]]);
         },
     ]);
 
@@ -355,16 +380,16 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
 
     // The stale confidential registration is deleted and replaced by a public
     // PKCE client with the real callback pages, not silently reused.
-    Http::assertSent(fn ($request) => $request->method() === 'DELETE'
-        && str_contains($request->url(), '/projects/proj-1/apps/app-stale'));
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['authMethodType'] === 'OIDC_AUTH_METHOD_TYPE_NONE'
-        && $request['redirectUris'] === [
+    Saloon::assertSent(fn ($request) => $request instanceof DeleteProjectAppRequest
+        && $request->resolveEndpoint() === 'management/v1/projects/proj-1/apps/app-stale');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+        && $request->body()->get('authMethodType') === 'OIDC_AUTH_METHOD_TYPE_NONE'
+        && $request->body()->get('redirectUris') === [
             "https://drive.{$tld}/oidc-callback.html",
             "https://drive.{$tld}/oidc-silent-redirect.html",
         ]);
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['authMethodType'] !== 'OIDC_AUTH_METHOD_TYPE_NONE');
+    Saloon::assertNotSent(fn ($request) => $request instanceof CreateOidcAppRequest
+        && $request->body()->get('authMethodType') !== 'OIDC_AUTH_METHOD_TYPE_NONE');
 });
 
 test('sso:wire re-registers a Drive app whose redirect URIs match but post-logout URIs are missing', function (): void {
@@ -389,24 +414,27 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
     // redirect URIs alone must NOT gate reuse — the post-logout set has to be
     // compared too, or re-wiring silently leaves logout broken.
     Http::fake([
-        '*projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        // The name-keyed search inside zitadelCreateOidcApp finds the old app
-        // and deletes it, then the fresh registration is created below.
-        '*apps/_search' => Http::response(['result' => [['id' => 'app-live']]]),
-        '*/management/v1/projects/proj-1/apps/app-live' => Http::response(['app' => ['id' => 'app-live', 'oidcConfig' => ['redirectUris' => [
-            "https://drive.{$tld}/oidc-callback.html",
-            "https://drive.{$tld}/oidc-silent-redirect.html",
-        ]]]]),
-        '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         '*/management/v1/actions/_search' => Http::response(['result' => [['id' => 'action-ocis', 'name' => 'flattenOcisRoles', 'script' => SsoWireCommand::OCIS_ROLES_SCRIPT]]]),
         '*/management/v1/actions' => Http::response(['id' => 'action-larakube']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
-            $key = data_get($request, 'queries.0.keyQuery.key', '');
+    ]);
+    Saloon::fake([
+        GetProjectAppRequest::class => MockResponse::make(['app' => ['id' => 'app-live', 'oidcConfig' => ['redirectUris' => [
+            "https://drive.{$tld}/oidc-callback.html",
+            "https://drive.{$tld}/oidc-silent-redirect.html",
+        ]]]]),
+        // The name-keyed search inside zitadelCreateOidcApp finds the old app
+        // and deletes it, then the fresh registration is created below.
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => [['id' => 'app-live']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        DeleteProjectAppRequest::class => MockResponse::make([]),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => function ($pendingRequest) {
+            $key = $pendingRequest->getRequest()->body()->get('queries')[0]['keyQuery']['key'] ?? '';
 
-            return Http::response(['result' => [['key' => $key]]]);
+            return MockResponse::make(['result' => [['key' => $key]]]);
         },
     ]);
 
@@ -416,10 +444,10 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
 
     // The old app is replaced (delete + re-register) and the new registration
     // carries the origin root as a post-logout redirect URI.
-    Http::assertSent(fn ($request) => $request->method() === 'DELETE'
-        && str_contains($request->url(), '/projects/proj-1/apps/app-live'));
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && ($request['postLogoutRedirectUris'] ?? null) === ["https://drive.{$tld}/"]);
+    Saloon::assertSent(fn ($request) => $request instanceof DeleteProjectAppRequest
+        && $request->resolveEndpoint() === 'management/v1/projects/proj-1/apps/app-live');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+        && ($request->body()->get('postLogoutRedirectUris') ?? null) === ["https://drive.{$tld}/"]);
 });
 
 test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rbacRoles(), and grants ocisAdmin via --admin-email', function (): void {
@@ -439,38 +467,37 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
     // runs second and, seeing assertion already true, does NOT re-PUT (its
     // own check is satisfied by the first step alone) — this stateful fake
     // mirrors that real sequential dependency instead of a static snapshot.
-    $projectGated = false;
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         // Neither Action exists yet — both must be created.
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-ocis']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        '*/management/v1/projects/proj-1' => function ($request) use (&$projectGated) {
-            if ($request->method() === 'PUT') {
-                $projectGated = true;
-
-                return Http::response(['details' => []]);
-            }
-
-            return Http::response(['project' => [
+    ]);
+    $projectGated = false;
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
+        GetProjectRequest::class => function () use (&$projectGated) {
+            return MockResponse::make(['project' => [
                 'id' => 'proj-1',
                 'name' => 'drive-ocis',
                 'projectRoleAssertion' => $projectGated,
                 'projectRoleCheck' => $projectGated,
             ]]);
         },
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
-        '*/management/v1/users/grants/_search' => Http::response(['result' => []]),
-        '*/management/v1/users/uid-1/grants' => Http::response([]),
-    ]);
-    Saloon::fake([
+        UpdateProjectRequest::class => function () use (&$projectGated) {
+            $projectGated = true;
+
+            return MockResponse::make(['details' => []]);
+        },
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
         SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchUserGrantsRequest::class => MockResponse::make(['result' => []]),
+        CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'drive', '--admin-email' => 'admin@luchtech.dev', '--no-interaction' => true])
@@ -489,9 +516,8 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
 
     // The ocisUser role (rbacRoles()) is created on Drive's own project —
     // the base gate an operator grants for plain "can log in" access.
-    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects/proj-1/roles')
-        && $request->method() === 'POST'
-        && $request['roleKey'] === 'ocisUser');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRoleRequest
+        && $request->body()->get('roleKey') === 'ocisUser');
 
     // The org-wide flattenOcisRoles Action was created with the ocisUser
     // fallback so nobody gets locked out under PROXY_ROLE_ASSIGNMENT_DRIVER=
@@ -509,18 +535,15 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
     // Drive's own project gains BOTH flags — projectRoleCheck is the actual
     // login gate, unlike a plain ssoAdminRoles()-only tool (e.g. a future
     // one) where it must stay off so zero-role members can still log in.
-    Http::assertSent(fn ($request) => $request->method() === 'PUT'
-        && str_contains($request->url(), '/management/v1/projects/proj-1')
-        && $request['projectRoleAssertion'] === true
-        && $request['projectRoleCheck'] === true);
+    Saloon::assertSent(fn ($request) => $request instanceof UpdateProjectRequest
+        && $request->body()->get('projectRoleAssertion') === true
+        && $request->body()->get('projectRoleCheck') === true);
 
     // Both drive admin roles were granted to the --admin-email user on
     // Drive's own project.
     foreach (['ocisAdmin', 'ocisSpaceAdmin'] as $roleKey) {
-        Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants')
-            && ! str_contains($request->url(), '_search')
-            && $request->method() === 'POST'
-            && $request['roleKeys'] === [$roleKey]);
+        Saloon::assertSent(fn ($request) => $request instanceof CreateUserGrantRequest
+            && $request->body()->get('roleKeys') === [$roleKey]);
     }
 });
 
@@ -540,10 +563,6 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
     // rather than treating the name match as "already done" (the old bug would
     // have left the claim emitter permanently stuck on ocisAdmin/ocisUser).
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
         // Only flattenOcisRoles exists (stale script) — flattenLaraKubeRoles
         // (needed now that Drive also has rbacRoles()) doesn't, so it gets
         // freshly created via the generic '/management/v1/actions' POST.
@@ -552,11 +571,17 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
         '*/management/v1/actions' => Http::response(['id' => 'action-larakube']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
-            $key = data_get($request, 'queries.0.keyQuery.key', '');
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => function ($pendingRequest) {
+            $key = $pendingRequest->getRequest()->body()->get('queries')[0]['keyQuery']['key'] ?? '';
 
-            return Http::response(['result' => [['key' => $key]]]);
+            return MockResponse::make(['result' => [['key' => $key]]]);
         },
     ]);
 
@@ -598,22 +623,24 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => function ($request) {
-            $key = data_get($request, 'queries.0.keyQuery.key', '');
-
-            return Http::response(['result' => [['key' => $key]]]);
-        },
         '*/management/v1/actions/_search' => Http::response(['result' => [
             ['id' => 'action-rbac', 'name' => 'flattenLaraKubeRoles', 'script' => 'function flattenLaraKubeRoles(ctx, api) { api.v1.claims.setClaim("larakube_roles", []); }'],
         ]]),
         '*/management/v1/actions/action-rbac' => Http::response([]),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => function ($pendingRequest) {
+            $key = $pendingRequest->getRequest()->body()->get('queries')[0]['keyQuery']['key'] ?? '';
+
+            return MockResponse::make(['result' => [['key' => $key]]]);
+        },
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'dashboard', '--no-interaction' => true])
@@ -638,30 +665,32 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
-        // A fresh/never-configured project — neither flag set yet. This is
-        // the actual "first tool wired on this cluster" scenario, distinct
-        // from the other tests' already-both-true steady state.
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC']]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        // A fresh/never-configured project — neither flag set yet. This is
+        // the actual "first tool wired on this cluster" scenario, distinct
+        // from the other tests' already-both-true steady state.
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC']]),
+        UpdateProjectRequest::class => MockResponse::make(['details' => []]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('Nobody, including you, can SSO into Monitoring Stack (Grafana + Loki + Prometheus) until then');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/proj-1')
-        && $request->method() === 'PUT'
-        && $request['projectRoleAssertion'] === true
-        && $request['projectRoleCheck'] === true);
+    Saloon::assertSent(fn ($request) => $request instanceof UpdateProjectRequest
+        && $request->body()->get('projectRoleAssertion') === true
+        && $request->body()->get('projectRoleCheck') === true);
 });
 
 test('sso:wire aborts before registering an OIDC client if role-gating setup fails', function (): void {
@@ -677,18 +706,20 @@ test('sso:wire aborts before registering an OIDC client if role-gating setup fai
     // and wire bound_claims/role_attribute_path against infrastructure that
     // was never confirmed to exist.
     Http::fake([
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         '*/management/v1/actions/_search' => Http::response(['code' => 3, 'message' => 'proto: syntax error'], 400),
         '*/management/v1/actions' => Http::response(['code' => 6, 'message' => 'Errors.Action.AlreadyExists'], 409),
+    ]);
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('Could not set up role-gated access');
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/apps/oidc'));
+    Saloon::assertNotSent(CreateOidcAppRequest::class);
 });
 
 test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated tool', function (): void {
@@ -718,18 +749,20 @@ test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'proxy-cid', 'clientSecret' => 'proxy-csecret']),
-        // record's own RBAC gating, same mechanism as the native-OIDC path.
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'proxy-cid', 'clientSecret' => 'proxy-csecret']),
+        // record's own RBAC gating, same mechanism as the native-OIDC path.
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'record', '--no-interaction' => true])
@@ -753,11 +786,13 @@ test('sso:wire aborts before deploying the ForwardAuth proxy if role-gating setu
     ]);
 
     Http::fake([
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         '*/management/v1/actions/_search' => Http::response(['code' => 3, 'message' => 'proto: syntax error'], 400),
         '*/management/v1/actions' => Http::response(['code' => 6, 'message' => 'Errors.Action.AlreadyExists'], 409),
+    ]);
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'record', '--no-interaction' => true])
@@ -765,7 +800,7 @@ test('sso:wire aborts before deploying the ForwardAuth proxy if role-gating setu
         ->expectsOutputToContain('Could not set up role-gated access');
 
     // Never gets as far as registering the shared proxy's own OIDC app.
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/apps/oidc'));
+    Saloon::assertNotSent(CreateOidcAppRequest::class);
 });
 
 test('sso:wire gates Outline behind Zitadel roles — the actual tool from the live 2026-08-20 incident', function (): void {
@@ -785,38 +820,38 @@ test('sso:wire gates Outline behind Zitadel roles — the actual tool from the l
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
-        // Deliberately reports both flags off, unlike the other RBAC tests
-        // in this file — so the PUT that actually turns them on gets
-        // exercised and asserted below, instead of short-circuiting.
-        '*/management/v1/projects/proj-1' => Http::sequence()
-            ->push(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => false, 'projectRoleCheck' => false]])
-            ->whenEmpty(Http::response([])),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        // Deliberately reports both flags off, unlike the other RBAC tests
+        // in this file — so the PUT that actually turns them on gets
+        // exercised and asserted below, instead of short-circuiting.
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => false, 'projectRoleCheck' => false]]),
+        UpdateProjectRequest::class => MockResponse::make([]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'notes', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['redirectUris'][0] === 'https://notes.'.GlobalConfigData::load()->getLocalTld().'/auth/oidc.callback');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+        && $request->body()->get('redirectUris')[0] === 'https://notes.'.GlobalConfigData::load()->getLocalTld().'/auth/oidc.callback');
 
     // The project role check must actually get turned on — this is what
     // would have stopped the incident: a zero-role login denied at the
     // Zitadel layer, before Outline's own app is ever reached.
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/proj-1')
-        && $request->method() === 'PUT'
-        && ($request['projectRoleCheck'] ?? null) === true
-        && ($request['projectRoleAssertion'] ?? null) === true);
+    Saloon::assertSent(fn ($request) => $request instanceof UpdateProjectRequest
+        && ($request->body()->get('projectRoleCheck') ?? null) === true
+        && ($request->body()->get('projectRoleAssertion') ?? null) === true);
 });
 
 test('sso:wire reuses an already-registered OIDC client', function (): void {
@@ -835,22 +870,25 @@ test('sso:wire reuses an already-registered OIDC client', function (): void {
     // Keyed on the APP id, not the client id. Zitadel's app endpoint 404s on a
     // client id, so faking that URL only ever agreed with the bug.
     $tld = GlobalConfigData::load()->getLocalTld();
+
     Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        // The GET returns the registered app's current redirect URIs — the wire
-        // command compares them against the tool's desired set and only reuses
-        // when they still match (a stale registration, like drive's old
-        // confidential root-only app, must be re-registered instead).
-        '*/management/v1/projects/proj-1/apps/cached-appid' => Http::response(['app' => ['id' => 'cached-appid', 'oidcConfig' => ['redirectUris' => ["https://grafana.{$tld}/login/generic_oauth"]]]]),
-        // Grafana is RBAC-gated — see the equivalent fakes in the "registers
-        // a new OIDC client" test above for what each endpoint is for.
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        // The GET returns the registered app's current redirect URIs — the wire
+        // command compares them against the tool's desired set and only reuses
+        // when they still match (a stale registration, like drive's old
+        // confidential root-only app, must be re-registered instead).
+        GetProjectAppRequest::class => MockResponse::make(['app' => ['id' => 'cached-appid', 'oidcConfig' => ['redirectUris' => ["https://grafana.{$tld}/login/generic_oauth"]]]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        // Grafana is RBAC-gated — see the equivalent fakes in the "registers
+        // a new OIDC client" test above for what each endpoint is for.
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
@@ -859,7 +897,7 @@ test('sso:wire reuses an already-registered OIDC client', function (): void {
         ->expectsOutputToContain('wired to Zitadel SSO');
 
     // Reuse means reuse: no re-registration, so the client secret is not rotated.
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/apps/oidc'));
+    Saloon::assertNotSent(CreateOidcAppRequest::class);
 });
 
 test('sso:wire writes three bound_claims-gated roles to OpenBao, not one unconditional-admin role', function (): void {
@@ -879,17 +917,19 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'secrets', '--no-interaction' => true])
@@ -974,22 +1014,24 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        '*/management/v1/actions/_search' => Http::response(['result' => []]),
+        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
+        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
+        '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
         // Kutt is RBAC-gated (ClusterTool::requiresRbacGating, added
         // 2026-08-20 — a partner org's SSO login could otherwise reach ANY
         // login-only-wired tool) — sso:wire also ensures the LaraKube RBAC
         // project's role-assertion, the kutt-user role, and the org-wide
         // claim-flattening Action.
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
-        '*/management/v1/actions/_search' => Http::response(['result' => []]),
-        '*/management/v1/actions' => Http::response(['id' => 'action-1']),
-        '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
-        '*/management/v1/flows/2/trigger/*' => Http::response([]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'link', '--no-interaction' => true])
@@ -997,8 +1039,8 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         ->expectsOutputToContain('Registering Link Management (Kutt) as an OIDC client in Zitadel')
         ->expectsOutputToContain('Link Management (Kutt) is wired to Zitadel SSO');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['redirectUris'][0] === 'https://link.'.GlobalConfigData::load()->getLocalTld().'/login/oidc');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+        && $request->body()->get('redirectUris')[0] === 'https://link.'.GlobalConfigData::load()->getLocalTld().'/login/oidc');
 
     // Wiring must still patch the deployment with the link-oidc secret and
     // flip OIDC_ENABLED on. Per ADR 0018, OIDC_ENABLED reaches the
@@ -1019,9 +1061,8 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
     // on its very first wire), so its project name carries that suffix
     // from day one too, not just once a literal second instance exists.
     $expectedSlug = 'link-'.GlobalConfigData::load()->getLocalTld();
-    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
-        && $request->method() === 'POST'
-        && $request['name'] === "link-kutt-{$expectedSlug}");
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
+        && $request->body()->get('name') === "link-kutt-{$expectedSlug}");
 });
 
 test('sso:wire registers a new OIDC client and wires it to Directus (data)', function (): void {
@@ -1035,11 +1076,11 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
         '*rollout restart*' => Process::result(output: 'deployment.apps/data-directus restarted'),
     ]);
 
-    Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true])
@@ -1047,8 +1088,8 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
         ->expectsOutputToContain('Registering Headless CMS & Data API (PocketBase or Directus) as an OIDC client in Zitadel')
         ->expectsOutputToContain('Headless CMS & Data API (PocketBase or Directus) is wired to Zitadel SSO');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['redirectUris'][0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+        && $request->body()->get('redirectUris')[0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-directus'));
 });
@@ -1071,11 +1112,11 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
 
-    Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/apps/oidc' => Http::response(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
     ]);
 
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
@@ -1098,8 +1139,8 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
             ->expectsOutputToContain('Registering Headless CMS & Data API (PocketBase or Directus) as an OIDC client in Zitadel')
             ->expectsOutputToContain('Headless CMS & Data API (PocketBase or Directus) is wired to Zitadel SSO');
 
-        Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-            && $request['redirectUris'][0] === 'https://pocket.luchtech.dev/api/oauth2-callback');
+        Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+            && $request->body()->get('redirectUris')[0] === 'https://pocket.luchtech.dev/api/oauth2-callback');
     } finally {
         chdir($cwd);
         $temporaryDirectory->delete();
@@ -1118,13 +1159,14 @@ test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', fu
         '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
-    Http::fake(['*/management/v1/projects/proj-1/apps/app-1' => Http::response([], 200)]);
+    Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);
 
     $this->artisan('sso:unwire', ['--tool' => 'monitor', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/proj-1/apps/app-1') && $request->method() === 'DELETE');
+    Saloon::assertSent(fn ($request) => $request instanceof DeleteProjectAppRequest
+        && $request->resolveEndpoint() === 'management/v1/projects/proj-1/apps/app-1');
 });
 
 test('sso:wire resolves the main DATA instance\'s own engine, not contaminated by a second instance\'s', function (): void {
@@ -1146,11 +1188,11 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
         '*rollout restart*' => Process::result(output: 'deployment.apps/data-directus restarted'),
     ]);
 
-    Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true])
@@ -1159,8 +1201,8 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
 
     // Directus's schema, not PocketBase's — proves the main instance's own
     // engine was resolved, not the OTHER instance's.
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/apps/oidc')
-        && $request['redirectUris'][0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
+        && $request->body()->get('redirectUris')[0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-directus'));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/data-pocketbase'));
 });
@@ -1187,20 +1229,22 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-design', 'clientId' => 'cid-design', 'clientSecret' => 'csecret-design']),
-        // Design (Penpot) is RBAC-gated (added 2026-08-21 — confirmed live
-        // that a partner-org identity could reach it via plain Zitadel SSO,
-        // same exposure Outline had).
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'design-penpot', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-design', 'clientId' => 'cid-design', 'clientSecret' => 'csecret-design']),
+        // Design (Penpot) is RBAC-gated (added 2026-08-21 — confirmed live
+        // that a partner-org identity could reach it via plain Zitadel SSO,
+        // same exposure Outline had).
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'design-penpot', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'design', '--no-interaction' => true])
@@ -1235,20 +1279,22 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-git', 'clientId' => 'cid-git', 'clientSecret' => 'csecret-git']),
-        // Git is RBAC-gated (added 2026-08-20 at the user's explicit
-        // request — a git forge holding real source/CI credentials must
-        // not be reachable by every org member, e.g. a future partner).
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'forgejo', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-git', 'clientId' => 'cid-git', 'clientSecret' => 'csecret-git']),
+        // Git is RBAC-gated (added 2026-08-20 at the user's explicit
+        // request — a git forge holding real source/CI credentials must
+        // not be reachable by every org member, e.g. a future partner).
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'forgejo', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'git', '--no-interaction' => true])
@@ -1282,17 +1328,19 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
     ]);
 
     Http::fake([
-        '*apps/_search' => Http::response(['result' => []]),
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
-        '*/apps/oidc' => Http::response(['appId' => 'app-git', 'clientId' => 'cid-git', 'clientSecret' => 'csecret-git']),
-        '*/management/v1/projects/proj-1' => Http::response(['project' => ['id' => 'proj-1', 'name' => 'forgejo', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
-        '*/management/v1/projects/proj-1/roles/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/proj-1/roles' => Http::response([]),
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
+    ]);
+    Saloon::fake([
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-git', 'clientId' => 'cid-git', 'clientSecret' => 'csecret-git']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'forgejo', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'git', '--no-interaction' => true])

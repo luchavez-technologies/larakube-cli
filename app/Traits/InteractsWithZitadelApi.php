@@ -4,15 +4,31 @@ namespace App\Traits;
 
 use App\Http\Integrations\Zitadel\Requests\AddOrgDomainRequest;
 use App\Http\Integrations\Zitadel\Requests\AddOrgMemberRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateOidcAppRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateOrganizationRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateProjectGrantRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateProjectRoleRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
 use App\Http\Integrations\Zitadel\Requests\DeactivateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest;
+use App\Http\Integrations\Zitadel\Requests\DeleteUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteUserRequest;
 use App\Http\Integrations\Zitadel\Requests\GenerateOrgDomainValidationRequest;
+use App\Http\Integrations\Zitadel\Requests\GetProjectRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrgDomainsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectAppsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectGrantsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use App\Http\Integrations\Zitadel\Requests\SetUserPasswordRequest;
+use App\Http\Integrations\Zitadel\Requests\UpdateProjectGrantRequest;
+use App\Http\Integrations\Zitadel\Requests\UpdateProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\UpdateUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\ValidateOrgDomainRequest;
 use App\Http\Integrations\Zitadel\ZitadelConnector;
 use Illuminate\Support\Facades\Http;
@@ -225,9 +241,8 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelEnsureProject(string $host, string $pat, string $name = 'LaraKube'): ?string
     {
-        $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/management/v1/projects/_search", [
-            'queries' => [['nameQuery' => ['name' => $name, 'method' => 'TEXT_QUERY_METHOD_EQUALS']]],
-        ]);
+        $connector = ZitadelConnector::make($host, $pat);
+        $search = $connector->send(SearchProjectsRequest::make($name));
 
         if ($search->successful()) {
             $existing = $search->json('result.0.id');
@@ -236,9 +251,7 @@ trait InteractsWithZitadelApi
             }
         }
 
-        $create = Http::withToken($pat)->timeout(15)->post("https://{$host}/management/v1/projects", [
-            'name' => $name,
-        ]);
+        $create = $connector->send(CreateProjectRequest::make($name));
 
         return $create->successful() ? $create->json('id') : null;
     }
@@ -257,48 +270,22 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelCreateOidcApp(string $host, string $pat, string $projectId, string $name, array|string $redirectUri, bool $publicClient = false, array $postLogoutRedirectUris = []): ?array
     {
+        $connector = ZitadelConnector::make($host, $pat);
+
         // 1. Delete existing app by name if present (idempotent overwrite)
-        $search = Http::withToken($pat)->timeout(15)->post(
-            "https://{$host}/management/v1/projects/{$projectId}/apps/_search",
-            [
-                'queries' => [['nameQuery' => ['name' => $name, 'method' => 'TEXT_QUERY_METHOD_EQUALS']]],
-            ],
-        );
+        $search = $connector->send(SearchProjectAppsRequest::make($projectId, $name));
 
         if ($search->successful()) {
             $existingAppId = $search->json('result.0.id');
             if ($existingAppId !== null) {
-                Http::withToken($pat)->timeout(15)->delete("https://{$host}/management/v1/projects/{$projectId}/apps/{$existingAppId}");
+                $connector->send(DeleteProjectAppRequest::make($projectId, $existingAppId));
             }
         }
 
         // 2. Create OIDC app with full redirect URIs
         $redirectUris = array_values(array_unique((array) $redirectUri));
         $postLogoutRedirectUris = array_values(array_unique($postLogoutRedirectUris));
-        $body = [
-            'name' => $name,
-            'redirectUris' => $redirectUris,
-            'responseTypes' => ['OIDC_RESPONSE_TYPE_CODE'],
-            'grantTypes' => ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE', 'OIDC_GRANT_TYPE_REFRESH_TOKEN'],
-            'appType' => 'OIDC_APP_TYPE_WEB',
-            'authMethodType' => $publicClient ? 'OIDC_AUTH_METHOD_TYPE_NONE' : 'OIDC_AUTH_METHOD_TYPE_BASIC',
-            'accessTokenType' => 'OIDC_TOKEN_TYPE_BEARER',
-            // Assert userinfo (email, name, …) INTO the ID token. Zitadel
-            // otherwise serves those claims only from the userinfo endpoint,
-            // but ID-token-reading clients (Documenso/NextAuth) then fail
-            // with "Missing email". Harmless for userinfo-reading clients.
-            'idTokenUserinfoAssertion' => true,
-        ];
-        if ($postLogoutRedirectUris !== []) {
-            // SPAs that use RP-initiated logout (oCIS web) send their own
-            // origin root to end_session; Zitadel 400s it ("post_logout_redirect_uri
-            // invalid") unless pre-registered here — the live logout bug.
-            $body['postLogoutRedirectUris'] = $postLogoutRedirectUris;
-        }
-        $response = Http::withToken($pat)->timeout(15)->post(
-            "https://{$host}/management/v1/projects/{$projectId}/apps/oidc",
-            $body,
-        );
+        $response = $connector->send(CreateOidcAppRequest::make($projectId, $name, $redirectUris, $publicClient, $postLogoutRedirectUris));
 
         if ($response->failed()) {
             return null;
@@ -318,8 +305,8 @@ trait InteractsWithZitadelApi
     /** Deregister an OIDC app created by zitadelCreateOidcApp(). */
     protected function zitadelDeleteOidcApp(string $host, string $pat, string $projectId, string $appId): bool
     {
-        return Http::withToken($pat)->timeout(15)
-            ->delete("https://{$host}/management/v1/projects/{$projectId}/apps/{$appId}")
+        return ZitadelConnector::make($host, $pat)
+            ->send(DeleteProjectAppRequest::make($projectId, $appId))
             ->successful();
     }
 
@@ -346,7 +333,8 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelEnsureRbacProjectSettings(string $host, string $pat, string $projectId): bool
     {
-        $get = Http::withToken($pat)->timeout(15)->get("https://{$host}/management/v1/projects/{$projectId}");
+        $connector = ZitadelConnector::make($host, $pat);
+        $get = $connector->send(GetProjectRequest::make($projectId));
         if ($get->failed()) {
             return false;
         }
@@ -356,12 +344,13 @@ trait InteractsWithZitadelApi
             return true;
         }
 
-        return Http::withToken($pat)->timeout(15)->put("https://{$host}/management/v1/projects/{$projectId}", [
-            'name' => $project['name'],
-            'projectRoleAssertion' => true,
-            'projectRoleCheck' => true,
-            'hasProjectCheck' => $project['hasProjectCheck'] ?? false,
-        ])->successful();
+        return $connector->send(UpdateProjectRequest::make(
+            $projectId,
+            $project['name'],
+            true,
+            true,
+            $project['hasProjectCheck'] ?? false,
+        ))->successful();
     }
 
     /**
@@ -387,7 +376,8 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelEnsureSsoAdminProjectSettings(string $host, string $pat, string $projectId): bool
     {
-        $get = Http::withToken($pat)->timeout(15)->get("https://{$host}/management/v1/projects/{$projectId}");
+        $connector = ZitadelConnector::make($host, $pat);
+        $get = $connector->send(GetProjectRequest::make($projectId));
         if ($get->failed()) {
             return false;
         }
@@ -397,12 +387,13 @@ trait InteractsWithZitadelApi
             return true;
         }
 
-        return Http::withToken($pat)->timeout(15)->put("https://{$host}/management/v1/projects/{$projectId}", [
-            'name' => $project['name'],
-            'projectRoleAssertion' => true,
-            'projectRoleCheck' => $project['projectRoleCheck'] ?? false,
-            'hasProjectCheck' => $project['hasProjectCheck'] ?? false,
-        ])->successful();
+        return $connector->send(UpdateProjectRequest::make(
+            $projectId,
+            $project['name'],
+            true,
+            $project['projectRoleCheck'] ?? false,
+            $project['hasProjectCheck'] ?? false,
+        ))->successful();
     }
 
     /**
@@ -413,19 +404,14 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelEnsureProjectRole(string $host, string $pat, string $projectId, string $roleKey, string $displayName): bool
     {
-        $search = Http::withToken($pat)->timeout(15)->post(
-            "https://{$host}/management/v1/projects/{$projectId}/roles/_search",
-            ['queries' => [['keyQuery' => ['key' => $roleKey]]]],
-        );
+        $connector = ZitadelConnector::make($host, $pat);
+        $search = $connector->send(SearchProjectRolesRequest::make($projectId, $roleKey));
 
         if ($search->successful() && $search->json('result.0.key') === $roleKey) {
             return true;
         }
 
-        return Http::withToken($pat)->timeout(15)->post(
-            "https://{$host}/management/v1/projects/{$projectId}/roles",
-            ['roleKey' => $roleKey, 'displayName' => $displayName],
-        )->successful();
+        return $connector->send(CreateProjectRoleRequest::make($projectId, $roleKey, $displayName))->successful();
     }
 
     /**
@@ -681,12 +667,7 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelListProjectRoleKeys(string $host, string $pat, string $projectId): array
     {
-        // See the identical fix + explanation in zitadelEnsureRbacAction():
-        // Zitadel 400s a bare [] body on _search endpoints — needs {}.
-        $response = Http::withToken($pat)->timeout(15)->post(
-            "https://{$host}/management/v1/projects/{$projectId}/roles/_search",
-            ['queries' => []],
-        );
+        $response = ZitadelConnector::make($host, $pat)->send(SearchProjectRolesRequest::make($projectId));
 
         if ($response->failed()) {
             return [];
@@ -707,13 +688,7 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelFindUserGrant(string $host, string $pat, string $userId, string $projectId): ?array
     {
-        $response = Http::withToken($pat)->timeout(15)->post(
-            "https://{$host}/management/v1/users/grants/_search",
-            ['queries' => [
-                ['userIdQuery' => ['userId' => $userId]],
-                ['projectIdQuery' => ['projectId' => $projectId]],
-            ]],
-        );
+        $response = ZitadelConnector::make($host, $pat)->send(SearchUserGrantsRequest::make($userId, $projectId));
 
         if ($response->failed()) {
             return null;
@@ -732,22 +707,21 @@ trait InteractsWithZitadelApi
     protected function zitadelGrantRole(string $host, string $pat, string $userId, string $projectId, string $roleKey): bool
     {
         $existing = $this->zitadelFindUserGrant($host, $pat, $userId, $projectId);
+        $connector = ZitadelConnector::make($host, $pat);
 
         if ($existing === null) {
-            return Http::withToken($pat)->timeout(15)->post(
-                "https://{$host}/management/v1/users/{$userId}/grants",
-                ['projectId' => $projectId, 'roleKeys' => [$roleKey]],
-            )->successful();
+            return $connector->send(CreateUserGrantRequest::make($userId, $projectId, [$roleKey]))->successful();
         }
 
         if (in_array($roleKey, $existing['roleKeys'], true)) {
             return true;
         }
 
-        return Http::withToken($pat)->timeout(15)->put(
-            "https://{$host}/management/v1/users/{$userId}/grants/{$existing['id']}",
-            ['roleKeys' => array_merge($existing['roleKeys'], [$roleKey])],
-        )->successful();
+        return $connector->send(UpdateUserGrantRequest::make(
+            $userId,
+            $existing['id'],
+            array_merge($existing['roleKeys'], [$roleKey]),
+        ))->successful();
     }
 
     /**
@@ -764,17 +738,13 @@ trait InteractsWithZitadelApi
         }
 
         $remaining = array_values(array_diff($existing['roleKeys'], [$roleKey]));
+        $connector = ZitadelConnector::make($host, $pat);
 
         if ($remaining === []) {
-            return Http::withToken($pat)->timeout(15)
-                ->delete("https://{$host}/management/v1/users/{$userId}/grants/{$existing['id']}")
-                ->successful();
+            return $connector->send(DeleteUserGrantRequest::make($userId, $existing['id']))->successful();
         }
 
-        return Http::withToken($pat)->timeout(15)->put(
-            "https://{$host}/management/v1/users/{$userId}/grants/{$existing['id']}",
-            ['roleKeys' => $remaining],
-        )->successful();
+        return $connector->send(UpdateUserGrantRequest::make($userId, $existing['id'], $remaining))->successful();
     }
 
     /**
@@ -969,14 +939,7 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelFindProjectGrant(string $host, string $pat, string $projectId, string $grantedOrgId): ?array
     {
-        // Unfiltered search + local match, same as zitadelListProjectRoleKeys()
-        // — this project's grant list is small (one per partner org), and a
-        // server-side filter's exact field name for "by granted org" isn't
-        // documented alongside the other _search endpoints in this trait.
-        $search = Http::withToken($pat)->timeout(15)->post(
-            "https://{$host}/management/v1/projects/{$projectId}/grants/_search",
-            ['queries' => []],
-        );
+        $search = ZitadelConnector::make($host, $pat)->send(SearchProjectGrantsRequest::make($projectId));
 
         if ($search->failed()) {
             return null;
@@ -1005,12 +968,10 @@ trait InteractsWithZitadelApi
     protected function zitadelEnsureProjectGrant(string $host, string $pat, string $projectId, string $grantedOrgId, array $roleKeys): ?string
     {
         $existing = $this->zitadelFindProjectGrant($host, $pat, $projectId, $grantedOrgId);
+        $connector = ZitadelConnector::make($host, $pat);
 
         if ($existing === null) {
-            $create = Http::withToken($pat)->timeout(15)->post(
-                "https://{$host}/management/v1/projects/{$projectId}/grants",
-                ['grantedOrgId' => $grantedOrgId, 'roleKeys' => array_values($roleKeys)],
-            );
+            $create = $connector->send(CreateProjectGrantRequest::make($projectId, $grantedOrgId, array_values($roleKeys)));
 
             return $create->successful() ? ($create->json('grantId') ?? $create->json('id')) : null;
         }
@@ -1020,10 +981,7 @@ trait InteractsWithZitadelApi
             return $existing['id'];
         }
 
-        $update = Http::withToken($pat)->timeout(15)->put(
-            "https://{$host}/management/v1/projects/{$projectId}/grants/{$existing['id']}",
-            ['roleKeys' => $merged],
-        );
+        $update = $connector->send(UpdateProjectGrantRequest::make($projectId, $existing['id'], $merged));
 
         return $update->successful() ? $existing['id'] : null;
     }

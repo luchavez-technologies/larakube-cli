@@ -1,9 +1,13 @@
 <?php
 
 use App\Commands\Sso\SsoRevokeCommand;
+use App\Http\Integrations\Zitadel\Requests\DeleteUserGrantRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
+use App\Http\Integrations\Zitadel\Requests\UpdateUserGrantRequest;
 use Illuminate\Console\OutputStyle;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
@@ -29,10 +33,10 @@ test('sso:revoke rejects an explicit role no tool defines', function (): void {
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:revoke', ['--role' => 'not-a-real-role', '--email' => 'james@luchtech.dev', '--force' => true, '--no-interaction' => true])
         ->assertExitCode(1)
@@ -45,17 +49,17 @@ test('sso:revoke declines to act without --force under non-interactive confirmat
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:revoke', ['--role' => 'openbao-admin', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->expectsConfirmation('Revoke [openbao-admin] from james@luchtech.dev?', 'no')
         ->assertExitCode(0)
         ->expectsOutputToContain('Cancelled');
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/users/grants/_search'));
+    Saloon::assertNotSent(SearchUserGrantsRequest::class);
 });
 
 test('sso:revoke --role skips the discovery picker entirely, resolving the owning tool automatically', function (): void {
@@ -64,14 +68,19 @@ test('sso:revoke --role skips the discovery picker entirely, resolving the ownin
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin', 'openbao-operator']]]])
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin']]]]),
-        '*/management/v1/users/uid-1/grants/grant-1' => Http::response([]),
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin', 'openbao-operator']]]])
+                : MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin']]]]);
+        },
+        UpdateUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     // No --tool at all — the owning tool is derived from the role key itself.
     $this->artisan('sso:revoke', ['--role' => 'openbao-operator', '--email' => 'james@luchtech.dev', '--force' => true, '--no-interaction' => true])
@@ -79,7 +88,7 @@ test('sso:revoke --role skips the discovery picker entirely, resolving the ownin
         ->expectsOutputToContain('Revoked [openbao-operator] from james@luchtech.dev')
         ->expectsOutputToContain('openbao-admin');
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/roles/_search'));
+    Saloon::assertNotSent(SearchProjectRolesRequest::class);
 });
 
 test('sso:revoke --role resolves a dynamic secrets:grant-issued per-app role key too, with no --tool needed', function (): void {
@@ -88,14 +97,19 @@ test('sso:revoke --role resolves a dynamic secrets:grant-issued per-app role key
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-my-app-local-developer']]]])
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => []]]]),
-        '*/management/v1/users/uid-1/grants/grant-1' => Http::response([]),
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['secrets-my-app-local-developer']]]])
+                : MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => []]]]);
+        },
+        DeleteUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     // secrets:grant mints role keys like "secrets-my-app-local-developer"
     // dynamically — sso:revoke must still resolve which project it lives on
@@ -106,7 +120,7 @@ test('sso:revoke --role resolves a dynamic secrets:grant-issued per-app role key
         ->assertExitCode(0)
         ->expectsOutputToContain('Revoked [secrets-my-app-local-developer] from james@luchtech.dev');
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/roles/_search'));
+    Saloon::assertNotSent(SearchProjectRolesRequest::class);
 });
 
 test('sso:revoke reports nothing to do when the user holds no role-gated access', function (): void {
@@ -115,11 +129,11 @@ test('sso:revoke reports nothing to do when the user holds no role-gated access'
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::response(['result' => []]),
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchUserGrantsRequest::class => MockResponse::make(['result' => []]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     // No --role given → discovery path, but there's nothing to discover.
     $this->artisan('sso:revoke', ['--email' => 'james@luchtech.dev', '--no-interaction' => true])
@@ -141,26 +155,27 @@ test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project,
     ]);
 
     $searchedNames = [];
-    Http::fake([
-        '*/management/v1/projects/_search' => function ($request) use (&$searchedNames) {
-            $name = data_get($request, 'queries.0.nameQuery.name', '');
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => function ($pendingRequest) use (&$searchedNames) {
+            $name = $pendingRequest->getRequest()->body()->get('queries')[0]['nameQuery']['name'] ?? '';
             $searchedNames[] = $name;
 
-            return Http::response(['result' => [['id' => 'proj-'.md5($name)]]]);
+            return MockResponse::make(['result' => [['id' => 'proj-'.md5($name)]]]);
         },
-        '*/management/v1/users/grants/_search' => function ($request) {
-            $projectId = data_get($request, 'queries.1.projectIdQuery.projectId', '');
+        SearchUserGrantsRequest::class => function ($pendingRequest) {
+            $queries = $pendingRequest->getRequest()->body()->get('queries');
+            $projectId = $queries[1]['projectIdQuery']['projectId'] ?? '';
 
             // Only Kutt's own project actually holds a grant for this user —
             // every other project (including the shared one) is empty. If
             // the sweep skipped Kutt's project, this role would never
             // surface at all.
-            return Http::response(['result' => $projectId === 'proj-'.md5('link-kutt')
+            return MockResponse::make(['result' => $projectId === 'proj-'.md5('link-kutt')
                 ? [['id' => 'grant-kutt', 'roleKeys' => ['kutt-user']]]
                 : []]);
         },
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:revoke', ['--email' => 'jamescarloluchavez@gmail.com', '--no-interaction' => true])
         ->expectsChoice(
@@ -188,13 +203,13 @@ test('sso:revoke\'s discovery picker defaults to an empty selection under non-in
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::response(['result' => [
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchUserGrantsRequest::class => MockResponse::make(['result' => [
             ['id' => 'grant-1', 'roleKeys' => ['openbao-admin', 'grafana-user']],
         ]]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     // --force bypasses the SEPARATE confirm() gate deliberately, so this
     // isolates multiselect's own default — without --force, confirm()
@@ -212,8 +227,7 @@ test('sso:revoke\'s discovery picker defaults to an empty selection under non-in
         )
         ->assertExitCode(0);
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants/grant-1')
-        && in_array($request->method(), ['PUT', 'DELETE'], true));
+    Saloon::assertNotSent(fn ($request) => ($request instanceof UpdateUserGrantRequest || $request instanceof DeleteUserGrantRequest));
 });
 
 test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on Drive\'s own project', function (): void {
@@ -226,14 +240,19 @@ test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on Drive\'s own proj
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'drive-proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]])
-            ->push(['result' => []]),
-        '*/management/v1/users/uid-1/grants/grant-1' => Http::response([]),
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'drive-proj-1']]]),
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]])
+                : MockResponse::make(['result' => []]);
+        },
+        DeleteUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:revoke', ['--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--force' => true, '--no-interaction' => true])
         ->assertExitCode(0)
@@ -242,10 +261,9 @@ test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on Drive\'s own proj
 
     // The ocisAdmin grant was the user's last one on Drive's project, so
     // the grant is deleted outright.
-    Http::assertSent(fn ($request) => $request->method() === 'DELETE'
-        && str_contains($request->url(), '/users/uid-1/grants/grant-1'));
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/_search')
-        && $request['queries'][0]['nameQuery']['name'] === 'drive-ocis');
+    Saloon::assertSent(DeleteUserGrantRequest::class);
+    Saloon::assertSent(fn ($request) => $request instanceof SearchProjectsRequest
+        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'drive-ocis');
 });
 
 test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own project beside another tool's RBAC role", function (): void {
@@ -263,14 +281,16 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
     ]);
 
     $driveGrantLookups = 0;
-    Http::fake([
-        '*/management/v1/projects/_search' => function ($request) {
-            $name = data_get($request, 'queries.0.nameQuery.name', '');
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => function ($pendingRequest) {
+            $name = $pendingRequest->getRequest()->body()->get('queries')[0]['nameQuery']['name'] ?? '';
 
-            return Http::response(['result' => [['id' => "proj-{$name}"]]]);
+            return MockResponse::make(['result' => [['id' => "proj-{$name}"]]]);
         },
-        '*/management/v1/users/grants/_search' => function ($request) use (&$driveGrantLookups) {
-            $projectId = data_get($request, 'queries.1.projectIdQuery.projectId', '');
+        SearchUserGrantsRequest::class => function ($pendingRequest) use (&$driveGrantLookups) {
+            $queries = $pendingRequest->getRequest()->body()->get('queries');
+            $projectId = $queries[1]['projectIdQuery']['projectId'] ?? '';
 
             if ($projectId === 'proj-drive-ocis') {
                 $driveGrantLookups++;
@@ -280,20 +300,19 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
                 // internal zitadelFindUserGrant() check (decides DELETE vs
                 // PUT), (3) the post-revoke summary readback. Only the
                 // third should see it gone.
-                return Http::response(['result' => $driveGrantLookups >= 3
+                return MockResponse::make(['result' => $driveGrantLookups >= 3
                     ? []
                     : [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]);
             }
 
             if ($projectId === 'proj-openbao-backend') {
-                return Http::response(['result' => [['id' => 'grant-2', 'roleKeys' => ['openbao-admin']]]]);
+                return MockResponse::make(['result' => [['id' => 'grant-2', 'roleKeys' => ['openbao-admin']]]]);
             }
 
-            return Http::response(['result' => []]);
+            return MockResponse::make(['result' => []]);
         },
-        '*/management/v1/users/uid-1/grants/grant-1' => Http::response([]),
+        DeleteUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     // ocisAdmin is now the FIRST option (Drive precedes Secrets in
     // ClusterTool's declaration order) — SPACE selects it, ENTER submits.
@@ -323,7 +342,8 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
 
     // ocisAdmin was the user's last role on Drive's project → the grant is
     // deleted outright, and the revoke never touched Secrets' grant.
-    Http::assertSent(fn ($request) => $request->method() === 'DELETE'
-        && str_contains($request->url(), '/users/uid-1/grants/grant-1'));
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants/grant-2'));
+    Saloon::assertSent(fn ($request) => $request instanceof DeleteUserGrantRequest
+        && $request->resolveEndpoint() === 'management/v1/users/uid-1/grants/grant-1');
+    Saloon::assertNotSent(fn ($request) => $request instanceof DeleteUserGrantRequest
+        && $request->resolveEndpoint() === 'management/v1/users/uid-1/grants/grant-2');
 });

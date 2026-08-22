@@ -1,7 +1,17 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Zitadel\Requests\CreateOidcAppRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectAppsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('chat:init deploys matrix using plex commons postgres by default', function (): void {
     Process::fake([
@@ -62,11 +72,11 @@ test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres pat
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/*/apps/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects/*/apps/oidc' => Http::response(['appId' => 'app-1', 'clientId' => 'client-1', 'clientSecret' => 'secret-1']),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-1']),
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'client-1', 'clientSecret' => 'secret-1']),
     ]);
 
     $this->artisan('chat:init local --no-interaction')

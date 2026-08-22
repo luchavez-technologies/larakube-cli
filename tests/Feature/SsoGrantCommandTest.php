@@ -1,8 +1,13 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\CreateProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Zitadel\Requests\UpdateUserGrantRequest;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
@@ -24,8 +29,8 @@ test('sso:grant rejects a tool with no role-gated access', function (): void {
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
     ]);
 
     // mail has neither rbacRoles() nor ssoAdminRoles() — genuinely open,
@@ -52,20 +57,19 @@ test('sso:grant auto-resolves --domain= when a multi-instance tool has exactly o
         ),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-notes-instance']),
-        '*/management/v1/users/grants' => Http::response([]),
-        '*/management/v1/users/grants/_search' => Http::response(['result' => [['id' => 'grant-1', 'roleKeys' => ['outline-user']]]]),
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-notes-instance']),
+        SearchUserGrantsRequest::class => MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['outline-user']]]]),
+        CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'notes', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0);
 
-    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
-        && $request->method() === 'POST'
-        && $request['name'] === 'notes-outline-notes-luchtech-dev');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
+        && $request->body()->get('name') === 'notes-outline-notes-luchtech-dev');
 });
 
 test('sso:grant refuses to guess when a multi-instance tool has more than one registered instance and no --domain', function (): void {
@@ -97,20 +101,19 @@ test('sso:grant --domain= resolves the exact named instance\'s project', functio
         ),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'proj-blog-instance']),
-        '*/management/v1/users/grants' => Http::response([]),
-        '*/management/v1/users/grants/_search' => Http::response(['result' => [['id' => 'grant-1', 'roleKeys' => ['outline-user']]]]),
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-blog-instance']),
+        SearchUserGrantsRequest::class => MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['outline-user']]]]),
+        CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'notes', '--domain' => 'blog.example.com', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0);
 
-    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/management/v1/projects')
-        && $request->method() === 'POST'
-        && $request['name'] === 'notes-outline-blog-example-com');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
+        && $request->body()->get('name') === 'notes-outline-blog-example-com');
 });
 
 test('sso:grant rejects an unknown tool', function (): void {
@@ -119,8 +122,8 @@ test('sso:grant rejects an unknown tool', function (): void {
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
     ]);
 
     $this->artisan('sso:grant', ['--tool' => 'not-a-real-tool', '--no-interaction' => true])
@@ -134,14 +137,19 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'drive-proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => []])
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]),
-        '*/management/v1/users/uid-1/grants' => Http::response([]),
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'drive-proj-1']]]),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => []])
+                : MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]);
+        },
+        CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     // No --tool: the picker resolves Drive (the first role-bearing tool in
     // case order) purely from the enum's role schema — the grant succeeds even
@@ -172,12 +180,10 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
     // The grant targets Drive's own project (found by name, requiresRbacGating()
     // resolves it — no sso-app-drive secret read) — and the picker never
     // consulted the live role lists at all.
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && $request['projectId'] === 'drive-proj-1'
-        && $request['roleKeys'] === ['ocisAdmin']);
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/roles/_search'));
+    Saloon::assertSent(fn ($request) => $request instanceof CreateUserGrantRequest
+        && $request->body()->get('projectId') === 'drive-proj-1'
+        && $request->body()->get('roleKeys') === ['ocisAdmin']);
+    Saloon::assertNotSent(SearchProjectRolesRequest::class);
 });
 
 test('sso:grant rejects a role the tool does not define', function (): void {
@@ -186,8 +192,8 @@ test('sso:grant rejects a role the tool does not define', function (): void {
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
+    Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
     ]);
 
     $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-superuser', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
@@ -211,10 +217,8 @@ test('sso:grant errors when Zitadel user cannot be resolved or created', functio
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-    ]);
     Saloon::fake([
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
         SearchUsersRequest::class => MockResponse::make(['result' => []]),
         CreateUserRequest::class => MockResponse::make([], 500),
     ]);
@@ -230,24 +234,29 @@ test('sso:grant creates a fresh UserGrant when the user holds none on the RBAC p
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => []]) // no existing grant → create path
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin']]]]), // post-write readback
-        '*/management/v1/users/uid-1/grants' => Http::response([]),
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            // no existing grant (call 1) → create path, then the
+            // post-write readback (call 2).
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => []])
+                : MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin']]]]);
+        },
+        CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-admin', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'openbao-admin' to james@luchtech.dev")
         ->expectsOutputToContain('openbao-admin');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && $request['roleKeys'] === ['openbao-admin']);
+    Saloon::assertSent(fn ($request) => $request instanceof CreateUserGrantRequest
+        && $request->body()->get('roleKeys') === ['openbao-admin']);
 });
 
 test('sso:grant merges a new role into an existing UserGrant instead of clobbering it', function (): void {
@@ -256,22 +265,26 @@ test('sso:grant merges a new role into an existing UserGrant instead of clobberi
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin']]]])
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin', 'grafana-user']]]]),
-        '*/management/v1/users/uid-1/grants/grant-1' => Http::response([]),
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin']]]])
+                : MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['openbao-admin', 'grafana-user']]]]);
+        },
+        UpdateUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'monitor', '--role' => 'grafana-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'grafana-user' to james@luchtech.dev");
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants/grant-1')
-        && $request->method() === 'PUT'
-        && $request['roleKeys'] === ['openbao-admin', 'grafana-user']);
+    Saloon::assertSent(fn ($request) => $request instanceof UpdateUserGrantRequest
+        && $request->body()->get('roleKeys') === ['openbao-admin', 'grafana-user']);
 });
 
 test('sso:grant grants Drive\'s ocisAdmin on Drive\'s own project, found by name', function (): void {
@@ -287,27 +300,30 @@ test('sso:grant grants Drive\'s ocisAdmin on Drive\'s own project, found by name
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*/management/v1/projects/_search' => Http::response(['result' => [['id' => 'drive-proj-1']]]),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => []])
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]),
-        '*/management/v1/users/uid-1/grants' => Http::response([]),
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'drive-proj-1']]]),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => []])
+                : MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]);
+        },
+        CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'drive', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev")
         ->expectsOutputToContain('drive-ocis');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects/_search')
-        && $request['queries'][0]['nameQuery']['name'] === 'drive-ocis');
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/users/uid-1/grants')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && $request['projectId'] === 'drive-proj-1'
-        && $request['roleKeys'] === ['ocisAdmin']);
+    Saloon::assertSent(fn ($request) => $request instanceof SearchProjectsRequest
+        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'drive-ocis');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateUserGrantRequest
+        && $request->body()->get('projectId') === 'drive-proj-1'
+        && $request->body()->get('roleKeys') === ['ocisAdmin']);
 });
 
 test('sso:grant for Drive creates its own project when none exists yet', function (): void {
@@ -316,15 +332,20 @@ test('sso:grant for Drive creates its own project when none exists yet', functio
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
-    Http::fake([
-        '*projects/_search' => Http::response(['result' => []]),
-        '*/management/v1/projects' => Http::response(['id' => 'drive-proj-1']),
-        '*/management/v1/users/grants/_search' => Http::sequence()
-            ->push(['result' => []])
-            ->push(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]),
-        '*/management/v1/users/uid-1/grants' => Http::response([]),
+    $grantSearchCallCount = 0;
+    Saloon::fake([
+        SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'drive-proj-1']),
+        SearchUserGrantsRequest::class => function () use (&$grantSearchCallCount) {
+            $grantSearchCallCount++;
+
+            return $grantSearchCallCount === 1
+                ? MockResponse::make(['result' => []])
+                : MockResponse::make(['result' => [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]);
+        },
+        CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
-    Saloon::fake([SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'uid-1']]])]);
 
     $this->artisan('sso:grant', ['--tool' => 'drive', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
@@ -332,8 +353,6 @@ test('sso:grant for Drive creates its own project when none exists yet', functio
 
     // The fallback created Drive's own project by name before granting —
     // not the shared LaraKube Shared Tools project.
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/management/v1/projects')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && $request['name'] === 'drive-ocis');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
+        && $request->body()->get('name') === 'drive-ocis');
 });

@@ -1,7 +1,14 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('sso:unwire is registered', function (): void {
     $this->artisan('list')
@@ -30,7 +37,7 @@ test('sso:unwire --domain= targets a specific instance instead of always the def
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
 
-    Http::fake(['*/management/v1/projects/proj-1/apps/app-1' => Http::response([], 200)]);
+    Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);
 
     $this->artisan('sso:unwire', ['--tool' => 'data', '--engine' => 'pocketbase', '--domain' => 'blog.example.com', '--no-interaction' => true])
         ->assertExitCode(0)
@@ -52,7 +59,7 @@ test('sso:unwire delegates to sso:wire --remove', function (): void {
         '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
-    Http::fake(['*/management/v1/projects/proj-1/apps/app-1' => Http::response([], 200)]);
+    Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);
 
     $this->artisan('sso:unwire', ['--tool' => 'monitor'])
         ->assertExitCode(0)
@@ -71,7 +78,7 @@ test('sso:unwire deletes a legacy "Login with SSO" Forgejo source', function ():
         '*admin auth delete*' => Process::result(output: 'source deleted'),
     ]);
 
-    Http::fake(['*/management/v1/projects/proj-1/apps/*' => Http::response([], 200)]);
+    Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);
 
     $this->artisan('sso:unwire', ['--tool' => 'git', '--no-interaction' => true])
         ->assertExitCode(0)
