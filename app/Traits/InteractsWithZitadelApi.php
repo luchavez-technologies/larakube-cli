@@ -2,11 +2,18 @@
 
 namespace App\Traits;
 
+use App\Http\Integrations\Zitadel\Requests\AddOrgDomainRequest;
+use App\Http\Integrations\Zitadel\Requests\AddOrgMemberRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateOrganizationRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
 use App\Http\Integrations\Zitadel\Requests\DeactivateUserRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteUserRequest;
+use App\Http\Integrations\Zitadel\Requests\GenerateOrgDomainValidationRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchOrgDomainsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use App\Http\Integrations\Zitadel\Requests\SetUserPasswordRequest;
+use App\Http\Integrations\Zitadel\Requests\ValidateOrgDomainRequest;
 use App\Http\Integrations\Zitadel\ZitadelConnector;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
@@ -779,9 +786,7 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelFindOrgByName(string $host, string $pat, string $name): ?string
     {
-        $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/v2/organizations/_search", [
-            'queries' => [['nameQuery' => ['name' => $name, 'method' => 'TEXT_QUERY_METHOD_EQUALS']]],
-        ]);
+        $search = ZitadelConnector::make($host, $pat)->send(SearchOrganizationsRequest::make($name));
 
         if ($search->failed()) {
             return null;
@@ -802,9 +807,7 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelListOrgs(string $host, string $pat): array
     {
-        $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/v2/organizations/_search", [
-            'queries' => [],
-        ]);
+        $search = ZitadelConnector::make($host, $pat)->send(SearchOrganizationsRequest::make());
 
         if ($search->failed()) {
             return [];
@@ -827,9 +830,7 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelCreateOrg(string $host, string $pat, string $name): ?string
     {
-        $create = Http::withToken($pat)->timeout(15)->post("https://{$host}/v2/organizations", [
-            'name' => $name,
-        ]);
+        $create = ZitadelConnector::make($host, $pat)->send(CreateOrganizationRequest::make($name));
 
         if ($create->failed()) {
             return null;
@@ -870,10 +871,7 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelAddOrgDomain(string $host, string $pat, string $orgId, string $domain): bool
     {
-        $response = Http::withToken($pat)->withHeaders($this->zitadelOrgHeaders($orgId))->timeout(15)->post(
-            "https://{$host}/management/v1/orgs/me/domains",
-            ['domain' => $domain],
-        );
+        $response = ZitadelConnector::make($host, $pat)->send(AddOrgDomainRequest::make($domain, $orgId));
 
         return $response->successful() || str_contains($response->body(), 'AlreadyExists');
     }
@@ -887,10 +885,7 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelOrgDomainVerified(string $host, string $pat, string $orgId, string $domain): ?bool
     {
-        $response = Http::withToken($pat)->withHeaders($this->zitadelOrgHeaders($orgId))->timeout(15)->post(
-            "https://{$host}/management/v1/orgs/me/domains/_search",
-            (object) [],
-        );
+        $response = ZitadelConnector::make($host, $pat)->send(SearchOrgDomainsRequest::make($orgId));
 
         if ($response->failed()) {
             return null;
@@ -919,10 +914,7 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelGenerateOrgDomainValidation(string $host, string $pat, string $orgId, string $domain): ?array
     {
-        $response = Http::withToken($pat)->withHeaders($this->zitadelOrgHeaders($orgId))->timeout(15)->post(
-            "https://{$host}/management/v1/orgs/me/domains/{$domain}/validation/_generate",
-            ['type' => 'DOMAIN_VALIDATION_TYPE_DNS'],
-        );
+        $response = ZitadelConnector::make($host, $pat)->send(GenerateOrgDomainValidationRequest::make($domain, $orgId));
 
         if ($response->failed()) {
             return null;
@@ -944,17 +936,14 @@ trait InteractsWithZitadelApi
      */
     protected function zitadelValidateOrgDomain(string $host, string $pat, string $orgId, string $domain, int $attempts = 5, int $delaySeconds = 3): bool
     {
-        $headers = $this->zitadelOrgHeaders($orgId);
+        $connector = ZitadelConnector::make($host, $pat);
 
         for ($i = 0; $i < $attempts; $i++) {
             if ($i > 0) {
                 Sleep::sleep($delaySeconds);
             }
 
-            $response = Http::withToken($pat)->withHeaders($headers)->timeout(15)->post(
-                "https://{$host}/management/v1/orgs/me/domains/{$domain}/validation",
-                (object) [],
-            );
+            $response = $connector->send(ValidateOrgDomainRequest::make($domain, $orgId));
 
             if ($response->successful()) {
                 return true;
@@ -967,10 +956,7 @@ trait InteractsWithZitadelApi
     /** Add a member to an org with the given roles (default: ORG_OWNER, full org admin). v1 API — AddOrgMemberRequest.userId confirmed live. */
     protected function zitadelAddOrgMember(string $host, string $pat, string $orgId, string $userId, array $roles = ['ORG_OWNER']): bool
     {
-        $response = Http::withToken($pat)->withHeaders($this->zitadelOrgHeaders($orgId))->timeout(15)->post(
-            "https://{$host}/management/v1/orgs/me/members",
-            ['userId' => $userId, 'roles' => $roles],
-        );
+        $response = ZitadelConnector::make($host, $pat)->send(AddOrgMemberRequest::make($userId, $roles, $orgId));
 
         return $response->successful() || str_contains($response->body(), 'AlreadyExists');
     }

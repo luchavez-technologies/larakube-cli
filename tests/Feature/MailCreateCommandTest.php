@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
@@ -245,8 +246,10 @@ test('mail:create --sso creates a matching Zitadel identity', function (): void 
         },
     ]);
 
-    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []])]);
-    Saloon::fake([CreateUserRequest::class => MockResponse::make(['userId' => 'zid-1'])]);
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make(['result' => []]),
+        CreateUserRequest::class => MockResponse::make(['userId' => 'zid-1']),
+    ]);
 
     $this->artisan('mail:create', [
         '--email' => 'bob@example.com',
@@ -309,8 +312,10 @@ test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no f
         },
     ]);
 
-    Http::fake(['*/v2/organizations/_search' => Http::response(['result' => []])]);
-    Saloon::fake([CreateUserRequest::class => MockResponse::make(['userId' => 'zid-1'])]);
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make(['result' => []]),
+        CreateUserRequest::class => MockResponse::make(['userId' => 'zid-1']),
+    ]);
 
     // No --sso, no --no-sso: with Zitadel installed the sync is the default. The
     // non-interactive fallback must resolve to yes, so this needs no prompt.

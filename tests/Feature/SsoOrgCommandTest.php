@@ -3,7 +3,14 @@
 use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneByNameRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListDnsRecordsRequest;
+use App\Http\Integrations\Zitadel\Requests\AddOrgDomainRequest;
+use App\Http\Integrations\Zitadel\Requests\AddOrgMemberRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateOrganizationRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\GenerateOrgDomainValidationRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchOrgDomainsRequest;
+use App\Http\Integrations\Zitadel\Requests\ValidateOrgDomainRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
@@ -23,31 +30,27 @@ function ssoOrgBaseProcessFakes(): array
 function ssoOrgHappyPathHttpFakes(): array
 {
     return [
-        '*/v2/organizations/_search' => Http::response(['result' => []]),
-        '*/v2/organizations' => Http::response(['organizationId' => 'org-1']),
-        // Not-yet-verified by default — exercises the full DNS-challenge
-        // path in the existing happy-path tests below. The "already
-        // verified" skip-ahead path (see zitadelAddOrgDomain()'s docblock —
-        // some PAT scopes get the domain auto-verified by Zitadel the
-        // instant it's added) has its own dedicated test with this
-        // overridden to isVerified: true.
-        '*/orgs/me/domains/_search' => Http::response(['result' => [['domainName' => 'partner.example', 'isVerified' => false]]]),
-        '*/orgs/me/domains/*/validation/_generate' => Http::response(['token' => 'zitadel-challenge-abc', 'url' => 'https://zitadel.example/docs']),
-        '*/orgs/me/domains/*/validation' => Http::response([]),
-        '*/orgs/me/domains' => Http::response([]),
-        // cloudflareZoneId() AND cloudflareUpsertTxtRecord() are both
-        // Saloon-based now — see ssoOrgSaloonFakes() below, faked separately
-        // from this Http::fake() array
-        // (docs/decisions/0020-saloonphp-for-new-api-integrations.md).
+        // Org/domain/member endpoints are all Saloon-based now — see
+        // ssoOrgSaloonFakes() below, faked separately from this Http::fake()
+        // array (docs/decisions/0020-saloonphp-for-new-api-integrations.md).
         '*/management/v1/actions/_search' => Http::response(['result' => []]),
         '*/management/v1/actions' => Http::response(['id' => 'action-1']),
         '*/management/v1/flows/2' => Http::response(['flow' => ['triggerActions' => []]]),
         '*/management/v1/flows/2/trigger/*' => Http::response([]),
-        '*/orgs/me/members' => Http::response([]),
     ];
 }
 
-/** cloudflareZoneId()/cloudflareUpsertTxtRecord()/zitadelCreateUser()'s Saloon-based calls — see ssoOrgHappyPathHttpFakes()'s docblock. */
+/**
+ * cloudflareZoneId()/cloudflareUpsertTxtRecord()/zitadel{CreateUser,
+ * FindOrgByName,ListOrgs,CreateOrg,AddOrgDomain,OrgDomainVerified,
+ * GenerateOrgDomainValidation,AddOrgMember}()'s Saloon-based calls — see
+ * ssoOrgHappyPathHttpFakes()'s docblock. Not-yet-verified by default —
+ * exercises the full DNS-challenge path in the existing happy-path tests
+ * below. The "already verified" skip-ahead path (see zitadelAddOrgDomain()'s
+ * docblock — some PAT scopes get the domain auto-verified by Zitadel the
+ * instant it's added) has its own dedicated test overriding
+ * SearchOrgDomainsRequest to isVerified: true.
+ */
 function ssoOrgSaloonFakes(): array
 {
     return [
@@ -55,6 +58,13 @@ function ssoOrgSaloonFakes(): array
         ListDnsRecordsRequest::class => MockResponse::make(['success' => true, 'result' => []]),
         CreateDnsRecordRequest::class => MockResponse::make(['success' => true, 'result' => ['id' => 'rec-1']]),
         CreateUserRequest::class => MockResponse::make(['userId' => 'user-1']),
+        SearchOrganizationsRequest::class => MockResponse::make(['result' => []]),
+        CreateOrganizationRequest::class => MockResponse::make(['organizationId' => 'org-1']),
+        SearchOrgDomainsRequest::class => MockResponse::make(['result' => [['domainName' => 'partner.example', 'isVerified' => false]]]),
+        GenerateOrgDomainValidationRequest::class => MockResponse::make(['token' => 'zitadel-challenge-abc', 'url' => 'https://zitadel.example/docs']),
+        ValidateOrgDomainRequest::class => MockResponse::make([]),
+        AddOrgDomainRequest::class => MockResponse::make([]),
+        AddOrgMemberRequest::class => MockResponse::make([]),
     ];
 }
 
@@ -78,15 +88,12 @@ test('sso:org creates a new org, verifies the domain, and installs the RBAC acti
         ->expectsOutputToContain('partner.example is a real Zitadel organization')
         ->expectsOutputToContain('verified');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/organizations')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST'
-        && $request['name'] === 'partner.example');
+    Saloon::assertSent(fn ($request) => $request instanceof CreateOrganizationRequest
+        && $request->body()->get('name') === 'partner.example');
 
     // The org header is sent on every subsequent cross-org call.
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/orgs/me/domains')
-        && ! str_contains($request->url(), 'validation')
-        && $request->hasHeader('x-zitadel-orgid', 'org-1'));
+    Saloon::assertSent(fn ($request, $response) => $request instanceof AddOrgDomainRequest
+        && $response->getPendingRequest()->headers()->get('x-zitadel-orgid') === 'org-1');
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateDnsRecordRequest
         && $request->body()->get('type') === 'TXT'
@@ -96,17 +103,15 @@ test('sso:org creates a new org, verifies the domain, and installs the RBAC acti
 
 test('sso:org reuses an existing org instead of creating a duplicate', function (): void {
     Process::fake(ssoOrgBaseProcessFakes());
-    Http::fake(array_merge(ssoOrgHappyPathHttpFakes(), [
-        '*/v2/organizations/_search' => Http::response(['result' => [['id' => 'org-existing']]]),
+    Http::fake(ssoOrgHappyPathHttpFakes());
+    Saloon::fake(array_merge(ssoOrgSaloonFakes(), [
+        SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-existing']]]),
     ]));
-    Saloon::fake(ssoOrgSaloonFakes());
 
     $this->artisan('sso:org', ['--zone' => 'partner.example', '--cloudflare-token' => 'cf-token', '--force' => true])
         ->assertExitCode(0);
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v2/organizations')
-        && ! str_contains($request->url(), '_search')
-        && $request->method() === 'POST');
+    Saloon::assertNotSent(CreateOrganizationRequest::class);
 });
 
 test('sso:org creates an ORG_OWNER admin when --admin-email is given', function (): void {
@@ -127,9 +132,9 @@ test('sso:org creates an ORG_OWNER admin when --admin-email is given', function 
         && $request->body()->get('username') === 'admin@partner.example'
         && $request->body()->get('organization')['orgId'] === 'org-1');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/orgs/me/members')
-        && $request['userId'] === 'user-1'
-        && $request['roles'] === ['ORG_OWNER']);
+    Saloon::assertSent(fn ($request) => $request instanceof AddOrgMemberRequest
+        && $request->body()->get('userId') === 'user-1'
+        && $request->body()->get('roles') === ['ORG_OWNER']);
 });
 
 test('sso:org skips the DNS challenge entirely when the domain is already verified', function (): void {
@@ -140,8 +145,9 @@ test('sso:org skips the DNS challenge entirely when the domain is already verifi
     // verified", ORG-HGw21). The command must detect this and skip
     // straight to the RBAC Action + admin steps.
     Process::fake(ssoOrgBaseProcessFakes());
-    Http::fake(array_merge(ssoOrgHappyPathHttpFakes(), [
-        '*/orgs/me/domains/_search' => Http::response(['result' => [['domainName' => 'partner.example', 'isVerified' => true]]]),
+    Http::fake(ssoOrgHappyPathHttpFakes());
+    Saloon::fake(array_merge(ssoOrgSaloonFakes(), [
+        SearchOrgDomainsRequest::class => MockResponse::make(['result' => [['domainName' => 'partner.example', 'isVerified' => true]]]),
     ]));
 
     $this->artisan('sso:org', ['--zone' => 'partner.example', '--cloudflare-token' => 'cf-token', '--force' => true])
@@ -149,8 +155,8 @@ test('sso:org skips the DNS challenge entirely when the domain is already verifi
         ->expectsOutputToContain('partner.example is a real Zitadel organization')
         ->expectsOutputToContain('verified');
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'validation/_generate'));
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'api.cloudflare.com'));
+    Saloon::assertNotSent(GenerateOrgDomainValidationRequest::class);
+    Saloon::assertNotSent(CreateDnsRecordRequest::class);
 
     // The RBAC Action install still has to run — that's the whole point of
     // not bailing out.
@@ -159,11 +165,10 @@ test('sso:org skips the DNS challenge entirely when the domain is already verifi
 });
 
 test('zitadelValidateOrgDomain retries on failure and succeeds once the challenge is verifiable', function (): void {
-    Http::fake([
-        '*/orgs/me/domains/*/validation' => Http::sequence()
-            ->push(['message' => 'not verified yet'], 400)
-            ->push(['message' => 'not verified yet'], 400)
-            ->push([]),
+    Saloon::fake([
+        MockResponse::make(['message' => 'not verified yet'], 400),
+        MockResponse::make(['message' => 'not verified yet'], 400),
+        MockResponse::make([]),
     ]);
 
     $caller = new class
@@ -181,12 +186,12 @@ test('zitadelValidateOrgDomain retries on failure and succeeds once the challeng
     };
 
     expect($caller->call())->toBeTrue();
-    Http::assertSentCount(3);
+    Saloon::assertSentCount(3);
 });
 
 test('zitadelValidateOrgDomain gives up after exhausting its attempts', function (): void {
-    Http::fake([
-        '*/orgs/me/domains/*/validation' => Http::response(['message' => 'not verified yet'], 400),
+    Saloon::fake([
+        ValidateOrgDomainRequest::class => MockResponse::make(['message' => 'not verified yet'], 400),
     ]);
 
     $caller = new class
@@ -200,5 +205,5 @@ test('zitadelValidateOrgDomain gives up after exhausting its attempts', function
     };
 
     expect($caller->call())->toBeFalse();
-    Http::assertSentCount(2);
+    Saloon::assertSentCount(2);
 });
