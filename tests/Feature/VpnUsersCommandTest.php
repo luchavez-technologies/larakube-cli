@@ -1,7 +1,11 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Netbird\Requests\ListPeersRequest;
+use App\Http\Integrations\Netbird\Requests\ListSetupKeysRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 function vpnUsersKubectl(): string
 {
@@ -18,14 +22,18 @@ function fakeVpnUsersInstalled(string $pat = 'nbp_test_pat'): void
     ]);
 }
 
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
+
 test('vpn:users lists setup keys and connected peers', function (): void {
     fakeVpnUsersInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response([
+    Saloon::fake([
+        ListSetupKeysRequest::class => MockResponse::make([
             ['id' => 'k1', 'name' => 'lloyd', 'key' => 'AAAA****', 'type' => 'reusable', 'usage_limit' => 1, 'used_times' => 0, 'revoked' => false, 'valid' => true, 'expires' => '2027-07-14T00:00:00Z'],
         ]),
-        'https://vpn.kube/api/peers' => Http::response([
+        ListPeersRequest::class => MockResponse::make([
             ['hostname' => 'lloyds-laptop', 'ip' => '100.86.0.5', 'os' => 'macOS 14', 'connected' => true, 'last_seen' => '2026-07-14T04:00:00Z'],
         ]),
     ]);
@@ -43,9 +51,9 @@ test('vpn:users lists setup keys and connected peers', function (): void {
 test('vpn:users shows friendly messages when nothing has been granted or joined yet', function (): void {
     fakeVpnUsersInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response([]),
-        'https://vpn.kube/api/peers' => Http::response([]),
+    Saloon::fake([
+        ListSetupKeysRequest::class => MockResponse::make([]),
+        ListPeersRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('vpn:users local')
@@ -63,14 +71,14 @@ test('vpn:users errors when the VPN is not installed', function (): void {
         ->assertExitCode(1)
         ->expectsOutputToContain("NetBird VPN isn't installed for 'local'");
 
-    Http::assertNothingSent();
+    Saloon::assertNothingSent();
 });
 
 test('vpn:users errors when the NetBird API is unreachable', function (): void {
     fakeVpnUsersInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response(status: 500),
+    Saloon::fake([
+        ListSetupKeysRequest::class => MockResponse::make(status: 500),
     ]);
 
     $this->artisan('vpn:users local')

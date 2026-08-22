@@ -5,6 +5,9 @@ namespace App\Commands\Vpn;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Http\Integrations\Netbird\NetbirdConnector;
+use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
+use App\Http\Integrations\Netbird\Requests\SetupOwnerRequest;
 use App\State;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
@@ -16,11 +19,10 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\VerifiesKubernetesRollout;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
+use Saloon\Exceptions\Request\FatalRequestException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class VpnInitCommand extends Command
@@ -209,15 +211,9 @@ class VpnInitCommand extends Command
             $maxAttempts = (int) 6;
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
                 try {
-                    $setup = Http::timeout(15)->post("https://{$host}/api/setup", [
-                        'email' => $email,
-                        'name' => 'larakube',
-                        'password' => $password,
-                        'create_pat' => true,
-                        'pat_expire_in' => 365,
-                    ]);
+                    $setup = NetbirdConnector::make($host)->send(SetupOwnerRequest::make($email, 'larakube', $password, 365));
                     break;
-                } catch (ConnectionException $e) {
+                } catch (FatalRequestException $e) {
                     if ($attempt === $maxAttempts || State::$isTesting) {
                         $this->laraKubeWarn('Could not reach NetBird management after multiple attempts — run `larakube vpn:init` again once the endpoint is reachable.');
 
@@ -237,14 +233,7 @@ class VpnInitCommand extends Command
 
             // 1 year — matches the PAT's own 365-day cap above, so both need
             // renewing around the same time (a known follow-up, not handled here).
-            $setupKey = Http::timeout(15)
-                ->withHeaders(['Authorization' => "Token {$pat}"])
-                ->post("https://{$host}/api/setup-keys", [
-                    'name' => 'larakube',
-                    'type' => 'reusable',
-                    'expires_in' => 31536000,
-                    'usage_limit' => 0,
-                ]);
+            $setupKey = NetbirdConnector::make($host, $pat)->send(CreateSetupKeyRequest::make('larakube', 31536000, 0));
 
             $key = $setupKey->json('key');
             if ($setupKey->failed() || ! $key) {

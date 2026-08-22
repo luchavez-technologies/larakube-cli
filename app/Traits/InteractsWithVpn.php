@@ -6,7 +6,11 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Netbird\NetbirdConnector;
+use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
+use App\Http\Integrations\Netbird\Requests\ListPeersRequest;
+use App\Http\Integrations\Netbird\Requests\ListSetupKeysRequest;
+use App\Http\Integrations\Netbird\Requests\UpdateSetupKeyRequest;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithVpn
@@ -123,15 +127,12 @@ trait InteractsWithVpn
      */
     protected function mintVpnSetupKey(string $host, string $pat, string $name, bool $reusable, int $days, bool $ephemeral = false): ?array
     {
-        $response = Http::timeout(15)
-            ->withHeaders(['Authorization' => "Token {$pat}"])
-            ->post("https://{$host}/api/setup-keys", [
-                'name' => $name,
-                'type' => 'reusable',
-                'expires_in' => $days * 86400,
-                'usage_limit' => $reusable ? 0 : 1,
-                'ephemeral' => $ephemeral,
-            ]);
+        $response = NetbirdConnector::make($host, $pat)->send(CreateSetupKeyRequest::make(
+            $name,
+            $days * 86400,
+            $reusable ? 0 : 1,
+            $ephemeral,
+        ));
 
         if ($response->failed()) {
             return null;
@@ -151,9 +152,7 @@ trait InteractsWithVpn
      */
     protected function listVpnSetupKeys(string $host, string $pat): ?array
     {
-        $response = Http::timeout(15)
-            ->withHeaders(['Authorization' => "Token {$pat}"])
-            ->get("https://{$host}/api/setup-keys");
+        $response = NetbirdConnector::make($host, $pat)->send(ListSetupKeysRequest::make());
 
         if ($response->failed()) {
             return null;
@@ -171,9 +170,7 @@ trait InteractsWithVpn
      */
     protected function listVpnPeers(string $host, string $pat): ?array
     {
-        $response = Http::timeout(15)
-            ->withHeaders(['Authorization' => "Token {$pat}"])
-            ->get("https://{$host}/api/peers");
+        $response = NetbirdConnector::make($host, $pat)->send(ListPeersRequest::make());
 
         if ($response->failed()) {
             return null;
@@ -199,18 +196,8 @@ trait InteractsWithVpn
     {
         $expiresIn = max(60, strtotime((string) ($key['expires'] ?? '')) - time());
 
-        return Http::timeout(15)
-            ->withHeaders(['Authorization' => "Token {$pat}"])
-            ->put("https://{$host}/api/setup-keys/".($key['id'] ?? ''), [
-                'name' => $key['name'] ?? '',
-                'type' => $key['type'] ?? 'reusable',
-                'expires_in' => $expiresIn,
-                'usage_limit' => $key['usage_limit'] ?? 0,
-                'revoked' => true,
-                'auto_groups' => $key['auto_groups'] ?? [],
-                'ephemeral' => $key['ephemeral'] ?? false,
-                'allow_extra_dns_labels' => $key['allow_extra_dns_labels'] ?? false,
-            ])
+        return NetbirdConnector::make($host, $pat)
+            ->send(UpdateSetupKeyRequest::make($key, $expiresIn))
             ->successful();
     }
 

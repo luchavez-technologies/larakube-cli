@@ -2,9 +2,17 @@
 
 use App\Data\CloudData;
 use App\Data\ConfigData;
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
+use App\Http\Integrations\Netbird\Requests\SetupOwnerRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 function vpnInitKubectl(): string
 {
@@ -38,7 +46,7 @@ test('vpn:init deploys netbird vpn to larakube-vpn', function (): void {
         ->expectsOutputToContain('Deploying NetBird Client...')
         ->expectsOutputToContain('NetBird VPN stack is live.');
 
-    Http::assertNothingSent();
+    Saloon::assertNothingSent();
 });
 
 test('vpn:init targets the CHOSEN environment\'s own saved context, never the ambient current context', function (): void {
@@ -76,7 +84,7 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
             ->assertExitCode(0)
             ->expectsOutputToContain('NetBird VPN stack is live.');
 
-        Http::assertNothingSent();
+        Saloon::assertNothingSent();
     } finally {
         chdir($original);
         $temporaryDirectory->delete();
@@ -108,17 +116,17 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
         "{$kubectl} create secret generic vpn-secrets*" => Process::result(output: 'secret/vpn-secrets created'),
         "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
     ]);
-    Http::fake([
-        'https://vpn.kube/api/setup' => Http::response(['personal_access_token' => 'nbp_test_token']),
-        'https://vpn.kube/api/setup-keys' => Http::response(['key' => 'nb_setup_key_test']),
+    Saloon::fake([
+        SetupOwnerRequest::class => MockResponse::make(['personal_access_token' => 'nbp_test_token']),
+        CreateSetupKeyRequest::class => MockResponse::make(['key' => 'nb_setup_key_test']),
     ]);
 
     $this->artisan('vpn:init local')->assertExitCode(0);
 
-    Http::assertSent(fn ($request) => $request->url() === 'https://vpn.kube/api/setup'
-        && $request['create_pat'] === true);
-    Http::assertSent(fn ($request) => $request->url() === 'https://vpn.kube/api/setup-keys'
-        && $request->hasHeader('Authorization', 'Token nbp_test_token'));
+    Saloon::assertSent(fn ($request) => $request instanceof SetupOwnerRequest
+        && $request->body()->get('create_pat') === true);
+    Saloon::assertSent(fn ($request, $response) => $request instanceof CreateSetupKeyRequest
+        && $response->getPendingRequest()->headers()->get('Authorization') === 'Token nbp_test_token');
 });
 
 test('vpn:init warns but does not fail when NetBird auth bootstrap fails', function (): void {
@@ -134,8 +142,8 @@ test('vpn:init warns but does not fail when NetBird auth bootstrap fails', funct
         "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: '', exitCode: 1),
         "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
     ]);
-    Http::fake([
-        'https://vpn.kube/api/setup' => Http::response(status: 500),
+    Saloon::fake([
+        SetupOwnerRequest::class => MockResponse::make(status: 500),
     ]);
 
     $this->artisan('vpn:init local')

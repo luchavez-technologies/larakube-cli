@@ -1,7 +1,15 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Netbird\Requests\ListSetupKeysRequest;
+use App\Http\Integrations\Netbird\Requests\UpdateSetupKeyRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 function vpnRevokeKubectl(): string
 {
@@ -29,26 +37,26 @@ function vpnRevokeKeysResponse(): array
 test('vpn:revoke --name revokes the active key for that teammate', function (): void {
     fakeVpnRevokeInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response(vpnRevokeKeysResponse()),
-        'https://vpn.kube/api/setup-keys/k1' => Http::response(['id' => 'k1', 'revoked' => true]),
+    Saloon::fake([
+        ListSetupKeysRequest::class => MockResponse::make(vpnRevokeKeysResponse()),
+        UpdateSetupKeyRequest::class => MockResponse::make(['id' => 'k1', 'revoked' => true]),
     ]);
 
     $this->artisan('vpn:revoke local --name=lloyd --force')
         ->assertExitCode(0)
         ->expectsOutputToContain("Revoked 'lloyd'");
 
-    Http::assertSent(fn ($request) => $request->method() === 'PUT'
-        && $request->url() === 'https://vpn.kube/api/setup-keys/k1'
-        && $request['revoked'] === true);
+    Saloon::assertSent(fn ($request) => $request instanceof UpdateSetupKeyRequest
+        && $request->resolveEndpoint() === 'api/setup-keys/k1'
+        && $request->body()->get('revoked') === true);
 });
 
 test('vpn:revoke --key-id revokes one specific key by id', function (): void {
     fakeVpnRevokeInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response(vpnRevokeKeysResponse()),
-        'https://vpn.kube/api/setup-keys/k1' => Http::response(['id' => 'k1', 'revoked' => true]),
+    Saloon::fake([
+        ListSetupKeysRequest::class => MockResponse::make(vpnRevokeKeysResponse()),
+        UpdateSetupKeyRequest::class => MockResponse::make(['id' => 'k1', 'revoked' => true]),
     ]);
 
     $this->artisan('vpn:revoke local --key-id=k1 --force')
@@ -59,8 +67,8 @@ test('vpn:revoke --key-id revokes one specific key by id', function (): void {
 test('vpn:revoke errors when no active key exists for that name', function (): void {
     fakeVpnRevokeInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response(vpnRevokeKeysResponse()),
+    Saloon::fake([
+        ListSetupKeysRequest::class => MockResponse::make(vpnRevokeKeysResponse()),
     ]);
 
     // maria's only key is already revoked — nothing active left to revoke.
@@ -72,8 +80,8 @@ test('vpn:revoke errors when no active key exists for that name', function (): v
 test('vpn:revoke without --name/--key-id in non-interactive mode errors clearly', function (): void {
     fakeVpnRevokeInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response(vpnRevokeKeysResponse()),
+    Saloon::fake([
+        ListSetupKeysRequest::class => MockResponse::make(vpnRevokeKeysResponse()),
     ]);
 
     $this->artisan('vpn:revoke local --no-interaction')
@@ -90,5 +98,5 @@ test('vpn:revoke errors when the VPN is not installed', function (): void {
         ->assertExitCode(1)
         ->expectsOutputToContain("NetBird VPN isn't installed for 'local'");
 
-    Http::assertNothingSent();
+    Saloon::assertNothingSent();
 });

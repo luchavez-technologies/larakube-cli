@@ -3,12 +3,19 @@
 use App\Commands\Cloud\CloudHardenCommand;
 use App\Data\CloudData;
 use App\Data\ConfigData;
+use App\Http\Integrations\Netbird\Requests\ListPeersRequest;
 use Illuminate\Console\OutputStyle;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 function cloudHardenRunner(): object
 {
@@ -52,8 +59,8 @@ test('joinVpn repoints the kube-context to the VPS\'s own overlay IP once it joi
         "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
         "{$kubectl} config set-cluster 'larakube-1.2.3.4' --server='https://100.86.159.244:6443'" => Process::result(exitCode: 0),
     ]);
-    Http::fake([
-        'https://vpn.kube/api/peers' => Http::response([
+    Saloon::fake([
+        ListPeersRequest::class => MockResponse::make([
             ['hostname' => 'hello-vps', 'ip' => '100.86.159.244'],
             ['hostname' => 'someone-else', 'ip' => '100.86.1.1'],
         ]),
@@ -81,8 +88,8 @@ test('joinVpn dials the overlay IP but derives the context name from the public 
         "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
         "{$kubectl} config set-cluster 'larakube-1.2.3.4' --server='https://100.86.159.244:6443'" => Process::result(exitCode: 0),
     ]);
-    Http::fake([
-        'https://vpn.kube/api/peers' => Http::response([
+    Saloon::fake([
+        ListPeersRequest::class => MockResponse::make([
             ['hostname' => 'hello-vps', 'ip' => '100.86.159.244'],
         ]),
     ]);
@@ -136,9 +143,9 @@ test('joinVpn warns instead of failing when the overlay IP can\'t be determined'
         'ssh -o BatchMode=yes -o StrictHostKeyChecking=no -i /key -p 22 larakube@1.2.3.4 hostname' => Process::result(output: "hello-vps\n", exitCode: 0),
         "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
     ]);
-    Http::fake([
+    Saloon::fake([
         // The just-joined host never shows up in the peer list.
-        'https://vpn.kube/api/peers' => Http::response([
+        ListPeersRequest::class => MockResponse::make([
             ['hostname' => 'someone-else', 'ip' => '100.86.1.1'],
         ]),
     ]);

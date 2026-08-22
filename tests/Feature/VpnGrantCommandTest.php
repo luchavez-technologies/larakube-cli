@@ -1,7 +1,10 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 function vpnGrantKubectl(): string
 {
@@ -18,11 +21,15 @@ function fakeVpnGrantInstalled(string $pat = 'nbp_test_pat'): void
     ]);
 }
 
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
+
 test('vpn:grant mints a single-use setup key by default and prints the join command', function (): void {
     fakeVpnGrantInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response([
+    Saloon::fake([
+        CreateSetupKeyRequest::class => MockResponse::make([
             'key' => 'AAAA-BBBB-CCCC',
             'expires' => '2027-07-14T00:00:00Z',
             'usage_limit' => 1,
@@ -33,17 +40,17 @@ test('vpn:grant mints a single-use setup key by default and prints the join comm
         ->assertExitCode(0)
         ->expectsOutputToContain('netbird up --management-url https://vpn.kube --setup-key AAAA-BBBB-CCCC');
 
-    Http::assertSent(fn ($request) => $request->url() === 'https://vpn.kube/api/setup-keys'
-        && $request->hasHeader('Authorization', 'Token nbp_test_pat')
-        && $request['name'] === 'lloyd'
-        && $request['usage_limit'] === 1);
+    Saloon::assertSent(fn ($request, $response) => $request instanceof CreateSetupKeyRequest
+        && $response->getPendingRequest()->headers()->get('Authorization') === 'Token nbp_test_pat'
+        && $request->body()->get('name') === 'lloyd'
+        && $request->body()->get('usage_limit') === 1);
 });
 
 test('vpn:grant --reusable mints a key with no usage limit', function (): void {
     fakeVpnGrantInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response([
+    Saloon::fake([
+        CreateSetupKeyRequest::class => MockResponse::make([
             'key' => 'REUSE-ME',
             'expires' => '2027-07-14T00:00:00Z',
             'usage_limit' => 0,
@@ -54,7 +61,7 @@ test('vpn:grant --reusable mints a key with no usage limit', function (): void {
         ->assertExitCode(0)
         ->expectsOutputToContain('REUSE-ME');
 
-    Http::assertSent(fn ($request) => $request['usage_limit'] === 0);
+    Saloon::assertSent(fn ($request) => $request->body()->get('usage_limit') === 0);
 });
 
 test('vpn:grant errors when the VPN is not installed', function (): void {
@@ -66,7 +73,7 @@ test('vpn:grant errors when the VPN is not installed', function (): void {
         ->assertExitCode(1)
         ->expectsOutputToContain("NetBird VPN isn't installed for 'local'");
 
-    Http::assertNothingSent();
+    Saloon::assertNothingSent();
 });
 
 test('vpn:grant errors when no admin PAT has been bootstrapped yet', function (): void {
@@ -81,14 +88,14 @@ test('vpn:grant errors when no admin PAT has been bootstrapped yet', function ()
         ->assertExitCode(1)
         ->expectsOutputToContain('No NetBird admin token found');
 
-    Http::assertNothingSent();
+    Saloon::assertNothingSent();
 });
 
 test('vpn:grant --json emits a machine-readable result and no Termwind output', function (): void {
     fakeVpnGrantInstalled();
 
-    Http::fake([
-        'https://vpn.kube/api/setup-keys' => Http::response([
+    Saloon::fake([
+        CreateSetupKeyRequest::class => MockResponse::make([
             'key' => 'JSON-KEY',
             'expires' => '2027-07-14T00:00:00Z',
             'usage_limit' => 1,

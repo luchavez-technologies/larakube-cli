@@ -2,14 +2,18 @@
 
 use App\Data\CloudData;
 use App\Data\ConfigData;
+use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
 use App\Traits\ConfiguresCloudEnvironment;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
+use Saloon\Config;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function ciVpnRunner(): object
@@ -54,6 +58,8 @@ beforeEach(function (): void {
 afterEach(function (): void {
     chdir($this->originalDir);
     $this->temporaryDirectory->delete();
+    Config::allowStrayRequests();
+    MockClient::destroyGlobal();
 });
 
 function ciVpnConfig(string $dir): ConfigData
@@ -83,7 +89,7 @@ test('ensureCiVpnSecret returns null and touches nothing when the environment ha
     $config->saveToFile($this->tempDir);
 
     Process::preventStrayProcesses();
-    Http::preventStrayRequests();
+    Config::preventStrayRequests();
 
     $runner = ciVpnRunner();
     expect($runner->ensure($config, 'production', $this->tempDir))->toBeNull()
@@ -96,7 +102,7 @@ test('ensureCiVpnSecret returns null when the VPN is not installed for that envi
     Process::fake([
         ciVpnKubectl().' get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
     ]);
-    Http::preventStrayRequests();
+    Config::preventStrayRequests();
 
     $runner = ciVpnRunner();
     expect($runner->ensure($config, 'production', $this->tempDir))->toBeNull()
@@ -111,8 +117,8 @@ test('ensureCiVpnSecret mints an ephemeral reusable key, uploads it, and persist
         "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
         "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
     ]);
-    Http::fake([
-        'https://vpn.example.com/api/setup-keys' => Http::response([
+    Saloon::fake([
+        CreateSetupKeyRequest::class => MockResponse::make([
             'key' => 'CI-KEY-VALUE',
             'expires' => '2027-07-14T00:00:00Z',
             'usage_limit' => 0,
@@ -126,9 +132,10 @@ test('ensureCiVpnSecret mints an ephemeral reusable key, uploads it, and persist
     expect($host)->toBe('vpn.example.com')
         ->and($runner->uploaded)->toBe([['PRODUCTION_NETBIRD_SETUP_KEY', 'CI-KEY-VALUE']]);
 
-    Http::assertSent(fn ($request) => $request['name'] === 'ci-production'
-        && $request['usage_limit'] === 0
-        && $request['ephemeral'] === true);
+    Saloon::assertSent(fn ($request) => $request instanceof CreateSetupKeyRequest
+        && $request->body()->get('name') === 'ci-production'
+        && $request->body()->get('usage_limit') === 0
+        && $request->body()->get('ephemeral') === true);
 
     $reloaded = ConfigData::loadFromFile($this->tempDir);
     expect($reloaded->getEnvironment('production')->ciVpn)->toBeTrue();
