@@ -1,7 +1,13 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Matrix\Requests\CreateRoomRequest;
+use App\Http\Integrations\Matrix\Requests\GetJoinedMembersRequest;
+use App\Http\Integrations\Matrix\Requests\GetRoomByAliasRequest;
+use App\Http\Integrations\Matrix\Requests\InviteToRoomRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 function chatRoomBaseProcessFakes(): array
 {
@@ -10,6 +16,10 @@ function chatRoomBaseProcessFakes(): array
         '*get secret chat-secrets*admin-access-token*' => Process::result(output: base64_encode('cached-admin-token')),
     ];
 }
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('chat:room is registered', function (): void {
     $this->artisan('list --no-interaction')
@@ -27,9 +37,9 @@ test('chat:room requires installed chat', function (): void {
 
 test('chat:room creates a new room and invites members in the same call', function (): void {
     Process::fake(chatRoomBaseProcessFakes());
-    Http::fake([
-        '*directory/room/*' => Http::response(['errcode' => 'M_NOT_FOUND'], 404),
-        '*createRoom' => Http::response(['room_id' => '!room1:luchtech.dev']),
+    Saloon::fake([
+        GetRoomByAliasRequest::class => MockResponse::make(['errcode' => 'M_NOT_FOUND'], 404),
+        CreateRoomRequest::class => MockResponse::make(['room_id' => '!room1:luchtech.dev']),
     ]);
 
     $this->artisan('chat:room', [
@@ -42,18 +52,18 @@ test('chat:room creates a new room and invites members in the same call', functi
         ->expectsOutputToContain('Room created')
         ->expectsOutputToContain('!room1:luchtech.dev');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), 'createRoom')
-        && $request['room_alias_name'] === 'partner-team'
-        && $request['name'] === 'Partner Team'
-        && $request['invite'] === ['@alice:luchtech.dev', '@bob:luchtech.dev']);
+    Saloon::assertSent(fn ($request) => $request instanceof CreateRoomRequest
+        && $request->body()->get('room_alias_name') === 'partner-team'
+        && $request->body()->get('name') === 'Partner Team'
+        && $request->body()->get('invite') === ['@alice:luchtech.dev', '@bob:luchtech.dev']);
 });
 
 test('chat:room reuses an existing room and only invites members not already joined', function (): void {
     Process::fake(chatRoomBaseProcessFakes());
-    Http::fake([
-        '*directory/room/*' => Http::response(['room_id' => '!room1:luchtech.dev']),
-        '*rooms/*/joined_members' => Http::response(['joined' => ['@alice:luchtech.dev' => ['display_name' => 'Alice']]]),
-        '*rooms/*/invite' => Http::response([]),
+    Saloon::fake([
+        GetRoomByAliasRequest::class => MockResponse::make(['room_id' => '!room1:luchtech.dev']),
+        GetJoinedMembersRequest::class => MockResponse::make(['joined' => ['@alice:luchtech.dev' => ['display_name' => 'Alice']]]),
+        InviteToRoomRequest::class => MockResponse::make([]),
     ]);
 
     $this->artisan('chat:room', [
@@ -64,8 +74,8 @@ test('chat:room reuses an existing room and only invites members not already joi
         ->assertExitCode(0)
         ->expectsOutputToContain('Room already exists');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/invite')
-        && $request['user_id'] === '@bob:luchtech.dev');
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/invite')
-        && ($request['user_id'] ?? null) === '@alice:luchtech.dev');
+    Saloon::assertSent(fn ($request) => $request instanceof InviteToRoomRequest
+        && $request->body()->get('user_id') === '@bob:luchtech.dev');
+    Saloon::assertNotSent(fn ($request) => $request instanceof InviteToRoomRequest
+        && $request->body()->get('user_id') === '@alice:luchtech.dev');
 });

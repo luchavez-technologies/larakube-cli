@@ -1,7 +1,12 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Matrix\Requests\GetRegisterNonceRequest;
+use App\Http\Integrations\Matrix\Requests\RegisterUserRequest;
+use App\Http\Integrations\Matrix\Requests\SetUserAccountRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 function chatUserBaseProcessFakes(): array
 {
@@ -13,6 +18,10 @@ function chatUserBaseProcessFakes(): array
         '*patch secret chat-secrets*' => Process::result(output: 'secret/chat-secrets patched'),
     ];
 }
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('chat:user is registered', function (): void {
     $this->artisan('list --no-interaction')
@@ -31,11 +40,10 @@ test('chat:user requires installed chat', function (): void {
 test('chat:user bootstraps the automation admin (shared-secret register) then creates the account', function (): void {
     Process::fake(chatUserBaseProcessFakes());
 
-    Http::fake([
-        '*_synapse/admin/v1/register' => Http::sequence()
-            ->push(['nonce' => 'nonce-abc'])
-            ->push(['access_token' => 'admin-token-xyz']),
-        '*_synapse/admin/v2/users/*' => Http::response(['name' => '@alice:chat.luchtech.dev'], 201),
+    Saloon::fake([
+        GetRegisterNonceRequest::class => MockResponse::make(['nonce' => 'nonce-abc']),
+        RegisterUserRequest::class => MockResponse::make(['access_token' => 'admin-token-xyz']),
+        SetUserAccountRequest::class => MockResponse::make(['name' => '@alice:chat.luchtech.dev'], 201),
     ]);
 
     $this->artisan('chat:user', ['--username' => 'alice', '--password' => 'alicepw', '--display-name' => 'Alice', '--no-interaction' => true])
@@ -43,10 +51,9 @@ test('chat:user bootstraps the automation admin (shared-secret register) then cr
         ->expectsOutputToContain('Account created')
         ->expectsOutputToContain('@alice:');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/_synapse/admin/v2/users/')
-        && $request->method() === 'PUT'
-        && $request['password'] === 'alicepw'
-        && $request['displayname'] === 'Alice');
+    Saloon::assertSent(fn ($request) => $request instanceof SetUserAccountRequest
+        && $request->body()->get('password') === 'alicepw'
+        && $request->body()->get('displayname') === 'Alice');
 });
 
 test('chat:user reuses a cached admin token without re-bootstrapping', function (): void {
@@ -55,9 +62,9 @@ test('chat:user reuses a cached admin token without re-bootstrapping', function 
         '*get secret chat-secrets*admin-access-token*' => Process::result(output: base64_encode('cached-admin-token')),
     ]);
 
-    Http::fake([
-        '*_synapse/admin/v1/register' => Http::response(['nonce' => 'should-not-be-used']),
-        '*_synapse/admin/v2/users/*' => Http::response(['name' => '@bob:chat.luchtech.dev'], 200),
+    Saloon::fake([
+        GetRegisterNonceRequest::class => MockResponse::make(['nonce' => 'should-not-be-used']),
+        SetUserAccountRequest::class => MockResponse::make(['name' => '@bob:chat.luchtech.dev'], 200),
     ]);
 
     $this->artisan('chat:user', ['--username' => 'bob', '--no-interaction' => true])
@@ -65,7 +72,7 @@ test('chat:user reuses a cached admin token without re-bootstrapping', function 
         ->assertExitCode(0)
         ->expectsOutputToContain('Account updated');
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/_synapse/admin/v1/register'));
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/_synapse/admin/v2/users/')
-        && $request->hasHeader('Authorization', 'Bearer cached-admin-token'));
+    Saloon::assertNotSent(GetRegisterNonceRequest::class);
+    Saloon::assertSent(fn ($request, $response) => $request instanceof SetUserAccountRequest
+        && $response->getPendingRequest()->headers()->get('Authorization') === 'Bearer cached-admin-token');
 });

@@ -2,7 +2,15 @@
 
 namespace App\Traits;
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Matrix\MatrixConnector;
+use App\Http\Integrations\Matrix\Requests\CreateRoomRequest;
+use App\Http\Integrations\Matrix\Requests\GetJoinedMembersRequest;
+use App\Http\Integrations\Matrix\Requests\GetRegisterNonceRequest;
+use App\Http\Integrations\Matrix\Requests\GetRoomByAliasRequest;
+use App\Http\Integrations\Matrix\Requests\InviteToRoomRequest;
+use App\Http\Integrations\Matrix\Requests\LoginRequest;
+use App\Http\Integrations\Matrix\Requests\RegisterUserRequest;
+use App\Http\Integrations\Matrix\Requests\SetUserAccountRequest;
 use Illuminate\Support\Str;
 
 /**
@@ -48,7 +56,9 @@ trait InteractsWithMatrixApi
         $username = 'larakube-automation';
         $password = $this->readChatSecret($kubectl, $ns, 'automation-password') ?? Str::password(32);
 
-        $nonceResponse = Http::timeout(15)->get("https://{$host}/_synapse/admin/v1/register");
+        $connector = MatrixConnector::make($host);
+
+        $nonceResponse = $connector->send(GetRegisterNonceRequest::make());
         if ($nonceResponse->failed()) {
             return null;
         }
@@ -59,13 +69,7 @@ trait InteractsWithMatrixApi
 
         $mac = hash_hmac('sha1', "{$nonce}\0{$username}\0{$password}\0admin", $secret);
 
-        $register = Http::timeout(15)->post("https://{$host}/_synapse/admin/v1/register", [
-            'nonce' => $nonce,
-            'username' => $username,
-            'password' => $password,
-            'admin' => true,
-            'mac' => $mac,
-        ]);
+        $register = $connector->send(RegisterUserRequest::make($nonce, $username, $password, $mac));
 
         $token = null;
         if ($register->successful()) {
@@ -74,11 +78,7 @@ trait InteractsWithMatrixApi
             || str_contains(strtolower((string) $register->body()), 'user_in_use')) {
             // Already bootstrapped on a previous run — log in with the
             // cached password instead of re-registering.
-            $login = Http::timeout(15)->post("https://{$host}/_matrix/client/v3/login", [
-                'type' => 'm.login.password',
-                'identifier' => ['type' => 'm.id.user', 'user' => $username],
-                'password' => $password,
-            ]);
+            $login = $connector->send(LoginRequest::make($username, $password));
             $token = $login->successful() ? $login->json('access_token') : null;
         }
 
@@ -95,8 +95,7 @@ trait InteractsWithMatrixApi
     /** The room id for a #alias:server_name, or null if it doesn't exist / on failure. */
     protected function matrixFindRoomByAlias(string $host, string $token, string $alias): ?string
     {
-        $response = Http::withToken($token)->timeout(15)
-            ->get("https://{$host}/_matrix/client/v3/directory/room/".rawurlencode($alias));
+        $response = MatrixConnector::make($host, $token)->send(GetRoomByAliasRequest::make($alias));
 
         return $response->successful() ? $response->json('room_id') : null;
     }
@@ -113,17 +112,8 @@ trait InteractsWithMatrixApi
      */
     protected function matrixCreateRoom(string $host, string $token, string $name, string $aliasLocalPart, ?string $topic, array $inviteUserIds): ?string
     {
-        $body = [
-            'name' => $name,
-            'room_alias_name' => $aliasLocalPart,
-            'preset' => 'private_chat',
-            'invite' => array_values($inviteUserIds),
-        ];
-        if ($topic !== null && $topic !== '') {
-            $body['topic'] = $topic;
-        }
-
-        $response = Http::withToken($token)->timeout(15)->post("https://{$host}/_matrix/client/v3/createRoom", $body);
+        $response = MatrixConnector::make($host, $token)
+            ->send(CreateRoomRequest::make($name, $aliasLocalPart, $topic, $inviteUserIds));
 
         return $response->successful() ? $response->json('room_id') : null;
     }
@@ -137,8 +127,7 @@ trait InteractsWithMatrixApi
      */
     protected function matrixRoomMembers(string $host, string $token, string $roomId): array
     {
-        $response = Http::withToken($token)->timeout(15)
-            ->get("https://{$host}/_matrix/client/v3/rooms/".rawurlencode($roomId).'/joined_members');
+        $response = MatrixConnector::make($host, $token)->send(GetJoinedMembersRequest::make($roomId));
 
         if ($response->failed()) {
             return [];
@@ -155,10 +144,7 @@ trait InteractsWithMatrixApi
      */
     protected function matrixInviteToRoom(string $host, string $token, string $roomId, string $userId): bool
     {
-        $response = Http::withToken($token)->timeout(15)->post(
-            "https://{$host}/_matrix/client/v3/rooms/".rawurlencode($roomId).'/invite',
-            ['user_id' => $userId],
-        );
+        $response = MatrixConnector::make($host, $token)->send(InviteToRoomRequest::make($roomId, $userId));
 
         return $response->successful() || str_contains(strtolower((string) $response->body()), 'already in the room');
     }
@@ -172,18 +158,8 @@ trait InteractsWithMatrixApi
      */
     protected function matrixSetUserAccount(string $host, string $adminToken, string $userId, ?string $password = null, ?string $displayName = null, bool $admin = false): ?array
     {
-        $body = ['admin' => $admin];
-        if ($password !== null && $password !== '') {
-            $body['password'] = $password;
-        }
-        if ($displayName !== null && $displayName !== '') {
-            $body['displayname'] = $displayName;
-        }
-
-        $response = Http::withToken($adminToken)->timeout(15)->put(
-            "https://{$host}/_synapse/admin/v2/users/".rawurlencode($userId),
-            $body,
-        );
+        $response = MatrixConnector::make($host, $adminToken)
+            ->send(SetUserAccountRequest::make($userId, $password, $displayName, $admin));
 
         if ($response->failed()) {
             return null;
