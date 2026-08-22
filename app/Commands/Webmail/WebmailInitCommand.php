@@ -58,6 +58,10 @@ class WebmailInitCommand extends Command
         $kubectl = $this->bulwarkKubectl($context);
         $ns = $this->bulwarkNamespace();
         $host = $this->resolveToolHost(SharedClusterService::WEBMAIL, ClusterTool::WEBMAIL, $env, $kubectl);
+        // Every tool's instance identifier is a real, host-derived slug now
+        // — Webmail included, even though it's 1:1 bound to the one Stalwart
+        // and will never have a second instance.
+        $instance = ClusterTool::WEBMAIL->instanceSlugFromHost($host);
         $vpnOnly = (bool) $this->option('vpn-only');
 
         // Bulwark is a client for Stalwart — refuse if there's no Stalwart to
@@ -68,7 +72,7 @@ class WebmailInitCommand extends Command
             return 1;
         }
 
-        $mailHost = $this->resolveMailHostReadOnly($env, $config);
+        $mailHost = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         if (! $mailHost) {
             $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube mail:init {$env}` first.");
 
@@ -81,21 +85,22 @@ class WebmailInitCommand extends Command
             return 1;
         }
 
-        $sessionSecret = $this->readBulwarkSecret($kubectl, $ns, 'WEBMAIL_SESSION_SECRET')
-            ?? $this->readBulwarkSecret($kubectl, $ns, 'session-secret')
+        $sessionSecret = $this->readBulwarkSecret($kubectl, $ns, 'WEBMAIL_SESSION_SECRET', $instance)
+            ?? $this->readBulwarkSecret($kubectl, $ns, 'session-secret', $instance)
             ?? Str::random(48);
-        $adminPassword = $this->readBulwarkSecret($kubectl, $ns, 'WEBMAIL_ADMIN_PASSWORD')
-            ?? $this->readBulwarkSecret($kubectl, $ns, 'admin-password')
+        $adminPassword = $this->readBulwarkSecret($kubectl, $ns, 'WEBMAIL_ADMIN_PASSWORD', $instance)
+            ?? $this->readBulwarkSecret($kubectl, $ns, 'admin-password', $instance)
             ?? Str::random(24);
         $appName = (string) ($this->option('app-name') ?: 'Webmail');
+        $secretName = "webmail-secrets-{$instance}";
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $sessionSecret, $adminPassword, $env): void {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $sessionSecret, $adminPassword, $env): void {
             Process::run(
-                "{$kubectl} create secret generic webmail-secrets -n {$ns} "
+                "{$kubectl} create secret generic {$secretName} -n {$ns} "
                 .'--from-literal=WEBMAIL_SESSION_SECRET='.escapeshellarg($sessionSecret).' '
                 .'--from-literal=WEBMAIL_ADMIN_PASSWORD='.escapeshellarg($adminPassword).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -118,6 +123,7 @@ class WebmailInitCommand extends Command
 
         $manifest = view('k8s.webmail.bulwark', [
             'host' => $host,
+            'instance' => $instance,
             'mailHost' => $mailHost,
             'appName' => $appName,
             'vpnOnly' => $vpnOnly,
@@ -129,9 +135,11 @@ class WebmailInitCommand extends Command
         $tmp = $temporaryDirectory->path('larakube-webmail.yaml');
         file_put_contents($tmp, $manifest);
 
+        $deploymentName = ClusterTool::WEBMAIL->deploymentName($instance);
+
         $rolledOut = $this->withSpin(
             'Applying Bulwark manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'webmail-bulwark', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
         );
         $temporaryDirectory->delete();
 
@@ -162,7 +170,7 @@ class WebmailInitCommand extends Command
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Bulwark webmail is live.');
-        $this->registerDeployedTool(ClusterTool::WEBMAIL, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::WEBMAIL, $kubectl, $host, $instance);
         $this->newLine();
         $this->line("  <fg=gray>Webmail URL:</>        <fg=blue>https://{$host}</>");
         $this->line("  <fg=gray>Webmail Admin URL:</>  <fg=blue>https://{$host}/admin</>");

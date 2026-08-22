@@ -107,8 +107,8 @@ abstract class AbstractToolRemoveCommand extends Command
         }
 
         // Every instance serving the targeted host — normally exactly one
-        // ('main' when --domain is omitted). A host registered under MORE
-        // than one instance is a duplicate-registration artifact (the DATA
+        // (the tool's sole registered instance when --domain is omitted). A
+        // host registered under MORE than one instance is a duplicate-registration artifact (the DATA
         // incident of 2026-08-09): removal means "take down everything
         // serving this host", so all matching instances go.
         $targets = $this->resolveInstanceTargets($kubectl);
@@ -160,7 +160,7 @@ abstract class AbstractToolRemoveCommand extends Command
      * 1. --domain given → target instances registered for that domain/host.
      * 2. --all given → target every registered instance of this tool.
      * 3. Interactive with multiple registered instances → prompt select choice.
-     * 4. Single/unregistered → default to registered instance or 'main'.
+     * 4. Single/unregistered → default to the tool's registered instance, or null.
      *
      * @return list<string>
      */
@@ -182,11 +182,11 @@ abstract class AbstractToolRemoveCommand extends Command
 
             // Removal is read-only targeting, not installation — never write a
             // fresh registry stub just to compute a fallback instance slug,
-            // and never GUESS one via instanceSlugFromHost() either: it now
-            // always derives a real (never empty/'main') slug (ADR 0012,
-            // amended 2026-08-15), which would target resources that don't
-            // exist for a legacy, pre-registry deployment. null is what
-            // every teardown method below already treats as "this tool's
+            // and never GUESS one via instanceSlugFromHost() either: it always
+            // derives a real, non-empty slug (ADR 0012, amended 2026-08-15),
+            // which would target resources that don't exist for a legacy,
+            // pre-registry deployment. null is what every teardown method
+            // below already treats as "this tool's
             // own unsuffixed default" — the exact same value the plain
             // no-flags branch a few lines down already falls back to.
             return [null];

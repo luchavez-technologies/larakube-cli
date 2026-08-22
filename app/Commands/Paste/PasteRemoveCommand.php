@@ -14,10 +14,13 @@ class PasteRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
+        $instance = $this->resolveInstance($kubectl);
+        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
+
         return $this->removeResources(
             'Removing Yopass resources...',
-            "{$kubectl} delete deployment/paste-yopass service/paste-yopass "
-            .'ingress/paste-yopass secret/paste-yopass-secrets '
+            "{$kubectl} delete deployment/paste-yopass{$suffix} service/paste-yopass{$suffix} "
+            ."ingress/paste-yopass{$suffix} secret/paste-yopass-secrets{$suffix} "
             ."-n {$namespace} --ignore-not-found",
         );
     }

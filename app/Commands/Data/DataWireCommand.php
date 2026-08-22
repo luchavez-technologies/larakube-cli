@@ -25,7 +25,7 @@ class DataWireCommand extends Command
     protected $signature = 'data:wire
         {environment=local : Environment whose Data engine host to wire}
         {--engine=         : Data engine to target ("pocketbase" or "directus")}
-        {--instance=main   : Instance name for multi-instance deployments}
+        {--instance=       : Instance name for multi-instance deployments}
         {--domain=         : Base domain OR full host for Data}
         {--context=        : Target a specific kube-context}';
 
@@ -39,7 +39,7 @@ class DataWireCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = $this->dataKubectl($context);
         $engine = $this->resolveEngine();
-        $instance = (string) ($this->option('instance') ?: 'main');
+        $instance = (string) ($this->option('instance') ?: '');
 
         $host = $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl, $instance);
 

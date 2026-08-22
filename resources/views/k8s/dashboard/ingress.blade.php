@@ -1,7 +1,8 @@
+@php($suffix = ($instance ?? '') !== '' ? "-{$instance}" : '')
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: dashboard
+  name: dashboard{{ $suffix }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -24,7 +25,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: dashboard-headlamp
+                name: dashboard-headlamp{{ $suffix }}
                 port:
                   number: 4466
   tls:

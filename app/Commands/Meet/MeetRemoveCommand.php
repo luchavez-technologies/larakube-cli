@@ -25,11 +25,17 @@ class MeetRemoveCommand extends AbstractToolRemoveCommand
      */
     protected function teardown(string $kubectl, string $namespace): bool
     {
+        $instance = $this->resolveInstance($kubectl);
+        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
+
+        // meet-lk-jwt/meet-keys/its middlewares are meet:wire-owned, never
+        // instance-suffixed here — removing the SFU strands the bridge, and a
+        // bridge pointing at a deleted LiveKit is worse than no bridge.
         $ok = $this->removeResources(
             'Removing LiveKit (Meet) resources...',
-            "{$kubectl} delete deployment/meet-livekit deployment/meet-lk-jwt "
-            .'service/meet-livekit service/meet-livekit-rtc service/meet-lk-jwt '
-            .'ingress/meet secret/meet-livekit-config secret/meet-keys '
+            "{$kubectl} delete deployment/meet-livekit{$suffix} deployment/meet-lk-jwt "
+            ."service/meet-livekit{$suffix} service/meet-livekit-rtc{$suffix} service/meet-lk-jwt "
+            ."ingress/meet{$suffix} secret/meet-livekit-config{$suffix} secret/meet-keys "
             ."-n {$namespace} --ignore-not-found",
         );
 

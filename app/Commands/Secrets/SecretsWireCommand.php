@@ -66,7 +66,7 @@ class SecretsWireCommand extends Command
         }
 
         // --domain= only ever targets ONE specific tool's instance — --all
-        // wires every capable tool at its own default ('main') instance, the
+        // wires every capable tool at its own sole/default instance, the
         // same as before --domain= existed.
         $domain = (string) ($this->option('domain') ?: '');
 

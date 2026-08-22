@@ -142,9 +142,19 @@ trait DeploysClusterTool
      * wiring prompts). Every *:init command calls this at the end
      * of a successful deploy — no need for the `tool:add` proxy
      * to be the only path that registers.
+     *
+     * $instance defaults to null, not '': every tool's instance identifier
+     * is a real, non-empty, host-derived slug (ClusterTool::
+     * instanceSlugFromHost()) — the SAME derivation for a tool's first
+     * instance as for any later one, no special-cased "default install"
+     * value. A caller that already knows its instance (Notes, Data, CRM,
+     * Design) passes it explicitly; every other *:init command gets it
+     * derived here automatically from $host, with zero changes needed on
+     * their end.
      */
-    protected function registerDeployedTool(ClusterTool $tool, string $kubectl, ?string $host = null, string $instance = '', array $extra = []): bool
+    protected function registerDeployedTool(ClusterTool $tool, string $kubectl, ?string $host = null, ?string $instance = null, array $extra = []): bool
     {
+        $instance ??= $host !== null ? $tool->instanceSlugFromHost($host) : null;
         $metadata = $host !== null ? ['host' => $host] : [];
 
         return $this->registerTool($kubectl, $tool, array_merge($metadata, $extra), $instance);

@@ -29,11 +29,21 @@ class MailRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
+        // Webmail's own secret is instance-suffixed now — best-effort lookup
+        // of its current instance so this doesn't leave a real, live-named
+        // credential Secret orphaned (an unsuffixed 'webmail-secrets' never
+        // exists post-migration, so --ignore-not-found alone would silently
+        // skip it).
+        $webmailInstance = $this->getToolHost($kubectl, ClusterTool::WEBMAIL) !== null
+            ? (string) ($this->getToolInstanceData($kubectl, ClusterTool::WEBMAIL)?->instance ?? '')
+            : '';
+        $webmailSecret = $webmailInstance !== '' ? "webmail-secrets-{$webmailInstance}" : 'webmail-secrets';
+
         $ok = $this->removeResources(
             'Removing Stalwart resources...',
             "{$kubectl} delete deployment/stalwart service/stalwart service/stalwart-mail "
             .'ingress/stalwart secret/mail-secrets secret/mail-sender secret/mail-relay '
-            ."secret/webmail-secrets configmap/stalwart-config -n {$namespace} --ignore-not-found",
+            ."secret/{$webmailSecret} configmap/stalwart-config -n {$namespace} --ignore-not-found",
         );
 
         // Wait for pods to fully terminate — PVCs can't be deleted while bound.

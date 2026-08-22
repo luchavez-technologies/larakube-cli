@@ -24,23 +24,28 @@ trait InteractsWithDashboard
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    protected function isDashboardInstalled(string $kubectl, string $ns): bool
+    protected function isDashboardInstalled(string $kubectl, string $ns, ?string $instance = null): bool
     {
-        $out = Process::run("{$kubectl} get deployment dashboard-headlamp -n {$ns} --no-headers --ignore-not-found")->output();
+        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
+        $out = Process::run("{$kubectl} get deployment dashboard-headlamp{$suffix} -n {$ns} --no-headers --ignore-not-found")->output();
 
         return trim($out) !== '';
     }
 
-    protected function readDashboardSecret(string $kubectl, string $ns, string $key): ?string
+    protected function readDashboardSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', $key);
+        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
+
+        return $this->readClusterSecretKey($kubectl, $ns, "dashboard-headlamp-oidc{$suffix}", $key);
     }
 
-    protected function readDashboardWiredOidc(string $kubectl, string $ns): ?array
+    protected function readDashboardWiredOidc(string $kubectl, string $ns, ?string $instance = null): ?array
     {
-        $issuer = $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', 'HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL');
-        $clientId = $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', 'HEADLAMP_CONFIG_OIDC_CLIENT_ID');
-        $clientSecret = $this->readClusterSecretKey($kubectl, $ns, 'dashboard-headlamp-oidc', 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET');
+        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
+        $secret = "dashboard-headlamp-oidc{$suffix}";
+        $issuer = $this->readClusterSecretKey($kubectl, $ns, $secret, 'HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL');
+        $clientId = $this->readClusterSecretKey($kubectl, $ns, $secret, 'HEADLAMP_CONFIG_OIDC_CLIENT_ID');
+        $clientSecret = $this->readClusterSecretKey($kubectl, $ns, $secret, 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET');
 
         if (! $issuer || ! $clientId || ! $clientSecret) {
             return null;

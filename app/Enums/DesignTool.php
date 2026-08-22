@@ -26,7 +26,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '' || $instance === 'main') ? 'design-vpn-only' : "design-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'design-vpn-only' : "design-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -36,7 +36,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
 
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        $name = fn (string $n) => ($instance === null || $instance === '' || $instance === 'main') ? $n : "{$n}-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(

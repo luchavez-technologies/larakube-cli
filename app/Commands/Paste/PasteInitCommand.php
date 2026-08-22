@@ -60,6 +60,10 @@ class PasteInitCommand extends Command
         $this->plexContext = $context;
         $kubectl = $this->pasteKubectl($context);
         $host = $this->resolveToolHost(SharedClusterService::PASTE, ClusterTool::PASTE, $env, $kubectl);
+        // Every tool's instance identifier is a real, host-derived slug now
+        // — Paste included, even though it's a simple, always-single-instance
+        // stateless tool.
+        $instance = ClusterTool::PASTE->instanceSlugFromHost($host);
         $ns = $this->pasteNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -89,7 +93,7 @@ class PasteInitCommand extends Command
             return 1;
         }
 
-        $fileStorage = $this->wireOptionalFileStorage($kubectl, $ns, $plexNs);
+        $fileStorage = $this->wireOptionalFileStorage($kubectl, $ns, $plexNs, $instance);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -97,6 +101,7 @@ class PasteInitCommand extends Command
 
         $manifest = view('k8s.paste.shared', [
             'host' => $host,
+            'instance' => $instance,
             'plexNamespace' => $plexNs,
             'redisIndex' => $redisIndex,
             'fileStorage' => $fileStorage,
@@ -109,9 +114,11 @@ class PasteInitCommand extends Command
         $tmp = $temporaryDirectory->path('larakube-paste-yopass.yaml');
         file_put_contents($tmp, $manifest);
 
+        $deploymentName = ClusterTool::PASTE->deploymentName($instance);
+
         $rolledOut = $this->withSpin(
             'Applying Yopass manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'paste-yopass', 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120),
         );
         $temporaryDirectory->delete();
 
@@ -119,7 +126,7 @@ class PasteInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::PASTE, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::PASTE, $kubectl, $host, $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Yopass is live.');
@@ -143,7 +150,7 @@ class PasteInitCommand extends Command
      *
      * @return array{bucket: string, endpoint: string, region: string}|null
      */
-    protected function wireOptionalFileStorage(string $kubectl, string $ns, string $plexNs): ?array
+    protected function wireOptionalFileStorage(string $kubectl, string $ns, string $plexNs, string $instance): ?array
     {
         $spec = $this->getCommonsSpec();
         if ($spec === null) {
@@ -164,8 +171,8 @@ class PasteInitCommand extends Command
                 break;
             }
 
-            $this->withSpin('Syncing S3 file-storage credentials...', function () use ($kubectl, $ns, $s3Creds): void {
-                $cmd = "{$kubectl} create secret generic paste-yopass-secrets -n {$ns} "
+            $this->withSpin('Syncing S3 file-storage credentials...', function () use ($kubectl, $ns, $instance, $s3Creds): void {
+                $cmd = "{$kubectl} create secret generic paste-yopass-secrets-{$instance} -n {$ns} "
                     .'--from-literal=s3-access-key='.escapeshellarg($s3Creds['access']).' '
                     .'--from-literal=s3-secret-key='.escapeshellarg($s3Creds['secret']).' '
                     ."--dry-run=client -o yaml | {$kubectl} apply -f -";

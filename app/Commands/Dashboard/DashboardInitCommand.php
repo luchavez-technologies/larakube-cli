@@ -51,6 +51,12 @@ class DashboardInitCommand extends Command
         $this->plexContext = $context;
         $kubectl = $this->dashboardKubectl($context);
         $host = $this->resolveToolHost(SharedClusterService::DASHBOARD, ClusterTool::DASHBOARD, $env, $kubectl);
+        // Every tool's instance identifier is a real, host-derived slug now,
+        // Dashboard included — it will never have a SECOND instance (one K8s
+        // API server, one view of it), but its resource names still follow
+        // the same convention as every other tool rather than a special-cased
+        // bare name (no more '' /'main' escape hatch anywhere).
+        $instance = ClusterTool::DASHBOARD->instanceSlugFromHost($host);
         $ns = $this->dashboardNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -64,11 +70,12 @@ class DashboardInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $oidc = $this->readDashboardWiredOidc($kubectl, $ns);
+        $oidc = $this->readDashboardWiredOidc($kubectl, $ns, $instance);
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::DASHBOARD);
 
         $manifest = view('k8s.dashboard.headlamp', [
             'host' => $host,
+            'instance' => $instance,
             'appName' => $branding['appName'],
             'logoUrl' => $branding['logoUrl'],
             'oidc' => $oidc,
@@ -81,9 +88,11 @@ class DashboardInitCommand extends Command
         $tmp = $temporaryDirectory->path('larakube-dashboard-headlamp.yaml');
         file_put_contents($tmp, $manifest);
 
+        $deploymentName = ClusterTool::DASHBOARD->deploymentName($instance);
+
         $rolledOut = $this->withSpin(
             'Applying Headlamp Control Plane manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'dashboard-headlamp', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
         );
         $temporaryDirectory->delete();
 
@@ -91,7 +100,7 @@ class DashboardInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::DASHBOARD, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::DASHBOARD, $kubectl, $host, $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ CNCF Headlamp Kubernetes Control Plane is live.');

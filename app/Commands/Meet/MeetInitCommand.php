@@ -46,6 +46,11 @@ class MeetInitCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = $this->meetKubectl($context);
         $host = $this->resolveToolHost(SharedClusterService::MEET, ClusterTool::MEET, $env, $kubectl);
+        // Every tool's instance identifier is a real, host-derived slug now —
+        // Meet included, even though its hostPort-bound RTC ports make a
+        // genuine second instance impossible on one node regardless of
+        // naming (see ClusterTool::supportsMultipleInstances()'s docblock).
+        $instance = ClusterTool::MEET->instanceSlugFromHost($host);
         $ns = $this->meetNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -72,12 +77,14 @@ class MeetInitCommand extends Command
 
         $manifest = view('k8s.meet.livekit', [
             'host' => $host,
+            'instance' => $instance,
             'consumers' => $registry,
             'hostPort' => ! $this->option('no-host-port'),
         ])->render()
             ."\n---\n"
             .view('k8s.meet.ingress', [
                 'host' => $host,
+                'instance' => $instance,
                 'isLocal' => $env === 'local',
                 'proxied' => $this->resolveProxied($env === 'local'),
                 'vpnOnly' => $vpnOnly,
@@ -88,14 +95,16 @@ class MeetInitCommand extends Command
         $tmp = $temporaryDirectory->path('larakube-meet.yaml');
         file_put_contents($tmp, $manifest);
 
+        $deploymentName = ClusterTool::MEET->deploymentName($instance);
+
         $this->withSpin('Applying LiveKit (Meet) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
         $temporaryDirectory->delete();
 
         $this->withSpin('Waiting for LiveKit (Meet)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/meet-livekit -n {$ns} --timeout=180s",
+            "{$kubectl} rollout status deploy/{$deploymentName} -n {$ns} --timeout=180s",
         ));
 
-        $this->registerDeployedTool(ClusterTool::MEET, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::MEET, $kubectl, $host, $instance);
 
         // On a cloud VPS, punch LiveKit's raw UDP/TCP ports through both
         // firewall layers (DO cloud edge + host UFW) — klipper binds them via

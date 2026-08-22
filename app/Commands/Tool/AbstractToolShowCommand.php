@@ -170,7 +170,7 @@ abstract class AbstractToolShowCommand extends Command
      *
      * @return list<list<string>>
      */
-    protected function rows(?string $host, string $env, string $kubectl, string $instance = 'main'): array
+    protected function rows(?string $host, string $env, string $kubectl, string $instance = ''): array
     {
         $tool = $this->tool();
         $aliasHosts = $this->getToolAliasHosts($kubectl, $tool, $instance);
@@ -200,14 +200,14 @@ abstract class AbstractToolShowCommand extends Command
     }
 
     /** Hook for post-table guidance (first-login steps, credential hints). */
-    protected function afterTable(?string $host, string $env, string $instance = 'main'): void {}
+    protected function afterTable(?string $host, string $env, string $instance = ''): void {}
 
     /**
      * Registry first (what was actually deployed), then .larakube.json, then
      * the conventional derivation. Deliberately never prompts — `:show` is a
      * read-only inspection command and must be safe to pipe.
      */
-    protected function resolveHost(ClusterTool $tool, string $env, string $kubectl, string $instance = 'main'): ?string
+    protected function resolveHost(ClusterTool $tool, string $env, string $kubectl, string $instance = ''): ?string
     {
         $stored = $this->getToolHost($kubectl, $tool, $instance);
         if ($stored !== null && $stored !== '') {
@@ -229,7 +229,7 @@ abstract class AbstractToolShowCommand extends Command
         }
 
         // .larakube.json's pinned host has no per-instance dimension.
-        $pinned = $instance === 'main' ? ($config->getEnvironment($env)?->hosts[$service->value] ?? null) : null;
+        $pinned = $instance === '' ? ($config->getEnvironment($env)?->hosts[$service->value] ?? null) : null;
         if ($pinned !== null && $pinned !== '') {
             return $pinned;
         }

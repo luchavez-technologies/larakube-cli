@@ -14,8 +14,9 @@ class WebmailShowCommand extends AbstractToolShowCommand
 
     protected function rows(?string $host, string $env, string $kubectl, string $instance = ''): array
     {
-        $adminPassword = $this->secretValue($kubectl, 'larakube-shared', 'webmail-secrets', 'WEBMAIL_ADMIN_PASSWORD')
-            ?? $this->secretValue($kubectl, 'larakube-shared', 'webmail-secrets', 'admin-password');
+        $secretName = $instance !== '' ? "webmail-secrets-{$instance}" : 'webmail-secrets';
+        $adminPassword = $this->secretValue($kubectl, 'larakube-shared', $secretName, 'WEBMAIL_ADMIN_PASSWORD')
+            ?? $this->secretValue($kubectl, 'larakube-shared', $secretName, 'admin-password');
 
         $rows = [
             [

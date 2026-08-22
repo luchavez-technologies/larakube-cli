@@ -12,7 +12,7 @@ function meetWireFakes(array $overrides = []): array
     $homeserver = base64_encode("server_name: \"chat.example.com\"\nreport_stats: false\n");
 
     return array_merge([
-        '*get deployment meet-livekit*' => Process::result(output: 'meet-livekit 1/1'),
+        '*part-of=meet*' => Process::result(output: 'meet-livekit 1/1'),
         '*get deployment chat-synapse*' => Process::result(output: 'chat-synapse 1/1'),
         '*get deployment meet-lk-jwt*' => Process::result(output: ''),
         '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
@@ -29,7 +29,7 @@ function meetWireFakes(array $overrides = []): array
 }
 
 test('meet:wire refuses when Meet is not installed instead of half-wiring chat', function (): void {
-    Process::fake(meetWireFakes(['*get deployment meet-livekit*' => Process::result(output: '')]));
+    Process::fake(meetWireFakes(['*part-of=meet*' => Process::result(output: '')]));
 
     $this->artisan('meet:wire local --tool=chat --no-interaction')
         ->assertExitCode(1)

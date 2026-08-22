@@ -1,7 +1,8 @@
+@php($suffix = ($instance ?? '') !== '' ? "-{$instance}" : '')
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: paste-yopass
+  name: paste-yopass{{ $suffix }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -13,7 +14,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-paste-yopass-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-paste-yopass-vpn-only{{ $suffix }}@kubernetescrd
 @endif
 spec:
   rules:
@@ -24,7 +25,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: paste-yopass
+                name: paste-yopass{{ $suffix }}
                 port:
                   number: 1337
   tls:

@@ -1,4 +1,5 @@
 @php
+    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
     // Middlewares compose — vpn-only used to write this annotation outright, so
     // enabling it alongside anything else would silently drop one.
     $middlewares = [];
@@ -15,7 +16,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: meet
+  name: meet{{ $suffix }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -52,7 +53,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: meet-livekit
+                name: meet-livekit{{ $suffix }}
                 port:
                   number: 7880
   tls:

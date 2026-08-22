@@ -54,18 +54,27 @@ class ToolAliasCommand extends Command
         // Host identity wins: a --domain that matches an already-registered
         // entry targets THAT instance in place (registry is the source of
         // truth for which instance serves a host), never a derived slug.
-        $instance = $this->resolveInstanceForDomain($kubectl, $tool, $targetDomain);
-
-        if ($instance !== 'main' && ! $tool->supportsMultipleInstances()) {
-            $this->laraKubeError(
-                "{$tool->getLabel()} does not support multiple instances — omit --domain to target the single installation.",
-            );
-
+        // Ambiguity-safe: refuses to guess when 2+ instances exist and no
+        // --domain disambiguates, same as sso:grant/sso:revoke/sso:org-grant.
+        //
+        // $instance stays nullable all the way through the registry lookups
+        // below — null means "no explicit preference," which is what lets
+        // isToolRegistered()/getToolHost() correctly resolve a tool's sole
+        // entry even if its stored value is a stale pre-migration one. Only
+        // coercing this to '' for display/naming purposes (see
+        // $namingInstance below) would break that fallback for every tool
+        // not yet redeployed under the new naming.
+        $instance = $this->resolveInstanceForTool($tool, $kubectl, $targetDomain);
+        if ($instance === false) {
             return 1;
         }
+        // Only disambiguate with a parenthetical when there's a real named
+        // instance to distinguish — a tool's sole/default install doesn't
+        // need "(Mail Server (Stalwart))" tacked onto its own label.
+        $suffix = $instance !== null ? " ({$instance})" : '';
 
         if (! $this->isToolRegistered($kubectl, $tool, $instance)) {
-            $this->laraKubeError("Tool '{$tool->value}' (instance: {$instance}) is not registered on this cluster.");
+            $this->laraKubeError("Tool '{$tool->value}'{$suffix} is not registered on this cluster.");
 
             return 1;
         }
@@ -81,16 +90,21 @@ class ToolAliasCommand extends Command
 
         if ($isRemove) {
             $this->removeToolAliasHost($kubectl, $tool, $aliasDomain, $instance);
-            $this->laraKubeInfo("Removed alias domain '{$aliasDomain}' from {$tool->getLabel()} ({$instance}).");
+            $this->laraKubeInfo("Removed alias domain '{$aliasDomain}' from {$tool->getLabel()}{$suffix}.");
         } else {
             $this->addToolAliasHost($kubectl, $tool, $aliasDomain, $instance);
-            $this->laraKubeInfo("Registered alias domain '{$aliasDomain}' for {$tool->getLabel()} ({$instance}).");
+            $this->laraKubeInfo("Registered alias domain '{$aliasDomain}' for {$tool->getLabel()}{$suffix}.");
         }
 
         $aliasHosts = $this->getToolAliasHosts($kubectl, $tool, $instance);
 
+        // reapplyToolIngress() needs a concrete resource-naming string, not a
+        // nullable "no preference" — '' here means "this tool's one/default
+        // install, unsuffixed," same convention as everywhere else.
+        $namingInstance = $instance ?? '';
+
         // Re-render tool ingress with updated multi-host manifest
-        $this->reapplyToolIngress($kubectl, $tool, $primaryHost, $aliasHosts, $instance);
+        $this->reapplyToolIngress($kubectl, $tool, $primaryHost, $aliasHosts, $namingInstance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Ingress updated for {$tool->getLabel()}. Traefik will issue/refresh ACME TLS certs automatically.");
@@ -113,12 +127,17 @@ class ToolAliasCommand extends Command
         $service = $tool->service();
         $isLocal = str_ends_with($primaryHost, '.test') || str_ends_with($primaryHost, '.localhost');
 
-        $ingressName = $instance === 'main' ? ($service?->value ?? $tool->value) : "{$tool->value}-{$instance}";
+        $ingressName = $instance === '' ? ($service?->value ?? $tool->value) : "{$tool->value}-{$instance}";
 
         $manifest = view($view, [
             'host' => $primaryHost,
             'aliasHosts' => $aliasHosts,
-            'serviceName' => $tool->deploymentName(),
+            // Was always the base/unsuffixed deployment name regardless of
+            // which instance this alias targets — for a multi-instance tool
+            // with 2+ real instances, that pointed the alias Ingress at the
+            // WRONG backend Service entirely. Pass the resolved instance
+            // through, same as every other resource-name derivation here.
+            'serviceName' => $tool->deploymentName($instance === '' ? null : $instance),
             'isLocal' => $isLocal,
             'vpnOnly' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'vpn-only'),
             'proxied' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'cloudflare-proxied'),

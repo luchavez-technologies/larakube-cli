@@ -75,13 +75,15 @@ test('hostFor combines the host prefix with the given cluster domain', function 
         ->and(SharedClusterService::TRAEFIK_DASHBOARD->hostFor('localhost'))->toBe('traefik.localhost');
 });
 
-test('hostFor dash-suffixes the prefix for a named instance, and leaves main unchanged', function (): void {
+test('hostFor dash-suffixes the prefix for any named instance, and leaves the sole/default instance unchanged', function (): void {
     // The only prefix-derivation convention this codebase already has
     // (ConfigData::getSharedServiceHost()'s web-host fallback,
     // ToolAliasCommand's resource-name suffix) is dash-joined — mirrored
     // here so a second Data/Notes instance gets a host, not a collision.
+    // 'main' is no longer a recognized sentinel — it's just another instance
+    // name now, suffixed like any other.
     expect(SharedClusterService::DATA->hostFor('example.com', 'blog'))->toBe('data-blog.example.com')
-        ->and(SharedClusterService::DATA->hostFor('example.com', 'main'))->toBe('data.example.com')
+        ->and(SharedClusterService::DATA->hostFor('example.com', 'main'))->toBe('data-main.example.com')
         ->and(SharedClusterService::DATA->hostFor('example.com'))->toBe('data.example.com')
         ->and(SharedClusterService::DATA->hostFor('example.com', null))->toBe('data.example.com')
         ->and(SharedClusterService::DATA->hostFor('example.com', ''))->toBe('data.example.com');

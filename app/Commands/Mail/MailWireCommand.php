@@ -479,9 +479,9 @@ class MailWireCommand extends Command
      * Which instance a tool's SMTP wiring targets. --instance= always wins.
      * Otherwise: conventional single-instance tools (the vast majority)
      * ignore whatever string lands here entirely — every smtpEnv()
-     * implementation except CRM's hardcodes its deployment name — so 'main'
-     * is a safe default for them. Host-derived, no-'main' tools (CRM, and
-     * DATA once data:init registers correctly) have no 'main' deployment at
+     * implementation except CRM's hardcodes its deployment name — so an
+     * empty placeholder is safe for them. Host-derived tools (CRM, and DATA
+     * once data:init registers correctly) have no unsuffixed deployment at
      * all; for those, the registry's real instance is the only name that
      * will ever match a live Deployment. Multiple registered instances is
      * genuinely ambiguous and needs an explicit --instance=, same as every
@@ -496,7 +496,7 @@ class MailWireCommand extends Command
 
         $registered = $this->getToolInstances($kubectl, $tool);
 
-        return count($registered) === 1 ? $registered[0] : 'main';
+        return count($registered) === 1 ? $registered[0] : '';
     }
 
     protected function deploymentExists(string $kubectl, string $ns, string $deployment): bool

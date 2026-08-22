@@ -110,7 +110,7 @@ class SecretsRotateCommand extends Command
         if ($this->option('all')) {
             $installed = [];
             foreach ($capable as $t) {
-                $resolved = $resolve($t, 'main');
+                $resolved = $resolve($t, '');
                 if ($resolved !== null) {
                     $installed[] = $resolved;
                 }

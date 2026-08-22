@@ -70,22 +70,9 @@ class SsoRevokeCommand extends Command
                 return 1;
             }
 
-            $domainOption = (string) ($this->option('domain') ?: '');
-            $instance = null;
-            if ($domainOption !== '') {
-                $instance = $this->resolveInstanceForDomain($kubectl, $tool, $this->normalizeTargetHost($domainOption));
-            } elseif ($tool->supportsMultipleInstances()) {
-                $named = array_values(array_unique(array_filter(
-                    $this->getToolInstances($kubectl, $tool),
-                    fn (?string $i) => $i !== null && $i !== '' && $i !== 'main',
-                )));
-                if (count($named) === 1) {
-                    $instance = $named[0];
-                } elseif (count($named) > 1) {
-                    $this->laraKubeError("'{$tool->value}' has multiple instances — pass --domain= to pick one.");
-
-                    return 1;
-                }
+            $instance = $this->resolveInstanceForTool($tool, $kubectl, (string) ($this->option('domain') ?: ''));
+            if ($instance === false) {
+                return 1;
             }
 
             $projectId = $this->resolveSsoProject($tool, $ssoHost, $pat, $kubectl, $instance);
@@ -171,7 +158,7 @@ class SsoRevokeCommand extends Command
             $instances = [null];
             if ($tool->supportsMultipleInstances()) {
                 foreach ($this->getToolInstances($kubectl, $tool) as $i) {
-                    if ($i !== null && $i !== '' && $i !== 'main') {
+                    if ($i !== null && $i !== '') {
                         $instances[] = $i;
                     }
                 }

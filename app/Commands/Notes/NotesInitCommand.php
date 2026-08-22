@@ -238,7 +238,7 @@ class NotesInitCommand extends Command
      * is what both the manifest's valueFrom and sso:wire's own convention use —
      * so a later `sso:wire notes` reuses this app instead of clashing.
      */
-    protected function ensureOidcSecret(string $kubectl, string $ns, string $env, string $host, string $instance = 'main', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = []): bool
+    protected function ensureOidcSecret(string $kubectl, string $ns, string $env, string $host, string $instance = '', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = []): bool
     {
         // 1. Existing real credentials?
         $existing = $this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, 'OIDC_CLIENT_ID');
@@ -296,7 +296,7 @@ class NotesInitCommand extends Command
         return true;
     }
 
-    protected function selfWireZitadel(string $kubectl, string $ns, string $env, string $host, string $instance = 'main', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = []): bool
+    protected function selfWireZitadel(string $kubectl, string $ns, string $env, string $host, string $instance = '', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = []): bool
     {
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)

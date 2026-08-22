@@ -33,19 +33,20 @@ trait ResolvesToolHost
     /**
      * @param  bool  $deferRegistration  True for tools whose real instance is
      *                                   derived from the host AFTER this call returns (CRM, DATA —
-     *                                   "pure host-derived, no main fallback", see ClusterTool::CRM's
-     *                                   commit history and docs/decisions on DATA's host-as-identity fix).
-     *                                   For those, registering a stub under the DEFAULT $instance ('main')
-     *                                   here would diverge from the real instance the caller computes
-     *                                   moments later via instanceSlugFromHost($host) — registerTool()'s
-     *                                   exact-instance-match merge can't reconcile the two, so a second,
-     *                                   duplicate registry row gets appended instead of updating the
-     *                                   first (confirmed live 2026-08-14, Twenty CRM). Every other tool's
-     *                                   instance genuinely IS 'main' end-to-end, so this stays false for
-     *                                   them — skipping it would only lose the "host survives a Ctrl-C
-     *                                   before deploy finishes" convenience, which does not apply to
-     *                                   host-derived tools anyway (their derived instance isn't known
-     *                                   until after this call regardless).
+     *                                   "pure host-derived, register nothing until the real slug is
+     *                                   known", see ClusterTool::CRM's commit history and docs/decisions
+     *                                   on DATA's host-as-identity fix). For those, registering a stub
+     *                                   under a blank/placeholder $instance here would diverge from the
+     *                                   real instance the caller computes moments later via
+     *                                   instanceSlugFromHost($host) — registerTool()'s exact-instance-
+     *                                   match merge can't reconcile the two, so a second, duplicate
+     *                                   registry row gets appended instead of updating the first
+     *                                   (confirmed live 2026-08-14, Twenty CRM). Every other tool
+     *                                   resolves its instance the same way but earlier in the flow, so
+     *                                   this stays false for them — skipping it would only lose the
+     *                                   "host survives a Ctrl-C before deploy finishes" convenience,
+     *                                   which does not apply to host-derived tools anyway (their derived
+     *                                   instance isn't known until after this call regardless).
      */
     protected function resolveToolHost(
         SharedClusterService $service,
@@ -116,7 +117,7 @@ trait ResolvesToolHost
      * pasted scheme, trailing slash or stray dots are tolerated too, because
      * every one of those is a thing an operator will paste from a browser bar.
      */
-    protected function hostFromDomainOption(SharedClusterService $service, string $domain, string $instance = 'main'): string
+    protected function hostFromDomainOption(SharedClusterService $service, string $domain, string $instance = ''): string
     {
         // Strip anything copied from a URL: scheme, path, port, surrounding dots.
         $domain = strtolower(trim($domain));
@@ -125,7 +126,7 @@ trait ResolvesToolHost
         $domain = trim($domain, ". \t");
 
         $prefix = $service->hostPrefix();
-        if ($instance !== '' && $instance !== 'main') {
+        if ($instance !== '') {
             $prefix = "{$prefix}-{$instance}";
         }
 
@@ -144,8 +145,8 @@ trait ResolvesToolHost
      * rather than hostFromDomainOption()'s "base domain, guess the prefix".
      * Deliberately does NOT auto-prefix — a value already meaning a specific
      * instance's host would get silently mangled by hostFor()'s prefixing
-     * logic (which always assumes the bare-prefix/'main' case), which is
-     * exactly what made per-instance targeting impossible before this existed.
+     * logic (which always assumes the bare-prefix case), which is exactly
+     * what made per-instance targeting impossible before this existed.
      * Same URL-paste cleanup as hostFromDomainOption() (scheme/path/port/dots).
      */
     protected function sanitizeDomainInput(string $domain): string
@@ -206,10 +207,10 @@ trait ResolvesToolHost
             $config = $this->resolveProjectConfig();
         }
 
-        // The project-pinned host is main-only — .larakube.json has no
-        // per-instance dimension, so reusing it for a named instance would
-        // just recreate the exact host collision this parameter exists to
-        // avoid.
+        // The project-pinned host is for the tool's bare/first instance only
+        // — .larakube.json has no per-instance dimension, so reusing it for
+        // a named instance would just recreate the exact host collision this
+        // parameter exists to avoid.
         $existing = $instance === '' ? ($config?->getEnvironment($env)?->hosts[$service->value] ?? null) : null;
         if ($existing) {
             return $existing;
@@ -305,7 +306,7 @@ trait ResolvesToolHost
 
             $options = [];
             foreach ($existing as $entry) {
-                $inst = (string) ($entry->instance ?? 'main');
+                $inst = (string) ($entry->instance ?? '');
                 $entryHost = (string) ($entry->host ?? '');
                 $options[$inst] = $entryHost !== '' ? "{$inst} ({$entryHost})" : $inst;
             }
@@ -320,7 +321,7 @@ trait ResolvesToolHost
 
             if ($choice !== '__new__') {
                 foreach ($existing as $entry) {
-                    if ((string) ($entry->instance ?? 'main') === $choice && $entry->host !== null) {
+                    if ((string) ($entry->instance ?? '') === $choice && $entry->host !== null) {
                         return [$entry->host, $choice];
                     }
                 }
@@ -338,7 +339,7 @@ trait ResolvesToolHost
             ];
         }
 
-        $host = $this->resolveToolHost($service, $tool, $env, $kubectl, 'main', $labelOverride, deferRegistration: true);
+        $host = $this->resolveToolHost($service, $tool, $env, $kubectl, '', $labelOverride, deferRegistration: true);
 
         return [$host, $this->resolveInstanceForDomain($kubectl, $tool, $host)];
     }

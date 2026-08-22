@@ -1,7 +1,8 @@
+@php($suffix = ($instance ?? '') !== '' ? "-{$instance}" : '')
 apiVersion: v1
 kind: Secret
 metadata:
-  name: dashboard-headlamp-oidc
+  name: dashboard-headlamp-oidc{{ $suffix }}
   namespace: larakube-shared
 type: Opaque
 data:
@@ -15,20 +16,20 @@ data:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: dashboard-headlamp
+  name: dashboard-headlamp{{ $suffix }}
   namespace: larakube-shared
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: dashboard-headlamp-admin
+  name: dashboard-headlamp-admin{{ $suffix }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: cluster-admin
 subjects:
   - kind: ServiceAccount
-    name: dashboard-headlamp
+    name: dashboard-headlamp{{ $suffix }}
     namespace: larakube-shared
 ---
 # Grants the OIDC-authenticated identity, not the ServiceAccount above, actual
@@ -42,9 +43,11 @@ subjects:
 #
 # The "-" prefix on the group name is NOT a typo. "dashboard-admin" is the bare
 # Zitadel project role key (ClusterTool::DASHBOARD->rbacRoles()) that
-# zitadelEnsureRbacAction() flattens into the token's `groups` claim — but
-# `dashboard:trust` sets `--oidc-groups-prefix=-`, which per Kubernetes' own
-# docs should DISABLE prefixing (same sentinel that correctly leaves
+# zitadelEnsureRbacAction() flattens into the token's `groups` claim — a fixed,
+# cluster-wide claim value, never instance-suffixed (there is exactly one K8s
+# API server this binds against, regardless of naming convention elsewhere) —
+# but `dashboard:trust` sets `--oidc-groups-prefix=-`, which per Kubernetes'
+# own docs should DISABLE prefixing (same sentinel that correctly leaves
 # --oidc-username-claim=email unprefixed, confirmed live). It doesn't: this
 # k3s/kube-apiserver version prepends a literal "-" to every group from the
 # claim instead of treating it as the disable sentinel. Confirmed
@@ -56,7 +59,7 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: dashboard-oidc-admins
+  name: dashboard-oidc-admins{{ $suffix }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -69,23 +72,23 @@ subjects:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dashboard-headlamp
+  name: dashboard-headlamp{{ $suffix }}
   namespace: larakube-shared
   labels:
-    app: dashboard-headlamp
+    app: dashboard-headlamp{{ $suffix }}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: dashboard-headlamp
+      app: dashboard-headlamp{{ $suffix }}
   template:
     metadata:
       labels:
-        app: dashboard-headlamp
+        app: dashboard-headlamp{{ $suffix }}
     spec:
-      serviceAccountName: dashboard-headlamp
+      serviceAccountName: dashboard-headlamp{{ $suffix }}
       containers:
         - name: headlamp
           image: ghcr.io/headlamp-k8s/headlamp:v0.29.0
@@ -98,7 +101,7 @@ spec:
 @if($oidc ?? null)
           envFrom:
             - secretRef:
-                name: dashboard-headlamp-oidc
+                name: dashboard-headlamp-oidc{{ $suffix }}
 @endif
           readinessProbe:
             httpGet:
@@ -116,11 +119,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: dashboard-headlamp
+  name: dashboard-headlamp{{ $suffix }}
   namespace: larakube-shared
 spec:
   selector:
-    app: dashboard-headlamp
+    app: dashboard-headlamp{{ $suffix }}
   ports:
     - protocol: TCP
       port: 4466

@@ -4,6 +4,7 @@
      changes to literal strings in this file. --}}
 @php
     $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/meet/livekit.blade.php')), 0, 12);
+    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
 
     $registry = $consumers ?? [];
     ksort($registry);
@@ -22,7 +23,7 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: meet-livekit-config
+  name: meet-livekit-config{{ $suffix }}
   namespace: larakube-shared
 type: Opaque
 stringData:
@@ -49,10 +50,10 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: meet-livekit
+  name: meet-livekit{{ $suffix }}
   namespace: larakube-shared
   labels:
-    app: meet-livekit
+    app: meet-livekit{{ $suffix }}
     app.kubernetes.io/part-of: meet
 spec:
   replicas: 1
@@ -60,11 +61,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: meet-livekit
+      app: meet-livekit{{ $suffix }}
   template:
     metadata:
       labels:
-        app: meet-livekit
+        app: meet-livekit{{ $suffix }}
       annotations:
         {{-- The registry is in the hash because livekit.yaml bakes every key in:
              without it, wiring a consumer rewrites the Secret and the pod keeps
@@ -94,17 +95,17 @@ spec:
       volumes:
         - name: config
           secret:
-            secretName: meet-livekit-config
+            secretName: meet-livekit-config{{ $suffix }}
 ---
 # Signaling only (WS/HTTP) — always ClusterIP, fronted by the Traefik Ingress.
 apiVersion: v1
 kind: Service
 metadata:
-  name: meet-livekit
+  name: meet-livekit{{ $suffix }}
   namespace: larakube-shared
 spec:
   selector:
-    app: meet-livekit
+    app: meet-livekit{{ $suffix }}
   ports:
     - name: http
       port: 7880
@@ -118,11 +119,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: meet-livekit-rtc
+  name: meet-livekit-rtc{{ $suffix }}
   namespace: larakube-shared
 spec:
   selector:
-    app: meet-livekit
+    app: meet-livekit{{ $suffix }}
   ports:
     - name: rtc-udp
       protocol: UDP

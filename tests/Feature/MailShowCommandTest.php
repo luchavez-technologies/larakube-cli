@@ -37,7 +37,7 @@ test('mail:show <email> displays that account\'s client setup, never a password'
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
-        '*get deployment webmail-bulwark*' => Process::result(output: ''),
+        '*part-of=webmail*' => Process::result(output: ''),
         '*' => function () use (&$callCount) {
             $callCount++;
             if ($callCount === 1) {
@@ -76,7 +76,7 @@ test('mail:show <email> shows the webmail URL when Bulwark is installed', functi
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
-        '*get deployment webmail-bulwark*' => Process::result(output: 'webmail-bulwark   1/1   1   1   10d'),
+        '*part-of=webmail*' => Process::result(output: 'webmail-bulwark   1/1   1   1   10d'),
         '*' => function () use (&$callCount) {
             $callCount++;
             if ($callCount === 1) {

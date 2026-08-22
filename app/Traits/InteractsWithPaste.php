@@ -23,9 +23,15 @@ trait InteractsWithPaste
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
+    /**
+     * Is Yopass deployed? Label-based, not an exact deployment name — the
+     * Deployment itself is instance-suffixed now (a real, host-derived
+     * slug), but this stable `app.kubernetes.io/part-of: paste` label
+     * survives regardless.
+     */
     protected function isPasteInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment paste-yopass -n {$ns} --no-headers --ignore-not-found")->output();
+        $out = Process::run("{$kubectl} get deployment -n {$ns} -l app.kubernetes.io/part-of=paste --no-headers --ignore-not-found")->output();
 
         return trim($out) !== '';
     }

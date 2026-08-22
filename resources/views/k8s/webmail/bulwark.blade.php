@@ -1,6 +1,12 @@
+@php($suffix = ($instance ?? '') !== '' ? "-{$instance}" : '')
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  # Deliberately NOT instance-suffixed, unlike every other resource here:
+  # renaming a PVC means a brand-new empty volume, not the existing one —
+  # this holds Bulwark's real accumulated admin config + settings-sync data,
+  # and Webmail can only ever have one instance anyway (1:1 bound to the one
+  # Stalwart), so there's no collision risk to avoid by suffixing it.
   name: webmail-storage
   namespace: larakube-shared
 spec:
@@ -15,21 +21,22 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: webmail-bulwark
+  name: webmail-bulwark{{ $suffix }}
   namespace: larakube-shared
   labels:
-    app: webmail-bulwark
+    app: webmail-bulwark{{ $suffix }}
+    app.kubernetes.io/part-of: webmail
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: webmail-bulwark
+      app: webmail-bulwark{{ $suffix }}
   template:
     metadata:
       labels:
-        app: webmail-bulwark
+        app: webmail-bulwark{{ $suffix }}
     spec:
       containers:
         - name: bulwark
@@ -52,12 +59,12 @@ spec:
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: webmail-secrets
+                  name: webmail-secrets{{ $suffix }}
                   key: WEBMAIL_SESSION_SECRET
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: webmail-secrets
+                  name: webmail-secrets{{ $suffix }}
                   key: WEBMAIL_ADMIN_PASSWORD
             # Persist admin config + settings-sync across restarts so the
             # wizard/admin state isn't re-initialised on every rollout.
@@ -102,11 +109,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: webmail-bulwark
+  name: webmail-bulwark{{ $suffix }}
   namespace: larakube-shared
 spec:
   selector:
-    app: webmail-bulwark
+    app: webmail-bulwark{{ $suffix }}
   ports:
     - protocol: TCP
       port: 80

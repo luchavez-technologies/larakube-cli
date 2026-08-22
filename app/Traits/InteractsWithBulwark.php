@@ -33,18 +33,26 @@ trait InteractsWithBulwark
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    /** Bulwark Deployment present? */
+    /**
+     * Bulwark Deployment present? Label-based, not an exact deployment name
+     * — the Deployment itself is instance-suffixed now (a real, host-derived
+     * slug), but this stable `app.kubernetes.io/part-of: webmail` label
+     * survives regardless, so callers don't need to know or derive the
+     * current instance just to check presence.
+     */
     protected function isBulwarkInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment webmail-bulwark -n {$ns} --no-headers --ignore-not-found")->output();
+        $out = Process::run("{$kubectl} get deployment -n {$ns} -l app.kubernetes.io/part-of=webmail --no-headers --ignore-not-found")->output();
 
         return trim($out) !== '';
     }
 
-    /** Read a key from the webmail-secrets secret. */
-    protected function readBulwarkSecret(string $kubectl, string $ns, string $key): ?string
+    /** Read a key from the webmail-secrets secret (optionally instance-suffixed). */
+    protected function readBulwarkSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'webmail-secrets', $key);
+        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
+
+        return $this->readClusterSecretKey($kubectl, $ns, "webmail-secrets{$suffix}", $key);
     }
 
     /** Read-only Bulwark host for the given environment. */

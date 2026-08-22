@@ -47,10 +47,16 @@ trait InteractsWithMeet
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    /** Is the shared LiveKit deployed? */
+    /**
+     * Is the shared LiveKit deployed? Label-based, not an exact deployment
+     * name — the Deployment itself is instance-suffixed now (a real,
+     * host-derived slug), but this stable `app.kubernetes.io/part-of: meet`
+     * label survives regardless, so callers don't need to know or derive
+     * the current instance just to check presence.
+     */
     protected function isMeetInstalled(string $kubectl, string $ns): bool
     {
-        return trim(Process::run("{$kubectl} get deployment meet-livekit -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+        return trim(Process::run("{$kubectl} get deployment -n {$ns} -l app.kubernetes.io/part-of=meet --no-headers --ignore-not-found")->output()) !== '';
     }
 
     /**

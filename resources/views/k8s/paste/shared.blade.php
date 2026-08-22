@@ -1,21 +1,23 @@
+@php($suffix = ($instance ?? '') !== '' ? "-{$instance}" : '')
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: paste-yopass
+  name: paste-yopass{{ $suffix }}
   namespace: larakube-shared
   labels:
-    app: paste-yopass
+    app: paste-yopass{{ $suffix }}
+    app.kubernetes.io/part-of: paste
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: paste-yopass
+      app: paste-yopass{{ $suffix }}
   template:
     metadata:
       labels:
-        app: paste-yopass
+        app: paste-yopass{{ $suffix }}
     spec:
       containers:
         - name: yopass
@@ -44,12 +46,12 @@ spec:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: paste-yopass-secrets
+                  name: paste-yopass-secrets{{ $suffix }}
                   key: s3-access-key
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: paste-yopass-secrets
+                  name: paste-yopass-secrets{{ $suffix }}
                   key: s3-secret-key
 @endif
           startupProbe:
@@ -75,11 +77,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: paste-yopass
+  name: paste-yopass{{ $suffix }}
   namespace: larakube-shared
 spec:
   selector:
-    app: paste-yopass
+    app: paste-yopass{{ $suffix }}
   ports:
     - protocol: TCP
       port: 1337

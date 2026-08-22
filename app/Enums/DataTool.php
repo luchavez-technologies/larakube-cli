@@ -35,8 +35,8 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     {
         return match ($this) {
             self::POCKETBASE => [
-                'deployment' => $instance && $instance !== 'main' ? "data-pocketbase-{$instance}" : 'data-pocketbase',
-                'secret' => $instance && $instance !== 'main' ? "data-smtp-{$instance}" : 'data-smtp',
+                'deployment' => $instance ? "data-pocketbase-{$instance}" : 'data-pocketbase',
+                'secret' => $instance ? "data-smtp-{$instance}" : 'data-smtp',
                 'static' => [
                     'POCKETBASE_SMTP_ENABLED' => 'true',
                 ],
@@ -52,7 +52,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
             // above. This is a pre-existing gap carried over unchanged, not a
             // technical limitation — nobody has wired --instance naming into
             // Directus's SMTP/OIDC secrets. A second named DATA instance
-            // running Directus would silently collide with 'main' today.
+            // running Directus would silently collide with the first today.
             self::DIRECTUS => [
                 'deployment' => 'data-directus',
                 'secret' => 'data-smtp',
@@ -75,8 +75,8 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     {
         return match ($this) {
             self::POCKETBASE => [
-                'deployment' => $instance && $instance !== 'main' ? "data-pocketbase-{$instance}" : 'data-pocketbase',
-                'secret' => $instance && $instance !== 'main' ? "data-oidc-{$instance}" : 'data-oidc',
+                'deployment' => $instance ? "data-pocketbase-{$instance}" : 'data-pocketbase',
+                'secret' => $instance ? "data-oidc-{$instance}" : 'data-oidc',
                 'static' => [
                     'POCKETBASE_OIDC_PROVIDERS' => 'zitadel',
                 ],

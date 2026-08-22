@@ -27,7 +27,7 @@ class InstanceData extends Data
         /** Raw ClusterTool enum value, e.g. "data". Use getTool() for the typed enum. */
         public ?string $tool = null,
         public ?string $host = null,
-        /** Kubernetes-resource-naming slug, e.g. "main" or "blog-example-com". */
+        /** Kubernetes-resource-naming slug, e.g. "send-luchtech-dev" or "blog-example-com" — always a real, host-derived slug, never a bare/empty default. */
         public ?string $instance = null,
         /** @var list<string> */
         public array $aliases = [],

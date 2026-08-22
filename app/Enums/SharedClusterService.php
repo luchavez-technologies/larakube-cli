@@ -116,7 +116,7 @@ enum SharedClusterService: string
      * The caller owns domain resolution (local TLD vs the env's real domain from
      * EnvironmentData.hosts) so the enum stays free of project/cluster context.
      *
-     * $instance dash-suffixes the prefix for a non-main named instance (e.g.
+     * $instance dash-suffixes the prefix for a named instance (e.g.
      * "data-blog.example.com"), mirroring the only other prefix-derivation
      * convention in the codebase (ConfigData::getSharedServiceHost()'s
      * dash-joined web-host fallback, ToolAliasCommand's resource-name suffix).
@@ -124,7 +124,7 @@ enum SharedClusterService: string
     public function hostFor(string $domain, ?string $instance = null): string
     {
         $prefix = $this->hostPrefix();
-        if ($instance !== null && $instance !== '' && $instance !== 'main') {
+        if ($instance !== null && $instance !== '') {
             $prefix = "{$prefix}-{$instance}";
         }
 

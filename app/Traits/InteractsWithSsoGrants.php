@@ -155,6 +155,34 @@ trait InteractsWithSsoGrants
         return ClusterTool::from(select(label: 'Which tool?', options: $options, default: array_key_first($options)));
     }
 
+    /**
+     * Resolve a partner org by name, or offer a picker when --org= is
+     * omitted — the org-level counterpart to resolveGatedTool(). Errors
+     * with its own message and returns null when neither an explicit name
+     * nor any org exists to pick from.
+     */
+    protected function resolveOrg(string $ssoHost, string $pat): ?string
+    {
+        $orgOption = (string) ($this->option('org') ?: '');
+        if ($orgOption !== '') {
+            $orgId = $this->zitadelFindOrgByName($ssoHost, $pat, $orgOption);
+            if ($orgId === null) {
+                $this->laraKubeError("No Zitadel organization named '{$orgOption}' — run \`larakube sso:org\` first.");
+            }
+
+            return $orgId;
+        }
+
+        $orgs = $this->zitadelListOrgs($ssoHost, $pat);
+        if ($orgs === []) {
+            $this->laraKubeError('No Zitadel organizations exist yet — run `larakube sso:org` first.');
+
+            return null;
+        }
+
+        return select(label: 'Which org?', options: $orgs, default: array_key_first($orgs));
+    }
+
     protected function resolveRole(ClusterTool $tool): ?string
     {
         $roles = $tool->grantableRoles();

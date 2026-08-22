@@ -33,7 +33,7 @@ function mailCreateBaseFakes(): array
 {
     return [
         '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get deployment webmail-bulwark*' => Process::result(output: '', exitCode: 1),
+        '*part-of=webmail*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
@@ -161,7 +161,7 @@ test('mail:create creates account with given args', function (): void {
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
-        '*get deployment webmail-bulwark*' => Process::result(output: ''),
+        '*part-of=webmail*' => Process::result(output: ''),
         '*' => function () use (&$callCount) {
             $callCount++;
             if ($callCount === 1) {
@@ -193,7 +193,7 @@ test('mail:create shows the webmail URL when Bulwark is installed', function ():
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*get pod -l app=stalwart*' => Process::result(output: 'pod/stalwart-0'),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
-        '*get deployment webmail-bulwark*' => Process::result(output: 'webmail-bulwark   1/1   1   1   10d'),
+        '*part-of=webmail*' => Process::result(output: 'webmail-bulwark   1/1   1   1   10d'),
         '*' => function () use (&$callCount) {
             $callCount++;
             if ($callCount === 1) {

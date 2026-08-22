@@ -43,7 +43,7 @@ class MailInitCommand extends Command
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Stalwart (example.com → prefix.example.com)}
         {--alias=*    : Additional domain alias(es) to register on the Ingress}
-        {--instance=main : Named instance identifier (default: main)}
+        {--instance=     : Named instance identifier (default: this tool\'s sole instance)}
         {--admin-email= : Primary postmaster / admin email address for Stalwart}
         {--vpn-only  : Restrict the admin UI via NetBird VPN IP whitelisting}
         {--host-port : Bind mail ports directly to the node (default on single-node k3s)}

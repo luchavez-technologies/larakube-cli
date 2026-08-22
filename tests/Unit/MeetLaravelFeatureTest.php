@@ -73,7 +73,7 @@ test('adding meet to a project does not fail when Meet is not installed', functi
     // `larakube add meet` must work offline / before meet:init. Falling back to
     // the declared placeholders is correct; blowing up is not.
     Process::fake([
-        '*get deployment meet-livekit*' => Process::result(output: ''),
+        '*part-of=meet*' => Process::result(output: ''),
     ]);
 
     $method = new ReflectionMethod(LaravelFeature::MEET, 'resolveMeetCredentials');
@@ -88,7 +88,7 @@ test('when Meet is installed the project gets its own consumer key', function ()
     ]]);
 
     Process::fake([
-        '*get deployment meet-livekit*' => Process::result(output: 'meet-livekit 1/1'),
+        '*part-of=meet*' => Process::result(output: 'meet-livekit 1/1'),
         '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode(json_encode([['tool' => 'meet', 'instance' => '', 'host' => 'meet.example.com']])),
