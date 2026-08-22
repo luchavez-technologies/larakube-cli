@@ -2,6 +2,7 @@
 
 namespace App\Commands\Sso;
 
+use App\Enums\ClusterTool;
 use App\Traits\InteractsWithSsoGrants;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
@@ -12,6 +13,16 @@ use LaravelZero\Framework\Commands\Command;
  * primitive (a Project Grant), not a role-grant workaround. Once this
  * exists, the existing per-user `sso:grant` works unmodified against the
  * partner org's own users: Zitadel resolves the ProjectGrant internally.
+ *
+ * --tool= (picking a tool the same way sso:grant/sso:revoke already do,
+ * resolving its own per-instance project via rbacProjectName()) is the
+ * primary path since the 2026-08-20 per-tool-project RBAC redesign — most
+ * tools no longer share one project, so a bare --project= now requires
+ * already knowing the exact, sometimes-instance-suffixed Zitadel project
+ * name. --project= stays as an explicit escape hatch for the genuinely
+ * open "LaraKube Shared Tools" project (no grantable roles of its own) or
+ * any custom project — when given, it skips tool/instance resolution
+ * entirely, unchanged from before this redesign.
  */
 class SsoOrgGrantCommand extends Command
 {
@@ -20,11 +31,13 @@ class SsoOrgGrantCommand extends Command
     protected $signature = 'sso:org-grant
         {environment=local : Environment whose Zitadel to target}
         {--context= : Target a specific kube-context}
-        {--org=     : The partner org\'s domain/name, e.g. partner.example (must exist — run sso:org first)}
-        {--project= : Existing Zitadel project to grant (default: "LaraKube Shared Tools")}
+        {--org=     : The partner org\'s domain/name, e.g. partner.example (must exist — run sso:org first). Omit to pick interactively.}
+        {--tool=    : The tool to share (same tools sso:grant offers). Omit to pick interactively. Mutually exclusive with --project=.}
+        {--domain=  : The instance to target for a multi-instance tool (e.g. --domain=blog.example.com) — same meaning as sso:grant}
+        {--project= : Raw Zitadel project name — escape hatch for "LaraKube Shared Tools" or any custom project. Skips --tool=/--domain= entirely when given.}
         {--role=*   : Specific role key(s) to include (default: every role currently defined on the project)}';
 
-    protected $description = 'Grant a partner org (sso:org) scoped access to one of the operator\'s Zitadel projects';
+    protected $description = 'Grant a partner org (sso:org) scoped access to a tool — or, via --project=, any raw Zitadel project';
 
     public function handle(): int
     {
@@ -35,23 +48,33 @@ class SsoOrgGrantCommand extends Command
         if ($connection === null) {
             return 1;
         }
-        [$ssoHost, $pat] = $connection;
+        [$ssoHost, $pat, $kubectl] = $connection;
 
-        $orgOption = (string) $this->option('org');
-        if ($orgOption === '') {
-            $this->laraKubeError('--org is required — the partner org\'s domain/name (see `larakube sso:org`).');
-
-            return 1;
-        }
-
-        $grantedOrgId = $this->zitadelFindOrgByName($ssoHost, $pat, $orgOption);
+        $grantedOrgId = $this->resolveOrg($ssoHost, $pat);
         if ($grantedOrgId === null) {
-            $this->laraKubeError("No Zitadel organization named '{$orgOption}' — run \`larakube sso:org {$env} --zone={$orgOption} --cloudflare-token=…\` first.");
-
             return 1;
         }
+        $orgOption = (string) $this->option('org');
 
-        $projectName = (string) ($this->option('project') ?: 'LaraKube Shared Tools');
+        $projectOption = (string) ($this->option('project') ?: '');
+        $instance = null;
+
+        if ($projectOption !== '') {
+            $projectName = $projectOption;
+        } else {
+            $tool = $this->resolveGatedTool($ssoHost, $pat, $kubectl);
+            if ($tool === null) {
+                return 1;
+            }
+
+            $instance = $this->resolveInstanceForTool($tool, $kubectl, (string) ($this->option('domain') ?: ''));
+            if ($instance === false) {
+                return 1;
+            }
+
+            $projectName = $tool->requiresRbacGating() ? $tool->rbacProjectName($instance) : ClusterTool::ssoAdminProjectName();
+        }
+
         $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
         if ($projectId === null) {
             $this->laraKubeError("Failed to resolve the '{$projectName}' project.");
@@ -77,15 +100,17 @@ class SsoOrgGrantCommand extends Command
             return 1;
         }
 
+        $domainFlag = $instance !== null ? " --domain={$instance}" : '';
+
         $this->newLine();
         $this->laraKubeInfo("✅ '{$orgOption}' now has scoped access to '{$projectName}'.");
         $this->newLine();
         $this->line('  <fg=gray>Roles:</> <fg=blue>'.implode(', ', $roleKeys).'</>');
         $this->newLine();
         $this->line('  <fg=gray>Grant a specific role to one of their users:</>');
-        $this->line("  <fg=blue>larakube sso:grant {$env} --tool=<tool> --email=<user@{$orgOption}> --role=<role></>");
+        $this->line("  <fg=blue>larakube sso:grant {$env} --tool=<tool>{$domainFlag} --email=<user@{$orgOption}> --role=<role></>");
         $this->newLine();
-        $this->line("  <fg=gray>Note:</> this relies on Zitadel resolving zitadelGrantRole()'s UserGrant against the");
+        $this->line('  <fg=gray>Note:</> this relies on Zitadel resolving zitadelGrantRole()\'s UserGrant against the');
         $this->line('  ProjectGrant automatically for a granted-org user — verify this live before relying on it.');
         $this->newLine();
 

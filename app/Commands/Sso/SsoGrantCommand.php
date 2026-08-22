@@ -44,22 +44,9 @@ class SsoGrantCommand extends Command
         // real instance is already named) would silently target a DIFFERENT,
         // empty project instead of erroring, so auto-resolve the one
         // unambiguous case and refuse the ambiguous one rather than guess.
-        $domainOption = (string) ($this->option('domain') ?: '');
-        $instance = null;
-        if ($domainOption !== '') {
-            $instance = $this->resolveInstanceForDomain($kubectl, $tool, $this->normalizeTargetHost($domainOption));
-        } elseif ($tool->supportsMultipleInstances()) {
-            $named = array_values(array_unique(array_filter(
-                $this->getToolInstances($kubectl, $tool),
-                fn (?string $i) => $i !== null && $i !== '' && $i !== 'main',
-            )));
-            if (count($named) === 1) {
-                $instance = $named[0];
-            } elseif (count($named) > 1) {
-                $this->laraKubeError("'{$tool->value}' has multiple instances — pass --domain= to pick one.");
-
-                return 1;
-            }
+        $instance = $this->resolveInstanceForTool($tool, $kubectl, (string) ($this->option('domain') ?: ''));
+        if ($instance === false) {
+            return 1;
         }
 
         $projectId = $this->resolveSsoProject($tool, $ssoHost, $pat, $kubectl, $instance);
