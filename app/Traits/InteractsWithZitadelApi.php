@@ -816,6 +816,36 @@ trait InteractsWithZitadelApi
     }
 
     /**
+     * Every org in this Zitadel instance, for an interactive picker —
+     * sso:org-grant's --org= counterpart to resolveGatedTool()'s tool
+     * picker. Same endpoint as zitadelFindOrgByName(), empty queries to
+     * list everything rather than filter by name. No filtering of the
+     * operator's own/master org: listing everything and letting the
+     * operator pick is safer than guessing which one to hide.
+     *
+     * @return array<string, string> id => name
+     */
+    protected function zitadelListOrgs(string $host, string $pat): array
+    {
+        $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/v2/organizations/_search", [
+            'queries' => [],
+        ]);
+
+        if ($search->failed()) {
+            return [];
+        }
+
+        $orgs = [];
+        foreach ($search->json('result', []) as $org) {
+            if (isset($org['id'], $org['name'])) {
+                $orgs[$org['id']] = $org['name'];
+            }
+        }
+
+        return $orgs;
+    }
+
+    /**
      * Create a new Zitadel organization. Returns its id, or null on failure.
      * v2 API — AddOrganizationRequest.name confirmed live (empty-body probe
      * against sso.luchtech.dev returned "invalid AddOrganizationRequest.Name").
