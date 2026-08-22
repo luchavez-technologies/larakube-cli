@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Http\Integrations\Zitadel\Requests\ActivateEmailProviderRequest;
 use App\Http\Integrations\Zitadel\Requests\AddOrgDomainRequest;
 use App\Http\Integrations\Zitadel\Requests\AddOrgMemberRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateActionRequest;
@@ -10,9 +11,11 @@ use App\Http\Integrations\Zitadel\Requests\CreateOrganizationRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectRoleRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateSmtpProviderRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
 use App\Http\Integrations\Zitadel\Requests\DeactivateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\DeleteEmailProviderRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteUserRequest;
@@ -20,6 +23,7 @@ use App\Http\Integrations\Zitadel\Requests\GenerateOrgDomainValidationRequest;
 use App\Http\Integrations\Zitadel\Requests\GetFlowRequest;
 use App\Http\Integrations\Zitadel\Requests\GetProjectRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchActionsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchEmailProvidersRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrgDomainsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectAppsRequest;
@@ -33,10 +37,10 @@ use App\Http\Integrations\Zitadel\Requests\SetUserPasswordRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateProjectGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\UpdateSmtpProviderRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\ValidateOrgDomainRequest;
 use App\Http\Integrations\Zitadel\ZitadelConnector;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Throwable;
@@ -167,17 +171,10 @@ trait InteractsWithZitadelApi
     protected function zitadelConfigureSmtp(string $host, string $pat, string $smtpHost, string $user, string $password, string $senderAddress, string $senderName): bool
     {
         try {
-            $payload = [
-                'host' => $smtpHost,
-                'tls' => true,
-                'user' => $user,
-                'password' => $password,
-                'senderAddress' => $senderAddress,
-                'senderName' => $senderName,
-            ];
+            $connector = ZitadelConnector::make($host, $pat);
 
             // 1. Check if providers already exist
-            $search = Http::withToken($pat)->timeout(15)->post("https://{$host}/admin/v1/email/_search", (object) []);
+            $search = $connector->send(SearchEmailProvidersRequest::make());
             $providerId = null;
             if ($search->successful()) {
                 $results = $search->json('result', []);
@@ -187,7 +184,7 @@ trait InteractsWithZitadelApi
                     for ($i = 1; $i < count($results); $i++) {
                         $staleId = $results[$i]['id'] ?? null;
                         if ($staleId !== null) {
-                            Http::withToken($pat)->timeout(10)->delete("https://{$host}/admin/v1/email/{$staleId}");
+                            $connector->send(DeleteEmailProviderRequest::make($staleId));
                         }
                     }
                 }
@@ -195,12 +192,12 @@ trait InteractsWithZitadelApi
 
             // 2. Update existing provider or create a new one
             if ($providerId !== null) {
-                $update = Http::withToken($pat)->timeout(15)->put("https://{$host}/admin/v1/email/smtp/{$providerId}", $payload);
+                $update = $connector->send(UpdateSmtpProviderRequest::make($providerId, $smtpHost, $user, $password, $senderAddress, $senderName));
                 if (! $update->successful()) {
                     return false;
                 }
             } else {
-                $add = Http::withToken($pat)->timeout(15)->post("https://{$host}/admin/v1/email/smtp", $payload);
+                $add = $connector->send(CreateSmtpProviderRequest::make($smtpHost, $user, $password, $senderAddress, $senderName));
                 if (! $add->successful()) {
                     return false;
                 }
@@ -209,8 +206,7 @@ trait InteractsWithZitadelApi
 
             // 3. ALWAYS activate the provider to guarantee the active state (green checkmark)
             if ($providerId !== null) {
-                $activate = Http::withToken($pat)->timeout(15)
-                    ->post("https://{$host}/admin/v1/email/{$providerId}/_activate", (object) []);
+                $activate = $connector->send(ActivateEmailProviderRequest::make($providerId));
 
                 return $activate->successful()
                     || $activate->status() === 400

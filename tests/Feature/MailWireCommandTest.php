@@ -1,7 +1,16 @@
 <?php
 
-use Illuminate\Support\Facades\Http;
+use App\Http\Integrations\Zitadel\Requests\ActivateEmailProviderRequest;
+use App\Http\Integrations\Zitadel\Requests\CreateSmtpProviderRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchEmailProvidersRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)', function (): void {
     Process::fake([
@@ -16,13 +25,11 @@ test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)
 });
 
 test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
-    Http::fake(function ($request) {
-        if (str_contains($request->url(), '_activate')) {
-            return Http::response([], 200);
-        }
-
-        return Http::response(['id' => 'smtp-123'], 200);
-    });
+    Saloon::fake([
+        SearchEmailProvidersRequest::class => MockResponse::make(['result' => []]),
+        CreateSmtpProviderRequest::class => MockResponse::make(['id' => 'smtp-123']),
+        ActivateEmailProviderRequest::class => MockResponse::make([], 200),
+    ]);
 
     Process::fake([
         '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
