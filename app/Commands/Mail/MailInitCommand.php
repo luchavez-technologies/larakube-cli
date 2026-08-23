@@ -145,6 +145,24 @@ class MailInitCommand extends Command
             Process::run($cmd."--dry-run=client -o yaml | {$kubectl} apply -f -");
         });
 
+        // Auto-configure the Postgres main store via Plex Commons + the secrets
+        // backend when both are available — allocates the database, pushes
+        // the password to the secrets backend as STALWART_STORE_PASSWORD, and
+        // creates a sync CRD so Stalwart can read it from an env var instead
+        // of manual copy-paste. MUST run BEFORE the Deployment is applied
+        // below, not after: the env var is only optional:true, so a genuinely
+        // first-time creation of the {tenant}-db ExternalSecret/Secret (any
+        // install whose OpenBao-synced secret name hasn't already existed
+        // from some earlier run) means Stalwart boots with no password at
+        // all, crash-loops immediately, and applyAndVerifyRollout() times out
+        // and fails the whole command before ever reaching this step — which
+        // is exactly the step that would have fixed it. Confirmed live
+        // 2026-08-23 on the send-luchtech-dev rename: this call used to sit
+        // after the apply/rollout-wait below and the pod crash-looped for
+        // hours before anyone noticed why. Its own internal `rollout restart`
+        // harmlessly no-ops here since the Deployment doesn't exist yet.
+        $this->configureStalwartStore($kubectl, $ns, $resourceInstance);
+
         // --instance= is retained only for resolveToolAliasHosts()'s existing
         // meaning (which OTHER hosts alias onto this install) — it no longer
         // drives Mail's OWN resource naming, which is always host-derived
@@ -203,12 +221,6 @@ class MailInitCommand extends Command
         // already solved the other way round, by mail:relay calling
         // stalwartEnforceSingleRsaDkimSignature() to keep RSA and prune
         // Ed25519. Reviving this would flip that policy on every cluster.
-
-        // Auto-configure the Postgres main store via Plex Commons + the secrets backend
-        // when both are available — allocates the database, pushes the password
-        // to the secrets backend as STALWART_STORE_PASSWORD, and creates a sync CRD so
-        // Stalwart can read it from an env var instead of manual copy-paste.
-        $this->configureStalwartStore($kubectl, $ns, $resourceInstance);
 
         // On a cloud VPS, punch the mail L4 ports through both firewall layers
         // (DO cloud edge + host UFW) — klipper binds them, but both default-deny.
