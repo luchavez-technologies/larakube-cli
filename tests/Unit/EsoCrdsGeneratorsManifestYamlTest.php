@@ -2,7 +2,7 @@
 
 use Symfony\Component\Yaml\Yaml;
 
-test('eso-crds-generators manifest renders valid multi-document YAML with both generator CRDs', function (): void {
+test('eso-crds-generators manifest renders valid multi-document YAML with all three generator CRDs', function (): void {
     $rendered = view('k8s.secrets.eso-crds-generators')->render();
 
     $documents = array_values(array_filter(
@@ -10,7 +10,15 @@ test('eso-crds-generators manifest renders valid multi-document YAML with both g
         fn (string $doc) => $doc !== '',
     ));
 
-    expect($documents)->toHaveCount(2);
+    // GeneratorState joined ClusterGenerator/VaultDynamicSecret in this
+    // bundle after being found live-required on prod 2026-08-23: ESO's
+    // "stateful generators" feature (introduced v0.14.0) makes every
+    // generator-backed ExternalSecret — including every VaultDynamicSecret
+    // wiring this CLI creates via secrets:wire — fail every reconcile with
+    // `no matches for kind "GeneratorState"` without it. Confirmed on the
+    // v0.16.2 upgrade: the main external-secrets controller crash-looped on
+    // this error for every wired tool until this CRD was vendored too.
+    expect($documents)->toHaveCount(3);
 
     $names = [];
     foreach ($documents as $document) {
@@ -25,6 +33,7 @@ test('eso-crds-generators manifest renders valid multi-document YAML with both g
     }
 
     expect($names)->toContain('clustergenerators.generators.external-secrets.io')
+        ->toContain('generatorstates.generators.external-secrets.io')
         ->toContain('vaultdynamicsecrets.generators.external-secrets.io');
 });
 
