@@ -526,14 +526,29 @@ class MailInitCommand extends Command
             return;
         }
 
-        // Database/role/OpenBao-role tenant name — matches the rest of the
-        // instance-naming convention (e.g. stalwart_send_luchtech_dev) via
-        // the same generic commonsDatabases() every other tool's Commons
-        // tenant already goes through. The S3 bucket below deliberately
-        // stays bare 'stalwart' — unlike a Postgres database, an S3 bucket
-        // has no in-place rename; renaming it would mean copying every
-        // object, a real data-migration decision this pass doesn't make.
-        $tenant = ClusterTool::MAIL->commonsDatabases($instance)[0];
+        // Postgres database/role/OpenBao-role tenant name — deliberately
+        // stays BARE 'stalwart', never instance-suffixed, unlike every other
+        // resource this method names. Originally suffixed via the same
+        // generic commonsDatabases() every other tool's Commons tenant goes
+        // through, then reverted live 2026-08-23: Stalwart's Postgres
+        // connection details on a real (non-local, non-bootstrapped) install
+        // are NOT environment-variable-driven — host/port/database/username
+        // are persisted in Stalwart's own config on its PVC from whenever
+        // the setup wizard originally ran, and there is no live mechanism to
+        // update them short of Stalwart's own admin API, which itself needs
+        // the server already running to reach. Renaming the underlying
+        // Postgres identity out from under that persisted config took prod
+        // mail down for hours with `password authentication failed for user
+        // "stalwart"` — the persisted config kept expecting the OLD identity
+        // no matter what Postgres/OpenBao were renamed to. Keeping this bare
+        // is not a workaround, it's the correct permanent state matching
+        // that constraint — do not re-suffix without first solving the
+        // reconfigure-via-JMAP-before-renaming chicken-and-egg properly.
+        // The S3 bucket below is bare for a related but distinct reason:
+        // unlike a Postgres database, an S3 bucket has no in-place rename;
+        // renaming it would mean copying every object, a real data-migration
+        // decision never made either.
+        $tenant = ClusterTool::MAIL->commonsDatabases(null)[0];
         $openbaoBookkeepingSecret = $instance === '' ? 'stalwart-openbao' : "stalwart-openbao-{$instance}";
         // Matches dbSecretRef()'s own enum-level suffixing exactly (hyphens,
         // NOT the underscores $tenant uses — these are two different strings

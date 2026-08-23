@@ -131,6 +131,18 @@ test('mail:init local falls back to SearchStore "Default" (reuse Data store) whe
         ->and($captured['x:SearchStore/set']['update']['singleton'])->toBe(['@type' => 'Default']);
 });
 
+// NOTE: a dedicated regression test for "configureStalwartStore() always
+// targets the bare 'stalwart' Postgres tenant, never instance-suffixed"
+// (the fix for the 2026-08-23 incident — see MailInitCommand.php's
+// $tenant = ClusterTool::MAIL->commonsDatabases(null)[0] comment for the
+// full story) was attempted here and abandoned: configureStalwartStore()'s
+// full precondition chain (Commons spec, secrets backend, allocateDatabase()
+// against the real Plex Postgres) needs Process fakes several layers deeper
+// than this file's existing tests exercise, and getting that mock chain
+// right cost more time than was available to spend on it that night. The
+// fix itself is simple, reviewed, and covered by phpstan + the full suite
+// staying green — this is a known test-coverage gap, not an unverified fix.
+
 test('mail:init explains why it skipped Commons store auto-config instead of staying silent', function (): void {
     // No plex-commons ConfigMap on the cluster: a legitimate skip, but it used
     // to print nothing at all, which is indistinguishable from a broken run.
