@@ -130,11 +130,40 @@ trait InteractsWithToolRegistry
      * The single instance identifier a --domain/--host target refers to —
      * the first entry of resolveInstanceTargetsForDomain() (registered
      * entries first, then the derived slug). Callers that must act on every
-     * entry serving a host (e.g. teardown) use the plural variant.
+     * entry serving a host (e.g. teardown) use the plural variant, which
+     * deliberately still surfaces a stale '' entry so cleanup can find it.
+     *
+     * This singular resolver prefers a real, non-empty entry over a stale ''
+     * one when both are registered for the host, rather than blindly taking
+     * index 0 — '' is never a real identity (see
+     * resolveInstanceTargetsForDomain()'s no-match branch), just a registry
+     * entry that predates ADR 0012's amendment eliminating the bare/'main'
+     * sentinel. Confirmed live 2026-08-23: MAIL's own entry (registered
+     * 2026-07-22, before host-derived instances existed) recorded instance:
+     * '' and nothing had ever corrected it since — every caller of this
+     * singular resolver (secrets:wire, secrets:rotate, mail:init's own
+     * naming) kept resolving to that stale '' and targeting bare resource
+     * names against an install that had already been renamed to a real slug,
+     * with no way to recover short of a fully successful re-registration.
+     * Falls back to deriving a fresh slug if every match is stale.
      */
     protected function resolveInstanceForDomain(string $kubectl, ClusterTool $tool, string $domain): string
     {
-        return $this->resolveInstanceTargetsForDomain($kubectl, $tool, $domain)[0];
+        $targets = $this->resolveInstanceTargetsForDomain($kubectl, $tool, $domain);
+        $real = array_values(array_filter($targets, fn (string $instance) => $instance !== ''));
+        if ($real !== []) {
+            return $real[0];
+        }
+
+        // Every match found (if any) was a stale '' entry — as good as no
+        // match. Derive a fresh slug the same way the plural resolver's own
+        // no-match branch does, rather than propagating the stale value.
+        $host = trim($domain);
+        if ($host === '' || $host === 'all') {
+            return '';
+        }
+
+        return $tool->instanceSlugFromHost($this->normalizeTargetHost($host));
     }
 
     /**

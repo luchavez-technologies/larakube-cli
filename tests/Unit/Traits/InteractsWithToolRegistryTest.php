@@ -44,6 +44,11 @@ function toolRegistryHarness(): object
         {
             return $this->getToolInstances($kubectl, $tool);
         }
+
+        public function forDomain(string $kubectl, ClusterTool $tool, string $domain)
+        {
+            return $this->resolveInstanceForDomain($kubectl, $tool, $domain);
+        }
     };
 }
 
@@ -224,6 +229,46 @@ test('unregisterTool removes only the matching tool entry and saves it', functio
     expect($trait->unregister('kubectl', ClusterTool::SSO))->toBeTrue()
         ->and($captured)->toHaveCount(1)
         ->and($captured[0]['tool'])->toBe('data');
+});
+
+test('resolveInstanceForDomain derives a fresh slug instead of returning a stale empty-string registry entry', function (): void {
+    // Regression: MAIL's own registry entry (registered 2026-07-22, before
+    // host-derived instances existed) recorded instance: '' and was never
+    // corrected since — resolveInstanceTargetsForDomain() found this match
+    // and returned [''] unconditionally, so every caller of the singular
+    // resolveInstanceForDomain() (secrets:wire, secrets:rotate, mail:init)
+    // kept resolving to '' and targeting bare resource names against an
+    // install that had already been renamed to a real instance-suffixed
+    // slug, with no way to recover short of re-registering successfully —
+    // which itself depended on the very resolution this bug broke.
+    $trait = toolRegistryHarness();
+
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            base64_encode(json_encode([
+                ['tool' => 'mail', 'host' => 'send.luchtech.dev', 'instance' => ''],
+            ])),
+        ),
+    ]);
+
+    expect($trait->forDomain('kubectl', ClusterTool::MAIL, 'send.luchtech.dev'))
+        ->toBe('send-luchtech-dev');
+});
+
+test('resolveInstanceForDomain prefers a real registered instance over a stale duplicate empty-string entry', function (): void {
+    $trait = toolRegistryHarness();
+
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            base64_encode(json_encode([
+                ['tool' => 'mail', 'host' => 'send.luchtech.dev', 'instance' => ''],
+                ['tool' => 'mail', 'host' => 'send.luchtech.dev', 'instance' => 'send-luchtech-dev'],
+            ])),
+        ),
+    ]);
+
+    expect($trait->forDomain('kubectl', ClusterTool::MAIL, 'send.luchtech.dev'))
+        ->toBe('send-luchtech-dev');
 });
 
 test('two different tools coexist in the same flat list without colliding', function (): void {
