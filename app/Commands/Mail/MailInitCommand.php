@@ -535,6 +535,11 @@ class MailInitCommand extends Command
         // object, a real data-migration decision this pass doesn't make.
         $tenant = ClusterTool::MAIL->commonsDatabases($instance)[0];
         $openbaoBookkeepingSecret = $instance === '' ? 'stalwart-openbao' : "stalwart-openbao-{$instance}";
+        // Matches dbSecretRef()'s own enum-level suffixing exactly (hyphens,
+        // NOT the underscores $tenant uses — these are two different strings
+        // for two different things: $tenant is the Postgres database/role
+        // name, this is the k8s Secret ESO syncs its password into).
+        $openBaoSyncedSecretName = $instance === '' ? 'stalwart' : "stalwart-{$instance}";
         $dynamicSecretName = $instance === '' ? 'stalwart-db' : "stalwart-{$instance}-db";
         $deployment = ClusterTool::MAIL->deploymentName($instance);
 
@@ -599,6 +604,36 @@ class MailInitCommand extends Command
             $this->line("  <fg=gray>Username · database</> <fg=blue>{$tenant}</>");
 
             return;
+        }
+
+        // The push above only registers OpenBao's own rotation-managed static
+        // role and pushes its value into the secrets backend's KV store — it
+        // does NOT, despite this method's own docblock claiming otherwise,
+        // create the VaultDynamicSecret/ExternalSecret objects that actually
+        // sync that value into a native k8s Secret. Every previous run of
+        // this method worked anyway because SOME earlier secrets:wire had
+        // already created them for the bare 'stalwart' tenant, months ago —
+        // masking the gap. Confirmed live 2026-08-23 on the send-luchtech-dev
+        // rename: a genuinely first-time tenant name has nothing to sync
+        // from, and the wait-for-sync step below can only ever time out
+        // without this. Matches SecretsWireCommand::wireTool()'s own
+        // manifest-apply step exactly, since it's the same underlying need.
+        if ($this->databaseEngineMounted($kubectl)) {
+            $this->withSpin("Wiring OpenBao rotation into {$openBaoSyncedSecretName}...", function () use ($kubectl, $ns, $tenant, $openBaoSyncedSecretName): void {
+                $manifest = view('k8s.secrets.eso-db-static', [
+                    'namespace' => $ns,
+                    'secretsNamespace' => $this->secretsNamespace(),
+                    'secretName' => $openBaoSyncedSecretName,
+                    'roleName' => $tenant,
+                    'passwordKey' => 'STALWART_STORE_PASSWORD',
+                ])->render();
+
+                $temporaryDirectory = TemporaryDirectory::make();
+                $tmp = $temporaryDirectory->path('larakube-eso-db-static-'.$tenant.'.yaml');
+                file_put_contents($tmp, $manifest);
+                Process::run("{$kubectl} apply -f ".escapeshellarg($tmp));
+                $temporaryDirectory->delete();
+            });
         }
 
         // NOT syncClusterSecretToNamespace() here — same bug that took down
