@@ -339,13 +339,25 @@ abstract class AbstractToolRemoveCommand extends Command
             $tmp = $temporaryDirectory->path().'/drop.sql';
             file_put_contents($tmp, $sql);
 
-            $ok = $this->removeResources(
+            $dropped = $this->removeResources(
                 "Dropping database '{$database}' from Plex Commons (if exists)...",
                 "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c "
                 .escapeshellarg($client).' < '.escapeshellarg($tmp),
-            ) && $ok;
+            );
+            $ok = $dropped && $ok;
 
-            $this->deleteStaticRole($kubectl, $database);
+            // Only release OpenBao's rotation-managed role once the database
+            // it was rotating actually got dropped — Postgres refuses DROP
+            // DATABASE while there are active connections (the ordinary case
+            // for a tool being --purge'd, since it's normally still live),
+            // and deleting the role unconditionally here orphaned it while
+            // the tenant kept running: OpenBao stopped rotating a password
+            // its still-live consumer depended on. Confirmed live 2026-08-23
+            // on 4 tools (stalwart, record_sendrec, resume_reactive, and
+            // sheet's role) — see plans/active/openbao-static-role-coverage.md.
+            if ($dropped) {
+                $this->deleteStaticRole($kubectl, $database);
+            }
 
             $this->unregisterTenant($database);
 

@@ -1,8 +1,104 @@
 # Tracking: OpenBao static-role rotation coverage gaps, and where PgBouncer fits
 
-**Status:** 🟡 TRACKING — one incident resolved today, real near-term risk remains on at least one more tool.
+**Status:** 🔴 ACTIVE INCIDENT (2026-08-23 update) — 4 of prod's OpenBao static roles have silently vanished; their ExternalSecrets have been failing for days undetected. **Root cause found** (see below) — a real bug in `AbstractToolRemoveCommand::dropCommonsTenants()`. Nothing fixed on prod yet — read-only audit only, pending user decision. ExternalDNS's 3-zone update was verified separately and is healthy (pod stable, correct owner ID, "All records are already up to date", no unexpected deletions).
 **Created:** 2026-08-10
-**Related:** `project_openbao_db_static_role_rotation` (operator memory — mechanism reference), ADR-adjacent incident, not yet its own ADR.
+**Related:** `project_openbao_db_static_role_rotation` (operator memory — mechanism reference), `project_stalwart_rotation_sync_gap` (2026-08-23 memory — the local-cluster half of this, already fixed there), ADR-adjacent incident, not yet its own ADR.
+
+---
+
+## 2026-08-23 update — full re-audit, triggered by a local incident
+
+While live-verifying the OpenBao/Stalwart SaloonPHP migration ([[project_saloonphp_migration]]), `secrets:rotate local --tool=mail` crash-looped Stalwart on the local OrbStack cluster (real DB password rotated in OpenBao via a genuine POST — proving the new Saloon transport works — but nothing synced it back into the Secret the Deployment reads). Fixed there via `mail:init` + `mail:restart`. Full detail in `project_stalwart_rotation_sync_gap`.
+
+The user then asked to check whether the same class of problem exists on prod (`larakube-159.89.205.239`) and to audit `SecretsWireCommand.php`/`SecretsUnwireCommand.php`/`SecretsRotateCommand.php` plus naming conventions and the SaloonPHP transport. Everything below is **read-only** — no writes were made to prod.
+
+### SaloonPHP → OpenBao transport: confirmed solid, no bugs found
+
+Proven live today across both read and write paths: `GET database/static-creds/*`, `LIST database/static-roles`, `POST database/rotate-role/*` (via `secrets:rotate`), and the register-role path (via `mail:init`'s `resolveManagedDbPassword()`/`registerStaticRole()`). Every failure found below is a pre-existing wiring/lifecycle gap, unrelated to the Http→Saloon migration.
+
+### Naming convention: `dbSecretRef()` is inconsistent by design, and it matters
+
+Every tool except two follows `{tool}-secrets` (the same secret its own `:init` command creates) — e.g. `sso-secrets`, `notes-secrets`, `sign-secrets`, `chat-secrets`. **MAIL** (`stalwart`/`STALWART_STORE_PASSWORD`) and **GIT/Forgejo** (`forgejo`/`FORGEJO_DB_PASSWORD`) are the deliberate outliers, pointing at a secret named after the underlying app rather than the CLI's own tool name.
+
+Forgejo's manifest always reads that one secret consistently — no problem. **Mail's does not:** `resources/views/k8s/mail/stalwart.blade.php` has an `@if($storeBootstrap ?? null)` branch — the EXPERIMENTAL, **local-only** "skip the setup wizard" pre-seed feature (`MailInitCommand::bootstrapStalwartStoreForLocal()`) — that makes the Deployment read `STALWART_STORE_PASSWORD` from **`mail-secrets`/`store-password`** instead of the `stalwart`/`STALWART_STORE_PASSWORD` secret `dbSecretRef()`, `secrets:wire`, and `secrets:rotate` all target. On `local`, the two paths point at genuinely different secrets and were never reconciled — this is the exact mechanism of the crash-loop. **Prod never takes this branch** (`$storeBootstrap` is null there), so prod's Deployment does read the right secret — its problem is different (below).
+
+### Code-level gaps found in the three commands
+
+- **`SecretsRotateCommand`** has no check that the target's `ExternalSecret`/`VaultDynamicSecret` is actually `Ready:True` before rotating. It only checks `staticRoleExists()`. On a cluster where the role exists but the sync object is missing or broken (exactly local's state today, and structurally possible on any cluster), it will happily rotate-and-restart into a crash loop. Prod is accidentally safe from this **only** because the role itself is currently missing there too (`staticRoleExists()` returns false → refuses instead of rotating) — not because of any actual safeguard.
+- **`SecretsUnwireCommand::isToolInstalled()`** checks for the existence of `dbSecretRef()['secret']` to decide whether a tool shows up in `--all`/interactive mode. On local, that check would silently exclude `mail` (secret `stalwart` doesn't exist there at all) even though `secrets:unwire --tool=mail` explicitly would still work (it bypasses `resolveTargets()`'s auto-discovery). Minor, but means the "what's currently wired" auto-discovery list can't be trusted as exhaustive.
+- **`SecretsWireCommand`** itself looks correct and matches the documented rotate-then-sync-then-restart race protection (`waitForExternalSecretSynced()` snapshotting `refreshTime` before rotating) — no new bug found here beyond the naming-convention interaction above.
+
+### Prod: OpenBao static roles that currently exist
+
+```
+chat_matrix, data_directus, forgejo, grafana, link_kutt, outline,
+outline_notes_luchtech_dev, penpot, penpot_design-luchtech-dev,
+penpot_design_luchtech_dev, sign_documenso, vaultwarden, zitadel
+```
+
+(confirmed via a read-only `LIST database/static-roles`, port-forwarded with the root token — same method as the local check). Note `penpot` has **three** near-duplicate entries (`penpot`, `penpot_design-luchtech-dev`, `penpot_design_luchtech_dev`) — looks like leftover hyphen/underscore slug-convention churn; worth pruning the stale ones once confirmed unused.
+
+### Prod: ExternalSecret health, full re-check (2026-08-23)
+
+| ExternalSecret | Ready | Reason | Since |
+|---|---|---|---|
+| chat-secrets / chat-secrets-db | True | SecretSynced | healthy |
+| data-secrets-db | True | SecretMissing | 08-17 (see note below) |
+| design-secrets-design-luchtech-dev-db | True | SecretSynced | healthy |
+| forgejo-db | True | SecretSynced | healthy |
+| link-kutt-secrets-db | True | SecretMissing | 08-20 (see note below) |
+| monitor-secrets / monitor-secrets-db | True | SecretSynced | healthy |
+| notes-secrets-notes-luchtech-dev-db | True | SecretSynced | healthy |
+| **record-sendrec-secrets-db** | **False** | **SecretSyncedError** | **08-18** |
+| resume-reactive-secrets | True | SecretMissing | 08-17 |
+| **resume-reactive-secrets-db** | **False** | **SecretSyncedError** | **08-18** |
+| sheet-secrets | True | SecretMissing | 08-20 |
+| **sheet-secrets-db** | **False** | **SecretSyncedError** | **08-18** |
+| sign-documenso-secrets-db | True | SecretMissing | 08-17 (likely orphaned dupe of sign-secrets-db, see below) |
+| sign-secrets-db | True | SecretSynced | healthy |
+| **stalwart-db** | **False** | **SecretSyncedError** | **08-13** |
+| sso-secrets-db (separate namespace) | True | SecretSynced | healthy |
+
+**Confirmed via direct OpenBao query: all four `SecretSyncedError` targets (`stalwart`, `record_sendrec`, `resume_reactive`, and whatever role `sheet-secrets-db` expects) return `"unknown role"` — the static role itself is gone, even though its `VaultDynamicSecret` generator object is still present and pointed at the right path.** This isn't a wiring config problem — something deleted (or never fully created) these 4 specific roles in OpenBao, on two different dates (2026-08-13 for stalwart, 2026-08-18 for the other three), while ~13 other roles are untouched and healthy. `record_sendrec`, `sign_documenso`, and `link_kutt` were all confirmed **fully wired and healthy** in the 2026-08-10 audit below — `record_sendrec` has since broken; `sign_documenso`/`link_kutt` currently still have their role (per the LIST above) but their ExternalSecret reasons show `SecretMissing`, worth a closer look.
+
+**Root cause of the vanished roles: FOUND.** Ruled out a clean `secrets:unwire` run — that command deletes the `VaultDynamicSecret` generator too, and those are still present (confirming the sync *config* was never touched, only the underlying role).
+
+The actual bug: `AbstractToolRemoveCommand::dropCommonsTenants()` (`app/Commands/Tool/AbstractToolRemoveCommand.php:318-368`), which runs on `{tool}:remove --purge`, does this per Commons database:
+
+```php
+$ok = $this->removeResources(   // DROP DATABASE <tenant> via kubectl exec into postgres
+    "Dropping database '{$database}' from Plex Commons (if exists)...",
+    "...",
+) && $ok;
+
+$this->deleteStaticRole($kubectl, $database);   // <-- runs UNCONDITIONALLY, ignores $ok above
+```
+
+`deleteStaticRole()` executes regardless of whether the `DROP DATABASE` step actually succeeded. Postgres refuses `DROP DATABASE` while there are active connections to it — and a tool being `--purge`d is, in the ordinary case, still *live* at the moment removal runs (its pod holds an open connection), so this failure mode isn't an edge case, it's close to the default outcome unless the pod happens to already be down. Confirmed consistent with everything observed: all 4 affected tools (`stalwart`, `record_sendrec`, `resume_reactive`, and sheet's role) are still fully healthy today with intact data and unchanged deployments — exactly what "the DB drop failed, the OpenBao role got deleted anyway, and the command reported failure" looks like from the outside. The two distinct dates (08-13 for stalwart alone, 08-18 for the other three together) read as two separate `--purge` attempts, likely for a reinstall/troubleshooting purpose that was aborted once the command reported "One or more resources failed to remove."
+
+**The fix:** gate the `deleteStaticRole()` call on the drop actually succeeding — don't touch OpenBao's rotation-managed role for a tenant whose database still exists and is still relying on it.
+
+```php
+$dropped = $this->removeResources(
+    "Dropping database '{$database}' from Plex Commons (if exists)...",
+    "...",
+);
+$ok = $dropped && $ok;
+
+if ($dropped) {
+    $this->deleteStaticRole($kubectl, $database);
+}
+```
+
+**No immediate crash-loop risk on prod right now** — same mechanism that protects it as noted above (the missing role makes `secrets:rotate` refuse rather than rotate-and-break), but it also means **none of these 4 tools' DB passwords are actually being rotated by OpenBao right now**, contrary to what their still-wired ExternalSecrets imply.
+
+### Next steps (none taken — needs the user's go-ahead before any prod write)
+
+1. **Fix the actual bug**: gate `deleteStaticRole()` in `dropCommonsTenants()` on the DB-drop step's real result (patch above). This is the one that matters most — without it, this will keep recurring on any future `--purge` of a live tool.
+2. Re-registering the roles (`secrets:wire --tool=<x>` again, which is idempotent-safe per its existing rotate-then-wait-then-restart flow) would restore rotation for `record_sendrec`/`resume_reactive`/sheet's tool — but do this deliberately, one at a time, watching each restart, not as a blind `--all`. **Mail/Stalwart is the exception** — see #3, fix the secret-name split first or `secrets:wire --tool=mail` will wire a secret the local-style Deployment config wouldn't read anyway (prod doesn't take that branch, so it's lower-risk there, but confirm before wiring).
+3. Fix `MailTool`'s local/prod secret-name split at the template level (`stalwart.blade.php`'s `@if($storeBootstrap)` branch) so `secrets:wire`/`secrets:rotate --tool=mail` are either fully safe on local too, or `SecretsRotateCommand`/`SecretsWireCommand` reject the mismatch outright with a clear error instead of silently rotating a secret nothing reads.
+4. Consider adding the missing safeguard to `SecretsRotateCommand`: check the target `ExternalSecret`'s `Ready` condition (not just `staticRoleExists()`) before rotating, so a broken-sync tool refuses loudly instead of crash-looping.
+5. Prune the stale `penpot_design-luchtech-dev` role (hyphens preserved — pre-dates the hyphen→underscore instance-slug normalization in `ClusterTool::commonsDatabases()`); `penpot_design_luchtech_dev` (all underscores) is the current, live one.
 
 ---
 

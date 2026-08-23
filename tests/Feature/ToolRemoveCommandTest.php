@@ -58,6 +58,31 @@ test('flow:remove --purge drops both engine databases and deletes the resources'
         ->expectsOutputToContain('Removing Flow resources...');
 });
 
+test('a failed database drop does not delete the OpenBao static role for a still-live tenant', function (): void {
+    // Regression: dropCommonsTenants() used to call deleteStaticRole()
+    // unconditionally, even when the DROP DATABASE step failed — which is
+    // close to the DEFAULT outcome, not an edge case, since Postgres refuses
+    // to drop a database with active connections and the tenant being
+    // --purge'd is normally still live at that moment. That orphaned
+    // OpenBao's rotation for a tenant that kept running fine. Confirmed live
+    // 2026-08-23 on 4 tools (stalwart, record_sendrec, resume_reactive,
+    // sheet's role) — see plans/active/openbao-static-role-coverage.md.
+    Process::fake([
+        '*get secret flow-secrets*' => Process::result(output: 'flow-secrets'),
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*exec *' => Process::result(output: '', exitCode: 1),
+        '*port-forward*' => Process::result(output: ''),
+        '*delete *' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('flow:remove local --force --purge');
+
+    // deleteStaticRole() only ever reaches OpenBao via a port-forward — none
+    // should have been attempted for either database once their drops failed.
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'port-forward'));
+});
+
 test('sheets:remove --purge drops the Commons database AND its S3 buckets, not just the database', function (): void {
     // The bug this guards: --purge dropped the Postgres tenant but silently
     // left every tool's S3 bucket (and its contents) behind — commonsBuckets()
