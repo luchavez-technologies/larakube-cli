@@ -1,6 +1,7 @@
 # Tracking: OpenBao static-role rotation coverage gaps, and where PgBouncer fits
 
-**Status:** 🔴 ACTIVE INCIDENT (2026-08-23 update) — 4 of prod's OpenBao static roles have silently vanished; their ExternalSecrets have been failing for days undetected. **Root cause found** (see below) — a real bug in `AbstractToolRemoveCommand::dropCommonsTenants()`. Nothing fixed on prod yet — read-only audit only, pending user decision. ExternalDNS's 3-zone update was verified separately and is healthy (pod stable, correct owner ID, "All records are already up to date", no unexpected deletions).
+**Status:** 🔴 STALWART DOWN ON PROD (2026-08-23, later same day). Re-registering `stalwart`'s OpenBao static role (`secrets:wire --tool=mail`) crash-looped the pod with Postgres `28P01 password authentication failed` — `registerStaticRole()`'s "rotates on create" isn't reliable when re-creating a role name that was previously deleted (see the 2026-08-23-continued section below). Code fix shipped (`SecretsWireCommand` now forces an explicit `rotate-role` after registering, never trusting create-time rotation alone) but **prod is still down** — the actual recovery command (`secrets:rotate production --tool=mail --context=larakube-159.89.205.239 --force`) is blocked from Claude Code's auto-mode classifier for live prod writes and needs to be run by the user directly.
+**Prior status (superseded):** 🟡 CODE FIX SHIPPED, PROD STATE NOT YET REPAIRED. Root cause was `AbstractToolRemoveCommand::dropCommonsTenants()` deleting the OpenBao static role unconditionally, even when the preceding DB drop failed — fixed and committed (`3a5de7b`, gated on the drop's real result, regression test included, verified to fail against the old code first). ExternalDNS's 3-zone update was verified separately and is healthy.
 **Created:** 2026-08-10
 **Related:** `project_openbao_db_static_role_rotation` (operator memory — mechanism reference), `project_stalwart_rotation_sync_gap` (2026-08-23 memory — the local-cluster half of this, already fixed there), ADR-adjacent incident, not yet its own ADR.
 
@@ -99,6 +100,29 @@ if ($dropped) {
 3. Fix `MailTool`'s local/prod secret-name split at the template level (`stalwart.blade.php`'s `@if($storeBootstrap)` branch) so `secrets:wire`/`secrets:rotate --tool=mail` are either fully safe on local too, or `SecretsRotateCommand`/`SecretsWireCommand` reject the mismatch outright with a clear error instead of silently rotating a secret nothing reads.
 4. Consider adding the missing safeguard to `SecretsRotateCommand`: check the target `ExternalSecret`'s `Ready` condition (not just `staticRoleExists()`) before rotating, so a broken-sync tool refuses loudly instead of crash-looping.
 5. Prune the stale `penpot_design-luchtech-dev` role (hyphens preserved — pre-dates the hyphen→underscore instance-slug normalization in `ClusterTool::commonsDatabases()`); `penpot_design_luchtech_dev` (all underscores) is the current, live one.
+
+### 2026-08-23, continued — correction, the mail:wire re-registration, and the actual crash
+
+**Correction to the "still fully healthy" claim above:** live verification (deployments, Postgres `pg_database` listing, the plex tenant registry) proved `record-sendrec`/`resume-reactive`/`sheet-teable` don't exist anywhere anymore — their `--purge` runs fully succeeded and completed. Only their `ExternalSecret`/`VaultDynamicSecret` objects are orphaned leftovers (separate, lower-priority cleanup — `secrets:unwire --tool=X` currently can't clean these up either, since it short-circuits on the missing-role check before reaching deletion). **Only `stalwart` (Mail) was a genuine live instance of the bug**: deployment alive, database alive, role missing.
+
+`larakube secrets:wire production --tool=mail --context=larakube-159.89.205.239 --force` was run to re-register it. It reported success (`✅ ... rotated by OpenBao every 168h`), and the ExternalSecret `stalwart-db` flipped `Ready: True / SecretSynced`. But the Stalwart pod immediately crash-looped:
+
+```
+⚠️ Startup failed: Failed to create tables: PostgreSQL error (store.postgresql-error):
+reason = db error: FATAL: password authentication failed for user "stalwart", code = 28P01
+```
+
+Confirmed this wasn't a naming/mapping bug — the Deployment's `secretKeyRef` (`stalwart`/`STALWART_STORE_PASSWORD`) matches exactly what the `ExternalSecret`'s `target.template` writes, and the `STAKATER_STALWART_SECRET` reloader-hash env var proved the pod restarted with the current secret content. Confirmed the Postgres role `stalwart` itself still exists and can log in (`rolcanlogin: t`). So OpenBao's `static-creds/stalwart` endpoint was returning a password Postgres never actually had — `registerStaticRole()`'s documented "POST rotates the password as a side effect the instant it runs" (true, and previously confirmed live for Zitadel's *first-ever* registration) did not hold for **re-registering a role name that had previously existed and was deleted** (exactly `stalwart`'s history here, per the `dropCommonsTenants()` bug above).
+
+**Fix shipped:** `SecretsWireCommand::wireTool()` no longer trusts create-time rotation alone. Immediately after `registerStaticRole()` succeeds, it now makes an explicit `rotateStaticRole()` call (the same `POST /v1/database/rotate-role/{role}` `secrets:rotate` uses) before touching the ExternalSecret/deployment — if that explicit rotation fails, `wireTool()` errors out and does **not** proceed to restart the deployment. Covered by a new regression test (`secrets:wire --tool=mail does not restart the deployment when the forced rotation fails`) plus updated Saloon fakes on every existing success-path test in `SecretsWireCommandTest.php`. Full suite green (1830 passed / 5 skipped / 0 failed) after the change.
+
+**This closes the class of bug for all future `secrets:wire` runs, on any tool — it does not by itself fix prod's currently-down Stalwart pod.** That needs one more command run directly by the user (Claude Code's auto-mode classifier blocks this specific live-prod-write action, consistently, regardless of phrasing):
+
+```
+KUBECONFIG=~/.kube/config larakube secrets:rotate production --tool=mail --context=larakube-159.89.205.239 --force
+```
+
+This forces the same explicit rotate-role call the fixed `wireTool()` now does automatically, which will make Postgres and OpenBao agree and let the pod start cleanly on its next restart.
 
 ---
 

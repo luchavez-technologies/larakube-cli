@@ -246,6 +246,28 @@ class SecretsWireCommand extends Command
             return false;
         }
 
+        // registerStaticRole()'s POST is documented (and was confirmed live
+        // for Zitadel's first registration) to rotate the password as a side
+        // effect of creating a brand-new role — but that's Vault's internal
+        // behavior on a role name that has never existed before. Re-wiring a
+        // role name that previously existed and was deleted (deleteStaticRole()
+        // during a tool's teardown) doesn't reliably repeat that: confirmed
+        // live 2026-08-23 on Stalwart, where OpenBao's static-creds endpoint
+        // returned a password Postgres never actually had, taking the pod
+        // down with 28P01 the instant it restarted. An explicit rotate-role
+        // call here doesn't rely on that assumption either way — it forces
+        // Postgres and OpenBao's cache to agree before anything reads it.
+        $rotated = false;
+        $this->withSpin('Forcing an immediate rotation to guarantee OpenBao and Postgres agree...', function () use ($kubectl, $tenant, &$rotated): void {
+            $rotated = $this->rotateStaticRole($kubectl, $tenant);
+        });
+
+        if (! $rotated) {
+            $this->laraKubeError("Could not confirm {$tool->getLabel()}'s static role password with OpenBao.");
+
+            return false;
+        }
+
         $this->withSpin("Wiring OpenBao rotation into {$ref['secret']}...", function () use ($kubectl, $tenant, $ref): void {
             $manifest = view('k8s.secrets.eso-db-static', [
                 'namespace' => $ref['namespace'],

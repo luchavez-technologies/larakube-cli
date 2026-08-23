@@ -60,5 +60,5 @@ test('openBaoFake() dispatches by path, mirroring the old Http::fake() URL-patte
 
     expect($init->json())->toBe(['initialized' => true])
         ->and($role->json())->toBe(['data' => ['role' => 'found']])
-        ->and($unmatched->json())->toBe([]);
+        ->and($unmatched->json())->toBeEmpty();
 });

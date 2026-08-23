@@ -2,6 +2,7 @@
 
 use App\Commands\Secrets\SecretsWireCommand;
 use App\Exceptions\MissingFlagException;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
@@ -96,6 +97,8 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
         // registerStaticRole() -> POST /v1/database/static-roles/sign_documenso
         MockResponse::make([]),
+        // rotateStaticRole() -> POST /v1/database/rotate-role/sign_documenso
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --tool=sign --force')
@@ -106,6 +109,9 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
         && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/sign_documenso')
         && ($request->body()->get('username') ?? null) === 'sign_documenso'
         && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
+
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicNoBodyRequest
+        && str_contains($request->resolveEndpoint(), '/v1/database/rotate-role/sign_documenso'));
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret sign-secrets-db'));
@@ -133,6 +139,8 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
         // kubernetesAuthEnabled()
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
         // registerStaticRole() -> POST /v1/database/static-roles/link_kutt
+        MockResponse::make([]),
+        // rotateStaticRole() -> POST /v1/database/rotate-role/link_kutt
         MockResponse::make([]),
     ]);
 
@@ -165,6 +173,7 @@ test('secrets:wire --tool=support registers a static role for support_chatwoot a
         MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
         MockResponse::make([]),
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --tool=support --force')
@@ -195,6 +204,7 @@ test('secrets:wire --tool=tasks registers a static role for tasks_planka and res
     Saloon::fake([
         MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        MockResponse::make([]),
         MockResponse::make([]),
     ]);
 
@@ -334,6 +344,7 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
         MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
         MockResponse::make([]),
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --all --force')
@@ -457,6 +468,7 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
         MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
         MockResponse::make([]),
+        MockResponse::make([]),
     ]);
 
     $this->artisan('secrets:wire local --tool=mail --force')
@@ -468,9 +480,47 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
         && ($request->body()->get('username') ?? null) === 'stalwart'
         && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicNoBodyRequest
+        && str_contains($request->resolveEndpoint(), '/v1/database/rotate-role/stalwart'));
+
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret stalwart-db'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/stalwart'));
+});
+
+test('secrets:wire --tool=mail does not restart the deployment when the forced rotation fails', function (): void {
+    // Regression: registerStaticRole()'s create-time rotation is not
+    // reliable when re-wiring a role name that previously existed and was
+    // deleted (see the docblock added in SecretsWireCommand::wireTool()) —
+    // confirmed live 2026-08-23 on Stalwart, which crash-looped with
+    // Postgres 28P01 the instant the pod restarted against a password
+    // OpenBao's static-creds endpoint returned but Postgres never actually
+    // had. wireTool() must refuse to proceed (and must NOT restart the
+    // deployment against an unconfirmed password) when the explicit
+    // rotate-role call it now makes fails.
+    Process::fake([
+        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret stalwart*' => Process::result(output: base64_encode('store-pw')),
+        '*get deployment stalwart*' => Process::result(output: 'stalwart'),
+        '*port-forward*' => Process::result(output: ''),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        // registerStaticRole() succeeds...
+        MockResponse::make([]),
+        // ...but the forced rotate-role call fails.
+        MockResponse::make([], 500),
+    ]);
+
+    $this->artisan('secrets:wire local --tool=mail --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain("Could not confirm Mail Server (Stalwart)'s static role password with OpenBao.");
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'apply -f'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart'));
 });
 
 test('secrets:wire --tool=passwords registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function (): void {
@@ -487,6 +537,7 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
     Saloon::fake([
         MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
+        MockResponse::make([]),
         MockResponse::make([]),
     ]);
 
