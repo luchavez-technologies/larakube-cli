@@ -457,7 +457,7 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret stalwart*' => Process::result(output: base64_encode('store-pw')),
-        '*get deployment stalwart*' => Process::result(output: 'stalwart'),
+        '*get deployment mail-stalwart*' => Process::result(output: 'mail-stalwart'),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -485,7 +485,7 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret stalwart-db'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/stalwart'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/mail-stalwart'));
 });
 
 test('secrets:wire --tool=mail does not restart the deployment when the forced rotation fails', function (): void {
@@ -501,7 +501,7 @@ test('secrets:wire --tool=mail does not restart the deployment when the forced r
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret stalwart*' => Process::result(output: base64_encode('store-pw')),
-        '*get deployment stalwart*' => Process::result(output: 'stalwart'),
+        '*get deployment mail-stalwart*' => Process::result(output: 'mail-stalwart'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);

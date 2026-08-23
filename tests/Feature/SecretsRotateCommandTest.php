@@ -97,8 +97,8 @@ test('secrets:rotate --tool=X with no --domain never resolves the instance again
         // instance suffix appended (the old code's behavior) must resolve
         // as "not installed" — that's what actually distinguishes the bug
         // from the fix here, not just whether a request was sent.
-        '*get deployment stalwart -n*' => Process::result(output: 'stalwart'),
-        '*get deployment stalwart-*' => Process::result(output: '', exitCode: 1),
+        '*get deployment mail-stalwart -n*' => Process::result(output: 'mail-stalwart'),
+        '*get deployment mail-stalwart-*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
         '*annotate externalsecret*' => Process::result(output: 'annotated'),
         '*rollout restart*' => Process::result(output: 'restarted'),

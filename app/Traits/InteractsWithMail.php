@@ -13,7 +13,12 @@ use Illuminate\Support\Facades\Process;
  */
 trait InteractsWithMail
 {
-    use ManagesToolFirewallPorts, ReadsClusterSecrets, ResolvesEnvironmentContext;
+    // InteractsWithToolRegistry added for resolveMailInstance()'s
+    // resolveLiveToolHost() call — not every class that already composes
+    // InteractsWithMail also happens to compose InteractsWithToolRegistry
+    // separately (confirmed live: several Mail command test doubles and
+    // MailCheckCommand did not), so pull it in here rather than assume it.
+    use InteractsWithToolRegistry, ManagesToolFirewallPorts, ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /**
      * Reverse the install-time port opening on teardown. A mail server that is
@@ -44,37 +49,64 @@ trait InteractsWithMail
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    /** Stalwart Deployment present? */
+    /**
+     * Stalwart Deployment present? A stable, non-instance-suffixed label
+     * survives the rename to mail-stalwart-{instance} naming — matching
+     * InteractsWithBulwark::isBulwarkInstalled()'s fix, this avoids every
+     * caller needing to resolve the instance before it can even find the pod.
+     */
     protected function isMailInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment stalwart -n {$ns} --no-headers --ignore-not-found")->output();
+        $out = Process::run("{$kubectl} get deployment -n {$ns} -l app=mail-stalwart --no-headers --ignore-not-found")->output();
 
         return trim($out) !== '';
     }
 
-    /** Read a key from the mail-secrets secret. */
-    protected function readMailSecret(string $kubectl, string $ns, string $key): ?string
+    /**
+     * MAIL's own resource-naming instance slug, resolved fresh from the tools
+     * registry's currently-live host whenever a caller doesn't already have
+     * it in hand — keeps every existing readMailSecret()/storeMailSecret()
+     * call site correct against the mail-secrets-{instance} rename without
+     * each one needing to independently resolve $env/$host/$instance itself.
+     * Callers that already computed it (MailInitCommand mid-deploy, before
+     * it's even registered) should pass it explicitly instead.
+     */
+    protected function resolveMailInstance(string $kubectl): string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'mail-secrets', $key);
+        $host = $this->resolveLiveToolHost($kubectl, ClusterTool::MAIL);
+
+        return ($host !== null && $host !== '') ? ClusterTool::MAIL->instanceSlugFromHost($host) : '';
+    }
+
+    /** Read a key from the mail-secrets{-instance} secret. */
+    protected function readMailSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
+    {
+        $instance ??= $this->resolveMailInstance($kubectl);
+        $secret = $instance === '' ? 'mail-secrets' : "mail-secrets-{$instance}";
+
+        return $this->readClusterSecretKey($kubectl, $ns, $secret, $key);
     }
 
     /**
-     * Write (or overwrite) a key on the mail-secrets secret — a plain k8s Secret
-     * patch. mail-secrets holds the mail server's OWN credentials (recovery
-     * admin, admin password, automation api-key), which are deliberately
-     * k8s-only and never synced to the secrets backend: the mail server is foundational
-     * infrastructure that other tools depend on, so its break-glass and
-     * automation credentials must stay self-contained rather than gaining a
-     * dependency on the secrets manager. (Shared secrets that OTHER systems
-     * consume — the Plex Commons store/S3 creds, the mail:wire SMTP creds — do
-     * legitimately go to the secrets backend; those are handled elsewhere.)
+     * Write (or overwrite) a key on the mail-secrets{-instance} secret — a
+     * plain k8s Secret patch. mail-secrets holds the mail server's OWN
+     * credentials (recovery admin, admin password, automation api-key), which
+     * are deliberately k8s-only and never synced to the secrets backend: the
+     * mail server is foundational infrastructure that other tools depend on,
+     * so its break-glass and automation credentials must stay self-contained
+     * rather than gaining a dependency on the secrets manager. (Shared
+     * secrets that OTHER systems consume — the Plex Commons store/S3 creds,
+     * the mail:wire SMTP creds — do legitimately go to the secrets backend;
+     * those are handled elsewhere.)
      */
-    protected function storeMailSecret(string $kubectl, string $ns, string $key, string $value): bool
+    protected function storeMailSecret(string $kubectl, string $ns, string $key, string $value, ?string $instance = null): bool
     {
+        $instance ??= $this->resolveMailInstance($kubectl);
+        $secret = $instance === '' ? 'mail-secrets' : "mail-secrets-{$instance}";
         $patch = json_encode(['data' => [$key => base64_encode($value)]]);
 
         return Process::run(
-            "{$kubectl} patch secret mail-secrets -n {$ns} --type=merge -p ".escapeshellarg((string) $patch),
+            "{$kubectl} patch secret {$secret} -n {$ns} --type=merge -p ".escapeshellarg((string) $patch),
         )->successful();
     }
 

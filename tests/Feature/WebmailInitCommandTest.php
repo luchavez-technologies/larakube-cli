@@ -17,7 +17,7 @@ test('webmail:init is registered', function (): void {
 
 test('webmail:init refuses when Stalwart is not installed', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: '', exitCode: 1),
+        '*app=mail-stalwart*' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('webmail:init local')
@@ -27,7 +27,7 @@ test('webmail:init refuses when Stalwart is not installed', function (): void {
 
 test('webmail:init deploys Bulwark and enables CORS when Stalwart is present', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret webmail-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
@@ -64,7 +64,7 @@ test('webmail bulwark manifest references standard secret keys', function (): vo
 
 test('webmail:init still succeeds but warns when the CORS flip fails', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret webmail-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
@@ -87,7 +87,7 @@ test('webmail:init still succeeds but warns when the CORS flip fails', function 
 
 test('webmail:init --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret webmail-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),

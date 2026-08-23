@@ -44,7 +44,7 @@ test('mail:init local wires BlobStore, InMemoryStore, and SearchStore via JMAP w
         '*create secret generic mail-secrets*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
         '*exec *' => Process::result(output: 'success'),
         '*' => Process::result(),
     ]);
@@ -108,7 +108,7 @@ test('mail:init local falls back to SearchStore "Default" (reuse Data store) whe
         '*create secret generic mail-secrets*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
         '*exec *' => Process::result(output: 'success'),
         '*' => Process::result(),
     ]);
@@ -148,10 +148,10 @@ test('mail:init explains why it skipped Commons store auto-config instead of sta
 
 test('mail:show detects a local wizard-skip install and shows "already configured" instead of wizard instructions', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get configmap stalwart-config*' => Process::result(output: 'stalwart-config   1   1d'),
+        '*get configmap mail-stalwart-config*' => Process::result(output: 'stalwart-config   1   1d'),
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
             'services' => ['postgres' => ['enabled' => true]],
@@ -186,10 +186,10 @@ test('mail:show detects a local wizard-skip install and shows "already configure
 
 test('mail:show falls back to the original wizard hint when stalwart-config does not exist', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get configmap stalwart-config*' => Process::result(output: '', exitCode: 1),
+        '*get configmap mail-stalwart-config*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
             'services' => ['postgres' => ['enabled' => true]],

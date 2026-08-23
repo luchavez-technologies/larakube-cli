@@ -19,7 +19,7 @@ test('mail:delete is registered', function (): void {
 });
 
 test('mail:delete requires installed stalwart', function (): void {
-    Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:delete')
         ->assertExitCode(1)
@@ -28,7 +28,7 @@ test('mail:delete requires installed stalwart', function (): void {
 
 test('mail:delete deletes account by email', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
@@ -48,7 +48,7 @@ test('mail:delete deletes account by email', function (): void {
 
 test('mail:delete --sso removes the matching Zitadel identity', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),

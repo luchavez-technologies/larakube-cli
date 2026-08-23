@@ -1,3 +1,20 @@
+@php
+    // Every resource below except pvc/stalwart-data (live mail files) and the
+    // pod's own labels (a stable app=mail-stalwart selector, so every trait/
+    // command that looks up "the" Stalwart pod never needs to resolve the
+    // instance first — see InteractsWithMail::isMailInstalled()) carries this
+    // suffix, matching the 3-segment {tool}-{app}-{instance} convention
+    // 7b06359 established for webmail/dashboard/meet/paste.
+    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
+    $deploymentName = "mail-stalwart{$suffix}";
+    $mailSecretsName = "mail-secrets{$suffix}";
+    $configMapName = "mail-stalwart-config{$suffix}";
+    // dbSecretRef()'s enum wrapper suffixes THIS secret the same way — see
+    // ClusterTool::dbSecretRef(). Bare 'stalwart' stays correct only when
+    // $instance is empty (never true in production; only a defensive
+    // fallback if a caller somehow renders this without resolving one).
+    $openBaoSyncedSecretName = "stalwart{$suffix}";
+@endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -21,7 +38,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: stalwart-config
+  name: {{ $configMapName }}
   namespace: larakube-shared
 data:
   config.json: |
@@ -38,23 +55,23 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: stalwart
+  name: {{ $deploymentName }}
   namespace: larakube-shared
   labels:
-    app: stalwart
+    app: mail-stalwart
   annotations:
-    secret.reloader.stakater.com/reload: "stalwart,mail-secrets"
+    secret.reloader.stakater.com/reload: "{{ $openBaoSyncedSecretName }},{{ $mailSecretsName }}"
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: stalwart
+      app: mail-stalwart
   template:
     metadata:
       labels:
-        app: stalwart
+        app: mail-stalwart
     spec:
       securityContext:
         # The image runs as the unprivileged 'stalwart' user (UID 2000); the
@@ -86,7 +103,7 @@ spec:
             - name: STALWART_RECOVERY_ADMIN
               valueFrom:
                 secretKeyRef:
-                  name: mail-secrets
+                  name: {{ $mailSecretsName }}
                   key: recovery-admin
             # Public base URL for JMAP/OAuth discovery — required behind a proxy.
             - name: STALWART_PUBLIC_URL
@@ -105,13 +122,13 @@ spec:
             - name: STALWART_STORE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: mail-secrets
+                  name: {{ $mailSecretsName }}
                   key: store-password
 @else
             - name: STALWART_STORE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: stalwart
+                  name: {{ $openBaoSyncedSecretName }}
                   key: STALWART_STORE_PASSWORD
                   optional: true
 @endif
@@ -119,24 +136,24 @@ spec:
             - name: STALWART_S3_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: mail-secrets
+                  name: {{ $mailSecretsName }}
                   key: s3-access-key
             - name: STALWART_S3_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: mail-secrets
+                  name: {{ $mailSecretsName }}
                   key: s3-secret-key
 @else
             - name: STALWART_S3_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: stalwart
+                  name: {{ $openBaoSyncedSecretName }}
                   key: STALWART_S3_KEY_ID
                   optional: true
             - name: STALWART_S3_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: stalwart
+                  name: {{ $openBaoSyncedSecretName }}
                   key: STALWART_S3_SECRET_KEY
                   optional: true
 @endif
@@ -144,7 +161,7 @@ spec:
             - name: STALWART_SEARCH_MEILI_KEY
               valueFrom:
                 secretKeyRef:
-                  name: mail-secrets
+                  name: {{ $mailSecretsName }}
                   key: search-meili-key
 @endif
           ports:
@@ -177,7 +194,9 @@ spec:
             # Persistent store: RocksDB (or Postgres-backed) config + data on a
             # standalone PVC. One claim serves both Stalwart's writable config
             # dir (/etc/stalwart) and its data dir (/var/lib/stalwart) via
-            # subPaths — no Commons, no ConfigMap.
+            # subPaths — no Commons, no ConfigMap. NOT instance-suffixed —
+            # this is Stalwart's live mail data; renaming the PVC would mean
+            # a brand-new empty volume, not the existing one.
             - name: stalwart-data
               mountPath: /var/lib/stalwart
               subPath: data
@@ -201,18 +220,18 @@ spec:
 @if($storeBootstrap ?? null)
         - name: stalwart-config
           configMap:
-            name: stalwart-config
+            name: {{ $configMapName }}
 @endif
 ---
 # HTTP admin + JMAP, fronted by Traefik (TLS terminated at the ingress).
 apiVersion: v1
 kind: Service
 metadata:
-  name: stalwart
+  name: {{ $deploymentName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: stalwart
+    app: mail-stalwart
   ports:
     - { protocol: TCP, port: 8080, targetPort: 8080, name: http }
   type: ClusterIP
@@ -223,11 +242,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: stalwart-mail
+  name: mail-stalwart-mail{{ $suffix }}
   namespace: larakube-shared
 spec:
   selector:
-    app: stalwart
+    app: mail-stalwart
   ports:
     - { protocol: TCP, port: 25, targetPort: 25, name: smtp }
     - { protocol: TCP, port: 587, targetPort: 587, name: submission }

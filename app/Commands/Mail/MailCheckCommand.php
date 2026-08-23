@@ -3,6 +3,7 @@
 namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithStalwartApi;
@@ -67,8 +68,9 @@ class MailCheckCommand extends Command
         $this->newLine();
 
         // --- Cluster -------------------------------------------------------
+        $deployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
         $ready = trim(Process::run(
-            "{$kubectl} get deployment stalwart -n {$ns} -o jsonpath='{.status.readyReplicas}'",
+            "{$kubectl} get deployment {$deployment} -n {$ns} -o jsonpath='{.status.readyReplicas}'",
         )->output());
         $this->report($ready === '1' ? 'ok' : 'fail', 'Mail server pod is running',
             "Deploy it: larakube mail:init {$env}");

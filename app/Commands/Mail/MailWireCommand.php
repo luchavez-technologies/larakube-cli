@@ -295,8 +295,9 @@ class MailWireCommand extends Command
         // NO -crlf: the convo already uses \r\n; -crlf would double it to \r\r\n,
         // which strict servers reject (RFC 2821 §2.7.1).
         $script = 'echo '.base64_encode($convo).' | base64 -d | openssl s_client -quiet -connect 127.0.0.1:465 2>/dev/null';
+        $deployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
         $out = Process::timeout(30)->run(
-            "{$kubectl} exec deploy/stalwart -n {$ns} -- sh -c ".escapeshellarg($script),
+            "{$kubectl} exec deploy/{$deployment} -n {$ns} -- sh -c ".escapeshellarg($script),
         )->output();
 
         return str_contains($out, '235'); // 235 = authentication accepted

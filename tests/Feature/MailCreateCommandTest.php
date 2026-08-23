@@ -15,7 +15,7 @@ afterEach(function (): void {
 function mailCreateBaseFakes(): array
 {
     return [
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*part-of=webmail*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
@@ -93,7 +93,7 @@ test('mail:create falls back to the first configured domain when non-interactive
 });
 
 test('mail:create requires installed stalwart', function (): void {
-    Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:create')
         ->assertExitCode(1)
@@ -102,7 +102,7 @@ test('mail:create requires installed stalwart', function (): void {
 
 test('mail:create shows error when no domains configured', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -119,7 +119,7 @@ test('mail:create shows error when no domains configured', function (): void {
 
 test('mail:create creates account with given args', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
@@ -146,7 +146,7 @@ test('mail:create creates account with given args', function (): void {
 
 test('mail:create shows the webmail URL when Bulwark is installed', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
@@ -171,7 +171,7 @@ test('mail:create shows the webmail URL when Bulwark is installed', function ():
 
 test('mail:create --sso creates a matching Zitadel identity', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
@@ -199,7 +199,7 @@ test('mail:create --sso creates a matching Zitadel identity', function (): void 
 
 test('mail:create --sso errors when Zitadel is not installed', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
@@ -224,7 +224,7 @@ test('mail:create --sso errors when Zitadel is not installed', function (): void
 
 test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no flag is given', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
@@ -259,7 +259,7 @@ test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no f
 
 test('mail:create --no-sso skips the Zitadel identity even when Zitadel is installed', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),

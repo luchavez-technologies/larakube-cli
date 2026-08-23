@@ -39,20 +39,30 @@ class MailRemoveCommand extends AbstractToolRemoveCommand
             : '';
         $webmailSecret = $webmailInstance !== '' ? "webmail-secrets-{$webmailInstance}" : 'webmail-secrets';
 
+        // Mail's OWN resources are instance-suffixed too, same reasoning.
+        $instance = (string) ($this->getToolInstanceData($kubectl, ClusterTool::MAIL)?->instance ?? '');
+        $suffix = $instance !== '' ? "-{$instance}" : '';
+        $deployment = "mail-stalwart{$suffix}";
+        $mailSecrets = "mail-secrets{$suffix}";
+        $configMap = "mail-stalwart-config{$suffix}";
+
         $ok = $this->removeResources(
             'Removing Stalwart resources...',
-            "{$kubectl} delete deployment/stalwart service/stalwart service/stalwart-mail "
-            .'ingress/stalwart secret/mail-secrets secret/mail-sender secret/mail-relay '
-            ."secret/{$webmailSecret} configmap/stalwart-config -n {$namespace} --ignore-not-found",
+            "{$kubectl} delete deployment/{$deployment} service/{$deployment} service/mail-stalwart-mail{$suffix} "
+            ."ingress/{$deployment} secret/{$mailSecrets} secret/mail-sender secret/mail-relay "
+            ."secret/{$webmailSecret} configmap/{$configMap} -n {$namespace} --ignore-not-found",
         );
 
         // Wait for pods to fully terminate — PVCs can't be deleted while bound.
-        Process::run("{$kubectl} wait --for=delete pod -l app=stalwart -n {$namespace} --timeout=60s 2>/dev/null || true");
+        // Stable label (mail-stalwart), not instance-suffixed — see
+        // InteractsWithMail::isMailInstalled()'s same reasoning.
+        Process::run("{$kubectl} wait --for=delete pod -l app=mail-stalwart -n {$namespace} --timeout=60s 2>/dev/null || true");
 
-        // Standalone PVC — not garbage-collected with the Deployment.
+        // Standalone PVC — not garbage-collected with the Deployment. NOT
+        // instance-suffixed — this is Stalwart's live mail data.
         $ok = $this->removeResources(
             'Removing Stalwart storage...',
-            "{$kubectl} delete pvc/stalwart-data pvc/stalwart-data-stalwart-0 -n {$namespace} --ignore-not-found",
+            "{$kubectl} delete pvc/stalwart-data -n {$namespace} --ignore-not-found",
         ) && $ok;
 
         // Mail-wire SMTP secrets (<tool>-smtp) — useless without Stalwart, and

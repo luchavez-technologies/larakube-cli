@@ -45,7 +45,7 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
 
         return [
             new ClusterToolComponentData(
-                key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('stalwart'),
+                key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('mail-stalwart'),
                 container: 'stalwart', backupVolume: true, backupPath: '/var/lib/stalwart',
             ),
         ];
@@ -91,12 +91,13 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
         // (InteractsWithMail) returns this same fixed value unconditionally;
         // only the Deployment name (see presenceProbe()) varies by instance.
         $ns = 'larakube-shared';
-        // mail-secrets, not 'stalwart' — 'stalwart' is the OpenBao-synced
-        // secret dbSecretRef()/openbaoSyncConfig() write DB/S3 creds into; it
-        // never holds admin-password. mail-secrets is what mail:init itself
-        // creates and always contains it.
+        // mail-secrets{-instance}, not 'stalwart' — 'stalwart' is the
+        // OpenBao-synced secret dbSecretRef()/openbaoSyncConfig() write DB/S3
+        // creds into; it never holds admin-password. mail-secrets is what
+        // mail:init itself creates and always contains it.
+        $secretName = ($instance === null || $instance === '') ? 'mail-secrets' : "mail-secrets-{$instance}";
         $passVal = trim(Process::run(
-            "{$kubectl} get secret mail-secrets -n {$ns} -o jsonpath='{.data.admin-password}' --ignore-not-found",
+            "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath='{.data.admin-password}' --ignore-not-found",
         )->output());
         $decodedPass = $passVal !== '' ? (base64_decode($passVal, true) ?: '<unknown>') : '<unknown>';
 
@@ -110,7 +111,7 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '') ? 'stalwart' : "stalwart-{$instance}";
+        $deployment = ($instance === null || $instance === '') ? 'mail-stalwart' : "mail-stalwart-{$instance}";
 
         return "deployment/{$deployment} -n larakube-shared";
     }

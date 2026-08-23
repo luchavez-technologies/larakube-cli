@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\ClusterTool;
 use App\Http\Integrations\Stalwart\Requests\JmapRequest;
 use App\Http\Integrations\Stalwart\StalwartConnector;
 use Illuminate\Support\Facades\Process;
@@ -55,7 +56,15 @@ trait InteractsWithStalwartApi
 
     protected function stalwartPodName(string $kubectl, string $ns): string
     {
-        return trim(Process::run("{$kubectl} get pod -l app=stalwart -n {$ns} -o name --no-headers 2>/dev/null | head -1")->output()) ?: 'deploy/stalwart';
+        // Stable, non-instance-suffixed label (mail-stalwart, not stalwart) —
+        // matches isMailInstalled()'s fix, avoids needing to resolve the
+        // instance just to find the pod.
+        $pod = trim(Process::run("{$kubectl} get pod -l app=mail-stalwart -n {$ns} -o name --no-headers 2>/dev/null | head -1")->output());
+        if ($pod !== '') {
+            return $pod;
+        }
+
+        return 'deploy/'.ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
     }
 
     protected function stalwartBasicAuth(string $kubectl, string $ns): ?string
@@ -122,7 +131,8 @@ trait InteractsWithStalwartApi
         }
 
         $port = random_int(30100, 31100);
-        $pf = Process::start("{$kubectl} port-forward -n {$ns} svc/stalwart {$port}:8080");
+        $svc = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
+        $pf = Process::start("{$kubectl} port-forward -n {$ns} svc/{$svc} {$port}:8080");
 
         if (! $this->awaitLocalPort($port, $pf)) {
             if ($pf->running()) {

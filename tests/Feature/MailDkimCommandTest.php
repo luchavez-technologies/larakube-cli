@@ -54,7 +54,7 @@ test('mail:dkim is registered', function (): void {
 });
 
 test('mail:dkim requires installed stalwart', function (): void {
-    Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:dkim')
         ->assertExitCode(1)
@@ -63,7 +63,7 @@ test('mail:dkim requires installed stalwart', function (): void {
 
 test('mail:dkim fails and points at --fix when a domain has two active keys', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -82,7 +82,7 @@ test('mail:dkim fails and points at --fix when a domain has two active keys', fu
 
 test('mail:dkim passes when a single active key signs the domain', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -101,7 +101,7 @@ test('mail:dkim --fix destroys the Ed25519 key and reports the count', function 
     // --fix prunes first, then re-reads, so the destroy response is spliced in
     // ahead of a second full read that now shows RSA only.
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),

@@ -63,6 +63,15 @@ class MailInitCommand extends Command
     {
         $env = $this->resolveEnvironment();
         $host = $this->resolveMailHost($env);
+        // Every resource this command names — Deployment, Services, Ingress,
+        // ConfigMap, the mail-secrets bootstrap Secret, and (via
+        // commonsDatabases()) the Commons DB/OpenBao tenant — targets this
+        // same host-derived slug, matching the 7b06359 precedent (webmail/
+        // dashboard/meet/paste). Mail stays an architectural singleton
+        // (supportsMultipleInstances() is still false); this isn't multi-
+        // instance support, just giving its one real instance a real name
+        // instead of an unsuffixed one.
+        $resourceInstance = ClusterTool::MAIL->instanceSlugFromHost($host);
 
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -98,8 +107,8 @@ class MailInitCommand extends Command
 
         // Stalwart is self-contained (embedded RocksDB store on its PVC) — no Commons.
         // Keep the admin password stable across re-runs by reading it back.
-        $adminEmail = $this->readMailSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
-        $adminPassword = $this->readMailSecret($kubectl, $ns, 'admin-password') ?? Str::random(24);
+        $adminEmail = $this->readMailSecret($kubectl, $ns, 'admin-email', $resourceInstance) ?? $this->resolveAdminEmail($host);
+        $adminPassword = $this->readMailSecret($kubectl, $ns, 'admin-password', $resourceInstance) ?? Str::random(24);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -112,8 +121,10 @@ class MailInitCommand extends Command
         // existing wizard-driven flow untouched; see bootstrapStalwartStoreForLocal().
         $storeBootstrap = $this->bootstrapStalwartStoreForLocal($kubectl, $env);
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $adminEmail, $storeBootstrap): void {
-            $cmd = "{$kubectl} create secret generic mail-secrets -n {$ns} "
+        $mailSecretsName = $resourceInstance === '' ? 'mail-secrets' : "mail-secrets-{$resourceInstance}";
+
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $adminEmail, $storeBootstrap, $mailSecretsName): void {
+            $cmd = "{$kubectl} create secret generic {$mailSecretsName} -n {$ns} "
                 .'--from-literal=recovery-admin='.escapeshellarg('admin:'.$adminPassword).' '
                 .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
                 .'--from-literal=admin-email='.escapeshellarg($adminEmail).' ';
@@ -134,11 +145,18 @@ class MailInitCommand extends Command
             Process::run($cmd."--dry-run=client -o yaml | {$kubectl} apply -f -");
         });
 
+        // --instance= is retained only for resolveToolAliasHosts()'s existing
+        // meaning (which OTHER hosts alias onto this install) — it no longer
+        // drives Mail's OWN resource naming, which is always host-derived
+        // ($resourceInstance above) to stay consistent with the rest of the
+        // instance-naming convention rather than accepting an arbitrary
+        // manual override for a tool that can only ever have one instance.
         $instance = (string) ($this->option('instance') ?: '');
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::MAIL, $instance);
 
         $manifest = view('k8s.mail.stalwart', [
             'host' => $host,
+            'instance' => $resourceInstance,
             'aliasHosts' => $aliasHosts,
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
@@ -153,7 +171,7 @@ class MailInitCommand extends Command
 
         $rolledOut = $this->withSpin(
             'Applying Stalwart manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'stalwart', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, ClusterTool::MAIL->deploymentName($resourceInstance), 180),
         );
         $temporaryDirectory->delete();
 
@@ -172,7 +190,7 @@ class MailInitCommand extends Command
         $this->stalwartTrustReverseProxy($kubectl, $ns);
 
         if ($storeBootstrap !== null) {
-            $this->configureStalwartAdditionalStoresForLocal($kubectl, $ns, $storeBootstrap);
+            $this->configureStalwartAdditionalStoresForLocal($kubectl, $ns, $storeBootstrap, $resourceInstance);
         }
 
         // NOTE: a `dkimManagement.algorithms` write used to sit here, meant to
@@ -190,7 +208,7 @@ class MailInitCommand extends Command
         // when both are available — allocates the database, pushes the password
         // to the secrets backend as STALWART_STORE_PASSWORD, and creates a sync CRD so
         // Stalwart can read it from an env var instead of manual copy-paste.
-        $this->configureStalwartStore($kubectl, $ns);
+        $this->configureStalwartStore($kubectl, $ns, $resourceInstance);
 
         // On a cloud VPS, punch the mail L4 ports through both firewall layers
         // (DO cloud edge + host UFW) — klipper binds them, but both default-deny.
@@ -466,7 +484,7 @@ class MailInitCommand extends Command
      * the mail namespace. The Deployment already has envFrom with optional:
      * true, so Stalwart can read the env var even if the Secret arrives later.
      */
-    protected function configureStalwartStore(string $kubectl, string $ns): void
+    protected function configureStalwartStore(string $kubectl, string $ns, string $instance): void
     {
         // Every bail-out below is a legitimate "not applicable here" case, but
         // silence made them indistinguishable from a bug — the operator saw
@@ -496,18 +514,30 @@ class MailInitCommand extends Command
             return;
         }
 
-        $existingPassword = $this->readClusterSecretKey($kubectl, $ns, 'stalwart-openbao', 'STALWART_STORE_PASSWORD');
+        // Database/role/OpenBao-role tenant name — matches the rest of the
+        // instance-naming convention (e.g. stalwart_send_luchtech_dev) via
+        // the same generic commonsDatabases() every other tool's Commons
+        // tenant already goes through. The S3 bucket below deliberately
+        // stays bare 'stalwart' — unlike a Postgres database, an S3 bucket
+        // has no in-place rename; renaming it would mean copying every
+        // object, a real data-migration decision this pass doesn't make.
+        $tenant = ClusterTool::MAIL->commonsDatabases($instance)[0];
+        $openbaoBookkeepingSecret = $instance === '' ? 'stalwart-openbao' : "stalwart-openbao-{$instance}";
+        $dynamicSecretName = $instance === '' ? 'stalwart-db' : "stalwart-{$instance}-db";
+        $deployment = ClusterTool::MAIL->deploymentName($instance);
+
+        $existingPassword = $this->readClusterSecretKey($kubectl, $ns, $openbaoBookkeepingSecret, 'STALWART_STORE_PASSWORD');
         $password = $existingPassword ?? Str::random(24);
-        // Once OpenBao's database secrets engine already owns the
-        // 'stalwart' static role, defer to ITS current password instead of
-        // re-affirming a locally-cached one that may predate OpenBao's own
-        // rotation — see resolveManagedDbPassword()'s docblock.
-        $password = $this->resolveManagedDbPassword($kubectl, 'stalwart', $password);
+        // Once OpenBao's database secrets engine already owns the static
+        // role, defer to ITS current password instead of re-affirming a
+        // locally-cached one that may predate OpenBao's own rotation — see
+        // resolveManagedDbPassword()'s docblock.
+        $password = $this->resolveManagedDbPassword($kubectl, $tenant, $password);
 
         // Unlike the checks above, this one is a real failure, not a missing
         // precondition — say so loudly rather than in passing gray.
-        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'stalwart', $password)) {
-            $this->laraKubeError("Could not allocate the 'stalwart' database in the Plex Commons.");
+        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $tenant, $password)) {
+            $this->laraKubeError("Could not allocate the '{$tenant}' database in the Plex Commons.");
             $this->line('  <fg=gray>Check the Commons Postgres is reachable:</> <fg=blue>larakube plex:show</>');
 
             return;
@@ -527,12 +557,12 @@ class MailInitCommand extends Command
         // Pushing STALWART store secrets to OpenBao
         $pushed = $this->withSpin(
             'Pushing STALWART store secrets to OpenBao...',
-            function () use ($kubectl, $password) {
+            function () use ($kubectl, $password, $tenant) {
                 if ($this->databaseEngineMounted($kubectl)) {
-                    $dbPushed = $this->registerStaticRole($kubectl, 'stalwart');
+                    $dbPushed = $this->registerStaticRole($kubectl, $tenant);
 
                     if ($dbPushed) {
-                        $realPassword = $this->readStaticRolePassword($kubectl, 'stalwart');
+                        $realPassword = $this->readStaticRolePassword($kubectl, $tenant);
                         if ($realPassword !== null) {
                             $this->pushClusterSecret($kubectl, 'STALWART_STORE_PASSWORD', $realPassword, 'production');
                         }
@@ -554,7 +584,7 @@ class MailInitCommand extends Command
             $this->laraKubeError('Could not store STALWART_STORE_PASSWORD in OpenBao.');
             $this->line('  <fg=gray>The database was created, so use this password in the wizard directly:</>');
             $this->line('  <fg=yellow>'.$password.'</>');
-            $this->line('  <fg=gray>Username</> <fg=blue>stalwart</> <fg=gray>· database</> <fg=blue>stalwart</>');
+            $this->line("  <fg=gray>Username · database</> <fg=blue>{$tenant}</>");
 
             return;
         }
@@ -569,29 +599,30 @@ class MailInitCommand extends Command
         // ExternalSecret instead of creating a second, conflicting one.
         $synced = $this->withSpin(
             'Waiting for stalwart to sync into the cluster...',
-            function () use ($kubectl, $ns) {
-                // The dynamic-credential ExternalSecret is 'stalwart-db', not the
-                // bare tool name — 'stalwart' is a DIFFERENT, static ExternalSecret
-                // (see tool-es.blade.php) that never reconciles this key at all, so
-                // waiting on it always times out and reports failure even when the
-                // OpenBao push above genuinely succeeded. Confirmed live 2026-08-18
-                // (identical bug, Forgejo).
-                $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ns, 'stalwart-db');
-                $this->forceExternalSecretReconcile($kubectl, $ns, 'stalwart-db');
+            function () use ($kubectl, $ns, $dynamicSecretName) {
+                // The dynamic-credential ExternalSecret is '{tenant}-db', not
+                // the bare tool name — 'stalwart' is a DIFFERENT, static
+                // ExternalSecret (see tool-es.blade.php) that never
+                // reconciles this key at all, so waiting on it always times
+                // out and reports failure even when the OpenBao push above
+                // genuinely succeeded. Confirmed live 2026-08-18 (identical
+                // bug, Forgejo).
+                $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $ns, $dynamicSecretName);
+                $this->forceExternalSecretReconcile($kubectl, $ns, $dynamicSecretName);
 
-                return $this->waitForExternalSecretSynced($kubectl, $ns, 'stalwart-db', $refreshTimeBefore);
+                return $this->waitForExternalSecretSynced($kubectl, $ns, $dynamicSecretName, $refreshTimeBefore);
             },
         );
 
         if ($synced) {
             // Restart Stalwart deployment so its container process inherits the freshly synced
             // env vars from the newly created stalwart secret.
-            Process::run("{$kubectl} rollout restart deployment/stalwart -n {$ns} >/dev/null 2>&1");
+            Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns} >/dev/null 2>&1");
         }
 
         if (! $synced) {
             $this->laraKubeError('Stored the password in OpenBao, but the sync into the cluster did not confirm in time.');
-            $this->line('  <fg=gray>Check</> <fg=yellow>kubectl get externalsecret stalwart -n '.$ns.'</> <fg=gray>— run</> <fg=blue>larakube secrets:init</> <fg=gray>if it is missing. Or use the password directly:</>');
+            $this->line('  <fg=gray>Check</> <fg=yellow>kubectl get externalsecret '.$dynamicSecretName.' -n '.$ns.'</> <fg=gray>— run</> <fg=blue>larakube secrets:init</> <fg=gray>if it is missing. Or use the password directly:</>');
             $this->line('  <fg=yellow>'.$password.'</>');
 
             return;

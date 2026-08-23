@@ -24,7 +24,7 @@ test('mail:password is registered', function (): void {
 });
 
 test('mail:password requires installed stalwart', function (): void {
-    Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:password')
         ->assertExitCode(1)
@@ -33,7 +33,7 @@ test('mail:password requires installed stalwart', function (): void {
 
 test('mail:password resets password', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
@@ -53,7 +53,7 @@ test('mail:password resets password', function (): void {
 
 test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed and the identity exists', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
@@ -80,7 +80,7 @@ test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed 
 
 test('mail:password --no-sso leaves Zitadel untouched', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
@@ -102,7 +102,7 @@ test('mail:password --no-sso leaves Zitadel untouched', function (): void {
 
 test('mail:password hints (does not error) when no matching SSO identity exists', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
@@ -124,7 +124,7 @@ test('mail:password hints (does not error) when no matching SSO identity exists'
 
 test('mail:password without --force asks for confirmation and cancels on decline', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),

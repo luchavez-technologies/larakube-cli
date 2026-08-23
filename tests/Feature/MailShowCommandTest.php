@@ -17,7 +17,7 @@ test('mail:show is registered', function (): void {
 });
 
 test('mail:show requires installed stalwart', function (): void {
-    Process::fake(['*get deployment stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:show')
         ->assertExitCode(1)
@@ -26,7 +26,7 @@ test('mail:show requires installed stalwart', function (): void {
 
 test('mail:show displays admin credentials', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
         '*port-forward*' => Process::result(output: ''),
     ]);
@@ -39,7 +39,7 @@ test('mail:show displays admin credentials', function (): void {
 
 test('mail:show <email> displays that account\'s client setup, never a password', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
@@ -61,7 +61,7 @@ test('mail:show <email> displays that account\'s client setup, never a password'
 
 test('mail:show <email> errors when the account does not exist', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -78,7 +78,7 @@ test('mail:show <email> errors when the account does not exist', function (): vo
 
 test('mail:show <email> shows the webmail URL when Bulwark is installed', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
@@ -97,7 +97,7 @@ test('mail:show <email> shows the webmail URL when Bulwark is installed', functi
 
 test('mail:show <email> shows SSO status when Zitadel is installed', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),

@@ -130,8 +130,10 @@ class MailShowCommand extends Command
      */
     protected function detectStoreBootstrap(string $kubectl, string $ns): ?array
     {
+        $instance = $this->resolveMailInstance($kubectl);
+        $configMap = $instance === '' ? 'mail-stalwart-config' : "mail-stalwart-config-{$instance}";
         $configMapExists = trim(Process::run(
-            "{$kubectl} get configmap stalwart-config -n {$ns} --no-headers --ignore-not-found",
+            "{$kubectl} get configmap {$configMap} -n {$ns} --no-headers --ignore-not-found",
         )->output()) !== '';
 
         if (! $configMapExists) {

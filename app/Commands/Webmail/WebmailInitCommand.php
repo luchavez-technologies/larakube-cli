@@ -159,11 +159,12 @@ class WebmailInitCommand extends Command
         // login keeps failing with a CORS error — the trap the first cut hit.
         $restarted = false;
         if ($corsOk && ! $this->option('no-mail-restart')) {
+            $mailDeployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
             $this->withSpin('Restarting Stalwart to apply CORS (brief mail blip)...', fn () => Process::run(
-                "{$kubectl} rollout restart deployment/stalwart -n {$ns}",
+                "{$kubectl} rollout restart deployment/{$mailDeployment} -n {$ns}",
             ));
             $this->withSpin('Waiting for Stalwart to come back...', fn () => Process::timeout(190)->run(
-                "{$kubectl} rollout status deployment/stalwart -n {$ns} --timeout=180s",
+                "{$kubectl} rollout status deployment/{$mailDeployment} -n {$ns} --timeout=180s",
             )->successful());
             $restarted = true;
         }

@@ -3,6 +3,7 @@
 namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithTraefik;
@@ -49,12 +50,14 @@ class MailRestartCommand extends Command
             return 1;
         }
 
+        $deployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
+
         $this->withSpin('Restarting Stalwart...', fn () => Process::run(
-            "{$kubectl} rollout restart deployment/stalwart -n {$ns}",
+            "{$kubectl} rollout restart deployment/{$deployment} -n {$ns}",
         ));
 
         $this->withSpin('Waiting for Stalwart to come back...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deployment/stalwart -n {$ns} --timeout=180s",
+            "{$kubectl} rollout status deployment/{$deployment} -n {$ns} --timeout=180s",
             190,
         ));
 

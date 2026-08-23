@@ -1,7 +1,18 @@
+@php
+    // Self-contained rather than trusting inherited scope: this partial is
+    // also rendered standalone (SharedClusterService::MAIL's local-dev
+    // re-point path via applySharedService(), which doesn't know about
+    // $instance/$deploymentName at all) as well as @include'd from
+    // stalwart.blade.php (which already computed these). Fall back to no
+    // suffix — correct for the standalone caller today, since that path is
+    // local-only and local installs aren't threaded through the instance
+    // rename in this pass.
+    $deploymentName ??= 'mail-stalwart'.((($instance ?? '') !== '') ? "-{$instance}" : '');
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: stalwart
+  name: {{ $deploymentName }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -24,7 +35,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: stalwart
+                name: {{ $deploymentName }}
                 port:
                   number: 8080
 @foreach($aliasHosts ?? [] as $aliasHost)
@@ -35,7 +46,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: stalwart
+                name: {{ $deploymentName }}
                 port:
                   number: 8080
 @endforeach

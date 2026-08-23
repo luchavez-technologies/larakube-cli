@@ -73,7 +73,7 @@ test('storeBootstrap renders a config.json ConfigMap and mounts it, referencing 
     $deployment = null;
     foreach ($documents as $document) {
         $parsed = Yaml::parse($document);
-        if (($parsed['kind'] ?? null) === 'ConfigMap' && ($parsed['metadata']['name'] ?? null) === 'stalwart-config') {
+        if (($parsed['kind'] ?? null) === 'ConfigMap' && ($parsed['metadata']['name'] ?? null) === 'mail-stalwart-config') {
             $configMap = $parsed;
         }
         if (($parsed['kind'] ?? null) === 'Deployment') {

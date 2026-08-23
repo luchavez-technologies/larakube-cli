@@ -15,7 +15,7 @@ test('tool:list detects tools live on the cluster even if missing from registry 
         // Empty registry secret
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
         // Stalwart (Mail) is present on cluster
-        '*get deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
+        '*deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
         // Ingress holds send.luchtech.dev
         '*get ingress -n larakube-shared -o jsonpath*' => Process::result(output: 'send.luchtech.dev'),
         // Catch-all process
@@ -44,7 +44,7 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
                 ['tool' => 'mail', 'instance' => '', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
             ])),
         ),
-        '*get deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
+        '*deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),

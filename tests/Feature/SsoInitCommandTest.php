@@ -163,7 +163,7 @@ test('sso:init wires Zitadel outbound email to Stalwart when the sender is cache
         // machine-pat already present → captureMachinePat short-circuits true,
         // and maybeWireStalwartSmtp reads the PAT from the same secret.
         '*get secret sso-secrets*' => Process::result(output: base64_encode('pat-value')),
-        '*get deployment stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@example.com')),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),

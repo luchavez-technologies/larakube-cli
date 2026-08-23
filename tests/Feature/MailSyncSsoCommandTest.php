@@ -12,7 +12,7 @@ afterEach(function (): void {
 
 test('mail:sync-sso imports existing stalwart accounts into zitadel sso', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: 'stalwart 1/1 1 1 1d'),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart 1/1 1 1 1d'),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel 1/1 1 1 1d'),
         '*get secret mail-secrets*' => Process::result(output: base64_encode('adminpass')),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('pat123')),
@@ -55,7 +55,7 @@ test('mail:sync-sso imports existing stalwart accounts into zitadel sso', functi
 
 test('mail:sync-sso refuses when stalwart is not installed', function (): void {
     Process::fake([
-        '*get deployment stalwart*' => Process::result(output: '', exitCode: 1),
+        '*app=mail-stalwart*' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('mail:sync-sso local')
