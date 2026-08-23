@@ -56,9 +56,8 @@ class SecretsRotateCommand extends Command
         }
 
         $domain = (string) ($this->option('domain') ?: '');
-        $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::SECRETS, $domain);
 
-        $targets = $this->resolveTargets($kubectl, $instance);
+        $targets = $this->resolveTargets($kubectl, $domain);
         if ($targets === []) {
             return 1;
         }
@@ -80,20 +79,28 @@ class SecretsRotateCommand extends Command
     }
 
     /**
-     * Resolve target tool(s) for rotation.
+     * Resolve target tool(s) for rotation. $domain, like secrets:wire, only
+     * ever targets ONE specific tool's instance and is ignored with --all —
+     * the instance itself is resolved per-tool (not once up front against an
+     * unrelated tool enum), matching secrets:wire's resolveTargets(). Passing
+     * ClusterTool::SECRETS into resolveInstanceForDomain() here regardless of
+     * which tool was actually being rotated was a real bug: it silently
+     * resolved to whatever instance SECRETS itself maps that host to, then
+     * appended it as a `-{instance}` suffix onto a DIFFERENT tool's secret
+     * name via dbSecretRef() — reliably misresolving as "not installed" for
+     * any tool whose host doesn't happen to match. Confirmed live 2026-08-23
+     * on Mail/Stalwart, which really was installed.
      *
      * @return array<int, array{0: ClusterTool, 1: string, 2: string|null}>
      */
-    protected function resolveTargets(string $kubectl, string $instance): array
+    protected function resolveTargets(string $kubectl, string $domain): array
     {
-        $capable = array_filter(
-            ClusterTool::shippedCases(),
-            fn (ClusterTool $t) => $t->dbSecretRef($instance) !== null,
-        );
+        $capable = array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
 
-        $resolve = function (ClusterTool $t, string $inst) use ($kubectl) {
+        $resolve = function (ClusterTool $t, ?string $forInstance) use ($kubectl) {
+            $inst = $forInstance ?? '';
             $engine = $t->engines() !== []
-                ? $this->resolveInstanceEngine($kubectl, $t, $inst, (string) ($this->option('engine') ?: '') ?: null)
+                ? $this->resolveInstanceEngine($kubectl, $t, $forInstance, (string) ($this->option('engine') ?: '') ?: null)
                 : null;
 
             if ($t->dbSecretRef($inst, $engine) === null) {
@@ -110,7 +117,7 @@ class SecretsRotateCommand extends Command
         if ($this->option('all')) {
             $installed = [];
             foreach ($capable as $t) {
-                $resolved = $resolve($t, '');
+                $resolved = $resolve($t, null);
                 if ($resolved !== null) {
                     $installed[] = $resolved;
                 }
@@ -136,13 +143,14 @@ class SecretsRotateCommand extends Command
                 return [];
             }
 
-            if ($tool->dbSecretRef($instance) === null) {
+            if ($tool->dbSecretRef() === null) {
                 $this->laraKubeError("'{$slug}' does not have a Commons database password OpenBao can rotate.");
 
                 return [];
             }
 
-            $resolved = $resolve($tool, $instance);
+            $targetInst = $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $tool, $domain) : null;
+            $resolved = $resolve($tool, $targetInst);
             if ($resolved === null) {
                 $this->laraKubeError("{$tool->getLabel()} is not installed at this instance.");
 
@@ -154,7 +162,8 @@ class SecretsRotateCommand extends Command
 
         $installed = [];
         foreach ($capable as $t) {
-            $resolved = $resolve($t, $instance);
+            $targetInst = $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $t, $domain) : null;
+            $resolved = $resolve($t, $targetInst);
             if ($resolved !== null) {
                 $installed[] = $resolved;
             }
