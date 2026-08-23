@@ -47,6 +47,8 @@ kind: Secret
 metadata:
   name: external-secrets-webhook
   namespace: {{ $namespace }}
+  labels:
+    external-secrets.io/component: webhook
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -332,6 +334,8 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: secretstore-validate
+  labels:
+    external-secrets.io/component: webhook
 webhooks:
   - name: "validate.secretstore.external-secrets.io"
     rules:
@@ -368,6 +372,8 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: externalsecret-validate
+  labels:
+    external-secrets.io/component: webhook
 webhooks:
   - name: "validate.externalsecret.external-secrets.io"
     rules:
