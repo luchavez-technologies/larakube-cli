@@ -29,13 +29,17 @@ test('eso-crds-generators manifest renders valid multi-document YAML with both g
 });
 
 test('neither generator CRD points its conversion strategy at an undeployed webhook', function (): void {
-    // Regression guard: the official upstream CRD bundle declares
-    // conversion.strategy: Webhook pointing at ESO's own conversion webhook
-    // service — a component eso.blade.php never deploys (only the core
-    // controller runs here). Both CRDs declare exactly one served version
-    // (v1alpha1), so there's nothing to convert between; leaving Webhook in
-    // place would just be a dangling pointer that misbehaves the moment K8s
-    // ever tries to invoke it.
+    // Regression guard, originally against ESO's v0.11.0-era upstream CRD
+    // bundle, which declared conversion.strategy: Webhook pointing at ESO's
+    // own conversion webhook service — a component eso.blade.php never
+    // deployed (only the core controller ran at that version). Both CRDs
+    // declare exactly one served version (v1alpha1), so there was nothing
+    // to convert between; a Webhook strategy there was just a dangling
+    // pointer that would misbehave the moment K8s ever tried to invoke it.
+    // As of the v0.16.2 vendor pass, the official bundle no longer declares
+    // a `conversion` block for either CRD at all — Kubernetes treats an
+    // absent conversion strategy as None implicitly, which is the same safe
+    // outcome this guard originally had to enforce by hand.
     $rendered = view('k8s.secrets.eso-crds-generators')->render();
 
     $documents = array_values(array_filter(
@@ -45,8 +49,10 @@ test('neither generator CRD points its conversion strategy at an undeployed webh
 
     foreach ($documents as $document) {
         $parsed = Yaml::parse($document);
+        $strategy = $parsed['spec']['conversion']['strategy'] ?? 'None';
+
         expect($parsed['spec']['versions'] ?? [])->toHaveCount(1)
-            ->and($parsed['spec']['conversion']['strategy'] ?? null)->toBe('None')
-            ->and($parsed['spec']['conversion'])->not->toHaveKey('webhook');
+            ->and($strategy)->toBe('None')
+            ->and($parsed['spec']['conversion'] ?? [])->not->toHaveKey('webhook');
     }
 });

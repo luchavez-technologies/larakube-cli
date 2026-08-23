@@ -11,7 +11,7 @@ type: Opaque
 data:
   token: {{ $token }}
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: {{ $authName }}
@@ -27,7 +27,7 @@ spec:
           name: {{ $authName }}
           key: token
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: {{ $secretName }}

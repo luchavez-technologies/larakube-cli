@@ -21,7 +21,7 @@ test('secrets:init deploys openbao and external secrets operator, unsealing an a
         '*get secret*admin-password*' => Process::result(output: base64_encode('existing-pw')),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
-        '*apply -f *' => Process::result(output: 'applied'),
+        '*apply *-f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
         '*port-forward*' => Process::result(),
         '*' => Process::result(),
@@ -47,12 +47,25 @@ test('secrets:init deploys openbao and external secrets operator, unsealing an a
         ->expectsOutputToContain('Applying OpenBao & External Secrets Operator manifests...')
         ->expectsOutputToContain('Waiting for OpenBao Backend...')
         ->expectsOutputToContain('Waiting for External Secrets Operator...')
+        ->expectsOutputToContain('Waiting for ESO cert controller...')
+        ->expectsOutputToContain('Waiting for ESO admission webhook...')
         ->expectsOutputToContain('OpenBao stack & External Secrets Operator are live')
         // Regression guard: $host was resolved and used to build the ingress
         // manifest, but never actually printed — the success message told you
         // OpenBao was live without saying where. Found live 2026-08-01
         // (a screenshot with no URL anywhere in the output).
         ->expectsOutputToContain('OpenBao:  https://');
+
+    // v0.16.2's CRD bundle exceeds the client-side apply size limit, and
+    // switching an already-live install from client-side to server-side
+    // ownership needs --force-conflicts or the first apply after upgrade
+    // fails outright — see SecretsInitCommand::deploySecrets()'s comment.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'apply --server-side --force-conflicts -f'));
+
+    // The three deployments the webhook's failurePolicy: Fail makes
+    // mandatory, not optional, as of v0.16.2 — see eso.blade.php's header.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout status deploy/external-secrets-cert-controller'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout status deploy/external-secrets-webhook'));
 });
 
 test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — no import file required', function (): void {
@@ -66,7 +79,7 @@ test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — n
     Process::fake([
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
-        '*apply -f *' => Process::result(output: 'applied'),
+        '*apply *-f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
         '*port-forward*' => Process::result(),
         '*' => Process::result(),
@@ -113,7 +126,7 @@ test('secrets:init creates a new userpass admin and prints the credentials once'
         '*get secret*admin-password*' => Process::result(output: '', exitCode: 1),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
-        '*apply -f *' => Process::result(output: 'applied'),
+        '*apply *-f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
         '*port-forward*' => Process::result(),
         '*' => Process::result(),
@@ -153,7 +166,7 @@ test('secrets:init reuses an existing userpass admin instead of rotating it, and
         '*get secret*admin-password*' => Process::result(output: base64_encode('do-not-rotate-me')),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
-        '*apply -f *' => Process::result(output: 'applied'),
+        '*apply *-f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
         '*port-forward*' => Process::result(),
         '*' => Process::result(),
@@ -188,7 +201,7 @@ test('secrets:init keeps deploying OpenBao even if the userpass admin setup fail
         '*get secret*unseal-key*' => Process::result(output: base64_encode('existing-unseal-key')),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
-        '*apply -f *' => Process::result(output: 'applied'),
+        '*apply *-f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
         '*port-forward*' => Process::result(),
         '*' => Process::result(),
@@ -213,7 +226,7 @@ test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently 
     Process::fake([
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
-        '*apply -f *' => Process::result(output: 'applied'),
+        '*apply *-f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
         '*port-forward*' => Process::result(exitCode: 1),
         '*' => Process::result(),
@@ -222,6 +235,47 @@ test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently 
     $this->artisan('secrets:init local --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('Could not initialize/unseal OpenBao');
+});
+
+test('secrets:init patches out a lingering v1alpha1 storedVersion before applying the new CRD bundle', function (): void {
+    // ESO v0.16.0 dropped the v1alpha1 CRD API version entirely. A CRD
+    // whose status.storedVersions still lists it would reject the new CRD
+    // schema outright — this guard clears it first, matching ESO's own
+    // documented upgrade procedure. See pruneStaleStoredCrdVersions().
+    Process::fake([
+        '*get secret*' => Process::result(output: '', exitCode: 1),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*get customresourcedefinition externalsecrets.external-secrets.io*' => Process::result(output: '["v1alpha1","v1beta1"]'),
+        '*get customresourcedefinition*' => Process::result(output: '["v1beta1"]'),
+        '*patch customresourcedefinition*' => Process::result(output: 'patched'),
+        '*apply *-f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+        '*port-forward*' => Process::result(),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        MockResponse::make(['initialized' => false]),
+        MockResponse::make(['root_token' => 'hvs.fresh-root', 'keys' => ['fresh-unseal-key']]),
+        MockResponse::make(['sealed' => false]),
+        MockResponse::make(['data' => []]),
+        MockResponse::make([]),
+        MockResponse::make([]),
+        MockResponse::make([]),
+        MockResponse::make([]),
+        MockResponse::make([]),
+    ]);
+
+    $this->artisan('secrets:init local --no-interaction')->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'patch customresourcedefinition externalsecrets.external-secrets.io')
+        && str_contains($process->command, '--subresource=status')
+        && str_contains($process->command, 'v1beta1')
+        && ! str_contains($process->command, 'v1alpha1'));
+
+    // Every other CRD's stored versions never mentioned v1alpha1, so none
+    // of them should have been patched.
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'patch customresourcedefinition secretstores.external-secrets.io'));
 });
 
 // secrets:remove's own coverage lives in SecretsRemoveCommandTest.php (a

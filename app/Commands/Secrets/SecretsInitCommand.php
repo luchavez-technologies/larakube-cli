@@ -91,6 +91,16 @@ class SecretsInitCommand extends Command
             'namespace' => $ns,
         ])->render();
 
+        // ESO v0.16.0 dropped the v1alpha1 CRD API version entirely — a CRD
+        // whose status.storedVersions still lists v1alpha1 (only possible on
+        // an install old enough to predate v1beta1) would reject the new CRD
+        // schema outright. This CLI has only ever written v1beta1/v1 objects,
+        // so this should always be a no-op in practice, but it's the exact
+        // guard ESO's own upgrade docs prescribe before applying a newer CRD
+        // bundle over live objects — cheap insurance against corrupting the
+        // ~20 tools' worth of already-live ExternalSecrets across a cluster.
+        $this->pruneStaleStoredCrdVersions($kubectl);
+
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-openbao.yaml');
         file_put_contents($tmp, $crdsManifest."\n---\n".$generatorCrdsManifest."\n---\n".$manifest."\n---\n".$esoManifest);
@@ -102,7 +112,16 @@ class SecretsInitCommand extends Command
         // --timeout flag, or a rejected apply / stuck rollout prints ✔ and
         // this command claims success regardless (confirmed live on
         // Documenso, 2026-08-05).
-        $applied = $this->withSpin('Applying OpenBao & External Secrets Operator manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
+        // --server-side is required as of ESO's CRD bundle growing past the
+        // ~262KB last-applied-configuration annotation limit client-side
+        // apply enforces — confirmed needed for v0.16.2's bundle.
+        // --force-conflicts: every existing install applied these resources
+        // client-side (plain `kubectl apply -f`) before this change, so the
+        // first server-side apply here is switching field-ownership
+        // strategy on already-live objects, not just bumping a version —
+        // without this flag that switch fails with a conflict instead of
+        // silently taking ownership.
+        $applied = $this->withSpin('Applying OpenBao & External Secrets Operator manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply --server-side --force-conflicts -f {$tmp} --request-timeout=60s")->successful());
         $temporaryDirectory->delete();
 
         if (! $applied) {
@@ -117,10 +136,18 @@ class SecretsInitCommand extends Command
             return 1;
         }
 
-        if (! $this->withSpin('Waiting for External Secrets Operator...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/external-secrets -n {$ns} --timeout=120s")->successful())) {
-            $this->laraKubeError('external-secrets never became Ready.');
+        // v0.16.2 added a webhook + cert-controller alongside the main
+        // reconciler (see eso.blade.php's header comment for why the webhook
+        // isn't optional: its ValidatingWebhookConfiguration defaults to
+        // failurePolicy: Fail, which would reject every ExternalSecret/
+        // SecretStore apply across every tool if it's deployed without
+        // something actually serving it).
+        foreach (['external-secrets' => 'External Secrets Operator', 'external-secrets-cert-controller' => 'ESO cert controller', 'external-secrets-webhook' => 'ESO admission webhook'] as $deployment => $label) {
+            if (! $this->withSpin("Waiting for {$label}...", fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$deployment} -n {$ns} --timeout=120s")->successful())) {
+                $this->laraKubeError("{$deployment} never became Ready.");
 
-            return 1;
+                return 1;
+            }
         }
 
         if (! $this->wireEsoToOpenBao($kubectl, $ns)) {
@@ -146,6 +173,56 @@ class SecretsInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::SECRETS);
+    }
+
+    /**
+     * Guard against ESO's CRD schema rejecting a live cluster's own history.
+     * A CRD's status.storedVersions lists every API version ANY currently-
+     * stored object still uses under the hood, independent of what the CRD
+     * currently serves — applying a new CRD version list that drops one of
+     * those stored versions is refused by the API server outright, protecting
+     * against silently making existing objects unreadable. We've only ever
+     * written v1beta1/v1 (never the older v1alpha1 the upstream CRD schema
+     * also lists as a historical entry), so this should always find nothing
+     * — but it costs one read-only check per CRD to confirm that rather than
+     * assume it, before applying a bundle whose schema no longer offers
+     * v1alpha1 at all.
+     */
+    protected function pruneStaleStoredCrdVersions(string $kubectl): void
+    {
+        $crds = [
+            'secretstores.external-secrets.io',
+            'clustersecretstores.external-secrets.io',
+            'externalsecrets.external-secrets.io',
+            'clusterexternalsecrets.external-secrets.io',
+            'pushsecrets.external-secrets.io',
+            'clusterpushsecrets.external-secrets.io',
+        ];
+
+        foreach ($crds as $crd) {
+            $stored = trim(Process::run(
+                "{$kubectl} get customresourcedefinition {$crd} -o jsonpath='{.status.storedVersions}' --ignore-not-found",
+            )->output());
+
+            // Empty means either the CRD doesn't exist yet (fresh install —
+            // nothing to prune) or the jsonpath found no field; either way
+            // there's nothing this guard needs to do.
+            if ($stored === '' || ! str_contains($stored, 'v1alpha1')) {
+                continue;
+            }
+
+            $versions = array_values(array_filter(
+                json_decode($stored, true) ?? [],
+                fn (string $v) => $v !== 'v1alpha1',
+            ));
+
+            if ($versions === []) {
+                continue;
+            }
+
+            $patch = json_encode(['status' => ['storedVersions' => $versions]]);
+            Process::run("{$kubectl} patch customresourcedefinition {$crd} --subresource=status --type=merge -p ".escapeshellarg($patch));
+        }
     }
 
     /**

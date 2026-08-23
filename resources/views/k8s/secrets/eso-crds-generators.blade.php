@@ -1,9 +1,9 @@
-<?php /** generators.external-secrets.io CRDs (ClusterGenerator, VaultDynamicSecret) from ESO v0.11.0's official bundle, verbatim. Separate from eso-crds.blade.php since these are large and only needed for OpenBao database-engine static-role rotation. */ ?>
+<?php /** generators.external-secrets.io CRDs (ClusterGenerator, VaultDynamicSecret) from ESO v0.16.2 official release bundle, verbatim. Separate from eso-crds.blade.php since these are large and only needed for OpenBao database-engine static-role rotation. */ ?>
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.17.3
   labels:
     external-secrets.io/component: controller
   name: clustergenerators.generators.external-secrets.io
@@ -199,7 +199,7 @@ spec:
                         - auth
                         - registry
                       type: object
-                    ecrRAuthorizationTokenSpec:
+                    ecrAuthorizationTokenSpec:
                       properties:
                         auth:
                           description: Auth defines how to authenticate with AWS
@@ -331,6 +331,11 @@ spec:
                           description: |-
                             You can assume a role before making calls to the
                             desired AWS service.
+                          type: string
+                        scope:
+                          description: |-
+                            Scope specifies the ECR service scope.
+                            Valid options are private and public.
                           type: string
                       required:
                         - region
@@ -499,6 +504,91 @@ spec:
                         - auth
                         - installID
                       type: object
+                    grafanaSpec:
+                      description: GrafanaSpec controls the behavior of the grafana generator.
+                      properties:
+                        auth:
+                          description: |-
+                            Auth is the authentication configuration to authenticate
+                            against the Grafana instance.
+                          properties:
+                            basic:
+                              description: |-
+                                Basic auth credentials used to authenticate against the Grafana instance.
+                                Note: you need a token which has elevated permissions to create service accounts.
+                                See here for the documentation on basic roles offered by Grafana:
+                                https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/access-control/rbac-fixed-basic-role-definitions/
+                              properties:
+                                password:
+                                  description: A basic auth password used to authenticate against the Grafana instance.
+                                  properties:
+                                    key:
+                                      description: The key where the token is found.
+                                      maxLength: 253
+                                      minLength: 1
+                                      pattern: ^[-._a-zA-Z0-9]+$
+                                      type: string
+                                    name:
+                                      description: The name of the Secret resource being referred to.
+                                      maxLength: 253
+                                      minLength: 1
+                                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                      type: string
+                                  type: object
+                                username:
+                                  description: A basic auth username used to authenticate against the Grafana instance.
+                                  type: string
+                              required:
+                                - password
+                                - username
+                              type: object
+                            token:
+                              description: |-
+                                A service account token used to authenticate against the Grafana instance.
+                                Note: you need a token which has elevated permissions to create service accounts.
+                                See here for the documentation on basic roles offered by Grafana:
+                                https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/access-control/rbac-fixed-basic-role-definitions/
+                              properties:
+                                key:
+                                  description: The key where the token is found.
+                                  maxLength: 253
+                                  minLength: 1
+                                  pattern: ^[-._a-zA-Z0-9]+$
+                                  type: string
+                                name:
+                                  description: The name of the Secret resource being referred to.
+                                  maxLength: 253
+                                  minLength: 1
+                                  pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                  type: string
+                              type: object
+                          type: object
+                        serviceAccount:
+                          description: |-
+                            ServiceAccount is the configuration for the service account that
+                            is supposed to be generated by the generator.
+                          properties:
+                            name:
+                              description: Name is the name of the service account that will be created by ESO.
+                              type: string
+                            role:
+                              description: |-
+                                Role is the role of the service account.
+                                See here for the documentation on basic roles offered by Grafana:
+                                https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/access-control/rbac-fixed-basic-role-definitions/
+                              type: string
+                          required:
+                            - name
+                            - role
+                          type: object
+                        url:
+                          description: URL is the URL of the Grafana instance.
+                          type: string
+                      required:
+                        - auth
+                        - serviceAccount
+                        - url
+                      type: object
                     passwordSpec:
                       description: PasswordSpec controls the behavior of the password generator.
                       properties:
@@ -535,6 +625,46 @@ spec:
                         - allowRepeat
                         - length
                         - noUpper
+                      type: object
+                    quayAccessTokenSpec:
+                      properties:
+                        robotAccount:
+                          description: Name of the robot account you are federating with
+                          type: string
+                        serviceAccountRef:
+                          description: Name of the service account you are federating with
+                          properties:
+                            audiences:
+                              description: |-
+                                Audience specifies the `aud` claim for the service account token
+                                If the service account uses a well-known annotation for e.g. IRSA or GCP Workload Identity
+                                then this audiences will be appended to the list
+                              items:
+                                type: string
+                              type: array
+                            name:
+                              description: The name of the ServiceAccount resource being referred to.
+                              maxLength: 253
+                              minLength: 1
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                              type: string
+                            namespace:
+                              description: |-
+                                Namespace of the resource being referred to.
+                                Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
+                              maxLength: 63
+                              minLength: 1
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                              type: string
+                          required:
+                            - name
+                          type: object
+                        url:
+                          description: URL configures the Quay instance URL. Defaults to quay.io.
+                          type: string
+                      required:
+                        - robotAccount
+                        - serviceAccountRef
                       type: object
                     stsSessionTokenSpec:
                       properties:
@@ -698,6 +828,10 @@ spec:
                       type: object
                     vaultDynamicSecretSpec:
                       properties:
+                        allowEmptyResponse:
+                          default: false
+                          description: Do not fail if no secrets are found. Useful for requests where no data is expected.
+                          type: boolean
                         controller:
                           description: |-
                             Used to select the correct ESO controller (think: ingress.ingressClassName)
@@ -1228,7 +1362,7 @@ spec:
                                       type: object
                                     username:
                                       description: |-
-                                        Username is a LDAP user name used to authenticate using the LDAP Vault
+                                        Username is an LDAP username used to authenticate using the LDAP Vault
                                         authentication method
                                       type: string
                                   required:
@@ -1273,10 +1407,10 @@ spec:
                                   description: UserPass authenticates with Vault by passing username/password pair
                                   properties:
                                     path:
-                                      default: user
+                                      default: userpass
                                       description: |-
                                         Path where the UserPassword authentication backend is mounted
-                                        in Vault, e.g: "user"
+                                        in Vault, e.g: "userpass"
                                       type: string
                                     secretRef:
                                       description: |-
@@ -1309,7 +1443,7 @@ spec:
                                       type: object
                                     username:
                                       description: |-
-                                        Username is a user name used to authenticate using the UserPass Vault
+                                        Username is a username used to authenticate using the UserPass Vault
                                         authentication method
                                       type: string
                                   required:
@@ -1470,7 +1604,6 @@ spec:
                                 - v2
                               type: string
                           required:
-                            - auth
                             - server
                           type: object
                         resultType:
@@ -1481,9 +1614,11 @@ spec:
                             When using e.g. /auth/token/create the "data" section is empty but
                             the "auth" section contains the generated token.
                             Please refer to the vault docs regarding the result data structure.
+                            Additionally, accessing the raw response is possibly by using "Raw" result type.
                           enum:
                             - Data
                             - Auth
+                            - Raw
                           type: string
                         retrySettings:
                           description: Used to configure http retries if failed
@@ -1501,6 +1636,75 @@ spec:
                     webhookSpec:
                       description: WebhookSpec controls the behavior of the external generator. Any body parameters should be passed to the server through the parameters field.
                       properties:
+                        auth:
+                          description: Auth specifies a authorization protocol. Only one protocol may be set.
+                          maxProperties: 1
+                          minProperties: 1
+                          properties:
+                            ntlm:
+                              description: NTLMProtocol configures the store to use NTLM for auth
+                              properties:
+                                passwordSecret:
+                                  description: |-
+                                    A reference to a specific 'key' within a Secret resource.
+                                    In some instances, `key` is a required field.
+                                  properties:
+                                    key:
+                                      description: |-
+                                        A key in the referenced Secret.
+                                        Some instances of this field may be defaulted, in others it may be required.
+                                      maxLength: 253
+                                      minLength: 1
+                                      pattern: ^[-._a-zA-Z0-9]+$
+                                      type: string
+                                    name:
+                                      description: The name of the Secret resource being referred to.
+                                      maxLength: 253
+                                      minLength: 1
+                                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                      type: string
+                                    namespace:
+                                      description: |-
+                                        The namespace of the Secret resource being referred to.
+                                        Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
+                                      maxLength: 63
+                                      minLength: 1
+                                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                      type: string
+                                  type: object
+                                usernameSecret:
+                                  description: |-
+                                    A reference to a specific 'key' within a Secret resource.
+                                    In some instances, `key` is a required field.
+                                  properties:
+                                    key:
+                                      description: |-
+                                        A key in the referenced Secret.
+                                        Some instances of this field may be defaulted, in others it may be required.
+                                      maxLength: 253
+                                      minLength: 1
+                                      pattern: ^[-._a-zA-Z0-9]+$
+                                      type: string
+                                    name:
+                                      description: The name of the Secret resource being referred to.
+                                      maxLength: 253
+                                      minLength: 1
+                                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                      type: string
+                                    namespace:
+                                      description: |-
+                                        The namespace of the Secret resource being referred to.
+                                        Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
+                                      maxLength: 63
+                                      minLength: 1
+                                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                      type: string
+                                  type: object
+                              required:
+                                - passwordSecret
+                                - usernameSecret
+                              type: object
+                          type: object
                         body:
                           description: Body
                           type: string
@@ -1607,11 +1811,13 @@ spec:
                     - Fake
                     - GCRAccessToken
                     - GithubAccessToken
+                    - QuayAccessToken
                     - Password
                     - STSSessionToken
                     - UUID
                     - VaultDynamicSecret
                     - Webhook
+                    - Grafana
                   type: string
               required:
                 - generator
@@ -1622,14 +1828,12 @@ spec:
       storage: true
       subresources:
         status: {}
-  conversion:
-    strategy: None
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.17.3
   labels:
     external-secrets.io/component: controller
   name: vaultdynamicsecrets.generators.external-secrets.io
@@ -1668,6 +1872,10 @@ spec:
               type: object
             spec:
               properties:
+                allowEmptyResponse:
+                  default: false
+                  description: Do not fail if no secrets are found. Useful for requests where no data is expected.
+                  type: boolean
                 controller:
                   description: |-
                     Used to select the correct ESO controller (think: ingress.ingressClassName)
@@ -2198,7 +2406,7 @@ spec:
                               type: object
                             username:
                               description: |-
-                                Username is a LDAP user name used to authenticate using the LDAP Vault
+                                Username is an LDAP username used to authenticate using the LDAP Vault
                                 authentication method
                               type: string
                           required:
@@ -2243,10 +2451,10 @@ spec:
                           description: UserPass authenticates with Vault by passing username/password pair
                           properties:
                             path:
-                              default: user
+                              default: userpass
                               description: |-
                                 Path where the UserPassword authentication backend is mounted
-                                in Vault, e.g: "user"
+                                in Vault, e.g: "userpass"
                               type: string
                             secretRef:
                               description: |-
@@ -2279,7 +2487,7 @@ spec:
                               type: object
                             username:
                               description: |-
-                                Username is a user name used to authenticate using the UserPass Vault
+                                Username is a username used to authenticate using the UserPass Vault
                                 authentication method
                               type: string
                           required:
@@ -2440,7 +2648,6 @@ spec:
                         - v2
                       type: string
                   required:
-                    - auth
                     - server
                   type: object
                 resultType:
@@ -2451,9 +2658,11 @@ spec:
                     When using e.g. /auth/token/create the "data" section is empty but
                     the "auth" section contains the generated token.
                     Please refer to the vault docs regarding the result data structure.
+                    Additionally, accessing the raw response is possibly by using "Raw" result type.
                   enum:
                     - Data
                     - Auth
+                    - Raw
                   type: string
                 retrySettings:
                   description: Used to configure http retries if failed
@@ -2473,5 +2682,4 @@ spec:
       storage: true
       subresources:
         status: {}
-  conversion:
-    strategy: None
+---

@@ -7,6 +7,32 @@ Requires PHP 8.4 installed locally (see CONTRIBUTING.md for the extension list) 
 - `composer <args>` for dependency management
 - Never run `./build` yourself — tell the user to run it and wait.
 
+## Vendoring/pinning third-party software versions
+
+Before recommending, pinning, or vendoring ANY version of a third-party
+tool/operator/image this CLI installs onto a cluster (container image tags in
+`resources/views/k8s/**/*.blade.php`, Helm chart versions, CRD bundles, CLI
+tool releases, etc.) — check the web for the actual current latest stable
+release first. Never assume a version already pinned in the repo is current,
+and never propose "let's use vX.Y" from memory/training-data recall without
+verifying against the project's real release history.
+
+**Why:** External Secrets Operator sat pinned at v0.11.0 for an extended
+period while ~15+ minor/major releases shipped upstream (current stable:
+v2.9.0 as of 2026-08). That specific version had a documented, actively
+unresolved caching bug (`--enable-managed-secrets-caching`, default-on since
+v0.11.0) that silently froze every OpenBao-rotated database password at its
+first-ever-synced value — Kubernetes reported `Ready`/`Synced` throughout, so
+nothing looked broken until Postgres auth started failing weeks or months
+later. This caused a string of real production incidents across Zitadel,
+Forgejo, Vaultwarden, and Stalwart — the underlying tool being outdated was
+worse than doing nothing, because it looked like it was working.
+
+**How to apply:** When touching any vendored manifest or version-pinned
+dependency, take the extra step to check its release page/changelog before
+assuming the pinned version is fine, even if the task at hand isn't "upgrade
+X." A stale pin is itself a live risk, not neutral.
+
 ## graphify
 
 This project supports a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships. It is gitignored and built per-contributor (`pipx install graphifyy` then `graphify extract . --code-only`, no API key needed) — see `.agents/workflows/graphify.md`. On a fresh clone it won't exist; fall back to normal search until it's built.
