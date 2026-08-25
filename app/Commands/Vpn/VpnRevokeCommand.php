@@ -136,14 +136,24 @@ class VpnRevokeCommand extends Command
             return [];
         }
 
+        // Keyed by a non-numeric-looking string, not the plain 0-based index
+        // array_values($active) naturally produces — a sequential-int-keyed
+        // $options array is indistinguishable from a list to
+        // array_is_list(), so Laravel Prompts' select() returns the LABEL
+        // text instead of the key, and $active[$chosen] below 500s with
+        // "Undefined array key" on the label string itself. Confirmed live
+        // 2026-08-25.
         $options = [];
-        foreach ($active as $i => $key) {
+        $byOptionKey = [];
+        foreach ($active as $key) {
+            $optionKey = 'key-'.($key['id'] ?? '');
             $limit = (int) ($key['usage_limit'] ?? 0);
-            $options[$i] = ($key['name'] ?? '?').' — '.($key['key'] ?? '?').' (used '.($key['used_times'] ?? 0).'/'.($limit === 0 ? '∞' : $limit).')';
+            $options[$optionKey] = ($key['name'] ?? '?').' — '.($key['key'] ?? '?').' (used '.($key['used_times'] ?? 0).'/'.($limit === 0 ? '∞' : $limit).')';
+            $byOptionKey[$optionKey] = $key;
         }
 
         $chosen = select(label: 'Which setup key to revoke?', options: $options);
 
-        return [$active[$chosen]];
+        return [$byOptionKey[$chosen]];
     }
 }

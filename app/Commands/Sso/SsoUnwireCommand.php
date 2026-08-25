@@ -9,6 +9,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSso;
+use App\Traits\InteractsWithVpn;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RefusesUnshippedTools;
@@ -21,7 +22,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoUnwireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:unwire
         {environment=local : Environment whose tool SSO to unwire}
@@ -88,7 +89,7 @@ class SsoUnwireCommand extends Command
             return 1;
         }
 
-        return $this->unwire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat);
+        return $this->unwire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat, $toolHost);
     }
 
     protected function resolveTool(string $kubectl): ?ClusterTool
@@ -129,7 +130,7 @@ class SsoUnwireCommand extends Command
         return ClusterTool::from($selected);
     }
 
-    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat): int
+    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat, ?string $toolHost = null): int
     {
         if ($tool->usesForwardAuth()) {
             return $this->unwireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat);
@@ -156,6 +157,15 @@ class SsoUnwireCommand extends Command
 
         if ($schema['deployment'] === 'openbao-backend') {
             $this->unwireOpenBaoOidc($kubectl, $schema['namespace']);
+            $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
+
+            return 0;
+        }
+
+        if ($schema['deployment'] === 'netbird-management') {
+            if ($toolHost !== null) {
+                $this->unwireNetbirdOidc($kubectl, $schema['namespace'], $toolHost);
+            }
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
             return 0;
@@ -360,5 +370,31 @@ class SsoUnwireCommand extends Command
 
         $exec = "{$kubectl} exec deploy/openbao-backend -n {$ns} -- env BAO_TOKEN=".escapeshellarg($rootToken).' BAO_ADDR=http://127.0.0.1:8200';
         Process::run("{$exec} bao auth disable oidc");
+    }
+
+    /**
+     * Deregister NetBird's Zitadel identity provider via its own REST API —
+     * additive by construction, never touches management.json/EmbeddedIdP/
+     * the setup-key flow. A no-op if no 'zitadel'-type entry is found (e.g.
+     * already unwired).
+     */
+    protected function unwireNetbirdOidc(string $kubectl, string $ns, string $toolHost): void
+    {
+        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, 'vpn-secrets', 'pat');
+        if ($netbirdPat === null) {
+            return;
+        }
+
+        $providers = $this->listVpnIdentityProviders($toolHost, $netbirdPat);
+        if ($providers === null) {
+            return;
+        }
+
+        foreach ($providers as $provider) {
+            if (($provider['type'] ?? null) === 'zitadel') {
+                $this->deleteVpnIdentityProvider($toolHost, $netbirdPat, (string) ($provider['id'] ?? ''));
+                break;
+            }
+        }
     }
 }

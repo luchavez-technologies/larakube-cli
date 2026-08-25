@@ -139,6 +139,8 @@ class MeetInitCommand extends Command
     /** Is the Matrix bridge deployed? Drives the /jwt route in the ingress. */
     protected function isMeetChatWired(string $kubectl, string $ns): bool
     {
-        return trim(Process::run("{$kubectl} get deployment meet-lk-jwt -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+        // Label-based: the bridge's Deployment name is instance-suffixed but
+        // its pod label stays stable (app: meet-lk-jwt).
+        return trim(Process::run("{$kubectl} get deployment -l app=meet-lk-jwt -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
     }
 }

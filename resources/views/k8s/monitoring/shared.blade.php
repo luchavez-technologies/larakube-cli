@@ -1,3 +1,14 @@
+@php
+    // Only Loki/Promtail are instance-suffixed here — Grafana/Prometheus/
+    // Tempo/kube-state-metrics stay bare pending their own, DB-rename-aware
+    // pass (Grafana has a Commons Postgres tenant; the rest don't need one
+    // but are rendered/removed alongside it).
+    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
+    $lokiName = "monitor-loki{$suffix}";
+    $lokiConfigMapName = "monitor-loki-config{$suffix}";
+    $promtailName = "monitor-promtail{$suffix}";
+    $promtailConfigMapName = "monitor-promtail-config{$suffix}";
+@endphp
 ---
 # ── Prometheus RBAC ──────────────────────────────────────────────────────────
 apiVersion: v1
@@ -172,7 +183,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: loki-config
+  name: {{ $lokiConfigMapName }}
   namespace: larakube-shared
 data:
   loki.yaml: |
@@ -225,17 +236,17 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: loki
+  name: {{ $lokiName }}
   namespace: larakube-shared
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: loki
+      app: {{ $lokiName }}
   template:
     metadata:
       labels:
-        app: loki
+        app: {{ $lokiName }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "3100"
@@ -268,7 +279,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: loki-config
+            name: {{ $lokiConfigMapName }}
         - name: storage
           persistentVolumeClaim:
             claimName: loki-storage
@@ -276,11 +287,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: loki
+  name: {{ $lokiName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: loki
+    app: {{ $lokiName }}
   ports:
     - protocol: TCP
       port: 3100
@@ -457,7 +468,7 @@ subjects:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-config
+  name: {{ $promtailConfigMapName }}
   namespace: larakube-shared
 data:
   promtail.yaml: |
@@ -467,7 +478,10 @@ data:
     positions:
       filename: /tmp/positions.yaml
     clients:
-      - url: http://loki.larakube-shared.svc.cluster.local:3100/loki/api/v1/push
+      {{-- MUST track Loki's renamed Service — a stale value here fails
+           silently: Promtail's own health checks don't depend on Loki, so it
+           keeps reporting Ready while dropping every log line. --}}
+      - url: http://{{ $lokiName }}.larakube-shared.svc.cluster.local:3100/loki/api/v1/push
     scrape_configs:
       - job_name: kubernetes-pods
         pipeline_stages:
@@ -493,16 +507,16 @@ data:
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: promtail
+  name: {{ $promtailName }}
   namespace: larakube-shared
 spec:
   selector:
     matchLabels:
-      app: promtail
+      app: {{ $promtailName }}
   template:
     metadata:
       labels:
-        app: promtail
+        app: {{ $promtailName }}
     spec:
       serviceAccountName: promtail
       tolerations:
@@ -539,7 +553,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: promtail-config
+            name: {{ $promtailConfigMapName }}
         - name: pods
           hostPath:
             path: /var/log/pods
@@ -675,7 +689,9 @@ data:
         uid: loki-ds
         type: loki
         access: proxy
-        url: http://loki.larakube-shared.svc.cluster.local:3100
+        {{-- MUST track Loki's renamed Service — same silent-failure risk as
+             promtail-config's push URL above. --}}
+        url: http://{{ $lokiName }}.larakube-shared.svc.cluster.local:3100
         editable: false
 @endif
 @if($withTraces ?? false)

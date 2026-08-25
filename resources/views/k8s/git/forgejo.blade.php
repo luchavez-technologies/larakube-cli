@@ -3,6 +3,16 @@
     // scheme fails at boot with "Endpoint url cannot have fully qualified
     // paths." MINIO_USE_SSL carries the http/https decision instead.
     $s3Host = preg_replace('#^https?://#', '', (string) ($s3Endpoint ?? ''));
+
+    // Instance is always a real, host-derived slug — no bare/default form.
+    $secretsName = "git-secrets-{$instance}";
+    $dbSecretName = "forgejo-{$instance}";
+    $deploymentName = "git-forgejo-{$instance}";
+    $httpServiceName = "git-forgejo-http-{$instance}";
+    $sshServiceName = "git-forgejo-ssh-{$instance}";
+    $runnerDeploymentName = "git-forgejo-runner-{$instance}";
+    $runnerConfigMapName = "git-forgejo-runner-config-{$instance}";
+    $buckets ??= ['forgejo-storage', 'forgejo-packages', 'forgejo-lfs'];
 @endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -18,7 +28,7 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: git-secrets
+  name: {{ $secretsName }}
   namespace: larakube-shared
 type: Opaque
 data:
@@ -43,7 +53,7 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: forgejo
+  name: {{ $deploymentName }}
   namespace: larakube-shared
 spec:
   replicas: 1
@@ -51,11 +61,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: forgejo
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: forgejo
+        app: {{ $deploymentName }}
     spec:
       containers:
         - name: forgejo
@@ -80,13 +90,13 @@ spec:
             - name: FORGEJO__database__HOST
               value: postgres.{{ $plexNamespace }}.svc.cluster.local:5432
             - name: FORGEJO__database__NAME
-              value: forgejo
+              value: {{ $tenant }}
             - name: FORGEJO__database__USER
-              value: forgejo
+              value: {{ $tenant }}
             - name: FORGEJO__database__PASSWD
               valueFrom:
                 secretKeyRef:
-                  name: forgejo
+                  name: {{ $dbSecretName }}
                   key: FORGEJO_DB_PASSWORD
             {{-- Forgejo/Gitea defaults MAX_OPEN_CONNS to 0 (unlimited). Against
                  a shared Commons Postgres with a small connection ceiling, a
@@ -121,6 +131,33 @@ spec:
               value: "true"
             - name: FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION
               value: "true"
+            {{-- ACCOUNT_LINKING=auto: when an OAuth2 identity arrives whose
+                 email already belongs to a local account, link to that account
+                 silently instead of showing the "Sign In to Link" page that
+                 demands its local password — which SSO-only users never had
+                 (live 2026-08-24: a teammate's Zitadel user was recreated on
+                 2026-08-03, changing their `sub`, and Forgejo could no longer
+                 match either lookup — user.login_name nor external_login_user).
+                 The auto-link branch only runs inside the ENABLE_AUTO_REGISTRATION
+                 path above (gitea v1.22 routers/web/auth/auth.go
+                 createUserInContext) — setting it alone does nothing. Safe here:
+                 the email claim comes from our own Zitadel org, never anonymous
+                 signups, and DISABLE_REGISTRATION keeps the local form closed. --}}
+            - name: FORGEJO__oauth2_client__ACCOUNT_LINKING
+              value: "auto"
+            {{-- Default USERNAME=nickname derives from goth's NickName; same
+                 shape as preferred_username for Zitadel but relies on goth
+                 mapping rather than the raw claim. `preferred_username`
+                 reads the OIDC userinfo directly and handles the edge case
+                 where the value itself contains "@" (Forgejo splits at "@"
+                 before normalizing for this type too — confirmed v16.0
+                 auth.go:406). `email` is WRONG here: Forgejo's email path
+                 (auth.go:411) truncates at "@" for the USERNAME value, so
+                 admin@nexa-web.site → "admin" → reserved name → 500 on
+                 first registration (live 2026-08-25). The `profile` scope
+                 (requested below) guarantees preferred_username is present. --}}
+            - name: FORGEJO__oauth2_client__USERNAME
+              value: "preferred_username"
             - name: FORGEJO__server__ROOT_URL
               value: "https://{{ $host }}/"
             - name: FORGEJO__server__DOMAIN
@@ -144,24 +181,24 @@ spec:
             - name: FORGEJO__security__SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: git-secrets
+                  name: {{ $secretsName }}
                   key: secret-key
             - name: FORGEJO__security__INTERNAL_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: git-secrets
+                  name: {{ $secretsName }}
                   key: internal-token
             - name: FORGEJO__server__LFS_JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: git-secrets
+                  name: {{ $secretsName }}
                   key: lfs-jwt-secret
             {{-- Separate from the LFS one. Left unset, Forgejo regenerates it on
                  every boot and signs out every OIDC session. --}}
             - name: FORGEJO__oauth2__JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: git-secrets
+                  name: {{ $secretsName }}
                   key: oauth-jwt-secret
 @if (! ($noPlex ?? false))
 @if(($redisIndex ?? null) !== null)
@@ -192,7 +229,7 @@ spec:
             - name: FORGEJO__storage__MINIO_SECRET_ACCESS_KEY
               value: "{{ $s3SecretKey }}"
             - name: FORGEJO__storage__MINIO_BUCKET
-              value: forgejo-storage
+              value: {{ $buckets[0] }}
             - name: FORGEJO__storage__MINIO_USE_SSL
               value: "false"
             - name: FORGEJO__storage__MINIO_INSECURE_SKIP_VERIFY
@@ -207,7 +244,7 @@ spec:
             - name: FORGEJO__packages__MINIO_SECRET_ACCESS_KEY
               value: "{{ $s3SecretKey }}"
             - name: FORGEJO__packages__MINIO_BUCKET
-              value: forgejo-packages
+              value: {{ $buckets[1] }}
             - name: FORGEJO__packages__MINIO_USE_SSL
               value: "false"
             - name: FORGEJO__packages__MINIO_INSECURE_SKIP_VERIFY
@@ -222,7 +259,7 @@ spec:
             - name: FORGEJO__lfs__MINIO_SECRET_ACCESS_KEY
               value: "{{ $s3SecretKey }}"
             - name: FORGEJO__lfs__MINIO_BUCKET
-              value: forgejo-lfs
+              value: {{ $buckets[2] }}
             - name: FORGEJO__lfs__MINIO_USE_SSL
               value: "false"
             - name: FORGEJO__lfs__MINIO_INSECURE_SKIP_VERIFY
@@ -239,11 +276,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: forgejo-http
+  name: {{ $httpServiceName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: forgejo
+    app: {{ $deploymentName }}
   ports:
     - protocol: TCP
       port: 3000
@@ -253,11 +290,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: forgejo-ssh
+  name: {{ $sshServiceName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: forgejo
+    app: {{ $deploymentName }}
   ports:
     - protocol: TCP
       port: 2222
@@ -268,7 +305,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: forgejo-runner-config
+  name: {{ $runnerConfigMapName }}
   namespace: larakube-shared
 data:
   config.yml: |
@@ -281,7 +318,7 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: forgejo-runner
+  name: {{ $runnerDeploymentName }}
   namespace: larakube-shared
 spec:
   replicas: 1
@@ -289,11 +326,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: forgejo-runner
+      app: {{ $runnerDeploymentName }}
   template:
     metadata:
       labels:
-        app: forgejo-runner
+        app: {{ $runnerDeploymentName }}
     spec:
       initContainers:
         {{-- Offline registration: turn the shared secret into /data/.runner
@@ -314,11 +351,11 @@ spec:
               fi
           env:
             - name: FORGEJO_INSTANCE_URL
-              value: "http://forgejo-http:3000"
+              value: "http://{{ $httpServiceName }}:3000"
             - name: RUNNER_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: git-secrets
+                  name: {{ $secretsName }}
                   key: runner-secret
           workingDir: /data
           volumeMounts:
@@ -413,7 +450,7 @@ spec:
           emptyDir: {}
         - name: runner-config
           configMap:
-            name: forgejo-runner-config
+            name: {{ $runnerConfigMapName }}
 ---
 @endif
 @include('k8s.git.ingress')

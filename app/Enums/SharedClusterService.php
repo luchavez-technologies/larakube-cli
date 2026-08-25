@@ -79,7 +79,9 @@ enum SharedClusterService: string
             // so a plain `up` reconcile re-renders the /jwt route it needs
             // instead of dropping it. Same short-timeout degradation as FLOW.
             self::MEET => [
-                'jwtWired' => trim(Process::timeout(10)->run('kubectl get deployment meet-lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
+                // Label-based: meet-lk-jwt's Deployment name is instance-
+                // suffixed but its pod label stays stable.
+                'jwtWired' => trim(Process::timeout(10)->run('kubectl get deployment -l app=meet-lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
             ],
             self::TASKS => [
                 'engine' => 'planka',

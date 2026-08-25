@@ -17,11 +17,21 @@
     this file only declares the Deployment/Service that mount it by name.
 --}}
 @php($__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/mas.blade.php')), 0, 12))
+{{-- Brand new component, no existing live data — fully instance-suffixed
+     from birth, unlike chat-synapse/chat-synapse-db (see matrix.blade.php's
+     own comment on why those stay unsuffixed). --}}
+@php($__instanceSuffix = ($instance ?? null) ? "-{$instance}" : '')
+@php($masName = 'chat-mas'.$__instanceSuffix)
+@php($masDbDeploymentName = 'chat-mas-db'.$__instanceSuffix)
+@php($masDbStorageName = 'chat-mas-db-storage'.$__instanceSuffix)
+@php($masSecretsName = 'chat-mas-secrets'.$__instanceSuffix)
+@php($masConfigSecretName = 'chat-mas-config'.$__instanceSuffix)
+@php($masIngressName = 'chat-mas-ingress'.$__instanceSuffix)
 @if($noPlex ?? false)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: chat-mas-db-storage
+  name: {{ $masDbStorageName }}
   namespace: larakube-shared
 spec:
   accessModes:
@@ -33,7 +43,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chat-mas-db
+  name: {{ $masDbDeploymentName }}
   namespace: larakube-shared
 spec:
   replicas: 1
@@ -41,11 +51,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: chat-mas-db
+      app: {{ $masDbDeploymentName }}
   template:
     metadata:
       labels:
-        app: chat-mas-db
+        app: {{ $masDbDeploymentName }}
     spec:
       containers:
         - name: postgres
@@ -56,7 +66,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: chat-mas-secrets
+                  name: {{ $masSecretsName }}
                   key: db-password
             - name: POSTGRES_DB
               value: chat_mas
@@ -68,16 +78,16 @@ spec:
       volumes:
         - name: storage
           persistentVolumeClaim:
-            claimName: chat-mas-db-storage
+            claimName: {{ $masDbStorageName }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: chat-mas-db
+  name: {{ $masDbDeploymentName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: chat-mas-db
+    app: {{ $masDbDeploymentName }}
   ports:
     - protocol: TCP
       port: 5432
@@ -87,10 +97,10 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chat-mas
+  name: {{ $masName }}
   namespace: larakube-shared
   labels:
-    app: chat-mas
+    app: {{ $masName }}
     app.kubernetes.io/part-of: chat
 spec:
   replicas: 1
@@ -98,11 +108,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: chat-mas
+      app: {{ $masName }}
   template:
     metadata:
       labels:
-        app: chat-mas
+        app: {{ $masName }}
       annotations:
         {{-- Only the checksum of the config itself matters here — the
              content already folds in every credential (DB password,
@@ -136,16 +146,16 @@ spec:
       volumes:
         - name: config
           secret:
-            secretName: chat-mas-config
+            secretName: {{ $masConfigSecretName }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: chat-mas
+  name: {{ $masName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: chat-mas
+    app: {{ $masName }}
   ports:
     - protocol: TCP
       port: 8080
@@ -160,7 +170,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: chat-mas-ingress
+  name: {{ $masIngressName }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -180,7 +190,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: chat-mas
+                name: {{ $masName }}
                 port:
                   number: 8080
   tls:

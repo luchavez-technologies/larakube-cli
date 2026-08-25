@@ -18,7 +18,11 @@ test('vpn management-config renders valid JSON wired to the external host', func
         ->and($config['EmbeddedIdP'])->toBe([
             'Enabled' => true,
             'DataDir' => '/var/lib/netbird/idp',
-            'Issuer' => 'https://vpn.example.com',
+            // Confirmed live 2026-08-25: without the /oauth2 suffix, Dex
+            // initializes fine and /api/setup still works, but every
+            // /oauth2/* route (the CLI's interactive SSO login) silently
+            // 404s — Dex builds its route table from the issuer's own path.
+            'Issuer' => 'https://vpn.example.com/oauth2',
         ])
         ->and($config['EncryptionKey'])->toBe('super-secret-key');
 });

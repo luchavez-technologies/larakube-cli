@@ -30,7 +30,7 @@ spec:
     spec:
       containers:
         - name: client
-          image: netbirdio/netbird:0.74.4
+          image: netbirdio/netbird:0.77.1
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]

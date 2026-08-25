@@ -11,9 +11,10 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 /**
+ * @param  array<string, mixed>  $options
  * @return array{0: VpnJoinCommand, 1: BufferedOutput}
  */
-function vpnJoinRunner(string $environment = 'local'): array
+function vpnJoinRunner(string $environment = 'local', array $options = []): array
 {
     // The test container may itself run on a WSL2 kernel (its /proc/version
     // says so even though it's a plain Linux container) — pin "not WSL" so
@@ -27,7 +28,7 @@ function vpnJoinRunner(string $environment = 'local'): array
         }
     };
 
-    $input = new ArrayInput(['environment' => $environment]);
+    $input = new ArrayInput(array_merge(['environment' => $environment], $options));
     $input->bind($command->getDefinition());
     $output = new BufferedOutput;
 
@@ -93,4 +94,22 @@ test('vpn:join targets the CHOSEN environment\'s own saved context, never the am
         chdir($original);
         $temporaryDirectory->delete();
     }
+});
+
+test('vpn:join --sso errors when NetBird is not wired to SSO yet, without ever touching the setup-key flow', function (): void {
+    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
+    Process::fake([
+        "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
+        "{$kubectl} get secret netbird-oidc -n larakube-vpn" => Process::result(output: '', exitCode: 1),
+    ]);
+
+    [$command, $output] = vpnJoinRunner('local', ['--sso' => true]);
+    expect($command->handle())->toBe(1)
+        ->and(State::$lastError)->toContain("NetBird isn't wired to SSO yet")
+        ->and(State::$lastError)->toContain('larakube sso:wire vpn local');
+
+    // Must never fall through to the setup-key path — no setup-key lookup,
+    // no `netbird up --setup-key` attempted.
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'setup-key'));
 });

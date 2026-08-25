@@ -4,6 +4,7 @@ namespace App\Commands\Sso;
 
 use App\Enums\ClusterTool;
 use App\Traits\InteractsWithSsoGrants;
+use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
 
@@ -26,7 +27,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class SsoOrgGrantCommand extends Command
 {
-    use InteractsWithSsoGrants, LaraKubeOutput;
+    use InteractsWithSsoGrants, InteractsWithZitadelApi, LaraKubeOutput;
 
     protected $signature = 'sso:org-grant
         {environment=local : Environment whose Zitadel to target}
@@ -73,6 +74,27 @@ class SsoOrgGrantCommand extends Command
             }
 
             $projectName = $tool->requiresRbacGating() ? $tool->rbacProjectName($instance) : ClusterTool::ssoAdminProjectName();
+
+            // sso:wire only ever installs flattenOcisRoles into ITS OWN
+            // (default) org — the project/roles it configures are shared,
+            // but this Action is not: Zitadel Actions/Flows are scoped to
+            // one org each. Without installing it here too, a granted-org
+            // user's token never carries the ocisRoles claim, and oCIS
+            // (PROXY_ROLE_ASSIGNMENT_DRIVER=oidc, no fallback claim) denies
+            // their login outright regardless of any role grant — confirmed
+            // live 2026-08-24. See zitadelEnsureOcisRolesAction()'s docblock.
+            if ($tool->ssoAdminRoles() !== []) {
+                $ok = true;
+                $this->withSpin("Configuring {$tool->getLabel()}'s admin-role claims for this org...", function () use ($ssoHost, $pat, $grantedOrgId, &$ok): void {
+                    $ok = $this->zitadelEnsureOcisRolesAction($ssoHost, $pat, $grantedOrgId);
+                });
+
+                if (! $ok) {
+                    $this->laraKubeError("Could not install {$tool->getLabel()}'s admin-role claim Action in this org. Check the Zitadel API connection.");
+
+                    return 1;
+                }
+            }
         }
 
         $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);

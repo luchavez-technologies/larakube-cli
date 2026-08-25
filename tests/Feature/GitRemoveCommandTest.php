@@ -10,6 +10,13 @@ use Illuminate\Support\Facades\Process;
  */
 test('git:remove deletes the same resource set as before the component refactor', function (): void {
     Process::fake([
+        // GIT always resolves a real, host-derived instance — there is no
+        // bare/default removal path to pin here anymore.
+        '*get secret larakube-tools-registry*' => Process::result(
+            base64_encode(json_encode([
+                ['tool' => 'git', 'host' => 'git.luchtech.dev', 'instance' => 'git-luchtech-dev'],
+            ])),
+        ),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -20,7 +27,7 @@ test('git:remove deletes the same resource set as before the component refactor'
 
     $deleteCommand = null;
     Process::assertRan(function ($process) use (&$deleteCommand) {
-        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'deployment/forgejo')) {
+        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'deployment/git-forgejo-git-luchtech-dev')) {
             $deleteCommand = $process->command;
 
             return true;
@@ -36,13 +43,13 @@ test('git:remove deletes the same resource set as before the component refactor'
 
     sort($resources);
     $expected = [
-        'deployment/forgejo',
-        'deployment/forgejo-runner',
-        'service/forgejo-http',
-        'service/forgejo-ssh',
-        'ingress/forgejo',
+        'deployment/git-forgejo-git-luchtech-dev',
+        'deployment/git-forgejo-runner-git-luchtech-dev',
+        'service/git-forgejo-http-git-luchtech-dev',
+        'service/git-forgejo-ssh-git-luchtech-dev',
+        'ingress/git-forgejo-git-luchtech-dev',
         'pvc/forgejo-data',
-        'secret/git-secrets',
+        'secret/git-secrets-git-luchtech-dev',
     ];
     sort($expected);
 

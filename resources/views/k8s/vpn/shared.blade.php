@@ -28,7 +28,7 @@ spec:
     spec:
       containers:
         - name: management
-          image: netbirdio/management:0.74.4
+          image: netbirdio/management:0.77.1
           env:
             - name: NB_SETUP_PAT_ENABLED
               value: "true"
@@ -92,7 +92,7 @@ spec:
     spec:
       containers:
         - name: signal
-          image: netbirdio/signal:0.74.4
+          image: netbirdio/signal:0.77.1
           ports:
             - containerPort: 80
               name: grpc
@@ -135,7 +135,7 @@ spec:
     spec:
       containers:
         - name: relay
-          image: netbirdio/relay:0.74.4
+          image: netbirdio/relay:0.77.1
           env:
             - name: NB_LOG_LEVEL
               value: "info"

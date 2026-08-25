@@ -134,11 +134,12 @@ test('monitor:init --no-logs removes a previously deployed log aggregation stack
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*get deployment/grafana*' => Process::result(output: 'grafana 1/1', exitCode: 0),
-        '*get deployment/loki*' => Process::result(output: 'loki 1/1', exitCode: 0),
+        '*get deployment/monitor-loki*' => Process::result(output: 'loki 1/1', exitCode: 0),
         '*get deployment/tempo*' => Process::result(output: '', exitCode: 1),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
-        '*delete deployment,svc,configmap,pvc loki*' => Process::result(output: 'deleted'),
-        '*delete daemonset,configmap,serviceaccount promtail*' => Process::result(output: 'deleted'),
+        '*delete deployment,svc,configmap,pvc monitor-loki*' => Process::result(output: 'deleted'),
+        '*delete daemonset,configmap monitor-promtail*' => Process::result(output: 'deleted'),
+        '*delete serviceaccount promtail*' => Process::result(output: 'deleted'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
         '*rollout *' => Process::result(output: 'rollout success'),
@@ -160,8 +161,8 @@ test('monitor:init --no-logs removes a previously deployed log aggregation stack
         ->expectsOutputToContain('Waiting for Grafana after restart...')
         ->expectsOutputToContain('Log aggregation (Loki + Promtail) removed');
 
-    Process::assertRan(fn ($p) => str_contains($p->command, 'delete deployment,svc,configmap,pvc loki'));
-    Process::assertRan(fn ($p) => str_contains($p->command, 'delete daemonset,configmap,serviceaccount promtail'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'delete deployment,svc,configmap,pvc monitor-loki'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'delete daemonset,configmap monitor-promtail'));
     Process::assertRan(fn ($p) => str_contains($p->command, 'rollout restart'));
     Process::assertNotRan('*delete deployment,svc,configmap,pvc tempo*');
 });
@@ -177,7 +178,7 @@ test('monitor:init --no-traces removes a previously deployed tempo stack and res
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*get deployment/grafana*' => Process::result(output: 'grafana 1/1', exitCode: 0),
-        '*get deployment/loki*' => Process::result(output: '', exitCode: 1),
+        '*get deployment/monitor-loki*' => Process::result(output: '', exitCode: 1),
         '*get deployment/tempo*' => Process::result(output: 'tempo 1/1', exitCode: 0),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
         '*delete deployment,svc,configmap,pvc tempo*' => Process::result(output: 'deleted'),
@@ -210,7 +211,7 @@ test('monitor:init re-running with matching flags is a no-op — no deletions, n
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*get deployment/grafana*' => Process::result(output: 'grafana 1/1', exitCode: 0),
-        '*get deployment/loki*' => Process::result(output: 'loki 1/1', exitCode: 0),
+        '*get deployment/monitor-loki*' => Process::result(output: 'loki 1/1', exitCode: 0),
         '*get deployment/tempo*' => Process::result(output: 'tempo 1/1', exitCode: 0),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -344,8 +345,8 @@ test('monitoring shared blade view conditionally renders optional components bas
         ->toContain('GF_DATABASE_TYPE')
         ->toContain('value: postgres')
         ->toContain('db-password')
-        ->not->toContain('app: loki')
-        ->not->toContain('app: promtail')
+        ->not->toContain('app: monitor-loki')
+        ->not->toContain('app: monitor-promtail')
         ->not->toContain('app: tempo')
         ->not->toContain('name: Loki')
         ->not->toContain('name: Tempo')
@@ -365,8 +366,8 @@ test('monitoring shared blade view conditionally renders optional components bas
     expect($fullManifest)->toContain('app: prometheus')
         ->toContain('app: kube-state-metrics')
         ->toContain('app: grafana')
-        ->toContain('app: loki')
-        ->toContain('app: promtail')
+        ->toContain('app: monitor-loki')
+        ->toContain('app: monitor-promtail')
         ->toContain('app: tempo')
         ->toContain('name: Loki')
         ->toContain('name: Tempo')

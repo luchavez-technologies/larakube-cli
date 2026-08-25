@@ -723,6 +723,12 @@ enum ClusterTool: string implements HasWorkloadComponents
             // (their stated plan) must not thereby get default access to
             // every other open-to-org tool sharing LaraKube Shared Tools.
             self::DRIVE => ['ocisUser' => 'Can log in to oCIS (regular access, no admin)'],
+            // VPN grants private NETWORK access (reach cluster-internal-only
+            // services), not just a web login — a materially higher-stakes
+            // gap than the open-to-org tools above if left ungated, so this
+            // is gated from the moment sso:wire vpn ships, not added
+            // reactively after an incident like the others above were.
+            self::VPN => ['vpn-user' => 'Can join the VPN via SSO'],
             default => [],
         };
     }
@@ -970,9 +976,12 @@ enum ClusterTool: string implements HasWorkloadComponents
      * static env, and a logical => env-var-name map sso:wire fills from the
      * Zitadel app it registers). null when the tool has no OIDC support.
      * Covers the tools that take OIDC config via plain env vars — Grafana and
-     * Vaultwarden. Gitea/NetBird/GlitchTip need CLI- or API-driven OIDC
-     * registration instead of env vars and aren't wired by this mechanism yet
-     * (see plans/active/sso-identity-provider.md).
+     * Vaultwarden. Gitea/OpenBao/NetBird need CLI- or API-driven OIDC
+     * registration instead of env vars — their `oidcEnv()` schemas return
+     * empty `vars`/`static` and are dispatched to hand-written wiring in
+     * SsoWireCommand::wire()/SsoUnwireCommand::unwire() instead of the
+     * generic applyToolEnv() path (see plans/completed/sso-identity-provider.md
+     * for the original scoping). GlitchTip is still deferred.
      * Field names verified against each project's own docs, not a live
      * instance — treat as one notch less certain than smtpEnv().
      *
@@ -1038,6 +1047,9 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::DRIVE => ["https://{$toolHost}/"],
+            // Fixed NetBird dashboard-frontend path (IdentityProviderModal.tsx),
+            // not derived from redirect_path — same reasoning as DRIVE above.
+            self::VPN => ["https://{$toolHost}/oauth2/logout/callback"],
             default => [],
         };
     }

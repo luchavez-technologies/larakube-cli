@@ -6,13 +6,18 @@ metadata:
 type: Opaque
 data:
   password: {{ base64_encode($adminPassword) }}
-  @if ($noPlex)
+{{-- Confirmed live 2026-08-24 (same bug, chat/vpn Ingress): an indented @if
+     directive leaks its own leading whitespace onto the next line once it
+     closes — here it would push `secret-key:` deeper than `password:`,
+     an invalid YAML mapping. Keep directive tags at column 0; only literal
+     YAML content is indented. --}}
+@if ($noPlex)
   database-url: {{ base64_encode("postgres://glitchtip:{$dbPassword}@glitchtip-db:5432/glitchtip") }}
   redis-url: {{ base64_encode("redis://glitchtip-cache:6379/0") }}
-  @else
+@else
   database-url: {{ base64_encode("postgres://glitchtip:{$dbPassword}@postgres.{$plexNamespace}.svc.cluster.local:5432/glitchtip") }}
   redis-url: {{ base64_encode("redis://redis.{$plexNamespace}.svc.cluster.local:6379/15") }}
-  @endif
+@endif
   secret-key: {{ base64_encode(\Illuminate\Support\Str::random(50)) }}
 ---
 apiVersion: batch/v1

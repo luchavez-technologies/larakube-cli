@@ -74,6 +74,51 @@ test('chat:remove deletes the same resource set as before the component refactor
     expect($resources)->toBe($expected);
 });
 
+test('chat:remove targets the real instance-suffixed resources when chat is actually registered', function (): void {
+    // The test above fakes an empty registry lookup, so resolveInstance()
+    // falls back to null and every resource comes back bare — real,
+    // correct behavior for that case, but it never exercises the
+    // instance-suffixed naming chat:init actually produces once MAS/web/
+    // coturn/admin land (2026-08-24). This is the live-shaped case: chat
+    // registered under its real host-derived instance slug.
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'chat', 'instance' => 'chat-luchtech-dev', 'installed_at' => '2026-08-01T00:00:00+00:00', 'host' => 'chat.luchtech.dev'],
+            ])),
+        ),
+        '*delete *' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('chat:remove local --force')->assertExitCode(0);
+
+    $deleteCommand = null;
+    Process::assertRan(function ($process) use (&$deleteCommand) {
+        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'chat-synapse')) {
+            $deleteCommand = $process->command;
+
+            return true;
+        }
+
+        return false;
+    });
+
+    expect($deleteCommand)
+        ->not->toBeNull()
+        // Unsuffixed, always — the live data this component holds.
+        ->toContain('deployment/chat-synapse ')
+        ->toContain('pvc/chat-synapse-data')
+        // Suffixed — born after MAS work, no real multi-instance need, but
+        // not exempt from the naming convention either.
+        ->toContain('deployment/chat-web-chat-luchtech-dev')
+        ->toContain('deployment/chat-mas-chat-luchtech-dev')
+        ->toContain('deployment/chat-admin-chat-luchtech-dev')
+        ->toContain('secret/chat-mas-secrets-chat-luchtech-dev')
+        ->not->toContain('deployment/chat-web ')
+        ->not->toContain('deployment/chat-mas ');
+});
+
 test('chat:remove aborts when a delete step fails', function (): void {
     Process::fake([
         '*get deployment chat-synapse-db*' => Process::result(output: 'chat-synapse-db   1/1   1   1   1d'),

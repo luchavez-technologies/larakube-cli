@@ -24,6 +24,9 @@ test('every shared service renders its manifest with the resolved host', functio
         $params = ['host' => $host];
         if ($service === SharedClusterService::GITEA) {
             $params = array_merge($params, [
+                'instance' => 'git-example-test',
+                'tenant' => 'forgejo_git_example_test',
+                'buckets' => ['forgejo-storage-git-example-test', 'forgejo-packages-git-example-test', 'forgejo-lfs-git-example-test'],
                 'adminPassword' => 'secret',
                 'dbPassword' => 'secret',
                 'registryToken' => 'pending',

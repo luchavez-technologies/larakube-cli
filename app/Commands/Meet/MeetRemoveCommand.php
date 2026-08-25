@@ -28,15 +28,18 @@ class MeetRemoveCommand extends AbstractToolRemoveCommand
         $instance = $this->resolveInstance($kubectl);
         $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
 
-        // meet-lk-jwt/meet-keys/its middlewares are meet:wire-owned, never
-        // instance-suffixed here — removing the SFU strands the bridge, and a
-        // bridge pointing at a deleted LiveKit is worse than no bridge.
+        // meet-lk-jwt/meet-keys are meet:wire-owned — removing the SFU strands
+        // the bridge, and a bridge pointing at a deleted LiveKit is worse than
+        // no bridge. meet-lk-jwt's Deployment/Service names are instance-
+        // suffixed but its pod label stays stable (app: meet-lk-jwt), so it's
+        // targeted by label rather than the shared $suffix computed above.
         $ok = $this->removeResources(
             'Removing LiveKit (Meet) resources...',
-            "{$kubectl} delete deployment/meet-livekit{$suffix} deployment/meet-lk-jwt "
-            ."service/meet-livekit{$suffix} service/meet-livekit-rtc{$suffix} service/meet-lk-jwt "
+            "{$kubectl} delete deployment/meet-livekit{$suffix} "
+            ."service/meet-livekit{$suffix} service/meet-livekit-rtc{$suffix} "
             ."ingress/meet{$suffix} secret/meet-livekit-config{$suffix} secret/meet-keys "
-            ."-n {$namespace} --ignore-not-found",
+            ."-n {$namespace} --ignore-not-found "
+            ."&& {$kubectl} delete deployment,service -l app=meet-lk-jwt -n {$namespace} --ignore-not-found",
         );
 
         // Best-effort: these only exist when --vpn-only / meet:wire were used.

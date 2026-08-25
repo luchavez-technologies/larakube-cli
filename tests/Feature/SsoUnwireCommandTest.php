@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Integrations\Netbird\Requests\DeleteIdentityProviderRequest;
+use App\Http\Integrations\Netbird\Requests\ListIdentityProvidersRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
@@ -85,4 +87,54 @@ test('sso:unwire deletes a legacy "Login with SSO" Forgejo source', function ():
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'admin auth delete --id 4'));
+});
+
+test('sso:unwire deregisters NetBird\'s Zitadel identity provider via its own REST API', function (): void {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment netbird-management*' => Process::result(output: 'netbird-management   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*sso-app-vpn*project-id*' => Process::result(output: base64_encode('proj-1')),
+        '*sso-app-vpn*app-id*' => Process::result(output: base64_encode('app-vpn')),
+        '*delete secret sso-app-vpn*' => Process::result(output: 'secret deleted'),
+        '*delete secret netbird-oidc*' => Process::result(output: 'secret deleted'),
+        '*vpn-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+    ]);
+
+    Saloon::fake([
+        DeleteProjectAppRequest::class => MockResponse::make([], 200),
+        ListIdentityProvidersRequest::class => MockResponse::make([
+            ['id' => 'idp-1', 'type' => 'zitadel', 'name' => 'Zitadel'],
+        ], 200),
+        DeleteIdentityProviderRequest::class => MockResponse::make([], 200),
+    ]);
+
+    $this->artisan('sso:unwire', ['--tool' => 'vpn', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('no longer uses Zitadel SSO');
+
+    Saloon::assertSent(fn ($request) => $request instanceof DeleteIdentityProviderRequest
+        && str_contains($request->resolveEndpoint(), 'idp-1'));
+});
+
+test('sso:unwire for NetBird is a clean no-op when no zitadel identity provider is registered', function (): void {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment netbird-management*' => Process::result(output: 'netbird-management   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*sso-app-vpn*' => Process::result(output: '', exitCode: 1),
+        '*delete secret sso-app-vpn*' => Process::result(output: 'secret deleted'),
+        '*delete secret netbird-oidc*' => Process::result(output: 'secret deleted'),
+        '*vpn-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+    ]);
+
+    Saloon::fake([
+        ListIdentityProvidersRequest::class => MockResponse::make([], 200),
+    ]);
+
+    $this->artisan('sso:unwire', ['--tool' => 'vpn', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('no longer uses Zitadel SSO');
+
+    Saloon::assertNotSent(DeleteIdentityProviderRequest::class);
 });

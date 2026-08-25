@@ -27,12 +27,17 @@ class GitRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
+        $instance = $this->resolveInstance($kubectl);
+
         $ok = $this->removeResources(
             'Removing Forgejo resources...',
-            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
+            $this->teardownComponentsCommand($kubectl, $namespace, $instance),
         );
 
-        Process::run("{$kubectl} delete middleware/forgejo-vpn-only -n {$namespace} --ignore-not-found 2>/dev/null");
+        $vpnMiddleware = ClusterTool::GIT->vpnMiddlewareTarget($instance);
+        if ($vpnMiddleware !== null) {
+            Process::run("{$kubectl} delete middleware/{$vpnMiddleware['name']} -n {$vpnMiddleware['namespace']} --ignore-not-found 2>/dev/null");
+        }
 
         // Reverse git:init's port opening — a forge that is gone but whose SSH
         // port is still open is exposure with nothing behind it.

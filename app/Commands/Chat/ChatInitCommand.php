@@ -69,6 +69,13 @@ class ChatInitCommand extends Command
         $ns = $this->chatNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
+        // Every component born after chat-synapse/chat-coturn/chat-synapse-db
+        // (which stay unsuffixed — see ChatTool's own components() method)
+        // is instance-suffixed from the start, for the same naming-convention
+        // reason every other tool is, even though Synapse's one-server_name-
+        // per-process constraint means chat can never actually have a second
+        // instance to collide with.
+        $instance = ClusterTool::CHAT->instanceSlugFromHost($host);
 
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::CHAT, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
@@ -142,7 +149,7 @@ class ChatInitCommand extends Command
         // that one existing install off classic OIDC is a manual, one-time
         // action (see the chat-mas plan) — not shipped CLI code, since it
         // will never be needed again once it's done.
-        $mas = $oidc === null ? $this->readChatWiredMas($kubectl, $ns) : null;
+        $mas = $oidc === null ? $this->readChatWiredMas($kubectl, $ns, $host) : null;
         // Calling lives in the Meet tool now — chat only records that it is
         // wired, so a re-run cannot silently disable it.
         $meetJwtUrl = $this->readChatWiredMeet($kubectl, $ns);
@@ -150,6 +157,7 @@ class ChatInitCommand extends Command
 
         $manifest = view('k8s.chat.matrix', [
             'host' => $host,
+            'instance' => $instance,
             'appName' => $branding['appName'],
             'logoUrl' => $branding['logoUrl'],
             'plexNamespace' => $this->plexNamespace(),
@@ -207,7 +215,7 @@ class ChatInitCommand extends Command
         $ssoHost = $this->resolveSsoHostReadOnly($env, null, $kubectl);
         $masDeployed = false;
         if ($ssoHost !== null && $this->isSsoInstalled($kubectl, $this->ssoNamespace())) {
-            $masDeployed = $this->deployMas($kubectl, $ns, $host, $ssoHost, $env, $noPlex);
+            $masDeployed = $this->deployMas($kubectl, $ns, $host, $instance, $ssoHost, $env, $noPlex, $mas !== null);
 
             // Fresh install (or one already off classic OIDC): MAS just
             // became available for the FIRST time this run and nothing else
@@ -219,8 +227,8 @@ class ChatInitCommand extends Command
             // never reaches this branch at all ($oidc !== null forced $mas
             // to null above, unconditionally, regardless of MAS's own state).
             if ($masDeployed && $oidc === null && $mas === null) {
-                $this->activateMasAuthMode($kubectl, $ns);
-                $mas = $this->readChatWiredMas($kubectl, $ns);
+                $this->activateMasAuthMode($kubectl, $ns, $host);
+                $mas = $this->readChatWiredMas($kubectl, $ns, $host);
             }
         }
 
@@ -233,7 +241,7 @@ class ChatInitCommand extends Command
         // once its prerequisite exists" tier as MAS itself above.
         $adminDeployed = false;
         if ($mas !== null) {
-            $adminDeployed = $this->deployAdmin($kubectl, $ns, $host, $env);
+            $adminDeployed = $this->deployAdmin($kubectl, $ns, $host, $instance, $env);
         }
 
         // On a cloud VPS, punch Coturn's raw UDP/TCP ports through both
@@ -302,10 +310,17 @@ class ChatInitCommand extends Command
      * whether to activate it, via activateMasAuthMode() below, based on
      * whether classic OIDC is already occupying that slot. Returns whether
      * MAS ended up deployed, not whether it's the active auth mode.
+     *
+     * @param  bool  $wasActiveAuthMode  Whether MAS was ALREADY Synapse's active auth mode before this run (i.e. `$mas !== null` as read back at the top of deployChat(), before this method runs). Drives whether a config change here also restarts Synapse — see the comment at the bottom of this method.
      */
-    protected function deployMas(string $kubectl, string $ns, string $host, string $ssoHost, string $env, bool $noPlex): bool
+    protected function deployMas(string $kubectl, string $ns, string $host, string $instance, string $ssoHost, string $env, bool $noPlex, bool $wasActiveAuthMode): bool
     {
         $masHost = "mas.{$host}";
+        $masSecretsName = "chat-mas-secrets-{$instance}";
+        $masConfigName = "chat-mas-config-{$instance}";
+        $masDeploymentName = "chat-mas-{$instance}";
+        $masDbDeploymentName = "chat-mas-db-{$instance}";
+        $ssoAppSecretName = "sso-app-chat-mas-{$instance}";
 
         // 1. MAS's own Postgres tenant.
         if (! $noPlex) {
@@ -314,8 +329,8 @@ class ChatInitCommand extends Command
             }
         }
 
-        $masDbPassword = $this->readClusterSecretKey($kubectl, $ns, 'chat-mas-secrets', 'db-password') ?? Str::random(24);
-        $masDbHost = $noPlex ? 'chat-mas-db' : "postgres.{$this->plexNamespace()}.svc.cluster.local";
+        $masDbPassword = $this->readClusterSecretKey($kubectl, $ns, $masSecretsName, 'db-password') ?? Str::random(24);
+        $masDbHost = $noPlex ? $masDbDeploymentName : "postgres.{$this->plexNamespace()}.svc.cluster.local";
         $masDbName = 'chat_mas';
 
         if (! $noPlex) {
@@ -332,16 +347,15 @@ class ChatInitCommand extends Command
         // 2. Synapse↔MAS internal trust secret — plain random string, NOT an
         //    OIDC value. Read back so re-runs don't rotate it (that would
         //    require restarting Synapse too, which this method never does).
-        $masTrustSecret = $this->readClusterSecretKey($kubectl, $ns, 'chat-mas-secrets', 'trust-secret') ?? Str::random(32);
+        $masTrustSecret = $this->readClusterSecretKey($kubectl, $ns, $masSecretsName, 'trust-secret') ?? Str::random(32);
 
         Process::run(
-            "{$kubectl} create secret generic chat-mas-secrets -n {$ns} "
+            "{$kubectl} create secret generic {$masSecretsName} -n {$ns} "
             .'--from-literal=db-password='.escapeshellarg($masDbPassword).' '
             .'--from-literal=trust-secret='.escapeshellarg($masTrustSecret).' '
-            // Resolved once, here, at deploy time — readChatWiredMas() just
-            // reads it back rather than re-deriving it from a host argument
-            // at every call site (several of which don't have chat's own
-            // host readily at hand).
+            // Resolved once, here, at deploy time — readChatWiredMas()/
+            // chatInstanceSlug() just re-derive this same instance-suffixed
+            // name from chat's host rather than needing it threaded through.
             .'--from-literal=public-issuer='.escapeshellarg("https://{$masHost}/").' '
             ."--dry-run=client -o yaml | {$kubectl} apply -f -",
         );
@@ -354,7 +368,13 @@ class ChatInitCommand extends Command
             return false;
         }
 
-        $providerId = $this->readClusterSecretKey($kubectl, $this->ssoNamespace(), 'sso-app-chat-mas', 'provider-id') ?? (string) Str::uuid();
+        // MAS's upstream_oauth2.providers[].id field strictly validates as
+        // a fixed-length ULID — confirmed live 2026-08-24: a 36-character
+        // UUID failed with "invalid length for key
+        // ...id.upstream_oauth2" the moment MAS actually tried to load the
+        // config. symfony/uid is a real dependency now (2026-08-24) so
+        // Str::ulid() works directly, no hand-rolled encoding needed.
+        $providerId = $this->readClusterSecretKey($kubectl, $this->ssoNamespace(), $ssoAppSecretName, 'provider-id') ?? (string) Str::ulid();
         $redirectUri = "https://{$masHost}/upstream/callback/{$providerId}";
 
         $registered = null;
@@ -379,7 +399,7 @@ class ChatInitCommand extends Command
         }
 
         Process::run(
-            "{$kubectl} create secret generic sso-app-chat-mas -n {$this->ssoNamespace()} "
+            "{$kubectl} create secret generic {$ssoAppSecretName} -n {$this->ssoNamespace()} "
             .'--from-literal=project-id='.escapeshellarg($registered['projectId']).' '
             .'--from-literal=app-id='.escapeshellarg($registered['appId']).' '
             .'--from-literal=client-id='.escapeshellarg($registered['clientId']).' '
@@ -388,15 +408,16 @@ class ChatInitCommand extends Command
             ."--dry-run=client -o yaml | {$kubectl} apply -f -",
         );
 
-        // 4. Bootstrap or re-patch chat-mas-config. First run: generate a
-        //    real base config (with real crypto material) via a throwaway
-        //    pod running the actual MAS image — never fabricate
+        // 4. Bootstrap or re-patch chat-mas-config-{instance}. First run:
+        //    generate a real base config (with real crypto material) via a
+        //    throwaway pod running the actual MAS image — never fabricate
         //    encryption/signing keys here. Re-runs: patch the EXISTING
         //    config, which naturally preserves its `secrets:` block since
         //    renderMasConfig() only ever touches database/matrix/upstream_oauth2.
         $existingConfig = trim(Process::run(
-            "{$kubectl} get secret chat-mas-config -n {$ns} -o jsonpath='{.data.config\.yaml}'",
+            "{$kubectl} get secret {$masConfigName} -n {$ns} -o jsonpath='{.data.config\.yaml}'",
         )->output());
+        $previousConfigYaml = $existingConfig !== '' ? (string) base64_decode($existingConfig) : null;
 
         if ($existingConfig !== '') {
             $baseYaml = (string) base64_decode($existingConfig);
@@ -404,10 +425,36 @@ class ChatInitCommand extends Command
             $generated = null;
             $this->withSpin('Generating Matrix Authentication Service config (real crypto keys via mas-cli)...', function () use (&$generated, $kubectl, $ns): void {
                 $podName = 'chat-mas-config-gen-'.Str::lower(Str::random(6));
-                $result = Process::timeout(60)->run(
-                    "{$kubectl} run {$podName} -n {$ns} --restart=Never --rm -i --image=".self::MAS_IMAGE.' --command -- mas-cli config generate',
+
+                $created = Process::timeout(30)->run(
+                    "{$kubectl} run {$podName} -n {$ns} --restart=Never --image=".self::MAS_IMAGE.' --command -- mas-cli config generate',
+                )->successful();
+
+                if (! $created) {
+                    return;
+                }
+
+                // kubectl run without -i/--rm returns as soon as the Pod
+                // object is CREATED, not when the container has finished —
+                // wait for it to actually complete before reading its logs.
+                Process::timeout(30)->run(
+                    "{$kubectl} wait --for=jsonpath='{.status.phase}'=Succeeded pod/{$podName} -n {$ns} --timeout=25s",
                 );
-                $generated = $result->successful() ? $result->output() : null;
+
+                // `kubectl logs` returns ONLY the container's own stdout.
+                // The original version of this used `kubectl run --rm -i`
+                // and captured its combined output — but --rm ALSO prints
+                // kubectl's own "pod X deleted" cleanup message onto that
+                // SAME stream, silently corrupting the captured config with
+                // literal control-plane text. Confirmed live 2026-08-24:
+                // every MAS pod crashlooped trying to parse
+                // `pod "chat-mas-config-gen-..." deleted database` as YAML.
+                $logs = Process::timeout(15)->run("{$kubectl} logs {$podName} -n {$ns}");
+                // mas-cli ALSO writes its own tracing log lines to this same
+                // stdout stream — see stripMasCliLogLines()'s own comment.
+                $generated = $logs->successful() ? $this->stripMasCliLogLines($logs->output()) : null;
+
+                Process::run("{$kubectl} delete pod {$podName} -n {$ns} --ignore-not-found");
             });
 
             if ($generated === null || trim($generated) === '') {
@@ -424,18 +471,20 @@ class ChatInitCommand extends Command
             ['host' => $masDbHost, 'user' => 'chat_mas', 'password' => $masDbPassword, 'database' => $masDbName],
             ['homeserver' => $host, 'secret' => $masTrustSecret],
             ['id' => $providerId, 'issuer' => "https://{$ssoHost}", 'client_id' => $registered['clientId'], 'client_secret' => $registered['clientSecret']],
+            $masHost,
         );
 
         $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $tmp = $temporaryDirectory->path().'/config.yaml';
         file_put_contents($tmp, $configYaml);
         Process::run(
-            "{$kubectl} create secret generic chat-mas-config -n {$ns} --from-file=config.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
+            "{$kubectl} create secret generic {$masConfigName} -n {$ns} --from-file=config.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
         );
         $temporaryDirectory->delete();
 
         // 5. Apply the chat-mas Deployment/Service/Ingress.
         $manifest = view('k8s.chat.mas', [
+            'instance' => $instance,
             'masImage' => self::MAS_IMAGE,
             'masConfigHash' => substr(hash('sha256', $configYaml), 0, 16),
             'masHost' => $masHost,
@@ -451,8 +500,27 @@ class ChatInitCommand extends Command
         $manifestTemporaryDirectory->delete();
 
         $this->withSpin('Waiting for Matrix Authentication Service...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/chat-mas -n {$ns} --timeout=120s",
+            "{$kubectl} rollout status deploy/{$masDeploymentName} -n {$ns} --timeout=120s",
         ));
+
+        // Synapse fetches MAS's own self-reported discovery metadata (issuer,
+        // endpoints) the first time it needs it and CACHES it in memory with
+        // no periodic refresh — confirmed live 2026-08-24: a Synapse pod that
+        // had already cached MAS's metadata kept serving a stale/wrong issuer
+        // in .well-known/matrix/client for 30+ minutes after MAS's OWN config
+        // was corrected, until Synapse itself was restarted. The very first
+        // activation already gets its own restart via activateMasAuthMode()
+        // above (nothing to invalidate yet); this covers every run after
+        // that, whenever MAS is already the active auth mode AND its served
+        // config actually changed — never on a no-op re-run.
+        if ($wasActiveAuthMode && $previousConfigYaml !== null && $configYaml !== $previousConfigYaml) {
+            $this->withSpin("Restarting Synapse to pick up Matrix Authentication Service's updated metadata...", fn () => $this->runStreaming(
+                "{$kubectl} rollout restart deployment/chat-synapse -n {$ns}",
+            ));
+            $this->withSpin('Waiting for Matrix (Synapse + Element)...', fn () => $this->runStreaming(
+                "{$kubectl} rollout status deploy/chat-synapse -n {$ns} --timeout=180s",
+            ));
+        }
 
         return true;
     }
@@ -466,9 +534,9 @@ class ChatInitCommand extends Command
      * because whenever it's unsafe (classic OIDC still active with real
      * users), the caller never reaches this method in the first place.
      */
-    protected function activateMasAuthMode(string $kubectl, string $ns): void
+    protected function activateMasAuthMode(string $kubectl, string $ns, string $host): void
     {
-        $mas = $this->readChatWiredMas($kubectl, $ns);
+        $mas = $this->readChatWiredMas($kubectl, $ns, $host);
         if ($mas === null) {
             return;
         }
@@ -510,7 +578,7 @@ class ChatInitCommand extends Command
      * never passed chat:init --vpn-only — a Traefik router referencing a
      * missing Middleware 500s every request, not a harmless no-op.
      */
-    protected function deployAdmin(string $kubectl, string $ns, string $host, string $env): bool
+    protected function deployAdmin(string $kubectl, string $ns, string $host, string $instance, string $env): bool
     {
         if (! $this->ensureVpnMiddleware(ClusterTool::CHAT, $kubectl)) {
             $this->laraKubeLine('  <fg=gray>Skipping Element Admin — could not create its required VPN-only Middleware.</>');
@@ -519,6 +587,7 @@ class ChatInitCommand extends Command
         }
 
         $manifest = view('k8s.chat.admin', [
+            'instance' => $instance,
             'host' => $host,
             'isLocal' => $env === 'local',
             'proxied' => false,
@@ -535,7 +604,7 @@ class ChatInitCommand extends Command
         }
 
         $this->withSpin('Waiting for Element Admin...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/chat-admin -n {$ns} --timeout=60s",
+            "{$kubectl} rollout status deploy/chat-admin-{$instance} -n {$ns} --timeout=60s",
         ));
 
         return true;

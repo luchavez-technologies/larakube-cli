@@ -7,7 +7,10 @@
      until `chat:init` re-applies it. Low-stakes in practice — Element
      X/MAS needs a real public TLS domain, so this combination (local dev +
      active MAS auth) is expected to be rare — but a known, undone gap, not
-     an oversight. --}}
+     an oversight. $webName IS kept in lockstep though — $host is already
+     this reconciler's own primary input, so deriving the instance costs
+     nothing extra here, unlike the $mas/$instance-elsewhere problem above. --}}
+@php($webName = 'chat-web-'.\App\Enums\ClusterTool::CHAT->instanceSlugFromHost($host))
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -48,7 +51,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: chat-web
+                name: {{ $webName }}
                 port:
                   number: 80
   tls:

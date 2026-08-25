@@ -7,9 +7,13 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Http\Integrations\Netbird\NetbirdConnector;
+use App\Http\Integrations\Netbird\Requests\CreateIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
+use App\Http\Integrations\Netbird\Requests\DeleteIdentityProviderRequest;
+use App\Http\Integrations\Netbird\Requests\ListIdentityProvidersRequest;
 use App\Http\Integrations\Netbird\Requests\ListPeersRequest;
 use App\Http\Integrations\Netbird\Requests\ListSetupKeysRequest;
+use App\Http\Integrations\Netbird\Requests\UpdateIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateSetupKeyRequest;
 use Illuminate\Support\Facades\Process;
 
@@ -220,5 +224,57 @@ trait InteractsWithVpn
             'host' => $this->resolveVpnHostReadOnly($env, $config),
             'label' => 'NetBird VPN',
         ];
+    }
+
+    /**
+     * List registered external identity providers — SsoWireCommand/
+     * SsoUnwireCommand use this to find the existing 'zitadel' entry (if
+     * any) before deciding whether to POST (create) or PUT (update)/DELETE.
+     * Null on any HTTP failure.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    protected function listVpnIdentityProviders(string $host, string $pat): ?array
+    {
+        $response = NetbirdConnector::make($host, $pat)->send(ListIdentityProvidersRequest::make());
+
+        if ($response->failed()) {
+            return null;
+        }
+
+        $providers = $response->json();
+
+        return is_array($providers) ? $providers : null;
+    }
+
+    /** Register a new external identity provider — sso:wire vpn's first-time registration. */
+    protected function createVpnIdentityProvider(string $host, string $pat, string $type, string $name, string $issuer, string $clientId, string $clientSecret): bool
+    {
+        return NetbirdConnector::make($host, $pat)
+            ->send(CreateIdentityProviderRequest::make($type, $name, $issuer, $clientId, $clientSecret))
+            ->successful();
+    }
+
+    /**
+     * Update an existing external identity provider by id — sso:wire vpn's
+     * re-wire path. Re-sends every field, not a partial body — this
+     * codebase already learned the hard way (see revokeVpnSetupKey()'s own
+     * docblock) that NetBird's PUT endpoints reject partial bodies for the
+     * setup-keys resource; treat identity-providers the same way rather
+     * than assuming a partial update works here.
+     */
+    protected function updateVpnIdentityProvider(string $host, string $pat, string $id, string $type, string $name, string $issuer, string $clientId, string $clientSecret): bool
+    {
+        return NetbirdConnector::make($host, $pat)
+            ->send(UpdateIdentityProviderRequest::make($id, $type, $name, $issuer, $clientId, $clientSecret))
+            ->successful();
+    }
+
+    /** Deregister an external identity provider by id — sso:unwire vpn. */
+    protected function deleteVpnIdentityProvider(string $host, string $pat, string $id): bool
+    {
+        return NetbirdConnector::make($host, $pat)
+            ->send(DeleteIdentityProviderRequest::make($id))
+            ->successful();
     }
 }

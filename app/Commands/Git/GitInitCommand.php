@@ -72,6 +72,16 @@ class GitInitCommand extends Command
         $ns = $this->gitNamespace();
         $noPlex = (bool) $this->option('no-plex');
 
+        $host = $this->resolveToolHost(SharedClusterService::GITEA, ClusterTool::GIT, $env, $kubectl);
+        // Every tool's instance identifier is a real, host-derived slug — Git
+        // included, even though it's an architectural singleton (Forgejo's
+        // SSH LoadBalancer binds a fixed port, so a genuine second instance is
+        // impossible on one node regardless of naming).
+        $instance = ClusterTool::GIT->instanceSlugFromHost($host);
+        $tenant = ClusterTool::GIT->commonsDatabases($instance)[0];
+        $deployment = ClusterTool::GIT->deploymentName($instance);
+        $buckets = ClusterTool::GIT->commonsBuckets($instance);
+
         $s3Service = null;
         $s3Endpoint = '';
         $s3AccessKey = '';
@@ -114,27 +124,25 @@ class GitInitCommand extends Command
             $s3Endpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
 
             // Allocate S3 buckets
-            if (! $this->allocateStorageBucket($driver, 'forgejo-storage') ||
-                ! $this->allocateStorageBucket($driver, 'forgejo-packages') ||
-                ! $this->allocateStorageBucket($driver, 'forgejo-lfs')) {
+            if (! $this->allocateStorageBucket($driver, $buckets[0]) ||
+                ! $this->allocateStorageBucket($driver, $buckets[1]) ||
+                ! $this->allocateStorageBucket($driver, $buckets[2])) {
                 return 1;
             }
         }
 
-        $host = $this->resolveToolHost(SharedClusterService::GITEA, ClusterTool::GIT, $env, $kubectl);
-
         // Read or generate password & secrets
-        $adminPassword = $this->readExistingAdminPassword($kubectl, $ns);
+        $adminPassword = $this->readExistingAdminPassword($kubectl, $ns, $instance);
         if ($adminPassword === null) {
             $adminPassword = Str::random(16);
         }
 
-        $adminEmail = $this->readForgejoSecret($kubectl, $ns, 'admin-email')
+        $adminEmail = $this->readForgejoSecret($kubectl, $ns, $instance, 'admin-email')
             ?? $this->resolveAdminEmail($host);
 
         // Was reading the `password` key — i.e. the ADMIN password — so a re-run
         // silently reset the database role to the admin's password.
-        $dbPassword = $this->readForgejoSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
+        $dbPassword = $this->readForgejoSecret($kubectl, $ns, $instance, 'db-password') ?? Str::random(24);
 
         $redisIndex = null;
 
@@ -143,20 +151,20 @@ class GitInitCommand extends Command
                 return 1;
             }
             // Once OpenBao's database secrets engine already owns the
-            // 'forgejo' static role, defer to ITS current password instead
+            // tenant's static role, defer to ITS current password instead
             // of re-affirming a locally-cached one that may predate
             // OpenBao's own rotation — see resolveManagedDbPassword()'s
             // docblock. Confirmed live 2026-08-15: this exact gap took
             // Forgejo down after a routine OpenBao reseal/resync.
-            $dbPassword = $this->resolveManagedDbPassword($kubectl, 'forgejo', $dbPassword);
+            $dbPassword = $this->resolveManagedDbPassword($kubectl, $tenant, $dbPassword);
 
-            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'forgejo', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $tenant, $dbPassword)) {
                 return 1;
             }
 
             // Without this Gitea keeps sessions in files on its PVC and the cache
             // in memory, so every pod restart signs everyone out.
-            $redisIndex = $this->allocateCommonsRedisIndex('forgejo');
+            $redisIndex = $this->allocateCommonsRedisIndex($tenant);
             if ($redisIndex === null) {
                 $this->laraKubeError('The Commons Valkey has no free logical DB index (all 16 in use).');
 
@@ -167,8 +175,8 @@ class GitInitCommand extends Command
         // 40 hex chars: first 16 are the runner identifier, last 24 the secret.
         // Read-or-generate: a fresh secret on every re-run would orphan the
         // previously registered runner.
-        $runnerSecret = $this->readForgejoSecret($kubectl, $ns, 'runner-secret') ?? bin2hex(random_bytes(20));
-        $oauthJwtSecret = $this->readForgejoSecret($kubectl, $ns, 'oauth-jwt-secret')
+        $runnerSecret = $this->readForgejoSecret($kubectl, $ns, $instance, 'runner-secret') ?? bin2hex(random_bytes(20));
+        $oauthJwtSecret = $this->readForgejoSecret($kubectl, $ns, $instance, 'oauth-jwt-secret')
             ?? rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 
         // MUST be read before the first manifest apply below, not after: that
@@ -176,7 +184,7 @@ class GitInitCommand extends Command
         // placeholder it just wrote. An access token's value is shown once, at
         // creation, and Forgejo has no `delete-access-token` — so this stored
         // copy is the ONLY copy, and losing it means the name is burned forever.
-        $registryToken = $this->readForgejoSecret($kubectl, $ns, 'registry-token');
+        $registryToken = $this->readForgejoSecret($kubectl, $ns, $instance, 'registry-token');
         if ($registryToken === 'pending' || $registryToken === '') {
             $registryToken = null;
         }
@@ -186,10 +194,10 @@ class GitInitCommand extends Command
         // no reason — and worse, SECRET_KEY is what Forgejo encrypts stored data
         // with (2FA enrollments among it), so rotating it silently made that data
         // unreadable.
-        $secretKey = $this->readForgejoSecret($kubectl, $ns, 'secret-key') ?? Str::random(16);
-        $internalToken = $this->readForgejoSecret($kubectl, $ns, 'internal-token') ?? Str::random(16);
+        $secretKey = $this->readForgejoSecret($kubectl, $ns, $instance, 'secret-key') ?? Str::random(16);
+        $internalToken = $this->readForgejoSecret($kubectl, $ns, $instance, 'internal-token') ?? Str::random(16);
         // base64url, no padding: decodes to exactly the 32 bytes Forgejo wants.
-        $jwtSecret = $this->readForgejoSecret($kubectl, $ns, 'lfs-jwt-secret')
+        $jwtSecret = $this->readForgejoSecret($kubectl, $ns, $instance, 'lfs-jwt-secret')
             ?? rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 
         // Ensure namespace exists
@@ -200,7 +208,7 @@ class GitInitCommand extends Command
         $vpnOnly = (bool) $this->option('vpn-only');
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::GIT);
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::GIT, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::GIT, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -209,6 +217,7 @@ class GitInitCommand extends Command
         // 1. Initial deployment with Gitea Core only (runner token placeholder)
         $manifest = view('k8s.git.forgejo', [
             'host' => $host,
+            'instance' => $instance,
             'appName' => $branding['appName'],
             'logoUrl' => $branding['logoUrl'],
             'adminPassword' => $adminPassword,
@@ -231,6 +240,8 @@ class GitInitCommand extends Command
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
+            'buckets' => $buckets,
+            'tenant' => $tenant,
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
@@ -239,7 +250,7 @@ class GitInitCommand extends Command
 
         $rolledOut = $this->withSpin(
             'Applying Forgejo core manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'forgejo', 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deployment, 120),
         );
         $temporaryDirectory->delete();
 
@@ -249,14 +260,14 @@ class GitInitCommand extends Command
 
         // 2. CLI commands inside pod to create user and get tokens.
 
-        $this->withSpin('Initializing Forgejo admin user...', function () use ($kubectl, $ns, $adminPassword, $adminEmail) {
-            $list = Process::run("{$kubectl} exec deploy/forgejo -n {$ns} -- su-exec git forgejo --config /data/gitea/conf/app.ini admin user list")->output();
+        $this->withSpin('Initializing Forgejo admin user...', function () use ($kubectl, $ns, $deployment, $adminPassword, $adminEmail) {
+            $list = Process::run("{$kubectl} exec deploy/{$deployment} -n {$ns} -- su-exec git forgejo --config /data/gitea/conf/app.ini admin user list")->output();
             if (str_contains($list, 'larakube')) {
                 return true;
             }
 
             return Process::run(
-                "{$kubectl} exec deploy/forgejo -n {$ns} -- ".
+                "{$kubectl} exec deploy/{$deployment} -n {$ns} -- ".
                 'su-exec git forgejo --config /data/gitea/conf/app.ini admin user create '.
                 '--username larakube --password '.escapeshellarg($adminPassword).' '.
                 '--email '.escapeshellarg($adminEmail).' --admin',
@@ -264,7 +275,7 @@ class GitInitCommand extends Command
         });
 
         if ($registryToken === null) {
-            $this->withSpin('Generating Forgejo package registry token...', function () use ($kubectl, $ns, &$registryToken) {
+            $this->withSpin('Generating Forgejo package registry token...', function () use ($kubectl, $ns, $deployment, &$registryToken) {
                 // Unique name per issue. Forgejo rejects a duplicate token name
                 // ("access token name has been used already") and offers no way
                 // to delete one from the CLI, so a fixed name would permanently
@@ -272,7 +283,7 @@ class GitInitCommand extends Command
                 $name = 'larakube-registry-'.Str::lower(Str::random(6));
 
                 $result = Process::run(
-                    "{$kubectl} exec deploy/forgejo -n {$ns} -- ".
+                    "{$kubectl} exec deploy/{$deployment} -n {$ns} -- ".
                     'su-exec git forgejo --config /data/gitea/conf/app.ini admin user generate-access-token '.
                     '--username larakube --token-name '.escapeshellarg($name).' '.
                     '--scopes write:package,read:package --raw',
@@ -305,9 +316,9 @@ class GitInitCommand extends Command
         // and tell the server about it. The runner then self-registers with the
         // same secret, so there is nothing to read back off the server.
         $registered = false;
-        $this->withSpin('Registering the Forgejo Actions runner...', function () use ($kubectl, $ns, $runnerSecret, &$registered) {
+        $this->withSpin('Registering the Forgejo Actions runner...', function () use ($kubectl, $ns, $deployment, $runnerSecret, &$registered) {
             $registered = Process::run(
-                "{$kubectl} exec deploy/forgejo -n {$ns} -- ".
+                "{$kubectl} exec deploy/{$deployment} -n {$ns} -- ".
                 'su-exec git forgejo forgejo-cli actions register '.
                 '--name larakube --secret '.escapeshellarg($runnerSecret).' '.
                 // MUST be passed. `register` is idempotent but NOT label-preserving:
@@ -328,6 +339,7 @@ class GitInitCommand extends Command
         // 3. Re-apply final configuration containing real tokens
         $manifestFinal = view('k8s.git.forgejo', [
             'host' => $host,
+            'instance' => $instance,
             'adminPassword' => $adminPassword,
             'adminEmail' => $adminEmail,
             'dbPassword' => $dbPassword,
@@ -346,6 +358,8 @@ class GitInitCommand extends Command
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
+            'buckets' => $buckets,
+            'tenant' => $tenant,
         ])->render();
 
         $finalTemporaryDirectory = TemporaryDirectory::make();
@@ -369,10 +383,12 @@ class GitInitCommand extends Command
             return 1;
         }
 
+        $runnerDeployment = ClusterTool::GIT->componentByKey('runner', $instance)->deployment;
+
         if ($registered && ! $this->withSpin('Waiting for Actions Runner...', fn () => Process::timeout(130)->run(
-            "{$kubectl} rollout status deploy/forgejo-runner -n {$ns} --timeout=120s",
+            "{$kubectl} rollout status deploy/{$runnerDeployment} -n {$ns} --timeout=120s",
         )->successful())) {
-            $this->laraKubeError('forgejo-runner never became Ready.');
+            $this->laraKubeError("{$runnerDeployment} never became Ready.");
 
             return 1;
         }
@@ -426,16 +442,16 @@ class GitInitCommand extends Command
         );
     }
 
-    /** Read any key from the git-secrets secret; null when absent. */
-    protected function readForgejoSecret(string $kubectl, string $ns, string $key): ?string
+    /** Read any key from the git-secrets-{instance} secret; null when absent. */
+    protected function readForgejoSecret(string $kubectl, string $ns, string $instance, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'git-secrets', $key);
+        return $this->readClusterSecretKey($kubectl, $ns, "git-secrets-{$instance}", $key);
     }
 
     /** Parse admin password from existing secret */
-    protected function readExistingAdminPassword(string $kubectl, string $ns): ?string
+    protected function readExistingAdminPassword(string $kubectl, string $ns, string $instance): ?string
     {
-        return $this->readForgejoSecret($kubectl, $ns, 'password');
+        return $this->readForgejoSecret($kubectl, $ns, $instance, 'password');
     }
 
     /** Decide which environment this install targets */

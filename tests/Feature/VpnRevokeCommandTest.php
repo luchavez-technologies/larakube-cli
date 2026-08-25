@@ -89,6 +89,39 @@ test('vpn:revoke without --name/--key-id in non-interactive mode errors clearly'
         ->expectsOutputToContain('Pass --name= or --key-id=');
 });
 
+test('vpn:revoke interactive picker revokes the actually-selected key, not one it crashes on or picks by accident', function (): void {
+    // Regression guard for a real bug, 2026-08-25: select()'s $options was
+    // built with plain 0-based integer keys ($options[$i]) — indistinguishable
+    // from a list to array_is_list(), so select() returned the LABEL TEXT
+    // instead of the key, and $active[$chosen] crashed with "Undefined array
+    // key" on that label string. Uses two active keys (not one) specifically
+    // to also prove the CORRECT one gets revoked, not just that the command
+    // no longer crashes.
+    fakeVpnRevokeInstalled();
+
+    $keys = [
+        ['id' => 'k1', 'name' => 'lloyd', 'key' => 'AAAA****', 'type' => 'reusable', 'usage_limit' => 1, 'used_times' => 0, 'revoked' => false, 'valid' => true, 'expires' => '2027-07-14T00:00:00Z', 'auto_groups' => [], 'ephemeral' => false, 'allow_extra_dns_labels' => false],
+        ['id' => 'k3', 'name' => 'sasha', 'key' => 'CCCC****', 'type' => 'reusable', 'usage_limit' => 0, 'used_times' => 1, 'revoked' => false, 'valid' => true, 'expires' => '2027-07-14T00:00:00Z', 'auto_groups' => [], 'ephemeral' => false, 'allow_extra_dns_labels' => false],
+    ];
+
+    Saloon::fake([
+        ListSetupKeysRequest::class => MockResponse::make($keys),
+        UpdateSetupKeyRequest::class => MockResponse::make(['id' => 'k3', 'revoked' => true]),
+    ]);
+
+    $this->artisan('vpn:revoke local')
+        ->expectsChoice('Which setup key to revoke?', 'key-k3', [
+            'key-k1' => 'lloyd — AAAA**** (used 0/1)',
+            'key-k3' => 'sasha — CCCC**** (used 1/∞)',
+        ])
+        ->expectsConfirmation("Revoke 'sasha'?", 'yes')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("Revoked 'sasha'");
+
+    Saloon::assertSent(fn ($request) => $request instanceof UpdateSetupKeyRequest
+        && $request->resolveEndpoint() === 'api/setup-keys/k3');
+});
+
 test('vpn:revoke errors when the VPN is not installed', function (): void {
     Process::fake([
         vpnRevokeKubectl().' get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),

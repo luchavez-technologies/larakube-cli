@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Process;
 test('meet:init deploys the shared LiveKit SFU', function (): void {
     Process::fake([
         '*get secret meet-keys*' => Process::result(output: '', exitCode: 1),
-        '*get deployment meet-lk-jwt*' => Process::result(output: ''),
+        '*get deployment -l app=meet-lk-jwt*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -23,7 +23,7 @@ test('meet:init deploys the shared LiveKit SFU', function (): void {
 test('a fresh meet:init points you at the wire command instead of pretending it is usable', function (): void {
     Process::fake([
         '*get secret meet-keys*' => Process::result(output: '', exitCode: 1),
-        '*get deployment meet-lk-jwt*' => Process::result(output: ''),
+        '*get deployment -l app=meet-lk-jwt*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -46,8 +46,9 @@ test('meet:remove tears down the SFU and its bridge', function (): void {
         ->expectsOutputToContain('Removing LiveKit (Meet) resources...');
 
     // The bridge is meet:wire's artifact, but leaving it pointed at a deleted
-    // LiveKit is worse than removing it alongside.
-    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment/meet-lk-jwt'));
+    // LiveKit is worse than removing it alongside. Targeted by label — its
+    // Deployment name is instance-suffixed, its pod label stays stable.
+    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment,service -l app=meet-lk-jwt'));
 });
 
 test('meet:remove aborts when a delete step fails', function (): void {

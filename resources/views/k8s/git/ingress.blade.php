@@ -1,7 +1,11 @@
+@php
+    $ingressName = "git-forgejo-{$instance}";
+    $httpServiceName = "git-forgejo-http-{$instance}";
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: forgejo
+  name: {{ $ingressName }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -13,7 +17,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-forgejo-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-forgejo-vpn-only-{{ $instance }}@kubernetescrd
 @endif
 spec:
   rules:
@@ -24,7 +28,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: forgejo-http
+                name: {{ $httpServiceName }}
                 port:
                   number: 3000
   tls:

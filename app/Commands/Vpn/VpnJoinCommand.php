@@ -8,6 +8,7 @@ use App\Traits\InteractsWithOs;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class VpnJoinCommand extends Command
@@ -16,7 +17,8 @@ class VpnJoinCommand extends Command
 
     protected $signature = 'vpn:join
         {environment=local : Environment whose NetBird VPN to join}
-        {--context= : Target a specific kube-context (defaults to current context)}';
+        {--context= : Target a specific kube-context (defaults to current context)}
+        {--sso : Authenticate via Zitadel SSO instead of the shared setup key (run `larakube sso:wire vpn` first)}';
 
     protected $description = "Join this machine to a project's NetBird VPN";
 
@@ -60,13 +62,14 @@ class VpnJoinCommand extends Command
             return 1;
         }
 
-        $key = $this->fetchVpnSetupKey($kubectl, $ns);
-        if ($key === null) {
-            $this->laraKubeError("No NetBird setup key found — re-run `larakube vpn:init {$env}` to bootstrap auth, or mint one manually in the NetBird dashboard.");
+        // Checked before installNetBirdClient() — no point installing the
+        // client (which may shell out to a real curl|sh install script) only
+        // to then fail on a precondition that was already knowable.
+        if ($this->option('sso') && ! Process::run("{$kubectl} get secret netbird-oidc -n {$ns}")->successful()) {
+            $this->laraKubeError("NetBird isn't wired to SSO yet — run `larakube sso:wire vpn {$env}` first.");
 
             return 1;
         }
-        $this->registerSecret($key);
 
         if (! $this->installNetBirdClient()) {
             $this->laraKubeError('NetBird client install failed — see the output above.');
@@ -74,8 +77,28 @@ class VpnJoinCommand extends Command
             return 1;
         }
 
-        $this->laraKubeInfo("Joining NetBird VPN at {$host}...");
-        passthru('sudo netbird up --setup-key '.escapeshellarg($key)." --management-url https://{$host}", $exitCode);
+        if ($this->option('sso')) {
+            // Additive alternative to the setup-key flow below — never the
+            // default even once wired, since VPN is the access-of-last-resort
+            // layer and a wrong default here risks confusing failures
+            // precisely when someone most needs connectivity.
+            $this->laraKubeInfo('Opening a browser to sign in via Zitadel SSO...');
+            // Omitting --setup-key is what triggers NetBird's own automatic
+            // browser-based SSO login when the management server has an
+            // OIDC provider registered.
+            passthru('sudo netbird up --management-url https://'.escapeshellarg($host), $exitCode);
+        } else {
+            $key = $this->fetchVpnSetupKey($kubectl, $ns);
+            if ($key === null) {
+                $this->laraKubeError("No NetBird setup key found — re-run `larakube vpn:init {$env}` to bootstrap auth, or mint one manually in the NetBird dashboard.");
+
+                return 1;
+            }
+            $this->registerSecret($key);
+
+            $this->laraKubeInfo("Joining NetBird VPN at {$host}...");
+            passthru('sudo netbird up --setup-key '.escapeshellarg($key)." --management-url https://{$host}", $exitCode);
+        }
 
         if ($exitCode !== 0) {
             $this->laraKubeError('`netbird up` failed — see the output above.');

@@ -43,7 +43,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: meet-lk-jwt
+                name: meet-lk-jwt{{ $suffix }}
                 port:
                   number: 8080
 @endif

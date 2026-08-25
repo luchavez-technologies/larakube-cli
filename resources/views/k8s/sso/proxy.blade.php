@@ -144,9 +144,13 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 @unless($isLocal ?? false)
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
-    @if($proxied ?? false)
+{{-- Confirmed live 2026-08-24 (same bug, chat/vpn Ingress): an indented
+     @if/@endif nested inside another directive leaks stray leading
+     whitespace onto the next line once the outer directive closes. Keep
+     directive tags at column 0; only literal YAML content is indented. --}}
+@if($proxied ?? false)
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
-    @endif
+@endif
 @endunless
 spec:
   rules:

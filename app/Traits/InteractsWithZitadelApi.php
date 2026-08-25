@@ -17,11 +17,13 @@ use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
 use App\Http\Integrations\Zitadel\Requests\DeactivateUserRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteEmailProviderRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest;
+use App\Http\Integrations\Zitadel\Requests\DeleteProjectRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteUserRequest;
 use App\Http\Integrations\Zitadel\Requests\GenerateOrgDomainValidationRequest;
 use App\Http\Integrations\Zitadel\Requests\GetFlowRequest;
 use App\Http\Integrations\Zitadel\Requests\GetProjectRequest;
+use App\Http\Integrations\Zitadel\Requests\ListProjectsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchActionsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchEmailProvidersRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
@@ -312,6 +314,42 @@ trait InteractsWithZitadelApi
     }
 
     /**
+     * Every project on the instance as {id, name} — unlike
+     * zitadelEnsureProject()'s name-equality search this lists ALL of them,
+     * which is what sso:prune's orphan sweep needs: projects stranded by a
+     * naming-scheme migration are by definition no longer named like any
+     * current tool, so a name-filtered search can never find them.
+     *
+     * @return list<array{id: string, name: string}>
+     */
+    protected function zitadelListAllProjects(string $host, string $pat): array
+    {
+        $search = ZitadelConnector::make($host, $pat)->send(ListProjectsRequest::make());
+
+        if ($search->failed()) {
+            return [];
+        }
+
+        return collect($search->json('result', []))
+            ->filter(fn ($p) => isset($p['id'], $p['name']))
+            ->map(fn ($p) => ['id' => $p['id'], 'name' => $p['name']])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Delete a whole project — cascades its apps and user grants inside
+     * Zitadel. Only ever called by sso:prune AFTER the orphan gate proved
+     * nothing live references the project.
+     */
+    protected function zitadelDeleteProject(string $host, string $pat, string $projectId): bool
+    {
+        return ZitadelConnector::make($host, $pat)
+            ->send(DeleteProjectRequest::make($projectId))
+            ->successful();
+    }
+
+    /**
      * Turn on projectRoleAssertion (so granted roles are asserted into the
      * larakube_roles claim by ensureRbacAction()'s Action) AND
      * projectRoleCheck (deny login outright for any user with zero roles on
@@ -583,8 +621,19 @@ trait InteractsWithZitadelApi
      * A separate Action/claim from flattenLaraKubeRoles on purpose — the two
      * serve different contracts (REST permissioning vs. oCIS role mapping),
      * and tools that read `larakube_roles` must not start seeing oCIS roles.
-     * Both are org-wide (Actions have no project/app scope), so this claim
-     * rides along on every client's token; only oCIS reads it.
+     * Both are org-WIDE, but not cluster-wide — Actions/Flows are scoped to
+     * ONE org each (Zitadel has no cross-org Action), so $orgId matters here
+     * exactly like it does for zitadelEnsureRbacAction(): omitted (null), it
+     * installs into the connector's own default org — sso:wire's case, since
+     * a tool's project/roles are configured once, centrally. A partner org
+     * granted Drive access via sso:org-grant needs this Action installed
+     * INSIDE THEIR OWN org too, or oCIS denies every login from that org
+     * outright (PROXY_ROLE_ASSIGNMENT_DRIVER=oidc has no fallback claim to
+     * fall back to) even though the user's role grant is otherwise correct.
+     * Confirmed live 2026-08-24: sso:org only ever installed
+     * flattenLaraKubeRoles per-org, never this one — every partner org that
+     * needs Drive access hit this wall until sso:org-grant started calling
+     * this with the granted org's id.
      *
      * Same search/create/flow-attach mechanics as zitadelEnsureRbacAction(),
      * plus an idempotent script refresh: re-running sso:wire after a role
@@ -592,14 +641,14 @@ trait InteractsWithZitadelApi
      * already-existing Action instead of silently skipping it (AGENTS.md
      * Idempotency standard).
      */
-    protected function zitadelEnsureOcisRolesAction(string $host, string $pat): bool
+    protected function zitadelEnsureOcisRolesAction(string $host, string $pat, ?string $orgId = null): bool
     {
         $name = 'flattenOcisRoles';
         $script = self::OCIS_ROLES_SCRIPT;
 
         $connector = ZitadelConnector::make($host, $pat);
 
-        $search = $connector->send(SearchActionsRequest::make());
+        $search = $connector->send(SearchActionsRequest::make($orgId));
         $actionId = null;
         $foundScript = null;
         if ($search->successful()) {
@@ -613,7 +662,7 @@ trait InteractsWithZitadelApi
         }
 
         if ($actionId === null) {
-            $create = $connector->send(CreateActionRequest::make($name, $script));
+            $create = $connector->send(CreateActionRequest::make($name, $script, $orgId));
             if ($create->failed()) {
                 return false;
             }
@@ -623,14 +672,14 @@ trait InteractsWithZitadelApi
             // schema (e.g. the ocisSpaceAdmin upgrade) — push the new script
             // via PUT /management/v1/actions/{id} with a fieldMask instead of
             // silently leaving the stale claim emitter in place.
-            $update = $connector->send(UpdateActionRequest::make($actionId, $name, $script));
+            $update = $connector->send(UpdateActionRequest::make($actionId, $name, $script, $orgId));
             if ($update->failed() && ! str_contains($update->body(), 'No Changes')) {
                 return false;
             }
         }
 
         foreach ([4, 5] as $trigger) {
-            if (! $this->zitadelAttachActionToFlowTrigger($host, $pat, 2, $trigger, $actionId)) {
+            if (! $this->zitadelAttachActionToFlowTrigger($host, $pat, 2, $trigger, $actionId, $orgId)) {
                 return false;
             }
         }

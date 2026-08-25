@@ -104,6 +104,21 @@ class SecretsWireCommand extends Command
     {
         $capable = array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
 
+        // No --domain given: fall back to the tool's OWN registered host, not
+        // a bare/no-instance guess — a fully migrated tool (e.g. GIT) has no
+        // legitimate bare deployment to find, so resolving null here would
+        // always report "not installed" even when it plainly is. A tool with
+        // no registry entry at all still correctly resolves to null.
+        $resolveInstance = function (ClusterTool $t) use ($kubectl, $domain): ?string {
+            if ($domain !== '') {
+                return $this->resolveInstanceForDomain($kubectl, $t, $domain);
+            }
+
+            $host = $this->getToolHost($kubectl, $t);
+
+            return $host !== null ? $this->resolveInstanceForDomain($kubectl, $t, $host) : null;
+        };
+
         $resolve = function (ClusterTool $t, ?string $forInstance) use ($kubectl): ?array {
             $engine = $t->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $t, $forInstance, (string) ($this->option('engine') ?: '') ?: null) : null;
             if ($t->dbSecretRef($forInstance, $engine) === null) {
@@ -119,7 +134,7 @@ class SecretsWireCommand extends Command
         if ($this->option('all')) {
             $installed = [];
             foreach ($capable as $t) {
-                $targetInst = $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $t, $domain) : null;
+                $targetInst = $resolveInstance($t);
                 $resolved = $resolve($t, $targetInst);
                 if ($resolved !== null) {
                     $installed[] = $resolved;
@@ -150,7 +165,7 @@ class SecretsWireCommand extends Command
                 return [];
             }
 
-            $targetInst = $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $tool, $domain) : null;
+            $targetInst = $resolveInstance($tool);
             $resolved = $resolve($tool, $targetInst);
             if ($resolved === null) {
                 $this->laraKubeError("{$tool->getLabel()} is not installed (or has no wireable Commons database) at this instance.");

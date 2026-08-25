@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Process;
  */
 trait InteractsWithChat
 {
-    use ReadsClusterSecrets, ResolvesEnvironmentContext;
+    use InteractsWithToolRegistry, ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /** The namespace the chat stack lives in. */
     protected function chatNamespace(): string
@@ -224,13 +225,36 @@ trait InteractsWithChat
     }
 
     /**
+     * Chat's instance slug — every MAS resource is instance-suffixed (see
+     * ChatTool's own components() method for why chat isn't exempt from
+     * the naming convention despite never having a real second instance),
+     * so this is what every MAS resource name is built from. Cheap when
+     * $host is already known (every ChatInitCommand call site has it —
+     * pass it); falls back to a live registry/ingress lookup of chat's own
+     * registered host for the handful of OTHER commands (sso:wire/unwire,
+     * meet:wire/unwire, mail:unwire) that read MAS state back without
+     * otherwise needing chat's host at all — same "zero changes needed on
+     * their end" principle DeploysClusterTool::registerDeployedTool()
+     * already uses for this exact problem. Returns null only when chat
+     * hasn't been deployed/registered yet at all.
+     */
+    protected function chatInstanceSlug(string $kubectl, ?string $host = null): ?string
+    {
+        $host ??= $this->resolveLiveToolHost($kubectl, ClusterTool::CHAT);
+        if ($host === null || $host === '') {
+            return null;
+        }
+
+        return ClusterTool::CHAT->instanceSlugFromHost($host);
+    }
+
+    /**
      * Whether MAS is deployed AND currently the active auth mode for
-     * Synapse, read from the SAME `chat-mas-secrets` Secret `chat:init`'s
-     * own deployMas() writes when it deploys the component — no separate
-     * "cutover" marker Secret. `public_issuer` (MAS's own public subdomain,
-     * needed for the org.matrix.msc2965.authentication well-known key) is
-     * written there too, once, at deploy time — this method has no host
-     * argument, so it never re-derives it.
+     * Synapse, read from the SAME `chat-mas-secrets-{instance}` Secret
+     * `chat:init`'s own deployMas() writes when it deploys the component —
+     * no separate "cutover" marker Secret. `public_issuer` (MAS's own
+     * public subdomain, needed for the org.matrix.msc2965.authentication
+     * well-known key) is written there too, once, at deploy time.
      *
      * The precedence invariant that keeps an ALREADY-live install (with an
      * existing chat-oidc from classic Zitadel wiring) from silently
@@ -243,11 +267,19 @@ trait InteractsWithChat
      *
      * @return array{endpoint: string, secret: string, public_issuer: string}|null
      */
-    protected function readChatWiredMas(string $kubectl, string $ns): ?array
+    protected function readChatWiredMas(string $kubectl, string $ns, ?string $host = null): ?array
     {
-        $read = function (string $key) use ($kubectl, $ns): ?string {
+        $instance = $this->chatInstanceSlug($kubectl, $host);
+        if ($instance === null) {
+            return null;
+        }
+
+        $secretName = "chat-mas-secrets-{$instance}";
+        $serviceName = "chat-mas-{$instance}";
+
+        $read = function (string $key) use ($kubectl, $ns, $secretName): ?string {
             $out = trim(Process::run(
-                "{$kubectl} get secret chat-mas-secrets -n {$ns} -o jsonpath='{.data.{$key}}'",
+                "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath='{.data.{$key}}'",
             )->output());
 
             return $out !== '' ? (string) base64_decode($out) : null;
@@ -259,10 +291,26 @@ trait InteractsWithChat
         }
 
         return [
-            'endpoint' => 'http://chat-mas:8080/',
+            'endpoint' => "http://{$serviceName}:8080/",
             'secret' => $secret,
             'public_issuer' => $read('public-issuer') ?? '',
         ];
+    }
+
+    /**
+     * `mas-cli config generate` writes its own tracing log lines to the
+     * SAME stdout stream as the generated YAML — confirmed live 2026-08-24,
+     * e.g. `2026-08-23T19:28:20.565906Z  INFO mas_config::sections::secrets:352
+     * Generating keys...`, ending with `...Writing configuration to
+     * standard output` immediately before the real YAML begins. Every such
+     * line has a strict, distinctive ISO-8601-timestamp + level prefix no
+     * line of valid YAML would ever have, so this strips exactly that
+     * shape rather than trusting an unverified RUST_LOG env var or a
+     * kubectl-cp/shell-wrapper scheme to suppress it at the source.
+     */
+    protected function stripMasCliLogLines(string $raw): string
+    {
+        return trim((string) preg_replace('/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+\w+\s+.*$/m', '', $raw))."\n";
     }
 
     /**
@@ -271,30 +319,69 @@ trait InteractsWithChat
      * business overwriting — most importantly `secrets:` (encryption +
      * signing keys): those are real cryptographic material this trait must
      * never fabricate or regenerate, since regenerating them on a re-run
-     * would invalidate every existing session/cookie. Only `database:`,
-     * `matrix:`, and `upstream_oauth2:` are ours to own — `http:`,
-     * `secrets:`, `clients:`, `passwords:`, `account:` etc. stay whatever
-     * the generated base file already has. Same strip-then-append idiom as
-     * renderSynapseConfig(), applied to a generated base instead of a
-     * hand-written skeleton.
+     * would invalidate every existing session/cookie. `database:`,
+     * `matrix:`, `upstream_oauth2:`, and `passwords:` are ours to own —
+     * `secrets:`, `clients:`, `account:` etc. stay whatever the
+     * generated base file already has. `passwords:` joined this list
+     * 2026-08-24: confirmed live via `syn2mas check` against the one
+     * already-live install that `mas-cli config generate`'s own default
+     * password scheme is NOT bcrypt, which syn2mas requires to import
+     * Synapse's existing local-password hashes — leaving it as generated
+     * would have silently locked out every non-SSO account. Same
+     * strip-then-append idiom as renderSynapseConfig(), applied to a
+     * generated base instead of a hand-written skeleton.
      *
      * @param  array{host: string, user: string, password: string, database: string}  $database
      * @param  array{homeserver: string, secret: string}  $matrixTrust  homeserver = Synapse's server_name (chat host); secret = the Synapse↔MAS shared trust secret, NOT an OIDC value.
      * @param  array{id: string, issuer: string, client_id: string, client_secret: string}  $upstream  Zitadel as MAS's upstream IdP.
+     * @param  string  $masHost  MAS's own public hostname (mas.{chat host}) — written into http.public_base so MAS advertises a reachable issuer/authorization/account URL. Confirmed live 2026-08-24: omitting this leaves MAS defaulting to its internal bind address (`http://[::]:8080/`) in `.well-known/matrix/client` and its own OIDC discovery document, which Element X silently can't resolve and falls back to legacy password login over.
      */
-    protected function renderMasConfig(string $baseYaml, array $database, array $matrixTrust, array $upstream): string
+    protected function renderMasConfig(string $baseYaml, array $database, array $matrixTrust, array $upstream, string $masHost): string
     {
         $yaml = $baseYaml;
-        foreach (['database', 'matrix', 'upstream_oauth2'] as $key) {
+        foreach (['database', 'matrix', 'upstream_oauth2', 'passwords'] as $key) {
             $yaml = (string) preg_replace('/^[ \t]*'.$key.':\n(?:[ \t]+[^\n]*\n)*/m', '', $yaml);
+        }
+        // http: itself stays generated/untouched (see class doc below) except
+        // for public_base and issuer — BOTH nested INSIDE http: as siblings
+        // of listeners/trusted_proxies, not top-level keys. Confirmed live
+        // 2026-08-24, corrected after an initial mistake: `mas-cli config
+        // generate` writes `http.issuer` hardcoded to the internal listener
+        // bind address (http://[::]:8080/); a first attempt here appended a
+        // same-named TOP-LEVEL `issuer:` key instead (misreading its
+        // indentation), which MAS silently ignored while continuing to
+        // serve the real, untouched http.issuer verbatim in its discovery
+        // document and the org.matrix.msc2965.authentication key — the
+        // exact reason Element X kept falling back to legacy password
+        // login. Strip the nested line (plus any stray top-level leftover
+        // from that first attempt, for clean re-renders against an
+        // already-broken live config) and inject both fields together as
+        // http: siblings, idempotently.
+        // `\n?` (not `\n`) so a stray line with no trailing newline — e.g.
+        // the very last line of a config that pre-dates this fix — still
+        // gets stripped rather than surviving untouched.
+        $yaml = (string) preg_replace('/^[ \t]+public_base:.*\n?/m', '', $yaml);
+        $yaml = (string) preg_replace('/^[ \t]+issuer:.*\n?/m', '', $yaml);
+        $yaml = (string) preg_replace('/^issuer:.*\n?/m', '', $yaml);
+        $yaml = (string) preg_replace(
+            '/^http:\n/m',
+            "http:\n".'  public_base: "https://'.$masHost.'/"'."\n".'  issuer: "https://'.$masHost.'/"'."\n",
+            $yaml,
+            1,
+        );
+
+        // Ensure MAS's adminapi resource is enabled on the web listener (required
+        // for Element Admin to query /api/admin/v1/users, registration tokens, etc.).
+        if (! str_contains($yaml, 'name: adminapi') && preg_match('/^([ \t]*)-[ \t]*name:[ \t]*assets/m', $yaml, $m)) {
+            $yaml = (string) preg_replace('/^([ \t]*-[ \t]*name:[ \t]*assets[^\n]*)/m', '$1'."\n".$m[1].'- name: adminapi', $yaml, 1);
         }
         $yaml = rtrim($yaml)."\n";
 
         // Rendered via Blade — see renderSynapseCalling()'s comment for why.
         // `endpoint` in the `matrix` section below is cluster-internal only,
         // never exposed publicly: Synapse reaches MAS over it. The public
-        // issuer Element X talks to is a separate concern (mas.{host}, see
-        // readChatWiredMas()). `token_endpoint_auth_method: client_secret_basic`
+        // issuer Element X talks to is http.public_base above (mas.{host}).
+        // `token_endpoint_auth_method: client_secret_basic`
         // matches what InteractsWithZitadelApi::zitadelCreateOidcApp() always
         // registers (OIDC_AUTH_METHOD_TYPE_BASIC) for confidential clients —
         // verify this is valid for the pinned MAS version before relying on

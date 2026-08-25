@@ -12,6 +12,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSso;
+use App\Traits\InteractsWithVpn;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReconcilesPenpotFlags;
@@ -29,7 +30,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:wire
         {environment=local : Environment whose deployment to wire}
@@ -288,10 +289,13 @@ class SsoWireCommand extends Command
         // Synapse is configured via homeserver.yaml (a Secret), not env vars.
         // Skip applyToolEnv and go straight to wireSynapseOidc.
         // OpenBao is configured via its CLI inside the pod (bao auth enable oidc).
+        // NetBird is configured via its own REST API (/api/identity-providers).
         if ($schema['deployment'] === 'chat-synapse') {
             $ok = $this->wireSynapseOidc($kubectl, $schema['namespace'], $ssoHost, $logical['issuer'], $clientId, $clientSecret, $env);
         } elseif ($schema['deployment'] === 'openbao-backend') {
             $ok = $this->wireOpenBaoOidc($kubectl, $schema['namespace'], $ssoHost, $toolHost, $clientId, $clientSecret, $env);
+        } elseif ($schema['deployment'] === 'netbird-management') {
+            $ok = $this->wireNetbirdOidc($kubectl, $schema['namespace'], $toolHost, $ssoHost, $clientId, $clientSecret);
         } else {
             $ok = $tool->usesCliOidc()
                 ? $this->applyCliOidc($kubectl, $schema, $ssoHost, $clientId, $clientSecret)
@@ -567,7 +571,15 @@ class SsoWireCommand extends Command
         $args = '--name '.escapeshellarg('zitadel').' --provider openidConnect '
             .'--key '.escapeshellarg($clientId).' '
             .'--secret '.escapeshellarg($clientSecret).' '
-            .'--auto-discover-url '.escapeshellarg("https://{$ssoHost}/.well-known/openid-configuration");
+            .'--auto-discover-url '.escapeshellarg("https://{$ssoHost}/.well-known/openid-configuration")
+            // Without explicit scopes the login source requests only the
+            // implicit `openid` scope, so Zitadel's userinfo response carries
+            // nothing but `sub` — no email claim. Forgejo's auto-link path
+            // requires an email (it falls back from username lookup to email
+            // lookup), so every login silently landed on the "Link to an
+            // existing account" screen instead (live incident 2026-08-24).
+            // `openid` itself is added implicitly by the forgejo CLI.
+            .' --scopes profile --scopes email';
 
         $ok = false;
         $this->withSpin('Registering the Zitadel login source in Gitea...', function () use ($exec, $args, $existingId, &$ok) {
@@ -1158,6 +1170,27 @@ class SsoWireCommand extends Command
                         )->output()) !== '';
                 }
 
+                if ($t === ClusterTool::GIT) {
+                    // Forgejo's OIDC schema names its deployment per-instance
+                    // (`git-forgejo-{instance}`, e.g.
+                    // git-forgejo-git-luchtech-dev), but this probe runs
+                    // before any domain/host is known — oidcEnv() with no
+                    // instance yields the bare `git-forgejo-` prefix, so the
+                    // generic check below never matched and plain `sso:wire`
+                    // never offered git even on clusters where Forgejo was
+                    // installed (live DX bug 2026-08-24). Probe by name
+                    // prefix instead; the CI runner shares the prefix and
+                    // must not count as a Forgejo server.
+                    $names = preg_split('/\R/', trim(Process::run(
+                        "{$kubectl} get deployments -n larakube-shared -o name --no-headers --ignore-not-found",
+                    )->output())) ?: [];
+
+                    return collect($names)->contains(
+                        fn (string $name) => str_starts_with($name, 'deployment/git-forgejo-')
+                            && ! str_starts_with($name, 'deployment/git-forgejo-runner-'),
+                    );
+                }
+
                 $schema = $t->oidcEnv();
 
                 return $schema !== null && $this->deploymentExists($kubectl, $schema['namespace'], $schema['deployment']);
@@ -1437,6 +1470,59 @@ class SsoWireCommand extends Command
             // Without it, tool:list reports a login that works as unwired.
             Process::run(
                 "{$kubectl} create secret generic openbao-oidc -n {$ns} "
+                .'--from-literal=client-id='.escapeshellarg($clientId).' '
+                .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+        }
+
+        return $ok;
+    }
+
+    /**
+     * Register (or, on a re-run, update) NetBird as an external Zitadel
+     * identity provider via its own REST API — confirmed live 2026-08-24
+     * against the real running install (GET /api/identity-providers →
+     * 200 []): NetBird's self-hosted "Local Users with Optional IdP
+     * Integration" model, additive alongside EmbeddedIdP/the setup-key
+     * flow, never touches management.json. Idempotent: finds any existing
+     * `type === 'zitadel'` entry and PUTs an update instead of duplicating
+     * via POST.
+     */
+    protected function wireNetbirdOidc(string $kubectl, string $ns, string $toolHost, string $ssoHost, string $clientId, string $clientSecret): bool
+    {
+        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, 'vpn-secrets', 'pat');
+        if ($netbirdPat === null) {
+            $this->laraKubeError('NetBird admin token not found — re-run `larakube vpn:init` to bootstrap auth.');
+
+            return false;
+        }
+
+        $providers = $this->listVpnIdentityProviders($toolHost, $netbirdPat);
+        if ($providers === null) {
+            return false;
+        }
+
+        $issuer = "https://{$ssoHost}";
+        $existingId = null;
+        foreach ($providers as $provider) {
+            if (($provider['type'] ?? null) === 'zitadel') {
+                $existingId = (string) ($provider['id'] ?? '');
+                break;
+            }
+        }
+
+        $ok = $existingId !== null && $existingId !== ''
+            ? $this->updateVpnIdentityProvider($toolHost, $netbirdPat, $existingId, 'zitadel', 'Zitadel', $issuer, $clientId, $clientSecret)
+            : $this->createVpnIdentityProvider($toolHost, $netbirdPat, 'zitadel', 'Zitadel', $issuer, $clientId, $clientSecret);
+
+        if ($ok) {
+            // tool:list marks an OIDC tool as SSO-wired by probing for the
+            // `{tool}-oidc` Secret — NetBird's wiring lives in its own
+            // storage (the API call above), so this is what must record the
+            // marker secret, same as OpenBao/Forgejo's CLI-driven paths do.
+            Process::run(
+                "{$kubectl} create secret generic netbird-oidc -n {$ns} "
                 .'--from-literal=client-id='.escapeshellarg($clientId).' '
                 .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",

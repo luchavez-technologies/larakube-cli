@@ -16,13 +16,19 @@
     not blind trust, more than the other pinned images here.
 --}}
 @php($__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/admin.blade.php')), 0, 12))
+{{-- Brand new component, no existing live data — fully instance-suffixed
+     from birth, matching ChatTool::components()'s $name('chat-admin')/
+     $name('chat-admin-ingress') exactly (full name suffixed as one unit). --}}
+@php($__instanceSuffix = ($instance ?? null) ? "-{$instance}" : '')
+@php($adminName = 'chat-admin'.$__instanceSuffix)
+@php($adminIngressName = 'chat-admin-ingress'.$__instanceSuffix)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chat-admin
+  name: {{ $adminName }}
   namespace: larakube-shared
   labels:
-    app: chat-admin
+    app: {{ $adminName }}
     app.kubernetes.io/part-of: chat
 spec:
   replicas: 1
@@ -30,17 +36,22 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: chat-admin
+      app: {{ $adminName }}
   template:
     metadata:
       labels:
-        app: chat-admin
+        app: {{ $adminName }}
       annotations:
         larakube.io/config-checksum: "{{ substr(hash('sha256', $host.$__tplHash), 0, 16) }}"
     spec:
       containers:
         - name: admin
-          image: oci.element.io/element-admin:v0.1.12
+          {{-- Confirmed live 2026-08-24: this pin caused ErrImagePull —
+               element-admin's OCI tags drop the GitHub release's "v" prefix
+               (registry tag is "0.1.12", not "v0.1.12"; "latest" resolves to
+               the same digest as "0.1.12", confirmed via `docker manifest
+               inspect`). --}}
+          image: oci.element.io/element-admin:0.1.12
           env:
             - name: SERVER_NAME
               value: "{{ $host }}"
@@ -57,11 +68,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: chat-admin
+  name: {{ $adminName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: chat-admin
+    app: {{ $adminName }}
   ports:
     - protocol: TCP
       port: 8080
@@ -70,7 +81,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: chat-admin-ingress
+  name: {{ $adminIngressName }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -99,7 +110,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: chat-admin
+                name: {{ $adminName }}
                 port:
                   number: 8080
   tls:

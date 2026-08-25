@@ -1,10 +1,14 @@
 <?php
 
+use App\Http\Integrations\Zitadel\Requests\CreateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectGrantRequest;
+use App\Http\Integrations\Zitadel\Requests\GetFlowRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchActionsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchOrganizationsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
+use App\Http\Integrations\Zitadel\Requests\SetFlowTriggerActionsRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateProjectGrantRequest;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
@@ -144,4 +148,35 @@ test('sso:org-grant prompts for an org when --org is omitted and orgs exist', fu
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectGrantRequest
         && $request->body()->get('grantedOrgId') === 'org-1');
+});
+
+test('sso:org-grant --tool=drive installs the flattenOcisRoles Action into the GRANTED org, not the default one', function (): void {
+    // sso:wire only ever installs this Action in its own (default) org —
+    // the project/roles it configures are shared across every org with a
+    // grant, but Zitadel Actions/Flows are NOT: each org needs its own copy,
+    // or oCIS (PROXY_ROLE_ASSIGNMENT_DRIVER=oidc, no fallback claim) denies
+    // every login from a granted org outright, regardless of any role grant.
+    // Confirmed live 2026-08-24 against a real partner org.
+    Process::fake(ssoOrgGrantProcessFakes());
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]]),
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-ocis']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-drive']]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => [['key' => 'ocisAdmin'], ['key' => 'ocisSpaceAdmin']]]),
+        SearchProjectGrantsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectGrantRequest::class => MockResponse::make(['grantId' => 'grant-1']),
+    ]);
+
+    $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--tool' => 'drive', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain("'partner.example' now has scoped access to");
+
+    Saloon::assertSent(fn ($request) => $request instanceof CreateActionRequest
+        && str_contains($request->body()->get('script') ?? '', 'flattenOcisRoles')
+        && $request->headers()->get('x-zitadel-orgid') === 'org-1');
+    Saloon::assertSent(fn ($request) => $request instanceof SetFlowTriggerActionsRequest
+        && $request->headers()->get('x-zitadel-orgid') === 'org-1');
 });

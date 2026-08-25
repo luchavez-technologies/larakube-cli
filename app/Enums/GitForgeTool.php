@@ -44,20 +44,30 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
 
     public function components(?string $instance = null, ?string $engine = null): array
     {
+        // Null-safe on purpose, unlike this vendor's other methods: unsuffixed
+        // base names are what ClusterTool::forDeployment()'s reverse lookup
+        // (dynamic backup discovery) matches live Deployment names against —
+        // it calls components() with no instance BECAUSE it doesn't know the
+        // instance yet; that's what it's trying to discover. Every real
+        // forward-facing caller (GitInitCommand, the Blade manifest) still
+        // always supplies a real instance.
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
             new ClusterToolComponentData(
                 key: 'server',
                 role: ClusterToolComponentRole::PRIMARY,
-                deployment: $name('forgejo'),
+                deployment: $name('git-forgejo'),
                 container: 'forgejo',
                 resources: [
-                    ['kind' => 'service', 'name' => 'forgejo-http'],
-                    ['kind' => 'service', 'name' => 'forgejo-ssh'],
-                    ['kind' => 'ingress', 'name' => 'forgejo'],
+                    ['kind' => 'service', 'name' => $name('git-forgejo-http')],
+                    ['kind' => 'service', 'name' => $name('git-forgejo-ssh')],
+                    ['kind' => 'ingress', 'name' => $name('git-forgejo')],
+                    // forgejo-data is NEVER suffixed — it's the live repo/LFS/
+                    // registry PVC, and renaming a PVC means a brand-new empty
+                    // volume, not the existing one.
                     ['kind' => 'pvc', 'name' => 'forgejo-data'],
-                    ['kind' => 'secret', 'name' => 'git-secrets'],
+                    ['kind' => 'secret', 'name' => $name('git-secrets')],
                 ],
                 backupVolume: true,
                 backupPath: '/data',
@@ -65,7 +75,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
             new ClusterToolComponentData(
                 key: 'runner',
                 role: ClusterToolComponentRole::WORKER,
-                deployment: $name('forgejo-runner'),
+                deployment: $name('git-forgejo-runner'),
             ),
         ];
     }
@@ -78,7 +88,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         // MAILER_TYPE/HOST). `smtps` = implicit TLS, which is Stalwart's
         // 465 submissions listener.
         return [
-            'deployment' => 'forgejo',
+            'deployment' => "git-forgejo-{$instance}",
             'secret' => 'forgejo-smtp',
             'static' => [
                 'FORGEJO__mailer__ENABLED' => 'true',
@@ -102,7 +112,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         // /user/oauth2/<source name>/callback, and sso:wire names the
         // source `zitadel`.
         return [
-            'deployment' => 'forgejo',
+            'deployment' => "git-forgejo-{$instance}",
             'secret' => 'forgejo-oidc',
             'static' => [],
             'vars' => [],
@@ -140,9 +150,10 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
 
     public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = ''): array
     {
-        $ns = ($instance === null || $instance === '') ? 'larakube-shared' : "larakube-shared-{$instance}";
+        // Git always deploys into the single shared larakube-shared namespace
+        // — the instance suffixes the SECRET name, never the namespace.
         $adminPassword = trim(Process::run(
-            "{$kubectl} get secret git-secrets -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
+            "{$kubectl} get secret git-secrets-{$instance} -n larakube-shared -o jsonpath='{.data.password}' --ignore-not-found",
         )->output());
         $decodedPass = $adminPassword !== '' ? (base64_decode($adminPassword, true) ?: '<unknown>') : '<unknown>';
 
@@ -156,19 +167,15 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'forgejo-vpn-only' : "forgejo-vpn-only-{$instance}";
-
         return [
-            'name' => $name,
+            'name' => "forgejo-vpn-only-{$instance}",
             'namespace' => 'larakube-shared',
         ];
     }
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '') ? 'forgejo' : "forgejo-{$instance}";
-
-        return "deployment/{$deployment} -n larakube-shared";
+        return "deployment/git-forgejo-{$instance} -n larakube-shared";
     }
     case FORGEJO = 'forgejo';
 }

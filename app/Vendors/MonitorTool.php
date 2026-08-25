@@ -137,10 +137,12 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
         )->output());
         $decodedPass = $passVal !== '' ? (base64_decode($passVal, true) ?: '<unknown>') : '<unknown>';
 
+        $lokiName = 'monitor-loki'.(($instance === null || $instance === '') ? '' : "-{$instance}");
+
         return [
             ['Grafana Login', "admin / {$decodedPass}"],
             ['Prometheus', "http://prometheus.{$ns}.svc.cluster.local:9090 (in-cluster)"],
-            ['Loki', "http://loki.{$ns}.svc.cluster.local:3100 (in-cluster)"],
+            ['Loki', "http://{$lokiName}.{$ns}.svc.cluster.local:3100 (in-cluster)"],
         ];
     }
 

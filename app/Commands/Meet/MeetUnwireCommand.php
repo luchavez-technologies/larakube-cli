@@ -50,8 +50,12 @@ class MeetUnwireCommand extends Command
 
         $registry = $this->readMeetKeys($kubectl, $ns);
 
+        // Label-based, not by exact name — meet-lk-jwt's Deployment name is
+        // instance-suffixed but its pod label stays stable (app: meet-lk-jwt),
+        // matching the Mail rename's precedent for the same reason: this
+        // check has no resolved $instance in hand.
         $bridgeExists = trim(Process::run(
-            "{$kubectl} get deployment meet-lk-jwt -n {$ns} --no-headers --ignore-not-found",
+            "{$kubectl} get deployment -l app=meet-lk-jwt -n {$ns} --no-headers --ignore-not-found",
         )->output()) !== '';
 
         if (! isset($registry['chat']) && ! $bridgeExists) {
@@ -66,9 +70,12 @@ class MeetUnwireCommand extends Command
             return 1;
         }
 
-        // 2. Tear the bridge down.
+        // 2. Tear the bridge down. Deployment/Service by label (name is
+        //    instance-suffixed, label is stable); Middleware by exact name
+        //    (never suffixed — see the naming plan).
         $this->withSpin('Removing the Matrix bridge...', fn () => Process::run(
-            "{$kubectl} delete deployment/meet-lk-jwt service/meet-lk-jwt middleware/meet-jwt-stripprefix -n {$ns} --ignore-not-found",
+            "{$kubectl} delete deployment,service -l app=meet-lk-jwt -n {$ns} --ignore-not-found "
+            ."&& {$kubectl} delete middleware/meet-jwt-stripprefix -n {$ns} --ignore-not-found",
         ));
 
         // 3. Revoke chat's key and reload LiveKit without it. writeMeetKeys
@@ -83,15 +90,21 @@ class MeetUnwireCommand extends Command
         $meetHost = $this->getToolHost($kubectl, ClusterTool::MEET);
 
         if ($meetHost !== null && $this->isMeetInstalled($kubectl, $ns)) {
-            $this->withSpin('Reloading LiveKit without the Chat key...', function () use ($kubectl, $meetHost, $registry, $env): void {
+            $instance = ClusterTool::MEET->instanceSlugFromHost($meetHost);
+
+            $this->withSpin('Reloading LiveKit without the Chat key...', function () use ($kubectl, $meetHost, $registry, $env, $instance): void {
+                // 'instance' MUST be passed to both views — see the identical
+                // note in MeetWireCommand::reapplyMeet().
                 $manifest = view('k8s.meet.livekit', [
                     'host' => $meetHost,
+                    'instance' => $instance,
                     'consumers' => $registry,
                     'hostPort' => true,
                 ])->render()
                     ."\n---\n"
                     .view('k8s.meet.ingress', [
                         'host' => $meetHost,
+                        'instance' => $instance,
                         'isLocal' => $env === 'local',
                         'jwtWired' => false,
                     ])->render();

@@ -66,6 +66,7 @@ class MeetWireCommand extends Command
         }
 
         $jwtUrl = "https://{$meetHost}/jwt";
+        $instance = ClusterTool::MEET->instanceSlugFromHost($meetHost);
 
         // 1. Mint chat's own key pair. Re-running keeps the existing one, so the
         //    bridge's credentials survive a re-wire.
@@ -81,12 +82,13 @@ class MeetWireCommand extends Command
 
         // 2. Deploy the bridge, then re-apply LiveKit so it actually loads the
         //    new key — the config-checksum changes, forcing the rollout.
-        $ok = $this->withSpin('Deploying the Matrix bridge...', function () use ($kubectl, $meetHost, $chatHost, $creds) {
+        $ok = $this->withSpin('Deploying the Matrix bridge...', function () use ($kubectl, $meetHost, $chatHost, $creds, $instance) {
             $manifest = view('k8s.meet.lk-jwt', [
                 'meetHost' => $meetHost,
                 'chatHost' => $chatHost,
                 'livekitApiKey' => $creds['key'],
                 'livekitApiSecret' => $creds['secret'],
+                'instance' => $instance,
             ])->render();
 
             $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
@@ -104,7 +106,7 @@ class MeetWireCommand extends Command
             return 1;
         }
 
-        if (! $this->reapplyMeet($kubectl, $ns, $meetHost, $registry, $env)) {
+        if (! $this->reapplyMeet($kubectl, $ns, $meetHost, $registry, $env, $instance)) {
             return 1;
         }
 
@@ -127,17 +129,24 @@ class MeetWireCommand extends Command
     }
 
     /** Re-render LiveKit (new key set) and the ingress (now with /jwt). */
-    protected function reapplyMeet(string $kubectl, string $ns, string $meetHost, array $registry, string $env): bool
+    protected function reapplyMeet(string $kubectl, string $ns, string $meetHost, array $registry, string $env, string $instance): bool
     {
-        $ok = $this->withSpin('Reloading LiveKit with the new key...', function () use ($kubectl, $meetHost, $registry, $env) {
+        $ok = $this->withSpin('Reloading LiveKit with the new key...', function () use ($kubectl, $meetHost, $registry, $env, $instance) {
+            // 'instance' MUST be passed to both views below — omitting it used
+            // to silently re-render meet-livekit/meet's ingress as BARE names
+            // on every wire/unwire, next to the real instance-suffixed
+            // Deployment, which never picked up the fresh Secret. Confirmed as
+            // a pre-existing bug during the 2026-08-23 mechanical rename pass.
             $manifest = view('k8s.meet.livekit', [
                 'host' => $meetHost,
+                'instance' => $instance,
                 'consumers' => $registry,
                 'hostPort' => true,
             ])->render()
                 ."\n---\n"
                 .view('k8s.meet.ingress', [
                     'host' => $meetHost,
+                    'instance' => $instance,
                     'isLocal' => $env === 'local',
                     'jwtWired' => true,
                 ])->render();

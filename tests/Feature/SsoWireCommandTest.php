@@ -2,6 +2,9 @@
 
 use App\Commands\Sso\SsoWireCommand;
 use App\Data\GlobalConfigData;
+use App\Http\Integrations\Netbird\Requests\CreateIdentityProviderRequest;
+use App\Http\Integrations\Netbird\Requests\ListIdentityProvidersRequest;
+use App\Http\Integrations\Netbird\Requests\UpdateIdentityProviderRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateOidcAppRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectRequest;
@@ -1229,7 +1232,7 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
     // with the source named `zitadel` anyway.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
+        '*get deployment git-forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-git*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
@@ -1265,20 +1268,25 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
     // `zitadel` name, and add-oauth never runs — the "already exists" 500 is
     // the symptom this regression guards against.
     Process::assertRan(fn ($process) => str_contains($process->command, 'admin auth update-oauth --id 1')
-        && str_contains($process->command, "--name 'zitadel'"));
+        && str_contains($process->command, "--name 'zitadel'")
+        // Live failure 2026-08-24: with no explicit scopes the source only
+        // requested implicit `openid`, so Zitadel's userinfo returned just
+        // `sub` (no email) and Forgejo could never auto-link — every user
+        // landed on the "Link to an existing account" screen.
+        && str_contains($process->command, '--scopes profile --scopes email'));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'admin auth add-oauth'));
 
     // Confirmed live 2026-08-21: Forgejo caches login sources in memory and
     // kept authorizing against the OLD client-id for a real, unknown
     // stretch of time after update-oauth reported success — a restart is
     // required to make the new client-id take effect immediately.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/forgejo'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/git-forgejo'));
 });
 
 test('sso:wire registers the Forgejo login source under the canonical `zitadel` name', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
+        '*get deployment git-forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-git*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
@@ -1307,8 +1315,11 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
 
     // The source NAME becomes the OAuth2 callback path in Forgejo, so it must
     // be `zitadel` to agree with the redirect URI registered in Zitadel.
+    // Scopes are required so the userinfo response carries an email claim —
+    // Forgejo's auto-link path needs one (live failure 2026-08-24).
     Process::assertRan(fn ($process) => str_contains($process->command, 'admin auth add-oauth')
-        && str_contains($process->command, "--name 'zitadel'"));
+        && str_contains($process->command, "--name 'zitadel'")
+        && str_contains($process->command, '--scopes profile --scopes email'));
 
     // Regression guard: tool:list marks OIDC tools as wired by probing for the
     // `{tool}-oidc` Secret, so this CLI-OIDC path must write `forgejo-oidc`
@@ -1317,4 +1328,166 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
     Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic forgejo-oidc -n larakube-shared')
         && str_contains($process->command, '--from-literal=client-id=')
         && str_contains($process->command, 'cid-git'));
+});
+
+test('sso:wire registers NetBird as a Zitadel identity provider via its own REST API', function (): void {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment netbird-management*' => Process::result(output: 'netbird-management   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-vpn*' => Process::result(output: ''),
+        '*vpn-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+    ]);
+
+    Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-vpn', 'clientId' => 'cid-vpn', 'clientSecret' => 'csecret-vpn']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'netbird-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
+        // Empty list — first-time registration, so wireNetbirdOidc() must
+        // POST a new provider, not PUT an update.
+        ListIdentityProvidersRequest::class => MockResponse::make([], 200),
+        CreateIdentityProviderRequest::class => MockResponse::make(['id' => 'idp-1', 'type' => 'zitadel', 'name' => 'Zitadel'], 200),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'vpn', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('is wired to Zitadel SSO');
+
+    Saloon::assertSent(function (CreateIdentityProviderRequest $request) {
+        $body = $request->body()->all();
+
+        return $body['type'] === 'zitadel'
+            && $body['client_id'] === 'cid-vpn'
+            && $body['client_secret'] === 'csecret-vpn'
+            && $body['issuer'] === 'https://sso.'.GlobalConfigData::load()->getLocalTld();
+    });
+
+    // Regression guard, same reasoning as OpenBao/Forgejo above: tool:list
+    // marks an OIDC tool as SSO-wired by probing for the `{tool}-oidc`
+    // Secret — NetBird's wiring lives in its own storage (the API call
+    // above), so wireNetbirdOidc() must write the marker secret itself.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic netbird-oidc -n larakube-vpn')
+        && str_contains($process->command, '--from-literal=client-id=')
+        && str_contains($process->command, 'cid-vpn'));
+
+    // VPN grants private network access, not just a web login — gated via
+    // rbacRoles(), not open to any org member.
+    Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
+        && $request->body()->get('name') === 'netbird-management');
+});
+
+test('sso:wire re-wiring NetBird updates the existing identity provider via PUT, not a duplicate POST', function (): void {
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment netbird-management*' => Process::result(output: 'netbird-management   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*sso-app-vpn*project-id*' => Process::result(output: base64_encode('proj-1')),
+        '*sso-app-vpn*app-id*' => Process::result(output: base64_encode('app-vpn')),
+        '*sso-app-vpn*client-id*' => Process::result(output: base64_encode('cid-vpn')),
+        '*sso-app-vpn*client-secret*' => Process::result(output: base64_encode('csecret-vpn')),
+        '*vpn-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+    ]);
+
+    Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
+        // zitadelEnsureProject() always resolves the project id first, reuse
+        // or not.
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1', 'name' => 'netbird-management']]]),
+        // Registered app still exists, redirect URIs still match — reused,
+        // not re-registered.
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        GetProjectAppRequest::class => MockResponse::make(['app' => [
+            'oidcConfig' => [
+                'redirectUris' => ['https://vpn.'.GlobalConfigData::load()->getLocalTld().'/oauth2/callback'],
+                'postLogoutRedirectUris' => ['https://vpn.'.GlobalConfigData::load()->getLocalTld().'/oauth2/logout/callback'],
+                'authMethodType' => 'OIDC_AUTH_METHOD_TYPE_BASIC',
+            ],
+        ]]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'netbird-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
+        // The 'zitadel' entry already exists from a previous wire — must PUT.
+        ListIdentityProvidersRequest::class => MockResponse::make([
+            ['id' => 'idp-1', 'type' => 'zitadel', 'name' => 'Zitadel'],
+        ], 200),
+        UpdateIdentityProviderRequest::class => MockResponse::make(['id' => 'idp-1', 'type' => 'zitadel', 'name' => 'Zitadel'], 200),
+    ]);
+
+    $this->artisan('sso:wire', ['--tool' => 'vpn', '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('is wired to Zitadel SSO');
+
+    Saloon::assertSent(function (UpdateIdentityProviderRequest $request) {
+        $body = $request->body()->all();
+
+        return $body['type'] === 'zitadel' && str_contains($request->resolveEndpoint(), 'idp-1');
+    });
+    Saloon::assertNotSent(CreateIdentityProviderRequest::class);
+});
+
+test('plain sso:wire offers installed Forgejo instances in its tool list', function (): void {
+    // Live DX bug 2026-08-24: resolveTool()'s installed-filter probed
+    // oidcEnv()'s deployment name without an instance (`git-forgejo-`), so
+    // git never appeared in the interactive list even though Forgejo was
+    // running as git-forgejo-git-luchtech-dev — users had to know to pass
+    // --tool=git explicitly. Git now probes any `git-forgejo-*` deployment
+    // by prefix (excluding the CI runner).
+    Process::fake([
+        // The new prefix probe must be matched before the generic
+        // `get deployment` catch-all below.
+        '*get deployments -n larakube-shared -o name*' => Process::result(
+            output: "deployment/git-forgejo-runner-git-luchtech-dev\ndeployment/git-forgejo-git-luchtech-dev\n",
+        ),
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment git-forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret sso-app-git*' => Process::result(output: ''),
+        '*create secret generic*' => Process::result(output: 'secret created'),
+        '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n"),
+        '*admin auth add-oauth*' => Process::result(output: 'source created'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/forgejo restarted'),
+        // Every OTHER OIDC-capable tool's existence probe misses — only git
+        // is "installed", so the picker shows exactly one option.
+        '*get deployment*' => Process::result(output: ''),
+    ]);
+
+    Saloon::fake([
+        SearchActionsRequest::class => MockResponse::make(['result' => []]),
+        CreateActionRequest::class => MockResponse::make(['id' => 'action-1']),
+        GetFlowRequest::class => MockResponse::make(['flow' => ['triggerActions' => []]]),
+        SetFlowTriggerActionsRequest::class => MockResponse::make([]),
+        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-git', 'clientId' => 'cid-git', 'clientSecret' => 'csecret-git']),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'forgejo', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
+        CreateProjectRoleRequest::class => MockResponse::make([]),
+    ]);
+
+    $this->artisan('sso:wire', ['--no-interaction' => false])
+        ->assertExitCode(0)
+        ->expectsChoice('Wire which tool to Zitadel SSO?', 'git', [
+            'git' => 'Git Forge & CI/CD (Forgejo)',
+        ])
+        ->expectsOutputToContain('is wired to Zitadel SSO');
+
+    // Selected via the picker, the wiring still registers under the
+    // canonical name with the email/profile scopes required for auto-link.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'admin auth add-oauth')
+        && str_contains($process->command, "--name 'zitadel'")
+        && str_contains($process->command, '--scopes profile --scopes email'));
 });

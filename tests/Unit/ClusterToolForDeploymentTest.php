@@ -7,16 +7,18 @@ use App\Enums\ClusterTool;
  * discovery relies on to decide whether a live Deployment is backup-worthy.
  */
 test('resolves an exact PRIMARY component match', function (): void {
-    $match = ClusterTool::forDeployment('forgejo');
+    $match = ClusterTool::forDeployment('git-forgejo');
     expect($match['tool'])->toBe(ClusterTool::GIT)
         ->and($match['component']->key)->toBe('server');
 });
 
-test('a WORKER whose name prefixes another tool\'s deployment is never mistaken for an instance-suffixed copy of it', function (): void {
-    // "forgejo-runner" starts with "forgejo-" — the exact-match-first pass
-    // must resolve it to GIT's own "runner" component, never GIT's "server"
-    // component read as if "runner" were an instance suffix on it.
-    $match = ClusterTool::forDeployment('forgejo-runner');
+test('a WORKER whose base name literally is a full match resolves via the exact pass, not the prefix fallback', function (): void {
+    // "git-forgejo-runner" is itself the runner component's own base
+    // deployment name — the exact-match-first pass must resolve it directly
+    // to GIT's "runner" component without ever falling through to the
+    // suffix-stripping pass (which has no other tool's base name to
+    // collide with here, but must not be relied on regardless).
+    $match = ClusterTool::forDeployment('git-forgejo-runner');
     expect($match['tool'])->toBe(ClusterTool::GIT)
         ->and($match['component']->key)->toBe('runner');
 });

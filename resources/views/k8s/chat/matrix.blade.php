@@ -3,6 +3,27 @@
      subPath-mounted Secrets/ConfigMaps don't hot-reload, and hashing only the
      input variables misses changes to literal strings in this file. --}}
 @php($__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/matrix.blade.php')), 0, 12))
+{{-- chat-synapse (its config/PVC/secrets) and chat-synapse-db stay
+     unsuffixed always — see ChatTool::components()'s comment: they hold
+     live data (media store, signing key, chat_matrix rows on --no-plex),
+     so renaming them is a deliberate future migration, not a Blade change.
+     Everything else here IS instance-suffixed (web, coturn — stateless,
+     safe to rename any time — and the mas/admin resources referenced from
+     this file's ingress) — ChatInitCommand always computes a real
+     $instance (never null), but this file defaults to '' so an old test
+     fixture that doesn't pass it renders unsuffixed rather than crashing
+     on an undefined variable. --}}
+{{-- Each resource's FULL name gets the instance suffix appended as one
+     unit (matching ChatTool::components()'s own $name() helper exactly —
+     $name('chat-web-config') suffixes the whole string, NOT "chat-web"
+     suffixed then "-config" appended after) — mixing the two shapes was a
+     real bug caught while writing this. --}}
+@php($__instanceSuffix = ($instance ?? null) ? "-{$instance}" : '')
+@php($webName = 'chat-web'.$__instanceSuffix)
+@php($webConfigName = 'chat-web-config'.$__instanceSuffix)
+@php($coturnName = 'chat-coturn'.$__instanceSuffix)
+@php($coturnConfigName = 'chat-coturn-config'.$__instanceSuffix)
+@php($masName = 'chat-mas'.$__instanceSuffix)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -248,7 +269,7 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: chat-coturn-config
+  name: {{ $coturnConfigName }}
   namespace: larakube-shared
 type: Opaque
 stringData:
@@ -270,21 +291,21 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chat-coturn
+  name: {{ $coturnName }}
   namespace: larakube-shared
   labels:
-    app: chat-coturn
+    app: {{ $coturnName }}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: chat-coturn
+      app: {{ $coturnName }}
   template:
     metadata:
       labels:
-        app: chat-coturn
+        app: {{ $coturnName }}
       annotations:
         larakube.io/config-checksum: "{{ substr(hash('sha256', $turnSecret.$host.$__tplHash), 0, 16) }}"
     spec:
@@ -312,16 +333,16 @@ spec:
       volumes:
         - name: config
           secret:
-            secretName: chat-coturn-config
+            secretName: {{ $coturnConfigName }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: chat-coturn
+  name: {{ $coturnName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: chat-coturn
+    app: {{ $coturnName }}
   ports:
     - name: turn-udp
       protocol: UDP
@@ -426,7 +447,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: chat-web-config
+  name: {{ $webConfigName }}
   namespace: larakube-shared
 data:
   {{-- No /.well-known/matrix/client handling needed here either: Element
@@ -453,20 +474,20 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chat-web
+  name: {{ $webName }}
   namespace: larakube-shared
   labels:
-    app: chat-web
+    app: {{ $webName }}
     app.kubernetes.io/part-of: chat
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: chat-web
+      app: {{ $webName }}
   template:
     metadata:
       labels:
-        app: chat-web
+        app: {{ $webName }}
       annotations:
         larakube.io/config-checksum: "{{ substr(hash('sha256', $host.($appName ?? '').($logoUrl ?? '').$__tplHash), 0, 16) }}"
     spec:
@@ -489,16 +510,16 @@ spec:
       volumes:
         - name: web-config
           configMap:
-            name: chat-web-config
+            name: {{ $webConfigName }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: chat-web
+  name: {{ $webName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: chat-web
+    app: {{ $webName }}
   ports:
     - protocol: TCP
       port: 80
@@ -542,7 +563,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: chat-mas
+                name: {{ $masName }}
                 port:
                   number: 8080
 @endforeach
@@ -573,7 +594,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: chat-web
+                name: {{ $webName }}
                 port:
                   number: 80
   tls:

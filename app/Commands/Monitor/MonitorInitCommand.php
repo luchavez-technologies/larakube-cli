@@ -62,6 +62,16 @@ class MonitorInitCommand extends Command
         $ns = $this->monitoringNamespace();
 
         $host = $this->resolveToolHost(SharedClusterService::GRAFANA, ClusterTool::MONITOR, $env, $kubectl);
+        // Loki/Promtail are instance-suffixed even though Grafana (this
+        // tool's primary component) and the rest of the stack stay bare for
+        // now — a deliberate, scoped first step of a larger rename, not a
+        // signal that Monitor supports multiple instances.
+        $instance = ClusterTool::MONITOR->instanceSlugFromHost($host);
+        $suffix = $instance !== '' ? "-{$instance}" : '';
+        $lokiDeployment = "monitor-loki{$suffix}";
+        $lokiConfigMap = "monitor-loki-config{$suffix}";
+        $promtailDaemonset = "monitor-promtail{$suffix}";
+        $promtailConfigMap = "monitor-promtail-config{$suffix}";
 
         [$withLogs, $withTraces] = $this->resolveMonitoringComponents();
 
@@ -71,7 +81,7 @@ class MonitorInitCommand extends Command
             'removedLogs' => $removedLogs,
             'removedTraces' => $removedTraces,
             'datasourcesChanged' => $datasourcesChanged,
-        ] = $this->reconcileMonitoringComponents($kubectl, $ns, $withLogs, $withTraces);
+        ] = $this->reconcileMonitoringComponents($kubectl, $ns, $withLogs, $withTraces, $instance);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -137,6 +147,7 @@ class MonitorInitCommand extends Command
 
         $manifest = view('k8s.monitoring.shared', [
             'host' => $host,
+            'instance' => $instance,
             'appName' => $branding['appName'],
             'logoUrl' => $branding['logoUrl'],
             'grafanaPassword' => $password,
@@ -172,8 +183,12 @@ class MonitorInitCommand extends Command
         }
 
         if ($removedLogs) {
-            if (! $this->removeResources('Removing Loki...', "{$kubectl} delete deployment,svc,configmap,pvc loki loki-config loki-storage -n {$ns} --ignore-not-found")
-                || ! $this->removeResources('Removing Promtail...', "{$kubectl} delete daemonset,configmap,serviceaccount promtail promtail-config -n {$ns} --ignore-not-found")) {
+            // loki-storage PVC name stays bare (never renamed, per the PVC
+            // convention), but it IS still deleted here — confirmComponentRemoval()
+            // above already got explicit sign-off to wipe its retained logs.
+            if (! $this->removeResources('Removing Loki...', "{$kubectl} delete deployment,svc,configmap,pvc {$lokiDeployment} {$lokiConfigMap} loki-storage -n {$ns} --ignore-not-found")
+                || ! $this->removeResources('Removing Promtail...', "{$kubectl} delete daemonset,configmap {$promtailDaemonset} {$promtailConfigMap} -n {$ns} --ignore-not-found")
+                || ! $this->removeResources('Removing Promtail RBAC...', "{$kubectl} delete serviceaccount promtail -n {$ns} --ignore-not-found")) {
                 $this->laraKubeError('Could not remove the previously-deployed log aggregation stack — see the output above.');
 
                 return 1;
@@ -193,7 +208,7 @@ class MonitorInitCommand extends Command
 
             return 1;
         }
-        if ($withLogs && ! $this->withSpin('Waiting for Loki...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/loki -n {$ns} --timeout=120s")->successful())) {
+        if ($withLogs && ! $this->withSpin('Waiting for Loki...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$lokiDeployment} -n {$ns} --timeout=120s")->successful())) {
             $this->laraKubeError('loki never became Ready.');
 
             return 1;
@@ -208,7 +223,7 @@ class MonitorInitCommand extends Command
 
             return 1;
         }
-        if ($withLogs && ! $this->withSpin('Waiting for Promtail...', fn () => Process::timeout(130)->run("{$kubectl} rollout status daemonset/promtail -n {$ns} --timeout=120s")->successful())) {
+        if ($withLogs && ! $this->withSpin('Waiting for Promtail...', fn () => Process::timeout(130)->run("{$kubectl} rollout status daemonset/{$promtailDaemonset} -n {$ns} --timeout=120s")->successful())) {
             $this->laraKubeError('promtail never became Ready.');
 
             return 1;
@@ -244,7 +259,7 @@ class MonitorInitCommand extends Command
             : '  <fg=gray>Grafana database:</>  Commons Postgres (persists dashboards/users across restarts, covered by the nightly Commons backup).');
         $this->line("  <fg=gray>Prometheus:</>         prometheus.{$ns}.svc.cluster.local:9090  <fg=gray>(in-cluster)</>");
         if ($withLogs) {
-            $this->line("  <fg=gray>Loki:</>               loki.{$ns}.svc.cluster.local:3100  <fg=gray>(in-cluster)</>");
+            $this->line("  <fg=gray>Loki:</>               {$lokiDeployment}.{$ns}.svc.cluster.local:3100  <fg=gray>(in-cluster)</>");
         }
         if ($withTraces) {
             $this->line("  <fg=gray>Tempo:</>              tempo.{$ns}.svc.cluster.local:3200  <fg=gray>(in-cluster, OTLP :4317/:4318)</>");
@@ -337,11 +352,12 @@ class MonitorInitCommand extends Command
      *
      * @return array{withLogs: bool, withTraces: bool, removedLogs: bool, removedTraces: bool, datasourcesChanged: bool}
      */
-    protected function reconcileMonitoringComponents(string $kubectl, string $ns, bool $withLogs, bool $withTraces): array
+    protected function reconcileMonitoringComponents(string $kubectl, string $ns, bool $withLogs, bool $withTraces, string $instance): array
     {
         $grafanaPresent = Process::run("{$kubectl} get deployment/grafana -n {$ns} --no-headers")->successful();
 
-        $lokiPresent = Process::run("{$kubectl} get deployment/loki -n {$ns} --no-headers")->successful();
+        $lokiDeployment = 'monitor-loki'.($instance !== '' ? "-{$instance}" : '');
+        $lokiPresent = Process::run("{$kubectl} get deployment/{$lokiDeployment} -n {$ns} --no-headers")->successful();
         $tempoPresent = Process::run("{$kubectl} get deployment/tempo -n {$ns} --no-headers")->successful();
 
         $lokiMismatch = $withLogs !== $lokiPresent;

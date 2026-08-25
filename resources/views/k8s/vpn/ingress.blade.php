@@ -8,9 +8,16 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 @unless($isLocal ?? false)
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
-    @if($proxied ?? false)
+{{-- Confirmed live 2026-08-24: an indented @if/@endif nested inside another
+     directive leaks stray leading whitespace onto the next line once the
+     outer directive closes — here it corrupted `spec:` below into a child of
+     `annotations:`, making kubectl reject the whole Ingress (Traefik and
+     every other resource in the same multi-doc apply had already succeeded,
+     masking this as a single silent failure). Keep directive tags at column
+     0; only literal YAML content should carry real indentation. --}}
+@if($proxied ?? false)
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
-    @endif
+@endif
 @endunless
 spec:
   rules:

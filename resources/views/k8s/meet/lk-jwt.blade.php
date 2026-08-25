@@ -3,6 +3,7 @@
      is why it lives here rather than in either tool's own manifest. --}}
 @php
     $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/meet/lk-jwt.blade.php')), 0, 12);
+    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
 @endphp
 # lk-jwt-service implements POST /sfu/get at its own root, but Element Call
 # always calls {livekit_service_url}/sfu/get — so the /jwt prefix that routes
@@ -20,7 +21,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: meet-lk-jwt
+  name: meet-lk-jwt{{ $suffix }}
   namespace: larakube-shared
   labels:
     app: meet-lk-jwt
@@ -65,7 +66,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: meet-lk-jwt
+  name: meet-lk-jwt{{ $suffix }}
   namespace: larakube-shared
 spec:
   selector:

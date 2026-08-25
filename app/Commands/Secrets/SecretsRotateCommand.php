@@ -97,6 +97,22 @@ class SecretsRotateCommand extends Command
     {
         $capable = array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
 
+        // A tool's OWN registered host, not a bare/no-instance guess — a
+        // fully migrated tool (e.g. GIT) has no legitimate bare deployment
+        // to find, so resolving null here would always report "not
+        // installed" even when it plainly is.
+        $ownInstance = function (ClusterTool $t) use ($kubectl): ?string {
+            $host = $this->getToolHost($kubectl, $t);
+
+            return $host !== null ? $this->resolveInstanceForDomain($kubectl, $t, $host) : null;
+        };
+
+        // --domain is ignored with --all (docblock above) — only the
+        // single-tool paths below fall through to it.
+        $resolveInstance = function (ClusterTool $t) use ($kubectl, $domain, $ownInstance): ?string {
+            return $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $t, $domain) : $ownInstance($t);
+        };
+
         $resolve = function (ClusterTool $t, ?string $forInstance) use ($kubectl) {
             $inst = $forInstance ?? '';
             $engine = $t->engines() !== []
@@ -117,7 +133,7 @@ class SecretsRotateCommand extends Command
         if ($this->option('all')) {
             $installed = [];
             foreach ($capable as $t) {
-                $resolved = $resolve($t, null);
+                $resolved = $resolve($t, $ownInstance($t));
                 if ($resolved !== null) {
                     $installed[] = $resolved;
                 }
@@ -149,7 +165,7 @@ class SecretsRotateCommand extends Command
                 return [];
             }
 
-            $targetInst = $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $tool, $domain) : null;
+            $targetInst = $resolveInstance($tool);
             $resolved = $resolve($tool, $targetInst);
             if ($resolved === null) {
                 $this->laraKubeError("{$tool->getLabel()} is not installed at this instance.");
@@ -162,8 +178,7 @@ class SecretsRotateCommand extends Command
 
         $installed = [];
         foreach ($capable as $t) {
-            $targetInst = $domain !== '' ? $this->resolveInstanceForDomain($kubectl, $t, $domain) : null;
-            $resolved = $resolve($t, $targetInst);
+            $resolved = $resolve($t, $ownInstance($t));
             if ($resolved !== null) {
                 $installed[] = $resolved;
             }

@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 
@@ -78,11 +79,14 @@ trait InteractsWithMonitoring
             return null;
         }
 
+        $host = $this->resolveGrafanaHostReadOnly($env, $config);
+        $lokiName = 'monitor-loki'.($host !== null ? '-'.ClusterTool::MONITOR->instanceSlugFromHost($host) : '');
+
         return [
-            'host' => $this->resolveGrafanaHostReadOnly($env, $config),
+            'host' => $host,
             'password' => $this->readGrafanaPassword($kubectl, $ns),
             'prometheus' => "prometheus.{$ns}.svc.cluster.local:9090",
-            'loki' => "loki.{$ns}.svc.cluster.local:3100",
+            'loki' => "{$lokiName}.{$ns}.svc.cluster.local:3100",
         ];
     }
 }

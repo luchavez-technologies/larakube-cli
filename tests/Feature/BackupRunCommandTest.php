@@ -34,7 +34,7 @@ function backupRunFakes(array $overrides = []): array
         // excluded, Synapse signing key included, etc.) still hold under the
         // new discovery mechanism, not the old hardcoded array.
         '*get namespace -o jsonpath*' => Process::result(output: 'larakube-shared larakube-vault larakube-secrets larakube-sso larakube-vpn larakube-plex'),
-        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo forgejo-runner drive-ocis stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana prometheus-server loki'),
+        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'git-forgejo-git-luchtech-dev git-forgejo-runner-git-luchtech-dev drive-ocis stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana prometheus-server loki'),
         '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'vaultwarden'),
         '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
         '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),

@@ -2,6 +2,7 @@
 
 use App\Data\CloudData;
 use App\Data\ConfigData;
+use App\Data\GlobalConfigData;
 use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
 use App\Http\Integrations\Netbird\Requests\SetupOwnerRequest;
 use Illuminate\Support\Facades\Process;
@@ -19,6 +20,23 @@ function vpnInitKubectl(): string
     return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 }
 
+/**
+ * Renders the SAME management.json ensureVpnConfig() would for a steady-state
+ * re-run, base64-encoded exactly as `kubectl get secret ... -o jsonpath=...`
+ * would return it — an existing-install fixture that content-matches the
+ * freshly-rendered template exactly, so ensureVpnConfig() correctly detects
+ * "nothing changed" and skips the restart path these tests don't otherwise
+ * fake.
+ */
+function vpnManagementConfigFixture(string $host, string $relaySecret = 'existing-relay-secret', string $encryptionKey = 'existing-encryption-key'): string
+{
+    return base64_encode(view('k8s.vpn.management-config', [
+        'host' => $host,
+        'relaySecret' => $relaySecret,
+        'dataStoreEncryptionKey' => $encryptionKey,
+    ])->render());
+}
+
 test('vpn:init deploys netbird vpn to larakube-vpn', function (): void {
     $kubectl = vpnInitKubectl();
 
@@ -31,7 +49,7 @@ test('vpn:init deploys netbird vpn to larakube-vpn', function (): void {
         "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
         // Already bootstrapped — vpn:init should skip auth/config setup entirely, no Http calls made.
         "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: 'vpn-secrets', exitCode: 0),
-        "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
+        "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
@@ -74,7 +92,7 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
             "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
             "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
             "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: 'vpn-secrets', exitCode: 0),
-            "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
+            "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: vpnManagementConfigFixture('vpn.example.com'), exitCode: 0),
             '*larakube-tools-registry*' => Process::result(output: ''),
             '*create namespace larakube-shared*' => Process::result(output: 'created'),
         ]);
@@ -114,7 +132,7 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
         "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
         "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: '', exitCode: 1),
         "{$kubectl} create secret generic vpn-secrets*" => Process::result(output: 'secret/vpn-secrets created'),
-        "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
+        "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
     ]);
     Saloon::fake([
         SetupOwnerRequest::class => MockResponse::make(['personal_access_token' => 'nbp_test_token']),
@@ -140,7 +158,7 @@ test('vpn:init warns but does not fail when NetBird auth bootstrap fails', funct
         "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
         "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
         "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: '', exitCode: 1),
-        "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: 'netbird-relay-secret', exitCode: 0),
+        "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
     ]);
     Saloon::fake([
         SetupOwnerRequest::class => MockResponse::make(status: 500),
@@ -186,6 +204,78 @@ test('vpn:remove also targets the CHOSEN environment\'s own saved context', func
         chdir($original);
         $temporaryDirectory->delete();
     }
+});
+
+test('vpn:init re-renders management.json from the PRESERVED relay secret + encryption key, and restarts management only when content actually changed', function (): void {
+    // Regression guard for a real live incident, 2026-08-25: the original
+    // ensureVpnConfig() skipped entirely once the Secret existed — a
+    // genuine template fix (e.g. the /oauth2 issuer suffix, see
+    // management-config.blade.php) could never reach an already-deployed
+    // cluster. The fix must NEVER regenerate relaySecret/dataStoreEncryptionKey
+    // on a re-run — dataStoreEncryptionKey doubles as EmbeddedIdP's own
+    // database encryption key, and a fresh random value would make the
+    // already-encrypted management database unreadable on next boot.
+    $kubectl = vpnInitKubectl();
+    $host = 'vpn.'.GlobalConfigData::load()->getLocalTld();
+
+    // An OLDER-shaped config: same real secrets, but missing the /oauth2
+    // suffix a template fix since added — content genuinely differs from
+    // what the CURRENT template renders for the same secrets.
+    $staleConfig = str_replace(
+        '"Issuer": "https://'.$host.'/oauth2"',
+        '"Issuer": "https://'.$host.'"',
+        (string) base64_decode(vpnManagementConfigFixture($host, 'preserved-relay-secret', 'preserved-encryption-key')),
+    );
+    expect($staleConfig)->not->toContain('/oauth2"');
+
+    Process::fake([
+        "{$kubectl} create namespace larakube-vpn*" => Process::result(output: 'namespace/larakube-vpn created'),
+        "{$kubectl} apply -f *" => Process::result(output: 'applied'),
+        "{$kubectl} rollout status deploy/netbird-management -n larakube-vpn*" => Process::result(output: 'rollout success'),
+        "{$kubectl} rollout restart deployment/netbird-management -n larakube-vpn*" => Process::result(output: 'restarted'),
+        "{$kubectl} rollout status deploy/netbird-signal -n larakube-vpn*" => Process::result(output: 'rollout success'),
+        "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
+        "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: 'vpn-secrets', exitCode: 0),
+        "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: base64_encode($staleConfig), exitCode: 0),
+        "{$kubectl} create secret generic netbird-relay-secret*" => Process::result(output: 'secret/netbird-relay-secret configured'),
+        '*larakube-tools-registry*' => Process::result(output: ''),
+        '*create namespace larakube-shared*' => Process::result(output: 'created'),
+    ]);
+
+    $this->artisan('vpn:init local')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Restarting NetBird Management to pick up config changes...');
+
+    // The real secrets survive unchanged into the re-rendered config.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'kubectl create secret generic netbird-relay-secret')
+        && str_contains($process->command, '--from-literal=relay-secret='.escapeshellarg('preserved-relay-secret')));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/netbird-management'));
+});
+
+test('vpn:init does NOT restart management when the re-rendered config is byte-identical to what is already deployed', function (): void {
+    $kubectl = vpnInitKubectl();
+    $host = 'vpn.'.GlobalConfigData::load()->getLocalTld();
+
+    Process::fake([
+        "{$kubectl} create namespace larakube-vpn*" => Process::result(output: 'namespace/larakube-vpn created'),
+        "{$kubectl} apply -f *" => Process::result(output: 'applied'),
+        "{$kubectl} rollout status deploy/netbird-management -n larakube-vpn*" => Process::result(output: 'rollout success'),
+        "{$kubectl} rollout status deploy/netbird-signal -n larakube-vpn*" => Process::result(output: 'rollout success'),
+        "{$kubectl} rollout status deploy/netbird-relay -n larakube-vpn*" => Process::result(output: 'rollout success'),
+        "{$kubectl} rollout status deployment/netbird-client -n *" => Process::result(output: 'rollout success'),
+        "{$kubectl} get secret vpn-secrets -n larakube-vpn*" => Process::result(output: 'vpn-secrets', exitCode: 0),
+        "{$kubectl} get secret netbird-relay-secret -n larakube-vpn*" => Process::result(output: vpnManagementConfigFixture($host, 'preserved-relay-secret', 'preserved-encryption-key'), exitCode: 0),
+        '*larakube-tools-registry*' => Process::result(output: ''),
+        '*create namespace larakube-shared*' => Process::result(output: 'created'),
+    ]);
+
+    $this->artisan('vpn:init local')
+        ->assertExitCode(0)
+        ->doesntExpectOutputToContain('Restarting NetBird Management to pick up config changes...');
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'kubectl create secret generic netbird-relay-secret'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/netbird-management'));
 });
 
 test('vpn:init generates the relay secret + management.json on first run', function (): void {

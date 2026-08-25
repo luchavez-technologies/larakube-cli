@@ -34,10 +34,17 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
      */
     protected function teardown(string $kubectl, string $namespace): bool
     {
+        $instance = $this->resolveInstance($kubectl);
+        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
+
         $steps = [
             'Removing Prometheus...' => "deployment,svc,configmap,pvc,serviceaccount prometheus prometheus-config prometheus-storage -n {$namespace}",
-            'Removing Loki...' => "deployment,svc,configmap,pvc loki loki-config loki-storage -n {$namespace}",
-            'Removing Promtail...' => "daemonset,configmap,serviceaccount promtail promtail-config -n {$namespace}",
+            // Loki/Promtail's Deployment/DaemonSet + own ConfigMap are
+            // instance-suffixed; loki-storage (data) and Promtail's
+            // ServiceAccount stay bare — see the naming plan.
+            'Removing Loki...' => "deployment,svc,configmap,pvc monitor-loki{$suffix} monitor-loki-config{$suffix} loki-storage -n {$namespace}",
+            'Removing Promtail...' => "daemonset,configmap monitor-promtail{$suffix} monitor-promtail-config{$suffix} -n {$namespace}",
+            'Removing Promtail RBAC...' => "serviceaccount promtail -n {$namespace}",
             'Removing Tempo...' => "deployment,svc,configmap,pvc tempo tempo-config tempo-storage -n {$namespace}",
             'Removing kube-state-metrics...' => "deployment,svc,serviceaccount kube-state-metrics -n {$namespace}",
             'Removing Grafana...' => "deployment,svc,ingress,secret,configmap,pvc grafana monitor-secrets grafana-datasources grafana-dashboard-provider grafana-dashboards grafana-storage -n {$namespace}",

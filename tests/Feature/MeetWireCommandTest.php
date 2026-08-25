@@ -14,7 +14,7 @@ function meetWireFakes(array $overrides = []): array
     return array_merge([
         '*part-of=meet*' => Process::result(output: 'meet-livekit 1/1'),
         '*get deployment chat-synapse*' => Process::result(output: 'chat-synapse 1/1'),
-        '*get deployment meet-lk-jwt*' => Process::result(output: ''),
+        '*get deployment -l app=meet-lk-jwt*' => Process::result(output: ''),
         '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'meet', 'host' => 'meet.example.com', 'instance' => 'main'],
@@ -90,13 +90,13 @@ test('meet:unwire removes the bridge and revokes the key', function (): void {
 
     Process::fake(meetWireFakes([
         '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
-        '*get deployment meet-lk-jwt*' => Process::result(output: 'meet-lk-jwt 1/1'),
+        '*get deployment -l app=meet-lk-jwt*' => Process::result(output: 'meet-lk-jwt 1/1'),
     ]));
 
     $this->artisan('meet:unwire local --tool=chat --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('disconnected from Meet');
 
-    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment/meet-lk-jwt'));
+    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment,service -l app=meet-lk-jwt'));
     Process::assertRan(fn ($job) => str_contains($job->command, 'delete secret chat-meet'));
 });

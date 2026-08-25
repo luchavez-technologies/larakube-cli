@@ -26,10 +26,14 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     // delegates to primaryComponent()->deployment — this pins that the
     // refactor produced byte-identical output for every tool, both
     // multi-engine (data/flow) and plain, at 'main' and a named instance.
+    // GIT is excluded from this loop on purpose — see the dedicated test
+    // below: it never had a legitimate bare/no-instance form to pin. CHAT
+    // is excluded for the OPPOSITE reason — see its own dedicated test:
+    // chat-synapse never gains an instance suffix, even when one is given.
     $expected = [
-        'analytics' => 'analytics-umami', 'chat' => 'chat-synapse', 'crm' => 'crm-twenty',
+        'analytics' => 'analytics-umami', 'crm' => 'crm-twenty',
         'desk' => 'desk-freescout', 'drive' => 'drive-ocis', 'errors' => 'glitchtip-web',
-        'flow' => 'flow-n8n', 'git' => 'forgejo', 'insights' => 'insights-metabase',
+        'flow' => 'flow-n8n', 'insights' => 'insights-metabase',
         'link' => 'link-kutt', 'mail' => 'mail-stalwart', 'monitor' => 'grafana',
         'notes' => 'notes-outline', 'passwords' => 'vaultwarden', 'record' => 'record-sendrec',
         'secrets' => 'openbao-backend', 'sheets' => 'sheet-teable', 'sign' => 'sign-documenso',
@@ -50,12 +54,52 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         ->and(ClusterTool::DATA->deploymentName())->toBe('data-directus');
 });
 
+test('GIT always requires a real instance — there is no bare/default deployment name', function (): void {
+    // Unlike every other tool, GIT's server component was rebuilt with the
+    // Postgres/OpenBao rename (2026-08-23) to have zero bare-name fallback:
+    // the instance is always the host-derived slug, never null/''.
+    expect(ClusterTool::GIT->deploymentName('git-luchtech-dev'))->toBe('git-forgejo-git-luchtech-dev');
+});
+
+test('CHAT is the one tool where the PRIMARY component never gains an instance suffix', function (): void {
+    // Synapse only ever runs one server_name per process — there's no real
+    // second chat instance this would ever protect against — and
+    // chat-synapse/chat-synapse-db hold live data (media store, signing
+    // key, chat_matrix rows on --no-plex), so renaming them is a
+    // deliberate future migration, not something chat:init does today.
+    // Every OTHER component (born after MAS work landed, 2026-08-24) DOES
+    // thread the instance through, for the same naming-convention-
+    // uniformity reason every other tool does.
+    $components = collect(ClusterTool::CHAT->components('chat-luchtech-dev'))->keyBy('key');
+
+    expect($components['synapse']->deployment)->toBe('chat-synapse')
+        ->and($components['db']->deployment)->toBe('chat-synapse-db')
+        ->and($components['web']->deployment)->toBe('chat-web-chat-luchtech-dev')
+        ->and($components['coturn']->deployment)->toBe('chat-coturn-chat-luchtech-dev')
+        ->and($components['mas']->deployment)->toBe('chat-mas-chat-luchtech-dev')
+        ->and($components['mas-db']->deployment)->toBe('chat-mas-db-chat-luchtech-dev')
+        ->and($components['admin']->deployment)->toBe('chat-admin-chat-luchtech-dev');
+
+    // Every resource NAME inside a suffixed component's own resources list
+    // gets the instance appended to the FULL name as one unit too — e.g.
+    // chat-web-config-{instance}, never chat-web-{instance}-config. Mixing
+    // the two shapes was a real bug caught writing the Blade templates.
+    $webResources = collect($components['web']->resources)->pluck('name');
+    expect($webResources)->toContain('chat-web-config-chat-luchtech-dev')
+        ->and($webResources)->not->toContain('chat-web-chat-luchtech-dev-config');
+
+    $masResources = collect($components['mas']->resources)->pluck('name');
+    expect($masResources)->toContain('chat-mas-ingress-chat-luchtech-dev')
+        ->and($masResources)->toContain('chat-mas-config-chat-luchtech-dev')
+        ->and($masResources)->toContain('chat-mas-secrets-chat-luchtech-dev');
+});
+
 test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown deployment names exactly', function (): void {
     $chatDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::CHAT->components());
     expect($chatDeployments)->toBe(['chat-synapse', 'chat-web', 'chat-coturn', 'chat-synapse-db', 'chat-mas', 'chat-mas-db', 'chat-admin']);
 
-    $gitDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::GIT->components());
-    expect($gitDeployments)->toBe(['forgejo', 'forgejo-runner']);
+    $gitDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::GIT->components('git-luchtech-dev'));
+    expect($gitDeployments)->toBe(['git-forgejo-git-luchtech-dev', 'git-forgejo-runner-git-luchtech-dev']);
 
     $designDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::DESIGN->components());
     expect($designDeployments)->toBe(['design-penpot-backend', 'design-penpot-frontend', 'design-penpot-exporter']);
