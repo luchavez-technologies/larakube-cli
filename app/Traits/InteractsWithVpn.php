@@ -27,6 +27,7 @@ use App\Http\Integrations\Netbird\Requests\UpdateIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateSetupKeyRequest;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Throwable;
 
@@ -698,6 +699,45 @@ trait InteractsWithVpn
     }
 
     /**
+     * Wait until a connected gateway peer exists, and return its address.
+     *
+     * Registration lands a few seconds after the pod is Running, so reading
+     * peers the moment a rollout finishes can see only the previous, now
+     * disconnected gateway -- and write its dead address into DNS. Polling for
+     * a CONNECTED one is the difference between reconciling against the gateway
+     * that exists and the one that used to.
+     */
+    protected function awaitVpnGateway(string $host, string $pat, string $kubectl): ?string
+    {
+        $deadline = now()->addSeconds(90);
+
+        while (now()->lessThan($deadline)) {
+            $prefix = $this->vpnName('vpn-client', $kubectl);
+
+            foreach ($this->vpnPeers($host, $pat) as $peer) {
+                if (($peer['connected'] ?? false) !== true) {
+                    continue;
+                }
+
+                if (str_starts_with((string) ($peer['name'] ?? ''), $prefix)) {
+                    $ip = trim((string) ($peer['ip'] ?? ''), '"');
+
+                    if ($ip !== '') {
+                        return $ip;
+                    }
+                }
+            }
+
+            Sleep::sleep(5);
+        }
+
+        // Nothing connected within the window: fall back to whatever the
+        // account knows, so a gateway that is up but slow to report still gets
+        // a usable record rather than none.
+        return $this->vpnGatewayOverlayIp($host, $pat, $kubectl);
+    }
+
+    /**
      * Retire gateway peers left behind by earlier rollouts.
      *
      * Each rollout of the client Deployment enrols a brand-new peer -- the peer
@@ -777,7 +817,7 @@ trait InteractsWithVpn
             return true;
         }
 
-        $gatewayIp = $this->vpnGatewayOverlayIp($host, $pat, $kubectl);
+        $gatewayIp = $this->awaitVpnGateway($host, $pat, $kubectl);
 
         if ($gatewayIp === null) {
             return false;

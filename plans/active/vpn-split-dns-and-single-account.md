@@ -384,3 +384,42 @@ Three fixes:
 Worth knowing generally: **every client rollout costs a peer.** Peer identity is not
 carried across pods by the PVC — the peer name embeds the pod hash and each new pod
 enrols fresh.
+
+### Root cause, 2026-08-30 — the client PVC was mounted at the wrong path
+
+Every symptom above traces to one line. The client Deployment mounted its PVC at
+`/etc/netbird`, which on a live pod is **empty**. NetBird 0.77 keeps peer identity in
+`/var/lib/netbird`:
+
+```
+$ ls /var/lib/netbird
+active_profile.json  default.json  resolv.conf  root  state.json
+$ ls /etc/netbird            # the PVC
+(empty)
+```
+
+So the volume persisted nothing, and every restart of the client registered a
+**brand-new peer**: new overlay address, previous peer orphaned and disconnected
+forever, and any DNS record pointing at an address that no longer answers.
+
+This predates the split-DNS work — it made the gateway address unstable for anything
+that wanted to reference it, and quietly grew the peer list one entry per deploy. The
+mount is now `/var/lib/netbird`.
+
+It also explains why removing the restart was not enough on its own. The running
+CoreDNS had been started from a Corefile with no `reload` plugin, so it kept serving
+the old mapping no matter what the ConfigMap said:
+
+```
+$ nslookup -port=5353 admin.chat.luchtech.dev 127.0.0.1
+Address: 100.84.155.135      # the deleted peer; ConfigMap said 100.84.209.9
+```
+
+`reload` can only take effect once a CoreDNS process has started with a Corefile
+containing it, so exactly one more restart is required — after which identity
+persists and no further restarts are needed.
+
+**Also added:** `awaitVpnGateway()` polls for a *connected* gateway before writing
+any record. Registration lands a few seconds after the pod is Running, so reading
+peers the instant a rollout completes can see only the previous, disconnected
+gateway, and would write its dead address into DNS.

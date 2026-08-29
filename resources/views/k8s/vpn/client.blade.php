@@ -44,8 +44,16 @@ spec:
                   name: vpn-management-secrets{{ $sfx }}
                   key: setup-key
           volumeMounts:
+            {{-- /var/lib/netbird, NOT /etc/netbird. 0.77 keeps the peer's
+                 identity here -- default.json holds the key, alongside
+                 state.json and active_profile.json. /etc/netbird was empty on a
+                 live pod (2026-08-30), so the PVC persisted nothing and every
+                 restart registered a BRAND NEW peer: a fresh overlay address,
+                 the previous peer orphaned and disconnected forever, and any
+                 split-DNS record pointing at an address that no longer
+                 answers. --}}
             - name: data
-              mountPath: /etc/netbird
+              mountPath: /var/lib/netbird
         - name: ingress-proxy
           image: alpine/socat:1.8.1.3
           command: ["/bin/sh", "-c"]

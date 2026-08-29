@@ -243,3 +243,50 @@ test('orphaned gateway peers are retired, and the live one never is', function (
     Saloon::assertSent(fn ($request) => ! $request instanceof DeletePeerRequest
         || str_ends_with($request->resolveEndpoint(), '/old'));
 });
+
+test('the client PVC is mounted where NetBird actually keeps peer identity', function (): void {
+    // /etc/netbird was empty on a live pod: the PVC persisted nothing, so every
+    // restart registered a NEW peer with a NEW overlay address and orphaned the
+    // old one. Identity lives in /var/lib/netbird (default.json + state.json).
+    $manifest = view('k8s.vpn.client', ['instance' => '', 'isLocal' => false])->render();
+
+    expect($manifest)
+        ->toContain('mountPath: /var/lib/netbird')
+        ->not->toContain('mountPath: /etc/netbird');
+});
+
+test('reconcile waits for a connected gateway rather than writing a dead address', function (): void {
+    // Registration lands a few seconds after the pod is Running. Reading peers
+    // immediately can see only the previous, disconnected gateway.
+    Process::fake(splitDnsFakes());
+    $polls = 0;
+
+    Saloon::fake([
+        ListNameserverGroupsRequest::class => MockResponse::make([]),
+        // First poll sees only the dead gateway, as it would moments after a
+        // rollout; the new one appears on the second.
+        ListPeersRequest::class => function () use (&$polls) {
+            $polls++;
+
+            return MockResponse::make($polls === 1
+                ? [['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => false]]
+                : [
+                    ['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => false],
+                    ['id' => 'new', 'name' => 'vpn-client-new', 'ip' => '100.84.209.9', 'connected' => true],
+                ]);
+        },
+        ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
+        SaveNameserverGroupRequest::class => MockResponse::make(['id' => 'ns-1']),
+        DeletePeerRequest::class => MockResponse::make([], 200),
+    ]);
+
+    splitDnsSubject()->reconcile('kubectl', 'vpn.example.com', 'pat');
+
+    Saloon::assertSent(function ($request) {
+        if (! $request instanceof SaveNameserverGroupRequest) {
+            return true;
+        }
+
+        return $request->body()->all()['nameservers'][0]['ip'] === '100.84.209.9';
+    });
+});
