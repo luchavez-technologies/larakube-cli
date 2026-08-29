@@ -7,21 +7,106 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Http\Integrations\Netbird\NetbirdConnector;
+use App\Http\Integrations\Netbird\Requests\CreateGroupRequest;
 use App\Http\Integrations\Netbird\Requests\CreateIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
+use App\Http\Integrations\Netbird\Requests\DeleteAccountRequest;
 use App\Http\Integrations\Netbird\Requests\DeleteIdentityProviderRequest;
+use App\Http\Integrations\Netbird\Requests\ListAccountsRequest;
+use App\Http\Integrations\Netbird\Requests\ListGroupsRequest;
 use App\Http\Integrations\Netbird\Requests\ListIdentityProvidersRequest;
 use App\Http\Integrations\Netbird\Requests\ListPeersRequest;
+use App\Http\Integrations\Netbird\Requests\ListPersonalAccessTokensRequest;
 use App\Http\Integrations\Netbird\Requests\ListSetupKeysRequest;
+use App\Http\Integrations\Netbird\Requests\ListUsersRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateSetupKeyRequest;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Process;
+use Throwable;
 
 trait InteractsWithVpn
 {
-    use ResolvesEnvironmentContext;
+    use InteractsWithToolRegistry, ResolvesEnvironmentContext, SyncsClusterSecrets;
+
+    /** Cluster-level group for the in-cluster gateway peer(s). */
+    public const VPN_GROUP_ROUTERS = 'larakube-routers';
+
+    /** Cluster-level group every human device lands in unless told otherwise. */
+    public const VPN_GROUP_PEOPLE = 'larakube-people';
 
     /** The dedicated namespace the NetBird VPN lives in. */
+    /** Memoised per command run — the registry lookup is a kubectl call. */
+    private ?string $vpnInstanceCache = null;
+
+    /**
+     * The instance slug every VPN resource is suffixed with, resolved from the
+     * tool registry rather than threaded through a dozen signatures.
+     *
+     * Empty string when VPN is not registered yet — which is exactly right for
+     * a first `vpn:init`, whose resources are rendered from the host it already
+     * has and which registers itself only after deploying.
+     */
+    protected function vpnInstance(string $kubectl): string
+    {
+        if ($this->vpnInstanceCache !== null) {
+            return $this->vpnInstanceCache;
+        }
+
+        $host = $this->getToolHost($kubectl, ClusterTool::VPN);
+
+        return $this->vpnInstanceCache = $host !== null ? ClusterTool::VPN->instanceSlugFromHost($host) : '';
+    }
+
+    /**
+     * Host-based sibling of vpnName(), for vpn:init — which renders and waits on
+     * these resources BEFORE it registers the tool, so the registry lookup
+     * vpnName() uses would still be empty.
+     */
+    protected function vpnNameForHost(string $base, string $host): string
+    {
+        $instance = ClusterTool::VPN->instanceSlugFromHost($host);
+
+        return $instance === '' ? $base : "{$base}-{$instance}";
+    }
+
+    /**
+     * Store a new PAT so it actually survives.
+     *
+     * Patching the Kubernetes Secret alone is not enough once VpnTool declares a
+     * KV sync for `pat`: that ExternalSecret refreshes every 60s with
+     * `creationPolicy: Merge`, so it would quietly put the OLD value back and the
+     * command would look like it had worked. OpenBao is the source of truth for
+     * this key when it is present, so write there first and let ESO propagate —
+     * the Secret patch stays for immediate effect and for clusters with no
+     * OpenBao at all.
+     *
+     * @return bool whether the Kubernetes Secret was patched
+     */
+    protected function persistVpnPat(string $kubectl, string $pat, string $env): bool
+    {
+        $keyMap = ClusterTool::VPN->openbaoSyncConfig($this->vpnInstance($kubectl))['keyMap'] ?? [];
+        $kvKey = array_key_first($keyMap);
+
+        if ($kvKey !== null && $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
+            $this->pushClusterSecret($kubectl, $kvKey, $pat, $env === 'local' ? 'local' : 'production');
+        }
+
+        return Process::run(
+            "{$kubectl} patch secret ".$this->vpnName('vpn-management-secrets', $kubectl)
+            ." -n {$this->vpnNamespace()} --type=merge -p "
+            .escapeshellarg((string) json_encode(['data' => ['pat' => base64_encode($pat)]], JSON_THROW_ON_ERROR)),
+        )->successful();
+    }
+
+    /** `vpn-management` → `vpn-management-vpn-luchtech-dev`, per the naming convention. */
+    protected function vpnName(string $base, string $kubectl): string
+    {
+        $instance = $this->vpnInstance($kubectl);
+
+        return $instance === '' ? $base : "{$base}-{$instance}";
+    }
+
     protected function vpnNamespace(): string
     {
         return ClusterTool::VPN->namespace();
@@ -55,7 +140,8 @@ trait InteractsWithVpn
     /** NetBird management Deployment present? A cheap "is NetBird installed" probe. */
     protected function isVpnInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment netbird-management -n {$ns} --no-headers")->output();
+        $deployment = $this->vpnName('vpn-management', $kubectl);
+        $out = Process::run("{$kubectl} get deployment {$deployment} -n {$ns} --no-headers")->output();
 
         return trim($out) !== '';
     }
@@ -69,7 +155,7 @@ trait InteractsWithVpn
     protected function fetchVpnSetupKey(string $kubectl, string $ns): ?string
     {
         $encoded = trim(Process::run(
-            "{$kubectl} get secret vpn-secrets -n {$ns} -o jsonpath='{.data.setup-key}'",
+            "{$kubectl} get secret ".$this->vpnName('vpn-management-secrets', $kubectl)." -n {$ns} -o jsonpath='{.data.setup-key}'",
         )->output());
 
         if ($encoded === '') {
@@ -91,7 +177,7 @@ trait InteractsWithVpn
     protected function fetchVpnPat(string $kubectl, string $ns): ?string
     {
         $encoded = trim(Process::run(
-            "{$kubectl} get secret vpn-secrets -n {$ns} -o jsonpath='{.data.pat}'",
+            "{$kubectl} get secret ".$this->vpnName('vpn-management-secrets', $kubectl)." -n {$ns} -o jsonpath='{.data.pat}'",
         )->output());
 
         if ($encoded === '') {
@@ -120,6 +206,137 @@ trait InteractsWithVpn
     }
 
     /**
+     * Whether SSO has been wired for VPN yet — the precondition for deploying
+     * the NetBird dashboard, which runs its own OIDC flow and is useless
+     * without a client to run it against.
+     *
+     * `sso:wire vpn` writes netbird-oidc only after the identity-provider call
+     * to NetBird actually succeeded, so the secret's presence is a real signal
+     * rather than a marker someone might have left behind.
+     */
+    protected function vpnSsoWired(string $kubectl, string $ns): bool
+    {
+        return $this->readClusterSecretKey($kubectl, $ns, $this->vpnName('vpn-management-oidc', $kubectl), 'client-id') !== null;
+    }
+
+    /**
+     * The domain NetBird groups every SSO login under (single-account mode).
+     *
+     * This is the users' EMAIL domain, which is not necessarily the cluster's
+     * base domain — the two are free to diverge, so the derived value is only a
+     * default and --sso-domain overrides it. Derivation is the inverse of
+     * SharedClusterService::hostFor(): strip the service prefix off the host.
+     */
+    protected function vpnSsoDomain(string $host, ?string $override = null): string
+    {
+        $override = trim((string) $override);
+
+        if ($override !== '') {
+            return ltrim(strtolower($override), '@');
+        }
+
+        $prefix = SharedClusterService::VPN->hostPrefix();
+
+        return str_starts_with($host, "{$prefix}.")
+            ? substr($host, strlen($prefix) + 1)
+            : $host;
+    }
+
+    /**
+     * Read whether netbird-management actually enabled single-account mode, and
+     * how many accounts it counted, from its startup log.
+     *
+     * The mode is what makes "one company" mean "one network": with it on,
+     * NetBird overwrites every login's domain claim with the configured domain,
+     * so every SSO user lands in the same account as the in-cluster gateway.
+     * With it off, each login mints its own account with its own /16 and no
+     * route to anything we deploy.
+     *
+     * It is decided once per process start, as
+     * `singleAccountModeDomain != "" && accountsCounter <= 1`, so it re-evaluates
+     * on every restart and cannot decay on its own — a database outage or a
+     * rollout does not put it at risk. The only way to lose it is a login during
+     * a window where it was already off, which pushes the count past 1 for good:
+     * nothing lowers that count again short of deleting accounts, and NetBird
+     * exposes neither an API nor an admin-CLI path for that (`GET /api/accounts`
+     * returns only the caller's own account).
+     *
+     * Returns null when the line has aged out of the retained log window, which
+     * is normal for a long-running pod and is not itself a problem.
+     *
+     * @return array{enabled: bool, accounts: int}|null
+     */
+    protected function vpnSingleAccountState(string $kubectl, string $ns): ?array
+    {
+        $logs = Process::timeout(30)->run(
+            "{$kubectl} logs deploy/".$this->vpnName('vpn-management', $kubectl)." -n {$ns} --tail=2000",
+        )->output();
+
+        if (preg_match_all('/single account mode (enabled|disabled), accounts number (\d+)/i', $logs, $matches, PREG_SET_ORDER) === 0) {
+            return null;
+        }
+
+        // Last wins: a pod that logged more than one line has re-built its
+        // manager, and only the most recent decision is in force.
+        $last = end($matches);
+
+        return [
+            'enabled' => strtolower($last[1]) === 'enabled',
+            'accounts' => (int) $last[2],
+        ];
+    }
+
+    /**
+     * Group id for $name, creating the group if it does not exist yet.
+     *
+     * Look-then-create rather than create-and-ignore-conflict: the API does not
+     * enforce unique group names, so a blind create leaves duplicates that are
+     * indistinguishable in the dashboard and silently split a policy's scope.
+     *
+     * Returns null if the group could neither be found nor created — callers
+     * treat that as "no auto_groups", never as a failure worth aborting for.
+     */
+    protected function ensureVpnGroup(string $host, string $pat, string $name): ?string
+    {
+        try {
+            $groups = NetbirdConnector::make($host, $pat)->send(ListGroupsRequest::make());
+
+            if (! $groups->failed()) {
+                foreach ($groups->json() ?? [] as $group) {
+                    if (($group['name'] ?? null) === $name) {
+                        return $group['id'] ?? null;
+                    }
+                }
+            }
+
+            $created = NetbirdConnector::make($host, $pat)->send(CreateGroupRequest::make($name));
+
+            return $created->failed() ? null : $created->json('id');
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Ids for the cluster-level groups, creating whichever are missing.
+     *
+     * vpn:init is cluster-scoped while a blueprint is per-project, so it cannot
+     * enumerate the apps or environments sharing this cluster — only these two
+     * groups are knowable at install time. Per-app-environment groups
+     * (`{project}-{env}`, mirroring the namespace convention) are created lazily
+     * by commands that do run in a project context.
+     *
+     * @return array{routers: ?string, people: ?string}
+     */
+    protected function ensureVpnBaseGroups(string $host, string $pat): array
+    {
+        return [
+            'routers' => $this->ensureVpnGroup($host, $pat, self::VPN_GROUP_ROUTERS),
+            'people' => $this->ensureVpnGroup($host, $pat, self::VPN_GROUP_PEOPLE),
+        ];
+    }
+
+    /**
      * Mint a NetBird setup key via the REST API — vpn:grant. $ephemeral marks
      * any peer that joins through this key for auto-removal once it goes
      * stale/disconnects — for a CI runner's throwaway peer identity, not a
@@ -129,13 +346,14 @@ trait InteractsWithVpn
      *
      * @return array<string, mixed>|null
      */
-    protected function mintVpnSetupKey(string $host, string $pat, string $name, bool $reusable, int $days, bool $ephemeral = false): ?array
+    protected function mintVpnSetupKey(string $host, string $pat, string $name, bool $reusable, int $days, bool $ephemeral = false, array $autoGroups = []): ?array
     {
         $response = NetbirdConnector::make($host, $pat)->send(CreateSetupKeyRequest::make(
             $name,
             $days * 86400,
             $reusable ? 0 : 1,
             $ephemeral,
+            $autoGroups,
         ));
 
         if ($response->failed()) {
@@ -165,6 +383,105 @@ trait InteractsWithVpn
         $keys = $response->json();
 
         return is_array($keys) ? $keys : null;
+    }
+
+    /**
+     * Soonest expiry among the credentials LaraKube stores, as whole days from
+     * now, keyed by label. Empty when nothing could be read.
+     *
+     * vpn:init mints the PAT and the setup key in one call, so they expire
+     * within milliseconds of each other — and once the PAT is gone it cannot
+     * mint its own replacement, leaving no API path back in. Surfacing the
+     * countdown is what makes `vpn:rotate` a safety net rather than something
+     * you have to remember unprompted.
+     *
+     * @return array<string, int>
+     */
+    /**
+     * The id of the user the stored PAT belongs to.
+     *
+     * Prefers NetBird's own `is_current` (computed server-side as
+     * `user.ID == currentUserID` from the auth claims, and service users ARE
+     * included in the default listing). Falls back to matching the
+     * `larakube-cli` service user by name, so this keeps working even if a
+     * future release stops flagging service-user tokens as current — the
+     * difference between vpn:rotate renewing the PAT and a hard lockout at
+     * day 365 is not worth resting on one upstream field.
+     */
+    protected function vpnCurrentUserId(string $host, string $pat): ?string
+    {
+        $users = NetbirdConnector::make($host, $pat)->send(ListUsersRequest::make());
+
+        if ($users->failed()) {
+            return null;
+        }
+
+        $rows = (array) $users->json();
+
+        foreach ($rows as $user) {
+            if (($user['is_current'] ?? false) === true) {
+                return ((string) ($user['id'] ?? '')) ?: null;
+            }
+        }
+
+        foreach ($rows as $user) {
+            if (($user['is_service_user'] ?? false) && ($user['name'] ?? null) === 'larakube-cli') {
+                return ((string) ($user['id'] ?? '')) ?: null;
+            }
+        }
+
+        return null;
+    }
+
+    protected function vpnCredentialExpiryDays(string $host, string $pat): array
+    {
+        $out = [];
+
+        $userId = $this->vpnCurrentUserId($host, $pat);
+
+        if ($userId !== null) {
+            $tokens = NetbirdConnector::make($host, $pat)
+                ->send(ListPersonalAccessTokensRequest::make($userId));
+
+            if (! $tokens->failed()) {
+                foreach ((array) $tokens->json() as $token) {
+                    $days = $this->vpnDaysUntil($token['expiration_date'] ?? null);
+                    if ($days !== null && (! isset($out['PAT']) || $days < $out['PAT'])) {
+                        $out['PAT'] = $days;
+                    }
+                }
+            }
+        }
+
+        foreach ($this->listVpnSetupKeys($host, $pat) ?? [] as $key) {
+            // A revoked or already-invalid key is not a countdown worth showing.
+            if (($key['valid'] ?? true) === false || ($key['revoked'] ?? false) === true) {
+                continue;
+            }
+            $days = $this->vpnDaysUntil($key['expires'] ?? null);
+            if ($days !== null && (! isset($out['Setup key']) || $days < $out['Setup key'])) {
+                $out['Setup key'] = $days;
+            }
+        }
+
+        return $out;
+    }
+
+    /** Whole days from now until an RFC3339 timestamp; null when unparseable or absent. */
+    protected function vpnDaysUntil(?string $timestamp): ?int
+    {
+        if ($timestamp === null || $timestamp === '') {
+            return null;
+        }
+
+        try {
+            // round, not floor: the two clock reads are microseconds apart, so
+            // a credential exactly 365 days out would otherwise always render
+            // as 364 — every countdown silently short by a day.
+            return (int) round(now()->diffInDays(CarbonImmutable::parse($timestamp), false));
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -234,6 +551,66 @@ trait InteractsWithVpn
      *
      * @return array<int, array<string, mixed>>|null
      */
+    /**
+     * The account this token belongs to — the API never returns any other, so
+     * this is a one-element list or null. Read it for `domain`: empty means SSO
+     * logins cannot join it, and no API can change that.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    protected function listVpnAccounts(string $host, string $pat): ?array
+    {
+        try {
+            $response = NetbirdConnector::make($host, $pat)->send(ListAccountsRequest::make());
+
+            if ($response->failed()) {
+                return null;
+            }
+
+            $data = $response->json();
+
+            return is_array($data) ? array_values($data) : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * The email domain of the account a credential belongs to, or null.
+     *
+     * Empty string means an account with NO domain — created by /api/setup, and
+     * unusable for SSO because single-account mode copies that emptiness onto
+     * every later login. The distinction between null and '' matters here.
+     */
+    protected function vpnAccountDomain(string $host, string $bearer): ?string
+    {
+        try {
+            $response = NetbirdConnector::make($host, null, $bearer)->send(ListAccountsRequest::make());
+
+            if ($response->failed()) {
+                return null;
+            }
+
+            $accounts = (array) $response->json();
+
+            return isset($accounts[0]) ? (string) ($accounts[0]['domain'] ?? '') : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /** Delete an account. Only ever the token's own — that is all the API permits. */
+    protected function deleteVpnAccount(string $host, string $pat, string $accountId): bool
+    {
+        try {
+            return NetbirdConnector::make($host, $pat)
+                ->send(DeleteAccountRequest::make($accountId))
+                ->successful();
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
     protected function listVpnIdentityProviders(string $host, string $pat): ?array
     {
         $response = NetbirdConnector::make($host, $pat)->send(ListIdentityProvidersRequest::make());

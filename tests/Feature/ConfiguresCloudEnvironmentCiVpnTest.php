@@ -100,7 +100,7 @@ test('ensureCiVpnSecret returns null when the VPN is not installed for that envi
     $config = ciVpnConfig($this->tempDir);
 
     Process::fake([
-        ciVpnKubectl().' get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
+        ciVpnKubectl().' get deployment vpn-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
     ]);
     Config::preventStrayRequests();
 
@@ -114,8 +114,8 @@ test('ensureCiVpnSecret mints an ephemeral reusable key, uploads it, and persist
     $kubectl = ciVpnKubectl();
 
     Process::fake([
-        "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
-        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
+        "{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => 'vpn-management   1/1   1   1   5d',
+        "{$kubectl} get secret vpn-management-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode('nbp_test_pat'), exitCode: 0),
     ]);
     Saloon::fake([
         CreateSetupKeyRequest::class => MockResponse::make([

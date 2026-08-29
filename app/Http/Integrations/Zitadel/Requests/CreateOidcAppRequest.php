@@ -31,6 +31,7 @@ class CreateOidcAppRequest extends Request implements HasBody
         protected readonly array $redirectUris,
         protected readonly bool $publicClient,
         protected readonly array $postLogoutRedirectUris,
+        protected readonly bool $jwtAccessToken = false,
     ) {}
 
     /**
@@ -50,7 +51,14 @@ class CreateOidcAppRequest extends Request implements HasBody
             'grantTypes' => ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE', 'OIDC_GRANT_TYPE_REFRESH_TOKEN'],
             'appType' => 'OIDC_APP_TYPE_WEB',
             'authMethodType' => $this->publicClient ? 'OIDC_AUTH_METHOD_TYPE_NONE' : 'OIDC_AUTH_METHOD_TYPE_BASIC',
-            'accessTokenType' => 'OIDC_TOKEN_TYPE_BEARER',
+            // Zitadel's default access token is an OPAQUE bearer string. Any
+            // client that must READ the token — decode its claims, or verify it
+            // itself against the issuer's JWKS rather than calling the
+            // introspection endpoint — needs a JWT instead. Confirmed live
+            // 2026-08-28: NetBird's dashboard exchanged its code for a 200 OK
+            // opaque token, could not parse it, and silently re-ran the whole
+            // login in a loop, never once calling the management API.
+            'accessTokenType' => $this->jwtAccessToken ? 'OIDC_TOKEN_TYPE_JWT' : 'OIDC_TOKEN_TYPE_BEARER',
             // Assert userinfo (email, name, …) INTO the ID token. Zitadel
             // otherwise serves those claims only from the userinfo endpoint,
             // but ID-token-reading clients (Documenso/NextAuth) then fail

@@ -2,9 +2,13 @@
 
 use App\Commands\Sso\SsoWireCommand;
 use App\Data\GlobalConfigData;
+use App\Enums\ClusterTool;
 use App\Http\Integrations\Netbird\Requests\CreateIdentityProviderRequest;
+use App\Http\Integrations\Netbird\Requests\ListAccountsRequest;
 use App\Http\Integrations\Netbird\Requests\ListIdentityProvidersRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateIdentityProviderRequest;
+use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
+use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateOidcAppRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectRequest;
@@ -133,12 +137,12 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
 test('sso:wire registers a new OIDC client and wires it to Grafana', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
-        '*set env deployment/grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
 
     Saloon::fake([
@@ -174,7 +178,7 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
     // live Deployment name (2026-08-20, replacing the earlier "LaraKube
     // RBAC: {brand}" scheme) — no separate naming convention to keep in sync.
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
-        && $request->body()->get('name') === 'grafana');
+        && str_starts_with($request->body()->get('name'), 'monitor-grafana'));
 });
 
 test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, never as a literal env override', function (): void {
@@ -184,12 +188,12 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
     // monitor:init re-apply, exactly the bug this test guards against.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
-        '*set env deployment/grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
 
     Saloon::fake([
@@ -216,7 +220,7 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
     // No literal `set env deployment/grafana GF_AUTH_DISABLE_LOGIN_FORM=...`
     // override — only --from=secret (declarative) and the harmless KEY-
     // unset shape are allowed to touch the Deployment directly.
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/grafana')
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/')
         && str_contains($process->command, 'GF_AUTH_DISABLE_LOGIN_FORM='));
 });
 
@@ -227,12 +231,12 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
     // `kubectl set env deployment/X KEY-`.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
-        '*set env deployment/grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
 
     Saloon::fake([
@@ -252,13 +256,13 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
     $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
         ->assertExitCode(0);
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/grafana')
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/')
         && str_contains($process->command, 'GF_AUTH_DISABLE_LOGIN_FORM-')
         && str_contains($process->command, 'GF_USERS_ALLOW_SIGN_UP-'));
 
     // The unset command must be a pure removal — never carry a value for
     // the same key alongside the `-` suffix.
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/grafana')
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/')
         && str_contains($process->command, "GF_AUTH_DISABLE_LOGIN_FORM='true'"));
 });
 
@@ -639,12 +643,12 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
 test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssertion', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
-        '*set env deployment/grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
 
     Saloon::fake([
@@ -677,7 +681,7 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
 test('sso:wire aborts before registering an OIDC client if role-gating setup fails', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
@@ -830,14 +834,14 @@ test('sso:wire gates Outline behind Zitadel roles — the actual tool from the l
 test('sso:wire reuses an already-registered OIDC client', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*sso-app-monitor*client-id*' => Process::result(output: base64_encode('cached-cid')),
         '*sso-app-monitor*client-secret*' => Process::result(output: base64_encode('cached-secret')),
         '*sso-app-monitor*app-id*' => Process::result(output: base64_encode('cached-appid')),
         '*create secret generic*' => Process::result(output: 'secret created'),
-        '*set env deployment/grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
 
     // Keyed on the APP id, not the client id. Zitadel's app endpoint 404s on a
@@ -896,6 +900,12 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'cid-1', 'clientSecret' => 'csecret-1']),
+        // sso:wire mirrors the client secret into OpenBao KV over a port-forward.
+        // Unmocked it reaches a REAL localhost port, which under --parallel
+        // intermittently picked up an unrelated service and failed only sometimes
+        // — ADR 0019's exact warning, on the Saloon side.
+        DynamicNoBodyRequest::class => MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
+        DynamicRequest::class => MockResponse::make(['data' => ['value' => 'ok']]),
         GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRoleRequest::class => MockResponse::make([]),
@@ -1117,13 +1127,13 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
 test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment grafana*' => Process::result(output: 'grafana   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*sso-app-monitor*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*sso-app-monitor*app-id*' => Process::result(output: base64_encode('app-1')),
         '*delete secret sso-app-monitor*' => Process::result(output: 'secret deleted'),
-        '*set env deployment/grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
 
     Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);
@@ -1333,10 +1343,14 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
 test('sso:wire registers NetBird as a Zitadel identity provider via its own REST API', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment netbird-management*' => Process::result(output: 'netbird-management   1/1   1   1   10d'),
+        '*get deployment vpn-management*' => Process::result(output: 'vpn-management   1/1   1   1   10d'),
+        '*rollout restart deployment/vpn-dashboard*' => Process::result(output: 'restarted'),
+        '*patch secret sso-app-vpn*' => Process::result(output: 'patched'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-vpn*' => Process::result(output: ''),
-        '*vpn-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+        // vpnName() resolves the instance suffix from the tool registry.
+        '*larakube-tools-registry*' => Process::result(output: ''),
+        '*vpn-management-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
         '*create secret generic*' => Process::result(output: 'secret created'),
     ]);
 
@@ -1349,12 +1363,16 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-vpn', 'clientId' => 'cid-vpn', 'clientSecret' => 'csecret-vpn']),
-        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'netbird-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'vpn-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRoleRequest::class => MockResponse::make([]),
         // Empty list — first-time registration, so wireNetbirdOidc() must
         // POST a new provider, not PUT an update.
         ListIdentityProvidersRequest::class => MockResponse::make([], 200),
+        // wireNetbirdOidc() now inspects the account afterwards to decide whether
+        // the domain-less bootstrap account needs retiring. One with a domain is
+        // already correct, so this leaves it alone.
+        ListAccountsRequest::class => MockResponse::make([['id' => 'acc-1', 'domain' => 'example.com']], 200),
         CreateIdentityProviderRequest::class => MockResponse::make(['id' => 'idp-1', 'type' => 'zitadel', 'name' => 'Zitadel'], 200),
     ]);
 
@@ -1362,7 +1380,14 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
         ->assertExitCode(0)
         ->expectsOutputToContain('is wired to Zitadel SSO');
 
-    Saloon::assertSent(function (CreateIdentityProviderRequest $request) {
+    Saloon::assertSent(function ($request) {
+        // Untyped on purpose: the dashboard's public client is registered as a
+        // second Zitadel app, so more request types now flow through this
+        // closure and a typed parameter would TypeError before matching.
+        if (! $request instanceof CreateIdentityProviderRequest) {
+            return false;
+        }
+
         $body = $request->body()->all();
 
         return $body['type'] === 'zitadel'
@@ -1375,26 +1400,43 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
     // marks an OIDC tool as SSO-wired by probing for the `{tool}-oidc`
     // Secret — NetBird's wiring lives in its own storage (the API call
     // above), so wireNetbirdOidc() must write the marker secret itself.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic netbird-oidc -n larakube-vpn')
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic vpn-management-oidc -n larakube-vpn')
         && str_contains($process->command, '--from-literal=client-id=')
         && str_contains($process->command, 'cid-vpn'));
 
+    // No auth-* keys: the dashboard logs in against the EMBEDDED IdP with its
+    // own static client, and Dex federates to the Zitadel client above.
+    // Writing them here is the retired standalone-IdP topology.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic vpn-management-oidc')
+        && ! str_contains($process->command, 'auth-authority=')
+        && ! str_contains($process->command, 'auth-client-id='));
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vpn-dashboard'));
+
     // VPN grants private network access, not just a web login — gated via
     // rbacRoles(), not open to any org member.
+    // Derived, not hardcoded: the project name follows deploymentName(), which
+    // is instance-suffixed since VPN joined the naming convention (2026-08-29).
+    $expectedProject = ClusterTool::VPN->deploymentName(
+        ClusterTool::VPN->instanceSlugFromHost('vpn.'.GlobalConfigData::load()->getLocalTld()),
+    );
+
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
-        && $request->body()->get('name') === 'netbird-management');
+        && $request->body()->get('name') === $expectedProject);
 });
 
 test('sso:wire re-wiring NetBird updates the existing identity provider via PUT, not a duplicate POST', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment netbird-management*' => Process::result(output: 'netbird-management   1/1   1   1   10d'),
+        '*get deployment vpn-management*' => Process::result(output: 'vpn-management   1/1   1   1   10d'),
+        '*rollout restart deployment/vpn-dashboard*' => Process::result(output: 'restarted'),
+        '*patch secret sso-app-vpn*' => Process::result(output: 'patched'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*sso-app-vpn*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*sso-app-vpn*app-id*' => Process::result(output: base64_encode('app-vpn')),
         '*sso-app-vpn*client-id*' => Process::result(output: base64_encode('cid-vpn')),
         '*sso-app-vpn*client-secret*' => Process::result(output: base64_encode('csecret-vpn')),
-        '*vpn-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+        '*vpn-management-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
         '*create secret generic*' => Process::result(output: 'secret created'),
     ]);
 
@@ -1405,7 +1447,7 @@ test('sso:wire re-wiring NetBird updates the existing identity provider via PUT,
         SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         // zitadelEnsureProject() always resolves the project id first, reuse
         // or not.
-        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1', 'name' => 'netbird-management']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1', 'name' => 'vpn-management']]]),
         // Registered app still exists, redirect URIs still match — reused,
         // not re-registered.
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
@@ -1416,10 +1458,12 @@ test('sso:wire re-wiring NetBird updates the existing identity provider via PUT,
                 'authMethodType' => 'OIDC_AUTH_METHOD_TYPE_BASIC',
             ],
         ]]),
-        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'netbird-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'vpn-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRoleRequest::class => MockResponse::make([]),
         // The 'zitadel' entry already exists from a previous wire — must PUT.
+        // The dashboard's public client is a SECOND app in the same project.
+        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'dash-app-1', 'clientId' => 'dash-cid-1', 'clientSecret' => '']),
         ListIdentityProvidersRequest::class => MockResponse::make([
             ['id' => 'idp-1', 'type' => 'zitadel', 'name' => 'Zitadel'],
         ], 200),
@@ -1438,19 +1482,19 @@ test('sso:wire re-wiring NetBird updates the existing identity provider via PUT,
     Saloon::assertNotSent(CreateIdentityProviderRequest::class);
 });
 
-test('plain sso:wire offers installed Forgejo instances in its tool list', function (): void {
-    // Live DX bug 2026-08-24: resolveTool()'s installed-filter probed
-    // oidcEnv()'s deployment name without an instance (`git-forgejo-`), so
-    // git never appeared in the interactive list even though Forgejo was
-    // running as git-forgejo-git-luchtech-dev — users had to know to pass
-    // --tool=git explicitly. Git now probes any `git-forgejo-*` deployment
-    // by prefix (excluding the CI runner).
+test('plain sso:wire lists each registered instance by its host', function (): void {
+    // Live DX bug 2026-08-24: the installed-filter probed oidcEnv()'s deployment
+    // name without an instance, so git never appeared even while Forgejo ran as
+    // git-forgejo-git-luchtech-dev — and VPN vanished the same way on 2026-08-29.
+    // The name is {category}-{component}-{instance} and the instance is not known
+    // until a host is, which is what this picker exists to establish; CHAT, DATA
+    // and GIT each grew a bespoke probe around that. The registry already records
+    // tool, instance and host, so nothing needs deriving — and one option per
+    // INSTANCE makes a tool installed twice selectable at all.
     Process::fake([
-        // The new prefix probe must be matched before the generic
-        // `get deployment` catch-all below.
-        '*get deployments -n larakube-shared -o name*' => Process::result(
-            output: "deployment/git-forgejo-runner-git-luchtech-dev\ndeployment/git-forgejo-git-luchtech-dev\n",
-        ),
+        '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'git', 'instance' => 'git-luchtech-dev', 'host' => 'git.luchtech.dev'],
+        ]))),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get deployment git-forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -1459,8 +1503,6 @@ test('plain sso:wire offers installed Forgejo instances in its tool list', funct
         '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n"),
         '*admin auth add-oauth*' => Process::result(output: 'source created'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/forgejo restarted'),
-        // Every OTHER OIDC-capable tool's existence probe misses — only git
-        // is "installed", so the picker shows exactly one option.
         '*get deployment*' => Process::result(output: ''),
     ]);
 
@@ -1480,8 +1522,12 @@ test('plain sso:wire offers installed Forgejo instances in its tool list', funct
 
     $this->artisan('sso:wire', ['--no-interaction' => false])
         ->assertExitCode(0)
-        ->expectsChoice('Wire which tool to Zitadel SSO?', 'git', [
-            'git' => 'Git Forge & CI/CD (Forgejo)',
+        // Labelled with the host, so two instances of one tool are told apart.
+        // Keys are STRINGS: an integer-keyed array is a list to Laravel Prompts,
+        // which returns the label instead of the key — that bug wired Matrix
+        // when NetBird was picked (live, 2026-08-29).
+        ->expectsChoice('Wire which tool to Zitadel SSO?', 'git|git.luchtech.dev', [
+            'git|git.luchtech.dev' => 'Git Forge & CI/CD (Forgejo) (git.luchtech.dev)',
         ])
         ->expectsOutputToContain('is wired to Zitadel SSO');
 
@@ -1490,4 +1536,40 @@ test('plain sso:wire offers installed Forgejo instances in its tool list', funct
     Process::assertRan(fn ($process) => str_contains($process->command, 'admin auth add-oauth')
         && str_contains($process->command, "--name 'zitadel'")
         && str_contains($process->command, '--scopes profile --scopes email'));
+});
+
+test('a tool installed twice is selectable per instance', function (): void {
+    // The old picker listed TOOLS, keyed by slug — so two instances of one tool
+    // collapsed into a single unselectable entry and whichever host
+    // targetHost() happened to return won. Listing instances is the only way to
+    // express the choice at all.
+    Process::fake([
+        '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
+            ['tool' => 'notes', 'instance' => 'wiki-luchtech-dev', 'host' => 'wiki.luchtech.dev'],
+        ]))),
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('sso:wire', ['--no-interaction' => false])
+        ->expectsChoice('Wire which tool to Zitadel SSO?', 'notes|wiki.luchtech.dev', [
+            'notes|notes.luchtech.dev' => 'Team Wiki & Knowledge Base (Outline) (notes.luchtech.dev)',
+            'notes|wiki.luchtech.dev' => 'Team Wiki & Knowledge Base (Outline) (wiki.luchtech.dev)',
+        ]);
+});
+
+test('sso:wire says nothing is registered rather than nothing is installed', function (): void {
+    // An empty registry means no tool went through its own :init here — which is
+    // a different thing from "your deployments are missing", and the old message
+    // named Vaultwarden and Grafana as if they were expected to exist.
+    Process::fake([
+        '*larakube-tools-registry*' => Process::result(output: ''),
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('sso:wire', ['--no-interaction' => false])
+        ->assertExitCode(1)
+        ->expectsOutputToContain('No OIDC-capable tools are registered');
 });

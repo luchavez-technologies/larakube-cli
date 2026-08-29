@@ -1,8 +1,9 @@
+@php($sfx = ($instance ?? '') !== '' ? '-'.$instance : '')
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: netbird-client-data
+  name: vpn-client-storage{{ $sfx }}
   namespace: larakube-vpn
 spec:
   accessModes:
@@ -14,7 +15,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: netbird-client
+  name: vpn-client{{ $sfx }}
   namespace: larakube-vpn
 spec:
   replicas: 1
@@ -22,11 +23,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: netbird-client
+      app: vpn-client{{ $sfx }}
   template:
     metadata:
       labels:
-        app: netbird-client
+        app: vpn-client{{ $sfx }}
     spec:
       containers:
         - name: client
@@ -36,11 +37,11 @@ spec:
               add: ["NET_ADMIN"]
           env:
             - name: NB_MANAGEMENT_URL
-              value: "http://netbird-management:80"
+              value: "http://vpn-management{{ $sfx }}:80"
             - name: NB_SETUP_KEY
               valueFrom:
                 secretKeyRef:
-                  name: vpn-secrets
+                  name: vpn-management-secrets{{ $sfx }}
                   key: setup-key
           volumeMounts:
             - name: data
@@ -58,4 +59,4 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: netbird-client-data
+            claimName: vpn-client-storage{{ $sfx }}

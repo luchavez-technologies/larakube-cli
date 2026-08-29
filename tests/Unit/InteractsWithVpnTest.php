@@ -65,22 +65,22 @@ test('vpnKubectl scopes to a context only when one is given', function (): void 
         ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
-test('isVpnInstalled reflects whether the netbird-management Deployment exists', function (): void {
-    Process::fake(['kubectl get deployment netbird-management -n larakube-vpn --no-headers' => 'netbird-management   1/1   1   1   5d']);
+test('isVpnInstalled reflects whether the vpn-management Deployment exists', function (): void {
+    Process::fake(['kubectl get deployment vpn-management -n larakube-vpn --no-headers' => 'vpn-management   1/1   1   1   5d']);
     expect(vpnReader()->installed('kubectl', 'larakube-vpn'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['kubectl get deployment vpn-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1)]);
     expect(vpnReader()->installed('kubectl', 'larakube-vpn'))->toBeFalse();
 });
 
 test('vpnAccess is null when vpn is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    Process::fake(["{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => Process::result(output: '', exitCode: 1)]);
+    Process::fake(["{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => Process::result(output: '', exitCode: 1)]);
     expect(vpnReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
+        "{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => 'vpn-management   1/1   1   1   5d',
     ]);
     $access = vpnReader()->access('local', null);
 
@@ -91,12 +91,12 @@ test('vpnAccess is null when vpn is not installed, populated when it is', functi
 test('fetchVpnSetupKey decodes the key from the Secret, null when missing', function (): void {
     $encoded = base64_encode('nb_setup_key_test');
     Process::fake([
-        "kubectl get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => $encoded,
+        "kubectl get secret vpn-management-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => $encoded,
     ]);
     expect(vpnReader()->setupKey('kubectl', 'larakube-vpn'))->toBe('nb_setup_key_test');
 
     Process::fake([
-        "kubectl get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
+        "kubectl get secret vpn-management-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
     ]);
     expect(vpnReader()->setupKey('kubectl', 'larakube-vpn'))->toBeNull();
 });

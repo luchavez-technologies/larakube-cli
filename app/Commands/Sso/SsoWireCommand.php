@@ -23,6 +23,7 @@ use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
@@ -58,10 +59,11 @@ class SsoWireCommand extends Command
         $kubectl = $this->ssoKubectl($context);
         $ssoNs = $this->ssoNamespace();
 
-        $tool = $this->resolveTool($kubectl);
-        if ($tool === null) {
+        $selection = $this->resolveTool($kubectl);
+        if ($selection === null) {
             return 1;
         }
+        [$tool, $pickedHost] = $selection;
 
         if (! $tool->hasSsoWire()) {
             $this->laraKubeError("'{$tool->value}' can't be wired to SSO.");
@@ -75,9 +77,13 @@ class SsoWireCommand extends Command
         // host rather than being a separate operator-invented name, so this
         // can target any registered instance, not just the main one.
         $domainOption = (string) ($this->option('domain') ?: '');
-        $toolHost = $domainOption !== ''
-            ? $this->sanitizeDomainInput($domainOption)
-            : $this->targetHost($tool, $env, $config, $kubectl);
+        // The picker already resolved a concrete instance, so its host wins over
+        // targetHost()'s default — that is the whole point of listing instances.
+        $toolHost = match (true) {
+            $domainOption !== '' => $this->sanitizeDomainInput($domainOption),
+            $pickedHost !== null => $pickedHost,
+            default => $this->targetHost($tool, $env, $config, $kubectl),
+        };
 
         if ($ssoHost === null || $toolHost === null) {
             $missing = $ssoHost === null && $toolHost === null
@@ -126,7 +132,7 @@ class SsoWireCommand extends Command
             return $this->wireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env, $instance);
         }
 
-        $appSecret = "sso-app-{$tool->value}";
+        $appSecret = $this->ssoAppSecretName($tool, $instance);
         $clientId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-id');
         $clientSecret = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-secret');
 
@@ -181,12 +187,14 @@ class SsoWireCommand extends Command
         $appExistsInZitadel = false;
         $registeredRedirectUris = null;
         $registeredPostLogoutRedirectUris = null;
+        $registeredAccessTokenType = null;
         if ($appId !== null && $appId !== '' && $projectId !== null && $projectId !== '') {
             $checkApp = ZitadelConnector::make($ssoHost, $pat)->send(GetProjectAppRequest::make($projectId, $appId));
             if ($checkApp->successful()) {
                 $appExistsInZitadel = true;
                 $registeredRedirectUris = $checkApp->json('app.oidcConfig.redirectUris');
                 $registeredPostLogoutRedirectUris = $checkApp->json('app.oidcConfig.postLogoutRedirectUris');
+                $registeredAccessTokenType = $checkApp->json('app.oidcConfig.accessTokenType');
             }
         }
 
@@ -219,18 +227,28 @@ class SsoWireCommand extends Command
         // a "needs registration" signal for them — only confidential clients
         // require one.
         $publicClient = (bool) ($schema['public_client'] ?? false);
+
+        // Third staleness gate, same reasoning as the two above: an app
+        // registered before this tool needed JWT access tokens still issues
+        // opaque ones, and nothing about its redirect URIs reveals that. Zitadel
+        // omits the field entirely at its default (BEARER), so a missing value
+        // reads as opaque.
+        $jwtAccessToken = (bool) ($schema['jwt_access_token'] ?? false);
+        $desiredAccessTokenType = $jwtAccessToken ? 'OIDC_TOKEN_TYPE_JWT' : 'OIDC_TOKEN_TYPE_BEARER';
+        $accessTokenTypeMatches = ($registeredAccessTokenType ?? 'OIDC_TOKEN_TYPE_BEARER') === $desiredAccessTokenType;
+
         $missingCredentials = $clientId === null || (! $publicClient && $clientSecret === null);
-        if ($missingCredentials || ! $appExistsInZitadel || ! $redirectUrisMatch || ! $postLogoutRedirectUrisMatch) {
+        if ($missingCredentials || ! $appExistsInZitadel || ! $redirectUrisMatch || ! $postLogoutRedirectUrisMatch || ! $accessTokenTypeMatches) {
             $redirectUris = $desiredRedirectUris;
 
             $registered = null;
-            $this->withSpin("Registering {$tool->getLabel()} as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $projectName, $tool, $redirectUris, $publicClient, $desiredPostLogoutRedirectUris, $engine): void {
+            $this->withSpin("Registering {$tool->getLabel()} as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $projectName, $tool, $redirectUris, $publicClient, $desiredPostLogoutRedirectUris, $engine, $jwtAccessToken): void {
                 $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
                 if ($projectId === null) {
                     return;
                 }
 
-                $app = $this->zitadelCreateOidcApp($ssoHost, $pat, $projectId, $tool->productName($engine), $redirectUris, $publicClient, $desiredPostLogoutRedirectUris);
+                $app = $this->zitadelCreateOidcApp($ssoHost, $pat, $projectId, $tool->productName($engine), $redirectUris, $publicClient, $desiredPostLogoutRedirectUris, $jwtAccessToken);
                 if ($app === null) {
                     return;
                 }
@@ -294,7 +312,7 @@ class SsoWireCommand extends Command
             $ok = $this->wireSynapseOidc($kubectl, $schema['namespace'], $ssoHost, $logical['issuer'], $clientId, $clientSecret, $env);
         } elseif ($schema['deployment'] === 'openbao-backend') {
             $ok = $this->wireOpenBaoOidc($kubectl, $schema['namespace'], $ssoHost, $toolHost, $clientId, $clientSecret, $env);
-        } elseif ($schema['deployment'] === 'netbird-management') {
+        } elseif ($tool === ClusterTool::VPN) {
             $ok = $this->wireNetbirdOidc($kubectl, $schema['namespace'], $toolHost, $ssoHost, $clientId, $clientSecret);
         } else {
             $ok = $tool->usesCliOidc()
@@ -471,13 +489,13 @@ class SsoWireCommand extends Command
         return true;
     }
 
-    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat): int
+    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat, ?string $instance = null): int
     {
         if ($tool->usesForwardAuth()) {
             return $this->unwireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat);
         }
 
-        $appSecret = "sso-app-{$tool->value}";
+        $appSecret = $this->ssoAppSecretName($tool, $instance);
         $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
         $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
 
@@ -1138,7 +1156,24 @@ class SsoWireCommand extends Command
         return $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
     }
 
-    protected function resolveTool(?string $kubectl = null): ?ClusterTool
+    /**
+     * The tool to wire, and the host of the instance chosen for it.
+     *
+     * Registry-driven. Probing for a Deployment by name cannot work here: the
+     * name is {category}-{component}-{instance} and the instance is not known
+     * until a host is, which is what this method exists to establish. That
+     * chicken-and-egg is why CHAT, DATA and GIT each grew their own bespoke
+     * probe, and why VPN silently vanished from this picker while five of its
+     * pods were running.
+     *
+     * The registry already records every installed tool, instance and host, so
+     * there is nothing to derive — and listing one option per INSTANCE means a
+     * tool installed twice is finally selectable, which a tool-only list could
+     * never express.
+     *
+     * @return array{0: ClusterTool, 1: ?string}|null tool + the chosen instance's host
+     */
+    protected function resolveTool(?string $kubectl = null): ?array
     {
         $slug = (string) ($this->option('tool') ?: '');
         if ($slug !== '') {
@@ -1152,67 +1187,60 @@ class SsoWireCommand extends Command
                 return null;
             }
 
-            return $tool;
+            return [$tool, null];
         }
 
-        $capable = array_values(array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->hasSsoWire()));
-        $installed = $kubectl !== null
-            ? array_values(array_filter($capable, function (ClusterTool $t) use ($kubectl) {
-                if ($t === ClusterTool::CHAT) {
-                    return $this->deploymentExists($kubectl, 'larakube-shared', 'chat-synapse');
-                }
+        if ($kubectl === null) {
+            return null;
+        }
 
-                if ($t === ClusterTool::DATA) {
-                    return $this->deploymentExists($kubectl, 'larakube-shared', 'data-pocketbase')
-                        || $this->deploymentExists($kubectl, 'larakube-shared', 'data-directus')
-                        || trim(Process::run(
-                            "{$kubectl} get deployment -n larakube-shared -l 'app.kubernetes.io/component=data' --no-headers --ignore-not-found",
-                        )->output()) !== '';
-                }
+        $choices = [];
 
-                if ($t === ClusterTool::GIT) {
-                    // Forgejo's OIDC schema names its deployment per-instance
-                    // (`git-forgejo-{instance}`, e.g.
-                    // git-forgejo-git-luchtech-dev), but this probe runs
-                    // before any domain/host is known — oidcEnv() with no
-                    // instance yields the bare `git-forgejo-` prefix, so the
-                    // generic check below never matched and plain `sso:wire`
-                    // never offered git even on clusters where Forgejo was
-                    // installed (live DX bug 2026-08-24). Probe by name
-                    // prefix instead; the CI runner shares the prefix and
-                    // must not count as a Forgejo server.
-                    $names = preg_split('/\R/', trim(Process::run(
-                        "{$kubectl} get deployments -n larakube-shared -o name --no-headers --ignore-not-found",
-                    )->output())) ?: [];
+        foreach ($this->getRegisteredTools($kubectl) as $entry) {
+            $tool = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
 
-                    return collect($names)->contains(
-                        fn (string $name) => str_starts_with($name, 'deployment/git-forgejo-')
-                            && ! str_starts_with($name, 'deployment/git-forgejo-runner-'),
-                    );
-                }
+            if ($tool === null || ! $tool->isShipped() || ! $tool->hasSsoWire()) {
+                continue;
+            }
 
-                $schema = $t->oidcEnv();
+            $host = (string) ($entry['host'] ?? '');
+            $choices[] = [
+                'tool' => $tool,
+                'host' => $host !== '' ? $host : null,
+                'label' => $host !== '' ? "{$tool->getLabel()} ({$host})" : $tool->getLabel(),
+            ];
+        }
 
-                return $schema !== null && $this->deploymentExists($kubectl, $schema['namespace'], $schema['deployment']);
-            }))
-            : $capable;
-
-        if ($installed === []) {
-            $this->laraKubeError('No OIDC-capable tools (e.g. Vaultwarden, Grafana) are currently installed on this cluster.');
+        if ($choices === []) {
+            $this->laraKubeError('No OIDC-capable tools are registered on this cluster.');
+            $this->line('  <fg=gray>Only tools installed through their own</> <fg=blue>:init</> <fg=gray>appear here.</>');
 
             return null;
         }
 
+        // STRING keys, never integers. Laravel Prompts treats an integer-keyed
+        // array as a LIST and returns the selected label instead of the key —
+        // casting that back to int yields 0, so every selection silently wired
+        // whichever tool happened to be first in the registry. Confirmed live
+        // 2026-08-29: picking NetBird wired Matrix.
         $options = [];
-        foreach ($installed as $t) {
-            $options[$t->value] = $t->getLabel();
+        foreach ($choices as $choice) {
+            $options[$choice['tool']->value.'|'.($choice['host'] ?? '')] = $choice['label'];
         }
 
-        return ClusterTool::from(select(
+        $key = (string) select(
             label: 'Wire which tool to Zitadel SSO?',
             options: $options,
-            scroll: count($options),
-        ));
+            scroll: min(count($options), 15),
+        );
+
+        foreach ($choices as $choice) {
+            if ($choice['tool']->value.'|'.($choice['host'] ?? '') === $key) {
+                return [$choice['tool'], $choice['host']];
+            }
+        }
+
+        return null;
     }
 
     protected function deploymentExists(string $kubectl, string $ns, string $deployment): bool
@@ -1491,7 +1519,7 @@ class SsoWireCommand extends Command
      */
     protected function wireNetbirdOidc(string $kubectl, string $ns, string $toolHost, string $ssoHost, string $clientId, string $clientSecret): bool
     {
-        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, 'vpn-secrets', 'pat');
+        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnName('vpn-management-secrets', $kubectl), 'pat');
         if ($netbirdPat === null) {
             $this->laraKubeError('NetBird admin token not found — re-run `larakube vpn:init` to bootstrap auth.');
 
@@ -1521,15 +1549,128 @@ class SsoWireCommand extends Command
             // `{tool}-oidc` Secret — NetBird's wiring lives in its own
             // storage (the API call above), so this is what must record the
             // marker secret, same as OpenBao/Forgejo's CLI-driven paths do.
+            //
+            // No auth-* keys here: the dashboard logs in against the EMBEDDED
+            // IdP with its own static `netbird-dashboard` OIDC client, and Dex
+            // federates to the Zitadel client registered above. Pointing the
+            // dashboard straight at Zitadel is the retired standalone topology.
             Process::run(
-                "{$kubectl} create secret generic netbird-oidc -n {$ns} "
+                "{$kubectl} create secret generic ".$this->vpnName('vpn-management-oidc', $kubectl)." -n {$ns} "
                 .'--from-literal=client-id='.escapeshellarg($clientId).' '
                 .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
+
+            // Per ADR 0018 the values above reach the Deployment through
+            // valueFrom, so the running pod keeps its old env until restarted.
+            // Only meaningful once vpn:init has actually deployed the
+            // dashboard — on a first wire it does not exist yet, and the next
+            // vpn:init creates it with these values already in place.
+            $this->withSpin('Restarting the NetBird dashboard...', fn () => Process::run(
+                "{$kubectl} rollout restart deployment/".$this->vpnName('vpn-dashboard', $kubectl)." -n {$ns} >/dev/null 2>&1",
+            ));
+
+            $this->retireDomainlessNetbirdAccount($kubectl, $ns, $toolHost, $netbirdPat);
         }
 
         return $ok;
+    }
+
+    /**
+     * Retire the account /api/setup created, so SSO logins can form one that
+     * they can actually join.
+     *
+     * NetBird decides which account a login joins by matching the JWT's private
+     * domain. An account created by /api/setup has no domain at all and no API
+     * can give it one — `domain`/`domain_category` are read-only everywhere. So
+     * every SSO user lands in a fresh account of their own, in a different /16
+     * from the gateway. Confirmed live 2026-08-29: two accounts, both
+     * `domain=''`, gateway on 100.116.x and the phone on 100.122.x.
+     *
+     * Deleting it is the only supported repair. The next login — SSO, or the
+     * embedded-IdP admin, whose address vpn:init now puts inside the SSO domain
+     * — creates an account that carries the domain, and every login after that
+     * matches it.
+     *
+     * Deliberately last: the identity-provider registration above must be made
+     * while this token still works. That registration lives in the embedded
+     * IdP's own store, not the account store, so it survives this.
+     */
+    protected function retireDomainlessNetbirdAccount(string $kubectl, string $ns, string $toolHost, string $pat): void
+    {
+        $accounts = $this->listVpnAccounts($toolHost, $pat);
+
+        // One account with a domain is already correct. More than one is not a
+        // state this can reason about safely, so leave it alone and say nothing.
+        if ($accounts === null || count($accounts) !== 1) {
+            return;
+        }
+
+        $account = $accounts[0];
+        $accountId = (string) ($account['id'] ?? '');
+
+        if ($accountId === '' || trim((string) ($account['domain'] ?? '')) !== '') {
+            return;
+        }
+
+        $this->laraKubeNewLine();
+        $this->line('  <fg=yellow>⚠ This NetBird account cannot host SSO logins.</>');
+        $this->line('  <fg=gray>It was created by vpn:init before SSO existed, so it carries no email domain —</>');
+        $this->line('  <fg=gray>and no API can add one. Every SSO sign-in would land in a separate account with</>');
+        $this->line('  <fg=gray>its own /16, unable to reach this cluster. Deleting it is the only repair.</>');
+        $this->newLine();
+        $this->line('  <fg=gray>You will lose: the current PAT and setup key, the gateway peer registration,</>');
+        $this->line('  <fg=gray>the larakube-cli service user, and the larakube-routers/people groups.</>');
+        $this->line('  <fg=gray>Peers already enrolled with the old key must re-enrol. Steps to restore follow.</>');
+        $this->newLine();
+
+        if (! confirm(label: 'Delete it so SSO logins can form a usable account?', default: false)) {
+            $this->laraKubeWarn('Left in place — SSO sign-ins will each create their own isolated account.');
+
+            return;
+        }
+
+        // NetBird permits account deletion to the OWNER only — an admin service
+        // user gets 403, and cannot even mint a token for the owner to borrow.
+        // vpn:init keeps the owner's token for exactly this.
+        $ownerPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnName('vpn-management-secrets', $kubectl), 'owner-pat') ?? $pat;
+
+        if (! $this->deleteVpnAccount($toolHost, $ownerPat, $accountId)) {
+            $this->laraKubeError('Could not delete the account — nothing was changed.');
+            $this->line('  <fg=gray>NetBird allows this to the account OWNER only. If this install predates the</>');
+            $this->line('  <fg=gray>CLI storing that token, mint one as the owner in the dashboard</>');
+            $this->line('  <fg=gray>(Team → Users → the owner → Access Tokens) and adopt it first:</>');
+            $this->line('  <fg=blue>  larakube vpn:setup-key &lt;env&gt; --pat=…</>');
+
+            return;
+        }
+
+        // Restart so the manager re-evaluates with zero accounts: the mode is
+        // decided once at process start, and it is only with no account left
+        // that a login's real domain claim survives to reach the account it
+        // creates. The domain itself is vpn:init's literal — nothing to write
+        // here.
+        $this->withSpin('Restarting NetBird Management...', function () use ($kubectl, $ns): void {
+            Process::run("{$kubectl} rollout restart deployment/".$this->vpnName('vpn-management', $kubectl)." -n {$ns}");
+        });
+
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo('✅ Account retired. Three steps to finish:');
+        $this->newLine();
+        $this->newLine();
+        $this->line('  <fg=yellow>⚠ Do NOT use the "Welcome to NetBird" setup wizard.</>');
+        $this->line('  <fg=gray>With no account left, the dashboard root offers first-run setup — and that</>');
+        $this->line('  <fg=gray>posts to /api/setup, recreating an account with no domain: exactly what was</>');
+        $this->line('  <fg=gray>just retired. Only an SSO login produces one SSO users can share.</>');
+        $this->newLine();
+        $this->line('  <fg=gray>1.</> Grant yourself the role first — SSO is denied to everyone until then:');
+        $this->line('     <fg=blue>larakube sso:grant --tool=vpn --domain='.$toolHost.' --role=vpn-user --email=&lt;you&gt;</>');
+        $this->line('     <fg=gray>Then sign in through the identity provider directly, NOT the dashboard root:</>');
+        $this->line('     <fg=blue>https://'.$toolHost.'/oauth2/auth?client_id=netbird-dashboard&amp;response_type=code&amp;scope=openid+profile+email&amp;redirect_uri=https://'.$toolHost.'/nb-auth</>');
+        $this->line('  <fg=gray>2.</> Mint a token: <fg=gray>Team → Users → your user → Access Tokens, then</>');
+        $this->line('     <fg=blue>larakube vpn:setup-key <env> --pat=…</>');
+        $this->line('  <fg=gray>3.</> <fg=blue>larakube vpn:init <env></> <fg=gray>— recreates the service user, groups and gateway key.</>');
+        $this->newLine();
     }
 
     /** Disable the OIDC auth backend on OpenBao. */

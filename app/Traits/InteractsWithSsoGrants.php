@@ -88,7 +88,7 @@ trait InteractsWithSsoGrants
         }
 
         if ($tool->ssoAdminRoles() !== []) {
-            $projectId = $this->readClusterSecretKey($kubectl, $this->ssoNamespace(), "sso-app-{$tool->value}", 'project-id');
+            $projectId = $this->readClusterSecretKey($kubectl, $this->ssoNamespace(), $this->ssoAppSecretName($tool, $instance), 'project-id');
             if ($projectId !== null) {
                 return $projectId;
             }

@@ -26,6 +26,8 @@ class CreateSetupKeyRequest extends Request implements HasBody
         protected readonly int $expiresIn,
         protected readonly int $usageLimit,
         protected readonly bool $ephemeral = false,
+        /** @var list<string> Group ids every peer joining with this key is placed into. */
+        protected readonly array $autoGroups = [],
     ) {}
 
     /**
@@ -44,6 +46,9 @@ class CreateSetupKeyRequest extends Request implements HasBody
             'expires_in' => $this->expiresIn,
             'usage_limit' => $this->usageLimit,
             'ephemeral' => $this->ephemeral,
+            // Placing the peer at enrolment is the only way it lands in the right
+            // group at all — nothing moves it there afterwards.
+            'auto_groups' => $this->autoGroups,
         ];
     }
 }

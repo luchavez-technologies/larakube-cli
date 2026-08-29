@@ -24,6 +24,7 @@ class VpnGrantCommand extends Command
         {--reusable : Allow multiple devices to join with this same key (default: single-use, one device)}
         {--ephemeral : Auto-remove the peer once it goes stale/disconnects (for a CI runner, not a person\'s device)}
         {--expires=365 : Days until the key expires}
+        {--group= : Group this device joins (default: larakube-people; pass project-environment to scope it to one app env)}
         {--json : Emit one machine-readable JSON result on stdout}';
 
     protected $description = 'Mint a NetBird VPN setup key for a teammate to join (re-run to issue another)';
@@ -92,7 +93,20 @@ class VpnGrantCommand extends Command
         $ephemeral = (bool) $this->option('ephemeral');
         $days = max(1, (int) $this->option('expires'));
 
-        $minted = $this->mintVpnSetupKey($host, $pat, $name, $reusable, $days, $ephemeral);
+        // A device can only be placed in a group at enrolment, so the group has
+        // to exist before the key is minted. Default is the cluster-wide people
+        // group; --group scopes the device to one app environment instead.
+        $group = trim((string) $this->option('group')) ?: self::VPN_GROUP_PEOPLE;
+        $groupId = $this->ensureVpnGroup($host, $pat, $group);
+
+        if ($groupId === null) {
+            // Not fatal: a key with no auto_groups still works, the device just
+            // lands in `All` and has to be moved by hand. Say so rather than
+            // letting it look like the scoping took effect.
+            $this->laraKubeWarn("Could not resolve the '{$group}' group — this device will land in `All` instead.");
+        }
+
+        $minted = $this->mintVpnSetupKey($host, $pat, $name, $reusable, $days, $ephemeral, array_values(array_filter([$groupId])));
         if ($minted === null) {
             $this->laraKubeError('Could not mint the setup key — see the NetBird server output above.');
 

@@ -1,7 +1,8 @@
+@php($sfx = ($instance ?? '') !== '' ? '-'.$instance : '')
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: netbird-management
+  name: vpn-management{{ $sfx }}
   namespace: larakube-vpn
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -28,28 +29,64 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: netbird-signal
+                name: vpn-signal{{ $sfx }}
                 port:
                   number: 80
           - path: /relay
             pathType: Prefix
             backend:
               service:
-                name: netbird-relay
+                name: vpn-relay{{ $sfx }}
                 port:
                   number: 33080
           - path: /ws-proxy/
             pathType: Prefix
             backend:
               service:
-                name: netbird-relay
+                name: vpn-relay{{ $sfx }}
                 port:
                   number: 33080
+{{-- `/` belongs to the dashboard, so every path the management service owns
+     must be listed EXPLICITLY here — before this change they were all covered
+     by the catch-all. Missing one silently breaks peer connectivity rather
+     than 404ing visibly: the gRPC prefixes below carry the client's control
+     channel, and /oauth2 is the embedded IdP's own issuer (see
+     management-config.blade.php). This list is NetBird's documented
+     external-reverse-proxy contract for a multi-container deployment; do not
+     trim it to the paths that happen to be exercised today. --}}
+          - path: /management.ManagementService/
+            pathType: Prefix
+            backend:
+              service:
+                name: vpn-management{{ $sfx }}
+                port:
+                  number: 80
+          - path: /management.ProxyService/
+            pathType: Prefix
+            backend:
+              service:
+                name: vpn-management{{ $sfx }}
+                port:
+                  number: 80
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: vpn-management{{ $sfx }}
+                port:
+                  number: 80
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: vpn-management{{ $sfx }}
+                port:
+                  number: 80
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: netbird-management
+                name: vpn-dashboard{{ $sfx }}
                 port:
                   number: 80
   tls:

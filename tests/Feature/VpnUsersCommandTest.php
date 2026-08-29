@@ -17,8 +17,8 @@ function fakeVpnUsersInstalled(string $pat = 'nbp_test_pat'): void
     $kubectl = vpnUsersKubectl();
 
     Process::fake([
-        "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
-        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode($pat), exitCode: 0),
+        "{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => 'vpn-management   1/1   1   1   5d',
+        "{$kubectl} get secret vpn-management-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode($pat), exitCode: 0),
     ]);
 }
 
@@ -64,7 +64,7 @@ test('vpn:users shows friendly messages when nothing has been granted or joined 
 
 test('vpn:users errors when the VPN is not installed', function (): void {
     Process::fake([
-        vpnUsersKubectl().' get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
+        vpnUsersKubectl().' get deployment vpn-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('vpn:users local')

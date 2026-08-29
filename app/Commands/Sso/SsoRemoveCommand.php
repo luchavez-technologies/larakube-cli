@@ -28,9 +28,10 @@ class SsoRemoveCommand extends AbstractToolRemoveCommand
     {
         // Whole dedicated namespace, matching Vaultwarden/OpenBao/NetBird —
         // nothing else lives in larakube-sso.
-        return $this->removeResources(
+        return $this->removeNamespace(
             'Removing Zitadel namespace...',
-            "{$kubectl} delete namespace {$namespace} --ignore-not-found",
+            $kubectl,
+            $namespace,
         );
     }
 }

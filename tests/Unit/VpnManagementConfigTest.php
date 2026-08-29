@@ -23,6 +23,11 @@ test('vpn management-config renders valid JSON wired to the external host', func
             // /oauth2/* route (the CLI's interactive SSO login) silently
             // 404s — Dex builds its route table from the issuer's own path.
             'Issuer' => 'https://vpn.example.com/oauth2',
+            // Dex's static vpn-dashboard client is registered with exactly
+            // these; without them the authorize step rejects the dashboard's
+            // own redirect_uri before showing a login form.
+            'DashboardRedirectURIs' => ['https://vpn.example.com/nb-auth', 'https://vpn.example.com/nb-silent-auth'],
+            'DashboardPostLogoutRedirectURIs' => ['https://vpn.example.com/'],
         ])
         ->and($config['EncryptionKey'])->toBe('super-secret-key');
 });

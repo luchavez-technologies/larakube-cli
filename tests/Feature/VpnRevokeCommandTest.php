@@ -21,8 +21,8 @@ function fakeVpnRevokeInstalled(string $pat = 'nbp_test_pat'): void
     $kubectl = vpnRevokeKubectl();
 
     Process::fake([
-        "{$kubectl} get deployment netbird-management -n larakube-vpn --no-headers" => 'netbird-management   1/1   1   1   5d',
-        "{$kubectl} get secret vpn-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode($pat), exitCode: 0),
+        "{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => 'vpn-management   1/1   1   1   5d',
+        "{$kubectl} get secret vpn-management-secrets -n larakube-vpn -o jsonpath='{.data.pat}'" => Process::result(output: base64_encode($pat), exitCode: 0),
     ]);
 }
 
@@ -124,7 +124,7 @@ test('vpn:revoke interactive picker revokes the actually-selected key, not one i
 
 test('vpn:revoke errors when the VPN is not installed', function (): void {
     Process::fake([
-        vpnRevokeKubectl().' get deployment netbird-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
+        vpnRevokeKubectl().' get deployment vpn-management -n larakube-vpn --no-headers' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('vpn:revoke local --name=lloyd --force')

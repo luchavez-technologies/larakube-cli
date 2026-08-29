@@ -271,7 +271,7 @@ trait InteractsWithZitadelApi
      *
      * @return array{appId: string, clientId: string, clientSecret: string}|null
      */
-    protected function zitadelCreateOidcApp(string $host, string $pat, string $projectId, string $name, array|string $redirectUri, bool $publicClient = false, array $postLogoutRedirectUris = []): ?array
+    protected function zitadelCreateOidcApp(string $host, string $pat, string $projectId, string $name, array|string $redirectUri, bool $publicClient = false, array $postLogoutRedirectUris = [], bool $jwtAccessToken = false): ?array
     {
         $connector = ZitadelConnector::make($host, $pat);
 
@@ -288,7 +288,7 @@ trait InteractsWithZitadelApi
         // 2. Create OIDC app with full redirect URIs
         $redirectUris = array_values(array_unique((array) $redirectUri));
         $postLogoutRedirectUris = array_values(array_unique($postLogoutRedirectUris));
-        $response = $connector->send(CreateOidcAppRequest::make($projectId, $name, $redirectUris, $publicClient, $postLogoutRedirectUris));
+        $response = $connector->send(CreateOidcAppRequest::make($projectId, $name, $redirectUris, $publicClient, $postLogoutRedirectUris, $jwtAccessToken));
 
         if ($response->failed()) {
             return null;

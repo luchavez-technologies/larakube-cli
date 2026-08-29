@@ -43,10 +43,11 @@ class SsoUnwireCommand extends Command
         $kubectl = $this->ssoKubectl($context);
         $ssoNs = $this->ssoNamespace();
 
-        $tool = $this->resolveTool($kubectl);
-        if ($tool === null) {
+        $selection = $this->resolveTool($kubectl);
+        if ($selection === null) {
             return 1;
         }
+        [$tool, $pickedHost] = $selection;
 
         if (! $tool->hasSsoWire()) {
             $this->laraKubeError("'{$tool->value}' can't be unwired from SSO.");
@@ -63,9 +64,13 @@ class SsoUnwireCommand extends Command
         // omitting it unwires the tool's default instance, same as before
         // --domain= existed.
         $domainOption = (string) ($this->option('domain') ?: '');
-        $toolHost = $domainOption !== ''
-            ? $this->sanitizeDomainInput($domainOption)
-            : $this->targetHost($tool, $env, $config, $kubectl);
+        // The picker resolved a concrete instance, so its host wins — same as
+        // sso:wire, so the two sides target the same thing.
+        $toolHost = match (true) {
+            $domainOption !== '' => $this->sanitizeDomainInput($domainOption),
+            $pickedHost !== null => $pickedHost,
+            default => $this->targetHost($tool, $env, $config, $kubectl),
+        };
         $instance = $toolHost !== null ? $this->resolveInstanceForDomain($kubectl, $tool, $toolHost) : '';
 
         $engine = $this->resolveInstanceEngine($kubectl, $tool, $instance, $this->option('engine'));
@@ -89,10 +94,15 @@ class SsoUnwireCommand extends Command
             return 1;
         }
 
-        return $this->unwire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat, $toolHost);
+        return $this->unwire(
+            $tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat, $toolHost,
+            // Same slug sso:wire used, so unwire targets the Secret it wrote.
+            $toolHost !== null ? $tool->instanceSlugFromHost($toolHost) : null,
+        );
     }
 
-    protected function resolveTool(string $kubectl): ?ClusterTool
+    /** @return array{0: ClusterTool, 1: ?string}|null tool + the chosen instance's host */
+    protected function resolveTool(string $kubectl): ?array
     {
         $option = (string) ($this->option('tool') ?? '');
         if ($option !== '') {
@@ -106,7 +116,7 @@ class SsoUnwireCommand extends Command
                 return null;
             }
 
-            return $tool;
+            return [$tool, null];
         }
 
         if ($this->option('no-interaction')) {
@@ -115,28 +125,67 @@ class SsoUnwireCommand extends Command
             return null;
         }
 
-        $wired = [];
-        foreach (ClusterTool::shippedCases() as $candidate) {
-            if ($candidate->hasSsoWire()) {
-                $wired[$candidate->value] = $candidate->getLabel();
+        // Registry-driven and filtered to what is ACTUALLY wired, mirroring
+        // sso:wire. Listing every SSO-capable tool offered things that were
+        // never installed, and offering an unwired tool makes a no-op look like
+        // it did something.
+        $choices = [];
+
+        foreach ($this->getRegisteredTools($kubectl) as $entry) {
+            $candidate = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
+
+            if ($candidate === null || ! $candidate->isShipped() || ! $candidate->hasSsoWire()) {
+                continue;
             }
+
+            $host = (string) ($entry['host'] ?? '');
+            $instance = $host !== '' ? $candidate->instanceSlugFromHost($host) : null;
+            $schema = $candidate->oidcEnv(instance: $instance);
+
+            // The marker Secret sso:wire writes is what "wired" means.
+            if ($schema === null || ! $this->secretExists($kubectl, $schema['namespace'], $schema['secret'])) {
+                continue;
+            }
+
+            $choices[$candidate->value.'|'.$host] = [
+                'tool' => $candidate,
+                'host' => $host !== '' ? $host : null,
+                'label' => $host !== '' ? "{$candidate->getLabel()} ({$host})" : $candidate->getLabel(),
+            ];
         }
 
-        $selected = \Laravel\Prompts\select(
+        if ($choices === []) {
+            $this->laraKubeError('No tools are currently wired to Zitadel SSO.');
+
+            return null;
+        }
+
+        // STRING keys: an integer-keyed array is a LIST to Laravel Prompts, which
+        // then returns the label instead of the key — the bug that made sso:wire
+        // wire Matrix when NetBird was picked (2026-08-29).
+        $key = (string) \Laravel\Prompts\select(
             label: 'Which tool do you want to unwire from Zitadel SSO?',
-            options: $wired,
+            options: array_map(fn (array $c): string => $c['label'], $choices),
+            scroll: min(count($choices), 15),
         );
 
-        return ClusterTool::from($selected);
+        return isset($choices[$key]) ? [$choices[$key]['tool'], $choices[$key]['host']] : null;
     }
 
-    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat, ?string $toolHost = null): int
+    protected function secretExists(string $kubectl, string $ns, string $secret): bool
+    {
+        return trim(Process::run(
+            "{$kubectl} get secret {$secret} -n {$ns} --no-headers --ignore-not-found",
+        )->output()) !== '';
+    }
+
+    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat, ?string $toolHost = null, ?string $instance = null): int
     {
         if ($tool->usesForwardAuth()) {
             return $this->unwireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat);
         }
 
-        $appSecret = "sso-app-{$tool->value}";
+        $appSecret = $this->ssoAppSecretName($tool, $instance);
         $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
         $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
 
@@ -162,7 +211,7 @@ class SsoUnwireCommand extends Command
             return 0;
         }
 
-        if ($schema['deployment'] === 'netbird-management') {
+        if ($tool === ClusterTool::VPN) {
             if ($toolHost !== null) {
                 $this->unwireNetbirdOidc($kubectl, $schema['namespace'], $toolHost);
             }
@@ -380,7 +429,7 @@ class SsoUnwireCommand extends Command
      */
     protected function unwireNetbirdOidc(string $kubectl, string $ns, string $toolHost): void
     {
-        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, 'vpn-secrets', 'pat');
+        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnName('vpn-management-secrets', $kubectl), 'pat');
         if ($netbirdPat === null) {
             return;
         }

@@ -18,6 +18,22 @@ trait InteractsWithSso
 {
     use InteractsWithToolRegistry, ReadsClusterSecrets, ResolvesEnvironmentContext;
 
+    /**
+     * The Secret holding a tool's Zitadel client credentials.
+     *
+     * Instance-suffixed, per ADR 0021: two instances of the same tool are two
+     * distinct Zitadel clients, and an unsuffixed name means the second wire
+     * silently overwrites the first's client-id/secret. The live cluster still
+     * carries both shapes from before this was fixed — `sso-app-notes` next to
+     * `sso-app-notes-notes-luchtech-dev`.
+     */
+    protected function ssoAppSecretName(ClusterTool $tool, ?string $instance = null): string
+    {
+        $base = "sso-app-{$tool->value}";
+
+        return ($instance === null || $instance === '') ? $base : "{$base}-{$instance}";
+    }
+
     /** The namespace the SSO stack lives in — dedicated, not larakube-shared. */
     protected function ssoNamespace(): string
     {
