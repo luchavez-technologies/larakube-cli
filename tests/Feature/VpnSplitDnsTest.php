@@ -46,7 +46,7 @@ function splitDnsSubject(): object
 
         public function gatewayIp(string $host, string $pat, string $kubectl): ?string
         {
-            return $this->vpnGatewayOverlayIp($host, $pat, $kubectl);
+            return $this->awaitVpnGateway($host, $pat, $kubectl, 'larakube-vpn');
         }
     };
 }
@@ -72,6 +72,7 @@ function splitDnsFakes(): array
 {
     return [
         '*get ingress -A -o json*' => Process::result(output: splitDnsIngressJson()),
+        '*get pods*-l app=vpn-client*' => Process::result(output: "'vpn-client-new'"),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'configmap/vpn-resolver-config created'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -121,7 +122,7 @@ test('reconcile registers a match-domain group on the resolver port, distributed
     Saloon::fake([
         ListNameserverGroupsRequest::class => MockResponse::make([]),
         ListPeersRequest::class => MockResponse::make([
-            ['id' => 'p1', 'name' => 'vpn-client-abc', 'ip' => '100.84.155.135', 'connected' => true],
+            ['id' => 'p1', 'name' => 'vpn-client-new', 'ip' => '100.84.155.135', 'connected' => true],
         ]),
         ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
         CreateGroupRequest::class => MockResponse::make(['id' => 'grp-all']),
@@ -158,7 +159,7 @@ test('a second run updates the existing group instead of stacking duplicates', f
             ['id' => 'ns-existing', 'name' => 'LaraKube Cluster Internal'],
         ]),
         ListPeersRequest::class => MockResponse::make([
-            ['id' => 'p1', 'name' => 'vpn-client-abc', 'ip' => '100.84.155.135', 'connected' => true],
+            ['id' => 'p1', 'name' => 'vpn-client-new', 'ip' => '100.84.155.135', 'connected' => true],
         ]),
         ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
         SaveNameserverGroupRequest::class => MockResponse::make(['id' => 'ns-existing']),
@@ -197,7 +198,7 @@ test('the gateway address is read back live, never assumed', function (): void {
     Saloon::fake([
         ListPeersRequest::class => MockResponse::make([
             ['name' => 'some-other-peer', 'ip' => '100.1.1.1'],
-            ['name' => 'vpn-client-xyz', 'ip' => '100.113.100.204'],
+            ['name' => 'vpn-client-new', 'ip' => '100.113.100.204'],
         ]),
     ]);
 
@@ -205,16 +206,17 @@ test('the gateway address is read back live, never assumed', function (): void {
         ->toBe('100.113.100.204');
 });
 
-test('the connected gateway wins when a rollout has left an orphan behind', function (): void {
-    // Every client rollout enrols a NEW peer and orphans the previous one, so
-    // the name prefix routinely matches several. Taking whichever came first
-    // aimed split-DNS at a disconnected peer on a live cluster (2026-08-30).
+test('the gateway is the pod running now, not whichever peer still claims to be connected', function (): void {
+    // NetBird keeps reporting a peer as connected for a while after its pod is
+    // gone, so a reconcile just after a rollout picked the OUTGOING gateway and
+    // wrote its about-to-die address into DNS. Twice, on a live cluster.
     Process::fake(splitDnsFakes());
 
     Saloon::fake([
         ListPeersRequest::class => MockResponse::make([
-            ['id' => 'old', 'name' => 'vpn-client-6d6d96fb8c-prg5m', 'ip' => '100.84.155.135', 'connected' => false],
-            ['id' => 'new', 'name' => 'vpn-client-5665b95544-fnckf', 'ip' => '100.84.209.9', 'connected' => true],
+            // The corpse still claims to be connected; the live pod does not yet.
+            ['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => true],
+            ['id' => 'new', 'name' => 'vpn-client-new', 'ip' => '100.84.209.9', 'connected' => false],
         ]),
     ]);
 
@@ -269,10 +271,10 @@ test('reconcile waits for a connected gateway rather than writing a dead address
             $polls++;
 
             return MockResponse::make($polls === 1
-                ? [['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => false]]
+                ? [['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => true]]
                 : [
-                    ['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => false],
-                    ['id' => 'new', 'name' => 'vpn-client-new', 'ip' => '100.84.209.9', 'connected' => true],
+                    ['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => true],
+                    ['id' => 'new', 'name' => 'vpn-client-new', 'ip' => '100.84.209.9', 'connected' => false],
                 ]);
         },
         ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),

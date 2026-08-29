@@ -699,80 +699,84 @@ trait InteractsWithVpn
     }
 
     /**
-     * Wait until a connected gateway peer exists, and return its address.
+     * The name of the client Pod running right now, which is also the peer name.
      *
-     * Registration lands a few seconds after the pod is Running, so reading
-     * peers the moment a rollout finishes can see only the previous, now
-     * disconnected gateway -- and write its dead address into DNS. Polling for
-     * a CONNECTED one is the difference between reconciling against the gateway
-     * that exists and the one that used to.
+     * NetBird names a peer after the machine's hostname, and in Kubernetes that
+     * is the Pod name -- an exact identity for "the gateway that exists now",
+     * with none of the ambiguity of a name prefix or a liveness flag.
      */
-    protected function awaitVpnGateway(string $host, string $pat, string $kubectl): ?string
+    protected function currentVpnGatewayPod(string $kubectl, string $ns): ?string
     {
-        $deadline = now()->addSeconds(90);
+        $app = $this->vpnName('vpn-client', $kubectl);
+
+        $name = Process::run(
+            "{$kubectl} get pods -n {$ns} -l app={$app} --field-selector=status.phase=Running "
+            ."-o jsonpath='{.items[0].metadata.name}'",
+        )->output();
+
+        $name = trim($name, " '\n\r\t");
+
+        return $name !== '' ? $name : null;
+    }
+
+    /**
+     * Wait for the CURRENT gateway pod to appear as a peer, and return its address.
+     *
+     * Matches the running Pod's name, deliberately, rather than the `connected`
+     * flag. NetBird goes on reporting a peer as connected for a while after its
+     * pod is gone, so a reconcile running just after a rollout finds the
+     * OUTGOING gateway, believes it is live, and writes its about-to-die address
+     * into DNS. That happened twice on 2026-08-30. A pod name cannot go stale
+     * that way: the peer with this name either exists or it does not.
+     */
+    protected function awaitVpnGateway(string $host, string $pat, string $kubectl, string $ns): ?string
+    {
+        $pod = $this->currentVpnGatewayPod($kubectl, $ns);
+
+        if ($pod === null) {
+            return null;
+        }
+
+        $deadline = now()->addSeconds(120);
 
         while (now()->lessThan($deadline)) {
-            $prefix = $this->vpnName('vpn-client', $kubectl);
-
             foreach ($this->vpnPeers($host, $pat) as $peer) {
-                if (($peer['connected'] ?? false) !== true) {
+                if ((string) ($peer['name'] ?? '') !== $pod) {
                     continue;
                 }
 
-                if (str_starts_with((string) ($peer['name'] ?? ''), $prefix)) {
-                    $ip = trim((string) ($peer['ip'] ?? ''), '"');
+                $ip = trim((string) ($peer['ip'] ?? ''), '"');
 
-                    if ($ip !== '') {
-                        return $ip;
-                    }
+                if ($ip !== '') {
+                    return $ip;
                 }
             }
 
+            // Enrolment lands a few seconds after the pod reports Running.
             Sleep::sleep(5);
         }
 
-        // Nothing connected within the window: fall back to whatever the
-        // account knows, so a gateway that is up but slow to report still gets
-        // a usable record rather than none.
-        return $this->vpnGatewayOverlayIp($host, $pat, $kubectl);
+        return null;
     }
 
     /**
      * Retire gateway peers left behind by earlier rollouts.
      *
-     * Each rollout of the client Deployment enrols a brand-new peer -- the peer
-     * name carries the pod hash -- and the previous one lingers forever,
-     * disconnected, holding an address in the same range. Left alone they
-     * accumulate one per deploy and make "which peer is the gateway?" an
-     * ambiguous question.
-     *
-     * Only ever runs when a connected gateway exists, so a gateway that is
-     * merely down is never mistaken for an orphan.
+     * Identified by name: anything carrying the gateway prefix that is not the
+     * Pod running right now is a corpse from a previous deploy. Matching on
+     * `connected` was wrong here for the same reason it was wrong above -- a
+     * peer whose pod died seconds ago still reports connected, so it would
+     * survive the sweep and then be referenced as though it were live.
      *
      * @param  array<int, array<string, mixed>>  $peers
      */
-    protected function pruneOrphanedVpnGateways(string $host, string $pat, array $peers, string $prefix): void
+    protected function pruneOrphanedVpnGateways(string $host, string $pat, array $peers, string $prefix, string $current): void
     {
-        $hasLive = false;
-
-        foreach ($peers as $peer) {
-            if (str_starts_with((string) ($peer['name'] ?? ''), $prefix) && ($peer['connected'] ?? false) === true) {
-                $hasLive = true;
-            }
-        }
-
-        if (! $hasLive) {
-            return;
-        }
-
         foreach ($peers as $peer) {
             $id = (string) ($peer['id'] ?? '');
+            $name = (string) ($peer['name'] ?? '');
 
-            if ($id === '' || ! str_starts_with((string) ($peer['name'] ?? ''), $prefix)) {
-                continue;
-            }
-
-            if (($peer['connected'] ?? false) === true) {
+            if ($id === '' || $name === $current || ! str_starts_with($name, $prefix)) {
                 continue;
             }
 
@@ -817,13 +821,14 @@ trait InteractsWithVpn
             return true;
         }
 
-        $gatewayIp = $this->awaitVpnGateway($host, $pat, $kubectl);
+        $pod = $this->currentVpnGatewayPod($kubectl, $ns);
+        $gatewayIp = $this->awaitVpnGateway($host, $pat, $kubectl, $ns);
 
-        if ($gatewayIp === null) {
+        if ($pod === null || $gatewayIp === null) {
             return false;
         }
 
-        $this->pruneOrphanedVpnGateways($host, $pat, $this->vpnPeers($host, $pat), $this->vpnName('vpn-client', $kubectl));
+        $this->pruneOrphanedVpnGateways($host, $pat, $this->vpnPeers($host, $pat), $this->vpnName('vpn-client', $kubectl), $pod);
 
         if (! $this->applyVpnResolverConfig($kubectl, $ns, $hosts, $gatewayIp)) {
             return false;

@@ -423,3 +423,33 @@ persists and no further restarts are needed.
 any record. Registration lands a few seconds after the pod is Running, so reading
 peers the instant a rollout completes can see only the previous, disconnected
 gateway, and would write its dead address into DNS.
+
+### Second live run — `connected` is not a usable liveness signal
+
+The PVC fix worked (identity files now sit on the volume), and the reconcile still
+wrote a dead address:
+
+```
+peers   75c987c447-cfrkg  100.84.127.163  connected      <-- the real gateway
+        5665b95544-fnckf  100.84.209.9    disconnected
+group                     100.84.209.9                   <-- the corpse
+```
+
+`awaitVpnGateway()` returned as soon as it saw *any* connected gateway peer, and
+NetBird goes on reporting a peer as connected for some time after its pod is gone.
+So the reconcile raced the rollout and locked onto the outgoing gateway. Prune left
+it alone for the same reason: at that moment it still looked alive.
+
+**Identity, not liveness.** The gateway is now matched by the name of the client Pod
+that is Running right now — NetBird names a peer after the machine hostname, which in
+Kubernetes is the Pod name. A pod name cannot be stale in the way a keepalive flag
+can: the peer with that name either exists or it does not. Prune uses the same test:
+anything with the gateway prefix that is not the current Pod is a corpse.
+
+This is the third distinct failure in the same three lines, and every one of them was
+some version of "believing something that used to be true". Verify by asking the
+resolver, never by reading the ConfigMap:
+
+```
+nslookup -port=5353 <vpn-only-host> 127.0.0.1
+```
