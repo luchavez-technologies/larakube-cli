@@ -1,7 +1,7 @@
 # Plan: NetBird single-account convergence, then split-DNS for VPN-only hosts
 
 **Status:** Phase 1 **shipped and verified live 2026-08-30** — one account,
-domained `luchtech.dev`, gateway peer enrolled. Phase 2 built 2026-08-30, UNVERIFIED live.
+domained `luchtech.dev`, gateway peer enrolled. Phase 2 **shipped and verified live 2026-08-30**, iOS included.
 Rewritten 2026-08-28 after live testing on `larakube-159.89.205.239` invalidated
 two earlier versions of this plan; corrected again 2026-08-30, see the Phase 1
 correction below and `netbird-single-account-recovery.md`.
@@ -453,3 +453,47 @@ resolver, never by reading the ConfigMap:
 ```
 nslookup -port=5353 <vpn-only-host> 127.0.0.1
 ```
+
+---
+
+## Verified end to end, 2026-08-30
+
+An iPhone installed NetBird, entered the VPN host, signed in with Zitadel, and opened
+a VPN-only host in Safari with **no `hosts` entry on any device**. That is the goal
+this plan was written for.
+
+```
+accounts  1                                       <-- not two
+peers     vpn-client-…-cfrkg  100.84.127.163      Alpine Linux
+          iPhone              100.84.20.174       iOS, user = the Zitadel subject
+groups    All 2 · larakube-routers 1
+group     100.84.127.163:5353  ["admin.chat.luchtech.dev"]  primary=f  search=f
+```
+
+Phase 1 and Phase 2 checklists both pass:
+
+- [x] One account, domained, single-account mode enabled.
+- [x] A brand-new SSO identity joins it instead of minting its own `/16`.
+- [x] Gateway peer enrolled and in `larakube-routers`.
+- [x] Resolver answers the VPN-only host with the gateway address.
+- [x] A public host still resolves publicly while connected (Outline loaded).
+- [x] **iOS** — the platform this plan flagged as unpredictable — worked unmodified.
+
+### The one operational note worth keeping
+
+A ConfigMap change is **not** instant inside the pod. The kubelet takes up to about a
+minute to project it, and CoreDNS's `reload` then needs its interval on top. During
+that window the resolver legitimately still serves the previous answer, and checking
+too early looks exactly like a failure. Verify by asking the resolver, and give it a
+minute:
+
+```
+nslookup -port=5353 <vpn-only-host> 127.0.0.1
+```
+
+### What is still not built
+
+NetBird **routes** and **networks** remain unused (`routes` = 0). Split-DNS plus the
+socat gateway covers hosts fronted by the cluster ingress, which is every VPN-only
+tool today. Reaching an arbitrary in-cluster IP or service CIDR from a peer would need
+real routes, and nothing asks for that yet.
