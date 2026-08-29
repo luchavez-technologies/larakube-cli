@@ -1762,6 +1762,6 @@ A full manual pass across every major deploy path and scaffolding command to con
 
 ## Notes
 
-- Test app: see `project_firearmland_test_app.md` — do NOT reference by name in any committed output
+- Test app: see the test-app memory — do NOT reference it by name in any committed output
 - Rebuild CLI before each test pass: `./php vendor/bin/pint && ./build`
 - Check `docker history <image>` to confirm no secrets in layers after every build

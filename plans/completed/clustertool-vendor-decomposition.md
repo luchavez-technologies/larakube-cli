@@ -187,7 +187,7 @@ git status --porcelain | grep "^ M tests"  # must show ONLY this pre-existing ba
 
 The user (repo owner) has a **hard rule**: never commit unless explicitly asked. Do not commit any of this work — leave it in the working tree for the user to review and commit themselves, exactly as Stages 1–5 were left.
 
-Also a **hard rule** for this specific repo: never write "firearmland" anywhere (unrelated to this task, but scan before any commit if one is ever requested), and Pint must be run as `larakube php vendor/bin/pint` NOT `larakube artpint`. Also: **never** name a vendor class with the "obvious" plural form — see the singular-naming note in §1, it was an explicit correction mid-effort.
+Also a **hard rule** for this specific repo: never write the company name anywhere (see the no-company-name memory; unrelated to this task, but scan before any commit if one is ever requested), and Pint must be run as `larakube php vendor/bin/pint` NOT `larakube artpint`. Also: **never** name a vendor class with the "obvious" plural form — see the singular-naming note in §1, it was an explicit correction mid-effort.
 
 ## 9. Task tracking
 
