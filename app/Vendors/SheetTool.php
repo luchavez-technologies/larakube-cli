@@ -111,7 +111,7 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return ['teable'];
     }
 
-    public function openbaoSyncConfig(): array
+    public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
             'secret' => 'sheet-secrets',

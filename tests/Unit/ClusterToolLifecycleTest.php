@@ -136,7 +136,7 @@ test('deploymentName() matches the actual Deployment name each tool\'s own manif
     // not just re-asserting whatever the enum currently says.
     expect(ClusterTool::SSO->deploymentName())->toBe('sso-zitadel');
     expect(ClusterTool::ERRORS->deploymentName())->toBe('glitchtip-web')
-        ->and(ClusterTool::VPN->deploymentName())->toBe('netbird-management');
+        ->and(ClusterTool::VPN->deploymentName())->toBe('vpn-management');
 });
 
 test('tasks (Planka) does not claim OIDC wiring — it was removed from the OSS edition', function (): void {

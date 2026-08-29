@@ -94,7 +94,11 @@ class PasswordsInitCommand extends Command
             return 1;
         }
 
+        $instance = ClusterTool::PASSWORDS->instanceSlugFromHost($host);
+        $deploymentName = ClusterTool::PASSWORDS->primaryComponent($instance)->deployment;
+
         $manifest = view('k8s.vault.shared', [
+            'instance' => $instance,
             'host' => $host,
             'adminToken' => $adminToken,
             'hashedAdminToken' => $hashedAdminToken,
@@ -110,7 +114,7 @@ class PasswordsInitCommand extends Command
 
         $rolledOut = $this->withSpin(
             'Applying Vaultwarden manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'vaultwarden', 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120),
         );
         $temporaryDirectory->delete();
 

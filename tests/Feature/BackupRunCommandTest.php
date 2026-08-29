@@ -34,11 +34,11 @@ function backupRunFakes(array $overrides = []): array
         // excluded, Synapse signing key included, etc.) still hold under the
         // new discovery mechanism, not the old hardcoded array.
         '*get namespace -o jsonpath*' => Process::result(output: 'larakube-shared larakube-vault larakube-secrets larakube-sso larakube-vpn larakube-plex'),
-        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'git-forgejo-git-luchtech-dev git-forgejo-runner-git-luchtech-dev drive-ocis stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana prometheus-server loki'),
-        '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'vaultwarden'),
+        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'git-forgejo-git-luchtech-dev git-forgejo-runner-git-luchtech-dev drive-ocis stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark monitor-grafana-monitor-luchtech-dev prometheus-server loki'),
+        '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'passwords-vaultwarden-vault-luchtech-dev'),
         '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
         '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),
-        '*get deployment -n larakube-vpn -o jsonpath*' => Process::result(output: 'netbird-management'),
+        '*get deployment -n larakube-vpn -o jsonpath*' => Process::result(output: 'vpn-management'),
         '*get deployment -n larakube-plex -o jsonpath*' => Process::result(output: 'seaweedfs postgres'),
     ], $overrides, ['*' => Process::result(output: '')]);
 }
@@ -89,7 +89,8 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
     };
 
     $names = array_column($cmd->targets(), 'name');
-    $paths = array_column($cmd->targets(), 'path');
+    // Flattened: a component can now archive several files from one mount.
+    $paths = array_merge(...array_column($cmd->targets(), 'paths'));
 
     // Prometheus is the largest volume on the cluster and the least valuable —
     // metrics history, rebuildable by waiting. Backing it up would quadruple
@@ -97,17 +98,22 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
     expect($names)->not->toContain('prometheus')
         // 59 bytes, and losing it permanently breaks federation and every
         // existing device session.
-        ->and($names)->toContain('synapse-identity')
+        ->and($names)->toContain('chat-synapse')
         ->and($paths)->toContain('/data/chat.luchtech.dev.signing.key')
         // The object store holds chat media, git LFS, notes, signed documents.
+        // Plex Commons infrastructure, so it keeps its explicit name.
         ->and($names)->toContain('seaweedfs')
-        ->and($names)->toContain('openbao')
-        ->and($names)->toContain('vaultwarden')
-        // The other two legacy names (see InteractsWithBackup::LEGACY_VOLUME_NAMES)
-        // — a backup taken before dynamic discovery must still restore under
-        // these exact names.
-        ->and($names)->toContain('forgejo')
-        ->and($names)->toContain('drive-ocis');
+        // The Deployment's own name, which already IS {category}-{app}-{instance}
+        // under ADR 0021. The hand-maintained legacy-name map is gone — archives
+        // predating it were disposable and keeping a fallback would be exactly
+        // the temporary compatibility code this repo refuses elsewhere.
+        ->and($names)->toContain('drive-ocis')
+        ->and($names)->toContain('passwords-vaultwarden-vault-luchtech-dev')
+        ->and($names)->toContain('git-forgejo-git-luchtech-dev')
+        // Still the unmigrated Deployment name; it becomes
+        // secrets-openbao-{instance} the moment SecretTool adopts the
+        // convention, with no separate rename here.
+        ->and($names)->toContain('openbao-backend');
 
     // Only Synapse's own component is covered — its sibling Deployments
     // (Cinny, Coturn, the bundled --no-plex Postgres) never opted in, so
@@ -118,11 +124,11 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
         ->and($names)->not->toContain('chat-db');
 });
 
-test('a tool with no legacy name gets the derived {tool}-{component} format', function (): void {
-    // DRIVE's component key is "app" — its legacy name ("drive-ocis") is
-    // preserved via the map, but a hypothetical future backup-worthy
-    // component with no legacy entry must still get a stable, predictable
-    // name rather than an empty or null one.
+test('archive names are the Deployment name, so they cannot collide', function (): void {
+    // Two instances of one tool used to derive the SAME archive name, and
+    // backup:run writes every target to "{work}/vol-{name}.tar.gz" — so the
+    // second silently overwrote the first inside the same backup and one
+    // instance's data never reached the archive at all.
     Process::fake(backupRunFakes());
 
     $cmd = new class
@@ -135,11 +141,15 @@ test('a tool with no legacy name gets the derived {tool}-{component} format', fu
         }
     };
 
-    // SECRETS's component key is "app" and IS in the legacy map ("openbao")
-    // — confirms the map takes priority over the derived format for a name
-    // that predates it, rather than both existing side by side under two
-    // different names for the same component.
     $names = array_column($cmd->targets(), 'name');
-    expect($names)->toContain('openbao')
-        ->and($names)->not->toContain('secrets-app');
+
+    // Derived from the workload, never a hand-maintained alias.
+    expect($names)->toContain('openbao-backend')
+        ->and($names)->not->toContain('openbao')
+        // A Deployment carrying an instance carries it into the archive name.
+        ->and($names)->toContain('git-forgejo-git-luchtech-dev')
+        ->and($names)->not->toContain('forgejo');
+
+    // The whole point: no two targets can collide on a name.
+    expect($names)->toHaveSameSize(array_unique($names));
 });

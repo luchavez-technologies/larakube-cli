@@ -315,6 +315,23 @@ abstract class AbstractToolRemoveCommand extends Command
      * the old `$databases === []` early return skipped its bucket drop
      * unconditionally, no matter what).
      */
+    /** Does this Commons tenant actually exist? Distinguishes "dropped" from "was never there". */
+    protected function commonsDatabaseExists(string $kubectl, string $plexNs, string $database): bool
+    {
+        $client = DatabaseDriver::POSTGRESQL->commonsAdminClient();
+
+        return trim(Process::run(
+            "{$kubectl} exec deploy/postgres -n {$plexNs} -- {$client} -U postgres -tAc "
+            .escapeshellarg('SELECT 1 FROM pg_database WHERE datname = '.$this->quoteSqlLiteral($database)),
+        )->output()) === '1';
+    }
+
+    /** Single-quoted SQL literal, doubling any embedded quote. */
+    protected function quoteSqlLiteral(string $value): string
+    {
+        return "'".str_replace("'", "''", $value)."'";
+    }
+
     protected function dropCommonsTenants(string $kubectl, ?string $instance = null): bool
     {
         $tool = $this->tool();
@@ -334,6 +351,16 @@ abstract class AbstractToolRemoveCommand extends Command
         $client = DatabaseDriver::POSTGRESQL->commonsAdminClient();
 
         foreach ($databases as $database) {
+            // Reported, never used to skip: DROP DATABASE IF EXISTS succeeds on a
+            // name that never existed, so a purge computing the wrong tenant
+            // reports success and drops nothing. Silence there reads as "data
+            // destroyed" when it means the opposite. The drop still runs either
+            // way — a probe that cannot reach Postgres must not stop a teardown.
+            if (! $this->commonsDatabaseExists($kubectl, $plexNs, $database)) {
+                $this->laraKubeWarn("No Commons database named '{$database}' — nothing to drop.");
+                $this->line('  <fg=gray>If this tool has data, its tenant is under a different name and survives this purge.</>');
+            }
+
             $sql = $this->buildDropTenantSql($database, $database);
             $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
             $tmp = $temporaryDirectory->path().'/drop.sql';

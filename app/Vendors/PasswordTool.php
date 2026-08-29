@@ -46,16 +46,18 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
         return [
             new ClusterToolComponentData(
-                key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('vaultwarden'),
-                container: 'vaultwarden', backupVolume: true, backupPath: '/data',
+                key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('passwords-vaultwarden'),
+                container: 'vaultwarden', backupVolume: true, backupPaths: ['/data'],
             ),
         ];
     }
 
     public function smtpEnv(?string $instance = null): ?array
     {
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+
         return [
-            'deployment' => 'vaultwarden',
+            'deployment' => $name('passwords-vaultwarden'),
             'secret' => 'vaultwarden-smtp',
             'static' => [
                 'SMTP_SECURITY' => 'force_tls',
@@ -72,8 +74,10 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
     public function oidcEnv(?string $instance = null): ?array
     {
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+
         return [
-            'deployment' => 'vaultwarden',
+            'deployment' => $name('passwords-vaultwarden'),
             'secret' => 'vaultwarden-oidc',
             'static' => [
                 'SSO_ENABLED' => 'true',
@@ -102,7 +106,7 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
         ];
     }
 
-    public function openbaoSyncConfig(): array
+    public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
             'secret' => 'vault-secrets',
@@ -144,8 +148,8 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '') ? 'vaultwarden' : "vaultwarden-{$instance}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
-        return "deployment/{$deployment} -n larakube-vault";
+        return "deployment/{$name('passwords-vaultwarden')} -n larakube-vault";
     }
 }

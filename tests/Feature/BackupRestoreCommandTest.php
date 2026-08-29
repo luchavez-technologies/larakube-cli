@@ -34,7 +34,7 @@ function backupRestoreFakes(array $overrides = []): array
         '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'vaultwarden'),
         '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
         '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),
-        '*get deployment -n larakube-vpn -o jsonpath*' => Process::result(output: 'netbird-management'),
+        '*get deployment -n larakube-vpn -o jsonpath*' => Process::result(output: 'vpn-management'),
         '*get deployment -n larakube-plex -o jsonpath*' => Process::result(output: 'seaweedfs postgres'),
     ], $overrides, ['*' => Process::result(output: '')]);
 }
@@ -137,7 +137,7 @@ test('the volume restore mounts the claim where the real pod mounts it', functio
         }
     })->resolve('kubectl', [
         'name' => 'forgejo', 'namespace' => 'larakube-shared',
-        'deployment' => 'forgejo', 'container' => 'forgejo', 'path' => '/data',
+        'deployment' => 'forgejo', 'container' => 'forgejo', 'paths' => ['/data'],
     ]);
 
     expect($resolved)->toBe(['claim' => 'forgejo-data', 'mountPath' => '/data']);
@@ -177,7 +177,7 @@ test('a Secret mounted inside the data volume never wins over the PVC', function
     })->resolve('kubectl', [
         'name' => 'synapse-identity', 'namespace' => 'larakube-shared',
         'deployment' => 'chat-synapse', 'container' => 'synapse',
-        'path' => '/data/chat.luchtech.dev.signing.key',
+        'paths' => ['/data/chat.luchtech.dev.signing.key'],
     ]);
 
     expect($resolved)->toBe(['claim' => 'chat-synapse-data', 'mountPath' => '/data']);

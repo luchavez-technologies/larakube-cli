@@ -36,7 +36,10 @@ function bladeYamlDocuments(string $rendered): array
 }
 
 test('vpn ingress manifest parses as valid YAML across isLocal/proxied branches', function (bool $isLocal, bool $proxied): void {
-    $rendered = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'isLocal' => $isLocal])->render();
+    $rendered = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'isLocal' => $isLocal, 'noPlex' => false,
+        'plexNamespace' => 'larakube-plex',
+        'storeDb' => 'vpn_management',
+        'ssoDomain' => 'example.com'])->render();
     $documents = bladeYamlDocuments($rendered);
 
     expect($documents)->not->toBeEmpty();

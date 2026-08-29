@@ -855,6 +855,42 @@ trait InteractsWithStalwartApi
     }
 
     /**
+     * Retrieve the stored Cloudflare API token for $zone from Stalwart.
+     * Searches by matching x:DnsServer description first, then checks configured domains.
+     */
+    protected function stalwartGetZoneCloudflareToken(string $kubectl, string $ns, string $zone): ?string
+    {
+        // 1. Try finding DnsServer directly by description
+        $server = $this->stalwartFindDnsServerByDescription($kubectl, $ns, $zone);
+        if ($server !== null && ! empty($server['secret']['secret'])) {
+            return $server['secret']['secret'];
+        }
+
+        // 2. Try looking up through domain's dnsManagement.dnsServerId
+        $dnsServers = $this->stalwartDnsServers($kubectl, $ns) ?? [];
+        $dnsServersById = [];
+        foreach ($dnsServers as $s) {
+            if (isset($s['id'])) {
+                $dnsServersById[$s['id']] = $s;
+            }
+        }
+
+        foreach ($this->stalwartDomains($kubectl, $ns) ?? [] as $domain) {
+            if (($domain['name'] ?? null) === $zone) {
+                $dnsServerId = $domain['dnsManagement']['dnsServerId'] ?? null;
+                if ($dnsServerId && isset($dnsServersById[$dnsServerId])) {
+                    $token = $dnsServersById[$dnsServerId]['secret']['secret'] ?? null;
+                    if ($token !== null && $token !== '') {
+                        return $token;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Create or update a Cloudflare-backed x:DnsServer for $zone, holding the
      * zone-scoped API token as its `secret`. Idempotent by `description` (see
      * stalwartFindDnsServerByDescription()) — re-running with the same zone

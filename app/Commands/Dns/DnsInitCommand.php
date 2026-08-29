@@ -85,7 +85,7 @@ class DnsInitCommand extends Command
         $kubectl = $this->contextKubectl($context);
         $ns = 'larakube-shared';
 
-        $token = $this->resolveToken();
+        $token = $this->resolveToken($kubectl, $ns);
 
         $zones = $this->resolveZones($token);
         if ($zones === []) {
@@ -169,15 +169,65 @@ class DnsInitCommand extends Command
     }
 
     /**
+     * Every stored Cloudflare token, keyed by its group slug.
+     *
+     * @return array<string, string>
+     */
+    protected function storedCloudflareTokens(string $kubectl, string $ns): array
+    {
+        $names = trim(Process::run(
+            "{$kubectl} get secret -n {$ns} -o name --no-headers --ignore-not-found",
+        )->output());
+
+        $tokens = [];
+
+        foreach (preg_split('/\s+/', $names) ?: [] as $name) {
+            $name = str_replace('secret/', '', trim($name));
+
+            if (! str_starts_with($name, 'cloudflare-token-')) {
+                continue;
+            }
+
+            $value = $this->readClusterSecretKey($kubectl, $ns, $name, 'token');
+
+            if ($value !== null && $value !== '') {
+                $tokens[substr($name, strlen('cloudflare-token-'))] = $value;
+            }
+        }
+
+        return $tokens;
+    }
+
+    /**
      * The Cloudflare API token driving discovery. No zone is known yet at
      * this point — the token's own Cloudflare-side scope IS what determines
      * which zone(s) this instance ends up managing (see resolveZones()).
      */
-    protected function resolveToken(): string
+    protected function resolveToken(string $kubectl, string $ns): string
     {
         $token = (string) ($this->option('cloudflare-token') ?? '');
         if ($token !== '') {
             return $token;
+        }
+
+        // Reuse what is already stored, so this command is re-runnable like
+        // every other :init. Without it, re-applying the manifest — to pick up
+        // a new flag, say — demanded the credential again and then OVERWROTE
+        // the stored one with whatever was typed; a token with a different zone
+        // scope would also resolve to a different group slug, standing up a
+        // SECOND instance with its own --txt-owner-id against the same zones.
+        //
+        // Only when exactly one is stored: the slug is derived from the zones a
+        // token can see, so with several there is no way to know which one this
+        // run means without being told via --cloudflare-token= or --group=.
+        $stored = $this->storedCloudflareTokens($kubectl, $ns);
+
+        if (count($stored) === 1) {
+            $slug = array_key_first($stored);
+            $this->laraKubeInfo("Reusing the stored Cloudflare token for '{$slug}'.");
+            $this->line('  <fg=gray>Pass</> <fg=blue>--cloudflare-token=</> <fg=gray>to replace it.</>');
+
+            return $stored[$slug];
         }
 
         if ($this->cannotPrompt()) {

@@ -1,21 +1,26 @@
+@php
+    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::LINK->instanceSlugFromHost($host) : 'link');
+    $linkDeploymentName = "link-kutt-{$instance}";
+    $linkServiceName = "link-kutt-{$instance}";
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: link-kutt
+  name: {{ $linkDeploymentName }}
   namespace: larakube-shared
   labels:
-    app: link-kutt
+    app: {{ $linkDeploymentName }}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: link-kutt
+      app: {{ $linkDeploymentName }}
   template:
     metadata:
       labels:
-        app: link-kutt
+        app: {{ $linkDeploymentName }}
     spec:
       containers:
         - name: kutt
@@ -145,11 +150,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: link
+  name: {{ $linkServiceName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: link-kutt
+    app: {{ $linkDeploymentName }}
   ports:
     - protocol: TCP
       port: 80

@@ -160,7 +160,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
         return ['enable-access-tokens'];
     }
 
-    public function openbaoSyncConfig(): array
+    public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
             'secret' => 'design-secrets',

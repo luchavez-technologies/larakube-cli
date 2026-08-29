@@ -110,7 +110,7 @@ final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommo
         return ['outline'];
     }
 
-    public function openbaoSyncConfig(): array
+    public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
             'secret' => 'notes-secrets',

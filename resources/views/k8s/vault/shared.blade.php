@@ -1,3 +1,8 @@
+@php
+    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::PASSWORDS->instanceSlugFromHost($host) : 'vault');
+    $deploymentName = "passwords-vaultwarden-{$instance}";
+    $serviceName = "passwords-vaultwarden-{$instance}";
+@endphp
 apiVersion: v1
 kind: Secret
 metadata:
@@ -25,7 +30,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vaultwarden
+  name: {{ $deploymentName }}
   namespace: larakube-vault
 spec:
   replicas: 1
@@ -33,11 +38,12 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: vaultwarden
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: vaultwarden
+        app: {{ $deploymentName }}
+        instance: {{ $instance }}
     spec:
       containers:
         - name: vaultwarden
@@ -95,11 +101,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vaultwarden
+  name: {{ $serviceName }}
   namespace: larakube-vault
 spec:
   selector:
-    app: vaultwarden
+    app: {{ $deploymentName }}
   ports:
     - protocol: TCP
       port: 80

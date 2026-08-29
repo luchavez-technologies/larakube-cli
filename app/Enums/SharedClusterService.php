@@ -221,7 +221,7 @@ enum SharedClusterService: string
             self::GRAFANA => 'deployment prometheus -n larakube-shared',
             self::UPTIME_KUMA => 'deployment uptime-kuma -n larakube-shared',
             self::VAULT => 'deployment vaultwarden -n larakube-vault',
-            self::VPN => 'deployment netbird-management -n larakube-vpn',
+            self::VPN => 'deployment vpn-management -n larakube-vpn',
             self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
             self::SECRETS => 'deployment openbao-backend -n larakube-secrets',
             self::GITEA => 'deployment forgejo -n larakube-shared',

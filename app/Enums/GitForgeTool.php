@@ -70,7 +70,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
                     ['kind' => 'secret', 'name' => $name('git-secrets')],
                 ],
                 backupVolume: true,
-                backupPath: '/data',
+                backupPaths: ['/data'],
             ),
             new ClusterToolComponentData(
                 key: 'runner',
@@ -135,7 +135,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         return ['forgejo'];
     }
 
-    public function openbaoSyncConfig(): array
+    public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
             'secret' => 'forgejo',

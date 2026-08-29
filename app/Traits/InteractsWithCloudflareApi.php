@@ -31,18 +31,37 @@ trait InteractsWithCloudflareApi
      */
     protected function cloudflareZoneId(string $zone, string $token): ?string
     {
+        // 1. Try GET /client/v4/zones?name={zone}
         $response = CloudflareConnector::make($token)->send(GetZoneByNameRequest::make($zone));
         $data = $response->json();
 
-        // Cloudflare's v4 envelope can report `"success": false` on an HTTP
-        // 200 — $response->failed() alone only catches HTTP-level (>=400)
-        // failures, not this API-level one. Same envelope check
-        // cloudflareUpsertTxtRecord() below already relies on.
-        if ($response->failed() || Arr::get($data, 'success') !== true) {
-            return null;
+        if ($response->successful() && Arr::get($data, 'success') === true) {
+            $zoneId = Arr::get($data, 'result.0.id');
+            if ($zoneId !== null) {
+                return $zoneId;
+            }
         }
 
-        return Arr::get($data, 'result.0.id');
+        // 2. Fallback: Zone-scoped Cloudflare tokens often return an empty result []
+        // on `GET /zones?name=...` with HTTP 200/success=true, but WILL return
+        // the authorized zone in the unfiltered `GET /zones` list.
+        $zones = $this->cloudflareListZones($token);
+        foreach ($zones as $id => $name) {
+            if (strcasecmp($name, $zone) === 0) {
+                return (string) $id;
+            }
+        }
+
+        // Diagnostic output for debugging token scope issues
+        if (property_exists($this, 'output') && $this->output !== null && method_exists($this->output, 'isVerbose') && $this->output->isVerbose()) {
+            $msg = Arr::get($data, 'errors.0.message') ?? $response->body();
+            if (method_exists($this, 'laraKubeWarn')) {
+                $this->laraKubeWarn("Cloudflare API response ({$response->status()}): {$msg}");
+                $this->laraKubeWarn('Permitted zones for token: '.json_encode(array_values($zones)));
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -104,6 +123,53 @@ trait InteractsWithCloudflareApi
         }
 
         $create = $connector->send(CreateDnsRecordRequest::make($zoneId, 'TXT', $name, $content, $ttl));
+
+        return $create->successful() && Arr::get($create->json(), 'success') === true;
+    }
+
+    /**
+     * Create or update a CNAME record named $name on $zoneId pointing to $target.
+     * Idempotent by $name: matches existing CNAME with the same name and updates target/TTL.
+     */
+    protected function cloudflareUpsertCnameRecord(string $zoneId, string $token, string $name, string $target, int $ttl = 120, bool $proxied = false): bool
+    {
+        $connector = CloudflareConnector::make($token);
+
+        $search = $connector->send(ListDnsRecordsRequest::make($zoneId, 'CNAME', $name));
+        $existingId = ($search->successful() && Arr::get($search->json(), 'success') === true)
+            ? Arr::get($search->json(), 'result.0.id')
+            : null;
+
+        if ($existingId !== null) {
+            $update = $connector->send(PatchDnsRecordRequest::make($zoneId, $existingId, $target, $ttl));
+
+            return $update->successful() && Arr::get($update->json(), 'success') === true;
+        }
+
+        $create = $connector->send(CreateDnsRecordRequest::make($zoneId, 'CNAME', $name, $target, $ttl));
+
+        return $create->successful() && Arr::get($create->json(), 'success') === true;
+    }
+
+    /**
+     * Create or update an MX record named $name on $zoneId pointing to $target with $priority.
+     */
+    protected function cloudflareUpsertMxRecord(string $zoneId, string $token, string $name, string $target, int $priority = 10, int $ttl = 120): bool
+    {
+        $connector = CloudflareConnector::make($token);
+
+        $search = $connector->send(ListDnsRecordsRequest::make($zoneId, 'MX', $name));
+        $existingId = ($search->successful() && Arr::get($search->json(), 'success') === true)
+            ? Arr::get($search->json(), 'result.0.id')
+            : null;
+
+        if ($existingId !== null) {
+            $update = $connector->send(PatchDnsRecordRequest::make($zoneId, $existingId, $target, $ttl));
+
+            return $update->successful() && Arr::get($update->json(), 'success') === true;
+        }
+
+        $create = $connector->send(CreateDnsRecordRequest::make($zoneId, 'MX', $name, $target, $ttl));
 
         return $create->successful() && Arr::get($create->json(), 'success') === true;
     }

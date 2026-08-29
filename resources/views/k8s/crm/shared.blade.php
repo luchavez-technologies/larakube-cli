@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: twenty
-          image: twentycrm/twenty:v2.31.1
+          image: twentycrm/twenty:v2.35.0
           ports:
             - containerPort: 3000
               name: http
@@ -175,7 +175,7 @@ spec:
     spec:
       containers:
         - name: twenty-worker
-          image: twentycrm/twenty:v2.31.1
+          image: twentycrm/twenty:v2.35.0
           command: ["yarn", "worker:prod"]
           env:
             - name: NODE_OPTIONS

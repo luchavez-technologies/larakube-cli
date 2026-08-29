@@ -26,8 +26,10 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSec
 
     public function smtpEnv(?string $instance = null): ?array
     {
+        $name = ($instance === null || $instance === '') ? 'link-kutt' : "link-kutt-{$instance}";
+
         return [
-            'deployment' => 'link-kutt',
+            'deployment' => $name,
             'secret' => 'link-smtp',
             'static' => [
                 'MAIL_ENABLED' => 'true',
@@ -45,6 +47,8 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSec
 
     public function oidcEnv(?string $instance = null): ?array
     {
+        $name = ($instance === null || $instance === '') ? 'link-kutt' : "link-kutt-{$instance}";
+
         // Kutt has native OIDC support (server/passport.js) driven by
         // plain env vars — OIDC_ENABLED plus the standard trio. The
         // manifest already mounts the link-oidc secret, so this
@@ -53,7 +57,7 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSec
         // /login/oidc, and OIDC_SCOPE defaults to "openid profile
         // email" (matches Zitadel's default scopes).
         return [
-            'deployment' => 'link-kutt',
+            'deployment' => $name,
             'secret' => 'link-oidc',
             'static' => [
                 'OIDC_ENABLED' => 'true',

@@ -107,7 +107,7 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
         return ['reactiveresume'];
     }
 
-    public function openbaoSyncConfig(): array
+    public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
             'secret' => 'resume-reactive-secrets',

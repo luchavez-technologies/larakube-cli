@@ -99,6 +99,12 @@ spec:
             - --domain-filter={{ $zone }}
 @endforeach
             - --txt-owner-id={{ $ownerId }}
+            {{-- Watch Ingress events instead of only polling. Without it
+                 ExternalDNS reconciles on its default 60s interval, so a
+                 freshly created Ingress waits up to a minute before its record
+                 exists — and anything gated on DNS (Traefik's ACME challenge,
+                 and every wait built on top of it) waits with it. --}}
+            - --events
           env:
             - name: CF_API_TOKEN
               valueFrom:

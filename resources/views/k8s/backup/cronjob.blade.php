@@ -132,7 +132,7 @@ spec:
 @foreach($volumes as $v)
                   echo "  {{ $v['name'] }}"
                   kubectl exec deploy/{{ $v['deployment'] }} -n {{ $v['namespace'] }} -c {{ $v['container'] }} -- \
-                    tar czf - -C {{ dirname($v['path']) }} {{ basename($v['path']) }} > "vol-{{ $v['name'] }}.tar.gz"
+                    tar czf - -C {{ dirname($v['paths'][0]) }} {{ implode(' ', array_map('basename', $v['paths'])) }} > "vol-{{ $v['name'] }}.tar.gz"
                   [ "$(stat -c%s "vol-{{ $v['name'] }}.tar.gz")" -ge 50 ] || { echo "archive of {{ $v['name'] }} is empty" >&2; exit 1; }
 @endforeach
 

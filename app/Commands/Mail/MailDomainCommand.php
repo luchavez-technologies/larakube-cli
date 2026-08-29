@@ -135,6 +135,14 @@ class MailDomainCommand extends Command
         $this->line("  <fg=gray>Zone:</>   <fg=blue>{$zone}</>");
         $this->line('  <fg=gray>DNS/TLS/DKIM:</> <fg=blue>Automatic</> (via Cloudflare + Let\'s Encrypt DNS-01)');
         $this->newLine();
+
+        $relayProvider = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'provider');
+        if ($relayProvider !== null && $relayProvider !== '') {
+            $this->line('  <fg=yellow>Outbound Relay Detected ('.$relayProvider.'):</>');
+            $this->line("  Publish DKIM/SPF relay records with: <fg=blue>larakube mail:dns {$env} --zone={$zone} --provider={$relayProvider}</>");
+            $this->newLine();
+        }
+
         $this->line('  <fg=gray>Create a mailbox on this domain:</>');
         $this->line("  <fg=blue>larakube mail:create {$env} --email=alice@{$zone} --sso</>");
         $this->newLine();

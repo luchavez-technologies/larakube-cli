@@ -1,7 +1,12 @@
+@php
+    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::PASSWORDS->instanceSlugFromHost($host) : 'vault');
+    $ingressName = "passwords-vaultwarden-{$instance}";
+    $serviceName = "passwords-vaultwarden-{$instance}";
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: vaultwarden
+  name: {{ $ingressName }}
   namespace: larakube-vault
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -24,7 +29,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: vaultwarden
+                name: {{ $serviceName }}
                 port:
                   number: 80
   tls:

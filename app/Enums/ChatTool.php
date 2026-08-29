@@ -85,7 +85,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
                 // The signing key only — media_store/site-packages are
                 // mirrored to object storage / reinstalled on boot, not
                 // backed up. See InteractsWithBackup's docblock.
-                backupPath: '/data/chat.luchtech.dev.signing.key',
+                backupPaths: ['/data/chat.luchtech.dev.signing.key'],
             ),
             // chat-ingress stays unsuffixed too — it routes to BOTH synapse
             // (unsuffixed above) and web (suffixed below), and is tied to
@@ -222,7 +222,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
         return ['blade_variables' => true];
     }
 
-    public function openbaoSyncConfig(): array
+    public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
             'secret' => 'chat-secrets',

@@ -10,8 +10,8 @@ test('mail:unwire is registered', function (): void {
 
 test('mail:unwire unsets tool mail environment variables', function (): void {
     Process::fake([
-        '*get deployment vaultwarden*' => Process::result(output: 'vaultwarden   1/1   1   1   10d'),
-        '*set env deployment/vaultwarden*' => Process::result(output: 'env updated'),
+        '*get deployment passwords-vaultwarden*' => Process::result(output: 'passwords-vaultwarden-vaultwarden   1/1   1   1   10d'),
+        '*set env deployment/passwords-vaultwarden*' => Process::result(output: 'env updated'),
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
 

@@ -25,7 +25,7 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
 
     public function baseDeploymentName(): string
     {
-        return 'grafana';
+        return 'monitor-grafana';
     }
 
     /**
@@ -48,7 +48,7 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
         return ['secret' => 'monitor-secrets', 'key' => 'db-password'];
     }
 
-    public function openbaoSyncConfig(): array
+    public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
             'secret' => 'monitor-secrets',
@@ -59,8 +59,10 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
     /** No 'port' key in vars — a real, pre-existing quirk, not an omission. */
     public function smtpEnv(?string $instance = null): ?array
     {
+        $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
+
         return [
-            'deployment' => 'grafana',
+            'deployment' => "monitor-grafana-{$instanceName}",
             'secret' => 'grafana-smtp',
             'static' => [
                 'GF_SMTP_ENABLED' => 'true',
@@ -76,8 +78,10 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
 
     public function oidcEnv(?string $instance = null): ?array
     {
+        $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
+
         return [
-            'deployment' => 'grafana',
+            'deployment' => "monitor-grafana-{$instanceName}",
             'secret' => 'grafana-oidc',
             'static' => [
                 'GF_AUTH_GENERIC_OAUTH_ENABLED' => 'true',
@@ -131,24 +135,27 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
 
     public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
-        $ns = ($instance === null || $instance === '') ? 'larakube-monitoring' : "larakube-monitoring-{$instance}";
+        $ns = ($instance === null || $instance === '') ? 'larakube-shared' : "larakube-shared-{$instance}";
         $passVal = trim(Process::run(
             "{$kubectl} get secret monitor-secrets -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
         )->output());
         $decodedPass = $passVal !== '' ? (base64_decode($passVal, true) ?: '<unknown>') : '<unknown>';
 
-        $lokiName = 'monitor-loki'.(($instance === null || $instance === '') ? '' : "-{$instance}");
+        $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
+        $lokiName = "monitor-loki-{$instanceName}";
+        $promName = "monitor-prometheus-{$instanceName}";
 
         return [
             ['Grafana Login', "admin / {$decodedPass}"],
-            ['Prometheus', "http://prometheus.{$ns}.svc.cluster.local:9090 (in-cluster)"],
+            ['Prometheus', "http://{$promName}.{$ns}.svc.cluster.local:9090 (in-cluster)"],
             ['Loki', "http://{$lokiName}.{$ns}.svc.cluster.local:3100 (in-cluster)"],
         ];
     }
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'grafana-vpn-only' : "grafana-vpn-only-{$instance}";
+        $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
+        $name = "grafana-vpn-only-{$instanceName}";
 
         return [
             'name' => $name,
@@ -158,8 +165,8 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '') ? 'grafana' : "grafana-{$instance}";
+        $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
 
-        return "deployment/{$deployment} -n larakube-monitoring";
+        return "deployment/monitor-grafana-{$instanceName} -n larakube-shared";
     }
 }

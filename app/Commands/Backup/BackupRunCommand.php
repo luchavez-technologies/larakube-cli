@@ -108,12 +108,20 @@ class BackupRunCommand extends Command
 
         foreach ($volumeTargets as $target) {
             $this->withSpin("Archiving {$target['name']}...", function () use ($kubectl, $target, $work, &$failures): void {
-                $dir = dirname($target['path']);
-                $base = basename($target['path']);
+                // All paths share a directory (enforced by
+                // ClusterToolComponentData), so one -C covers them and members
+                // are stored as bare basenames — byte-identical to the layout
+                // every archive taken before backupPaths became a list, which
+                // is what keeps those archives restorable.
+                $dir = dirname($target['paths'][0]);
+                $bases = implode(' ', array_map(
+                    fn (string $path): string => escapeshellarg(basename($path)),
+                    $target['paths'],
+                ));
 
                 $result = Process::timeout(900)->run(
                     "{$kubectl} exec deploy/{$target['deployment']} -n {$target['namespace']} -c {$target['container']} -- "
-                    .'tar czf - -C '.escapeshellarg($dir).' '.escapeshellarg($base)
+                    .'tar czf - -C '.escapeshellarg($dir).' '.$bases
                     .' > '.escapeshellarg("{$work}/vol-{$target['name']}.tar.gz"),
                 );
 

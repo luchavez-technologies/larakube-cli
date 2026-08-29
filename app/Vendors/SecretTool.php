@@ -40,7 +40,7 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
         return [
             new ClusterToolComponentData(
                 key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('openbao-backend'),
-                container: 'openbao', backupVolume: true, backupPath: '/openbao',
+                container: 'openbao', backupVolume: true, backupPaths: ['/openbao'],
             ),
         ];
     }

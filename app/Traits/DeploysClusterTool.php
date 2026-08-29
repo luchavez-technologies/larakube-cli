@@ -4,7 +4,9 @@ namespace App\Traits;
 
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 
 /**
  * The single source of truth for "which cluster does this tool's deploy/
@@ -160,9 +162,106 @@ trait DeploysClusterTool
         return $this->registerTool($kubectl, $tool, array_merge($metadata, $extra), $instance);
     }
 
-    /** Shared implementation: run $command under a spinner, return its real success/failure. */
+    /**
+     * Can THIS machine resolve $host to an address it can connect to?
+     *
+     * Public DNS being correct is not the same question. Every command here
+     * reaches a tool over its hostname through getaddrinfo(), and a resolver
+     * cache can disagree with the record that actually exists — `dig` queries
+     * DNS directly and bypasses the cache, so it reports healthy while curl,
+     * PHP and the CLI all fail.
+     *
+     * The cache is poisoned by our OWN teardown: a `*:remove` deletes the
+     * Ingress, ExternalDNS deletes the record, and the operator's machine caches
+     * that absence. On macOS it then answers with a NAT64-synthesised IPv6 and
+     * no IPv4 — confirmed live 2026-08-29, where `dig` returned the right
+     * address while every request returned 000 for hours.
+     *
+     * gethostbyname() travels the same path the HTTP client will and returns the
+     * hostname unchanged when it cannot resolve, which is exactly the signal.
+     */
+    protected function hostResolvesLocally(string $host): bool
+    {
+        return gethostbyname($host) !== $host;
+    }
+
+    /** The remedy needs the operator's own password, so say it rather than attempt it. */
+    protected function reportStaleResolverCache(string $host): void
+    {
+        $this->laraKubeWarn("This machine cannot resolve {$host}, though the DNS record exists.");
+        $this->line('  <fg=gray>A stale entry cached while the record was missing is shadowing the real one —</>');
+        $this->line('  <fg=gray>usually left behind by a teardown of this same tool. Flush the resolver cache:</>');
+        $this->newLine();
+        $this->line('  <fg=blue>  sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder</>  <fg=gray>(macOS)</>');
+        $this->line('  <fg=blue>  sudo resolvectl flush-caches</>                                  <fg=gray>(systemd-resolved)</>');
+        $this->newLine();
+        $this->line("  <fg=gray>Confirm with</> <fg=blue>curl -o /dev/null -w '%{http_code}' https://{$host}/</><fg=gray> — anything but 000.</>");
+    }
+
+    /**
+     * Delete a namespace without blocking on its finalizers.
+     *
+     * `kubectl delete namespace` waits for every object in it to finish
+     * terminating, which routinely outruns Process::run()'s 60s default once
+     * PVCs are involved — and a timeout THROWS, so the exception escaped the
+     * teardown loop before unregisterTool() ran. Confirmed live 2026-08-28 on
+     * vpn:remove: the namespace and both PVs were in fact deleted, but the
+     * command reported failure and left a stale registry entry claiming the
+     * tool was still installed.
+     *
+     * --wait=false returns as soon as the API server accepts the deletion,
+     * which it then guarantees to completion. The poll below is only so the
+     * caller sees the truth; still-terminating is reported, not failed.
+     */
+    protected function removeNamespace(string $label, string $kubectl, string $namespace): bool
+    {
+        return (bool) $this->withSpin($label, function () use ($kubectl, $namespace): bool {
+            $accepted = Process::timeout(60)->run(
+                "{$kubectl} delete namespace {$namespace} --ignore-not-found --wait=false",
+            )->successful();
+
+            if (! $accepted) {
+                return false;
+            }
+
+            // Namespaces with PVCs commonly take a couple of minutes; the
+            // deletion proceeds regardless of whether we are still watching.
+            $deadline = now()->addMinutes(5);
+            while (now()->lessThan($deadline)) {
+                $exists = trim(Process::timeout(30)->run(
+                    "{$kubectl} get namespace {$namespace} --no-headers --ignore-not-found",
+                )->output());
+
+                if ($exists === '') {
+                    return true;
+                }
+
+                Sleep::sleep(5);
+            }
+
+            // Accepted but still draining. The API server finishes this on its
+            // own, so the teardown is not in doubt — only our patience is.
+            return true;
+        });
+    }
+
+    /**
+     * Shared implementation: run $command under a spinner, return its real
+     * success/failure.
+     *
+     * A timeout is a failed step, not an exception to unwind on: callers run
+     * these inside teardown/deploy loops that still have bookkeeping to finish
+     * (unregisterTool(), the next instance), and letting it throw skips all of
+     * it while leaving the cluster half-changed.
+     */
     private function runCheckedStep(string $label, string $command): bool
     {
-        return (bool) $this->withSpin($label, fn () => Process::run($command)->successful());
+        return (bool) $this->withSpin($label, function () use ($command): bool {
+            try {
+                return Process::run($command)->successful();
+            } catch (ProcessTimedOutException) {
+                return false;
+            }
+        });
     }
 }

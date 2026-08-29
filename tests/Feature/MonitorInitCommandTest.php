@@ -327,6 +327,7 @@ test('monitor:init --no-plex skips Commons Postgres entirely and uses a local PV
 test('monitoring shared blade view conditionally renders optional components based on withLogs and withTraces', function (): void {
     $metricsOnlyManifest = view('k8s.monitoring.shared', [
         'host' => 'grafana.dev.test',
+        'instance' => 'grafana-dev-test',
         'grafanaPassword' => 'secret123',
         'dbPassword' => 'db-secret123',
         'plexNamespace' => 'larakube-plex',
@@ -336,9 +337,9 @@ test('monitoring shared blade view conditionally renders optional components bas
         'withTraces' => false,
     ])->render();
 
-    expect($metricsOnlyManifest)->toContain('app: prometheus')
+    expect($metricsOnlyManifest)->toContain('app: monitor-prometheus-grafana-dev-test')
         ->toContain('app: kube-state-metrics')
-        ->toContain('app: grafana')
+        ->toContain('app: monitor-grafana-grafana-dev-test')
         ->toContain('name: grafana-dashboard-provider')
         // Grafana's own DB must be Commons Postgres, not left on ephemeral
         // SQLite — see monitor:init's dedicated allocation test.
@@ -354,6 +355,7 @@ test('monitoring shared blade view conditionally renders optional components bas
 
     $fullManifest = view('k8s.monitoring.shared', [
         'host' => 'grafana.dev.test',
+        'instance' => 'grafana-dev-test',
         'grafanaPassword' => 'secret123',
         'dbPassword' => 'db-secret123',
         'plexNamespace' => 'larakube-plex',
@@ -363,11 +365,11 @@ test('monitoring shared blade view conditionally renders optional components bas
         'withTraces' => true,
     ])->render();
 
-    expect($fullManifest)->toContain('app: prometheus')
+    expect($fullManifest)->toContain('app: monitor-prometheus-grafana-dev-test')
         ->toContain('app: kube-state-metrics')
-        ->toContain('app: grafana')
-        ->toContain('app: monitor-loki')
-        ->toContain('app: monitor-promtail')
+        ->toContain('app: monitor-grafana-grafana-dev-test')
+        ->toContain('app: monitor-loki-grafana-dev-test')
+        ->toContain('app: monitor-promtail-grafana-dev-test')
         ->toContain('app: tempo')
         ->toContain('name: Loki')
         ->toContain('name: Tempo')

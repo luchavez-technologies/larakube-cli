@@ -1,7 +1,12 @@
+@php
+    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor');
+    $ingressName = "monitor-grafana-{$instance}";
+    $serviceName = "monitor-grafana-{$instance}";
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: grafana
+  name: {{ $ingressName }}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -24,7 +29,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: grafana
+                name: {{ $serviceName }}
                 port:
                   number: 3000
   tls:

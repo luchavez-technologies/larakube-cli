@@ -27,7 +27,8 @@ class MailCheckCommand extends Command
 
     protected $signature = 'mail:check
         {environment? : Environment to check — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}';
+        {--domain=    : Specific domain to check (defaults to mail host domain)}
+        {--context=   : Target a specific kube-context}';
 
     protected $description = 'Health-check the mail server (pod, ports, DNS, deliverability) with fix hints';
 
@@ -62,9 +63,9 @@ class MailCheckCommand extends Command
 
             return 1;
         }
-        $domain = $this->mailCheckDomain($host);
+        $domain = (string) ($this->option('domain') ?: $this->mailCheckDomain($host));
 
-        $this->laraKubeInfo("Checking Stalwart at {$host}  ({$env})");
+        $this->laraKubeInfo("Checking Stalwart at {$host} for domain '{$domain}' ({$env})");
         $this->newLine();
 
         // --- Cluster -------------------------------------------------------
@@ -92,8 +93,25 @@ class MailCheckCommand extends Command
         $this->report($mxOk ? 'ok' : 'fail', "DNS · MX for {$domain} → {$host}",
             "Add it: {$domain}  MX  10  {$host}   (external inbound mail needs this).");
 
-        $this->report($this->digHas($domain, 'TXT', 'v=spf1') ? 'ok' : 'warn', "DNS · SPF for {$domain}",
-            "Publish: {$domain}  TXT  \"v=spf1 mx ~all\".");
+        $relayProvider = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'provider');
+        $expectedSpf = match ($relayProvider) {
+            'ses' => 'include:amazonses.com',
+            'brevo' => 'include:spf.brevo.com',
+            default => 'v=spf1 mx',
+        };
+
+        $hasSpf = $this->digHas($domain, 'TXT', 'v=spf1');
+        $hasRelaySpf = $relayProvider ? $this->digHas($domain, 'TXT', $expectedSpf) : $hasSpf;
+
+        if (! $hasSpf) {
+            $this->report('warn', "DNS · SPF for {$domain}",
+                "Publish: {$domain}  TXT  \"v=spf1 mx ".($relayProvider === 'ses' ? 'include:amazonses.com ' : '').'~all".');
+        } elseif ($relayProvider && ! $hasRelaySpf) {
+            $this->report('warn', "DNS · SPF for {$domain} (missing {$relayProvider} relay inclusion)",
+                "Update: {$domain}  TXT  \"v=spf1 mx include:amazonses.com ~all\" (outbound mail via {$relayProvider} requires this).");
+        } else {
+            $this->report('ok', "DNS · SPF for {$domain}", '');
+        }
 
         $this->report($this->digHas('_dmarc.'.$domain, 'TXT', 'v=DMARC1') ? 'ok' : 'warn', "DNS · DMARC for {$domain}",
             "Publish: _dmarc.{$domain}  TXT  \"v=DMARC1; p=quarantine; rua=mailto:postmaster@{$domain}\".");

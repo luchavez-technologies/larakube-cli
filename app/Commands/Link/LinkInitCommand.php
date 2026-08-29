@@ -94,8 +94,11 @@ class LinkInitCommand extends Command
         });
 
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::LINK);
+        $instance = ClusterTool::LINK->instanceSlugFromHost($host);
+        $deploymentName = ClusterTool::LINK->primaryComponent($instance)->deployment;
 
         $manifest = view('k8s.link.shared', [
+            'instance' => $instance,
             'host' => $host,
             'appName' => $branding['appName'],
             'logoUrl' => $branding['logoUrl'],
@@ -112,7 +115,7 @@ class LinkInitCommand extends Command
 
         $rolledOut = $this->withSpin(
             'Applying Kutt manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'link-kutt', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
         );
         $temporaryDirectory->delete();
 

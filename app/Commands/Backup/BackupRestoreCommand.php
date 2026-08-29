@@ -495,11 +495,11 @@ class BackupRestoreCommand extends Command
                 return false;
             }
 
-            // -C dirname(path) mirrors how backup:run created it: `tar -C
-            // dirname basename`, so the archive's first component IS the mount
-            // point. Extracting anywhere else nests it one level too deep.
+            // -C dirname(paths[0]) mirrors how backup:run created it: `tar -C
+            // dirname base…`, so members are bare basenames relative to that one
+            // shared directory. Extracting anywhere else nests them a level deep.
             return $this->withSpin("Restoring volume {$name}...", fn () => Process::timeout(1800)->run(
-                "{$kubectl} exec -i {$pod} -n {$ns} -- tar xzf - -C ".escapeshellarg(dirname($target['path']))
+                "{$kubectl} exec -i {$pod} -n {$ns} -- tar xzf - -C ".escapeshellarg(dirname($target['paths'][0]))
                 .' < '.escapeshellarg($archive),
             )->successful());
         } finally {

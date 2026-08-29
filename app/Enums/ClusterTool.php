@@ -840,9 +840,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public function rbacProjectName(?string $instance = null): string
     {
-        $realInstance = $this->supportsMultipleInstances() ? $instance : null;
-
-        return $this->deploymentName($realInstance);
+        return $this->deploymentName($instance);
     }
 
     /**
@@ -1206,7 +1204,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         $vendor = $this->vendor();
         if ($vendor instanceof HasOpenbaoSync) {
-            $config = ['namespace' => $this->namespace()] + $vendor->openbaoSyncConfig();
+            $config = ['namespace' => $this->namespace()] + $vendor->openbaoSyncConfig($instance);
 
             if ($instance === null || $instance === '') {
                 return $config;

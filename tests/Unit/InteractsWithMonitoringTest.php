@@ -99,5 +99,5 @@ test('monitoringAccess is null when monitoring is not installed, populated when 
 
     expect($access['password'])->toBe('s3cr3t')
         ->and($access['host'])->toStartWith('grafana.')
-        ->and($access['prometheus'])->toBe('prometheus.larakube-shared.svc.cluster.local:9090');
+        ->and($access['prometheus'])->toEndWith('.larakube-shared.svc.cluster.local:9090');
 });

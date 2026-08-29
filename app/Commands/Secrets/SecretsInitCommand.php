@@ -299,12 +299,24 @@ class SecretsInitCommand extends Command
         });
 
         foreach (ClusterTool::cases() as $tool) {
-            $config = $tool->openbaoSyncConfig();
+            // Instance-aware, per ADR 0021. This loop asked for the UNSUFFIXED
+            // deployment and secret, so once a tool adopted
+            // {category}-{component}-{instance} the deploymentExists() check
+            // below could never match and its KV sync silently stopped being
+            // created — while the guard further down looked for the wrong
+            // ExternalSecret name too, so the race it exists to prevent was
+            // unguarded. Confirmed live 2026-08-29: notes/design/git have only
+            // their dynamic `-db` ExternalSecrets, and the static ones that do
+            // exist (monitor-secrets, chat-secrets) predate the renames.
+            $toolHost = $this->getToolHost($kubectl, $tool);
+            $instance = $toolHost !== null ? $tool->instanceSlugFromHost($toolHost) : null;
+
+            $config = $tool->openbaoSyncConfig($instance);
             if ($config === null) {
                 continue;
             }
 
-            if (! $this->deploymentExists($kubectl, $config['namespace'], $tool->deploymentName())) {
+            if (! $this->deploymentExists($kubectl, $config['namespace'], $tool->deploymentName($instance))) {
                 continue;
             }
 
@@ -327,7 +339,8 @@ class SecretsInitCommand extends Command
                 $es = view('k8s.secrets.tool-es', [
                     'namespace' => $config['namespace'],
                     'secretName' => $config['secret'],
-                    'keys' => $config['keys'],
+                    'keys' => $config['keys'] ?? [],
+                    'keyMap' => $config['keyMap'] ?? null,
                 ])->render();
 
                 $temporaryDirectory = TemporaryDirectory::make();

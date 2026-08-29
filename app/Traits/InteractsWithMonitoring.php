@@ -31,8 +31,13 @@ trait InteractsWithMonitoring
     protected function isMonitoringInstalled(string $kubectl, string $ns): bool
     {
         $out = Process::run("{$kubectl} get deployment grafana -n {$ns} --no-headers")->output();
+        if (trim($out) !== '') {
+            return true;
+        }
 
-        return trim($out) !== '';
+        $allDeployments = Process::run("{$kubectl} get deployment -n {$ns} -o jsonpath='{.items[*].metadata.name}'")->output();
+
+        return str_contains($allDeployments, 'monitor-grafana');
     }
 
     /** The existing Grafana admin password, or null when the secret isn't there. */
@@ -80,12 +85,14 @@ trait InteractsWithMonitoring
         }
 
         $host = $this->resolveGrafanaHostReadOnly($env, $config);
-        $lokiName = 'monitor-loki'.($host !== null ? '-'.ClusterTool::MONITOR->instanceSlugFromHost($host) : '');
+        $instance = $host !== null ? ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor';
+        $lokiName = "monitor-loki-{$instance}";
+        $promName = "monitor-prometheus-{$instance}";
 
         return [
             'host' => $host,
             'password' => $this->readGrafanaPassword($kubectl, $ns),
-            'prometheus' => "prometheus.{$ns}.svc.cluster.local:9090",
+            'prometheus' => "{$promName}.{$ns}.svc.cluster.local:9090",
             'loki' => "{$lokiName}.{$ns}.svc.cluster.local:3100",
         ];
     }

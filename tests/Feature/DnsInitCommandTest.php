@@ -409,3 +409,22 @@ test('dns:list shows one row per zone for a multi-zone group, sharing the same i
         ->and(array_column($payload, 'zone'))->toBe(['larakube.app', 'ourfridays.com'])
         ->and($payload[0]['slug'])->toBe($payload[1]['slug']);
 });
+
+test('dns:init reuses the stored Cloudflare token instead of demanding it again', function (): void {
+    // Re-applying the manifest — to pick up a new flag, say — used to prompt for
+    // the credential and then OVERWRITE the stored one with whatever was typed.
+    // Worse, a token with a different zone scope resolves to a different group
+    // slug, standing up a SECOND ExternalDNS instance with its own
+    // --txt-owner-id against the same zones: the shape that had clusters
+    // deleting each other's records.
+    Process::fake(dnsFakes(overrides: [
+        '*get secret -n larakube-shared -o name*' => Process::result(output: "secret/cloudflare-token-luchtech-dev\nsecret/unrelated"),
+        '*get secret cloudflare-token-luchtech-dev*' => Process::result(output: base64_encode('cf-stored-token')),
+    ]));
+
+    dnsZonesSaloonFake(['luchtech.dev']);
+
+    $this->artisan('dns:init prod --no-interaction --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Reusing the stored Cloudflare token');
+});

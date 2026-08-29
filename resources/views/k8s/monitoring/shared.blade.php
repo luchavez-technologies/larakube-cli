@@ -1,13 +1,12 @@
 @php
-    // Only Loki/Promtail are instance-suffixed here — Grafana/Prometheus/
-    // Tempo/kube-state-metrics stay bare pending their own, DB-rename-aware
-    // pass (Grafana has a Commons Postgres tenant; the rest don't need one
-    // but are rendered/removed alongside it).
-    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
-    $lokiName = "monitor-loki{$suffix}";
-    $lokiConfigMapName = "monitor-loki-config{$suffix}";
-    $promtailName = "monitor-promtail{$suffix}";
-    $promtailConfigMapName = "monitor-promtail-config{$suffix}";
+    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor');
+    $grafanaName = "monitor-grafana-{$instance}";
+    $prometheusName = "monitor-prometheus-{$instance}";
+    $prometheusConfigMapName = "monitor-prometheus-config-{$instance}";
+    $lokiName = "monitor-loki-{$instance}";
+    $lokiConfigMapName = "monitor-loki-config-{$instance}";
+    $promtailName = "monitor-promtail-{$instance}";
+    $promtailConfigMapName = "monitor-promtail-config-{$instance}";
 @endphp
 ---
 # ── Prometheus RBAC ──────────────────────────────────────────────────────────
@@ -44,7 +43,7 @@ subjects:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: prometheus-config
+  name: {{ $prometheusConfigMapName }}
   namespace: larakube-shared
 data:
   prometheus.yml: |
@@ -107,7 +106,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: prometheus
+  name: {{ $prometheusName }}
   namespace: larakube-shared
 spec:
   replicas: 1
@@ -115,11 +114,12 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: prometheus
+      app: {{ $prometheusName }}
   template:
     metadata:
       labels:
-        app: prometheus
+        app: {{ $prometheusName }}
+        instance: {{ $instance }}
     spec:
       serviceAccountName: prometheus
       containers:
@@ -159,7 +159,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: prometheus-config
+            name: {{ $prometheusConfigMapName }}
         - name: storage
           persistentVolumeClaim:
             claimName: prometheus-storage
@@ -167,11 +167,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: prometheus
+  name: {{ $prometheusName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: prometheus
+    app: {{ $prometheusName }}
   ports:
     - protocol: TCP
       port: 9090
@@ -681,7 +681,7 @@ data:
         uid: prometheus-ds
         type: prometheus
         access: proxy
-        url: http://prometheus.larakube-shared.svc.cluster.local:9090
+        url: http://{{ $prometheusName }}.larakube-shared.svc.cluster.local:9090
         isDefault: true
         editable: false
 @if($withLogs ?? true)
@@ -747,17 +747,18 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: grafana
+  name: {{ $grafanaName }}
   namespace: larakube-shared
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: grafana
+      app: {{ $grafanaName }}
   template:
     metadata:
       labels:
-        app: grafana
+        app: {{ $grafanaName }}
+        instance: {{ $instance }}
     spec:
       containers:
         - name: grafana
@@ -852,11 +853,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: grafana
+  name: {{ $grafanaName }}
   namespace: larakube-shared
 spec:
   selector:
-    app: grafana
+    app: {{ $grafanaName }}
   ports:
     - protocol: TCP
       port: 3000

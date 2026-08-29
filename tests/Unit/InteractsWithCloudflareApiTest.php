@@ -56,6 +56,10 @@ test('cloudflareZoneId returns null when the zone does not exist', function (): 
             'success' => true,
             'result' => [],
         ]),
+        ListZonesRequest::class => MockResponse::make([
+            'success' => true,
+            'result' => [],
+        ]),
     ]);
 
     expect(cloudflareApiHarness()->zoneId('missing.example', 'test-token'))->toBeNull();
@@ -64,6 +68,7 @@ test('cloudflareZoneId returns null when the zone does not exist', function (): 
 test('cloudflareZoneId returns null on an HTTP-level failure', function (): void {
     Saloon::fake([
         GetZoneByNameRequest::class => MockResponse::make(['success' => false, 'errors' => []], 403),
+        ListZonesRequest::class => MockResponse::make(['success' => false, 'errors' => []], 403),
     ]);
 
     expect(cloudflareApiHarness()->zoneId('example.com', 'wrong-token'))->toBeNull();
@@ -72,6 +77,11 @@ test('cloudflareZoneId returns null on an HTTP-level failure', function (): void
 test('cloudflareZoneId returns null when the envelope reports success: false, even on HTTP 200', function (): void {
     Saloon::fake([
         GetZoneByNameRequest::class => MockResponse::make([
+            'success' => false,
+            'errors' => [['code' => 1000, 'message' => 'Invalid request']],
+            'result' => null,
+        ], 200),
+        ListZonesRequest::class => MockResponse::make([
             'success' => false,
             'errors' => [['code' => 1000, 'message' => 'Invalid request']],
             'result' => null,

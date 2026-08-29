@@ -62,16 +62,13 @@ class MonitorInitCommand extends Command
         $ns = $this->monitoringNamespace();
 
         $host = $this->resolveToolHost(SharedClusterService::GRAFANA, ClusterTool::MONITOR, $env, $kubectl);
-        // Loki/Promtail are instance-suffixed even though Grafana (this
-        // tool's primary component) and the rest of the stack stay bare for
-        // now — a deliberate, scoped first step of a larger rename, not a
-        // signal that Monitor supports multiple instances.
         $instance = ClusterTool::MONITOR->instanceSlugFromHost($host);
-        $suffix = $instance !== '' ? "-{$instance}" : '';
-        $lokiDeployment = "monitor-loki{$suffix}";
-        $lokiConfigMap = "monitor-loki-config{$suffix}";
-        $promtailDaemonset = "monitor-promtail{$suffix}";
-        $promtailConfigMap = "monitor-promtail-config{$suffix}";
+        $grafanaDeployment = "monitor-grafana-{$instance}";
+        $prometheusDeployment = "monitor-prometheus-{$instance}";
+        $lokiDeployment = "monitor-loki-{$instance}";
+        $lokiConfigMap = "monitor-loki-config-{$instance}";
+        $promtailDaemonset = "monitor-promtail-{$instance}";
+        $promtailConfigMap = "monitor-promtail-config-{$instance}";
 
         [$withLogs, $withTraces] = $this->resolveMonitoringComponents();
 
@@ -203,7 +200,7 @@ class MonitorInitCommand extends Command
             }
         }
 
-        if (! $this->withSpin('Waiting for Prometheus...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/prometheus -n {$ns} --timeout=120s")->successful())) {
+        if (! $this->withSpin('Waiting for Prometheus...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$prometheusDeployment} -n {$ns} --timeout=120s")->successful())) {
             $this->laraKubeError('prometheus never became Ready.');
 
             return 1;
@@ -218,7 +215,7 @@ class MonitorInitCommand extends Command
 
             return 1;
         }
-        if (! $this->withSpin('Waiting for Grafana...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/grafana -n {$ns} --timeout=120s")->successful())) {
+        if (! $this->withSpin('Waiting for Grafana...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$grafanaDeployment} -n {$ns} --timeout=120s")->successful())) {
             $this->laraKubeError('grafana never became Ready.');
 
             return 1;
@@ -235,13 +232,13 @@ class MonitorInitCommand extends Command
         }
 
         if ($datasourcesChanged) {
-            if (! $this->withSpin('Restarting Grafana to load the updated data sources...', fn () => Process::timeout(70)->run("{$kubectl} rollout restart deploy/grafana -n {$ns}")->successful())) {
+            if (! $this->withSpin('Restarting Grafana to load the updated data sources...', fn () => Process::timeout(70)->run("{$kubectl} rollout restart deploy/{$grafanaDeployment} -n {$ns}")->successful())) {
                 $this->laraKubeError('Could not restart Grafana — see the output above.');
 
                 return 1;
             }
 
-            if (! $this->withSpin('Waiting for Grafana after restart...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/grafana -n {$ns} --timeout=120s")->successful())) {
+            if (! $this->withSpin('Waiting for Grafana after restart...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$grafanaDeployment} -n {$ns} --timeout=120s")->successful())) {
                 $this->laraKubeError('grafana never became Ready after restart.');
 
                 return 1;
@@ -354,9 +351,10 @@ class MonitorInitCommand extends Command
      */
     protected function reconcileMonitoringComponents(string $kubectl, string $ns, bool $withLogs, bool $withTraces, string $instance): array
     {
-        $grafanaPresent = Process::run("{$kubectl} get deployment/grafana -n {$ns} --no-headers")->successful();
+        $grafanaPresent = Process::run("{$kubectl} get deployment/monitor-grafana-{$instance} -n {$ns} --no-headers")->successful()
+            || Process::run("{$kubectl} get deployment/grafana -n {$ns} --no-headers")->successful();
 
-        $lokiDeployment = 'monitor-loki'.($instance !== '' ? "-{$instance}" : '');
+        $lokiDeployment = "monitor-loki-{$instance}";
         $lokiPresent = Process::run("{$kubectl} get deployment/{$lokiDeployment} -n {$ns} --no-headers")->successful();
         $tempoPresent = Process::run("{$kubectl} get deployment/tempo -n {$ns} --no-headers")->successful();
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 
@@ -34,11 +35,11 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         'analytics' => 'analytics-umami', 'crm' => 'crm-twenty',
         'desk' => 'desk-freescout', 'drive' => 'drive-ocis', 'errors' => 'glitchtip-web',
         'flow' => 'flow-n8n', 'insights' => 'insights-metabase',
-        'link' => 'link-kutt', 'mail' => 'mail-stalwart', 'monitor' => 'grafana',
-        'notes' => 'notes-outline', 'passwords' => 'vaultwarden', 'record' => 'record-sendrec',
+        'link' => 'link-kutt', 'mail' => 'mail-stalwart', 'monitor' => 'monitor-grafana',
+        'notes' => 'notes-outline', 'passwords' => 'passwords-vaultwarden', 'record' => 'record-sendrec',
         'secrets' => 'openbao-backend', 'sheets' => 'sheet-teable', 'sign' => 'sign-documenso',
         'sso' => 'sso-zitadel', 'support' => 'support-chatwoot', 'tasks' => 'tasks-planka',
-        'uptime' => 'uptime-kuma', 'vpn' => 'netbird-management', 'webmail' => 'webmail-bulwark',
+        'uptime' => 'uptime-kuma', 'webmail' => 'webmail-bulwark',
         'dns' => 'external-dns', 'dashboard' => 'dashboard-headlamp', 'meet' => 'meet-livekit',
         'design' => 'design-penpot-backend',
     ];
@@ -49,7 +50,11 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
             ->and($tool->deploymentName('blog-example-com'))->toBe("{$deployment}-blog-example-com");
     }
 
-    expect(ClusterTool::DATA->deploymentName(engine: 'pocketbase'))->toBe('data-pocketbase')
+    // VPN was exempt from instance suffixing until 2026-08-29; it now follows
+    // {category}-{component}-{instance} like every other tool.
+    expect(ClusterTool::VPN->deploymentName())->toBe('vpn-management')
+        ->and(ClusterTool::VPN->deploymentName('blog-example-com'))->toBe('vpn-management-blog-example-com')
+        ->and(ClusterTool::DATA->deploymentName(engine: 'pocketbase'))->toBe('data-pocketbase')
         ->and(ClusterTool::DATA->deploymentName(engine: 'directus'))->toBe('data-directus')
         ->and(ClusterTool::DATA->deploymentName())->toBe('data-directus');
 });
@@ -133,22 +138,55 @@ test('backupVolume is only true for the components InteractsWithBackup already c
     // audit pass explicitly opts it in — a false negative here must never
     // silently start (or stop) a backup as a side effect of this refactor.
     $expected = [
-        'secrets' => ['app' => '/openbao'],
-        'git' => ['server' => '/data'],
-        'drive' => ['app' => '/var/lib/ocis'],
-        'passwords' => ['app' => '/data'],
-        'mail' => ['app' => '/var/lib/stalwart'],
-        'chat' => ['synapse' => '/data/chat.luchtech.dev.signing.key'],
+        'secrets' => ['app' => ['/openbao']],
+        'git' => ['server' => ['/data']],
+        'drive' => ['app' => ['/var/lib/ocis']],
+        'passwords' => ['app' => ['/data']],
+        'mail' => ['app' => ['/var/lib/stalwart']],
+        'chat' => ['synapse' => ['/data/chat.luchtech.dev.signing.key']],
+        // Two files from one mount — the case backupPaths became a list for.
+        // Everything else on that volume is re-downloaded on boot.
+        'vpn' => ['management' => ['/var/lib/netbird/idp.db', '/var/lib/netbird/events.db']],
     ];
 
     foreach (ClusterTool::cases() as $tool) {
         $backedUp = [];
         foreach ($tool->components() as $component) {
             if ($component->backupVolume) {
-                $backedUp[$component->key] = $component->backupPath;
+                $backedUp[$component->key] = $component->backupPaths;
             }
         }
 
         expect($backedUp)->toBe($expected[$tool->value] ?? []);
     }
+});
+
+test('backupPaths must share a directory, because one -C is what keeps old archives restorable', function (): void {
+    // backup:run archives them as `tar -C <dir> base1 base2`, so members are
+    // stored as bare basenames — byte-identical to the single-path layout every
+    // archive taken before this was a list. Paths from different directories
+    // would silently produce an archive that restores to the wrong place.
+    expect(fn () => new ClusterToolComponentData(
+        key: 'bad',
+        role: ClusterToolComponentRole::PRIMARY,
+        deployment: 'x',
+        backupVolume: true,
+        backupPaths: ['/var/lib/a/one.db', '/var/lib/b/two.db'],
+    ))->toThrow(InvalidArgumentException::class, 'must share a directory');
+});
+
+test('several files from one mount are archived under a single -C', function (): void {
+    $component = new ClusterToolComponentData(
+        key: 'management',
+        role: ClusterToolComponentRole::PRIMARY,
+        deployment: 'vpn-management',
+        backupVolume: true,
+        backupPaths: ['/var/lib/netbird/idp.db', '/var/lib/netbird/events.db'],
+    );
+
+    $directories = array_unique(array_map('dirname', $component->backupPaths));
+
+    expect($directories)->toHaveCount(1)
+        ->and($directories[0])->toBe('/var/lib/netbird')
+        ->and(array_map('basename', $component->backupPaths))->toBe(['idp.db', 'events.db']);
 });

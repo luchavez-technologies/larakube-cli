@@ -46,12 +46,12 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
         return [
             new ClusterToolComponentData(
                 key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('mail-stalwart'),
-                container: 'stalwart', backupVolume: true, backupPath: '/var/lib/stalwart',
+                container: 'stalwart', backupVolume: true, backupPaths: ['/var/lib/stalwart'],
             ),
         ];
     }
 
-    public function openbaoSyncConfig(): array
+    public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
             'secret' => 'stalwart',

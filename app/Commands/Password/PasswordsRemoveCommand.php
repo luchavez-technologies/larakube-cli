@@ -25,9 +25,10 @@ class PasswordsRemoveCommand extends AbstractToolRemoveCommand
     {
         // Vaultwarden owns larakube-vault outright, so the namespace delete IS
         // the teardown — nothing else lives there to take down with it.
-        return $this->removeResources(
+        return $this->removeNamespace(
             'Removing Vaultwarden namespace...',
-            "{$kubectl} delete namespace {$namespace} --ignore-not-found",
+            $kubectl,
+            $namespace,
         );
     }
 }

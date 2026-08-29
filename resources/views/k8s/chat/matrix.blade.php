@@ -311,15 +311,17 @@ spec:
     spec:
       containers:
         - name: coturn
-          image: coturn/coturn:4.6.3-alpine
+          image: coturn/coturn:4.17.2-alpine
           {{-- No CPU limit: throttling a media relay shows up as call stutter.
-               Request reserves scheduling weight; memory stays bounded. --}}
+               Request reserves scheduling weight; memory stays bounded.
+               Limit is headroom for a relay burst, not a working-set estimate —
+               coturn idles around 5Mi, so the gap is deliberate slack. --}}
           resources:
             requests:
               memory: 32Mi
               cpu: 50m
             limits:
-              memory: 128Mi
+              memory: 256Mi
           ports:
             - { containerPort: 3478, protocol: UDP, @if($hostPort ?? true)hostPort: 3478, @endif name: turn-udp }
             - { containerPort: 3478, protocol: TCP, @if($hostPort ?? true)hostPort: 3478, @endif name: turn-tcp }

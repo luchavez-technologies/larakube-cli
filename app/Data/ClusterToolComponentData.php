@@ -3,6 +3,7 @@
 namespace App\Data;
 
 use App\Enums\ClusterToolComponentRole;
+use InvalidArgumentException;
 use Spatie\LaravelData\Data;
 
 /**
@@ -37,7 +38,31 @@ class ClusterToolComponentData extends Data
         public bool $sharesPrimarySecret = false,
         /** backup:run target — false is how a component stays excluded from backups, declaratively instead of by omission from a hardcoded list. */
         public bool $backupVolume = false,
-        /** In-container path to archive when backupVolume is true. */
-        public ?string $backupPath = null,
-    ) {}
+        /**
+         * In-container paths to archive when backupVolume is true.
+         *
+         * A list because one component can own several files worth keeping that
+         * sit beside far more that is rebuildable — NetBird's mount holds idp.db
+         * and events.db next to 73MB of re-downloadable GeoIP data.
+         *
+         * **All entries must share a directory.** backup:run archives them as
+         * `tar -C <dir> base1 base2 …`, so members are stored as bare basenames
+         * and restore puts them back with `tar -x -C <dir>`. That is byte-identical
+         * to the single-path layout every existing archive already uses, which is
+         * what keeps those archives restorable. Paths in different directories
+         * would need either ambiguous multiple `-C` groups or a `-C /` layout that
+         * invalidates every archive taken so far.
+         *
+         * @var list<string>
+         */
+        public array $backupPaths = [],
+    ) {
+        $directories = array_unique(array_map('dirname', $this->backupPaths));
+
+        if (count($directories) > 1) {
+            throw new InvalidArgumentException(
+                "backupPaths for component '{$this->key}' must share a directory; got: ".implode(', ', $directories),
+            );
+        }
+    }
 }

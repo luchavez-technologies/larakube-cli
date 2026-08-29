@@ -36,7 +36,7 @@ final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWi
         return [
             new ClusterToolComponentData(
                 key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('drive-ocis'),
-                container: 'ocis', backupVolume: true, backupPath: '/var/lib/ocis',
+                container: 'ocis', backupVolume: true, backupPaths: ['/var/lib/ocis'],
             ),
         ];
     }

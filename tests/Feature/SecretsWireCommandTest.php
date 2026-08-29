@@ -527,7 +527,7 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret vault-secrets*' => Process::result(output: base64_encode('postgresql://vaultwarden:pw@postgres:5432/vaultwarden')),
-        '*get deployment vaultwarden*' => Process::result(output: 'vaultwarden'),
+        '*get deployment*vaultwarden*' => Process::result(output: 'passwords-vaultwarden-vault-dev-test'),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -552,7 +552,7 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret vault-secrets-db'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vaultwarden'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/passwords-vaultwarden'));
 });
 
 test('secrets:wire supports git, notes, sheets, and chat tools', function (): void {
