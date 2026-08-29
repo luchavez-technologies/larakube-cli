@@ -13,6 +13,7 @@ use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
 use App\Http\Integrations\Netbird\Requests\DeleteAccountRequest;
 use App\Http\Integrations\Netbird\Requests\DeleteIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\DeleteNameserverGroupRequest;
+use App\Http\Integrations\Netbird\Requests\DeletePeerRequest;
 use App\Http\Integrations\Netbird\Requests\ListAccountsRequest;
 use App\Http\Integrations\Netbird\Requests\ListGroupsRequest;
 use App\Http\Integrations\Netbird\Requests\ListIdentityProvidersRequest;
@@ -648,18 +649,99 @@ trait InteractsWithVpn
                 return null;
             }
 
-            foreach ((array) $response->json() as $peer) {
-                if (str_starts_with((string) ($peer['name'] ?? ''), $prefix)) {
-                    $ip = trim((string) ($peer['ip'] ?? ''), '"');
+            $fallback = null;
 
-                    return $ip !== '' ? $ip : null;
+            foreach ((array) $response->json() as $peer) {
+                if (! str_starts_with((string) ($peer['name'] ?? ''), $prefix)) {
+                    continue;
                 }
+
+                $ip = trim((string) ($peer['ip'] ?? ''), '"');
+
+                if ($ip === '') {
+                    continue;
+                }
+
+                // Every rollout of the client enrols a NEW peer and orphans the
+                // previous one, so the prefix routinely matches several. Only
+                // the connected one can carry traffic; taking whichever came
+                // first pointed split-DNS at a dead peer (live, 2026-08-30).
+                if (($peer['connected'] ?? false) === true) {
+                    return $ip;
+                }
+
+                $fallback ??= $ip;
             }
+
+            return $fallback;
         } catch (Throwable) {
             return null;
         }
 
         return null;
+    }
+
+    /**
+     * Every peer in the account, or an empty list if it cannot be read.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function vpnPeers(string $host, string $pat): array
+    {
+        try {
+            $response = NetbirdConnector::make($host, $pat)->send(ListPeersRequest::make());
+
+            return $response->failed() ? [] : (array) $response->json();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Retire gateway peers left behind by earlier rollouts.
+     *
+     * Each rollout of the client Deployment enrols a brand-new peer -- the peer
+     * name carries the pod hash -- and the previous one lingers forever,
+     * disconnected, holding an address in the same range. Left alone they
+     * accumulate one per deploy and make "which peer is the gateway?" an
+     * ambiguous question.
+     *
+     * Only ever runs when a connected gateway exists, so a gateway that is
+     * merely down is never mistaken for an orphan.
+     *
+     * @param  array<int, array<string, mixed>>  $peers
+     */
+    protected function pruneOrphanedVpnGateways(string $host, string $pat, array $peers, string $prefix): void
+    {
+        $hasLive = false;
+
+        foreach ($peers as $peer) {
+            if (str_starts_with((string) ($peer['name'] ?? ''), $prefix) && ($peer['connected'] ?? false) === true) {
+                $hasLive = true;
+            }
+        }
+
+        if (! $hasLive) {
+            return;
+        }
+
+        foreach ($peers as $peer) {
+            $id = (string) ($peer['id'] ?? '');
+
+            if ($id === '' || ! str_starts_with((string) ($peer['name'] ?? ''), $prefix)) {
+                continue;
+            }
+
+            if (($peer['connected'] ?? false) === true) {
+                continue;
+            }
+
+            try {
+                NetbirdConnector::make($host, $pat)->send(DeletePeerRequest::make($id));
+            } catch (Throwable) {
+                // Cosmetic cleanup -- never worth failing a reconcile over.
+            }
+        }
     }
 
     /**
@@ -700,6 +782,8 @@ trait InteractsWithVpn
         if ($gatewayIp === null) {
             return false;
         }
+
+        $this->pruneOrphanedVpnGateways($host, $pat, $this->vpnPeers($host, $pat), $this->vpnName('vpn-client', $kubectl));
 
         if (! $this->applyVpnResolverConfig($kubectl, $ns, $hosts, $gatewayIp)) {
             return false;
@@ -791,13 +875,12 @@ trait InteractsWithVpn
         $applied = Process::run("{$kubectl} apply -f {$path}")->successful();
         $directory->delete();
 
-        if (! $applied) {
-            return false;
-        }
-
-        Process::run("{$kubectl} rollout restart deploy/".$this->vpnName('vpn-client', $kubectl)." -n {$ns}");
-
-        return true;
+        // Deliberately no rollout restart. CoreDNS's `reload` picks the new
+        // Corefile up on its own, and restarting would re-enrol the NetBird
+        // client as a new peer on a new address -- invalidating the records
+        // this just wrote. The kubelet takes up to a minute to project the
+        // updated ConfigMap into the pod, so the change is not instant.
+        return $applied;
     }
 
     /**

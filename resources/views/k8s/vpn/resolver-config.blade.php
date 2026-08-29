@@ -43,6 +43,13 @@ data:
          or misconfigured client that asks about anything else must still get a
          real answer rather than a black hole. --}}
     .:5353 {
+        {{-- Watches the Corefile and reloads the whole file in place, which is
+             what lets the reconcile avoid restarting this pod. Restarting it
+             re-enrols the NetBird client as a NEW peer on a NEW overlay
+             address, invalidating the very records written moments earlier --
+             observed live 2026-08-30, the group ended up aimed at a peer that
+             was already disconnected. One `reload` covers every block. --}}
+        reload 15s
         forward . 1.1.1.1 8.8.8.8
         cache 30
         errors

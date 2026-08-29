@@ -351,3 +351,36 @@ Nothing below has been run against a cluster yet.
 - [ ] **iOS specifically.**
 - [ ] The apex and any CDN-hosted names still resolve publicly while connected.
 - [ ] `vpn:unwire` removes the host from both resolver and group.
+
+### First live run, 2026-08-30 — the reconcile invalidated its own work
+
+`vpn:init` applied everything correctly and still left split-DNS pointing at a dead
+peer:
+
+```
+peers                6d6d96fb8c-prg5m  100.84.155.135  disconnected
+                     5665b95544-fnckf  100.84.209.9    connected
+name_server_groups   [{"IP":"100.84.155.135","Port":5353}]   <-- the dead one
+```
+
+The reconcile read the gateway address, wrote the Corefile and the nameserver group,
+and then ran `kubectl rollout restart` on the client so CoreDNS would pick the file
+up. That restart re-enrolled the NetBird client as a **new peer with a new overlay
+address**, invalidating both records a second after writing them. The plan's own
+warning — "discover the client IP at runtime, it moves across rebuilds" — was
+followed, and the reconcile then moved it itself.
+
+Three fixes:
+
+- **No restart.** `reload 15s` in the Corefile lets CoreDNS pick up the ConfigMap in
+  place. The kubelet takes up to a minute to project it, so the change is not
+  instant, but the peer identity survives.
+- **Prefer the connected peer.** A rollout orphans the old peer rather than replacing
+  it, so the name prefix matches several; the first match is not necessarily live.
+- **Prune orphans.** Disconnected gateway peers are deleted, but only when a
+  connected one exists, so a gateway that is merely down is never mistaken for an
+  orphan.
+
+Worth knowing generally: **every client rollout costs a peer.** Peer identity is not
+carried across pods by the PVC — the peer name embeds the pod hash and each new pod
+enrols fresh.

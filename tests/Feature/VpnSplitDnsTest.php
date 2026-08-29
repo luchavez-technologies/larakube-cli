@@ -12,6 +12,7 @@
 
 use App\Http\Integrations\Netbird\Requests\CreateGroupRequest;
 use App\Http\Integrations\Netbird\Requests\DeleteNameserverGroupRequest;
+use App\Http\Integrations\Netbird\Requests\DeletePeerRequest;
 use App\Http\Integrations\Netbird\Requests\ListGroupsRequest;
 use App\Http\Integrations\Netbird\Requests\ListNameserverGroupsRequest;
 use App\Http\Integrations\Netbird\Requests\ListPeersRequest;
@@ -101,6 +102,10 @@ test('the resolver answers VPN-only hosts with the gateway address and still for
         // internet and NXDOMAINs it.
         ->toContain('.:5353')
         ->toContain('forward . 1.1.1.1')
+        // Reloading in place is what lets the reconcile skip a pod restart --
+        // a restart re-enrols the client as a new peer on a new address and
+        // invalidates the records just written.
+        ->toContain('reload')
         // No fallthrough: it would turn the AAAA query every client sends
         // alongside the A into NXDOMAIN, which macOS and iOS read as "no such
         // name" and stop on.
@@ -116,7 +121,7 @@ test('reconcile registers a match-domain group on the resolver port, distributed
     Saloon::fake([
         ListNameserverGroupsRequest::class => MockResponse::make([]),
         ListPeersRequest::class => MockResponse::make([
-            ['name' => 'vpn-client-abc', 'ip' => '100.84.155.135'],
+            ['id' => 'p1', 'name' => 'vpn-client-abc', 'ip' => '100.84.155.135', 'connected' => true],
         ]),
         ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
         CreateGroupRequest::class => MockResponse::make(['id' => 'grp-all']),
@@ -153,7 +158,7 @@ test('a second run updates the existing group instead of stacking duplicates', f
             ['id' => 'ns-existing', 'name' => 'LaraKube Cluster Internal'],
         ]),
         ListPeersRequest::class => MockResponse::make([
-            ['name' => 'vpn-client-abc', 'ip' => '100.84.155.135'],
+            ['id' => 'p1', 'name' => 'vpn-client-abc', 'ip' => '100.84.155.135', 'connected' => true],
         ]),
         ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
         SaveNameserverGroupRequest::class => MockResponse::make(['id' => 'ns-existing']),
@@ -198,4 +203,43 @@ test('the gateway address is read back live, never assumed', function (): void {
 
     expect(splitDnsSubject()->gatewayIp('vpn.example.com', 'pat', 'kubectl'))
         ->toBe('100.113.100.204');
+});
+
+test('the connected gateway wins when a rollout has left an orphan behind', function (): void {
+    // Every client rollout enrols a NEW peer and orphans the previous one, so
+    // the name prefix routinely matches several. Taking whichever came first
+    // aimed split-DNS at a disconnected peer on a live cluster (2026-08-30).
+    Process::fake(splitDnsFakes());
+
+    Saloon::fake([
+        ListPeersRequest::class => MockResponse::make([
+            ['id' => 'old', 'name' => 'vpn-client-6d6d96fb8c-prg5m', 'ip' => '100.84.155.135', 'connected' => false],
+            ['id' => 'new', 'name' => 'vpn-client-5665b95544-fnckf', 'ip' => '100.84.209.9', 'connected' => true],
+        ]),
+    ]);
+
+    expect(splitDnsSubject()->gatewayIp('vpn.example.com', 'pat', 'kubectl'))
+        ->toBe('100.84.209.9');
+});
+
+test('orphaned gateway peers are retired, and the live one never is', function (): void {
+    Process::fake(splitDnsFakes());
+
+    Saloon::fake([
+        ListNameserverGroupsRequest::class => MockResponse::make([]),
+        ListPeersRequest::class => MockResponse::make([
+            ['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => false],
+            ['id' => 'new', 'name' => 'vpn-client-new', 'ip' => '100.84.209.9', 'connected' => true],
+            ['id' => 'phone', 'name' => 'someones-iphone', 'ip' => '100.84.3.3', 'connected' => false],
+        ]),
+        ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
+        SaveNameserverGroupRequest::class => MockResponse::make(['id' => 'ns-1']),
+        DeletePeerRequest::class => MockResponse::make([], 200),
+    ]);
+
+    splitDnsSubject()->reconcile('kubectl', 'vpn.example.com', 'pat');
+
+    // The orphan goes; the live gateway and an unrelated person's laptop stay.
+    Saloon::assertSent(fn ($request) => ! $request instanceof DeletePeerRequest
+        || str_ends_with($request->resolveEndpoint(), '/old'));
 });
