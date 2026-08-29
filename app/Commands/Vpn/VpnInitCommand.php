@@ -550,6 +550,16 @@ class VpnInitCommand extends Command
 
             $this->ensureVpnGatewayKey($kubectl, $ns, $host, $pat, $groups);
         });
+
+        // Last: the gateway has to be an enrolled peer with an overlay address
+        // before there is anything to point split-DNS at.
+        $this->withSpin('Reconciling split-DNS for VPN-only hosts...', function () use ($kubectl, $ns, $host, $env): void {
+            $pat = $this->fetchVpnPat($kubectl, $ns);
+
+            if ($pat !== null && ! $this->reconcileVpnSplitDns($kubectl, $ns, $host, $pat, $env)) {
+                $this->laraKubeWarn('Could not reconcile split-DNS — VPN-only hosts may still need an /etc/hosts entry.');
+            }
+        });
     }
 
     /**

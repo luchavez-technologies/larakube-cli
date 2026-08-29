@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RefusesUnshippedTools;
 use Illuminate\Support\Facades\Process;
@@ -16,7 +17,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class VpnUnwireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput, RefusesUnshippedTools;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, RefusesUnshippedTools;
 
     protected $signature = 'vpn:unwire
         {environment=local : Environment whose deployment to unwire}
@@ -76,6 +77,11 @@ class VpnUnwireCommand extends Command
 
             return 1;
         }
+
+        // The host is public again, so its split-DNS override has to go with
+        // it -- otherwise peers keep resolving it to the gateway, which no
+        // longer has any reason to be in the path.
+        $this->refreshVpnSplitDns($kubectl, $env);
 
         $this->laraKubeInfo("✅ {$tool->getLabel()} is reachable from anywhere again (VPN-only lifted).");
 

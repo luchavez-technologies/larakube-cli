@@ -12,17 +12,21 @@ use App\Http\Integrations\Netbird\Requests\CreateIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
 use App\Http\Integrations\Netbird\Requests\DeleteAccountRequest;
 use App\Http\Integrations\Netbird\Requests\DeleteIdentityProviderRequest;
+use App\Http\Integrations\Netbird\Requests\DeleteNameserverGroupRequest;
 use App\Http\Integrations\Netbird\Requests\ListAccountsRequest;
 use App\Http\Integrations\Netbird\Requests\ListGroupsRequest;
 use App\Http\Integrations\Netbird\Requests\ListIdentityProvidersRequest;
+use App\Http\Integrations\Netbird\Requests\ListNameserverGroupsRequest;
 use App\Http\Integrations\Netbird\Requests\ListPeersRequest;
 use App\Http\Integrations\Netbird\Requests\ListPersonalAccessTokensRequest;
 use App\Http\Integrations\Netbird\Requests\ListSetupKeysRequest;
 use App\Http\Integrations\Netbird\Requests\ListUsersRequest;
+use App\Http\Integrations\Netbird\Requests\SaveNameserverGroupRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateSetupKeyRequest;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Throwable;
 
 trait InteractsWithVpn
@@ -34,6 +38,11 @@ trait InteractsWithVpn
 
     /** Cluster-level group every human device lands in unless told otherwise. */
     public const VPN_GROUP_PEOPLE = 'larakube-people';
+
+    /** Port the split-DNS resolver listens on. NOT 53: the NetBird client binds its own DNS to <overlay-ip>:53 inside the very same pod. */
+    public const VPN_RESOLVER_PORT = 5353;
+
+    public const VPN_NAMESERVER_GROUP = 'LaraKube Cluster Internal';
 
     /** The dedicated namespace the NetBird VPN lives in. */
     /** Memoised per command run — the registry lookup is a kubectl call. */
@@ -573,6 +582,222 @@ trait InteractsWithVpn
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Every host currently restricted to VPN peers, read from the cluster.
+     *
+     * Derived from the live Ingresses rather than a list we keep, so it cannot
+     * drift: `vpn:wire` and `vpn:unwire` both work by re-applying a tool's
+     * ingress with or without the middleware annotation, which means the
+     * annotation IS the record of what is VPN-only.
+     *
+     * @return list<string>
+     */
+    protected function vpnOnlyHosts(string $kubectl): array
+    {
+        $raw = Process::run("{$kubectl} get ingress -A -o json")->output();
+
+        try {
+            $payload = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return [];
+        }
+
+        $hosts = [];
+
+        foreach ($payload['items'] ?? [] as $ingress) {
+            $middlewares = $ingress['metadata']['annotations']['traefik.ingress.kubernetes.io/router.middlewares'] ?? '';
+
+            if (! str_contains((string) $middlewares, '-vpn-only@kubernetescrd')) {
+                continue;
+            }
+
+            foreach ($ingress['spec']['rules'] ?? [] as $rule) {
+                $host = (string) ($rule['host'] ?? '');
+
+                if ($host !== '') {
+                    $hosts[] = $host;
+                }
+            }
+        }
+
+        sort($hosts);
+
+        return array_values(array_unique($hosts));
+    }
+
+    /**
+     * The gateway peer's overlay address, read back from NetBird every time.
+     *
+     * Never cache or store this. It survives only via the client's PVC, so a
+     * --purge or a lost volume re-enrols the gateway on a different address and
+     * silently breaks any nameserver group still pointing at the old one
+     * (observed moving 100.70.57.180 -> 100.113.100.204 across one rebuild).
+     * Matching is by name prefix, never by the peer FQDN, which embeds the pod
+     * hash and changes on every redeploy even when the address does not.
+     */
+    protected function vpnGatewayOverlayIp(string $host, string $pat, string $kubectl): ?string
+    {
+        $prefix = $this->vpnName('vpn-client', $kubectl);
+
+        try {
+            $response = NetbirdConnector::make($host, $pat)->send(ListPeersRequest::make());
+
+            if ($response->failed()) {
+                return null;
+            }
+
+            foreach ((array) $response->json() as $peer) {
+                if (str_starts_with((string) ($peer['name'] ?? ''), $prefix)) {
+                    $ip = trim((string) ($peer['ip'] ?? ''), '"');
+
+                    return $ip !== '' ? $ip : null;
+                }
+            }
+        } catch (Throwable) {
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Point VPN peers at the in-cluster resolver for VPN-only hosts, and only
+     * for those.
+     *
+     * Public DNS answers these names with the cluster's public address, so a
+     * connected peer still arrives at Traefik from its ISP address and is
+     * refused by the allow-list. That is what the /etc/hosts line teammates
+     * have been adding works around.
+     *
+     * Distribution is the `All` group deliberately: SSO users never present a
+     * setup key, so they never pick up `auto_groups` and land in All and
+     * nothing else. Distributing to larakube-people would reach setup-key
+     * peers and miss every SSO user -- the exact people this is for.
+     */
+    protected function reconcileVpnSplitDns(string $kubectl, string $ns, string $host, string $pat, string $env): bool
+    {
+        $hosts = $this->vpnOnlyHosts($kubectl);
+        $existing = $this->existingVpnNameserverGroup($host, $pat);
+
+        if ($hosts === []) {
+            // Nothing is VPN-only any more. Leaving the group behind would aim
+            // peers at a resolver with no records for anything.
+            if ($existing !== null) {
+                try {
+                    NetbirdConnector::make($host, $pat)->send(DeleteNameserverGroupRequest::make($existing));
+                } catch (Throwable) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        $gatewayIp = $this->vpnGatewayOverlayIp($host, $pat, $kubectl);
+
+        if ($gatewayIp === null) {
+            return false;
+        }
+
+        if (! $this->applyVpnResolverConfig($kubectl, $ns, $hosts, $gatewayIp)) {
+            return false;
+        }
+
+        $groupId = $this->ensureVpnGroup($host, $pat, 'All');
+
+        try {
+            $response = NetbirdConnector::make($host, $pat)->send(SaveNameserverGroupRequest::make(
+                self::VPN_NAMESERVER_GROUP,
+                $gatewayIp,
+                self::VPN_RESOLVER_PORT,
+                $hosts,
+                array_values(array_filter([$groupId])),
+                $existing,
+            ));
+
+            return ! $response->failed();
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Re-derive split-DNS after a host's VPN status changed.
+     *
+     * Deliberately quiet and non-fatal: `vpn:wire` and `vpn:unwire` have both
+     * already done the thing they were asked to do by the time this runs, and
+     * failing them over a DNS convenience would leave the operator thinking the
+     * ingress change did not happen either. A NetBird that is not installed at
+     * all is not a failure here -- the middleware still stands on its own.
+     */
+    protected function refreshVpnSplitDns(string $kubectl, string $env): void
+    {
+        $ns = $this->vpnNamespace();
+
+        if (! $this->isVpnInstalled($kubectl, $ns)) {
+            return;
+        }
+
+        $config = $this->getProjectConfig();
+        $host = $this->resolveVpnHostReadOnly($env, $config);
+        $pat = $this->fetchVpnPat($kubectl, $ns);
+
+        if ($host === null || $pat === null) {
+            return;
+        }
+
+        if (! $this->reconcileVpnSplitDns($kubectl, $ns, $host, $pat, $env)) {
+            $this->laraKubeWarn('Ingress updated, but split-DNS did not reconcile — run `larakube vpn:init '.$env.'` to retry.');
+        }
+    }
+
+    /** The id of the split-DNS group if we already made one, so a re-run updates rather than stacking duplicates. */
+    protected function existingVpnNameserverGroup(string $host, string $pat): ?string
+    {
+        try {
+            $response = NetbirdConnector::make($host, $pat)->send(ListNameserverGroupsRequest::make());
+
+            if ($response->failed()) {
+                return null;
+            }
+
+            foreach ((array) $response->json() as $group) {
+                if (($group['name'] ?? '') === self::VPN_NAMESERVER_GROUP) {
+                    return (string) ($group['id'] ?? '') ?: null;
+                }
+            }
+        } catch (Throwable) {
+            return null;
+        }
+
+        return null;
+    }
+
+    /** Write the resolver's Corefile and restart it — CoreDNS reads the file once, at startup. */
+    protected function applyVpnResolverConfig(string $kubectl, string $ns, array $hosts, string $gatewayIp): bool
+    {
+        $manifest = view('k8s.vpn.resolver-config', [
+            'hosts' => $hosts,
+            'gatewayIp' => $gatewayIp,
+            'instance' => $this->vpnInstance($kubectl),
+        ])->render();
+
+        $directory = TemporaryDirectory::make();
+        $path = $directory->path('larakube-vpn-resolver.yaml');
+        file_put_contents($path, $manifest);
+
+        $applied = Process::run("{$kubectl} apply -f {$path}")->successful();
+        $directory->delete();
+
+        if (! $applied) {
+            return false;
+        }
+
+        Process::run("{$kubectl} rollout restart deploy/".$this->vpnName('vpn-client', $kubectl)." -n {$ns}");
+
+        return true;
     }
 
     /**

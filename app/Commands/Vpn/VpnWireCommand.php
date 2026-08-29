@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolHost;
@@ -17,7 +18,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class VpnWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolHost;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolHost;
 
     protected $signature = 'vpn:wire
         {environment=local : Environment whose deployment to wire}
@@ -93,6 +94,12 @@ class VpnWireCommand extends Command
 
             return 1;
         }
+
+        // Restricting the ingress is only half of it: public DNS still points
+        // this host at the cluster's public address, so a connected peer would
+        // arrive from its ISP address and be refused by the allow-list. This
+        // is what removes the need for an /etc/hosts entry.
+        $this->refreshVpnSplitDns($kubectl, $env);
 
         $this->laraKubeInfo("✅ {$tool->getLabel()} is now restricted to NetBird VPN peers only.");
 

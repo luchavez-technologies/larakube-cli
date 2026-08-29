@@ -1,8 +1,10 @@
 # Plan: NetBird single-account convergence, then split-DNS for VPN-only hosts
 
-**Status:** Phase 1 partially shipped (env var only — insufficient on its own).
+**Status:** Phase 1 **shipped and verified live 2026-08-30** — one account,
+domained `luchtech.dev`, gateway peer enrolled. Phase 2 built 2026-08-30, UNVERIFIED live.
 Rewritten 2026-08-28 after live testing on `larakube-159.89.205.239` invalidated
-two earlier versions of this plan.
+two earlier versions of this plan; corrected again 2026-08-30, see the Phase 1
+correction below and `netbird-single-account-recovery.md`.
 
 ## The goal, stated concretely
 
@@ -47,7 +49,16 @@ domain classification:
 An earlier draft nearly reverted `NETBIRD_MGMT_SINGLE_ACCOUNT_MODE_DOMAIN` on
 the theory that private-domain classification was doing the consolidating. The
 Joanna login disproves it: **with the mode off, every new SSO user gets their
-own account.** Do not remove that env var.
+own account.**
+
+> **Correction, 2026-08-30.** That env var never did anything. `netbird-mgmt`
+> reads no `NETBIRD_MGMT_*` names — they are docker-compose template variables
+> upstream, which render the command line. The mode was on the whole time
+> because the *flag* `--single-account-mode-domain` carries its own non-empty
+> default, `netbird.selfhosted`; our value was never read, so accounts were
+> stamped with NetBird's default while the Deployment claimed otherwise. It is
+> now passed via `args:`. The conclusion above still stands — the mode is
+> load-bearing — but the mechanism in it was wrong.
 
 **But the env var alone is not sufficient**, which is why Phase 1 is only
 partially shipped. NetBird evaluates, once, at process start:
@@ -280,3 +291,63 @@ even when the IP does not.
 
 Synapse/MAS admin synchronization moved to `plans/active/chat-mas-admin-sync.md`.
 It shares a symptom ("I can't get into Element Admin") but nothing else.
+
+
+---
+
+## Phase 2 implementation notes (2026-08-30)
+
+Built as designed above, with three corrections found while building.
+
+**The resolver runs on :5353, not :53.** The design said to serve the host list
+on the client's own NetBird IP at port 53. That address and port are already
+taken — by the NetBird client itself, in the same pod:
+
+```
+$ netstat -lnup   # inside the client container
+udp  0  0  100.84.155.135:53  0.0.0.0:*  7/netbird
+```
+
+Pointing peers at that :53 does not help either: the client forwards to the
+cluster resolver, which answers these names from public DNS with the public
+address — the very problem being solved. So CoreDNS 1.14.6 binds 5353 and the
+nameserver group registers that port explicitly.
+
+**No `fallthrough` in the `hosts` block.** Each block serves exactly one name,
+so falling through reaches the end of the chain and returns NXDOMAIN — for the
+AAAA query every client sends alongside the A. On macOS and iOS that reads as
+"no such name" and the lookup is abandoned. Without it the block answers
+authoritatively: NOERROR, no records, which is what "no IPv6 address" means.
+This matters most on the platform the plan already flagged as needing real
+testing.
+
+**Distribution is the `All` group, not `larakube-people`.** SSO users never
+present a setup key, so they never pick up its `auto_groups` — they land in
+`All` and nothing else. Distributing to `larakube-people` would have reached
+setup-key peers and missed every SSO user, which is the audience this exists
+for.
+
+### Where it hooks in
+
+- `vpn:init` reconciles last, after the gateway is an enrolled peer with an
+  address to point at.
+- `vpn:wire` reconciles after restricting the ingress.
+- `vpn:unwire` reconciles after lifting it; the last host leaving deletes the
+  group rather than leaving peers aimed at an empty resolver.
+
+Both wire paths treat a DNS failure as a warning, never a failure of the
+command: the ingress change has already happened by then, and failing the
+command would imply otherwise.
+
+The host list is read from live Ingresses carrying `-vpn-only@kubernetescrd`,
+so it cannot drift from what is actually restricted.
+
+### Phase 2 verification — still to do
+
+Nothing below has been run against a cluster yet.
+
+- [ ] `netbird status` on a peer shows `Nameservers: 1/1 Available`.
+- [ ] macOS and Windows resolve the host with no `hosts` edit, TLS valid.
+- [ ] **iOS specifically.**
+- [ ] The apex and any CDN-hosted names still resolve publicly while connected.
+- [ ] `vpn:unwire` removes the host from both resolver and group.

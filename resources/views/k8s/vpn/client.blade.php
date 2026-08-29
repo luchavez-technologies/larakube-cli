@@ -56,7 +56,34 @@ spec:
               socat TCP-LISTEN:80,fork,reuseaddr TCP:$HOST:80 &
               socat TCP-LISTEN:443,fork,reuseaddr TCP:$HOST:443 &
               wait
+        {{-- Split-DNS for VPN-only hosts. Lives on this pod because the
+             gateway peer's overlay address is the only address a remote peer
+             can route to, and a nameserver group can only point at one. --}}
+        - name: resolver
+          image: coredns/coredns:1.14.6
+          args: ["-conf", "/etc/coredns/Corefile"]
+          ports:
+            - containerPort: 5353
+              protocol: UDP
+              name: dns
+          volumeMounts:
+            - name: resolver-config
+              mountPath: /etc/coredns
+          readinessProbe:
+            tcpSocket:
+              port: 5353
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 128Mi
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: vpn-client-storage{{ $sfx }}
+        - name: resolver-config
+          configMap:
+            name: vpn-resolver-config{{ $sfx }}
