@@ -1,0 +1,33 @@
+# Tells pre-commit to optimize updates
+default_install_hook_types: [pre-commit]
+exclude: ^(vendor|node_modules|dist|build|\.vscode|\.idea|tests/.pest/snapshots)/
+
+repos:
+  # -------------------------------------------------------------------------
+  # 1. CORE FILESYSTEM & SYNTAX HYGIENE
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml          # Ensures Kubernetes & YAML configs are structurally valid
+      - id: check-json          # Ensures composer.json / package.json are valid JSON
+      - id: end-of-file-fixer   # Ensures files end with a clean newline
+      - id: trailing-whitespace # Automatically strips accidental trailing spaces
+
+  # -------------------------------------------------------------------------
+  # 2. SECRETS & CREDENTIAL PROTECTION
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks            # Prevents committing AWS keys, K8s tokens, or .env secrets
+
+  # -------------------------------------------------------------------------
+  # 3. STATIC APPLICATION SECURITY TESTING (SAST)
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/semgrep/semgrep
+    rev: v1.111.0
+    hooks:
+      - id: semgrep
+        args: ['--config=p/security-audit', '--error'] # Scans for OWASP Top 10 vulnerabilities
+        language: system

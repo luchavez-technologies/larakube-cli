@@ -1,0 +1,52 @@
+name: Container Security Scan
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+    steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
+
+        - name: Setup PHP
+          uses: shivammathur/setup-php@v2
+          with:
+            php-version: '8.4'
+            extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl
+
+        - name: Install dependencies
+          run: composer install --no-dev --prefer-dist --optimize-autoloader
+
+        - name: Scan dependencies for vulnerabilities (table)
+          uses: aquasecurity/trivy-action@master
+          with:
+            scan-type: 'fs'
+            scan-ref: '.'
+            format: 'table'
+            exit-code: '1'
+            severity: 'CRITICAL'
+
+        - name: Scan dependencies for vulnerabilities (SARIF for GitHub Security tab)
+          uses: aquasecurity/trivy-action@master
+          if: always()
+          with:
+            scan-type: 'fs'
+            scan-ref: '.'
+            format: 'sarif'
+            output: trivy-report.sarif
+            severity: 'CRITICAL,HIGH'
+
+        - name: Upload scan report
+          uses: github/codeql-action/upload-sarif@v3
+          if: always()
+          with:
+            sarif_file: trivy-report.sarif

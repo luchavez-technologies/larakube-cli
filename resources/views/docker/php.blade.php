@@ -37,7 +37,7 @@ RUN docker-php-serversideup-set-id www-data $USER_ID:$GROUP_ID  && \
     chown -R www-data:www-data storage bootstrap/cache && \
     chmod -R 775 storage bootstrap/cache
 
-# Drop privileges back to www-data    
+# Drop privileges back to www-data
 USER www-data
 
 ############################################
