@@ -25,6 +25,24 @@ A scaffolder is **Ready** when all five hold, on a clean directory:
 Anything short of all five is **Partial** — say which step failed. Untouched is
 **Unverified**, which is the honest default, not a criticism.
 
+## Verification order
+
+Agreed priority, in order. Everything else waits.
+
+1. **Laravel** (`new`) — re-verify first; it is the only one with history and
+   the most has changed around it.
+2. **WordPress** (`wordpress:new`) — Bedrock, official CLI.
+3. **Vite React + PocketBase backend** (`vite:new` + `data:init --engine=pocketbase`)
+   — the one combination on this list that spans two commands.
+4. **Next.js fullstack** (`nextjs:new`).
+
+**Note on #3.** `vite:new` produces **no Kubernetes manifests** today, so the
+"open decision" below stops being theoretical the moment this pairing is
+attempted: either `vite:new` starts orchestrating infrastructure like the other
+scaffolders, or the SPA is served some other way and the pairing is a documented
+two-piece setup. Decide that before verifying, not during — otherwise the
+verification will fail for a reason nobody chose.
+
 ## Status
 
 Update the Status column as you verify. Do not mark Ready from reading code.
