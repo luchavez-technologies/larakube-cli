@@ -8,6 +8,7 @@ use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PicksRegisteredTool;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesEnvironmentContext;
@@ -15,14 +16,11 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
-
-use function Laravel\Prompts\select;
-
 use LaravelZero\Framework\Commands\Command;
 
 class SecretsUnwireCommand extends Command
 {
-    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesEnvironmentContext, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesEnvironmentContext, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'secrets:unwire
         {environment=local : Environment whose secrets to unwire}
@@ -34,6 +32,8 @@ class SecretsUnwireCommand extends Command
         {--force : Skip confirmation prompt}';
 
     protected $description = 'Unwire a tool from OpenBao DB static-role rotation and freeze its password';
+
+    protected ?string $pickedHost = null;
 
     public function handle(): int
     {
@@ -72,8 +72,12 @@ class SecretsUnwireCommand extends Command
         foreach ($targets as $tool) {
             // --all deliberately ignores --domain, matching secrets:wire: one
             // domain cannot mean something sensible across many tools.
-            $instance = (! $this->option('all') && $domainOption !== '')
-                ? $this->resolveInstanceForDomain($kubectl, $tool, $this->sanitizeDomainInput($domainOption))
+            // Explicit --domain wins; otherwise the instance the picker
+            // resolved. --all ignores both: one domain cannot mean something
+            // sensible across many tools.
+            $host = $domainOption !== '' ? $this->sanitizeDomainInput($domainOption) : (string) $this->pickedHost;
+            $instance = (! $this->option('all') && $host !== '')
+                ? $this->resolveInstanceForDomain($kubectl, $tool, $host)
                 : null;
 
             $this->unwireTool($kubectl, $secNs, $tool, $instance, $engine);
@@ -143,17 +147,20 @@ class SecretsUnwireCommand extends Command
             return [];
         }
 
-        $options = [];
-        foreach ($installed as $t) {
-            $options[$t->value] = $t->getLabel();
-        }
-
-        $selected = select(
-            label: 'Which tool do you want to unwire from OpenBao DB rotation?',
-            options: $options,
+        $picked = $this->pickRegisteredTool(
+            $kubectl,
+            'Which tool do you want to unwire from OpenBao DB rotation?',
+            fn (ClusterTool $candidate): bool => in_array($candidate, $installed, true),
+            emptyMessage: 'No tools currently have their DB password managed by OpenBao.',
         );
 
-        return [ClusterTool::from($selected)];
+        if ($picked === null) {
+            return [];
+        }
+
+        $this->pickedHost = $picked[1];
+
+        return [$picked[0]];
     }
 
     protected function isToolInstalled(string $kubectl, ClusterTool $tool): bool

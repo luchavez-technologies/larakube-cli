@@ -11,6 +11,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PicksRegisteredTool;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEngine;
@@ -23,7 +24,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MailUnwireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:unwire
         {environment=local : Environment whose mail settings to unwire}
@@ -34,6 +35,14 @@ class MailUnwireCommand extends Command
         {--context= : Target a specific kube-context}';
 
     protected $description = 'Unwire SMTP mail settings from a tool and restart its deployment';
+
+    /**
+     * The instance --domain points at, or '' for this tool's default.
+     *
+     * --all deliberately ignores it, the same way mail:wire does: one domain
+     * cannot mean something sensible across many tools at once.
+     */
+    protected ?string $pickedHost = null;
 
     public function handle(): int
     {
@@ -99,42 +108,35 @@ class MailUnwireCommand extends Command
             return [];
         }
 
-        $options = [];
-        foreach (ClusterTool::shippedCases() as $candidate) {
-            if ($candidate->hasMailWire() && $this->isToolInstalledForMail($kubectl, $candidate)) {
-                $options[$candidate->value] = $candidate->getLabel();
-            }
-        }
+        $picked = $this->pickRegisteredTool(
+            $kubectl,
+            'Which tool do you want to unwire from Stalwart mail?',
+            fn (ClusterTool $candidate): bool => $candidate->hasMailWire()
+                && $this->isToolInstalledForMail($kubectl, $candidate),
+            emptyMessage: 'No SMTP-capable tools are registered on this cluster.',
+        );
 
-        if ($options === []) {
-            $this->laraKubeWarn('No SMTP-capable tools are currently installed.');
-
+        if ($picked === null) {
             return [];
         }
 
-        $selected = \Laravel\Prompts\select(
-            label: 'Which tool do you want to unwire from Stalwart mail?',
-            options: $options,
-        );
+        $this->pickedHost = $picked[1];
 
-        return [ClusterTool::from($selected)];
+        return [$picked[0]];
     }
 
-    /**
-     * The instance --domain points at, or '' for this tool's default.
-     *
-     * --all deliberately ignores it, the same way mail:wire does: one domain
-     * cannot mean something sensible across many tools at once.
-     */
     protected function targetInstance(string $kubectl, ClusterTool $tool): string
     {
-        $domain = (string) ($this->option('domain') ?: '');
-
-        if ($domain === '' || $this->option('all')) {
+        if ($this->option('all')) {
             return '';
         }
 
-        return $this->resolveInstanceForDomain($kubectl, $tool, $this->sanitizeDomainInput($domain));
+        // Explicit --domain wins; otherwise the instance the picker resolved,
+        // so unwire targets the row you actually selected.
+        $domain = (string) ($this->option('domain') ?: '');
+        $host = $domain !== '' ? $this->sanitizeDomainInput($domain) : (string) $this->pickedHost;
+
+        return $host !== '' ? $this->resolveInstanceForDomain($kubectl, $tool, $host) : '';
     }
 
     protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool

@@ -12,6 +12,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PicksRegisteredTool;
 use App\Traits\ReconcilesPenpotFlags;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
@@ -21,14 +22,13 @@ use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\password;
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class MailWireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, ReconcilesPenpotFlags, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:wire
         {environment=local : Environment whose mail server to target}
@@ -42,6 +42,9 @@ class MailWireCommand extends Command
         {--forget       : Delete the cached sender credentials (mail-sender secret) and exit}';
 
     protected $description = 'Point a tool (n8n, …) at the Stalwart mail server for outbound email';
+
+    /** Host of the instance the picker resolved, when no --instance/--domain was given. */
+    protected ?string $pickedHost = null;
 
     public function handle(): int
     {
@@ -178,23 +181,30 @@ class MailWireCommand extends Command
             return [];
         }
 
-        $options = [];
-        foreach ($installed as $tool) {
-            $options[$tool->value] = $tool->getLabel();
-        }
-
         // No --tool and no way to ask: fail with the flag name rather than
         // hanging on a prompt that will never be answered (CI, MCP, larakube proxy).
         if ($this->cannotPrompt()) {
             throw new MissingFlagException('tool', 'which tool to wire', 'larakube mail:wire production --tool=…');
         }
-        $choice = select(
-            label: 'Which tool would you like to wire to Stalwart?',
-            options: $options,
-            scroll: count($options),
+
+        // Registry-driven, so each INSTANCE gets its own row labelled with the
+        // host that identifies it. The bare-label list this replaces could not
+        // express a second instance at all.
+        $picked = $this->pickRegisteredTool(
+            $kubectl,
+            'Which tool would you like to wire to Stalwart?',
+            fn (ClusterTool $candidate): bool => $candidate->hasMailWire()
+                && in_array($candidate, $installed, true),
+            emptyMessage: 'No SMTP-capable tools are registered on this cluster.',
         );
 
-        return [ClusterTool::from($choice)];
+        if ($picked === null) {
+            return [];
+        }
+
+        $this->pickedHost = $picked[1];
+
+        return [$picked[0]];
     }
 
     /**
@@ -493,6 +503,14 @@ class MailWireCommand extends Command
         $explicit = (string) ($this->option('instance') ?: '');
         if ($explicit !== '') {
             return $explicit;
+        }
+
+        // The picker now resolves a concrete instance, so an interactive run no
+        // longer has to fall back to "only if there is exactly one". Picking
+        // the second of two instances used to land here as ambiguous and
+        // silently target the default.
+        if ($this->pickedHost !== null && $this->pickedHost !== '') {
+            return $this->resolveInstanceForDomain($kubectl, $tool, $this->pickedHost);
         }
 
         $registered = $this->getToolInstances($kubectl, $tool);

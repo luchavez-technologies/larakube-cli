@@ -7,17 +7,15 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PicksRegisteredTool;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
-
-use function Laravel\Prompts\select;
-
 use LaravelZero\Framework\Commands\Command;
 
 class VpnWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolHost;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, ResolvesToolHost;
 
     protected $signature = 'vpn:wire
         {environment=local : Environment whose deployment to wire}
@@ -140,44 +138,12 @@ class VpnWireCommand extends Command
             return null;
         }
 
-        // Registry-driven, mirroring sso:wire: only tools actually installed
-        // through their own :init can be restricted, and listing the rest
-        // offered choices that could never work. The host is carried through so
-        // a multi-instance tool restricts the instance you picked, not always
-        // its default one.
-        $choices = [];
-
-        foreach ($this->getRegisteredTools($kubectl) as $entry) {
-            $candidate = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
-
-            if ($candidate === null || ! $candidate->isShipped() || ! $candidate->hasVpnWire()) {
-                continue;
-            }
-
-            $host = (string) ($entry['host'] ?? '');
-            $choices[$candidate->value.'|'.$host] = [
-                'tool' => $candidate,
-                'host' => $host !== '' ? $host : null,
-                'label' => $host !== '' ? "{$candidate->getLabel()} ({$host})" : $candidate->getLabel(),
-            ];
-        }
-
-        if ($choices === []) {
-            $this->laraKubeError('No VPN-capable tools are registered on this cluster.');
-            $this->line('  <fg=gray>Only tools installed through their own</> <fg=blue>:init</> <fg=gray>appear here.</>');
-
-            return null;
-        }
-
-        // STRING keys, never integers -- see sso:wire. An integer-keyed array is
-        // a LIST to Laravel Prompts, which returns the label instead of the key.
-        $key = (string) select(
-            label: 'Restrict which tool to VPN-only?',
-            options: array_map(fn (array $c): string => $c['label'], $choices),
-            scroll: min(count($choices), 15),
+        return $this->pickRegisteredTool(
+            $kubectl,
+            'Restrict which tool to VPN-only?',
+            fn (ClusterTool $candidate): bool => $candidate->hasVpnWire(),
+            emptyMessage: 'No VPN-capable tools are registered on this cluster.',
         );
-
-        return isset($choices[$key]) ? [$choices[$key]['tool'], $choices[$key]['host']] : null;
     }
 
     /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */

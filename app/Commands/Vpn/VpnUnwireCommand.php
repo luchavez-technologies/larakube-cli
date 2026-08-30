@@ -7,18 +7,16 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PicksRegisteredTool;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
-
-use function Laravel\Prompts\select;
-
 use LaravelZero\Framework\Commands\Command;
 use Throwable;
 
 class VpnUnwireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolHost;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, ResolvesToolHost;
 
     protected $signature = 'vpn:unwire
         {environment=local : Environment whose deployment to unwire}
@@ -158,41 +156,21 @@ class VpnUnwireCommand extends Command
             return null;
         }
 
-        // Registry-driven and filtered to hosts that are ACTUALLY restricted,
-        // mirroring sso:unwire. Listing every VPN-capable tool offered ones
-        // that were never installed, and offering an unrestricted host makes a
-        // no-op look like it did something -- here it is worse than a no-op,
-        // since unwiring still re-applies an ingress and can remove a shared
-        // Middleware.
-        $choices = [];
-
+        // Gated on hosts that are ACTUALLY restricted. Offering an
+        // unrestricted host is worse than a no-op here: unwiring still
+        // re-applies an ingress and can remove a shared Middleware.
+        $restricted = [];
         foreach ($this->vpnOnlyIngresses($kubectl) as $entry) {
-            $candidate = $entry['tool'];
-            $host = $entry['host'];
-
-            $choices[$candidate->value.'|'.$host] = [
-                'tool' => $candidate,
-                'host' => $host !== '' ? $host : null,
-                'label' => $host !== '' ? "{$candidate->getLabel()} ({$host})" : $candidate->getLabel(),
-            ];
+            $restricted[$entry['tool']->value.'|'.$entry['host']] = true;
         }
 
-        if ($choices === []) {
-            $this->laraKubeError('No tools are currently restricted to VPN peers.');
-
-            return null;
-        }
-
-        // STRING keys: an integer-keyed array is a LIST to Laravel Prompts,
-        // which then returns the label instead of the key -- the bug that made
-        // sso:wire wire Matrix when NetBird was picked (2026-08-29).
-        $key = (string) select(
-            label: 'Lift VPN-only restriction on which tool?',
-            options: array_map(fn (array $c): string => $c['label'], $choices),
-            scroll: min(count($choices), 15),
+        return $this->pickRegisteredTool(
+            $kubectl,
+            'Lift VPN-only restriction on which tool?',
+            fn (ClusterTool $candidate): bool => $candidate->hasVpnWire(),
+            fn (ClusterTool $candidate, string $host): bool => isset($restricted[$candidate->value.'|'.$host]),
+            emptyMessage: 'No tools are currently restricted to VPN peers.',
         );
-
-        return isset($choices[$key]) ? [$choices[$key]['tool'], $choices[$key]['host']] : null;
     }
 
     /**

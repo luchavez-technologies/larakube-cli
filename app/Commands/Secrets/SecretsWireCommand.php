@@ -5,6 +5,7 @@ namespace App\Commands\Secrets;
 use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PicksRegisteredTool;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEngine;
@@ -15,14 +16,13 @@ use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SecretsWireCommand extends Command
 {
-    use DeploysClusterTool, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use DeploysClusterTool, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'secrets:wire
         {environment=local : Environment whose deployment(s) to wire}
@@ -35,6 +35,17 @@ class SecretsWireCommand extends Command
         {--force                : Skip the confirmation prompt}';
 
     protected $description = "Hand a tool's Commons database password over to OpenBao static-role rotation";
+
+    /**
+     * Resolve which tool(s) to wire, each already paired with the instance
+     * and (for multi-engine tools) the LIVE engine to target — never a
+     * guessed default, so a PocketBase-only `data` instance is never handed
+     * Directus's dbSecretRef()/commonsDatabases() by this command again
+     * (the concrete bug this resolution replaces).
+     *
+     * @return list<array{0: ClusterTool, 1: string, 2: ?string}>
+     */
+    protected ?string $pickedHost = null;
 
     public function handle(): int
     {
@@ -91,15 +102,6 @@ class SecretsWireCommand extends Command
         return $ok ? 0 : 1;
     }
 
-    /**
-     * Resolve which tool(s) to wire, each already paired with the instance
-     * and (for multi-engine tools) the LIVE engine to target — never a
-     * guessed default, so a PocketBase-only `data` instance is never handed
-     * Directus's dbSecretRef()/commonsDatabases() by this command again
-     * (the concrete bug this resolution replaces).
-     *
-     * @return list<array{0: ClusterTool, 1: string, 2: ?string}>
-     */
     protected function resolveTargets(string $kubectl, string $domain): array
     {
         $capable = array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
@@ -191,27 +193,53 @@ class SecretsWireCommand extends Command
             return [];
         }
 
-        $options = [];
-        foreach ($installed as [$t]) {
-            $options[$t->value] = $t->getLabel();
-        }
-
+        // Registry-driven, so each INSTANCE is its own row labelled with its
+        // host. $installed holds one entry per TOOL (resolved at --domain or
+        // the default), so the list it replaces could not offer a second
+        // instance at all.
         $chosen = $this->flagOrPrompt(
             'tool',
-            fn () => select(label: "Which tool's DB password should OpenBao take over rotating?", options: $options),
+            function () use ($kubectl, $capable): ?string {
+                $picked = $this->pickRegisteredTool(
+                    $kubectl,
+                    "Which tool's DB password should OpenBao take over rotating?",
+                    fn (ClusterTool $candidate): bool => in_array($candidate, $capable, true),
+                    emptyMessage: 'No DB-rotatable tools are registered on this cluster.',
+                );
+
+                if ($picked === null) {
+                    return null;
+                }
+
+                $this->pickedHost = $picked[1];
+
+                return $picked[0]->value;
+            },
             'the tool whose DB password to wire',
-            '--tool='.array_key_first($options),
+            '--tool='.$installed[0][0]->value,
         );
 
-        foreach ($installed as $resolved) {
-            if ($resolved[0]->value === $chosen) {
-                return [$resolved];
-            }
+        $tool = ClusterTool::tryFrom((string) $chosen);
+
+        if ($tool === null) {
+            return [];
         }
 
-        $this->laraKubeError("'{$chosen}' does not have a Commons database password OpenBao can rotate.");
+        // Re-resolve against the instance the picker settled on, rather than
+        // reusing the tool-level entry computed before anything was chosen.
+        $instance = $this->pickedHost !== null && $this->pickedHost !== ''
+            ? $this->resolveInstanceForDomain($kubectl, $tool, $this->pickedHost)
+            : ($domain !== '' ? $this->resolveInstanceForDomain($kubectl, $tool, $domain) : null);
 
-        return [];
+        $resolved = $resolve($tool, $instance);
+
+        if ($resolved === null) {
+            $this->laraKubeError("'{$chosen}' does not have a Commons database password OpenBao can rotate.");
+
+            return [];
+        }
+
+        return [$resolved];
     }
 
     protected function wireTool(string $kubectl, ClusterTool $tool, ?string $instance, ?string $engine, string $rotationPeriod): bool
