@@ -43,7 +43,6 @@ class MailInitCommand extends Command
         {--context=  : Target a specific kube-context}
         {--domain=   : Base domain OR full host for Stalwart (example.com → prefix.example.com)}
         {--alias=*    : Additional domain alias(es) to register on the Ingress}
-        {--instance=     : Named instance identifier (default: this tool\'s sole instance)}
         {--admin-email= : Primary postmaster / admin email address for Stalwart}
         {--vpn-only  : Restrict the admin UI via NetBird VPN IP whitelisting}
         {--host-port : Bind mail ports directly to the node (default on single-node k3s)}
@@ -163,14 +162,12 @@ class MailInitCommand extends Command
         // harmlessly no-ops here since the Deployment doesn't exist yet.
         $this->configureStalwartStore($kubectl, $ns, $resourceInstance);
 
-        // --instance= is retained only for resolveToolAliasHosts()'s existing
-        // meaning (which OTHER hosts alias onto this install) — it no longer
-        // drives Mail's OWN resource naming, which is always host-derived
-        // ($resourceInstance above) to stay consistent with the rest of the
-        // instance-naming convention rather than accepting an arbitrary
-        // manual override for a tool that can only ever have one instance.
-        $instance = (string) ($this->option('instance') ?: '');
-        $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::MAIL, $instance);
+        // Alias lookup keys off the SAME host-derived instance as every other
+        // resource here. --instance= used to supply this one value separately,
+        // which let it disagree with $resourceInstance and look up aliases for
+        // an installation that did not exist -- for a tool that can only ever
+        // have one instance anyway.
+        $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::MAIL, $resourceInstance);
 
         $manifest = view('k8s.mail.stalwart', [
             'host' => $host,

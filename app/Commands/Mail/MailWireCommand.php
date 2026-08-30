@@ -34,7 +34,7 @@ class MailWireCommand extends Command
         {environment=local : Environment whose mail server to target}
         {--tool= : The tool to wire to Stalwart}
         {--engine= : Specific engine to target explicitly, skipping auto-detection (e.g. --engine=pocketbase)}
-        {--instance= : Specific instance to target}
+        {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance. Ignored with --all}
         {--all          : Wire every installed SMTP-capable tool}
         {--context=     : Target a specific kube-context}
         {--sender=      : Sender/login address (default: noreply@<domain>)}
@@ -502,9 +502,12 @@ class MailWireCommand extends Command
      */
     protected function resolveWireInstance(string $kubectl, ClusterTool $tool): string
     {
-        $explicit = (string) ($this->option('instance') ?: '');
+        // --domain names a HOST; the instance slug is derived from it. The
+        // flag it replaces took a slug directly, so the two spellings were not
+        // interchangeable even where both existed.
+        $explicit = (string) ($this->option('domain') ?: '');
         if ($explicit !== '') {
-            return $explicit;
+            return $this->resolveInstanceForDomain($kubectl, $tool, $this->sanitizeDomainInput($explicit));
         }
 
         // The picker now resolves a concrete instance, so an interactive run no

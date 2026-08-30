@@ -39,6 +39,16 @@ instances (confirmed live 2026-08-08).
 Every multi-instance-capable `ClusterTool` command uses `--domain=` to name
 a *specific instance's host* — never a separately-typed name:
 
+> **Completed 2026-08-30.** This section read "gone everywhere" from the day it
+> was accepted, while `mail:wire`, `mail:init` and `data:wire` still carried
+> `--instance=` — two of them alongside `--domain=`, so the flags could disagree
+> about which installation was meant. `data:wire` passed a slug to
+> `resolveToolHost()`, which reads `--domain` itself; `mail:init` used it only
+> for alias lookup, where it could name an installation that did not exist.
+> Both now derive the instance from the host. `mail:wire`'s flag was a genuine
+> rename, and not a textual one: it took a slug where `--domain=` takes a host,
+> so the value is converted rather than passed through.
+
 ```
 data:init  --domain=blog.example.com     # deploys/updates the instance AT that host
 data:remove --domain=blog.example.com    # targets the same instance, by the same host

@@ -25,7 +25,6 @@ class DataWireCommand extends Command
     protected $signature = 'data:wire
         {environment=local : Environment whose Data engine host to wire}
         {--engine=         : Data engine to target ("pocketbase" or "directus")}
-        {--instance=       : Instance name for multi-instance deployments}
         {--domain=         : Base domain OR full host for Data}
         {--context=        : Target a specific kube-context}';
 
@@ -39,9 +38,11 @@ class DataWireCommand extends Command
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = $this->dataKubectl($context);
         $engine = $this->resolveEngine();
-        $instance = (string) ($this->option('instance') ?: '');
-
-        $host = $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl, $instance);
+        // No --instance: the host IS the identity (ADR 0012), and
+        // resolveToolHost() already reads --domain itself. Carrying a separate
+        // slug knob alongside it meant two flags could disagree about which
+        // installation you meant.
+        $host = $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl);
 
         if ($host === null) {
             $this->laraKubeError("No Data / Headless CMS host found for '{$env}'. Run `larakube data:init {$env}` first.");
