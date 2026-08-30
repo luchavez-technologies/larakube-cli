@@ -11,6 +11,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
@@ -21,11 +22,13 @@ use LaravelZero\Framework\Commands\Command;
 
 class SecretsUnwireCommand extends Command
 {
-    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesEnvironmentContext, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesEnvironmentContext, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'secrets:unwire
         {environment=local : Environment whose secrets to unwire}
         {--tool= : The tool whose OpenBao DB static-role rotation should be unwired}
+        {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance. Ignored with --all}
+        {--engine= : Specific engine to target explicitly, skipping auto-detection (e.g. --engine=pocketbase)}
         {--all : Unwire all OpenBao-managed DB static roles}
         {--context= : Target a specific kube-context}
         {--force : Skip confirmation prompt}';
@@ -63,8 +66,17 @@ class SecretsUnwireCommand extends Command
             return 1;
         }
 
+        $domainOption = (string) ($this->option('domain') ?: '');
+        $engine = (string) ($this->option('engine') ?: '') ?: null;
+
         foreach ($targets as $tool) {
-            $this->unwireTool($kubectl, $secNs, $tool);
+            // --all deliberately ignores --domain, matching secrets:wire: one
+            // domain cannot mean something sensible across many tools.
+            $instance = (! $this->option('all') && $domainOption !== '')
+                ? $this->resolveInstanceForDomain($kubectl, $tool, $this->sanitizeDomainInput($domainOption))
+                : null;
+
+            $this->unwireTool($kubectl, $secNs, $tool, $instance, $engine);
         }
 
         return 0;
@@ -83,7 +95,7 @@ class SecretsUnwireCommand extends Command
             if ($this->refuseUnshippedTool($tool)) {
                 return [];
             }
-            if ($tool->dbSecretRef() === null) {
+            if (! $tool->hasSecretsWire()) {
                 $this->laraKubeError("Tool '{$option}' has no OpenBao DB static-role configuration.");
 
                 return [];
@@ -92,14 +104,27 @@ class SecretsUnwireCommand extends Command
             return [$tool];
         }
 
+        // hasSecretsWire() is the pair's marker contract (HasOpenbaoSync),
+        // replacing a probe for dbSecretRef() being non-null -- each wire pair
+        // used to infer capability from a different accessor.
+        //
+        // Then filtered to tools OpenBao is ACTUALLY rotating, mirroring
+        // sso:unwire. Offering a tool that was never wired makes a no-op look
+        // like it did something; --all keeps the wider net because it is
+        // explicitly a sweep.
         $installed = [];
         foreach (ClusterTool::shippedCases() as $candidate) {
-            if ($candidate->dbSecretRef() === null) {
+            if (! $candidate->hasSecretsWire()) {
                 continue;
             }
-            if ($this->isToolInstalled($kubectl, $candidate)) {
-                $installed[] = $candidate;
+            if (! $this->isToolInstalled($kubectl, $candidate)) {
+                continue;
             }
+            if (! $this->option('all') && $this->staticRoleExists($kubectl, $candidate->commonsDatabases()[0] ?? $candidate->value) !== true) {
+                continue;
+            }
+
+            $installed[] = $candidate;
         }
 
         if ($this->option('all')) {
@@ -113,7 +138,7 @@ class SecretsUnwireCommand extends Command
         }
 
         if ($installed === []) {
-            $this->laraKubeWarn('No DB-wired tools are currently installed.');
+            $this->laraKubeWarn('No tools currently have their DB password managed by OpenBao.');
 
             return [];
         }
@@ -141,14 +166,18 @@ class SecretsUnwireCommand extends Command
         return trim(Process::run("{$kubectl} get secret {$ref['secret']} -n {$ref['namespace']} --no-headers --ignore-not-found")->output()) !== '';
     }
 
-    protected function unwireTool(string $kubectl, string $secNs, ClusterTool $tool): bool
+    protected function unwireTool(string $kubectl, string $secNs, ClusterTool $tool, ?string $instance = null, ?string $engine = null): bool
     {
-        $ref = $tool->dbSecretRef();
+        // Same two accessors, with the same arguments, as secrets:wire's
+        // wireTool(). Resolving them without the instance unwired the DEFAULT
+        // instance's static role no matter which one you asked for -- and
+        // reported success for it.
+        $ref = $tool->dbSecretRef($instance, $engine);
         if ($ref === null) {
             return false;
         }
 
-        $tenant = $tool->commonsDatabases()[0] ?? $tool->value;
+        $tenant = $tool->commonsDatabases($instance, $engine)[0] ?? $tool->value;
         $roleState = $this->staticRoleExists($kubectl, $tenant);
 
         if ($roleState === false) {

@@ -2,7 +2,6 @@
 
 namespace App\Commands\Vpn;
 
-use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -32,19 +31,28 @@ class VpnWireCommand extends Command
     {
         $this->renderHeader();
 
-        $tool = $this->resolveTool();
-        if ($tool === null) {
-            return 1;
-        }
-
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = $this->vpnWireKubectl($context);
 
-        $domain = (string) ($this->option('domain') ?: '');
-        // Host identity wins: a --domain matching an already-registered entry
-        // targets THAT instance in place (registry = source of truth).
-        $instance = $this->resolveInstanceForDomain($kubectl, $tool, $domain);
+        // kubectl first: the picker reads the cluster registry, so it cannot
+        // run before there is a cluster to read.
+        $selection = $this->resolveTool($kubectl);
+        if ($selection === null) {
+            return 1;
+        }
+        [$tool, $pickedHost] = $selection;
+
+        // Host identity wins: an explicit --domain matching an already-registered
+        // entry targets THAT instance in place (registry = source of truth).
+        // Otherwise the instance the picker resolved is the one to act on, so
+        // wire and unwire agree on what "this tool" means.
+        $domainOption = (string) ($this->option('domain') ?: '');
+        $domain = match (true) {
+            $domainOption !== '' => $this->sanitizeDomainInput($domainOption),
+            $pickedHost !== null => $pickedHost,
+            default => '',
+        };
 
         if ($domain !== '' && ! $tool->supportsMultipleInstances()) {
             $this->laraKubeError("{$tool->getLabel()} does not support multiple instances — omit --domain to target its single installation.");
@@ -52,18 +60,11 @@ class VpnWireCommand extends Command
             return 1;
         }
 
-        $target = $tool->vpnMiddlewareTarget();
-        if ($target === null) {
+        if (! $tool->hasVpnWire()) {
             $this->laraKubeError("'{$tool->value}' doesn't have a --vpn-only ingress mode.");
 
             return 1;
         }
-
-        $env = (string) $this->argument('environment');
-        $projectPath = getcwd();
-        $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
-            ? ConfigData::loadFromFile($projectPath)
-            : null;
 
         return $this->wire($tool, $kubectl, $env, $domain);
     }
@@ -115,7 +116,8 @@ class VpnWireCommand extends Command
         )->output(), 'cloudflare-proxied');
     }
 
-    protected function resolveTool(): ?ClusterTool
+    /** @return array{0: ClusterTool, 1: ?string}|null tool + the chosen instance's host */
+    protected function resolveTool(string $kubectl): ?array
     {
         $slug = (string) ($this->option('tool') ?: '');
         if ($slug !== '') {
@@ -129,21 +131,53 @@ class VpnWireCommand extends Command
                 return null;
             }
 
-            return $tool;
+            return [$tool, null];
         }
 
-        $capable = array_values(array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->vpnMiddlewareTarget() !== null));
+        if ($this->option('no-interaction')) {
+            $this->laraKubeError('Passing --tool is required when running in non-interactive mode.');
 
-        $options = [];
-        foreach ($capable as $t) {
-            $options[$t->value] = $t->getLabel();
+            return null;
         }
 
-        return ClusterTool::from(select(
+        // Registry-driven, mirroring sso:wire: only tools actually installed
+        // through their own :init can be restricted, and listing the rest
+        // offered choices that could never work. The host is carried through so
+        // a multi-instance tool restricts the instance you picked, not always
+        // its default one.
+        $choices = [];
+
+        foreach ($this->getRegisteredTools($kubectl) as $entry) {
+            $candidate = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
+
+            if ($candidate === null || ! $candidate->isShipped() || ! $candidate->hasVpnWire()) {
+                continue;
+            }
+
+            $host = (string) ($entry['host'] ?? '');
+            $choices[$candidate->value.'|'.$host] = [
+                'tool' => $candidate,
+                'host' => $host !== '' ? $host : null,
+                'label' => $host !== '' ? "{$candidate->getLabel()} ({$host})" : $candidate->getLabel(),
+            ];
+        }
+
+        if ($choices === []) {
+            $this->laraKubeError('No VPN-capable tools are registered on this cluster.');
+            $this->line('  <fg=gray>Only tools installed through their own</> <fg=blue>:init</> <fg=gray>appear here.</>');
+
+            return null;
+        }
+
+        // STRING keys, never integers -- see sso:wire. An integer-keyed array is
+        // a LIST to Laravel Prompts, which returns the label instead of the key.
+        $key = (string) select(
             label: 'Restrict which tool to VPN-only?',
-            options: $options,
-            scroll: count($options),
-        ));
+            options: array_map(fn (array $c): string => $c['label'], $choices),
+            scroll: min(count($choices), 15),
+        );
+
+        return isset($choices[$key]) ? [$choices[$key]['tool'], $choices[$key]['host']] : null;
     }
 
     /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */

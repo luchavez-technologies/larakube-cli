@@ -14,6 +14,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEngine;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
@@ -22,11 +23,12 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MailUnwireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:unwire
         {environment=local : Environment whose mail settings to unwire}
         {--tool= : The tool to unwire from Stalwart}
+        {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance. Ignored with --all}
         {--engine= : Specific engine to target explicitly, skipping auto-detection (e.g. --engine=pocketbase)}
         {--all   : Unwire every installed SMTP-capable tool}
         {--context= : Target a specific kube-context}';
@@ -75,7 +77,12 @@ class MailUnwireCommand extends Command
         if ($this->option('all')) {
             $installed = [];
             foreach (ClusterTool::shippedCases() as $candidate) {
-                if ($candidate->smtpEnv() === null && $candidate !== ClusterTool::SSO) {
+                // hasMailWire() is the pair's marker contract (HasSmtpWiring),
+                // and it already folds in SSO -- Zitadel takes SMTP through its
+                // own API rather than deployment env, so it has no smtpEnv()
+                // schema but is still mail-wireable. That special case used to
+                // be spelled out at every call site.
+                if (! $candidate->hasMailWire()) {
                     continue;
                 }
                 if ($this->isToolInstalledForMail($kubectl, $candidate)) {
@@ -94,7 +101,7 @@ class MailUnwireCommand extends Command
 
         $options = [];
         foreach (ClusterTool::shippedCases() as $candidate) {
-            if (($candidate->smtpEnv() !== null || $candidate === ClusterTool::SSO) && $this->isToolInstalledForMail($kubectl, $candidate)) {
+            if ($candidate->hasMailWire() && $this->isToolInstalledForMail($kubectl, $candidate)) {
                 $options[$candidate->value] = $candidate->getLabel();
             }
         }
@@ -111,6 +118,23 @@ class MailUnwireCommand extends Command
         );
 
         return [ClusterTool::from($selected)];
+    }
+
+    /**
+     * The instance --domain points at, or '' for this tool's default.
+     *
+     * --all deliberately ignores it, the same way mail:wire does: one domain
+     * cannot mean something sensible across many tools at once.
+     */
+    protected function targetInstance(string $kubectl, ClusterTool $tool): string
+    {
+        $domain = (string) ($this->option('domain') ?: '');
+
+        if ($domain === '' || $this->option('all')) {
+            return '';
+        }
+
+        return $this->resolveInstanceForDomain($kubectl, $tool, $this->sanitizeDomainInput($domain));
     }
 
     protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool

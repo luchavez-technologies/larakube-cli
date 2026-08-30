@@ -17,6 +17,7 @@ use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasSsoLicenseCaveat;
+use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Contracts\UsesCliOidc;
@@ -641,6 +642,46 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /**
+     * Whether `vpn:wire` can restrict this tool's ingress to VPN peers.
+     *
+     * One predicate per wire pair, each backed by the pair's marker contract,
+     * so a command never has to infer capability from whatever accessor happens
+     * to return null. Before these existed each pair tested something
+     * different -- vpnMiddlewareTarget(), smtpEnv(), dbSecretRef() -- and the
+     * pickers drifted apart as a result.
+     */
+    public function hasVpnWire(): bool
+    {
+        return $this->vendor() instanceof HasVpnWiring;
+    }
+
+    /**
+     * Whether `mail:wire` can point this tool at Stalwart.
+     *
+     * SSO is deliberately included without implementing HasSmtpWiring: Zitadel
+     * takes its SMTP settings through its own API rather than deployment env,
+     * so it has no smtpEnv() schema but is still very much mail-wireable.
+     */
+    public function hasMailWire(): bool
+    {
+        return $this->vendor() instanceof HasSmtpWiring || $this === self::SSO;
+    }
+
+    /**
+     * Whether `secrets:wire` can hand this tool's Commons DB password to OpenBao to rotate.
+     *
+     * HasRotatableDatabasePassword, NOT HasOpenbaoSync -- the two are easy to
+     * confuse and mean different things. OpenbaoSync is about pushing a tool's
+     * own secrets INTO OpenBao (10 tools); this pair is about OpenBao taking
+     * over rotation of a Commons DB password (17, exactly the set with a
+     * dbSecretRef).
+     */
+    public function hasSecretsWire(): bool
+    {
+        return $this->vendor() instanceof HasRotatableDatabasePassword;
+    }
+
+    /**
      * The Zitadel project role keys this tool gates login behind, keyed to a
      * short description for the operator instructions `sso:wire` prints.
      * Empty for every tool that has no elevated-access story of its own (its
@@ -1067,7 +1108,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
         $vendor = $this->vendor();
-        if ($vendor instanceof \App\Contracts\HasVpnWiring) {
+        if ($vendor instanceof HasVpnWiring) {
             return $vendor->vpnMiddlewareTarget($instance);
         }
 
