@@ -81,9 +81,7 @@ test('keys are strings, never integers', function (): void {
 
     $choices = $subject->choicesFor('kubectl', fn (ClusterTool $t): bool => $t->hasVpnWire());
 
-    foreach (array_keys($choices) as $key) {
-        expect($key)->toBeString()->toContain('|');
-    }
+    expect(array_keys($choices))->each->toBeString()->toContain('|');
 });
 
 test('the capability predicate keeps out tools the pair cannot act on', function (): void {

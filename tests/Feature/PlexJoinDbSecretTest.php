@@ -127,7 +127,7 @@ test('wireTenantDbSecret returns false and never restarts when the sync never go
     expect(plexJoinCommand()->callWireTenantDbSecret('kubectl', 'app-production', 'app_production'))->toBeFalse();
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart'));
-})->skip('exercises the full 30s default timeout — covered fast by SecretsWireCommandTest\'s isolated waitForExternalSecretSynced test instead, since the logic is now shared via the trait');
+});
 
 test('handle() wires registerStaticRole and wireTenantDbSecret to the SAME OpenBao role name', function (): void {
     // Regression guard for the real bug found live 2026-08-01: handle() called

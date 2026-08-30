@@ -11,24 +11,33 @@ use Illuminate\Contracts\Console\Kernel;
  * command (or the next agent) from quietly reintroducing a subject positional
  * or a second environment source.
  */
-
-/** Commands that are genuinely not tool-scoped and so are out of scope here. */
-function shapeExemptPrefixes(): array
-{
-    return ['make:', 'app:', 'stub:', 'completion', 'help', 'list', 'test', 'schedule'];
-}
-
 test('no tool command takes a positional other than environment', function (): void {
+    // Scoped to commands whose namespace IS a ClusterTool, which is what the
+    // rule is about and what this test has always claimed to check. It used to
+    // scan every registered command and was parked as "enable once the
+    // non-tool commands are swept too" -- so it never ran anywhere, and a real
+    // violation could have landed under it unnoticed.
+    //
+    // The commands it was tripping over are generators and utilities whose
+    // positional is genuinely the subject and has no cluster meaning:
+    // `vite:new {name}`, `saloon:request {integration} {name}`,
+    // `snapshot:create {pvc} {name}`, `bundle:zip {path}`, `config:tld {tld}`.
+    // Those are a different shape on purpose, not a backlog.
+    $toolNamespaces = array_map(fn (App\Enums\ClusterTool $tool): string => $tool->value.':', App\Enums\ClusterTool::cases());
+
     $offenders = [];
 
     foreach (app(Kernel::class)->all() as $name => $command) {
-        if (! str_contains($name, ':')) {
-            continue;
-        }
-        foreach (shapeExemptPrefixes() as $prefix) {
-            if (str_starts_with($name, $prefix)) {
-                continue 2;
+        $isToolCommand = false;
+        foreach ($toolNamespaces as $namespace) {
+            if (str_starts_with($name, $namespace)) {
+                $isToolCommand = true;
+                break;
             }
+        }
+
+        if (! $isToolCommand) {
+            continue;
         }
 
         $args = array_keys($command->getDefinition()->getArguments());
@@ -41,21 +50,9 @@ test('no tool command takes a positional other than environment', function (): v
         $offenders[$name] = $args;
     }
 
-    // Known, deliberate exceptions — each takes a genuinely non-environment
-    // subject that has no cluster meaning (a file path, a passthrough command
-    // line, a service name).
-    $allowed = [
-        'plex:remove', 'tool:add', 'tool:remove', 'ext:add', 'ext:remove',
-        'context:remove', 'context:import', 'companion:remove',
-    ];
-
-    foreach ($allowed as $name) {
-        unset($offenders[$name]);
-    }
-
-    expect(array_keys($offenders))->toBe([], 'Commands with a non-environment positional: '
+    expect(array_keys($offenders))->toBe([], 'Tool commands with a non-environment positional: '
         .json_encode($offenders));
-})->skip('Inventory guard — enable once the non-tool commands are swept too.');
+});
 
 test('the mail, sso and vpn suites take environment as their only positional', function (): void {
     foreach (app(Kernel::class)->all() as $name => $command) {
