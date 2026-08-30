@@ -6,11 +6,15 @@ use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
 use App\State;
 use Exception;
+use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
+
+use Symfony\Component\Console\Output\OutputInterface;
+
 use function Termwind\render;
 
 trait LaraKubeOutput
@@ -256,7 +260,7 @@ trait LaraKubeOutput
     {
         $lines = str_repeat("\n", $count);
 
-        State::$jsonMode ? fwrite(STDERR, $lines) : print $lines;
+        State::$jsonMode ? fwrite(STDERR, $lines) : $this->writeConsole($lines);
     }
 
     /**
@@ -266,7 +270,37 @@ trait LaraKubeOutput
     {
         $line = '  '.$this->stripConsoleTags($this->maskSecrets($message))."\n";
 
-        State::$jsonMode ? fwrite(STDERR, $line) : print $line;
+        State::$jsonMode ? fwrite(STDERR, $line) : $this->writeConsole($line);
+    }
+
+    /**
+     * Write already-formatted text to the console.
+     *
+     * Goes through the command's own output rather than `print`, which writes
+     * past Symfony entirely. Production looked identical either way, so this
+     * only ever showed up in tests: $this->artisan() captures Symfony's output
+     * and never saw these lines, so they escaped onto the test runner's stdout
+     * instead -- output from a faked command leaking into the report, and
+     * unassertable besides.
+     *
+     * OUTPUT_RAW because the text is already stripped and masked; letting
+     * Symfony re-parse it would treat a stray '<' in a hostname or a secret's
+     * mask as broken markup.
+     *
+     * The echo fallback stays for callers that are not Commands and so have
+     * no output to write to.
+     */
+    protected function writeConsole(string $text): void
+    {
+        // instanceof, not a bare isset: this trait is used by enums too
+        // (DatabaseDriver, CacheDriver, ...), which have no $output at all.
+        if ($this instanceof Command && isset($this->output)) {
+            $this->output->write($text, false, OutputInterface::OUTPUT_RAW);
+
+            return;
+        }
+
+        echo $text;
     }
 
     /**
