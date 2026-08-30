@@ -27,7 +27,7 @@ test('tool:alias adds an alias domain to a registered tool and re-applies ingres
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
-    $this->artisan('tool:alias', ['tool' => 'mail', 'alias' => 'send.next.site'])
+    $this->artisan('tool:alias', ['tool' => 'mail', '--alias' => 'send.next.site'])
         ->assertExitCode(0)
         ->expectsOutputToContain('Registered alias domain \'send.next.site\' for Mail Server (Stalwart)')
         ->expectsOutputToContain('https://send.next.site');
@@ -50,7 +50,7 @@ test('tool:alias --domain= targets the registered instance serving that host, no
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
-    $this->artisan('tool:alias', ['tool' => 'mail', 'alias' => 'send.next.site', '--domain' => 'send.luchtech.dev'])
+    $this->artisan('tool:alias', ['tool' => 'mail', '--alias' => 'send.next.site', '--domain' => 'send.luchtech.dev'])
         ->assertExitCode(0)
         ->expectsOutputToContain('Registered alias domain \'send.next.site\' for Mail Server (Stalwart)');
 });
@@ -67,7 +67,7 @@ test('tool:alias --remove removes an alias domain from a registered tool', funct
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
-    $this->artisan('tool:alias', ['tool' => 'mail', 'alias' => 'send.next.site', '--remove' => true])
+    $this->artisan('tool:alias', ['tool' => 'mail', '--alias' => 'send.next.site', '--remove' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('Removed alias domain \'send.next.site\' from Mail Server (Stalwart)');
 });

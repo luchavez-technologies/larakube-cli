@@ -176,7 +176,7 @@ test('clone command has repo argument and expected options', function (): void {
     $def = $cmd->getDefinition();
 
     expect($def->hasArgument('repo'))->toBeTrue()
-        ->and($def->hasArgument('directory'))->toBeTrue()
+        ->and($def->hasOption('directory'))->toBeTrue()
         ->and($def->hasOption('branch'))->toBeTrue()
         ->and($def->hasOption('provider'))->toBeTrue()
         ->and($def->hasOption('no-install'))->toBeTrue();

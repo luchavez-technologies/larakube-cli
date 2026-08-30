@@ -19,7 +19,7 @@ class CloneCommand extends Command
 
     protected $signature = 'clone
         {repo : Repository URL, SSH URL, or user/repo shorthand}
-        {directory? : Target directory (defaults to repo name)}
+        {--directory= : Target directory (defaults to repo name)}
         {--branch= : Branch to clone}
         {--provider=github : Git host for user/repo shorthand (github, gitlab, bitbucket)}
         {--no-install : Skip package installation (composer/npm/pip/go)}';
@@ -40,7 +40,7 @@ class CloneCommand extends Command
         }
 
         $url = $this->resolveRepoUrl($repo, $provider);
-        $directory = (string) ($this->argument('directory') ?: $this->deriveDirectoryName($url));
+        $directory = (string) ($this->option('directory') ?: $this->deriveDirectoryName($url));
         $branch = $this->option('branch');
         $targetPath = getcwd().'/'.$directory;
 

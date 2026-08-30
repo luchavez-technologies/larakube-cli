@@ -7,7 +7,6 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
 
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
@@ -21,7 +20,6 @@ class CloudProvisionCommand extends Command
      */
     protected $signature = 'cloud:init
         {environment? : Inside a project, the environment to bind to this VPS.}
-        {target? : What to provision — "vps" (default) or "doks". Omit to be asked.}
         {--context= : (DOKS only) target a specific kube-context}';
 
     /**
@@ -43,38 +41,15 @@ class CloudProvisionCommand extends Command
     {
         $this->renderHeader();
 
+        // One command, one job: this provisions a VPS. DOKS has its own command,
+        // cloud:init:doks, so there is nothing left to choose between.
+        //
+        // A `target` positional used to sit beside `environment`, which meant
+        // two optional positionals of different kinds and no way to tell them
+        // apart -- the command sniffed the first word for the literals "vps"
+        // and "doks" to guess which was which, so an environment legitimately
+        // named "vps" was read as a target.
         $environment = $this->argument('environment');
-        $target = $this->argument('target');
-
-        // Backwards compatibility for `cloud:init vps` or `cloud:init doks`
-        if (in_array($environment, ['vps', 'doks'], true) && ! $target) {
-            $target = $environment;
-            $environment = null;
-        }
-
-        // Which target? Explicit arg ("vps"/"doks") wins; otherwise ask.
-        $target = $target ?: select(
-            label: 'What are you provisioning?',
-            options: [
-                'vps' => 'VPS / bare server (SSH + k3s, single-node)',
-                'doks' => 'DigitalOcean Kubernetes (managed, multi-node)',
-            ],
-            default: 'vps',
-        );
-
-        // DOKS is a separate flow — delegate to its dedicated command.
-        if ($target === 'doks') {
-            return (int) $this->call('cloud:init:doks', array_filter([
-                'environment' => $environment,
-                '--context' => $this->option('context'),
-            ]));
-        }
-
-        if ($target !== 'vps') {
-            $this->laraKubeError("Unknown provisioning target: '{$target}'. Use 'vps' or 'doks'.");
-
-            return 1;
-        }
 
         $this->laraKubeInfo('LaraKube Cloud Pilot: VPS Provisioner');
         $this->laraKubeWarn('Recommended: 1GB RAM minimum for stable K3s deployments.');

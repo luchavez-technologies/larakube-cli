@@ -19,7 +19,7 @@ class ToolAliasCommand extends Command
 
     protected $signature = 'tool:alias
         {tool : The tool to add or remove an Ingress domain alias for (e.g. mail, git, sso)}
-        {alias : Additional domain alias to register (e.g. send.next.site)}
+        {--alias= : Additional domain alias to register (e.g. send.next.site)}
         {--remove : Remove the specified domain alias instead of adding it}
         {--domain= : The target instance\'s host, for a tool with more than one (e.g. --domain=blog.example.com). Omit for the default instance}
         {--context= : Target a specific kube-context}';
@@ -38,10 +38,10 @@ class ToolAliasCommand extends Command
             return 1;
         }
 
-        $aliasDomain = $this->sanitizeDomainInput((string) $this->argument('alias'));
+        $aliasDomain = $this->sanitizeDomainInput((string) ($this->option('alias') ?: ''));
 
         if ($aliasDomain === '') {
-            $this->laraKubeError('A valid alias domain is required.');
+            $this->laraKubeError('A valid alias domain is required — pass --alias=send.example.com.');
 
             return 1;
         }
