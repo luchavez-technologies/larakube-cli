@@ -15,6 +15,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithVpn;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PicksRegisteredTool;
 use App\Traits\ReconcilesPenpotFlags;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEngine;
@@ -24,14 +25,13 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, ReconcilesPenpotFlags, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, ReconcilesPenpotFlags, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:wire
         {environment=local : Environment whose deployment to wire}
@@ -1157,90 +1157,28 @@ class SsoWireCommand extends Command
     }
 
     /**
-     * The tool to wire, and the host of the instance chosen for it.
-     *
-     * Registry-driven. Probing for a Deployment by name cannot work here: the
-     * name is {category}-{component}-{instance} and the instance is not known
-     * until a host is, which is what this method exists to establish. That
-     * chicken-and-egg is why CHAT, DATA and GIT each grew their own bespoke
-     * probe, and why VPN silently vanished from this picker while five of its
-     * pods were running.
-     *
-     * The registry already records every installed tool, instance and host, so
-     * there is nothing to derive — and listing one option per INSTANCE means a
-     * tool installed twice is finally selectable, which a tool-only list could
-     * never express.
-     *
      * @return array{0: ClusterTool, 1: ?string}|null tool + the chosen instance's host
      */
     protected function resolveTool(?string $kubectl = null): ?array
     {
-        $slug = (string) ($this->option('tool') ?: '');
-        if ($slug !== '') {
-            $tool = ClusterTool::tryFrom($slug);
-            if ($tool === null) {
-                $this->laraKubeError("Unknown tool '{$slug}'.");
+        $only = $this->namedTool();
 
-                return null;
-            }
-            if ($this->refuseUnshippedTool($tool)) {
-                return null;
-            }
-
-            return [$tool, null];
+        if ($only === false) {
+            return null;
         }
 
         if ($kubectl === null) {
-            return null;
+            return $only !== null ? [$only, null] : null;
         }
 
-        $choices = [];
-
-        foreach ($this->getRegisteredTools($kubectl) as $entry) {
-            $tool = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
-
-            if ($tool === null || ! $tool->isShipped() || ! $tool->hasSsoWire()) {
-                continue;
-            }
-
-            $host = (string) ($entry['host'] ?? '');
-            $choices[] = [
-                'tool' => $tool,
-                'host' => $host !== '' ? $host : null,
-                'label' => $host !== '' ? "{$tool->getLabel()} ({$host})" : $tool->getLabel(),
-            ];
-        }
-
-        if ($choices === []) {
-            $this->laraKubeError('No OIDC-capable tools are registered on this cluster.');
-            $this->line('  <fg=gray>Only tools installed through their own</> <fg=blue>:init</> <fg=gray>appear here.</>');
-
-            return null;
-        }
-
-        // STRING keys, never integers. Laravel Prompts treats an integer-keyed
-        // array as a LIST and returns the selected label instead of the key —
-        // casting that back to int yields 0, so every selection silently wired
-        // whichever tool happened to be first in the registry. Confirmed live
-        // 2026-08-29: picking NetBird wired Matrix.
-        $options = [];
-        foreach ($choices as $choice) {
-            $options[$choice['tool']->value.'|'.($choice['host'] ?? '')] = $choice['label'];
-        }
-
-        $key = (string) select(
-            label: 'Wire which tool to Zitadel SSO?',
-            options: $options,
-            scroll: min(count($options), 15),
+        return $this->pickRegisteredTool(
+            $kubectl,
+            'Wire which tool to Zitadel SSO?',
+            fn (ClusterTool $candidate): bool => $candidate->hasSsoWire(),
+            emptyMessage: 'No OIDC-capable tools are registered on this cluster.',
+            only: $only,
+            domain: (string) ($this->option('domain') ?: '') ?: null,
         );
-
-        foreach ($choices as $choice) {
-            if ($choice['tool']->value.'|'.($choice['host'] ?? '') === $key) {
-                return [$choice['tool'], $choice['host']];
-            }
-        }
-
-        return null;
     }
 
     protected function deploymentExists(string $kubectl, string $ns, string $deployment): bool

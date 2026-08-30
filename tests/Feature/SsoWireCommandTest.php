@@ -1520,15 +1520,11 @@ test('plain sso:wire lists each registered instance by its host', function (): v
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
+    // One registered instance and nothing to disambiguate, so the picker takes
+    // it rather than asking a question with a single answer. The host-labelled,
+    // string-keyed list is exercised by the two-instance test below.
     $this->artisan('sso:wire', ['--no-interaction' => false])
         ->assertExitCode(0)
-        // Labelled with the host, so two instances of one tool are told apart.
-        // Keys are STRINGS: an integer-keyed array is a list to Laravel Prompts,
-        // which returns the label instead of the key — that bug wired Matrix
-        // when NetBird was picked (live, 2026-08-29).
-        ->expectsChoice('Wire which tool to Zitadel SSO?', 'git|git.luchtech.dev', [
-            'git|git.luchtech.dev' => 'Git Forge & CI/CD (Forgejo) (git.luchtech.dev)',
-        ])
         ->expectsOutputToContain('is wired to Zitadel SSO');
 
     // Selected via the picker, the wiring still registers under the

@@ -135,24 +135,9 @@ class VpnUnwireCommand extends Command
     /** @return array{0: ClusterTool, 1: ?string}|null tool + the chosen instance's host */
     protected function resolveTool(string $kubectl): ?array
     {
-        $slug = (string) ($this->option('tool') ?: '');
-        if ($slug !== '') {
-            $tool = ClusterTool::tryFrom($slug);
-            if ($tool === null) {
-                $this->laraKubeError("Unknown tool '{$slug}'.");
+        $only = $this->namedTool();
 
-                return null;
-            }
-            if ($this->refuseUnshippedTool($tool)) {
-                return null;
-            }
-
-            return [$tool, null];
-        }
-
-        if ($this->option('no-interaction')) {
-            $this->laraKubeError('Passing --tool is required when running in non-interactive mode.');
-
+        if ($only === false) {
             return null;
         }
 
@@ -170,6 +155,8 @@ class VpnUnwireCommand extends Command
             fn (ClusterTool $candidate): bool => $candidate->hasVpnWire(),
             fn (ClusterTool $candidate, string $host): bool => isset($restricted[$candidate->value.'|'.$host]),
             emptyMessage: 'No tools are currently restricted to VPN peers.',
+            only: $only,
+            domain: (string) ($this->option('domain') ?: '') ?: null,
         );
     }
 

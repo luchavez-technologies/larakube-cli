@@ -29,8 +29,40 @@ trait PicksRegisteredTool
     use InteractsWithToolRegistry;
 
     /**
+     * The tool named by --tool, if any.
+     *
+     * Returns null when the flag is absent (pick from everything) and false
+     * when it names something unusable, so a caller can tell "nothing asked
+     * for" apart from "asked for something bad" without a second error path.
+     */
+    protected function namedTool(string $option = 'tool'): ClusterTool|false|null
+    {
+        $slug = (string) ($this->option($option) ?: '');
+
+        if ($slug === '') {
+            return null;
+        }
+
+        $tool = ClusterTool::tryFrom($slug);
+
+        if ($tool === null) {
+            $this->laraKubeError("Unknown tool '{$slug}'.");
+
+            return false;
+        }
+
+        if (method_exists($this, 'refuseUnshippedTool') && $this->refuseUnshippedTool($tool)) {
+            return false;
+        }
+
+        return $tool;
+    }
+
+    /**
      * @param  callable(ClusterTool): bool  $capable  the pair's marker predicate
      * @param  (callable(ClusterTool, string): bool)|null  $wired  extra gate, e.g. "is currently wired"
+     * @param  ClusterTool|null  $only  narrow the list to this tool's instances (--tool)
+     * @param  string|null  $domain  select this instance outright, no prompt (--domain)
      * @return array{0: ClusterTool, 1: ?string}|null tool + the chosen instance's host
      */
     protected function pickRegisteredTool(
@@ -39,6 +71,8 @@ trait PicksRegisteredTool
         callable $capable,
         ?callable $wired = null,
         string $emptyMessage = 'No matching tools are registered on this cluster.',
+        ?ClusterTool $only = null,
+        ?string $domain = null,
     ): ?array {
         $choices = [];
 
@@ -46,6 +80,14 @@ trait PicksRegisteredTool
             $tool = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
 
             if ($tool === null || ! $tool->isShipped() || ! $capable($tool)) {
+                continue;
+            }
+
+            // --tool narrows to that tool's instances rather than skipping the
+            // choice entirely. Naming a tool used to mean "and take its default
+            // instance", which on a multi-instance tool silently acted on the
+            // wrong one.
+            if ($only !== null && $tool !== $only) {
                 continue;
             }
 
@@ -62,9 +104,53 @@ trait PicksRegisteredTool
             ];
         }
 
+        // --domain names one instance outright, so there is nothing to ask.
+        $domain = $domain !== null ? trim($domain) : null;
+        if ($domain !== null && $domain !== '') {
+            foreach ($choices as $choice) {
+                if ($choice['host'] === $domain) {
+                    return [$choice['tool'], $choice['host']];
+                }
+            }
+
+            // Unmatched, but the tool was named: honour it rather than refusing.
+            // The registry can legitimately lag a freshly-created instance, and
+            // downstream resolveInstanceForDomain() derives a slug either way.
+            if ($only !== null) {
+                return [$only, $domain];
+            }
+
+            $this->laraKubeError("No registered instance at '{$domain}'.");
+            $this->line('  <fg=gray>Pass</> <fg=blue>--tool</> <fg=gray>as well if the instance is not registered yet.</>');
+
+            return null;
+        }
+
         if ($choices === []) {
+            // A named tool with nothing registered keeps working: the registry
+            // is a convenience here, not a gate, and refusing would break
+            // scripted runs against a cluster whose registry lags.
+            if ($only !== null) {
+                return [$only, null];
+            }
+
             $this->laraKubeError($emptyMessage);
             $this->line('  <fg=gray>Only tools installed through their own</> <fg=blue>:init</> <fg=gray>appear here.</>');
+
+            return null;
+        }
+
+        if (count($choices) === 1) {
+            $choice = reset($choices);
+
+            return [$choice['tool'], $choice['host']];
+        }
+
+        if ($this->option('no-interaction')) {
+            $this->laraKubeError('Several instances match — pass --domain to choose one.');
+            foreach ($choices as $choice) {
+                $this->line('  <fg=gray>  • '.$choice['label'].'</>');
+            }
 
             return null;
         }

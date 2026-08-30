@@ -152,6 +152,8 @@ class SecretsUnwireCommand extends Command
             'Which tool do you want to unwire from OpenBao DB rotation?',
             fn (ClusterTool $candidate): bool => in_array($candidate, $installed, true),
             emptyMessage: 'No tools currently have their DB password managed by OpenBao.',
+            only: $this->namedTool() ?: null,
+            domain: (string) ($this->option('domain') ?: '') ?: null,
         );
 
         if ($picked === null) {

@@ -196,6 +196,8 @@ class MailWireCommand extends Command
             fn (ClusterTool $candidate): bool => $candidate->hasMailWire()
                 && in_array($candidate, $installed, true),
             emptyMessage: 'No SMTP-capable tools are registered on this cluster.',
+            only: $this->namedTool() ?: null,
+            domain: (string) ($this->option('domain') ?: '') ?: null,
         );
 
         if ($picked === null) {

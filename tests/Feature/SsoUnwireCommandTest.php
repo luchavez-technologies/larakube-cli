@@ -175,10 +175,14 @@ test('sso:unwire lists only tools that are actually wired, by host', function ()
         '*' => Process::result(output: ''),
     ]);
 
+    // Notes is registered but has no marker Secret, so it is filtered out and
+    // VPN is the only candidate left — at which point the picker takes it
+    // rather than asking a question with one answer. Had notes still been
+    // offered, this would prompt instead. Host labelling and string keys are
+    // covered by PicksRegisteredToolTest.
     $this->artisan('sso:unwire', ['--no-interaction' => false])
-        ->expectsChoice('Which tool do you want to unwire from Zitadel SSO?', 'vpn|vpn.luchtech.dev', [
-            'vpn|vpn.luchtech.dev' => 'Zero-Trust VPN Mesh (NetBird) (vpn.luchtech.dev)',
-        ]);
+        ->doesntExpectOutputToContain('notes.luchtech.dev')
+        ->expectsOutputToContain('no longer uses Zitadel SSO');
 });
 
 test('sso:unwire says nothing is wired rather than listing every capable tool', function (): void {

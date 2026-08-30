@@ -114,6 +114,8 @@ class MailUnwireCommand extends Command
             fn (ClusterTool $candidate): bool => $candidate->hasMailWire()
                 && $this->isToolInstalledForMail($kubectl, $candidate),
             emptyMessage: 'No SMTP-capable tools are registered on this cluster.',
+            only: $this->namedTool() ?: null,
+            domain: (string) ($this->option('domain') ?: '') ?: null,
         );
 
         if ($picked === null) {

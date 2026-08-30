@@ -112,3 +112,21 @@ test('the wired gate narrows unwire to instances that are actually wired', funct
 
     expect($choices)->toBe(['notes|team.notes.example.com' => 'Team Wiki & Knowledge Base (Outline) (team.notes.example.com)']);
 });
+
+test('--tool narrows the list to that tool\'s instances instead of skipping the choice', function (): void {
+    // Naming a tool used to mean "and take its default instance", so on a
+    // multi-instance tool it silently acted on the wrong one.
+    $subject = picksSubject((string) json_encode([
+        ['tool' => 'notes', 'host' => 'notes.example.com'],
+        ['tool' => 'notes', 'host' => 'team.notes.example.com'],
+        ['tool' => 'chat', 'host' => 'chat.example.com'],
+    ]));
+
+    $choices = $subject->choicesFor(
+        'kubectl',
+        fn (ClusterTool $t): bool => $t->hasVpnWire() && $t === ClusterTool::NOTES,
+    );
+
+    expect($choices)->toHaveCount(2)
+        ->and(array_keys($choices))->each->toStartWith('notes|');
+});

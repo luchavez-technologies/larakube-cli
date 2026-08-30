@@ -205,6 +205,8 @@ class SecretsWireCommand extends Command
                     "Which tool's DB password should OpenBao take over rotating?",
                     fn (ClusterTool $candidate): bool => in_array($candidate, $capable, true),
                     emptyMessage: 'No DB-rotatable tools are registered on this cluster.',
+                    only: $this->namedTool() ?: null,
+                    domain: (string) ($this->option('domain') ?: '') ?: null,
                 );
 
                 if ($picked === null) {

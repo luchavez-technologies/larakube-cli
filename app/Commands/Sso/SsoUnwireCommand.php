@@ -12,6 +12,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithVpn;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PicksRegisteredTool;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolHost;
@@ -22,7 +23,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoUnwireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:unwire
         {environment=local : Environment whose tool SSO to unwire}
@@ -104,72 +105,26 @@ class SsoUnwireCommand extends Command
     /** @return array{0: ClusterTool, 1: ?string}|null tool + the chosen instance's host */
     protected function resolveTool(string $kubectl): ?array
     {
-        $option = (string) ($this->option('tool') ?? '');
-        if ($option !== '') {
-            $tool = ClusterTool::tryFrom($option);
-            if ($tool === null) {
-                $this->laraKubeError("Unknown tool '{$option}'.");
+        $only = $this->namedTool();
 
-                return null;
-            }
-            if ($this->refuseUnshippedTool($tool)) {
-                return null;
-            }
-
-            return [$tool, null];
-        }
-
-        if ($this->option('no-interaction')) {
-            $this->laraKubeError('Passing --tool is required when running in non-interactive mode.');
-
+        if ($only === false) {
             return null;
         }
 
-        // Registry-driven and filtered to what is ACTUALLY wired, mirroring
-        // sso:wire. Listing every SSO-capable tool offered things that were
-        // never installed, and offering an unwired tool makes a no-op look like
-        // it did something.
-        $choices = [];
-
-        foreach ($this->getRegisteredTools($kubectl) as $entry) {
-            $candidate = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
-
-            if ($candidate === null || ! $candidate->isShipped() || ! $candidate->hasSsoWire()) {
-                continue;
-            }
-
-            $host = (string) ($entry['host'] ?? '');
-            $instance = $host !== '' ? $candidate->instanceSlugFromHost($host) : null;
-            $schema = $candidate->oidcEnv(instance: $instance);
-
+        return $this->pickRegisteredTool(
+            $kubectl,
+            'Which tool do you want to unwire from Zitadel SSO?',
+            fn (ClusterTool $candidate): bool => $candidate->hasSsoWire(),
             // The marker Secret sso:wire writes is what "wired" means.
-            if ($schema === null || ! $this->secretExists($kubectl, $schema['namespace'], $schema['secret'])) {
-                continue;
-            }
+            function (ClusterTool $candidate, string $host) use ($kubectl): bool {
+                $schema = $candidate->oidcEnv(instance: $host !== '' ? $candidate->instanceSlugFromHost($host) : null);
 
-            $choices[$candidate->value.'|'.$host] = [
-                'tool' => $candidate,
-                'host' => $host !== '' ? $host : null,
-                'label' => $host !== '' ? "{$candidate->getLabel()} ({$host})" : $candidate->getLabel(),
-            ];
-        }
-
-        if ($choices === []) {
-            $this->laraKubeError('No tools are currently wired to Zitadel SSO.');
-
-            return null;
-        }
-
-        // STRING keys: an integer-keyed array is a LIST to Laravel Prompts, which
-        // then returns the label instead of the key — the bug that made sso:wire
-        // wire Matrix when NetBird was picked (2026-08-29).
-        $key = (string) \Laravel\Prompts\select(
-            label: 'Which tool do you want to unwire from Zitadel SSO?',
-            options: array_map(fn (array $c): string => $c['label'], $choices),
-            scroll: min(count($choices), 15),
+                return $schema !== null && $this->secretExists($kubectl, $schema['namespace'], $schema['secret']);
+            },
+            emptyMessage: 'No tools are currently wired to Zitadel SSO.',
+            only: $only,
+            domain: (string) ($this->option('domain') ?: '') ?: null,
         );
-
-        return isset($choices[$key]) ? [$choices[$key]['tool'], $choices[$key]['host']] : null;
     }
 
     protected function secretExists(string $kubectl, string $ns, string $secret): bool
