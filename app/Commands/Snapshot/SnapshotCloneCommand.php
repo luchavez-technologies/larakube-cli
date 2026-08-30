@@ -11,6 +11,7 @@ use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SnapshotCloneCommand extends Command
 {
@@ -21,7 +22,7 @@ class SnapshotCloneCommand extends Command
      */
     protected $signature = 'snapshot:clone
         {snapshot? : The name of the VolumeSnapshot to clone from}
-        {newPvc? : The name of the new PersistentVolumeClaim to create}
+        {--pvc= : Name for the NEW PersistentVolumeClaim to create. Must not already exist.}
         {--size=50Gi : Volume size for the cloned PVC}';
 
     /**
@@ -70,13 +71,28 @@ class SnapshotCloneCommand extends Command
             );
         }
 
-        $newPvcName = $this->argument('newPvc') ?? text(
+        $newPvcName = (string) ($this->option('pvc') ?: '') ?: text(
             label: 'Enter name for the new cloned PersistentVolumeClaim',
             placeholder: $snapshotName.'-clone',
             required: true,
         );
 
         $size = (string) ($this->option('size') ?: '50Gi');
+
+        // --pvc names a volume being CREATED. Refusing an existing name is what
+        // makes that true rather than merely documented: kubectl apply onto a
+        // live PVC would be a no-op that reported success, leaving the operator
+        // believing a restore had happened to a volume still holding its old
+        // data. It is also why this and rollback can share one flag name.
+        if ($this->pvcExists($namespace, $newPvcName)) {
+            $this->laraKubeError("A PersistentVolumeClaim named '{$newPvcName}' already exists in '{$namespace}'.");
+            $this->newLine();
+            $this->line('  <fg=gray>Clone creates a new volume. To restore onto an existing one, use</>');
+            $this->line('  <fg=blue>  larakube snapshot:rollback</><fg=gray> instead.</>');
+            $this->newLine();
+
+            return 1;
+        }
 
         $this->laraKubeInfo("Cloning new PVC '{$newPvcName}' from VolumeSnapshot '{$snapshotName}' ({$size})...");
 
@@ -85,6 +101,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {$newPvcName}
+  namespace: {$namespace}
 spec:
   storageClassName: do-block-storage
   dataSource:
@@ -98,10 +115,37 @@ spec:
       storage: {$size}
 YAML;
 
-        $this->line($manifest);
+        if (! $this->applyManifest($manifest, "snapshot-clone-{$newPvcName}")) {
+            $this->laraKubeError("Failed to create PVC '{$newPvcName}'.");
+
+            return 1;
+        }
+
+        $this->laraKubeInfo("✅ Cloned PVC '{$newPvcName}' created in '{$namespace}'.");
         $this->newLine();
-        $this->laraKubeInfo("✅ Cloned PVC '{$newPvcName}' created successfully.");
+        $this->line('  <fg=gray>It stays Pending until a workload mounts it — that is normal for</>');
+        $this->line('  <fg=gray>WaitForFirstConsumer storage, not a failure.</>');
+        $this->newLine();
 
         return 0;
+    }
+
+    protected function pvcExists(string $namespace, string $pvc): bool
+    {
+        return trim(Process::run(
+            'kubectl get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' --no-headers --ignore-not-found',
+        )->output()) !== '';
+    }
+
+    protected function applyManifest(string $yaml, string $name): bool
+    {
+        $directory = TemporaryDirectory::make();
+        $path = $directory->path("larakube-{$name}.yaml");
+        file_put_contents($path, $yaml);
+
+        $applied = Process::run('kubectl apply -f '.escapeshellarg($path))->successful();
+        $directory->delete();
+
+        return $applied;
     }
 }

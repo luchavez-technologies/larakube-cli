@@ -44,13 +44,6 @@ test('no command takes more than one positional', function (): void {
         $offenders[$name] = $args;
     }
 
-    // snapshot:* is the one open case: the operator has not exercised these
-    // commands yet, so which of their two positionals is the primary subject
-    // is genuinely undecided rather than merely unfixed.
-    foreach (['snapshot:clone', 'snapshot:create', 'snapshot:rollback'] as $undecided) {
-        unset($offenders[$undecided]);
-    }
-
     expect(array_keys($offenders))->toBe([], 'Commands with more than one positional: '
         .json_encode($offenders));
 });
