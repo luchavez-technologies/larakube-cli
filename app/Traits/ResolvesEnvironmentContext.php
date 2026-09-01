@@ -3,7 +3,6 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
-use App\Data\GlobalConfigData;
 use App\Enums\DeploymentStrategy;
 use App\Enums\ManagedProvider;
 use Illuminate\Support\Facades\Process;
@@ -147,8 +146,6 @@ trait ResolvesEnvironmentContext
             );
 
             if ($choice !== '__new_vps__') {
-                $this->rememberGlobalEnvironmentContext($environment, $choice);
-
                 return $this->recordContextTarget($config, $environment, $projectPath, $choice);
             }
         }
@@ -169,33 +166,9 @@ trait ResolvesEnvironmentContext
         ];
         ConfigData::from($data)->saveToFile($projectPath);
 
-        // A VPS is reached through its derived context, same as anywhere else.
-        $this->rememberGlobalEnvironmentContext($environment, 'larakube-'.trim($ip));
-
         $this->laraKubeInfo("Saved to .larakube.local.json (environments.{$environment}.cloud) — future commands won't ask again.");
 
         return $this->getProjectConfig($projectPath);
-    }
-
-    /**
-     * Mirror the answer into the machine-wide map.
-     *
-     * The project blueprint only helps a command run from inside that project.
-     * Cluster tools are cluster-scoped and routinely run elsewhere — or nowhere
-     * — so recording it globally is what lets `data:init production` resolve
-     * the right cluster instead of silently using the current kube-context.
-     */
-    protected function rememberGlobalEnvironmentContext(string $environment, string $context): void
-    {
-        if ($environment === 'local' || $context === '' || $context === 'larakube-') {
-            return;
-        }
-
-        $global = GlobalConfigData::load();
-
-        if ($global->getEnvironmentContext($environment) !== $context) {
-            $global->setEnvironmentContext($environment, $context)->save();
-        }
     }
 
     /**

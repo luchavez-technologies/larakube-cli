@@ -59,17 +59,6 @@ class GlobalConfigData extends Data
         public ?string $latestVersion = null,
         public ?string $latestVersionCheckedAt = null,
         /** Cloudflare API token for ExternalDNS and tunnel configuration (optional). */
-        /**
-         * Machine-wide environment name -> kube-context map.
-         *
-         * Cluster tools are cluster-scoped and routinely run with no project
-         * in sight, so "which cluster is production?" needs an answer that
-         * does not live in any one project's blueprint. Recorded here the
-         * first time a command learns it, and read by resolveToolContext().
-         *
-         * @var array<string, string>
-         */
-        public array $environmentContexts = [],
         public ?string $cloudflareToken = null,
     ) {}
 
@@ -81,21 +70,6 @@ class GlobalConfigData extends Data
     public function setEmail(?string $email): void
     {
         $this->email = $email;
-    }
-
-    /** Recorded kube-context for an environment name, or null. */
-    public function getEnvironmentContext(string $environment): ?string
-    {
-        $context = $this->environmentContexts[$environment] ?? null;
-
-        return is_string($context) && $context !== '' ? $context : null;
-    }
-
-    public function setEnvironmentContext(string $environment, string $context): self
-    {
-        $this->environmentContexts[$environment] = $context;
-
-        return $this;
     }
 
     public function getLocalTld(): string

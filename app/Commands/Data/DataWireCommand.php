@@ -3,24 +3,21 @@
 namespace App\Commands\Data;
 
 use App\Enums\ClusterTool;
-use App\Enums\SharedClusterService;
 use App\Traits\DeploysClusterTool;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithData;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PicksRegisteredTool;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
-
-use function Laravel\Prompts\select;
-
 use LaravelZero\Framework\Commands\Command;
 
 class DataWireCommand extends Command
 {
-    use DeploysClusterTool, GeneratesProjectInfrastructure, InteractsWithClusterContext, InteractsWithData, InteractsWithProjectConfig, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, SyncsClusterSecrets;
+    use DeploysClusterTool, GeneratesProjectInfrastructure, InteractsWithClusterContext, InteractsWithData, InteractsWithProjectConfig, LaraKubeOutput, PicksRegisteredTool, ResolvesToolEnvironment, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'data:wire
         {environment=local : Environment whose Data engine host to wire}
@@ -37,18 +34,36 @@ class DataWireCommand extends Command
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = $this->dataKubectl($context);
-        $engine = $this->resolveEngine();
-        // No --instance: the host IS the identity (ADR 0012), and
-        // resolveToolHost() already reads --domain itself. Carrying a separate
-        // slug knob alongside it meant two flags could disagree about which
-        // installation you meant.
-        $host = $this->resolveToolHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl);
+        // Pick from what is REGISTERED, rather than prompting for a hostname.
+        // This command points a project at an install that already exists, so
+        // a free-typed host could only ever produce a URL to nothing — and the
+        // old prompt asked for a host using the service label ("Directus")
+        // regardless of the engine you had just chosen one question earlier.
+        $picked = $this->pickRegisteredTool(
+            kubectl: $kubectl,
+            label: 'Data / Headless CMS',
+            capable: fn (ClusterTool $tool) => $tool === ClusterTool::DATA,
+            emptyMessage: "No Data / Headless CMS instance is registered for '{$env}'.",
+            only: ClusterTool::DATA,
+            domain: $this->option('domain'),
+        );
+
+        if ($picked === null) {
+            return 1;
+        }
+
+        [, $host] = $picked;
 
         if ($host === null) {
             $this->laraKubeError("No Data / Headless CMS host found for '{$env}'. Run `larakube data:init {$env}` first.");
 
             return 1;
         }
+
+        // The registry recorded which engine this instance runs, so the answer
+        // comes WITH the instance instead of being asked separately — one
+        // picker instead of two prompts that could contradict each other.
+        $engine = $this->resolveEngine($kubectl, $host);
 
         $projectPath = getcwd();
         $dataUrl = "https://{$host}";
@@ -119,24 +134,27 @@ class DataWireCommand extends Command
         return 0;
     }
 
-    protected function resolveEngine(): string
+    /**
+     * An explicit --engine still wins, but otherwise the engine is whatever the
+     * chosen instance actually runs — read from the registry rather than asked.
+     * Asking produced a real contradiction: you could answer "PocketBase" and
+     * then be prompted for the host "Directus" should use.
+     */
+    protected function resolveEngine(string $kubectl, string $host): string
     {
         $explicit = strtolower((string) $this->option('engine'));
+
         if (in_array($explicit, ['pocketbase', 'directus'], true)) {
             return $explicit;
         }
 
-        if ($this->option('no-interaction')) {
-            return 'pocketbase';
+        foreach ($this->getAllToolInstanceData($kubectl, ClusterTool::DATA) as $instance) {
+            if ($instance->host === $host && in_array($instance->engine, ['pocketbase', 'directus'], true)) {
+                return $instance->engine;
+            }
         }
 
-        return select(
-            label: 'Which Data engine would you like to wire to your .env?',
-            options: [
-                'pocketbase' => 'PocketBase (VITE_POCKETBASE_URL)',
-                'directus' => 'Directus (VITE_DIRECTUS_URL)',
-            ],
-            default: 'pocketbase',
-        );
+        // A registry that predates engine tracking, or lags a fresh install.
+        return 'pocketbase';
     }
 }

@@ -2,14 +2,11 @@
 
 namespace App\Traits;
 
-use App\Data\GlobalConfigData;
+use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
-
-use function Laravel\Prompts\select;
-
 use RuntimeException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
@@ -56,9 +53,10 @@ trait DeploysClusterTool
     {
         $explicitContext = $explicitContext !== null && $explicitContext !== '' ? $explicitContext : null;
 
+        // An explicit flag is the escape hatch and bypasses everything —
+        // deliberately not recorded, so passing it can never trigger the
+        // SSH-details capture as a side effect of a one-off run.
         if ($explicitContext !== null) {
-            $this->rememberEnvironmentContext($env, $explicitContext);
-
             return $explicitContext;
         }
 
@@ -66,102 +64,49 @@ trait DeploysClusterTool
             return null;
         }
 
-        // 1. The project blueprint, when we happen to be standing in one.
-        //    Deliberately NOT environmentContextOrCurrent(): that falls back to
-        //    the CURRENT kube-context, which is how `data:init production`
-        //    silently deployed a production tool — real public host and all —
-        //    onto a local orbstack cluster and reported success.
-        $cloud = $this->getProjectConfig(getcwd())?->getCloud($env);
-        $fromProject = $cloud?->context ?: ($cloud?->ip ? 'larakube-'.$cloud->ip : null);
+        $projectPath = getcwd();
+        $config = $this->getProjectConfig($projectPath);
 
-        if ($fromProject !== null) {
-            $this->rememberEnvironmentContext($env, $fromProject);
+        // An environment name is PROJECT-relative: the same cluster can be
+        // "production" here and "staging" next door, and that only has to make
+        // sense inside one project. So the answer lives in that project's
+        // .larakube.local.json (ADR 0007) — the same place cloud:deploy reads —
+        // and never in machine-wide state, which cannot represent two projects
+        // meaning different clusters by the same word.
+        if ($config !== null) {
+            if ($recorded = $this->recordedContextFor($config, $env)) {
+                return $recorded;
+            }
 
-            return $fromProject;
+            // Nothing recorded yet: capture it ONCE, here, into the project.
+            // That is what makes `crm:init production` afterwards need no
+            // question — it reads what data:init just established.
+            if ($this->canPromptForContext()) {
+                $config = $this->promptCloudTarget($config, $env, $projectPath);
+
+                if ($recorded = $this->recordedContextFor($config, $env)) {
+                    return $recorded;
+                }
+            }
         }
 
-        // 2. The machine-wide map. Cluster tools are cluster-scoped and often
-        //    run with no project at all, so this is the answer that does not
-        //    depend on which directory you are standing in.
-        if ($remembered = $this->globalEnvironmentContext($env)) {
-            return $remembered;
-        }
-
-        // 3. Ask — never guess.
-        return $this->askForEnvironmentContext($env);
-    }
-
-    /** Machine-wide recorded context for an environment. Its own method so a
-     * test can substitute it without touching the operator's real config file.
-     */
-    protected function globalEnvironmentContext(string $env): ?string
-    {
-        return GlobalConfigData::load()->getEnvironmentContext($env);
-    }
-
-    /**
-     * Persist env -> context machine-wide, so the next tool install resolves it
-     * from any directory, including none.
-     */
-    protected function rememberEnvironmentContext(string $env, string $context): void
-    {
-        if ($env === 'local') {
-            return;
-        }
-
-        $global = GlobalConfigData::load();
-
-        if ($global->getEnvironmentContext($env) === $context) {
-            return;
-        }
-
-        $global->setEnvironmentContext($env, $context)->save();
-    }
-
-    /**
-     * Which cluster is this environment? Asked, not assumed — a wrong answer
-     * here deploys to the wrong cluster and still prints a success message.
-     */
-    protected function askForEnvironmentContext(string $env): ?string
-    {
-        $contexts = $this->kubeContextChoices();
-
-        if ($contexts === [] || ! $this->canPromptForContext()) {
-            throw new RuntimeException(
-                "No kube-context recorded for '{$env}'. Pass --context=<kube-context> so this "
-                .'targets the right cluster — refusing to fall back to the current context, which '
-                .'would deploy a cloud tool onto whatever cluster kubectl happens to point at.',
-            );
-        }
-
-        $choice = select(
-            label: "Which cluster is '{$env}'?",
-            options: array_combine($contexts, $contexts),
-            hint: 'Recorded machine-wide, so tools resolve it from any directory.',
+        // Outside a project there is nowhere to record and nothing to read, so
+        // the flag is the only honest answer. Never the current kube-context:
+        // that is how a production tool landed on a local cluster and still
+        // reported success.
+        throw new RuntimeException(
+            "No kube-context recorded for '{$env}'. Pass --context=<kube-context> so this targets "
+            .'the right cluster — refusing to fall back to the current context, which would deploy '
+            .'a cloud tool onto whatever cluster kubectl happens to point at.',
         );
-
-        $this->rememberEnvironmentContext($env, $choice);
-
-        return $choice;
     }
 
-    /**
-     * Self-contained, unlike cannotPrompt() — that lives in
-     * RequiresFlagsWhenNonInteractive, which not every consumer of this trait
-     * composes (SsoWireCommand does not), so calling it here is a fatal on
-     * exactly the commands least likely to be exercised interactively.
-     */
-    protected function canPromptForContext(): bool
+    /** The context an environment is recorded as reaching, from the project blueprint. */
+    protected function recordedContextFor(ConfigData $config, string $env): ?string
     {
-        if (app()->runningUnitTests()) {
-            return false;
-        }
+        $cloud = $config->getCloud($env);
 
-        if ($this instanceof Command && $this->option('no-interaction')) {
-            return false;
-        }
-
-        return stream_isatty(STDIN);
+        return $cloud?->context ?: ($cloud?->ip ? 'larakube-'.$cloud->ip : null);
     }
 
     /** @return list<string> */

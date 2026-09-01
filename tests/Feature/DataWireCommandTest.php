@@ -3,6 +3,17 @@
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
+/**
+ * data:wire now picks from the cluster registry instead of prompting for a
+ * hostname, so a registered instance is what makes the command resolvable.
+ */
+function dataWireRegistry(): string
+{
+    return base64_encode((string) json_encode([
+        ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'engine' => 'pocketbase'],
+    ]));
+}
+
 test('data:wire injects pocketbase url into env file', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
@@ -13,6 +24,7 @@ test('data:wire injects pocketbase url into env file', function (): void {
 
     try {
         Process::fake([
+            '*get secret larakube-tools-registry*' => Process::result(output: dataWireRegistry()),
             '*get secret*' => Process::result(output: base64_encode('data.dev.test')),
             '*' => Process::result(output: 'data.dev.test'),
         ]);
@@ -40,6 +52,7 @@ test('data:wire injects directus url into env file', function (): void {
 
     try {
         Process::fake([
+            '*get secret larakube-tools-registry*' => Process::result(output: dataWireRegistry()),
             '*get secret*' => Process::result(output: base64_encode('data.dev.test')),
             '*' => Process::result(output: 'data.dev.test'),
         ]);
@@ -69,6 +82,7 @@ test('data:wire creates the env file when the project has none', function (): vo
 
     try {
         Process::fake([
+            '*get secret larakube-tools-registry*' => Process::result(output: dataWireRegistry()),
             '*get secret*' => Process::result(output: base64_encode('data.dev.test')),
             '*' => Process::result(output: 'data.dev.test'),
         ]);
@@ -99,6 +113,7 @@ test('data:wire emits only the prefix the project framework actually reads', fun
 
     try {
         Process::fake([
+            '*get secret larakube-tools-registry*' => Process::result(output: dataWireRegistry()),
             '*get secret*' => Process::result(output: base64_encode('data.dev.test')),
             '*' => Process::result(output: 'data.dev.test'),
         ]);
@@ -134,6 +149,7 @@ test('data:wire refuses to leave the env file committable', function (): void {
 
     try {
         Process::fake([
+            '*get secret larakube-tools-registry*' => Process::result(output: dataWireRegistry()),
             '*get secret*' => Process::result(output: base64_encode('data.dev.test')),
             '*' => Process::result(output: 'data.dev.test'),
         ]);
@@ -144,6 +160,41 @@ test('data:wire refuses to leave the env file committable', function (): void {
 
         expect($lines)->toContain('.env')
             ->and($lines)->toContain('.env.*');
+    } finally {
+        chdir($oldCwd);
+        $temporaryDirectory->delete();
+    }
+});
+
+test('data:wire takes the engine from the registry rather than asking', function (): void {
+    // The contradiction this removes: you answered "PocketBase" to the engine
+    // prompt and were then asked what host *Directus* should use — because the
+    // host prompt fell back to SharedClusterService::DATA->label(), which is
+    // 'Directus', instead of the engine you had just chosen.
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
+    file_put_contents("{$tempDir}/.larakube.json", (string) json_encode([
+        'id' => 'reactor', 'name' => 'reactor', 'framework' => 'vite',
+    ]));
+
+    $oldCwd = getcwd();
+    chdir($tempDir);
+
+    try {
+        Process::fake([
+            '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+                ['tool' => 'data', 'instance' => 'cms-example-com', 'host' => 'cms.example.com', 'engine' => 'directus'],
+            ]))),
+            '*get secret*' => Process::result(output: base64_encode('cms.example.com')),
+            '*' => Process::result(output: 'cms.example.com'),
+        ]);
+
+        // No --engine passed: it must come from the instance, not a prompt.
+        $this->artisan('data:wire local --domain=cms.example.com')->assertExitCode(0);
+
+        expect(file_get_contents("{$tempDir}/.env"))
+            ->toContain('VITE_DIRECTUS_URL=https://cms.example.com')
+            ->not->toContain('POCKETBASE');
     } finally {
         chdir($oldCwd);
         $temporaryDirectory->delete();
