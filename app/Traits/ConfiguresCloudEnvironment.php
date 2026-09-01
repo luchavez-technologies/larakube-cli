@@ -196,8 +196,8 @@ trait ConfiguresCloudEnvironment
             return 'gitlab';
         }
 
-        if (str_contains($remote, 'gitea') || str_contains($remote, 'git.')) {
-            return 'gitea';
+        if (str_contains($remote, 'forgejo') || str_contains($remote, 'git.')) {
+            return 'forgejo';
         }
 
         return 'github';
@@ -382,7 +382,7 @@ trait ConfiguresCloudEnvironment
 
         $appName = $config->getName();
         $namespace = $appName.'-'.$environment;
-        $podName = $config->getServerVariation()->getPodName($config);
+        $podName = $this->deploymentPodName($config);
         $upperEnv = strtoupper($environment);
 
         $workflowPath = getcwd()."/.github/workflows/larakube-deploy-{$environment}.yml";
@@ -626,11 +626,11 @@ trait ConfiguresCloudEnvironment
             $token = password(label: 'GitLab Password (or deploy token)', required: true);
             $server = 'https://registry.gitlab.com';
             $secretName = 'gitlab-login';
-        } elseif ($provider === RegistryProvider::GITEA) {
-            $username = text(label: 'Gitea Username', required: true);
-            $token = password(label: 'Gitea Password (or Personal Access Token)', required: true);
+        } elseif ($provider === RegistryProvider::FORGEJO) {
+            $username = text(label: 'Forgejo Username', required: true);
+            $token = password(label: 'Forgejo Password (or Personal Access Token)', required: true);
             $server = 'https://'.($registry->host ?? 'git.dev.test');
-            $secretName = 'gitea-login';
+            $secretName = 'forgejo-login';
         }
 
         if (! $username || ! $token || ! $server || ! $secretName) {
@@ -911,10 +911,21 @@ trait ConfiguresCloudEnvironment
         }
     }
 
+    /**
+     * Deployment name CI waits on. getServerVariation() is null for every
+     * static-SPA project — those deploy a Caddy Deployment named `web`, not a
+     * PHP pod — so dereferencing it unguarded fataled before any workflow was
+     * written.
+     */
+    protected function deploymentPodName(ConfigData $config): string
+    {
+        return $config->getServerVariation()?->getPodName($config) ?? 'web';
+    }
+
     protected function generateGitlabPipeline(string $projectPath, ConfigData $config): int
     {
         $appName = $config->getName();
-        $podName = $config->getServerVariation()->getPodName($config);
+        $podName = $this->deploymentPodName($config);
         $cloudEnvs = [];
 
         foreach ($config->getCloudEnvironments() as $envName) {

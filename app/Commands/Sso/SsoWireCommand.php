@@ -569,7 +569,7 @@ class SsoWireCommand extends Command
     }
 
     /**
-     * Register the OIDC login source inside the tool itself (Gitea keeps them in
+     * Register the OIDC login source inside the tool itself (Forgejo keeps them in
      * its database, not in env). Idempotent: updates the existing source in
      * place when one is already present — matching the canonical `zitadel` name
      * as well as the legacy `Login with SSO` label, and renaming any legacy
@@ -600,7 +600,7 @@ class SsoWireCommand extends Command
             .' --scopes profile --scopes email';
 
         $ok = false;
-        $this->withSpin('Registering the Zitadel login source in Gitea...', function () use ($exec, $args, $existingId, &$ok) {
+        $this->withSpin('Registering the Zitadel login source in Forgejo...', function () use ($exec, $args, $existingId, &$ok) {
             $result = $existingId === null
                 ? Process::run("{$exec} add-oauth {$args}")
                 : Process::run("{$exec} update-oauth --id {$existingId} {$args}");
@@ -627,7 +627,7 @@ class SsoWireCommand extends Command
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
 
-            // Gitea/Forgejo caches login sources in memory (a periodic
+            // Forgejo/Forgejo caches login sources in memory (a periodic
             // background sync, not an immediate reload) — update-oauth/
             // add-oauth only writes the DB row. Confirmed live 2026-08-21:
             // a freshly-rotated client-id 400'd with Zitadel's

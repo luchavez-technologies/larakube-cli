@@ -297,7 +297,15 @@ class UpCommand extends Command
             }
         }
 
-        if ($environment === 'local') {
+        // A static site has neither: create-vite emits no .env (and a landing
+        // page needs none), and its node_modules is installed by the dev pod's
+        // init container into a PVC, because Vite 8's Rolldown binary is
+        // platform-specific and a host install cannot run in the container.
+        // Without this guard `larakube up` printed a false "no .env" error and
+        // then tried to run composer against a project with no vendor/ at all.
+        $isStaticSite = $config->framework?->isStaticSpa() ?? false;
+
+        if ($environment === 'local' && ! $isStaticSite) {
             // 🔒 1. Handle missing .env
             if (! file_exists($projectPath.'/.env')) {
                 if (file_exists($projectPath.'/.env.example')) {
@@ -332,7 +340,9 @@ class UpCommand extends Command
 
         $this->laraKubeInfo("Targeting environment: {$environment}");
 
-        if ($environment === 'local') {
+        // Static sites have no database — seeding one would leave a stray,
+        // never-read database.sqlite inside a Vite project.
+        if ($environment === 'local' && ! $isStaticSite) {
             $this->withSpin('Ensuring local infrastructure directories exist...', function () use ($projectPath): void {
                 @mkdir($projectPath.'/.infrastructure/volume_data', 0777, true);
                 $dbFile = $projectPath.'/.infrastructure/volume_data/database.sqlite';
@@ -387,7 +397,9 @@ class UpCommand extends Command
 
         // 1b. Ensure host has vendor/, node_modules/, and SSR bundle before pods start.
         // Pod start commands assume these are present (via hostPath mount in local).
-        $this->ensureHostDependencies($config, $environment);
+        if (! $isStaticSite) {
+            $this->ensureHostDependencies($config, $environment);
+        }
 
         // 2. Ensure Namespace exists
         $this->withSpin("Ensuring namespace '$namespace' exists...", function () use ($namespace): void {
@@ -467,7 +479,10 @@ class UpCommand extends Command
                 // Persist locally and sync blueprint to cluster for resilience
                 $this->saveProjectConfig($projectPath, $config, $environment);
             });
-        } else {
+        } elseif (! $isStaticSite) {
+            // A static site legitimately has no .env — create-vite emits none and
+            // a landing page has nothing to configure. Only a server-rendered app
+            // is actually broken by a missing one.
             $this->laraKubeError("Environment file $envFile not found! Deployment may fail due to missing configuration.");
         }
 
@@ -477,7 +492,7 @@ class UpCommand extends Command
         // --- 🛡 SAFETY: Handle Immutable PersistentVolumes ---
         // If a PersistentVolume's path has changed (e.g. cloned to a new location),
         // we must delete the old one because K8s spec.hostPath is immutable.
-        if ($environment === 'local') {
+        if ($environment === 'local' && ! $isStaticSite) {
             $this->withSpin('Optimizing local storage bindings...', function () use ($config) {
                 $appName = $config->getName();
                 $pvNames = [

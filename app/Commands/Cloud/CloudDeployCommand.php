@@ -2,17 +2,21 @@
 
 namespace App\Commands\Cloud;
 
+use App\Data\ConfigData;
 use App\Data\RegistryData;
 use App\Enums\RegistryProvider;
+use App\Enums\StorageDriver;
 use App\Traits\EnsuresRealHosts;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\GuardsSharedStorage;
 use App\Traits\InteractsWithEnvironments;
+use App\Traits\InteractsWithKustomize;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\InteractsWithScopedRbac;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
+use App\Traits\PublishesStaticSite;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
 
@@ -24,7 +28,7 @@ class CloudDeployCommand extends Command
 {
     // getGhCommand() comes via LaraKubeOutput → InteractsWithGlobalConfig.
     // EnsuresRealHosts is the same local/placeholder-host guard cloud:configure uses.
-    use EnsuresRealHosts, GeneratesProjectInfrastructure, GuardsSharedStorage, InteractsWithEnvironments, InteractsWithProjectConfig, InteractsWithRemoteDeploy, InteractsWithScopedRbac, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext;
+    use EnsuresRealHosts, GeneratesProjectInfrastructure, GuardsSharedStorage, InteractsWithEnvironments, InteractsWithKustomize, InteractsWithProjectConfig, InteractsWithRemoteDeploy, InteractsWithScopedRbac, LaraKubeOutput, PromotesIngressDns, PublishesStaticSite, ResolvesEnvironmentContext;
 
     protected $signature = 'cloud:deploy
         {environment? : The environment to deploy to}
@@ -53,6 +57,13 @@ class CloudDeployCommand extends Command
 
         $projectPath = getcwd();
         $config = $this->getProjectConfig($projectPath);
+
+        // A static site has no image, no Dockerfile.php and no PHP pod, so it
+        // shares none of the path below: it builds a bundle, publishes it to the
+        // Commons bucket, and points the Caddy Deployment at the new release.
+        if ($config->framework?->isStaticSpa()) {
+            return $this->deployStaticSite($config, $environment, $projectPath);
+        }
 
         if ($config->hasGithubActions() && ! $this->option('no-interaction')) {
             $this->info('💡 CI/CD DETECTED: You have GitHub Actions enabled for this project.');
@@ -176,6 +187,108 @@ class CloudDeployCommand extends Command
         }
 
         return $result;
+    }
+
+    /**
+     * Deploy a static site: build, publish to the Commons bucket, then point the
+     * cluster at the new release.
+     *
+     * The release sha lives in a ConfigMap rather than in the manifest, so a
+     * re-apply never clobbers what is deployed and a rollback is just rewriting
+     * that ConfigMap and restarting.
+     */
+    protected function deployStaticSite(ConfigData $config, string $environment, string $projectPath): int
+    {
+        $host = $this->ensureHosts($config, $environment);
+        $this->saveProjectConfig($projectPath, $config);
+
+        [$config, $context] = $this->resolveEnvironmentContext($config, $environment, $projectPath);
+        $namespace = $config->getNamespace($environment);
+        $kubectl = 'kubectl --context '.escapeshellarg($context);
+
+        $this->laraKubeInfo("Deploying static site '{$config->getName()}' to '{$environment}' ({$host}).");
+        $this->line('   <fg=gray>Builds locally, publishes the bundle to the Commons bucket, no registry needed.</>');
+        $this->newLine();
+
+        if (! $this->option('no-interaction') && ! confirm('Proceed?', true)) {
+            $this->laraKubeInfo('Deployment cancelled.');
+
+            return 0;
+        }
+
+        $this->withSpin('Regenerating manifests from your blueprint...', function () use ($config) {
+            $this->orchestrateProjectScaffolding($config, installFeatures: false, buildImage: false, syncEnv: false);
+
+            return true;
+        });
+
+        $this->plexContext = $context;
+        $release = $this->publishStaticSite($config, $environment);
+
+        if ($release === null) {
+            return 1;
+        }
+
+        $credentials = $this->readCommonsS3Credentials() ?? [];
+        $storage = $config->getObjectStorage() ?? StorageDriver::SEAWEEDFS;
+        $endpoints = $this->resolveCommonsS3Endpoints($storage, 'Static Site');
+        $name = $config->getName();
+
+        $applied = $this->withSpin('Pointing the cluster at the new release...', function () use ($kubectl, $namespace, $name, $release, $credentials, $endpoints, $config, $environment) {
+            Process::run("{$kubectl} create namespace ".escapeshellarg($namespace)." --dry-run=client -o yaml | {$kubectl} apply -f -");
+
+            // Credentials the init container uses to pull the bundle. Kept out
+            // of the manifest so a rendered YAML file never carries secrets.
+            Process::run(
+                "{$kubectl} create secret generic ".escapeshellarg("{$name}-s3").' -n '.escapeshellarg($namespace).' '
+                .'--from-literal=AWS_ACCESS_KEY_ID='.escapeshellarg($credentials['access'] ?? '').' '
+                .'--from-literal=AWS_SECRET_ACCESS_KEY='.escapeshellarg($credentials['secret'] ?? '').' '
+                .'--from-literal=AWS_ENDPOINT='.escapeshellarg($endpoints['internal'] ?? '').' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+
+            Process::run(
+                "{$kubectl} create configmap ".escapeshellarg("{$name}-release").' -n '.escapeshellarg($namespace).' '
+                .'--from-literal=SITE_PREFIX='.escapeshellarg($release).' '
+                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+
+            $overlay = $config->getK8sPath().'/overlays/'.$environment;
+            $this->ensureKustomizeReady();
+            $bin = $this->kustomizeBin();
+
+            // Context-scoped, unlike kustomizeApplyCommand() which targets the
+            // current context — a cloud deploy must never follow local kubectl.
+            $apply = $bin !== null
+                ? escapeshellarg($bin).' build '.escapeshellarg($overlay)." | {$kubectl} apply -f -"
+                : "{$kubectl} apply -k ".escapeshellarg($overlay);
+
+            return Process::run($apply)->successful();
+        });
+
+        if (! $applied) {
+            $this->laraKubeError('Failed to apply the static-site manifests.');
+
+            return 1;
+        }
+
+        // The release ConfigMap changed but the pod spec did not, so nothing
+        // would restart on its own and the old bundle would keep serving.
+        $this->runStreaming("{$kubectl} rollout restart deployment/web -n ".escapeshellarg($namespace));
+        $rolled = $this->runStreaming("{$kubectl} rollout status deployment/web -n ".escapeshellarg($namespace).' --timeout=180s');
+
+        if ($rolled !== 0) {
+            $this->laraKubeError('The Caddy rollout did not become ready.');
+
+            return 1;
+        }
+
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo("✅ Published release {$release}");
+        $this->line("  <fg=gray>URL:</>  <fg=blue>https://{$host}</>");
+        $this->newLine();
+
+        return 0;
     }
 
     /**

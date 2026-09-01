@@ -12,7 +12,7 @@ trait InteractsWithGitForge
 {
     use ReadsClusterSecrets;
 
-    /** The shared namespace Gitea lives in. */
+    /** The shared namespace Forgejo lives in. */
     protected function gitNamespace(): string
     {
         return ClusterTool::GIT->namespace();
@@ -27,7 +27,7 @@ trait InteractsWithGitForge
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    /** Gitea Deployment present? A cheap "is Gitea installed" probe. */
+    /** Forgejo Deployment present? A cheap "is Forgejo installed" probe. */
     protected function isGitInstalled(string $kubectl, string $ns): bool
     {
         $out = Process::run("{$kubectl} get deployment forgejo -n {$ns} --no-headers")->output();
@@ -36,13 +36,13 @@ trait InteractsWithGitForge
     }
 
     /**
-     * Read-only Gitea host for an env: local → git.{dev tld}; a cloud env →
+     * Read-only Forgejo host for an env: local → git.{dev tld}; a cloud env →
      * the host persisted in .larakube.json (null when not configured yet). Never
      * prompts or persists.
      */
     protected function resolveGitHostReadOnly(string $env, ?ConfigData $config): ?string
     {
-        $service = SharedClusterService::GITEA;
+        $service = SharedClusterService::FORGEJO;
 
         if ($env === 'local') {
             return $service->hostFor(GlobalConfigData::load()->getLocalTld());
@@ -52,8 +52,8 @@ trait InteractsWithGitForge
     }
 
     /**
-     * Resolve Gitea's access details for display.
-     * Returns null when Gitea isn't installed.
+     * Resolve Forgejo's access details for display.
+     * Returns null when Forgejo isn't installed.
      *
      * @return array{host: ?string, label: string}|null
      */
@@ -75,9 +75,9 @@ trait InteractsWithGitForge
     /**
      * Copy registry credentials from the shared `git-secrets` secret in the
      * `larakube-shared` namespace and create a local namespace-scoped pull-secret
-     * named `gitea-login` so project pods can pull private registry images.
+     * named `forgejo-login` so project pods can pull private registry images.
      */
-    protected function ensureGiteaPullSecret(string $context, string $namespace): void
+    protected function ensureForgejoPullSecret(string $context, string $namespace): void
     {
         $kubectl = $this->gitKubectl($context);
         $sharedNs = $this->gitNamespace();
@@ -102,9 +102,9 @@ trait InteractsWithGitForge
         $ns = escapeshellarg($namespace);
 
         // Recreate the secret in the project namespace
-        Process::run("{$kubectl} delete secret gitea-login -n {$ns} --ignore-not-found");
+        Process::run("{$kubectl} delete secret forgejo-login -n {$ns} --ignore-not-found");
         Process::run(
-            "{$kubectl} create secret docker-registry gitea-login -n {$ns} ".
+            "{$kubectl} create secret docker-registry forgejo-login -n {$ns} ".
             '--docker-server='.escapeshellarg($registryHost).' '.
             '--docker-username='.escapeshellarg($username).' '.
             '--docker-password='.escapeshellarg($token).' '.

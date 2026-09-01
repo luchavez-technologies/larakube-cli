@@ -34,7 +34,7 @@ class PipelineListCommand extends Command
         foreach ($workflows as $w) {
             $platform = match ($w['platform']) {
                 'github' => 'GitHub Actions',
-                'gitea' => 'Gitea Actions',
+                'forgejo' => 'Forgejo Actions',
                 'gitlab' => 'GitLab CI/CD',
                 default => ucfirst($w['platform']),
             };

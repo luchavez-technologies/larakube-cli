@@ -113,6 +113,64 @@ enum AppFramework: string implements HasLabel
     }
 
     /**
+     * Command that produces the deployable static bundle. Null for frameworks
+     * that ship a running server instead of a directory of files, so a caller
+     * that assumes "static" fails loudly rather than silently guessing.
+     */
+    public function staticBuildCommand(PackageManager $packageManager): ?string
+    {
+        return $this->isStaticSpa() ? $packageManager->buildCommand() : null;
+    }
+
+    /**
+     * Directory the build lands in, relative to the project root. Docusaurus is
+     * the odd one out — it writes `build/`, not `dist/`.
+     */
+    public function staticOutputDir(): ?string
+    {
+        return match ($this) {
+            self::VITE, self::ASTRO => 'dist',
+            self::DOCUSAURUS => 'build',
+            default => null,
+        };
+    }
+
+    /**
+     * Port this framework's own dev server binds to, used by the local HMR pod.
+     */
+    public function devServerPort(): ?int
+    {
+        return match ($this) {
+            self::VITE, self::ASTRO => 5173,
+            self::DOCUSAURUS => 3000,
+            default => null,
+        };
+    }
+
+    /**
+     * Prefixes a framework's BROWSER bundle requires for an env var to be
+     * exposed to client code. Empty for server-rendered frameworks, which read
+     * the environment directly and need no prefix at all — so a caller writing
+     * connection URLs emits only what the framework can actually read, instead
+     * of four variants of which three are dead.
+     *
+     * Docusaurus is deliberately empty: it has no standard client-env prefix
+     * and exposes build-time values through customFields instead.
+     *
+     * @return list<string>
+     */
+    public function publicEnvPrefixes(): array
+    {
+        return match ($this) {
+            // Laravel and Statamic ship their browser assets through Vite too.
+            self::VITE, self::LARAVEL, self::STATAMIC => ['VITE_'],
+            self::ASTRO => ['PUBLIC_'],
+            self::NEXTJS => ['NEXT_PUBLIC_'],
+            default => [],
+        };
+    }
+
+    /**
      * The runtime proxy verb for `larakube art` / `larakube run`.
      */
     public function proxyCommand(): string
@@ -161,6 +219,9 @@ enum AppFramework: string implements HasLabel
             self::AXUM => [['Cargo.toml']],
             self::NESTJS => [['nest-cli.json']],
             self::ADONISJS => [['adonisrc.ts'], ['adonisrc.js']],
+            self::ASTRO => [['astro.config.mjs'], ['astro.config.ts'], ['astro.config.js']],
+            self::DOCUSAURUS => [['docusaurus.config.ts'], ['docusaurus.config.js']],
+            self::VITE => [['vite.config.ts'], ['vite.config.js']],
         };
     }
 
@@ -174,7 +235,7 @@ enum AppFramework: string implements HasLabel
         // single source of truth, checked in priority order (most specific
         // first — a Next.js/NestJS/Adonis project can also carry a package.json
         // that would otherwise be ambiguous with a plain Node setup).
-        foreach ([self::NEXTJS, self::NESTJS, self::ADONISJS, self::DJANGO, self::FASTAPI, self::GIN, self::AXUM, self::SPRINGBOOT, self::DOTNET] as $case) {
+        foreach ([self::NEXTJS, self::NESTJS, self::ADONISJS, self::DJANGO, self::FASTAPI, self::GIN, self::AXUM, self::SPRINGBOOT, self::DOTNET, self::DOCUSAURUS, self::ASTRO, self::VITE] as $case) {
             foreach ($case->markerFiles() as $files) {
                 if (self::allFilesExist($projectPath, $files)) {
                     return $case;

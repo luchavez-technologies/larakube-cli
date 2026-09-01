@@ -714,7 +714,7 @@ class ConfigData extends Data
         $registry = $this->getRegistry($environment);
         if ($registry) {
             return match ($registry->provider) {
-                RegistryProvider::GITEA => 'gitea-login',
+                RegistryProvider::FORGEJO => 'forgejo-login',
                 RegistryProvider::DOCKERHUB => 'dockerhub-login',
                 RegistryProvider::GITLAB => 'gitlab-login',
                 default => 'ghcr-login',

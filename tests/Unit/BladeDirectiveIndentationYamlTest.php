@@ -77,24 +77,55 @@ test('sso oauth2-proxy ingress manifest parses as valid YAML across isLocal/prox
     'cloud, proxied' => [false, true],
 ]);
 
-test('spa-s3 ingress manifest parses as valid YAML across isLocal branches', function (bool $isLocal): void {
-    $rendered = view('k8s.spa-s3-ingress', [
-        'name' => 'demo', 'namespace' => 'larakube-shared', 'host' => 'demo.example.com', 'isLocal' => $isLocal,
-        's3Port' => 8333, 's3ServiceName' => 'seaweedfs',
+test('static-site dev-server manifest parses as valid YAML', function (): void {
+    $config = new App\Data\ConfigData(
+        id: 'demo', name: 'demo', path: '/tmp/demo', framework: App\Enums\AppFramework::VITE,
+    );
+
+    $rendered = view('k8s.static.dev-server', [
+        'config' => $config, 'namespace' => 'demo-local', 'host' => 'demo.kube', 'devPort' => 5173,
     ])->render();
     $documents = bladeYamlDocuments($rendered);
 
-    expect($documents)->not->toBeEmpty();
+    expect($documents)->toHaveCount(4);
     foreach ($documents as $document) {
         expect($document['kind'] ?? null)->not->toBeNull();
     }
 
     $ingress = collect($documents)->firstWhere('kind', 'Ingress');
-    expect($ingress)->not->toBeNull()
-        ->and($ingress['spec']['rules'][0]['host'] ?? null)->toBe('demo.example.com');
+    expect($ingress['spec']['rules'][0]['host'] ?? null)->toBe('demo.kube');
+
+    // node_modules must be a PVC mounted OVER the bind-mounted source: Vite 8's
+    // Rolldown binary is platform-specific, so the host's darwin build cannot run.
+    $deployment = collect($documents)->firstWhere('kind', 'Deployment');
+    $mounts = collect($deployment['spec']['template']['spec']['containers'][0]['volumeMounts']);
+    expect($mounts->firstWhere('mountPath', '/app/node_modules'))->not->toBeNull();
+});
+
+test('static-site caddy manifest parses as valid YAML for one or many hosts', function (array $hosts): void {
+    $config = new App\Data\ConfigData(
+        id: 'demo', name: 'demo', path: '/tmp/demo', framework: App\Enums\AppFramework::VITE,
+    );
+
+    $rendered = view('k8s.static.caddy', [
+        'config' => $config, 'namespace' => 'demo-production', 'environment' => 'production',
+        'hosts' => $hosts, 'bucket' => 'demo-site',
+        's3Endpoint' => 'http://seaweedfs.larakube-plex.svc.cluster.local:8333',
+    ])->render();
+    $documents = bladeYamlDocuments($rendered);
+
+    expect($documents)->toHaveCount(4);
+    foreach ($documents as $document) {
+        expect($document['kind'] ?? null)->not->toBeNull();
+    }
+
+    $ingress = collect($documents)->firstWhere('kind', 'Ingress');
+    expect($ingress['spec']['rules'])->toHaveSameSize($hosts)
+        ->and($ingress['metadata']['annotations']['external-dns.alpha.kubernetes.io/cloudflare-proxied'] ?? null)
+        ->toBe('true');
 })->with([
-    'local' => [true],
-    'cloud' => [false],
+    'single host' => [['demo.com']],
+    'apex plus www' => [['demo.com', 'www.demo.com']],
 ]);
 
 test('errors (Glitchtip) secret manifest parses as valid YAML across noPlex branches', function (bool $noPlex): void {

@@ -258,7 +258,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DRIVE => SharedClusterService::DRIVE,
             self::ERRORS => SharedClusterService::ERRORS,
             self::FLOW => SharedClusterService::FLOW,
-            self::GIT => SharedClusterService::GITEA,
+            self::GIT => SharedClusterService::FORGEJO,
             self::INSIGHTS => SharedClusterService::INSIGHTS,
             self::LINK => SharedClusterService::LINK,
             self::MAIL => SharedClusterService::MAIL,
@@ -352,6 +352,48 @@ enum ClusterTool: string implements HasWorkloadComponents
      *
      * @return array{tool: self, component: ClusterToolComponentData}|null
      */
+    /**
+     * Strict reverse lookup: matches ONLY `{component}-{instance}` and returns
+     * the instance it derived. Unlike forDeployment(), a bare component name
+     * never matches — such a Deployment carries no recoverable identity, so
+     * `tool:list --refresh` deliberately leaves it undiscovered until it is
+     * migrated to the naming convention. That absence IS the migration
+     * checklist.
+     *
+     * @return array{tool: self, component: ClusterToolComponentData, instance: string}|null
+     */
+    public static function forInstancedDeployment(string $deploymentName): ?array
+    {
+        $best = null;
+
+        foreach (self::cases() as $tool) {
+            foreach ($tool->engineCandidates() as $engine) {
+                foreach ($tool->components(engine: $engine) as $component) {
+                    $prefix = $component->deployment.'-';
+
+                    if (! str_starts_with($deploymentName, $prefix)) {
+                        continue;
+                    }
+
+                    $instance = substr($deploymentName, strlen($prefix));
+
+                    if ($instance === '') {
+                        continue;
+                    }
+
+                    // Longest component wins, or `crm-twenty-worker-crm-x`
+                    // would resolve to the crm-twenty component with the
+                    // instance "worker-crm-x".
+                    if ($best === null || strlen($component->deployment) > strlen($best['component']->deployment)) {
+                        $best = ['tool' => $tool, 'component' => $component, 'instance' => $instance];
+                    }
+                }
+            }
+        }
+
+        return $best;
+    }
+
     public static function forDeployment(string $deploymentName): ?array
     {
         foreach (self::cases() as $tool) {
@@ -1015,7 +1057,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      * static env, and a logical => env-var-name map sso:wire fills from the
      * Zitadel app it registers). null when the tool has no OIDC support.
      * Covers the tools that take OIDC config via plain env vars — Grafana and
-     * Vaultwarden. Gitea/OpenBao/NetBird need CLI- or API-driven OIDC
+     * Vaultwarden. Forgejo/OpenBao/NetBird need CLI- or API-driven OIDC
      * registration instead of env vars — their `oidcEnv()` schemas return
      * empty `vars`/`static` and are dispatched to hand-written wiring in
      * SsoWireCommand::wire()/SsoUnwireCommand::unwire() instead of the

@@ -22,7 +22,7 @@ test('every shared service renders its manifest with the resolved host', functio
     foreach (SharedClusterService::cases() as $service) {
         $host = $service->hostFor('example.test');
         $params = ['host' => $host];
-        if ($service === SharedClusterService::GITEA) {
+        if ($service === SharedClusterService::FORGEJO) {
             $params = array_merge($params, [
                 'instance' => 'git-example-test',
                 'tenant' => 'forgejo_git_example_test',
@@ -71,7 +71,7 @@ test('hostFor combines the host prefix with the given cluster domain', function 
         ->and(SharedClusterService::VPN->hostFor('example.com'))->toBe('vpn.example.com')
         ->and(SharedClusterService::ERRORS->hostFor('example.com'))->toBe('errors.example.com')
         ->and(SharedClusterService::SECRETS->hostFor('example.com'))->toBe('secrets.example.com')
-        ->and(SharedClusterService::GITEA->hostFor('example.com'))->toBe('git.example.com')
+        ->and(SharedClusterService::FORGEJO->hostFor('example.com'))->toBe('git.example.com')
         ->and(SharedClusterService::FLOW->hostFor('example.com'))->toBe('flow.example.com')
         ->and(SharedClusterService::SHEET->hostFor('example.com'))->toBe('sheet.example.com')
         // TRAEFIK_DASHBOARD's value is the manifest name, its host label is "traefik".
@@ -96,7 +96,7 @@ test('hostFor dash-suffixes the prefix for any named instance, and leaves the so
     expect(SharedClusterService::DATA->hostFor('data-blog.example.com', 'blog'))->toBe('data-blog.example.com');
 });
 
-test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Gitea, Flow, Sheet, Insights, Mail, Desk, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function (): void {
+test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Forgejo, Flow, Sheet, Insights, Mail, Desk, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function (): void {
     foreach (SharedClusterService::cases() as $service) {
         $localOnly = ! in_array($service, [
             SharedClusterService::GRAFANA,
@@ -105,7 +105,7 @@ test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, G
             SharedClusterService::VPN,
             SharedClusterService::ERRORS,
             SharedClusterService::SECRETS,
-            SharedClusterService::GITEA,
+            SharedClusterService::FORGEJO,
             SharedClusterService::FLOW,
             SharedClusterService::SHEET,
             SharedClusterService::INSIGHTS,

@@ -41,7 +41,7 @@ class GitRemoveCommand extends AbstractToolRemoveCommand
 
         // Reverse git:init's port opening — a forge that is gone but whose SSH
         // port is still open is exposure with nothing behind it.
-        $this->closeToolPorts(SharedClusterService::GITEA, (string) $this->argument('environment'));
+        $this->closeToolPorts(SharedClusterService::FORGEJO, (string) $this->argument('environment'));
 
         return $ok;
     }

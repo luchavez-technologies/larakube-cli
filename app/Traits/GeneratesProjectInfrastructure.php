@@ -6,10 +6,10 @@ use App\Contracts\HasKubernetesFiles;
 use App\Contracts\RemovableWhenManaged;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
-use App\Enums\AppFramework;
 use App\Enums\Blueprint;
 use App\Enums\DeploymentStrategy;
 use App\Enums\LaravelFeature;
+use App\Enums\StorageDriver;
 use Random\RandomException;
 use Symfony\Component\Yaml\Yaml;
 
@@ -17,6 +17,63 @@ trait GeneratesProjectInfrastructure
 {
     use InteractsWithHosts, InteractsWithProjectConfig, LaraKubeOutput;
     use ManagesLocalCa;
+
+    /**
+     * Dev-server config for a STANDALONE Vite/Astro SPA, where the framework's
+     * own dev server is the app rather than an asset pipeline beside Laravel.
+     * Deliberately separate from hardenViteConfig(): that one rewrites
+     * `inertia()` and targets the `vite.{app}` host, neither of which applies.
+     */
+    public function hardenStaticViteConfig(ConfigData $config): void
+    {
+        $projectPath = $config->getPath();
+        $viteFile = file_exists("$projectPath/vite.config.ts")
+            ? "$projectPath/vite.config.ts"
+            : "$projectPath/vite.config.js";
+
+        if (! file_exists($viteFile)) {
+            return;
+        }
+
+        $content = (string) file_get_contents($viteFile);
+        $appHost = $config->getWebHost('local');
+        $harden = view('k8s.static.vite-server', [
+            'appHost' => $appHost,
+            'devPort' => $config->framework?->devServerPort() ?? 5173,
+        ])->render();
+
+        // Recognise our own managed block structurally rather than by hostname,
+        // so a re-run after `config:tld` or a rename re-aligns the host instead
+        // of leaving HMR pointed at a name that no longer resolves.
+        $isManagedTemplate = str_contains($content, 'allowedHosts: [')
+            && str_contains($content, 'strictPort: true')
+            && str_contains($content, 'usePolling: true');
+
+        if (! str_contains($content, 'server: {')) {
+            // Blade strips the leading whitespace of a template's first line,
+            // so re-indent it — this lands in a file the user reads and edits.
+            $content = preg_replace('/(defineConfig\s*\(\s*\{)/', "$1\n    {$harden}", $content, 1);
+            file_put_contents($viteFile, (string) $content);
+
+            return;
+        }
+
+        if ($isManagedTemplate) {
+            $content = preg_replace("/allowedHosts:\s*\['[^']*'\]/", "allowedHosts: ['{$appHost}']", $content, 1);
+            $content = preg_replace("/(hmr:\s*\{\s*(?:\/\/[^\n]*\n\s*)*host:\s*)'[^']*'/", "$1'{$appHost}'", $content, 1);
+            file_put_contents($viteFile, (string) $content);
+
+            return;
+        }
+
+        // Custom config — advise, never rewrite.
+        $this->laraKubeNewLine();
+        $this->laraKubeWarn(" ⚠ VITE ADVISORY: Your {$viteFile} looks custom.");
+        $this->laraKubeLine('   For HMR through Traefik, your `server` block needs:');
+        $this->laraKubeNewLine();
+        $this->laraKubeLine($harden);
+        $this->laraKubeNewLine();
+    }
 
     public function hardenViteConfig(ConfigData $config): void
     {
@@ -235,12 +292,20 @@ trait GeneratesProjectInfrastructure
     {
         $projectPath = $config->getPath();
 
-        if (! $config->isLocked('Dockerfile.php')) {
-            $phpDockerfile = view('docker.php', ['config' => $config])->render();
-            file_put_contents("$projectPath/Dockerfile.php", $phpDockerfile);
+        // A static site has no PHP image. docker.php dereferences
+        // getServerVariation()->value and getPhpVersion()->value, both null for
+        // an SPA, so rendering it would fatal rather than no-op.
+        if (! $config->framework?->isStaticSpa()) {
+            if (! $config->isLocked('Dockerfile.php')) {
+                $phpDockerfile = view('docker.php', ['config' => $config])->render();
+                file_put_contents("$projectPath/Dockerfile.php", $phpDockerfile);
+            }
+
+            $this->generateDockerIgnore($config);
         }
 
-        $this->generateDockerIgnore($config);
+        // Always, framework or not: .infrastructure/ holds the local TLS
+        // PRIVATE KEY, so skipping this would let it be committed.
         $this->hardenGitIgnore($config);
     }
 
@@ -262,6 +327,8 @@ trait GeneratesProjectInfrastructure
             '.larakube.local.json',
             '# LaraKube manifest fingerprints (reproducible — detects hand-edits, not for sharing)',
             '.infrastructure/k8s/.larakube-sigs.json',
+            '# Local TLS leaf cert + PRIVATE KEY, reissued per machine — never commit',
+            '.infrastructure/traefik/certificates',
         ];
 
         $toAdd = [];
@@ -285,6 +352,69 @@ trait GeneratesProjectInfrastructure
         file_put_contents("$projectPath/.dockerignore", $ignoreFile);
     }
 
+    /**
+     * Self-contained overlays for a static site. Deliberately no shared `base/`:
+     * local runs the framework's own dev server for HMR while cloud runs Caddy
+     * over an S3-published bundle, so the two environments have no workload in
+     * common and a shared base would only exist to be patched away.
+     */
+    protected function generateStaticSiteManifests(ConfigData $config): void
+    {
+        $k8sPath = $config->getK8sPath();
+        $storage = $config->getObjectStorage() ?? StorageDriver::SEAWEEDFS;
+
+        $render = function (string $stub, string $view, array $data) use ($config, $k8sPath): void {
+            @mkdir(dirname("$k8sPath/$stub"), 0755, true);
+            $this->writeManagedManifest(
+                $config,
+                "$k8sPath/$stub",
+                ".infrastructure/k8s/{$stub}",
+                view($view, $data)->render(),
+            );
+        };
+
+        // --- local: the dev server itself. No S3, no Caddy, no build step. ---
+        $localData = [
+            'config' => $config,
+            'namespace' => $config->getNamespace('local'),
+            'host' => $config->getWebHost('local'),
+            'devPort' => $config->framework->devServerPort() ?? 5173,
+        ];
+        $render('overlays/local/kustomization.yaml', 'k8s.static.local-kustomization', $localData);
+        $render('overlays/local/dev-server.yaml', 'k8s.static.dev-server', $localData);
+
+        // --- cloud: Caddy fronting the published bundle. ---
+        foreach ($config->getCloudEnvironments() as $env) {
+            $cloudData = [
+                'config' => $config,
+                'namespace' => $config->getNamespace($env),
+                'environment' => $env,
+                'hosts' => $config->getWebHosts($env),
+                'bucket' => $this->staticSiteBucket($config),
+                's3Endpoint' => 'http://'.$storage->commonsServiceName().'.'.$this->staticSitePlexNamespace()
+                    .'.svc.cluster.local:'.$storage->port(),
+            ];
+            $render("overlays/$env/kustomization.yaml", 'k8s.static.cloud-kustomization', $cloudData);
+            $render("overlays/$env/namespace.yaml", 'k8s.overlays.production.namespace', $cloudData);
+            $render("overlays/$env/caddy.yaml", 'k8s.static.caddy', $cloudData);
+        }
+    }
+
+    /**
+     * One Commons bucket per project, shared across environments — each env is
+     * a key prefix inside it, so a new environment needs no new bucket.
+     */
+    protected function staticSiteBucket(ConfigData $config): string
+    {
+        return $config->getName().'-site';
+    }
+
+    /** Namespace the Plex Commons lives in (mirrors InteractsWithPlex). */
+    protected function staticSitePlexNamespace(): string
+    {
+        return 'larakube-plex';
+    }
+
     protected function generateK8sManifests(ConfigData $config): void
     {
         $config->resolveDependencies();
@@ -305,6 +435,16 @@ trait GeneratesProjectInfrastructure
         @copy($this->getLocalCaCertPath(), "$projectCertsPath/local-ca.pem");
 
         $this->laraKubeInfo('Generating Kubernetes manifests...');
+
+        // Static sites share none of the Laravel stack's stubs — no PHP
+        // Deployment, no config/secret split, no image to roll. They get their
+        // own self-contained overlays instead (no shared base), so `larakube up`
+        // and applyScopedDeploy() can `kustomize build overlays/{env}` directly.
+        if ($config->framework?->isStaticSpa()) {
+            $this->generateStaticSiteManifests($config);
+
+            return;
+        }
 
         // 1. Generate consolidated core stubs (Stacked Architecture).
         // Cloud overlays (production, staging, qa, …) all share the same
@@ -356,30 +496,24 @@ trait GeneratesProjectInfrastructure
 
         // Base layer (environment-agnostic; rendered with the local command
         // context and the bare app namespace, matching prior behaviour).
-        if (! $config->framework?->isStaticSpa()) {
-            foreach ($baseStubs as $stub) {
-                $renderStub($stub, 'local', $appName, 'k8s.'.str_replace(['/', '.yaml'], ['.', ''], $stub));
-            }
+        foreach ($baseStubs as $stub) {
+            $renderStub($stub, 'local', $appName, 'k8s.'.str_replace(['/', '.yaml'], ['.', ''], $stub));
         }
 
         // Local overlay.
-        if (! $config->framework?->isStaticSpa()) {
-            foreach ($localStubs as $stub) {
-                $renderStub($stub, 'local', $config->getNamespace('local'), 'k8s.'.str_replace(['/', '.yaml'], ['.', ''], $stub));
-            }
+        foreach ($localStubs as $stub) {
+            $renderStub($stub, 'local', $config->getNamespace('local'), 'k8s.'.str_replace(['/', '.yaml'], ['.', ''], $stub));
         }
 
         // Cloud overlays — one directory per non-local environment. Namespace
         // is resolved per env (getNamespace), so a managed-cluster env can
         // land in an existing namespace instead of the derived {name}-{env}.
-        if (! $config->framework?->isStaticSpa()) {
-            foreach ($cloudEnvs as $env) {
-                @mkdir("$k8sPath/overlays/$env", 0755, true);
-                foreach ($cloudStubFiles as $file) {
-                    $stub = "overlays/$env/$file";
-                    $viewName = 'k8s.overlays.production.'.str_replace('.yaml', '', $file);
-                    $renderStub($stub, $env, $config->getNamespace($env), $viewName);
-                }
+        foreach ($cloudEnvs as $env) {
+            @mkdir("$k8sPath/overlays/$env", 0755, true);
+            foreach ($cloudStubFiles as $file) {
+                $stub = "overlays/$env/$file";
+                $viewName = 'k8s.overlays.production.'.str_replace('.yaml', '', $file);
+                $renderStub($stub, $env, $config->getNamespace($env), $viewName);
             }
         }
 
@@ -409,32 +543,6 @@ trait GeneratesProjectInfrastructure
 
             $renderStub("overlays/$env/reverb-ingress.yaml", $env, $config->getNamespace($env), 'k8s.overlays.production.reverb-ingress');
             $this->appendToKustomization($k8sPath, "overlays/$env", 'reverb-ingress.yaml');
-        }
-
-        // Render S3 Static SPA Ingress for static SPA frameworks (ASTRO, VITE, DOCUSAURUS)
-        if (in_array($config->framework, [AppFramework::ASTRO, AppFramework::VITE, AppFramework::DOCUSAURUS], true)) {
-            $tld = $config->getLocalTld() ?? GlobalConfigData::load()->getLocalTld();
-            foreach (array_merge(['local'], $cloudEnvs) as $env) {
-                $host = $config->getHost($env) ?? "{$config->getId()}.{$tld}";
-                if ($host) {
-                    $ns = $config->getNamespace($env);
-                    $content = view('k8s.spa-s3-ingress', [
-                        'name' => $config->getId(),
-                        'namespace' => $ns,
-                        'host' => $host,
-                        's3ServiceName' => 'seaweedfs-s3',
-                        's3Port' => 8333,
-                        'isLocal' => $env === 'local',
-                    ])->render();
-
-                    $stub = $env === 'local' ? 'spa-ingress.yaml' : "overlays/{$env}/spa-ingress.yaml";
-                    $relPath = $env === 'local' ? '.infrastructure/k8s/spa-ingress.yaml' : ".infrastructure/k8s/overlays/{$env}/spa-ingress.yaml";
-                    $this->writeManagedManifest($config, "{$k8sPath}/{$stub}", $relPath, $content);
-
-                    $folder = $env === 'local' ? '' : "overlays/{$env}";
-                    $this->appendToKustomization($k8sPath, $folder, 'spa-ingress.yaml');
-                }
-            }
         }
 
         // App storage PVCs live in each environment's overlay (not base), so
@@ -971,8 +1079,15 @@ trait GeneratesProjectInfrastructure
         }
 
         if (! $dryRun) {
-            $this->ensureHttpsCompatibility($config);
-            $this->hardenViteConfig($config);
+            // ensureHttpsCompatibility patches app/Providers/AppServiceProvider.php
+            // and hardenViteConfig rewrites `inertia()` — both Laravel-only. A
+            // standalone SPA gets its own dev-server config instead.
+            if ($config->framework?->isStaticSpa()) {
+                $this->hardenStaticViteConfig($config);
+            } else {
+                $this->ensureHttpsCompatibility($config);
+                $this->hardenViteConfig($config);
+            }
         }
 
         // 4. Generate Dockerfiles

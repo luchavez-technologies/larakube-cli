@@ -28,9 +28,9 @@ test('pipeline:list lists discovered workflows in a table', function (): void {
     mkdir($tempDir.'/.github/workflows', 0755, true);
     file_put_contents($tempDir.'/.github/workflows/larakube-deploy-production.yml', "on:\n  push:\n    branches: [ main ]\n");
 
-    // Create gitea workflow directory
-    mkdir($tempDir.'/.gitea/workflows', 0755, true);
-    file_put_contents($tempDir.'/.gitea/workflows/larakube-deploy-staging.yml', "on: push\n");
+    // Create forgejo workflow directory
+    mkdir($tempDir.'/.forgejo/workflows', 0755, true);
+    file_put_contents($tempDir.'/.forgejo/workflows/larakube-deploy-staging.yml', "on: push\n");
 
     // Create gitlab CI file
     file_put_contents($tempDir.'/.gitlab-ci.yml', "stages:\n  - deploy\n");
@@ -48,8 +48,8 @@ test('pipeline:list lists discovered workflows in a table', function (): void {
             ->and($output)->toContain('production')
             ->and($output)->toContain('push (main)')
 
-            ->and($output)->toContain('Gitea Actions')
-            ->and($output)->toContain('.gitea/workflows')
+            ->and($output)->toContain('Forgejo Actions')
+            ->and($output)->toContain('.forgejo/workflows')
             ->and($output)->toContain('staging')
             ->and($output)->toContain('push')
 

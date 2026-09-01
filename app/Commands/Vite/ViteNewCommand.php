@@ -4,11 +4,14 @@ namespace App\Commands\Vite;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
+use App\Enums\PackageManager;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -18,15 +21,19 @@ use LaravelZero\Framework\Commands\Command;
 
 class ViteNewCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput;
+
+    /** Node LTS at time of writing; 26 goes LTS in October 2026. */
+    protected const NODE_IMAGE = 'node:24-alpine';
 
     protected $signature = 'vite:new
         {name? : The name of the Vite application}
-        {--template=react : Vite template (react, vue, svelte, solid)}
-        {--ts : Use TypeScript variant}
-        {--fast : Skip wizard and use defaults}';
+        {--template=react : Vite template (react, vue, svelte, solid, vanilla)}
+        {--ts : Use the TypeScript variant}
+        {--pm=npm : Package manager (npm, pnpm, bun, yarn)}
+        {--fast : Skip the wizard and use defaults}';
 
-    protected $description = 'Scaffold a new Vite SPA application (React, Vue, Svelte, Solid) with LaraKube infrastructure';
+    protected $description = 'Scaffold a new Vite SPA (React, Vue, Svelte, Solid) with LaraKube infrastructure';
 
     public function handle(): int
     {
@@ -42,6 +49,9 @@ class ViteNewCommand extends Command
             label: 'What is the name of your Vite application?',
             placeholder: 'my-vite-app',
             required: true,
+            validate: fn (string $value) => strtolower($value) === 'console'
+                ? 'The name "console" is reserved for the LaraKube Console.'
+                : null,
         );
 
         $appName = Str::slug($inputName);
@@ -53,7 +63,60 @@ class ViteNewCommand extends Command
             return 1;
         }
 
+        $template = $this->resolveTemplate();
+        $packageManager = PackageManager::tryFrom((string) $this->option('pm')) ?? PackageManager::NPM;
+
+        if (! $this->runCreateVite($appName, $projectPath, $template)) {
+            $this->laraKubeError('Vite scaffolding failed.');
+
+            return 1;
+        }
+
+        $config = new ConfigData(
+            id: $appName,
+            name: $appName,
+            path: $projectDir,
+            framework: AppFramework::VITE,
+            frontend: null,
+        );
+        $config->setIsScaffolding(true);
+        $config->setName($appName);
+        $config->setPath($projectDir);
+        // Cloud environments are opt-in — `larakube env production` adds one.
+        $config->setEnvironments(['local']);
+        $config->setPackageManager($packageManager);
+        // Default watchPaths are Laravel's (app/, bootstrap/, routes/,
+        // composer.lock, .env) — none of which exist here.
+        $config->watchPaths = ['src', 'public', 'index.html', 'package.json', 'vite.config.js', 'vite.config.ts'];
+
+        // No PocketBase/Directus variables are seeded. A landing page has no
+        // backend, and `larakube data:wire` exists to add them on demand — a
+        // scaffold must never imply a service the cluster may not be running.
+        $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config): void {
+            $this->orchestrateProjectScaffolding($config, installFeatures: false, buildImage: false);
+        });
+
+        $host = $config->getWebHost('local');
+
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo("✅ Created Vite ({$template}) app in {$appName}/");
+        $this->newLine();
+        $this->line('  <fg=gray>Start it with hot module replacement:</>');
+        $this->line("  <fg=yellow>cd {$appName} && larakube up</>");
+        $this->line("  <fg=gray>Then open</> <fg=blue>https://{$host}</>");
+        $this->newLine();
+        $this->line('  <fg=gray>Optional — connect a backend:</>  <fg=yellow>larakube data:wire</>');
+        $this->line('  <fg=gray>Ready to deploy?</>                <fg=yellow>larakube env production</>');
+        $this->newLine();
+        $this->renderStarPrompt();
+
+        return 0;
+    }
+
+    protected function resolveTemplate(): string
+    {
         $template = strtolower((string) $this->option('template'));
+
         if (! in_array($template, ['react', 'vue', 'svelte', 'solid', 'vanilla'], true)) {
             $template = 'react';
         }
@@ -62,42 +125,34 @@ class ViteNewCommand extends Command
             $template .= '-ts';
         }
 
-        $scaffolded = $this->withSpin("Scaffolding Vite ({$template}) application...", function () use ($appName, $template) {
-            $cmd = "npx -y create-vite@latest {$appName} --template {$template}";
+        return $template;
+    }
 
-            return Process::run($cmd)->successful();
-        });
+    /**
+     * Run create-vite inside Node rather than on the host, so the toolchain is
+     * the same one the dev pod uses and the machine needs no local Node.
+     */
+    protected function runCreateVite(string $appName, string $baseDir, string $template): bool
+    {
+        $this->laraKubeInfo('Pulling the Node builder image...');
+        Process::forever()->run('docker pull '.self::NODE_IMAGE);
 
-        if (! $scaffolded || ! is_dir($projectDir)) {
-            $this->laraKubeError('Vite scaffolding failed.');
+        $scaffolded = $this->withSpin("Scaffolding Vite ({$template})...", fn (): bool => Process::forever()->run(
+            'docker run --rm -v '.escapeshellarg($baseDir).':/app -w /app --user root '
+            .self::NODE_IMAGE.' sh -c '
+            .escapeshellarg("npx --yes create-vite@latest {$appName} --template {$template}"),
+        )->successful());
 
-            return 1;
+        if (! $scaffolded || ! is_dir("{$baseDir}/{$appName}")) {
+            return false;
         }
 
-        // Initialize .larakube.json blueprint
-        $config = new ConfigData(
-            id: $appName,
-            name: $appName,
-            path: $projectDir,
-            framework: AppFramework::VITE,
-            frontend: null,
+        // The container writes as root; hand the tree back to the host user.
+        $this->runStreaming(
+            'docker run --rm -v '.escapeshellarg($baseDir).':/app --user root '
+            .self::NODE_IMAGE.' chown -R '.$this->hostUid().':'.$this->hostGid().' /app/'.escapeshellarg($appName),
         );
 
-        $this->saveProjectConfig($projectDir, $config);
-
-        // Generate .env.example with PocketBase / API URL placeholders
-        $envExamplePath = "{$projectDir}/.env.example";
-        $envContent = "VITE_POCKETBASE_URL=https://data.dev.test\n"
-            ."VITE_API_URL=https://api.dev.test\n";
-        file_put_contents($envExamplePath, $envContent);
-        file_put_contents("{$projectDir}/.env", $envContent);
-
-        $this->laraKubeNewLine();
-        $this->laraKubeInfo("✅ Scaffolding complete! Created Vite ({$template}) app in {$appName}/");
-        $this->newLine();
-        $this->line('  <fg=gray>Run</> <fg=yellow>cd '.$appName.' && larakube data:wire</> <fg=gray>to connect PocketBase/Directus</>');
-        $this->newLine();
-
-        return 0;
+        return true;
     }
 }

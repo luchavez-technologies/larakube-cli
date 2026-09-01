@@ -13,10 +13,13 @@ use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
+use App\Contracts\HasWorkloadComponents;
+use App\Data\ClusterToolComponentData;
+use App\Enums\ClusterToolComponentRole;
 use Illuminate\Support\Facades\Process;
 
-/** The single vendor backing the MONITOR category — 'Monitoring Stack'. Only Grafana. */
-final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel
+/** The single vendor backing the MONITOR category — Grafana, Prometheus and Loki. */
+final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -168,5 +171,44 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
         $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
 
         return "deployment/monitor-grafana-{$instanceName} -n larakube-shared";
+    }
+
+    /**
+     * Loki and Prometheus are Monitor's, not free-floating infrastructure —
+     * MonitorInitCommand has always built these exact names, but they were
+     * never declared here, so forDeployment() could not map them and
+     * MonitorRemoveCommand had to hand-copy the teardown strings that this
+     * contract exists to replace.
+     *
+     * backupVolume stays false on both: metrics and logs are regenerable
+     * telemetry, and silently enlarging every nightly backup is not a
+     * side effect a naming fix should have.
+     *
+     * @return list<ClusterToolComponentData>
+     */
+    public function components(?string $instance = null, ?string $engine = null): array
+    {
+        // Null-safe like every other vendor: forDeployment()'s reverse lookup
+        // calls this with no instance precisely because it is trying to
+        // discover one.
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+
+        return [
+            new ClusterToolComponentData(
+                key: 'grafana',
+                role: ClusterToolComponentRole::PRIMARY,
+                deployment: $name('monitor-grafana'),
+            ),
+            new ClusterToolComponentData(
+                key: 'prometheus',
+                role: ClusterToolComponentRole::WORKER,
+                deployment: $name('monitor-prometheus'),
+            ),
+            new ClusterToolComponentData(
+                key: 'loki',
+                role: ClusterToolComponentRole::WORKER,
+                deployment: $name('monitor-loki'),
+            ),
+        ];
     }
 }

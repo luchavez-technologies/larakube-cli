@@ -36,7 +36,7 @@ enum SharedClusterService: string
             self::VPN => 'k8s.vpn.ingress',
             self::ERRORS => 'k8s.errors.ingress',
             self::SECRETS => 'k8s.secrets.ingress',
-            self::GITEA => 'k8s.git.forgejo',
+            self::FORGEJO => 'k8s.git.forgejo',
             self::FLOW => 'k8s.flow.ingress',
             self::SHEET => 'k8s.sheet.ingress',
             self::INSIGHTS => 'k8s.insights.ingress',
@@ -102,7 +102,7 @@ enum SharedClusterService: string
         return match ($this) {
             self::TRAEFIK_DASHBOARD => 'traefik',
             self::UPTIME_KUMA => 'status',
-            self::GITEA => 'git',
+            self::FORGEJO => 'git',
             self::FLOW => 'flow',
             self::SHEET => 'sheet',
             self::DRIVE => 'drive',
@@ -151,7 +151,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::GITEA, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN, self::RESUME, self::PASTE => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::FORGEJO, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN, self::RESUME, self::PASTE => false,
             default => true,
         };
     }
@@ -175,7 +175,7 @@ enum SharedClusterService: string
             self::VPN => 'NetBird VPN',
             self::ERRORS => 'GlitchTip',
             self::SECRETS => 'OpenBao',
-            self::GITEA => 'Forgejo',
+            self::FORGEJO => 'Forgejo',
             self::FLOW => 'n8n',
             self::SHEET => 'Sheet',
             self::DRIVE => 'Drive',
@@ -224,7 +224,7 @@ enum SharedClusterService: string
             self::VPN => 'deployment vpn-management -n larakube-vpn',
             self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
             self::SECRETS => 'deployment openbao-backend -n larakube-secrets',
-            self::GITEA => 'deployment forgejo -n larakube-shared',
+            self::FORGEJO => 'deployment forgejo -n larakube-shared',
             self::FLOW => 'deployment -l "app in (flow-n8n, flow-windmill)" -n larakube-shared',
             self::SHEET => 'deployment sheet-teable -n larakube-shared',
             self::DRIVE => 'deployment drive-ocis -n larakube-shared',
@@ -278,7 +278,7 @@ enum SharedClusterService: string
             // Forgejo's SSH listener, for `git clone ssh://git@<host>:2222/…`.
             // Deliberately not 22: that's the node's own sshd, and the LaraKube
             // hardening step allows it for admin access only.
-            self::GITEA => [2222],
+            self::FORGEJO => [2222],
             // Coturn's STUN/TURN listener (both transports) + its relay range,
             // backing Synapse's legacy 1:1 turn_uris. Keep this in lockstep with
             // turnserver.conf's min-port/max-port in
@@ -347,7 +347,7 @@ enum SharedClusterService: string
             self::VPN => 'Refreshing NetBird VPN ingress...',
             self::ERRORS => 'Refreshing GlitchTip ingress...',
             self::SECRETS => 'Refreshing OpenBao ingress...',
-            self::GITEA => 'Refreshing Forgejo ingress...',
+            self::FORGEJO => 'Refreshing Forgejo ingress...',
             self::FLOW => 'Refreshing Flow (n8n) ingress...',
             self::SHEET => 'Refreshing Sheet ingress...',
             self::DRIVE => 'Refreshing Drive ingress...',
@@ -392,7 +392,7 @@ enum SharedClusterService: string
     case VPN = 'vpn';
     case ERRORS = 'errors';
     case SECRETS = 'secrets';
-    case GITEA = 'gitea';
+    case FORGEJO = 'forgejo';
     case FLOW = 'flow';
     case SHEET = 'sheet';
     case INSIGHTS = 'insights';

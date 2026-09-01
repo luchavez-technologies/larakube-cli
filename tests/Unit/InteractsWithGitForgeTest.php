@@ -33,7 +33,7 @@ function gitReader(): object
 
         public function runPullSecret(string $context, string $namespace): void
         {
-            $this->ensureGiteaPullSecret($context, $namespace);
+            $this->ensureForgejoPullSecret($context, $namespace);
         }
 
         // Mock getProjectConfigObject
@@ -56,7 +56,7 @@ test('local Git host uses the git subdomain on the dev TLD', function (): void {
 
 test('cloud Git host returns the host persisted for that env', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
-    $config->environments['production'] = EnvironmentData::from(['hosts' => ['gitea' => 'git.example.com']]);
+    $config->environments['production'] = EnvironmentData::from(['hosts' => ['forgejo' => 'git.example.com']]);
 
     expect(gitReader()->host('production', $config))->toBe('git.example.com');
 });
@@ -100,19 +100,19 @@ test('gitAccess is null when forgejo is not installed, populated when it is', fu
         ->and($access['label'])->toBe('Forgejo');
 });
 
-test('ensureGiteaPullSecret copies credentials from shared secret to target namespace', function (): void {
+test('ensureForgejoPullSecret copies credentials from shared secret to target namespace', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
         "{$kubectl} get secret git-secrets -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
         "{$kubectl} get secret git-secrets -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok123'),
-        "{$kubectl} delete secret gitea-login -n 'demo-production' --ignore-not-found" => Process::result(output: 'deleted'),
-        "{$kubectl} create secret docker-registry gitea-login -n 'demo-production' --docker-server='git.dev.test' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local" => Process::result(output: 'created'),
+        "{$kubectl} delete secret forgejo-login -n 'demo-production' --ignore-not-found" => Process::result(output: 'deleted'),
+        "{$kubectl} create secret docker-registry forgejo-login -n 'demo-production' --docker-server='git.dev.test' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local" => Process::result(output: 'created'),
     ]);
 
     gitReader()->runPullSecret('', 'demo-production');
     Process::assertRan("{$kubectl} get secret git-secrets -n larakube-shared -o jsonpath='{.data.username}'");
     Process::assertRan("{$kubectl} get secret git-secrets -n larakube-shared -o jsonpath='{.data.registry-token}'");
-    Process::assertRan("{$kubectl} delete secret gitea-login -n 'demo-production' --ignore-not-found");
-    Process::assertRan("{$kubectl} create secret docker-registry gitea-login -n 'demo-production' --docker-server='git.dev.test' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local");
+    Process::assertRan("{$kubectl} delete secret forgejo-login -n 'demo-production' --ignore-not-found");
+    Process::assertRan("{$kubectl} create secret docker-registry forgejo-login -n 'demo-production' --docker-server='git.dev.test' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local");
 });

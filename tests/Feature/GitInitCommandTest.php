@@ -9,7 +9,7 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('git:init deploys gitea using plex commons seaweedfs by default', function (): void {
+test('git:init deploys forgejo using plex commons seaweedfs by default', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -20,7 +20,7 @@ test('git:init deploys gitea using plex commons seaweedfs by default', function 
             ],
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
-        '*get secret gitea-admin*' => Process::result(output: '', exitCode: 1),
+        '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -59,7 +59,7 @@ test('git:init never registers an OpenBao static role itself — only secrets:wi
             ],
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
-        '*get secret gitea-admin*' => Process::result(output: '', exitCode: 1),
+        '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
         '*exec *' => Process::result(output: 'success'),
@@ -86,9 +86,9 @@ test('git:init never registers an OpenBao static role itself — only secrets:wi
     Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/'));
 });
 
-test('git:init deploys standalone gitea when --no-plex is passed', function (): void {
+test('git:init deploys standalone forgejo when --no-plex is passed', function (): void {
     Process::fake([
-        '*get secret gitea-admin*' => Process::result(output: '', exitCode: 1),
+        '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
@@ -132,7 +132,7 @@ test('git:init registers itself in the cluster tool registry, including the admi
             ],
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
-        '*get secret gitea-admin*' => Process::result(output: '', exitCode: 1),
+        '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
         // Must come BEFORE '*apply -f *': saveToolRegistry()'s own command
         // pipes into `kubectl apply -f -`, which the broader pattern below

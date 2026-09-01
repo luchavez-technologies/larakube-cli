@@ -199,7 +199,7 @@ class AboutCommand extends Command
         // 6f. OpenBao (cluster-wide, larakube-secrets) — shown only when installed.
         $this->showSecretsAccess($environment, $config);
 
-        // 6g. Gitea (cluster-wide, larakube-shared) — shown only when installed.
+        // 6g. Forgejo (cluster-wide, larakube-shared) — shown only when installed.
         $this->showGitAccess($environment, $config);
 
         // 7. Plex Commons credentials this project joined (read from the env's
@@ -352,7 +352,7 @@ class AboutCommand extends Command
     }
 
     /**
-     * Render the cluster-wide Gitea stack's URL when installed.
+     * Render the cluster-wide Forgejo stack's URL when installed.
      */
     protected function showGitAccess(string $environment, ConfigData $config): void
     {
@@ -363,12 +363,12 @@ class AboutCommand extends Command
         }
 
         $this->newLine();
-        $this->laraKubeInfo('Gitea (Forge & Registry)');
+        $this->laraKubeInfo('Forgejo (Forge & Registry)');
 
         $gitUrl = $access['host'] ? "<fg=blue>https://{$access['host']}</>" : '<fg=gray>host not configured</>';
 
         table(['Component', 'Access'], [
-            ['Gitea Web', $gitUrl],
+            ['Forgejo Web', $gitUrl],
         ]);
     }
 

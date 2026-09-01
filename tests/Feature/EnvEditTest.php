@@ -139,7 +139,7 @@ test('env --edit with an existing registry re-confirms it (default flips to true
             'ghcr' => 'GitHub Container Registry (GHCR)',
             'dockerhub' => 'Docker Hub',
             'gitlab' => 'GitLab Container Registry',
-            'gitea' => 'Gitea Container Registry',
+            'forgejo' => 'Forgejo Container Registry',
         ])
         ->expectsQuestion('Image repository path (optional, e.g. owner/repo)', 'acme/env-edit-test')
         ->expectsConfirmation("Set up the CI/CD deploy workflow for 'staging' now?", 'no')

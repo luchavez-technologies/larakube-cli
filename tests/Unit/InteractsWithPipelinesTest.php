@@ -53,7 +53,7 @@ test('parseWorkflowTrigger resolves triggers from workflow YAML', function (): v
     file_put_contents($tempGitlab, "stages:\n  - deploy\n");
     expect($helper->parseWorkflowTrigger($tempGitlab))->toBe('push');
 
-    // GitHub/Gitea mock files
+    // GitHub/Forgejo mock files
     $tempGha = $temporaryDirectory->path('mock-gha.yml');
 
     // Single string trigger

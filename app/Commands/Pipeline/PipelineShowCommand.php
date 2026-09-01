@@ -49,7 +49,7 @@ class PipelineShowCommand extends Command
             return 1;
         }
 
-        // If multiple matches (e.g. both GitHub and Gitea exist for this env), let the user choose
+        // If multiple matches (e.g. both GitHub and Forgejo exist for this env), let the user choose
         $selected = reset($matches);
         if (count($matches) > 1) {
             $options = [];
@@ -74,7 +74,7 @@ class PipelineShowCommand extends Command
 
         $platformName = match ($selected['platform']) {
             'github' => 'GitHub Actions',
-            'gitea' => 'Gitea Actions',
+            'forgejo' => 'Forgejo Actions',
             'gitlab' => 'GitLab CI/CD',
             default => ucfirst($selected['platform']),
         };
@@ -110,7 +110,7 @@ class PipelineShowCommand extends Command
                 }
             }
         } else {
-            // GitHub / Gitea Actions YAML structure
+            // GitHub / Forgejo Actions YAML structure
             $jobs = $yaml['jobs'] ?? [];
             $this->line('  <fg=yellow;options=bold>Jobs:</>');
 

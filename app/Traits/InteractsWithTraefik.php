@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait InteractsWithTraefik
@@ -124,6 +125,10 @@ trait InteractsWithTraefik
         // host on the developer's global TLD by default, but a .larakube.json
         // hosts[serviceKey] entry can override it — the same map the cloud paths
         // read, so host resolution is data-driven, not Grafana-special-cased.
+        // Resolve the set first, so the quiet path below can report one count
+        // rather than one line per service.
+        $present = [];
+
         foreach (SharedClusterService::cases() as $service) {
             if (! $service->targetsEnvironment('local')) {
                 continue;
@@ -140,6 +145,35 @@ trait InteractsWithTraefik
                 continue;
             }
 
+            $present[] = $service;
+        }
+
+        // These are CLUSTER-wide ingresses, not this project's. For a Laravel app
+        // most of them are at least plausibly related; for a static site none are
+        // — naming Mailpit and Stalwart while bringing up a landing page reads as
+        // `up` touching a dozen unrelated services. They are still reconciled
+        // (skipping would leave them stale for anyone who only runs static
+        // projects), just summarised into a single line.
+        if ($config->framework?->isStaticSpa()) {
+            if ($present !== []) {
+                $count = count($present);
+
+                $this->withSpin(
+                    'Reconciling '.$count.' shared cluster '.Str::plural('ingress', $count).'...',
+                    function () use ($present, $config) {
+                        foreach ($present as $service) {
+                            $this->applySharedService($service, $config->getSharedServiceHost($service, 'local'));
+                        }
+
+                        return true;
+                    },
+                );
+            }
+
+            return;
+        }
+
+        foreach ($present as $service) {
             $this->withSpin($service->reconcileLabel(), function () use ($service, $config) {
                 $this->applySharedService($service, $config->getSharedServiceHost($service, 'local'));
 

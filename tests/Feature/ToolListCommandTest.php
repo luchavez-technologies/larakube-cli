@@ -226,3 +226,98 @@ test('tool:list reports SSO as wired for a CLI-OIDC tool once sso:wire records i
     expect($gitRow)->not->toBeNull()
         ->and($gitRow['sso'])->toBe('wired');
 });
+
+/**
+ * Deployments as they actually appear on a real cluster: a mix of
+ * convention-following names, deliberately unsuffixed components, a headless
+ * controller, and unrelated infrastructure.
+ */
+function toolListRefreshFakes(string $registryJson = ''): void
+{
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: $registryJson),
+        "*get deployment -n 'larakube-shared'*" => Process::result(output: implode("\n", [
+            'notes-outline-notes-luchtech-dev',   // conforms
+            'monitor-loki-monitor-luchtech-dev',  // conforms (was an enum gap)
+            'external-dns-luchtech-dev',          // conforms, but DNS is headless
+            'drive-ocis',                         // no suffix -> skipped
+            'kube-state-metrics',                 // not a tool at all
+        ])),
+        '*get deployment -n*' => Process::result(output: ''),
+        "*get ingress -n 'larakube-shared'*" => Process::result(
+            output: "notes.luchtech.dev\nmonitor.luchtech.dev",
+        ),
+        '*get ingress -n*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+}
+
+/**
+ * Run the refresh and return BOTH streams: Artisan's own output (tables,
+ * $this->line) and Termwind's (laraKubeInfo/laraKubeWarn), which TestCase
+ * otherwise points at a NullOutput so it never reaches Artisan::output().
+ *
+ * @return array{0: string, 1: string}
+ */
+function toolListRefreshRun(): array
+{
+    $termwind = new Symfony\Component\Console\Output\BufferedOutput;
+    Termwind\renderUsing($termwind);
+
+    try {
+        Artisan::call('tool:list local --refresh --dry-run --no-interaction');
+    } finally {
+        Termwind\renderUsing(new Symfony\Component\Console\Output\NullOutput);
+    }
+
+    return [Artisan::output(), $termwind->fetch()];
+}
+
+test('tool:list --refresh discovers only convention-following deployments', function (): void {
+    toolListRefreshFakes();
+    [$output] = toolListRefreshRun();
+
+    // Instance and host are derived independently, then matched by round-tripping
+    // the host back through instanceSlugFromHost() — not guessed.
+    expect($output)->toContain('notes')
+        ->toContain('notes-luchtech-dev')
+        ->toContain('notes.luchtech.dev')
+        // The enum gap that made this invisible is closed.
+        ->toContain('monitor-luchtech-dev');
+});
+
+test('tool:list --refresh skips unsuffixed deployments and reports them as a migration list', function (): void {
+    toolListRefreshFakes();
+    [$output, $termwind] = toolListRefreshRun();
+
+    // drive-ocis carries no recoverable identity, so it is listed for migration
+    // rather than silently registered under a guessed instance.
+    expect($termwind)->toContain('no instance suffix')
+        ->and($output)->toContain('drive-ocis')
+        ->toContain('kube-state-metrics')
+        // ...and never becomes a registry row.
+        ->and($output)->not->toContain('drive-ocis  ');
+});
+
+test('tool:list --refresh excludes headless tools by design, not as a migration failure', function (): void {
+    toolListRefreshFakes();
+    [$output, $termwind] = toolListRefreshRun();
+
+    // ExternalDNS conforms to the convention but has no ingress of its own.
+    // service() === null already models that, so it is reported as headless —
+    // never as a row needing a host, and never as a migration failure.
+    expect($termwind)->toContain('headless')
+        ->toContain('dns')
+        ->and($output)->not->toContain('external-dns');
+});
+
+test('tool:list --refresh --dry-run never writes to the registry', function (): void {
+    toolListRefreshFakes();
+    [, $termwind] = toolListRefreshRun();
+
+    expect($termwind)->toContain('Nothing changed');
+
+    Process::assertNotRan(fn ($process) => str_contains(
+        (string) $process->command, 'create secret generic larakube-tools-registry',
+    ));
+});

@@ -218,7 +218,7 @@ class SsoInitCommand extends Command
             $this->newLine();
         }
 
-        $this->line('  <fg=yellow>Wiring a tool to SSO</> (Gitea, Grafana, NetBird, Vaultwarden, GlitchTip):');
+        $this->line('  <fg=yellow>Wiring a tool to SSO</> (Forgejo, Grafana, NetBird, Vaultwarden, GlitchTip):');
         $this->line('     <fg=blue>larakube sso:wire <tool></>');
         $this->newLine();
         $this->line('  <fg=yellow>Wiring Zitadel outbound email to Stalwart</>:');

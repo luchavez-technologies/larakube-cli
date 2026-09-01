@@ -584,8 +584,8 @@ trait InteractsWithRemoteDeploy
         // separate `cloud:configure --only=ci` run or a public package.
         if ($registry->provider === RegistryProvider::GHCR) {
             $this->ensureGhcrPullSecret($context, $namespace);
-        } elseif ($registry->provider === RegistryProvider::GITEA) {
-            $this->ensureGiteaPullSecret($context, $namespace);
+        } elseif ($registry->provider === RegistryProvider::FORGEJO) {
+            $this->ensureForgejoPullSecret($context, $namespace);
         }
 
         // 4-5. env-sync + apply + rollout THROUGH a namespace-scoped credential.

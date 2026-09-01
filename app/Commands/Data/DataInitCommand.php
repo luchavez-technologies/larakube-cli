@@ -252,7 +252,9 @@ class DataInitCommand extends Command
         } else {
             $this->line("  <fg=gray>Database:</>        <fg=blue>Embedded SQLite</> · PVC <fg=blue>{$pvcName}</>");
         }
-        $this->line("  <fg=gray>Storage:</>         <fg=blue>SeaweedFS S3</> · Bucket <fg=blue>{$bucket}</>");
+        if ($bucket !== null) {
+            $this->line("  <fg=gray>Storage:</>         <fg=blue>SeaweedFS S3</> · Bucket <fg=blue>{$bucket}</>");
+        }
         $this->newLine();
 
         return 0;

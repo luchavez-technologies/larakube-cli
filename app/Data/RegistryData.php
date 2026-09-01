@@ -24,14 +24,14 @@ class RegistryData extends Data
          */
         public ?string $image = null,
         /**
-         * The registry host, e.g. for custom Gitea registries.
+         * The registry host, e.g. for custom Forgejo registries.
          */
         public ?string $host = null,
     ) {}
 
     public function getRegistryHost(): string
     {
-        if ($this->provider === RegistryProvider::GITEA && $this->host) {
+        if ($this->provider === RegistryProvider::FORGEJO && $this->host) {
             return $this->host;
         }
 

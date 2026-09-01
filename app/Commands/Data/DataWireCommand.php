@@ -54,12 +54,23 @@ class DataWireCommand extends Command
         $dataUrl = "https://{$host}";
 
         $engineKey = strtoupper($engine);
-        $envVars = [
-            "VITE_{$engineKey}_URL" => $dataUrl,
-            "PUBLIC_{$engineKey}_URL" => $dataUrl,
-            "NEXT_PUBLIC_{$engineKey}_URL" => $dataUrl,
-            "ASTRO_{$engineKey}_URL" => $dataUrl,
-        ];
+
+        // Only emit what this framework's bundle can actually read. Writing all
+        // four prefixes unconditionally left three dead variables in every
+        // project. A directory with no blueprint is the one case where we
+        // genuinely cannot tell, so it still gets all of them.
+        $prefixes = $this->getProjectConfig($projectPath)?->framework?->publicEnvPrefixes()
+            ?? ['VITE_', 'PUBLIC_', 'NEXT_PUBLIC_', 'ASTRO_'];
+
+        $envVars = [];
+        foreach ($prefixes as $prefix) {
+            $envVars["{$prefix}{$engineKey}_URL"] = $dataUrl;
+        }
+
+        // Always the bare name too: a server-rendered framework reads the
+        // environment directly and has no browser-exposure prefix, so without
+        // this it would receive nothing at all.
+        $envVars["{$engineKey}_URL"] = $dataUrl;
 
         $envFileName = $env === 'local' ? '.env' : ".env.{$env}";
         $envFilePath = "{$projectPath}/{$envFileName}";
@@ -68,7 +79,23 @@ class DataWireCommand extends Command
             $envFilePath = "{$projectPath}/.env";
         }
 
+        // syncEnvFile() returns early when the local .env is absent, so on a
+        // project that has never had one — a fresh SPA, which needs no .env
+        // until it has a backend — this command used to print "wired" and write
+        // nothing at all. Wiring a URL into .env IS the whole job here, so
+        // creating the file is the correct move rather than a silent no-op.
+        if (! file_exists($envFilePath)) {
+            file_put_contents($envFilePath, '');
+        }
+
         $this->syncEnvFile($projectPath, $envVars, false, $env);
+
+        // Report what actually landed, never an unverified success.
+        if (! str_contains((string) file_get_contents($envFilePath), (string) array_key_first($envVars))) {
+            $this->laraKubeError('Could not write to '.basename($envFilePath).' — is it locked in .larakube.json?');
+
+            return 1;
+        }
 
         $engineLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
 
@@ -76,6 +103,9 @@ class DataWireCommand extends Command
         $this->laraKubeInfo("✅ Wired {$engineLabel} API URL into ".basename($envFilePath));
         $this->newLine();
         $this->line("  <fg=gray>API URL:</>  <fg=blue>{$dataUrl}</>");
+        foreach (array_keys($envVars) as $key) {
+            $this->line("  <fg=gray>Variable:</> <fg=blue>{$key}</>");
+        }
         $this->newLine();
 
         return 0;

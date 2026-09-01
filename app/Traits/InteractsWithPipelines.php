@@ -27,13 +27,13 @@ trait InteractsWithPipelines
             }
         }
 
-        // Gitea Actions
-        $gtDir = $dirReal.'/.gitea/workflows';
+        // Forgejo Actions
+        $gtDir = $dirReal.'/.forgejo/workflows';
         if (is_dir($gtDir)) {
             foreach (glob("{$gtDir}/larakube-deploy-*.yml") as $file) {
                 $fileReal = realpath($file) ?: $file;
                 $workflows[] = [
-                    'platform' => 'gitea',
+                    'platform' => 'forgejo',
                     'file' => str_replace($dirReal.'/', '', $fileReal),
                     'env' => $this->parseWorkflowEnv(basename($fileReal)) ?? 'unknown',
                 ];

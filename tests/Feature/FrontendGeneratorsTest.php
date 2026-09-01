@@ -41,29 +41,71 @@ test('docs:new command has template and typescript options', function (): void {
         ->and($definition->hasOption('typescript'))->toBeTrue();
 });
 
-test('vite:new scaffolds project and generates .larakube.json blueprint', function (): void {
+test('vite:new scaffolds a project with a complete, deployable blueprint', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
     $oldCwd = getcwd();
 
     try {
         Process::fake([
+            // create-vite now runs inside Node rather than on the host, so the
+            // toolchain matches the dev pod's and no local Node is required.
             '*create-vite*' => function ($process) use ($tempDir) {
                 mkdir("{$tempDir}/my-vite-app", 0755, true);
+                file_put_contents(
+                    "{$tempDir}/my-vite-app/vite.config.ts",
+                    "import { defineConfig } from 'vite'\n\nexport default defineConfig({\n  plugins: [],\n})\n",
+                );
+                // create-vite emits one, and hardenGitIgnore() no-ops without it.
+                file_put_contents("{$tempDir}/my-vite-app/.gitignore", "node_modules\ndist\n");
 
                 return Process::result(output: 'Scaffolded');
             },
+            '*docker pull*' => Process::result(output: 'pulled'),
+            '*chown*' => Process::result(output: ''),
         ]);
 
         chdir($tempDir);
 
-        $this->artisan('vite:new my-vite-app --template=react --ts')
-            ->assertExitCode(0)
-            ->expectsOutputToContain('Scaffolding complete! Created Vite (react-ts) app in my-vite-app/');
+        $this->artisan('vite:new my-vite-app --template=react --ts --no-interaction')
+            ->assertExitCode(0);
 
-        expect(file_exists("{$tempDir}/my-vite-app/.larakube.json"))->toBeTrue();
-        $config = ConfigData::loadFromFile("{$tempDir}/my-vite-app");
+        $project = "{$tempDir}/my-vite-app";
+
+        expect(file_exists("{$project}/.larakube.json"))->toBeTrue();
+        $config = ConfigData::loadFromFile($project);
         expect($config->framework->value)->toBe('vite');
+
+        // The whole point of the rewrite: infrastructure is actually generated.
+        // Previously vite:new never called orchestrateProjectScaffolding(), so
+        // .larakube.json was the only artifact and nothing was deployable.
+        expect("{$project}/.infrastructure/k8s/overlays/local")->toBeDirectory()
+            ->and(file_exists("{$project}/.infrastructure/k8s/overlays/local/kustomization.yaml"))->toBeTrue()
+            ->and(file_exists("{$project}/.infrastructure/k8s/overlays/local/dev-server.yaml"))->toBeTrue();
+
+        // A static site has no PHP image; rendering docker.php would fatal on a
+        // null ServerVariation, so it must not be written at all.
+        expect(file_exists("{$project}/Dockerfile.php"))->toBeFalse();
+
+        // The dev-server config must declare the proxied host or Vite 6+ blocks
+        // every request coming through Traefik.
+        expect(file_get_contents("{$project}/vite.config.ts"))
+            ->toContain('allowedHosts')
+            ->toContain('usePolling: true');
+
+        // Regression: skipping the whole Dockerfile step for static sites also
+        // skipped hardenGitIgnore(), leaving .infrastructure/ — which holds the
+        // local TLS PRIVATE KEY — committable.
+        $gitignore = file_get_contents("{$project}/.gitignore");
+        expect($gitignore)->toContain('.infrastructure/traefik/certificates')
+            ->and($gitignore)->toContain('.infrastructure/k8s/overlays/local');
+
+        // A landing page has no backend: nothing may imply PocketBase exists.
+        if (file_exists("{$project}/.env")) {
+            expect(file_get_contents("{$project}/.env"))
+                ->not->toContain('POCKETBASE')
+                ->not->toContain('dev.test');
+        }
     } finally {
         chdir($oldCwd);
         $temporaryDirectory->delete();
@@ -128,7 +170,7 @@ test('docs:new scaffolds project and generates .larakube.json blueprint', functi
     }
 });
 
-test('generateK8sManifests renders spa-s3-ingress for SPA frameworks', function (): void {
+test('generateK8sManifests builds a complete, self-contained tree for a static SPA', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
 
@@ -139,6 +181,7 @@ test('generateK8sManifests renders spa-s3-ingress for SPA frameworks', function 
         framework: AppFramework::VITE,
         frontend: null,
     );
+    $config->setEnvironments(['local', 'production']);
 
     $traitHolder = new class
     {
@@ -152,11 +195,26 @@ test('generateK8sManifests renders spa-s3-ingress for SPA frameworks', function 
 
     $traitHolder->testGenerate($config);
 
-    $ingressFile = "{$tempDir}/.infrastructure/k8s/spa-ingress.yaml";
-    expect(file_exists($ingressFile))->toBeTrue();
-    $content = file_get_contents($ingressFile);
-    expect($content)->toContain('spa-test-spa-ingress')
-        ->and($content)->toContain('seaweedfs-s3');
+    $k8s = "{$tempDir}/.infrastructure/k8s";
+
+    // The regression that made `larakube up` unusable: the three negative
+    // isStaticSpa() guards skipped every stub, so this file was never written
+    // even though UpCommand's is_dir() check passed on the mkdir'd directory
+    // and it then ran `kustomize build` against nothing.
+    expect(file_exists("{$k8s}/overlays/local/kustomization.yaml"))->toBeTrue()
+        ->and(file_exists("{$k8s}/overlays/local/dev-server.yaml"))->toBeTrue()
+        ->and(file_exists("{$k8s}/overlays/production/kustomization.yaml"))->toBeTrue()
+        ->and(file_exists("{$k8s}/overlays/production/caddy.yaml"))->toBeTrue()
+        ->and(file_exists("{$k8s}/overlays/production/namespace.yaml"))->toBeTrue();
+
+    // No shared base for static sites — local and cloud share no workload.
+    expect(file_exists("{$k8s}/base/laravel.yaml"))->toBeFalse();
+
+    expect(file_get_contents("{$k8s}/overlays/local/dev-server.yaml"))
+        ->toContain('/app/node_modules')
+        ->and(file_get_contents("{$k8s}/overlays/production/caddy.yaml"))
+        ->toContain('caddy:2.11.2-alpine')
+        ->toContain('spa-test-site');
 
     $temporaryDirectory->delete();
 });

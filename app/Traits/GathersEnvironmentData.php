@@ -191,7 +191,7 @@ trait GathersEnvironmentData
             RegistryProvider::GHCR->value => RegistryProvider::GHCR->label(),
             RegistryProvider::DOCKERHUB->value => RegistryProvider::DOCKERHUB->label(),
             RegistryProvider::GITLAB->value => RegistryProvider::GITLAB->label(),
-            RegistryProvider::GITEA->value => RegistryProvider::GITEA->label(),
+            RegistryProvider::FORGEJO->value => RegistryProvider::FORGEJO->label(),
         ];
 
         // Auto-detect CI platform to pre-select native registry
@@ -199,13 +199,13 @@ trait GathersEnvironmentData
         $remoteUrl = trim(Process::run('git remote get-url origin')->output());
         if (str_contains($remoteUrl, 'gitlab.com')) {
             $detectedPlatform = 'gitlab';
-        } elseif (str_contains($remoteUrl, 'gitea') || str_contains($remoteUrl, 'git.')) {
-            $detectedPlatform = 'gitea';
+        } elseif (str_contains($remoteUrl, 'forgejo') || str_contains($remoteUrl, 'git.')) {
+            $detectedPlatform = 'forgejo';
         }
 
         $defaultRegistry = match ($detectedPlatform) {
             'gitlab' => RegistryProvider::GITLAB->value,
-            'gitea' => RegistryProvider::GITEA->value,
+            'forgejo' => RegistryProvider::FORGEJO->value,
             default => RegistryProvider::GHCR->value,
         };
 
@@ -272,15 +272,15 @@ trait GathersEnvironmentData
             );
         }
 
-        $giteaHost = null;
-        if ($registryProvider === RegistryProvider::GITEA) {
+        $forgejoHost = null;
+        if ($registryProvider === RegistryProvider::FORGEJO) {
             $envObj = $envData ?? $config->getEnvironment($envName);
-            $giteaHost = $envObj?->hosts[SharedClusterService::GITEA->value] ?? null;
-            if (! $giteaHost) {
+            $forgejoHost = $envObj?->hosts[SharedClusterService::FORGEJO->value] ?? null;
+            if (! $forgejoHost) {
                 if ($envName === 'local') {
-                    $giteaHost = SharedClusterService::GITEA->hostFor(GlobalConfigData::load()->getLocalTld());
+                    $forgejoHost = SharedClusterService::FORGEJO->hostFor(GlobalConfigData::load()->getLocalTld());
                 } else {
-                    $giteaHost = $config->getSharedServiceHost(SharedClusterService::GITEA, $envName);
+                    $forgejoHost = $config->getSharedServiceHost(SharedClusterService::FORGEJO, $envName);
                 }
             }
         }
@@ -288,7 +288,7 @@ trait GathersEnvironmentData
         return new RegistryData(
             provider: $registryProvider,
             image: trim($image) !== '' ? trim($image) : null,
-            host: $giteaHost,
+            host: $forgejoHost,
         );
     }
 

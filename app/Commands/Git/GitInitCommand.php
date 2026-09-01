@@ -72,7 +72,7 @@ class GitInitCommand extends Command
         $ns = $this->gitNamespace();
         $noPlex = (bool) $this->option('no-plex');
 
-        $host = $this->resolveToolHost(SharedClusterService::GITEA, ClusterTool::GIT, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::FORGEJO, ClusterTool::GIT, $env, $kubectl);
         // Every tool's instance identifier is a real, host-derived slug — Git
         // included, even though it's an architectural singleton (Forgejo's
         // SSH LoadBalancer binds a fixed port, so a genuine second instance is
@@ -162,7 +162,7 @@ class GitInitCommand extends Command
                 return 1;
             }
 
-            // Without this Gitea keeps sessions in files on its PVC and the cache
+            // Without this Forgejo keeps sessions in files on its PVC and the cache
             // in memory, so every pod restart signs everyone out.
             $redisIndex = $this->allocateCommonsRedisIndex($tenant);
             if ($redisIndex === null) {
@@ -214,7 +214,7 @@ class GitInitCommand extends Command
             return 1;
         }
 
-        // 1. Initial deployment with Gitea Core only (runner token placeholder)
+        // 1. Initial deployment with Forgejo Core only (runner token placeholder)
         $manifest = view('k8s.git.forgejo', [
             'host' => $host,
             'instance' => $instance,
@@ -396,7 +396,7 @@ class GitInitCommand extends Command
         // The forgejo-ssh Service is a LoadBalancer on 2222, but both the cloud
         // firewall and the host UFW default-deny it — without this, `git clone
         // ssh://…` hangs against a Service that looks perfectly healthy.
-        $this->openToolPorts(SharedClusterService::GITEA, $env);
+        $this->openToolPorts(SharedClusterService::FORGEJO, $env);
 
         // Forgejo never registered itself here — the only registry write it
         // ever got was an incidental side effect of resolveToolBranding()

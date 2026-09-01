@@ -37,7 +37,7 @@ data:
   db-password: {{ base64_encode($dbPassword ?? '') }}
   registry-token: {{ base64_encode($registryToken ?? '') }}
   {{-- Forgejo Actions uses OFFLINE registration: a 40-char hex shared secret
-       (first 16 chars become the runner UUID), not Gitea's registration token. --}}
+       (first 16 chars become the runner UUID), not Forgejo's registration token. --}}
   runner-secret: {{ base64_encode($runnerSecret ?? 'pending') }}
   oauth-jwt-secret: {{ base64_encode($oauthJwtSecret ?? '') }}
   {{-- Long-lived, NOT regenerated per run. SECRET_KEY in particular encrypts
