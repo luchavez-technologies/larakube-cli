@@ -60,7 +60,7 @@ test('sso:wire errors when Zitadel is not installed', function (): void {
         '*get deployment sso-zitadel*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(1)
         ->expectsOutputToContain('Zitadel is not installed');
 });
@@ -121,7 +121,7 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
             CreateProjectRoleRequest::class => MockResponse::make([]),
         ]);
 
-        $this->artisan('sso:wire', ['environment' => 'production', '--tool' => 'dashboard', '--no-interaction' => true])
+        $this->artisan('sso:wire', ['environment' => 'production', '--context' => 'ctx', '--tool' => 'dashboard', '--no-interaction' => true])
             ->assertExitCode(0)
             ->doesntExpectOutputToContain('No host is configured')
             ->expectsOutputToContain('wired to Zitadel SSO');
@@ -162,7 +162,7 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
         ->expectsOutputToContain('Registering Monitoring Stack (Grafana + Loki + Prometheus) as an OIDC client in Zitadel')
         ->expectsOutputToContain('wired to Zitadel SSO');
@@ -210,7 +210,7 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--sso-only' => true, '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'monitor', '--sso-only' => true, '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic grafana-oidc')
@@ -253,7 +253,7 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/')
@@ -669,7 +669,7 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
         ->expectsOutputToContain('Nobody, including you, can SSO into Monitoring Stack (Grafana + Loki + Prometheus) until then');
 
@@ -698,7 +698,7 @@ test('sso:wire aborts before registering an OIDC client if role-gating setup fai
         GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(1)
         ->expectsOutputToContain('Could not set up role-gated access');
 
@@ -816,7 +816,7 @@ test('sso:wire gates Outline behind Zitadel roles — the actual tool from the l
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'notes', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'notes', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
@@ -866,7 +866,7 @@ test('sso:wire reuses an already-registered OIDC client', function (): void {
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
         ->expectsOutputToContain("Reusing Monitoring Stack (Grafana + Loki + Prometheus)'s existing Zitadel OIDC client")
         ->expectsOutputToContain('wired to Zitadel SSO');
@@ -1060,7 +1060,7 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
         ->expectsOutputToContain('Registering Headless CMS & Data API (PocketBase or Directus) as an OIDC client in Zitadel')
         ->expectsOutputToContain('Headless CMS & Data API (PocketBase or Directus) is wired to Zitadel SSO');
@@ -1111,7 +1111,7 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
         ]));
         chdir($dir);
 
-        $this->artisan('sso:wire', ['environment' => 'production', '--tool' => 'data', '--engine' => 'pocketbase', '--no-interaction' => true])
+        $this->artisan('sso:wire', ['environment' => 'production', '--context' => 'ctx', '--tool' => 'data', '--engine' => 'pocketbase', '--no-interaction' => true])
             ->assertExitCode(0)
             ->expectsOutputToContain('Registering Headless CMS & Data API (PocketBase or Directus) as an OIDC client in Zitadel')
             ->expectsOutputToContain('Headless CMS & Data API (PocketBase or Directus) is wired to Zitadel SSO');
@@ -1138,7 +1138,7 @@ test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', fu
 
     Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);
 
-    $this->artisan('sso:unwire', ['--tool' => 'monitor', '--no-interaction' => true])
+    $this->artisan('sso:unwire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 
@@ -1172,7 +1172,7 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
         ->expectsOutputToContain('is wired to Zitadel SSO');
 

@@ -1545,6 +1545,16 @@ class ConfigData extends Data
 
     public function getAllPublicEnvironmentVariables(string $environment = 'local'): array
     {
+        // A static site's environment is ONLY what its bundler compiles in —
+        // VITE_/PUBLIC_/NEXT_PUBLIC_ vars, written by data:wire. Everything
+        // below is Laravel's: APP_URL, ASSET_URL, MAIL_*, and the APP_ENV /
+        // APP_DEBUG safeguards that exist because Laravel keys isProduction()
+        // on them. None of it is read by Vite, by Caddy, or by the bundle, so
+        // emitting it into .env.{env} is noise that looks like configuration.
+        if ($this->framework?->isStaticSpa()) {
+            return [];
+        }
+
         $envs = $this->serverVariation?->getPublicEnvironmentVariables($this, $environment) ?? [];
         $envs = array_merge([
             'APP_URL' => $this->getAppUrl($environment),
@@ -1591,6 +1601,14 @@ class ConfigData extends Data
 
     public function getAllSecretEnvironmentVariables(string $environment = 'local'): array
     {
+        // Emphatically nothing for a static site. There is no server to read a
+        // secret, and a bundler that later gained a VITE_-prefixed alias would
+        // compile it straight into a public asset — so the safe number of
+        // secrets in a static project's .env is zero.
+        if ($this->framework?->isStaticSpa()) {
+            return [];
+        }
+
         $envs = $this->serverVariation?->getSecretEnvironmentVariables($this, $environment) ?? [];
 
         if ($environment === 'local') {

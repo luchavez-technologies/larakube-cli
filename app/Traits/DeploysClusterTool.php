@@ -2,9 +2,15 @@
 
 namespace App\Traits;
 
+use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
+use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
+
+use function Laravel\Prompts\select;
+
+use RuntimeException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 
@@ -49,7 +55,10 @@ trait DeploysClusterTool
     protected function resolveToolContext(string $env, ?string $explicitContext = null): ?string
     {
         $explicitContext = $explicitContext !== null && $explicitContext !== '' ? $explicitContext : null;
+
         if ($explicitContext !== null) {
+            $this->rememberEnvironmentContext($env, $explicitContext);
+
             return $explicitContext;
         }
 
@@ -57,9 +66,110 @@ trait DeploysClusterTool
             return null;
         }
 
-        $config = $this->getProjectConfig(getcwd());
+        // 1. The project blueprint, when we happen to be standing in one.
+        //    Deliberately NOT environmentContextOrCurrent(): that falls back to
+        //    the CURRENT kube-context, which is how `data:init production`
+        //    silently deployed a production tool — real public host and all —
+        //    onto a local orbstack cluster and reported success.
+        $cloud = $this->getProjectConfig(getcwd())?->getCloud($env);
+        $fromProject = $cloud?->context ?: ($cloud?->ip ? 'larakube-'.$cloud->ip : null);
 
-        return $config ? $this->environmentContextOrCurrent($config, $env) : null;
+        if ($fromProject !== null) {
+            $this->rememberEnvironmentContext($env, $fromProject);
+
+            return $fromProject;
+        }
+
+        // 2. The machine-wide map. Cluster tools are cluster-scoped and often
+        //    run with no project at all, so this is the answer that does not
+        //    depend on which directory you are standing in.
+        if ($remembered = $this->globalEnvironmentContext($env)) {
+            return $remembered;
+        }
+
+        // 3. Ask — never guess.
+        return $this->askForEnvironmentContext($env);
+    }
+
+    /** Machine-wide recorded context for an environment. Its own method so a
+     * test can substitute it without touching the operator's real config file.
+     */
+    protected function globalEnvironmentContext(string $env): ?string
+    {
+        return GlobalConfigData::load()->getEnvironmentContext($env);
+    }
+
+    /**
+     * Persist env -> context machine-wide, so the next tool install resolves it
+     * from any directory, including none.
+     */
+    protected function rememberEnvironmentContext(string $env, string $context): void
+    {
+        if ($env === 'local') {
+            return;
+        }
+
+        $global = GlobalConfigData::load();
+
+        if ($global->getEnvironmentContext($env) === $context) {
+            return;
+        }
+
+        $global->setEnvironmentContext($env, $context)->save();
+    }
+
+    /**
+     * Which cluster is this environment? Asked, not assumed — a wrong answer
+     * here deploys to the wrong cluster and still prints a success message.
+     */
+    protected function askForEnvironmentContext(string $env): ?string
+    {
+        $contexts = $this->kubeContextChoices();
+
+        if ($contexts === [] || ! $this->canPromptForContext()) {
+            throw new RuntimeException(
+                "No kube-context recorded for '{$env}'. Pass --context=<kube-context> so this "
+                .'targets the right cluster — refusing to fall back to the current context, which '
+                .'would deploy a cloud tool onto whatever cluster kubectl happens to point at.',
+            );
+        }
+
+        $choice = select(
+            label: "Which cluster is '{$env}'?",
+            options: array_combine($contexts, $contexts),
+            hint: 'Recorded machine-wide, so tools resolve it from any directory.',
+        );
+
+        $this->rememberEnvironmentContext($env, $choice);
+
+        return $choice;
+    }
+
+    /**
+     * Self-contained, unlike cannotPrompt() — that lives in
+     * RequiresFlagsWhenNonInteractive, which not every consumer of this trait
+     * composes (SsoWireCommand does not), so calling it here is a fatal on
+     * exactly the commands least likely to be exercised interactively.
+     */
+    protected function canPromptForContext(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return false;
+        }
+
+        if ($this instanceof Command && $this->option('no-interaction')) {
+            return false;
+        }
+
+        return stream_isatty(STDIN);
+    }
+
+    /** @return list<string> */
+    protected function kubeContextChoices(): array
+    {
+        $lines = explode("\n", Process::run('kubectl config get-contexts -o name')->output());
+
+        return array_values(array_filter(array_map('trim', $lines)));
     }
 
     /**

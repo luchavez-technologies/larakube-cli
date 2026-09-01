@@ -35,7 +35,7 @@ test('data:init uses engine label override when prompting for host', function ()
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init production --domain=pocket.luchtech.dev --engine=pocketbase --admin-email=admin@example.com --force')
+    $this->artisan('data:init production --context=ctx --domain=pocket.luchtech.dev --engine=pocketbase --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying PocketBase manifests...')
         ->expectsOutputToContain('PocketBase Data / Headless CMS stack is live.');
@@ -119,7 +119,7 @@ test('data:init without --domain errors instead of guessing when an instance is 
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init production --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
+    $this->artisan('data:init production --context=ctx --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
         ->run();
 })->throws(RuntimeException::class, 'pass --domain=<host>');
 
@@ -153,7 +153,7 @@ test('data:init --domain re-targets an already-registered instance in place, nev
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init production --domain=pocket.luchtech.dev --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
+    $this->artisan('data:init production --context=ctx --domain=pocket.luchtech.dev --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying PocketBase manifests...');
 

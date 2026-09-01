@@ -7,6 +7,7 @@ use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromptsForHosts;
+use App\Traits\ResolvesEnvironmentContext;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
@@ -15,7 +16,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class EnvCommand extends Command
 {
-    use GathersEnvironmentData, GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput, PromptsForHosts;
+    use GathersEnvironmentData, GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput, PromptsForHosts, ResolvesEnvironmentContext;
 
     /**
      * The name and signature of the console command.
@@ -82,6 +83,16 @@ class EnvCommand extends Command
                 $envData->offline = true;
             }
             $config->addEnvironment($envName, $envData);
+
+            // Ask which cluster this environment IS, here — at the moment it is
+            // created — rather than two commands later in cloud:configure. The
+            // target is already per-environment state (EnvironmentData.cloud),
+            // so this is where it belongs, and it means every later command
+            // (including cluster tools) has a recorded answer instead of
+            // falling back to whatever kube-context happens to be current.
+            if ($envName !== 'local') {
+                $config = $this->promptCloudTarget($config, $envName, $projectPath);
+            }
         } elseif ($this->option('edit')) {
             $this->laraKubeInfo("Editing environment '{$envName}'...");
             $fresh = $this->gatherEnvironmentData($config, $envName);

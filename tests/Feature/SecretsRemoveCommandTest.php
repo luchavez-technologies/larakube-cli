@@ -13,7 +13,7 @@ test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the sha
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('secrets:remove', ['environment' => 'production', '--force' => true, '--no-interaction' => true])
+    $this->artisan('secrets:remove', ['environment' => 'production', '--context' => 'ctx', '--force' => true, '--no-interaction' => true])
         ->assertExitCode(0);
 
     // The real, single Deployment eso.blade.php actually creates.
@@ -46,7 +46,7 @@ test('secrets:remove --purge deletes the PVC and bootstrap secret', function ():
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('secrets:remove', ['environment' => 'production', '--force' => true, '--purge' => true, '--no-interaction' => true])
+    $this->artisan('secrets:remove', ['environment' => 'production', '--context' => 'ctx', '--force' => true, '--purge' => true, '--no-interaction' => true])
         ->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete pvc openbao-data'));

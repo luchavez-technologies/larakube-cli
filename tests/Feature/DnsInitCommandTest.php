@@ -64,14 +64,14 @@ test('dns:init refuses the local environment', function (): void {
 test('dns:init requires a token before anything else', function (): void {
     Process::fake(dnsFakes());
 
-    $this->artisan('dns:init prod --no-interaction --force')->run();
+    $this->artisan('dns:init prod --context=ctx --no-interaction --force')->run();
 })->throws(MissingFlagException::class, 'Missing required --cloudflare-token');
 
 test('dns:init manages the sole zone the token can see when --zone= is omitted', function (): void {
     Process::fake(dnsFakes());
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('dns:init prod --cloudflare-token=t --no-interaction --force')
+    $this->artisan('dns:init prod --context=ctx --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('ExternalDNS is managing example.com');
 });
@@ -83,7 +83,7 @@ test('dns:init requires --group= when the token covers multiple zones and none i
     Process::fake(dnsFakes());
     dnsZonesSaloonFake(['ourfridays.com', 'larakube.app']);
 
-    $this->artisan('dns:init prod --cloudflare-token=t --no-interaction --force')->run();
+    $this->artisan('dns:init prod --context=ctx --cloudflare-token=t --no-interaction --force')->run();
 })->throws(MissingFlagException::class, 'Missing required --group');
 
 test('dns:init confines the instance to one zone and gives it a cluster-unique owner', function (): void {
@@ -101,7 +101,7 @@ test('dns:init confines the instance to one zone and gives it a cluster-unique o
     ]));
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('dns:init prod --zone=example.com --cloudflare-token=t --no-interaction --force')
+    $this->artisan('dns:init prod --context=ctx --zone=example.com --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(0);
 
     expect($applied)->not->toBeNull('the ExternalDNS manifest was never applied')
@@ -124,7 +124,7 @@ test('dns:init manages several zones sharing one token under one named group', f
     ]));
     dnsZonesSaloonFake(['ourfridays.com', 'larakube.app']);
 
-    $this->artisan('dns:init prod --group=shared --cloudflare-token=t --no-interaction --force')
+    $this->artisan('dns:init prod --context=ctx --group=shared --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('ExternalDNS is managing ourfridays.com, larakube.app')
         ->expectsOutputToContain('external-dns-shared');
@@ -150,7 +150,7 @@ test('dns:init --zone= narrows discovery to a subset of what the token can see',
     ]));
     dnsZonesSaloonFake(['ourfridays.com', 'larakube.app', 'nexa.site']);
 
-    $this->artisan('dns:init prod --group=shared --zone=ourfridays.com --zone=larakube.app --cloudflare-token=t --no-interaction --force')
+    $this->artisan('dns:init prod --context=ctx --group=shared --zone=ourfridays.com --zone=larakube.app --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(0);
 
     expect($applied)->toContain('--domain-filter=ourfridays.com')
@@ -162,7 +162,7 @@ test('dns:init refuses when --zone= names something the token cannot see', funct
     Process::fake(dnsFakes());
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('dns:init prod --zone=other.example --cloudflare-token=t --no-interaction --force')
+    $this->artisan('dns:init prod --context=ctx --zone=other.example --cloudflare-token=t --no-interaction --force')
         ->expectsOutputToContain("can't see: other.example")
         ->assertExitCode(1);
 });
@@ -180,7 +180,7 @@ test('dns:init refuses when a zone in scope is already managed under a different
     ]));
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('dns:init prod --group=different-name --zone=example.com --cloudflare-token=t --no-interaction --force')
+    $this->artisan('dns:init prod --context=ctx --group=different-name --zone=example.com --cloudflare-token=t --no-interaction --force')
         ->expectsOutputToContain("already managed by 'external-dns-example-com'")
         ->assertExitCode(1);
 });
@@ -205,7 +205,7 @@ test('two clusters managing the same zone get different owner ids', function ():
         ]));
         dnsZonesSaloonFake(['example.com']);
 
-        $this->artisan('dns:init prod --zone=example.com --cloudflare-token=t --no-interaction --force')
+        $this->artisan('dns:init prod --context=ctx --zone=example.com --cloudflare-token=t --no-interaction --force')
             ->assertExitCode(0);
 
         preg_match('/--txt-owner-id=(\S+)/', (string) $applied, $m);
@@ -225,7 +225,7 @@ test('dns:init refuses to deploy when it cannot establish a cluster identity', f
     ]));
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('dns:init prod --zone=example.com --cloudflare-token=t --no-interaction --force')
+    $this->artisan('dns:init prod --context=ctx --zone=example.com --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(1);
 });
 
@@ -241,7 +241,7 @@ test('the token secret is named after the resolved group', function (): void {
     ]));
     dnsZonesSaloonFake(['other.co.uk']);
 
-    $this->artisan('dns:init prod --zone=other.co.uk --cloudflare-token=second-account-token --no-interaction --force')
+    $this->artisan('dns:init prod --context=ctx --zone=other.co.uk --cloudflare-token=second-account-token --no-interaction --force')
         ->assertExitCode(0);
 
     expect($secretCmd)->toContain('cloudflare-token-other-co-uk')
@@ -254,7 +254,7 @@ test('dns:remove is a no-op when the cluster manages nothing', function (): void
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('dns:remove prod --force')
+    $this->artisan('dns:remove prod --context=ctx --force')
         ->expectsOutputToContain('No ExternalDNS instances')
         ->assertExitCode(0);
 });
@@ -280,7 +280,7 @@ test('dns:remove warns that existing DNS records survive removal', function (): 
 
     // Asserted on the post-removal notice, not the confirmation block —
     // --force skips printing the confirmation entirely.
-    $this->artisan('dns:remove prod --zone=example.com --force')
+    $this->artisan('dns:remove prod --context=ctx --zone=example.com --force')
         ->expectsOutputToContain('still exist in Cloudflare')
         ->assertExitCode(0);
 });
@@ -298,7 +298,7 @@ test('dns:remove rejects a zone this cluster does not manage', function (): void
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('dns:remove prod --zone=nope.com --force')
+    $this->artisan('dns:remove prod --context=ctx --zone=nope.com --force')
         ->expectsOutputToContain('is not managed by this cluster')
         ->assertExitCode(1);
 });
@@ -321,7 +321,7 @@ test('dns:remove refuses a bare --zone= that is part of a multi-zone group', fun
     // preserve every character past a certain point) — check the start of
     // the message and the behavior (nothing got deleted) instead of the
     // full text.
-    $this->artisan('dns:remove prod --zone=ourfridays.com --force')
+    $this->artisan('dns:remove prod --context=ctx --zone=ourfridays.com --force')
         ->expectsOutputToContain("is part of the 'shared' instance")
         ->assertExitCode(1);
 
@@ -348,7 +348,7 @@ test('dns:remove --group= removes every zone in a multi-zone instance', function
     // Checking behavior (the shared instance's resources actually got
     // deleted, in one pass, not per-zone) rather than the full printed
     // summary line — see the comment on the refusal test above for why.
-    $this->artisan('dns:remove prod --group=shared --force')
+    $this->artisan('dns:remove prod --context=ctx --group=shared --force')
         ->expectsOutputToContain('ExternalDNS removed for')
         ->assertExitCode(0);
 
@@ -376,7 +376,7 @@ test('dns:list surfaces the owner id, which is how zone conflicts are diagnosed'
 
     // Via --json: the table renderer does not write through the console output
     // capture, and the owner id is the value that actually matters here.
-    $exit = Artisan::call('dns:list prod --json');
+    $exit = Artisan::call('dns:list prod --context=ctx --json');
     $payload = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0)
@@ -401,7 +401,7 @@ test('dns:list shows one row per zone for a multi-zone group, sharing the same i
         '*' => Process::result(output: ''),
     ]);
 
-    $exit = Artisan::call('dns:list prod --json');
+    $exit = Artisan::call('dns:list prod --context=ctx --json');
     $payload = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0)
@@ -424,7 +424,7 @@ test('dns:init reuses the stored Cloudflare token instead of demanding it again'
 
     dnsZonesSaloonFake(['luchtech.dev']);
 
-    $this->artisan('dns:init prod --no-interaction --force')
+    $this->artisan('dns:init prod --context=ctx --no-interaction --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Reusing the stored Cloudflare token');
 });
