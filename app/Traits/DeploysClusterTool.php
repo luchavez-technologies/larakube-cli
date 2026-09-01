@@ -109,6 +109,25 @@ trait DeploysClusterTool
         return $cloud?->context ?: ($cloud?->ip ? 'larakube-'.$cloud->ip : null);
     }
 
+    /**
+     * Self-contained, unlike cannotPrompt() — that lives in
+     * RequiresFlagsWhenNonInteractive, which not every consumer of this trait
+     * composes (SsoWireCommand does not), so calling it here is fatal on
+     * exactly the commands least likely to be exercised interactively.
+     */
+    protected function canPromptForContext(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return false;
+        }
+
+        if ($this instanceof Command && $this->option('no-interaction')) {
+            return false;
+        }
+
+        return stream_isatty(STDIN);
+    }
+
     /** @return list<string> */
     protected function kubeContextChoices(): array
     {
