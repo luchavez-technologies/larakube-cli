@@ -329,11 +329,24 @@ trait GeneratesProjectInfrastructure
             '.infrastructure/k8s/.larakube-sigs.json',
             '# Local TLS leaf cert + PRIVATE KEY, reissued per machine — never commit',
             '.infrastructure/traefik/certificates',
+            // `larakube env` adds `.env.*`, which ignores .env.production but
+            // NOT the base .env — so a file this CLI creates (data:wire) was
+            // committable while its per-env siblings were not. Vite's own
+            // convention is to commit .env because VITE_ vars are public, but
+            // data:wire also writes an UNPREFIXED var that never reaches the
+            // bundle, and every other LaraKube project ignores .env. One rule.
+            '# Environment files — data:wire writes here; keep them local',
+            '.env',
         ];
+
+        // Line-exact, not str_contains(): a substring test sees an existing
+        // `.env.*` and concludes `.env` is already covered, silently skipping
+        // the narrower rule. Same trap for any rule that prefixes another.
+        $existing = array_map('trim', explode("\n", $content));
 
         $toAdd = [];
         foreach ($rules as $rule) {
-            if (! str_contains($content, $rule)) {
+            if (! in_array(trim($rule), $existing, true)) {
                 $toAdd[] = $rule;
             }
         }

@@ -238,6 +238,66 @@ CNF;
     }
 
     /**
+     * On-disk name for a host's own certificate. The `host-` prefix keeps it
+     * distinct from an app cert, and getAllLocalAppCerts()'s `*-dev.crt` glob
+     * picks it up automatically — so a new host joins Traefik's cert pool with
+     * no change to the pool plumbing at all.
+     */
+    protected function hostCertName(string $host): string
+    {
+        return 'host-'.str_replace('.', '-', strtolower($host));
+    }
+
+    /**
+     * Issue ONE certificate for ONE host, mirroring production.
+     *
+     * Production runs Traefik's ACME with an HTTP-01 challenge, which produces
+     * exactly this: a separate certificate per host, carrying a single SAN,
+     * created when the Ingress appears. Verified live —
+     * `notes.luchtech.dev` is `CN=notes.luchtech.dev` with one SAN.
+     *
+     * Deliberately NOT a wildcard, and deliberately not another entry on a
+     * shared multi-SAN cert. HTTP-01 cannot issue wildcards, so a local
+     * `*.{tld}` would let a host work in development that could never obtain a
+     * certificate in production — hiding the failure precisely where it is
+     * cheapest to find. One cert per host reproduces prod's failure mode: no
+     * issuance, no HTTPS.
+     */
+    protected function ensureHostCertExists(string $host): void
+    {
+        $this->ensureLocalCaExists();
+        @mkdir($this->getAppCertsDir(), 0700, true);
+
+        $name = $this->hostCertName($host);
+        $crt = $this->getAppCertPath($name);
+        $key = $this->getAppKeyPath($name);
+
+        if (file_exists($crt) && file_exists($key)
+            && $this->certIsValid($crt)
+            && $this->certCoversHost($crt, $host)) {
+            return;
+        }
+
+        $dir = $this->getAppCertsDir();
+        $cnfContent = <<<CNF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = v3_req
+prompt             = no
+
+[req_distinguished_name]
+CN = {$host}
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage         = nonRepudiation, digitalSignature, keyEncipherment
+subjectAltName   = DNS:{$host}
+CNF;
+
+        $this->writeCert("{$dir}/{$name}.cnf", $cnfContent, "{$dir}/{$name}.csr", $key, $crt);
+    }
+
+    /**
      * Build the Traefik tls.certificates YAML listing all known local certs.
      */
     protected function buildTraefikCertsYml(): string

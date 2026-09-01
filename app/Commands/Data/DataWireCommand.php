@@ -88,6 +88,14 @@ class DataWireCommand extends Command
             file_put_contents($envFilePath, '');
         }
 
+        // Harden BEFORE writing. This command creates the file, so it owns the
+        // question of whether the file is committable — scaffolding alone does
+        // not cover a project adopted with `larakube init`, and by the time
+        // anyone notices, it is already in someone's history.
+        if ($config = $this->getProjectConfig($projectPath)) {
+            $this->hardenGitIgnore($config);
+        }
+
         $this->syncEnvFile($projectPath, $envVars, false, $env);
 
         // Report what actually landed, never an unverified success.

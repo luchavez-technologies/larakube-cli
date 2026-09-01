@@ -222,6 +222,17 @@ class CloudDeployCommand extends Command
             return true;
         });
 
+        // Vite reads .env.{env} at BUILD time, so this has to exist BEFORE
+        // publishStaticSite() runs — the same first-deploy safety net the
+        // Laravel path has, for the same reason: without it the bundle silently
+        // inherits .env, which points at local hosts.
+        $envFilePath = $projectPath.'/.env.'.$environment;
+        if (! file_exists($envFilePath) && file_exists($projectPath.'/.env')) {
+            copy($projectPath.'/.env', $envFilePath);
+            $this->laraKubeWarn("Created .env.{$environment} from .env — it still points at LOCAL hosts.");
+            $this->line("   <fg=gray>Run</> <fg=yellow>larakube data:wire {$environment}</> <fg=gray>before deploying, or the build guard will stop you.</>");
+        }
+
         $this->plexContext = $context;
         $release = $this->publishStaticSite($config, $environment);
 

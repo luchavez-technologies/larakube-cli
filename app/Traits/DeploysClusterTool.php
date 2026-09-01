@@ -35,6 +35,7 @@ use Symfony\Component\Process\Exception\ProcessTimedOutException;
 trait DeploysClusterTool
 {
     use InteractsWithProjectConfig, InteractsWithToolRegistry, ResolvesEnvironmentContext;
+    use InteractsWithTraefik, ManagesLocalCa;
 
     /**
      * Resolve the kube-context for a tool's deploy/remove. An explicit
@@ -159,7 +160,58 @@ trait DeploysClusterTool
         $instance ??= $host !== null ? $tool->instanceSlugFromHost($host) : null;
         $metadata = $host !== null ? ['host' => $host] : [];
 
-        return $this->registerTool($kubectl, $tool, array_merge($metadata, $extra), $instance);
+        $registered = $this->registerTool($kubectl, $tool, array_merge($metadata, $extra), $instance);
+
+        // Issue the local cert HERE, from the tool-install path, because this
+        // is the one seam every *:init already passes through with its own
+        // host in hand. Cluster tools are cluster-scoped: requiring a project
+        // to get a working certificate for one is the wrong layering, and
+        // UptimeInitCommand shows what that costs — it reaches for
+        // getProjectConfig(getcwd()) and silently skips the cert sync
+        // entirely when there is no project.
+        //
+        // This is also the closest local analogue to production, where
+        // creating the Ingress is what triggers Traefik's ACME HTTP-01
+        // challenge. The local CA stands in for Let's Encrypt.
+        if ($registered && $host !== null) {
+            $this->issueLocalCertForHost($host);
+        }
+
+        return $registered;
+    }
+
+    /**
+     * Add $host to the shared local certificate, if it is a local host.
+     *
+     * A tool installed at a non-default host (`data:init --domain=`, which
+     * ADR 0012 makes a first-class way to run a second instance) was never
+     * covered: the SAN list is built from SharedClusterService's DEFAULT
+     * prefixes, so the browser rejected the instance the command had just
+     * printed an https:// URL for.
+     *
+     * Deliberately NOT a wildcard. Production issues one certificate per host
+     * via HTTP-01 and has no wildcards at all, so a blanket `*.{tld}` locally
+     * would let a host work in dev that could never get a certificate in
+     * production — hiding the failure exactly where it is cheapest to catch.
+     */
+    protected function issueLocalCertForHost(string $host): void
+    {
+        if (! $this->isLocalCertHost($host)) {
+            return;
+        }
+
+        // Issuing a cert shells out to openssl and pushes a Secret with
+        // kubectl. Every *:init test would have to fake both just to register
+        // a tool, so this stays out of the suite the same way cannotPrompt()
+        // does — the decision logic itself is tested directly instead.
+        if (app()->runningUnitTests()) {
+            return;
+        }
+
+        // One cert, one SAN, for this host alone — the same shape ACME
+        // produces in production when the Ingress appears.
+        $this->ensureHostCertExists($host);
+        $this->applyTraefikCertResources('traefik');
     }
 
     /**

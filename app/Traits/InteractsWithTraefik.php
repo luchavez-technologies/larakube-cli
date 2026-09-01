@@ -11,6 +11,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait InteractsWithTraefik
 {
+    use InteractsWithToolRegistry;
     use LaraKubeOutput, ManagesLocalCa, VerifiesKubernetesRollout;
 
     /**
@@ -63,12 +64,74 @@ trait InteractsWithTraefik
      * Create the ConfigMap and Secret required for Traefik local SSL.
      * Called once when Traefik is first installed.
      */
+    /**
+     * Local hosts recorded in the cluster tools registry. Best-effort: an
+     * unreachable cluster or an absent registry just means no extra SANs,
+     * never a failed Traefik setup.
+     *
+     * @return list<string>
+     */
+    protected function localHostsNeedingCerts(): array
+    {
+        $tld = GlobalConfigData::load()->getLocalTld();
+
+        // Registry hosts FIRST: these are the real installs, including any
+        // second instance created with `--domain=`, which the fixed
+        // SharedClusterService prefixes below can never know about.
+        $hosts = [];
+
+        foreach ($this->getRegisteredTools('kubectl') as $row) {
+            $host = $row['host'] ?? null;
+
+            if (is_string($host) && $host !== '') {
+                $hosts[] = $host;
+            }
+        }
+
+        // Plus each service's conventional host, so a cluster whose registry
+        // is incomplete still gets the coverage it had before.
+        foreach (SharedClusterService::cases() as $service) {
+            $hosts[] = $service->host($tld);
+        }
+
+        return array_values(array_unique(array_filter(
+            $hosts,
+            fn (string $host) => $this->isLocalCertHost($host),
+        )));
+    }
+
+    /** Local hosts only — a real domain gets its cert from Let's Encrypt. */
+    protected function isLocalCertHost(string $host): bool
+    {
+        foreach (GlobalConfigData::ALLOWED_TLDS as $tld) {
+            if (str_ends_with($host, '.'.$tld)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     protected function createTraefikInfrastructure(): void
     {
         $namespace = 'traefik';
         Process::run("kubectl create namespace {$namespace} --dry-run=client -o yaml | kubectl apply -f -");
 
+        // Include every host the tools registry knows about, not just each
+        // service's DEFAULT prefix — otherwise a second instance created with
+        // `--domain=` is missing from the SAN list forever. This is the
+        // project-free sweep: `traefik:setup` reaches it, and a cluster with
+        // tools but no projects is a perfectly normal cluster.
+        // The system cert remains ONLY as Traefik's default for unmatched SNI —
+        // prod has an equivalent fallback. Every real host gets its own
+        // certificate below, so a host with no issuance fails locally exactly
+        // as it would in production instead of being silently covered.
         $this->ensureSystemCertExists();
+
+        foreach ($this->localHostsNeedingCerts() as $host) {
+            $this->ensureHostCertExists($host);
+        }
+
         $this->applyTraefikCertResources($namespace);
     }
 

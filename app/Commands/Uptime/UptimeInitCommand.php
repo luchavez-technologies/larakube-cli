@@ -53,14 +53,10 @@ class UptimeInitCommand extends Command
 
         $host = $this->resolveToolHost(SharedClusterService::UPTIME_KUMA, ClusterTool::UPTIME, $env, $kubectl);
 
-        if ($env === 'local') {
-            $config = $this->getProjectConfig(getcwd());
-            if ($config) {
-                $this->withSpin('Syncing local TLS certificates...', function () use ($config): void {
-                    $this->refreshTraefikCerts($config->getName(), $config->getLocalTld());
-                });
-            }
-        }
+        // The local certificate is issued by registerDeployedTool() from this
+        // tool's OWN host. It used to be done here from getProjectConfig(),
+        // which silently skipped the whole cert sync when run outside a
+        // project — and a cluster tool must never depend on standing in one.
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",

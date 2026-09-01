@@ -3,8 +3,12 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use App\Data\GlobalConfigData;
 use App\Enums\StorageDriver;
+use FilesystemIterator;
 use Illuminate\Support\Facades\Process;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 
 /**
  * Build a static site and publish it into a Plex Commons bucket.
@@ -59,6 +63,10 @@ trait PublishesStaticSite
             return null;
         }
 
+        if (! $this->assertNoLocalHostsInBundle($distPath, $environment)) {
+            return null;
+        }
+
         // 2. Commons bucket.
         $storage = $config->getObjectStorage() ?? StorageDriver::SEAWEEDFS;
         $bucket = $this->staticSiteBucket($config);
@@ -101,6 +109,68 @@ trait PublishesStaticSite
         }
 
         return $release;
+    }
+
+    /**
+     * Refuse to publish a bundle that still points at a local host.
+     *
+     * Vite bakes env vars at BUILD time, not runtime: `vite build` loads
+     * .env.{mode} and falls back to .env when it is missing. So a project whose
+     * .env.production was never written ships the LOCAL PocketBase URL to
+     * production — a working build, a green deploy, and a site that quietly
+     * talks to a host nobody outside the developer's machine can resolve.
+     *
+     * Nothing downstream can catch this: the bytes are already compiled, so the
+     * only place to notice is here, between build and upload.
+     */
+    protected function assertNoLocalHostsInBundle(string $distPath, string $environment): bool
+    {
+        $tlds = implode('|', array_map('preg_quote', GlobalConfigData::ALLOWED_TLDS));
+        $pattern = '#https?://[a-z0-9.-]+\.('.$tlds.')(?![a-z0-9-])#i';
+
+        $found = [];
+
+        foreach ($this->bundleTextFiles($distPath) as $file) {
+            if (preg_match_all($pattern, (string) file_get_contents($file), $m)) {
+                foreach ($m[0] as $hit) {
+                    $found[$hit] = true;
+                }
+            }
+        }
+
+        if ($found === []) {
+            return true;
+        }
+
+        $this->laraKubeError('The built bundle still references local hosts — refusing to publish.');
+        foreach (array_keys($found) as $url) {
+            $this->line("  <fg=red>- {$url}</>");
+        }
+        $this->newLine();
+        $this->line("  <fg=gray>Vite reads .env.{$environment} at BUILD time. Point it at real hosts, then re-deploy:</>");
+        $this->line("  <fg=yellow>larakube data:wire {$environment}</> <fg=gray>(and check .env.{$environment})</>");
+
+        return false;
+    }
+
+    /**
+     * Built assets worth scanning — compiled JS/CSS and HTML. Images and fonts
+     * cannot carry a baked URL, and reading them would only be slow.
+     *
+     * @return list<string>
+     */
+    protected function bundleTextFiles(string $distPath): array
+    {
+        $files = [];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($distPath, FilesystemIterator::SKIP_DOTS));
+
+        foreach ($iterator as $file) {
+            if ($file->isFile() && in_array(strtolower($file->getExtension()), ['js', 'mjs', 'cjs', 'css', 'html', 'json', 'map'], true)) {
+                $files[] = $file->getPathname();
+            }
+        }
+
+        return $files;
     }
 
     /**

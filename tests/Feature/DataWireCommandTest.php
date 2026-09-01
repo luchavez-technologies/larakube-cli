@@ -117,3 +117,35 @@ test('data:wire emits only the prefix the project framework actually reads', fun
         $temporaryDirectory->delete();
     }
 });
+
+test('data:wire refuses to leave the env file committable', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
+    file_put_contents("{$tempDir}/.larakube.json", (string) json_encode([
+        'id' => 'reactor', 'name' => 'reactor', 'framework' => 'vite',
+    ]));
+    // Exactly the state that bit us: `larakube env` had added `.env.*`, which
+    // ignores .env.production but NOT the base .env the command is about to
+    // create — and the old str_contains() dedupe saw `.env.*` and skipped it.
+    file_put_contents("{$tempDir}/.gitignore", "node_modules\ndist\n.env.*\n");
+
+    $oldCwd = getcwd();
+    chdir($tempDir);
+
+    try {
+        Process::fake([
+            '*get secret*' => Process::result(output: base64_encode('data.dev.test')),
+            '*' => Process::result(output: 'data.dev.test'),
+        ]);
+
+        $this->artisan('data:wire local --engine=pocketbase')->assertExitCode(0);
+
+        $lines = array_map('trim', explode("\n", file_get_contents("{$tempDir}/.gitignore")));
+
+        expect($lines)->toContain('.env')
+            ->and($lines)->toContain('.env.*');
+    } finally {
+        chdir($oldCwd);
+        $temporaryDirectory->delete();
+    }
+});
