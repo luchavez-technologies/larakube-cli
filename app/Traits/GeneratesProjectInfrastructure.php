@@ -6,6 +6,7 @@ use App\Contracts\HasKubernetesFiles;
 use App\Contracts\RemovableWhenManaged;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Enums\AppFramework;
 use App\Enums\Blueprint;
 use App\Enums\DeploymentStrategy;
 use App\Enums\LaravelFeature;
@@ -26,6 +27,78 @@ trait GeneratesProjectInfrastructure
      * Deliberately separate from hardenViteConfig(): that one rewrites
      * `inertia()` and targets the `vite.{app}` host, neither of which applies.
      */
+    /**
+     * Point a static framework's dev server at the host Traefik will proxy.
+     *
+     * Vite and Astro need it for different files: hardenStaticViteConfig() only
+     * ever looked for vite.config.*, so an Astro project — whose config is
+     * astro.config.mjs — was skipped silently and its dev server rejected every
+     * proxied request. Docusaurus is webpack, not Vite, and takes its host and
+     * polling from command flags instead (see devServerFlags()).
+     */
+    public function hardenStaticDevConfig(ConfigData $config): void
+    {
+        match ($config->framework) {
+            AppFramework::ASTRO => $this->hardenAstroConfig($config),
+            default => $this->hardenStaticViteConfig($config),
+        };
+    }
+
+    /**
+     * Inject the same server block into astro.config.mjs, nested under `vite`,
+     * which is where Astro forwards Vite options.
+     */
+    public function hardenAstroConfig(ConfigData $config): void
+    {
+        $projectPath = $config->getPath();
+
+        $configFile = collect(['astro.config.mjs', 'astro.config.ts', 'astro.config.js'])
+            ->map(fn (string $name) => "{$projectPath}/{$name}")
+            ->first(fn (string $path) => file_exists($path));
+
+        if ($configFile === null) {
+            return;
+        }
+
+        $content = (string) file_get_contents($configFile);
+        $appHost = $config->getWebHost('local');
+        $harden = view('k8s.static.astro-server', ['appHost' => $appHost])->render();
+
+        // Recognise our own block structurally, so a re-run after `config:tld`
+        // re-aligns the host instead of leaving HMR pointed at a dead name.
+        if (str_contains($content, 'allowedHosts: [') && str_contains($content, 'usePolling: true')) {
+            $content = preg_replace("/allowedHosts:\s*\['[^']*'\]/", "allowedHosts: ['{$appHost}']", $content, 1);
+            $content = preg_replace("/(hmr:\s*\{(?:[^}]*?)host:\s*)'[^']*'/", "$1'{$appHost}'", $content, 1);
+            file_put_contents($configFile, (string) $content);
+
+            return;
+        }
+
+        // create-astro emits `defineConfig({});` — an empty object, so there is
+        // no key to append after and a naive comma insert produces invalid JS.
+        if (preg_match('/defineConfig\s*\(\s*\{\s*\}\s*\)/', $content)) {
+            $content = preg_replace('/defineConfig\s*\(\s*\{\s*\}\s*\)/', "defineConfig({\n{$harden}})", $content, 1);
+            file_put_contents($configFile, (string) $content);
+
+            return;
+        }
+
+        if (preg_match('/(defineConfig\s*\(\s*\{)/', $content)) {
+            $content = preg_replace('/(defineConfig\s*\(\s*\{)/', "$1\n{$harden}", $content, 1);
+            file_put_contents($configFile, (string) $content);
+
+            return;
+        }
+
+        // Hand-written config — advise, never rewrite.
+        $this->laraKubeNewLine();
+        $this->laraKubeWarn(" ⚠ ASTRO ADVISORY: Your {$configFile} looks custom.");
+        $this->laraKubeLine('   For HMR through Traefik, your config needs:');
+        $this->laraKubeNewLine();
+        $this->laraKubeLine($harden);
+        $this->laraKubeNewLine();
+    }
+
     public function hardenStaticViteConfig(ConfigData $config): void
     {
         $projectPath = $config->getPath();
@@ -1116,7 +1189,7 @@ trait GeneratesProjectInfrastructure
             // and hardenViteConfig rewrites `inertia()` — both Laravel-only. A
             // standalone SPA gets its own dev-server config instead.
             if ($config->framework?->isStaticSpa()) {
-                $this->hardenStaticViteConfig($config);
+                $this->hardenStaticDevConfig($config);
             } else {
                 $this->ensureHttpsCompatibility($config);
                 $this->hardenViteConfig($config);

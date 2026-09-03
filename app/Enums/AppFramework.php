@@ -136,6 +136,55 @@ enum AppFramework: string implements HasLabel
     }
 
     /**
+     * The package script that starts this framework's dev server.
+     *
+     * Not always "dev": create-docusaurus emits start/build/serve and no dev
+     * script at all, so the pod ran `npm run dev` and exited immediately.
+     */
+    public function devServerScript(): ?string
+    {
+        return match ($this) {
+            self::VITE, self::ASTRO => 'dev',
+            self::DOCUSAURUS => 'start',
+            default => null,
+        };
+    }
+
+    /**
+     * Flags the dev server needs to be reachable from inside a Pod.
+     *
+     * Astro and Docusaurus both bind to localhost by default, so the container
+     * listens only on its own loopback, the Service reaches nothing, and the
+     * readiness probe never passes. Vite needs none of this because its own
+     * config file carries host, port, allowedHosts and polling — which is also
+     * why only Vite gets an empty string here rather than a duplicate.
+     */
+    public function devServerFlags(): string
+    {
+        return match ($this) {
+            self::VITE => '',
+            self::ASTRO => '--host 0.0.0.0 --port 5173',
+            // --poll: inotify does not reliably cross the hostPath/VirtioFS
+            // boundary on macOS, and Docusaurus is webpack, so Vite's
+            // watch.usePolling does not apply to it.
+            self::DOCUSAURUS => '--host 0.0.0.0 --port 3000 --poll 300',
+            default => '',
+        };
+    }
+
+    /** The full command the local dev pod runs. Null for non-static frameworks. */
+    public function devServerCommand(PackageManager $packageManager): ?string
+    {
+        $script = $this->devServerScript();
+
+        if ($script === null) {
+            return null;
+        }
+
+        return trim($packageManager->runScript($script).' '.$this->devServerFlags());
+    }
+
+    /**
      * Port this framework's own dev server binds to, used by the local HMR pod.
      */
     public function devServerPort(): ?int

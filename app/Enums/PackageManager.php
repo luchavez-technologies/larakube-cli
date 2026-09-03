@@ -60,6 +60,20 @@ enum PackageManager: string implements HasCommandOptions, HasLabel, HasSelectOpt
         return '["node", "bootstrap/ssr/ssr.js"]';
     }
 
+    /**
+     * Invoke a named package script. devCommand() hardcodes "dev", which is not
+     * universal — create-docusaurus emits no `dev` script at all, so `npm run
+     * dev` there fails with "Missing script" before anything starts.
+     */
+    public function runScript(string $script): string
+    {
+        return match ($this) {
+            self::YARN, self::PNPM => "{$this->value} {$script}",
+            self::NPM => "npm run {$script} --",
+            default => "{$this->value} run {$script}",
+        };
+    }
+
     public function devCommand(): string
     {
         return match ($this) {

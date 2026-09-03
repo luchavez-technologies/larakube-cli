@@ -488,8 +488,37 @@ trait InteractsWithToolRegistry
             if (! $selfHeal) {
                 return null;
             }
+
+            // Self-heal ONLY a legacy sentinel. The sole row for a tool is not
+            // automatically "the same install": a row carrying a real,
+            // different, host-derived slug is a DIFFERENT instance, and
+            // overwriting it silently deletes that instance's registration.
+            //
+            // Confirmed live: `tool:list --refresh` wrote three PocketBase
+            // instances in a loop and reported "3 rows written", but each write
+            // healed onto the previous one — only the last survived. The same
+            // path is how a cluster's data rows disappeared while all three
+            // Deployments kept running.
+            if (count($forToolIndexes) === 1) {
+                $stored = $entries[$forToolIndexes[0]]['instance'] ?? null;
+
+                return $this->isLegacyInstanceSentinel($stored) ? $forToolIndexes[0] : null;
+            }
+
+            return null;
         }
 
         return count($forToolIndexes) === 1 ? $forToolIndexes[0] : null;
+    }
+
+    /**
+     * A pre-ADR-0012 instance value: '' / null / 'main'. Every instance written
+     * since is a real host-derived slug (ClusterTool::instanceSlugFromHost()),
+     * so anything else identifies a specific install and must not be healed
+     * over.
+     */
+    private function isLegacyInstanceSentinel(?string $instance): bool
+    {
+        return $instance === null || $instance === '' || $instance === 'main';
     }
 }
