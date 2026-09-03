@@ -55,24 +55,24 @@ trait InteractsWithRemoteDeploy
      * When $dotenvPath is provided it is mounted as a BuildKit secret (id=dotenv)
      * so VITE_* vars reach Vite without being baked into any image layer. Pure.
      */
-    public function buildProductionImageCommand(string $image, string $dockerfile, string $path, string $platform = 'linux/amd64', string $dotenvPath = ''): string
+    public function buildProductionImageCommand(string $image, string $dockerfile, string $path, string $platform = 'linux/amd64', string $dotenvPath = '', string $target = '--target deploy '): string
     {
         $secret = $dotenvPath !== '' ? '--secret id=dotenv,src='.escapeshellarg($dotenvPath).' ' : '';
 
-        return 'docker buildx build --platform '.$platform.' --target deploy '
+        return 'docker buildx build --platform '.$platform.' '.$target
             .'-t '.escapeshellarg($image).' -f '.escapeshellarg($dockerfile).' '
             .$secret
             .escapeshellarg($path).' --load';
     }
 
-    /**
-     * Executes necessary local commands (composer install, wayfinder) before
-     * building the docker image. `npm run build` is intentionally NOT run here —
-     * the `assets` Docker stage handles it with the correct VITE_* values sourced
-     * from the mounted .env secret, keeping the host's public/build/ untouched.
-     */
     public function runPreDeploymentSteps(ConfigData $config): bool
     {
+        // Nothing to prepare: a static site has no composer, no artisan, and its
+        // npm install happens inside the image build (see Dockerfile.static).
+        if ($config->framework?->isStaticSpa()) {
+            return true;
+        }
+
         $this->laraKubeInfo('Running Pre-Deployment Build Steps...');
 
         $bin = escapeshellarg($_SERVER['argv'][0] ?? 'larakube');
@@ -277,11 +277,11 @@ trait InteractsWithRemoteDeploy
      * for a managed context; defaults to linux/amd64), then pushes to registry.
      * When $dotenvPath is provided it is mounted as a BuildKit secret (id=dotenv).
      */
-    public function buildAndPushImageCommand(string $registryImage, string $dockerfile, string $path, string $platform = 'linux/amd64', string $dotenvPath = ''): string
+    public function buildAndPushImageCommand(string $registryImage, string $dockerfile, string $path, string $platform = 'linux/amd64', string $dotenvPath = '', string $target = '--target deploy '): string
     {
         $secret = $dotenvPath !== '' ? '--secret id=dotenv,src='.escapeshellarg($dotenvPath).' ' : '';
 
-        return 'docker buildx build --platform '.$platform.' --target deploy '
+        return 'docker buildx build --platform '.$platform.' '.$target
             .'-t '.escapeshellarg($registryImage).' -f '.escapeshellarg($dockerfile).' '
             .$secret
             .escapeshellarg($path).' --push';
@@ -332,6 +332,31 @@ trait InteractsWithRemoteDeploy
     public function dockerLoginCommand(string $registryHost, string $username, string $password): string
     {
         return 'echo '.escapeshellarg($password).' | docker login -u '.escapeshellarg($username).' --password-stdin '.escapeshellarg($registryHost);
+    }
+
+    /**
+     * Executes necessary local commands (composer install, wayfinder) before
+     * building the docker image. `npm run build` is intentionally NOT run here —
+     * the `assets` Docker stage handles it with the correct VITE_* values sourced
+     * from the mounted .env secret, keeping the host's public/build/ untouched.
+     */
+    /**
+     * Which Dockerfile builds this project's image.
+     *
+     * A static site builds its bundle in Node and serves it from Caddy, so it
+     * has no PHP image and no `deploy` stage to target.
+     */
+    protected function dockerfileFor(ConfigData $config, string $path): string
+    {
+        return $config->framework?->isStaticSpa()
+            ? "{$path}/Dockerfile.static"
+            : "{$path}/Dockerfile.php";
+    }
+
+    /** Static images have a single final stage; only the PHP image is multi-target. */
+    protected function buildTargetFor(ConfigData $config): string
+    {
+        return $config->framework?->isStaticSpa() ? '' : '--target deploy ';
     }
 
     /** Resolve the rollout-triggering image tag for a project. */
@@ -450,7 +475,7 @@ trait InteractsWithRemoteDeploy
 
         $tag = $this->resolveImageTag($path);
         $image = "{$name}:{$tag}";
-        $dockerfile = "{$path}/Dockerfile.php";
+        $dockerfile = $this->dockerfileFor($config, $path);
         $ssh = $this->sshBaseCommand($cloud->user, $cloud->ip, $cloud->port, $cloud->key);
 
         if (! $this->runPreDeploymentSteps($config)) {
@@ -464,7 +489,7 @@ trait InteractsWithRemoteDeploy
         $dotenvPath = $dotenvTemporaryDirectory->path().'/dotenv-build-secret';
         $this->laraKubeInfo("Building production image '{$image}' ({$platform})...");
         try {
-            $code = $this->runStreaming($this->buildProductionImageCommand($image, $dockerfile, $path, $platform, $dotenvPath));
+            $code = $this->runStreaming($this->buildProductionImageCommand($image, $dockerfile, $path, $platform, $dotenvPath, $this->buildTargetFor($config)));
         } finally {
             $dotenvTemporaryDirectory->delete();
         }
@@ -534,7 +559,7 @@ trait InteractsWithRemoteDeploy
             return 1;
         }
 
-        $dockerfile = "{$path}/Dockerfile.php";
+        $dockerfile = $this->dockerfileFor($config, $path);
 
         // 1. Verify Docker login to registry.
         // For now, assume credentials are in environment or docker config.
@@ -553,7 +578,7 @@ trait InteractsWithRemoteDeploy
         $dotenvPath = $dotenvTemporaryDirectory->path().'/dotenv-build-secret';
         $this->laraKubeInfo("Building and pushing image to {$registry->getRegistryHost()} ({$platform})...");
         try {
-            $code = $this->runStreaming($this->buildAndPushImageCommand($registryImage, $dockerfile, $path, $platform, $dotenvPath));
+            $code = $this->runStreaming($this->buildAndPushImageCommand($registryImage, $dockerfile, $path, $platform, $dotenvPath, $this->buildTargetFor($config)));
         } finally {
             $dotenvTemporaryDirectory->delete();
         }

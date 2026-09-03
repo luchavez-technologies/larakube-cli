@@ -96,8 +96,8 @@ test('publicEnvPrefixes reflects what each bundle can actually read', function (
 
 test('server-rendered and prefix-less frameworks return an empty list', function (): void {
     // They read the environment directly; the caller emits the bare name.
-    expect(AppFramework::DJANGO->publicEnvPrefixes())->toBe([])
-        ->and(AppFramework::GIN->publicEnvPrefixes())->toBe([])
+    expect(AppFramework::DJANGO->publicEnvPrefixes())->toBeEmpty()
+        ->and(AppFramework::GIN->publicEnvPrefixes())->toBeEmpty()
         // Docusaurus has no standard client-env prefix.
-        ->and(AppFramework::DOCUSAURUS->publicEnvPrefixes())->toBe([]);
+        ->and(AppFramework::DOCUSAURUS->publicEnvPrefixes())->toBeEmpty();
 });

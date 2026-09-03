@@ -84,8 +84,26 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
             ->and(file_exists("{$project}/.infrastructure/k8s/overlays/local/dev-server.yaml"))->toBeTrue();
 
         // A static site has no PHP image; rendering docker.php would fatal on a
-        // null ServerVariation, so it must not be written at all.
-        expect(file_exists("{$project}/Dockerfile.php"))->toBeFalse();
+        // null ServerVariation, so it must not be written at all. It gets its
+        // own image instead: bundle built in Node, served by Caddy.
+        expect(file_exists("{$project}/Dockerfile.php"))->toBeFalse()
+            ->and(file_exists("{$project}/Dockerfile.static"))->toBeTrue()
+            ->and(file_exists("{$project}/Caddyfile"))->toBeTrue();
+
+        // The host never builds — its node_modules lives in the dev pod's PVC,
+        // so `npm run build` there finds no vite at all.
+        expect(file_get_contents("{$project}/Dockerfile.static"))
+            ->toContain('FROM node:24-alpine AS assets')
+            ->toContain('FROM caddy:2.11.2-alpine')
+            // VITE_* values compile into the bundle, so .env must be readable
+            // during the build and must never become an image layer.
+            ->toContain('--mount=type=secret,id=dotenv');
+
+        expect(file_get_contents("{$project}/Caddyfile"))
+            // The deep-link failure a dev server structurally cannot show.
+            ->toContain('try_files {path} /index.html')
+            ->toContain('max-age=31536000, immutable')
+            ->toContain('max-age=0, must-revalidate');
 
         // The dev-server config must declare the proxied host or Vite 6+ blocks
         // every request coming through Traefik.
@@ -212,9 +230,11 @@ test('generateK8sManifests builds a complete, self-contained tree for a static S
 
     expect(file_get_contents("{$k8s}/overlays/local/dev-server.yaml"))
         ->toContain('/app/node_modules')
+        // The site IS the image now — nothing is fetched at runtime, so there
+        // is no init container and `kubectl rollout undo` is a real rollback.
         ->and(file_get_contents("{$k8s}/overlays/production/caddy.yaml"))
-        ->toContain('caddy:2.11.2-alpine')
-        ->toContain('spa-test-site');
+        ->toContain('image: spa-test:latest')
+        ->not->toContain('initContainers');
 
     $temporaryDirectory->delete();
 });

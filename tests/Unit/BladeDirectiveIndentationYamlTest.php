@@ -109,12 +109,13 @@ test('static-site caddy manifest parses as valid YAML for one or many hosts', fu
 
     $rendered = view('k8s.static.caddy', [
         'config' => $config, 'namespace' => 'demo-production', 'environment' => 'production',
-        'hosts' => $hosts, 'bucket' => 'demo-site',
-        's3Endpoint' => 'http://seaweedfs.larakube-plex.svc.cluster.local:8333',
+        'hosts' => $hosts,
     ])->render();
     $documents = bladeYamlDocuments($rendered);
 
-    expect($documents)->toHaveCount(4);
+    // Deployment + Service + Ingress. The Caddyfile used to be a fourth
+    // document (a ConfigMap); it now ships inside the image.
+    expect($documents)->toHaveCount(3);
     foreach ($documents as $document) {
         expect($document['kind'] ?? null)->not->toBeNull();
     }

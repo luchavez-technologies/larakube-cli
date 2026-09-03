@@ -9,7 +9,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\Blueprint;
 use App\Enums\DeploymentStrategy;
 use App\Enums\LaravelFeature;
-use App\Enums\StorageDriver;
 use Random\RandomException;
 use Symfony\Component\Yaml\Yaml;
 
@@ -17,6 +16,9 @@ trait GeneratesProjectInfrastructure
 {
     use InteractsWithHosts, InteractsWithProjectConfig, LaraKubeOutput;
     use ManagesLocalCa;
+
+    /** Caddy is the origin behind Traefik; pinned like every other vendored image. */
+    protected const CADDY_VERSION = '2.11.2';
 
     /**
      * Dev-server config for a STANDALONE Vite/Astro SPA, where the framework's
@@ -288,13 +290,46 @@ trait GeneratesProjectInfrastructure
         }
     }
 
+    /**
+     * Dockerfile.static + its Caddyfile.
+     *
+     * The build lives in the image rather than on the host for the same reason
+     * Laravel's does (docker/php.blade.php's `assets` stage): the host has no
+     * node_modules and is not meant to — local dev installs into a PVC mounted
+     * over /app/node_modules, because Vite ships Rolldown, a native binary that
+     * must match the container's platform. Building on the host failed with
+     * `sh: vite: command not found` even with npm installed.
+     */
+    protected function generateStaticDockerfiles(ConfigData $config): void
+    {
+        $projectPath = $config->getPath();
+        $framework = $config->framework;
+
+        if (! $config->isLocked('Dockerfile.static')) {
+            file_put_contents("{$projectPath}/Dockerfile.static", view('docker.static', [
+                'buildCommand' => $framework?->staticBuildCommand($config->getPackageManager()) ?? 'npm run build',
+                'outputDir' => $framework?->staticOutputDir() ?? 'dist',
+                'caddyVersion' => self::CADDY_VERSION,
+                'environment' => 'production',
+            ])->render());
+        }
+
+        if (! $config->isLocked('Caddyfile')) {
+            file_put_contents("{$projectPath}/Caddyfile", view('docker.caddyfile')->render());
+        }
+    }
+
     protected function generateDockerfiles(ConfigData $config): void
     {
         $projectPath = $config->getPath();
 
-        // A static site has no PHP image. docker.php dereferences
-        // getServerVariation()->value and getPhpVersion()->value, both null for
-        // an SPA, so rendering it would fatal rather than no-op.
+        // A static site gets its own image: the bundle is built in Node and
+        // served by Caddy. docker.php would fatal here anyway — it dereferences
+        // getServerVariation()->value and getPhpVersion()->value, both null.
+        if ($config->framework?->isStaticSpa()) {
+            $this->generateStaticDockerfiles($config);
+        }
+
         if (! $config->framework?->isStaticSpa()) {
             if (! $config->isLocked('Dockerfile.php')) {
                 $phpDockerfile = view('docker.php', ['config' => $config])->render();
@@ -374,7 +409,6 @@ trait GeneratesProjectInfrastructure
     protected function generateStaticSiteManifests(ConfigData $config): void
     {
         $k8sPath = $config->getK8sPath();
-        $storage = $config->getObjectStorage() ?? StorageDriver::SEAWEEDFS;
 
         $render = function (string $stub, string $view, array $data) use ($config, $k8sPath): void {
             @mkdir(dirname("$k8sPath/$stub"), 0755, true);
@@ -403,29 +437,11 @@ trait GeneratesProjectInfrastructure
                 'namespace' => $config->getNamespace($env),
                 'environment' => $env,
                 'hosts' => $config->getWebHosts($env),
-                'bucket' => $this->staticSiteBucket($config),
-                's3Endpoint' => 'http://'.$storage->commonsServiceName().'.'.$this->staticSitePlexNamespace()
-                    .'.svc.cluster.local:'.$storage->port(),
             ];
             $render("overlays/$env/kustomization.yaml", 'k8s.static.cloud-kustomization', $cloudData);
             $render("overlays/$env/namespace.yaml", 'k8s.overlays.production.namespace', $cloudData);
             $render("overlays/$env/caddy.yaml", 'k8s.static.caddy', $cloudData);
         }
-    }
-
-    /**
-     * One Commons bucket per project, shared across environments — each env is
-     * a key prefix inside it, so a new environment needs no new bucket.
-     */
-    protected function staticSiteBucket(ConfigData $config): string
-    {
-        return $config->getName().'-site';
-    }
-
-    /** Namespace the Plex Commons lives in (mirrors InteractsWithPlex). */
-    protected function staticSitePlexNamespace(): string
-    {
-        return 'larakube-plex';
     }
 
     protected function generateK8sManifests(ConfigData $config): void
