@@ -1,13 +1,32 @@
 <?php
 
-use App\Commands\Astro\AstroNewCommand;
-use App\Commands\Docs\DocsNewCommand;
-use App\Commands\Vite\ViteNewCommand;
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Traits\GeneratesProjectInfrastructure;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+
+/**
+ * The scripts block each create-* scaffolder actually emits. The manifest
+ * generator reads these (never the enum) to pick the dev/build command, so a
+ * fixture without them is not a static project the way a real one is —
+ * Docusaurus in particular ships `start`, no `dev`.
+ */
+function frontendGeneratorsPackageJson(string $dir, AppFramework $framework): void
+{
+    $scripts = match ($framework) {
+        AppFramework::VITE => ['dev' => 'vite', 'build' => 'vite build', 'preview' => 'vite preview'],
+        AppFramework::ASTRO => ['dev' => 'astro dev', 'build' => 'astro build', 'preview' => 'astro preview'],
+        AppFramework::DOCUSAURUS => ['docusaurus' => 'docusaurus', 'start' => 'docusaurus start', 'build' => 'docusaurus build'],
+        default => ['dev' => 'vite', 'build' => 'vite build'],
+    };
+
+    file_put_contents("{$dir}/package.json", json_encode(['scripts' => $scripts], JSON_PRETTY_PRINT));
+}
+
+use App\Commands\Astro\AstroNewCommand;
+use App\Commands\Docs\DocsNewCommand;
+use App\Commands\Vite\ViteNewCommand;
 
 test('vite:new, astro:new, docs:new, and data:wire commands are registered', function (): void {
     $this->artisan('list --no-interaction')
@@ -60,6 +79,7 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
                 );
                 // create-vite emits one, and hardenGitIgnore() no-ops without it.
                 file_put_contents("{$tempDir}/my-vite-app/.gitignore", "node_modules\ndist\n");
+                frontendGeneratorsPackageJson("{$tempDir}/my-vite-app", AppFramework::VITE);
 
                 return Process::result(output: 'Scaffolded');
             },
@@ -141,6 +161,7 @@ test('astro:new scaffolds project and generates .larakube.json blueprint', funct
         Process::fake([
             '*create-astro*' => function ($process) use ($tempDir) {
                 mkdir("{$tempDir}/my-astro-app", 0755, true);
+                frontendGeneratorsPackageJson("{$tempDir}/my-astro-app", AppFramework::ASTRO);
 
                 return Process::result(output: 'Scaffolded');
             },
@@ -170,6 +191,7 @@ test('docs:new scaffolds project and generates .larakube.json blueprint', functi
         Process::fake([
             '*create-docusaurus*' => function ($process) use ($tempDir) {
                 mkdir("{$tempDir}/my-docs-app", 0755, true);
+                frontendGeneratorsPackageJson("{$tempDir}/my-docs-app", AppFramework::DOCUSAURUS);
 
                 return Process::result(output: 'Scaffolded');
             },
@@ -193,6 +215,8 @@ test('docs:new scaffolds project and generates .larakube.json blueprint', functi
 test('generateK8sManifests builds a complete, self-contained tree for a static SPA', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
+
+    frontendGeneratorsPackageJson($tempDir, AppFramework::VITE);
 
     $config = new ConfigData(
         id: 'spa-test',
@@ -247,6 +271,8 @@ test('astro:new and docs:new produce the same deployable tree as vite:new', func
     // deployable. They now inherit the whole static pipeline.
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
+
+    frontendGeneratorsPackageJson($tempDir, $framework);
 
     $config = new ConfigData(id: 'site', name: 'site', path: $tempDir, framework: $framework);
     $config->setEnvironments(['local', 'production']);

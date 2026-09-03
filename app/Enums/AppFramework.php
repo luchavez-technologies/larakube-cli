@@ -113,13 +113,20 @@ enum AppFramework: string implements HasLabel
     }
 
     /**
-     * Command that produces the deployable static bundle. Null for frameworks
-     * that ship a running server instead of a directory of files, so a caller
-     * that assumes "static" fails loudly rather than silently guessing.
+     * Package scripts, most-preferred first, that produce the deployable
+     * bundle. A HINT, not an assertion: the resolver picks the first that
+     * actually exists in the project's package.json, so a renamed script is a
+     * loud generation-time error instead of a wrong command baked into an
+     * image. Empty for frameworks that ship a running server, so a caller that
+     * assumes "static" fails loudly rather than guessing.
+     *
+     * @return list<string>
      */
-    public function staticBuildCommand(PackageManager $packageManager): ?string
+    public function buildScriptCandidates(): array
     {
-        return $this->isStaticSpa() ? $packageManager->buildCommand() : null;
+        // Every create-* scaffolder emits `build`; the list leaves room for a
+        // framework that diverges without another code path.
+        return $this->isStaticSpa() ? ['build'] : [];
     }
 
     /**
@@ -136,17 +143,26 @@ enum AppFramework: string implements HasLabel
     }
 
     /**
-     * The package script that starts this framework's dev server.
+     * Package scripts, most-preferred first, that start this framework's dev
+     * server. A HINT the resolver checks against the project's real
+     * package.json, not the last word.
      *
-     * Not always "dev": create-docusaurus emits start/build/serve and no dev
-     * script at all, so the pod ran `npm run dev` and exited immediately.
+     * The whole reason this is a list and package.json-checked: create-*
+     * scaffolders own these script names and change them. Docusaurus emits
+     * `start` and no `dev` at all, so a hardcoded `dev` gave a CrashLoopBackOff
+     * ("Missing script: dev") that no amount of enum-correctness could prevent
+     * if the scaffolder ever renamed it — the file states the truth, the enum
+     * only guesses. `dev` trails `start` for Docusaurus so a project that adds
+     * its own `dev` alias is still honoured.
+     *
+     * @return list<string>
      */
-    public function devServerScript(): ?string
+    public function devServerScriptCandidates(): array
     {
         return match ($this) {
-            self::VITE, self::ASTRO => 'dev',
-            self::DOCUSAURUS => 'start',
-            default => null,
+            self::VITE, self::ASTRO => ['dev'],
+            self::DOCUSAURUS => ['start', 'dev'],
+            default => [],
         };
     }
 
@@ -170,18 +186,6 @@ enum AppFramework: string implements HasLabel
             self::DOCUSAURUS => '--host 0.0.0.0 --port 3000 --poll 300',
             default => '',
         };
-    }
-
-    /** The full command the local dev pod runs. Null for non-static frameworks. */
-    public function devServerCommand(PackageManager $packageManager): ?string
-    {
-        $script = $this->devServerScript();
-
-        if ($script === null) {
-            return null;
-        }
-
-        return trim($packageManager->runScript($script).' '.$this->devServerFlags());
     }
 
     /**

@@ -1,7 +1,6 @@
 <?php
 
 use App\Enums\AppFramework;
-use App\Enums\PackageManager;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
@@ -75,15 +74,28 @@ test('server-rendered frameworks return null rather than a guessed static answer
     // building into a directory that was never produced.
     expect(AppFramework::LARAVEL->staticOutputDir())->toBeNull()
         ->and(AppFramework::LARAVEL->devServerPort())->toBeNull()
-        ->and(AppFramework::LARAVEL->staticBuildCommand(PackageManager::NPM))->toBeNull()
+        // Empty candidate lists so the resolver fails loudly on a non-static
+        // framework instead of guessing a script.
+        ->and(AppFramework::LARAVEL->buildScriptCandidates())->toBeEmpty()
+        ->and(AppFramework::LARAVEL->devServerScriptCandidates())->toBeEmpty()
         ->and(AppFramework::NEXTJS->staticOutputDir())->toBeNull();
 });
 
-test('staticBuildCommand() delegates to the project package manager', function (): void {
-    expect(AppFramework::VITE->staticBuildCommand(PackageManager::NPM))
-        ->toBe(PackageManager::NPM->buildCommand())
-        ->and(AppFramework::VITE->staticBuildCommand(PackageManager::PNPM))
-        ->toBe(PackageManager::PNPM->buildCommand());
+test('dev-server script candidates are hints, most-preferred first', function (): void {
+    // Vite and Astro emit `dev`; Docusaurus emits `start` and no `dev` at all,
+    // which is the crashloop this list exists to prevent. `dev` trails as a
+    // fallback for a project that adds its own alias.
+    expect(AppFramework::VITE->devServerScriptCandidates())->toBe(['dev'])
+        ->and(AppFramework::ASTRO->devServerScriptCandidates())->toBe(['dev'])
+        ->and(AppFramework::DOCUSAURUS->devServerScriptCandidates())->toBe(['start', 'dev']);
+});
+
+test('build script candidates cover every static framework', function (): void {
+    // The resolver checks these against the real package.json; every create-*
+    // scaffolder emits `build`.
+    expect(AppFramework::VITE->buildScriptCandidates())->toBe(['build'])
+        ->and(AppFramework::ASTRO->buildScriptCandidates())->toBe(['build'])
+        ->and(AppFramework::DOCUSAURUS->buildScriptCandidates())->toBe(['build']);
 });
 
 test('publicEnvPrefixes reflects what each bundle can actually read', function (): void {

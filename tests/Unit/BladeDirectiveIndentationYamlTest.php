@@ -84,6 +84,8 @@ test('static-site dev-server manifest parses as valid YAML', function (): void {
 
     $rendered = view('k8s.static.dev-server', [
         'config' => $config, 'namespace' => 'demo-local', 'host' => 'demo.kube', 'devPort' => 5173,
+        // Resolved from package.json in the generator, passed in as a string here.
+        'devCommand' => 'npm run dev -- --host 0.0.0.0 --port 5173',
     ])->render();
     $documents = bladeYamlDocuments($rendered);
 

@@ -45,7 +45,7 @@ spec:
         - name: dev
           image: node:24-alpine
           workingDir: /app
-          command: ["sh", "-c", "{{ $config->framework->devServerCommand($config->getPackageManager()) }}"]
+          command: ["sh", "-c", "{{ $devCommand }}"]
           ports:
             - containerPort: {{ $devPort }}
           readinessProbe:

@@ -17,6 +17,7 @@ trait GeneratesProjectInfrastructure
 {
     use InteractsWithHosts, InteractsWithProjectConfig, LaraKubeOutput;
     use ManagesLocalCa;
+    use ResolvesStaticScripts;
 
     /** Caddy is the origin behind Traefik; pinned like every other vendored image. */
     protected const CADDY_VERSION = '2.11.2';
@@ -380,7 +381,7 @@ trait GeneratesProjectInfrastructure
 
         if (! $config->isLocked('Dockerfile.static')) {
             file_put_contents("{$projectPath}/Dockerfile.static", view('docker.static', [
-                'buildCommand' => $framework?->staticBuildCommand($config->getPackageManager()) ?? 'npm run build',
+                'buildCommand' => $this->resolveBuildCommand($config),
                 'outputDir' => $framework?->staticOutputDir() ?? 'dist',
                 'caddyVersion' => self::CADDY_VERSION,
                 'environment' => 'production',
@@ -499,6 +500,11 @@ trait GeneratesProjectInfrastructure
             'namespace' => $config->getNamespace('local'),
             'host' => $config->getWebHost('local'),
             'devPort' => $config->framework->devServerPort() ?? 5173,
+            // Resolved against the project's package.json here, not in the
+            // blade: a template must not do filesystem I/O, and a missing
+            // script has to fail generation loudly, not render a crashlooping
+            // command.
+            'devCommand' => $this->resolveDevServerCommand($config),
         ];
         $render('overlays/local/kustomization.yaml', 'k8s.static.local-kustomization', $localData);
         $render('overlays/local/dev-server.yaml', 'k8s.static.dev-server', $localData);

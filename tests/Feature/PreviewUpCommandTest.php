@@ -24,6 +24,12 @@ use Symfony\Component\Yaml\Yaml;
  */
 function previewUpConfig(string $path, AppFramework $framework = AppFramework::VITE): ConfigData
 {
+    // A static project always carries a package.json; the manifest generator
+    // reads its scripts to resolve the dev command, so the fixture must too.
+    file_put_contents("{$path}/package.json", json_encode([
+        'scripts' => ['dev' => 'vite', 'build' => 'vite build'],
+    ]));
+
     $config = new ConfigData(id: 'spa', name: 'spa', path: $path, framework: $framework);
     $config->setEnvironments(['local', 'production']);
     $config->setPackageManager(PackageManager::NPM);
