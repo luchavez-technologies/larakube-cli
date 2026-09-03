@@ -8,8 +8,10 @@ use App\Enums\PackageManager;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -19,7 +21,10 @@ use LaravelZero\Framework\Commands\Command;
 
 class AstroNewCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput;
+
+    /** Same Node the dev pod and the image build use. */
+    protected const NODE_IMAGE = 'node:24-alpine';
 
     protected $signature = 'astro:new
         {name? : The name of the Astro application}
@@ -58,14 +63,16 @@ class AstroNewCommand extends Command
             $template = 'minimal';
         }
 
-        $scaffolded = $this->withSpin("Scaffolding Astro ({$template}) application...", function () use ($appName, $template) {
-            $cmd = "npx -y create-astro@latest {$appName} --template {$template} --yes --no-git";
-
-            return Process::run($cmd)->successful();
-        });
-
-        if (! $scaffolded || ! is_dir($projectDir)) {
-            $this->laraKubeError('Astro scaffolding failed.');
+        // --yes --no-git --skip-houston keep every prompt suppressed. With no
+        // TTY a create-* tool that reaches a prompt exits 0 having produced
+        // nothing, so the directory — not the exit code — is the real check.
+        if (! $this->runScaffolderInNode(
+            $appName,
+            $projectPath,
+            "Astro ({$template}) site",
+            "npx --yes create-astro@latest {$appName} --template {$template} --yes --no-git --skip-houston --install",
+        )) {
+            $this->laraKubeError('Astro scaffolding failed — no project directory was created.');
 
             return 1;
         }
@@ -111,5 +118,36 @@ class AstroNewCommand extends Command
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * Run the upstream scaffolder in Node rather than on the host.
+     *
+     * Matches vite:new, and removes the host-Node dependency entirely. $create
+     * MUST be fully non-interactive: there is no TTY here, and a create-* tool
+     * that reaches a prompt exits 0 having produced nothing — which is why the
+     * is_dir() check below is the real success test, not the exit code.
+     */
+    protected function runScaffolderInNode(string $appName, string $baseDir, string $label, string $create): bool
+    {
+        $this->laraKubeInfo('Pulling the Node builder image...');
+        Process::forever()->run('docker pull '.self::NODE_IMAGE);
+
+        $this->withSpin("Scaffolding {$label}...", fn (): bool => Process::forever()->run(
+            'docker run --rm -v '.escapeshellarg($baseDir).':/app -w /app --user root '
+            .self::NODE_IMAGE.' sh -c '.escapeshellarg($create),
+        )->successful());
+
+        if (! is_dir("{$baseDir}/{$appName}")) {
+            return false;
+        }
+
+        // The container writes as root; hand the tree back to the host user.
+        $this->runStreaming(
+            'docker run --rm -v '.escapeshellarg($baseDir).':/app --user root '
+            .self::NODE_IMAGE.' chown -R '.$this->hostUid().':'.$this->hostGid().' /app/'.escapeshellarg($appName),
+        );
+
+        return true;
     }
 }
