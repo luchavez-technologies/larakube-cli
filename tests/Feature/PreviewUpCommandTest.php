@@ -11,7 +11,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * `larakube up --preview` exists because a frontend-only project is the one
+ * `larakube preview:up` exists because a frontend-only project is the one
  * case where local and production share no workload: locally the framework's
  * dev server both compiles and serves, while production is a prebuilt bundle
  * behind Caddy. Everything in that serving layer — the SPA fallback, the cache
@@ -22,7 +22,7 @@ use Symfony\Component\Yaml\Yaml;
  * deep link because Caddy evaluates matchers before try_files rewrites.
  * Neither was reproducible locally, because locally there was no Caddy.
  */
-function upPreviewConfig(string $path, AppFramework $framework = AppFramework::VITE): ConfigData
+function previewUpConfig(string $path, AppFramework $framework = AppFramework::VITE): ConfigData
 {
     $config = new ConfigData(id: 'spa', name: 'spa', path: $path, framework: $framework);
     $config->setEnvironments(['local', 'production']);
@@ -31,7 +31,7 @@ function upPreviewConfig(string $path, AppFramework $framework = AppFramework::V
     return $config;
 }
 
-function upPreviewHolder(): object
+function previewUpHolder(): object
 {
     return new class
     {
@@ -50,8 +50,8 @@ function upPreviewHolder(): object
     };
 }
 
-test('--preview is refused on stacks that have no separate serving layer', function (AppFramework $framework): void {
-    $refusal = upPreviewHolder()->previewModeRefusal($framework, 'local');
+test('preview is refused on stacks that have no separate serving layer', function (AppFramework $framework): void {
+    $refusal = previewUpHolder()->previewModeRefusal($framework);
 
     expect($refusal)->not->toBeNull()
         ->and($refusal[0])->toContain('frontend-only stacks')
@@ -65,18 +65,12 @@ test('--preview is refused on stacks that have no separate serving layer', funct
     'wordpress' => [AppFramework::WORDPRESS],
 ]);
 
-test('--preview is refused with no framework at all', function (): void {
-    expect(upPreviewHolder()->previewModeRefusal(null, 'local'))->not->toBeNull();
+test('preview is refused with no framework at all', function (): void {
+    expect(previewUpHolder()->previewModeRefusal(null))->not->toBeNull();
 });
 
-test('--preview is accepted for every static stack, local only', function (AppFramework $framework): void {
-    expect(upPreviewHolder()->previewModeRefusal($framework, 'local'))->toBeNull();
-
-    // It rehearses production on the LOCAL cluster; pointed at a real
-    // environment it would be a deploy wearing the wrong name.
-    $refusal = upPreviewHolder()->previewModeRefusal($framework, 'production');
-    expect($refusal)->not->toBeNull()
-        ->and($refusal[1][0])->toContain('cloud:deploy production');
+test('preview is accepted for every static stack', function (AppFramework $framework): void {
+    expect(previewUpHolder()->previewModeRefusal($framework))->toBeNull();
 })->with([
     'vite' => [AppFramework::VITE],
     'astro' => [AppFramework::ASTRO],
@@ -86,9 +80,9 @@ test('--preview is accepted for every static stack, local only', function (AppFr
 test('the preview overlay runs the production workload on its own host', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
-    $config = upPreviewConfig($tempDir);
+    $config = previewUpConfig($tempDir);
 
-    upPreviewHolder()->generate($config);
+    previewUpHolder()->generate($config);
 
     $preview = "{$tempDir}/.infrastructure/k8s/overlays/local/preview";
 
@@ -153,7 +147,7 @@ test('the cloud overlay is unaffected by the preview parameters', function (): v
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
 
-    upPreviewHolder()->generate(upPreviewConfig($tempDir));
+    previewUpHolder()->generate(previewUpConfig($tempDir));
 
     $production = (string) file_get_contents("{$tempDir}/.infrastructure/k8s/overlays/production/caddy.yaml");
 
@@ -170,9 +164,9 @@ test('the cloud overlay is unaffected by the preview parameters', function (): v
 test('the preview build uses the deploy Dockerfile with the ship-guard lifted', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
-    $config = upPreviewConfig($tempDir);
+    $config = previewUpConfig($tempDir);
 
-    upPreviewHolder()->generate($config);
+    previewUpHolder()->generate($config);
     file_put_contents("{$tempDir}/.env", "VITE_API_URL=https://data.spa.test\n");
 
     $commands = [];
@@ -182,7 +176,7 @@ test('the preview build uses the deploy Dockerfile with the ship-guard lifted', 
         return Process::result();
     });
 
-    expect(upPreviewHolder()->build($config))->toBeTrue();
+    expect(previewUpHolder()->build($config))->toBeTrue();
 
     $build = collect($commands)->first(fn ($c) => str_contains((string) $c, 'buildx build'));
 
@@ -199,11 +193,11 @@ test('the preview build uses the deploy Dockerfile with the ship-guard lifted', 
 
 test('the preview build fails loudly when Dockerfile.static is missing', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
-    $config = upPreviewConfig($temporaryDirectory->path());
+    $config = previewUpConfig($temporaryDirectory->path());
 
     Process::fake();
 
-    expect(upPreviewHolder()->build($config))->toBeFalse();
+    expect(previewUpHolder()->build($config))->toBeFalse();
     Process::assertNothingRan();
 });
 
@@ -211,7 +205,7 @@ test('the ship-guard stays on for every build that is not a local rehearsal', fu
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
 
-    upPreviewHolder()->generate(upPreviewConfig($tempDir));
+    previewUpHolder()->generate(previewUpConfig($tempDir));
 
     // Defaulting the ARG to 1 is what keeps a plain `docker build` and every
     // real deploy from shipping a bundle that points at a developer's machine.

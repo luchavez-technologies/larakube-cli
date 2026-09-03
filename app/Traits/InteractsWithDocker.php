@@ -46,36 +46,30 @@ trait InteractsWithDocker
     }
 
     /**
-     * Why `--preview` cannot run, or null when it can. Pure, so the rules are
-     * testable without driving all of `up`'s interactive handle().
+     * Why `preview:*` cannot run here, or null when it can. Pure, so the rule
+     * is testable without driving either command's handle().
      *
-     * Refused rather than ignored: silently dropping a flag teaches the wrong
-     * model of what the flag does.
+     * Preview is local-only by construction — there is no environment arm to
+     * check, because neither command takes an environment. Shipping the real
+     * thing is `cloud:deploy`.
      *
      * @return array{0: string, 1: list<string>}|null [error, detail lines]
      */
-    public function previewModeRefusal(?AppFramework $framework, string $environment): ?array
+    public function previewModeRefusal(?AppFramework $framework): ?array
     {
-        if (! ($framework?->isStaticSpa() ?? false)) {
-            $label = $framework?->getLabel() ?? 'This project';
-
-            return [
-                '--preview applies to frontend-only stacks (Vite, Astro, Docusaurus).',
-                [
-                    "{$label} already serves through the same image locally and in production —",
-                    'there is no separate serving layer to rehearse. Use `larakube up` instead.',
-                ],
-            ];
+        if ($framework?->isStaticSpa() ?? false) {
+            return null;
         }
 
-        if ($environment !== 'local') {
-            return [
-                '--preview is a local rehearsal of the production build; it only runs against `local`.',
-                ["To ship the real thing, use `larakube cloud:deploy {$environment}`."],
-            ];
-        }
+        $label = $framework?->getLabel() ?? 'This project';
 
-        return null;
+        return [
+            'preview is for frontend-only stacks (Vite, Astro, Docusaurus).',
+            [
+                "{$label} already serves through the same image locally and in production —",
+                'there is no separate serving layer to rehearse. Use `larakube up` instead.',
+            ],
+        ];
     }
 
     /**

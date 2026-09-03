@@ -53,7 +53,6 @@ class UpCommand extends Command
                             {--no-env : Skip syncing local .env files}
                             {--build : Force building the Docker image}
                             {--no-build : Skip building the Docker image}
-                            {--preview : Frontend-only stacks (Vite/Astro/Docusaurus): serve the production build locally instead of the dev server. Not applicable to Laravel or other server-rendered projects.}
                             {--dry-run : Validate manifests without deploying}
                             {--test : Run smoke test without prompting}
                             {--no-test : Skip smoke test without prompting}
@@ -306,27 +305,6 @@ class UpCommand extends Command
         // then tried to run composer against a project with no vendor/ at all.
         $isStaticSite = $config->framework?->isStaticSpa() ?? false;
 
-        // --- 🔍 PREVIEW MODE ---
-        // Frontend-only stacks are the only ones whose local and production
-        // workloads genuinely differ: locally the framework's dev server both
-        // compiles and serves, while production is a prebuilt bundle behind
-        // Caddy. Everything in that serving layer — SPA fallback, cache
-        // headers, compression — therefore runs ONLY in production unless you
-        // rehearse it. Server-rendered projects build from the same Dockerfile
-        // either way and have nothing to rehearse, so the flag is refused
-        // rather than silently ignored.
-        $preview = (bool) $this->option('preview');
-
-        if ($preview && $refusal = $this->previewModeRefusal($config->framework, $environment)) {
-            [$error, $details] = $refusal;
-            $this->laraKubeError($error);
-            foreach ($details as $detail) {
-                $this->line("  <fg=gray>{$detail}</>");
-            }
-
-            return 1;
-        }
-
         if ($environment === 'local' && ! $isStaticSite) {
             // 🔒 1. Handle missing .env
             if (! file_exists($projectPath.'/.env')) {
@@ -350,15 +328,6 @@ class UpCommand extends Command
 
         $appName = $config->getName() ?? basename($projectPath);
         $path = ".infrastructure/k8s/overlays/{$environment}";
-
-        // The preview overlay carries its own resource names and its own host,
-        // so applying it adds the built-bundle workload NEXT TO the dev server
-        // rather than evicting it (kustomize apply does not prune).
-        if ($preview) {
-            $path .= '/preview';
-        }
-
-        $previewHost = $config->getServiceHost('preview', 'local');
 
         $namespace = $this->getNamespace($environment, $appName);
 
@@ -409,18 +378,7 @@ class UpCommand extends Command
         }
 
         // 1. Build image if local (Docker-Compose logic: only if missing or forced)
-        if ($preview) {
-            // Its own hosts block: passing custom hosts REPLACES the named
-            // block, so reusing the project's would drop the project's own
-            // entries. Skipped entirely when dnsmasq already wildcards the TLD.
-            $this->ensureHostsAreSet([$previewHost], $appName.'-preview');
-        }
-
-        if ($preview && ! $this->option('no-build')) {
-            if (! $this->buildStaticPreviewImage($config)) {
-                return 1;
-            }
-        } elseif ($environment === 'local' && ! $this->option('no-build')) {
+        if ($environment === 'local' && ! $this->option('no-build')) {
             $imageTag = "{$appName}:local";
 
             if ($this->option('build') || ! $this->imageExists($imageTag)) {
@@ -590,18 +548,13 @@ class UpCommand extends Command
 
         // Scale down to release file locks (Safe transition).
         //
-        // Skipped in preview mode — the preview pod holds no hostPath lock, and
-        // scaling here would take the dev server down, which is exactly what
-        // giving preview its own host was meant to stop. Outside preview mode
-        // the selector spares the preview pod: it is not in this overlay, so
-        // `--all` would park it at zero replicas with nothing to restore it.
-        // `!=` also matches objects lacking the label, so every other workload
-        // scales exactly as it did before.
-        if (! $preview) {
-            $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace): void {
-                Process::run("kubectl scale deployment --replicas=0 -l 'larakube-preview!=true' -n $namespace");
-            });
-        }
+        // The selector spares a `preview:up` workload: it lives in this same
+        // namespace but not in this overlay, so `--all` would park it at zero
+        // replicas with nothing here to restore it. `!=` also matches objects
+        // lacking the label, so every other workload scales as it did before.
+        $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace): void {
+            Process::run("kubectl scale deployment --replicas=0 -l 'larakube-preview!=true' -n $namespace");
+        });
 
         $this->runStreaming($this->kustomizeApplyCommand($path));
 
@@ -614,9 +567,7 @@ class UpCommand extends Command
 
         // 5. Restart deployments to pick up new ConfigMap/Secret changes
         $this->laraKubeInfo('Restarting deployments to apply potential configuration changes...');
-        $this->runStreaming($preview
-            ? "kubectl rollout restart deployment/web-preview -n $namespace"
-            : "kubectl rollout restart deployment -l 'larakube-preview!=true' -n $namespace");
+        $this->runStreaming("kubectl rollout restart deployment -l 'larakube-preview!=true' -n $namespace");
 
         // 6. Proactive HTTPS Trust Check
         if ($environment === 'local' && str_starts_with($config->getAppUrl(), 'https://') && ! $this->isSslTrusted()) {
@@ -634,13 +585,6 @@ class UpCommand extends Command
         }
 
         $this->renderHotReloadTip($config, $environment);
-
-        if ($preview) {
-            $this->newLine();
-            $this->line('  <fg=yellow>🔍 Preview</> <fg=gray>— the production build, served by Caddy at</> <fg=cyan>https://'.$previewHost.'</>');
-            $this->line('  <fg=gray>Your dev server keeps running at</> <fg=cyan>https://'.$config->getWebHost('local').'</><fg=gray>, so you can compare them side by side.</>');
-            $this->line('  <fg=gray>No HMR here — the bundle is baked into the image, so re-run</> <fg=yellow>larakube up --preview</> <fg=gray>after changes.</>');
-        }
 
         if ($environment === 'local') {
             $this->ensureProjectCompanions($config, $appName);
