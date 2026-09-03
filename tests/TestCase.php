@@ -38,6 +38,15 @@ abstract class TestCase extends BaseTestCase
         $this->testHomeDir = TemporaryDirectory::make()->deleteWhenDestroyed();
         $_SERVER['HOME'] = $this->testHomeDir->path();
 
+        // Unset the ambient WSL marker so the suite behaves identically on a
+        // real WSL2 host. isWsl() is `getenv('WSL_DISTRO_NAME') ||
+        // wslKernelSignaturePresent()`; the WSL-sensitive tests already stub the
+        // /proc/version half, but a WSL shell exports WSL_DISTRO_NAME into this
+        // process, so without this a contributor on WSL sees vpn:join hit its
+        // "can't run in WSL2" guard and DetectsWsl's "not WSL" cases invert.
+        // Tests that need "is WSL" set it explicitly (forceWsl()).
+        putenv('WSL_DISTRO_NAME');
+
         // Keep the test runner's output clean. Every laraKube* output helper (and
         // the header tagline) renders via termwind's render(), which writes to its
         // own console output — NOT the BufferedOutput that Artisan::call captures —
