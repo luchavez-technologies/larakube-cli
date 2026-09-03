@@ -15,6 +15,7 @@ use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
@@ -28,8 +29,8 @@ class AstroNewCommand extends Command
 
     protected $signature = 'astro:new
         {name? : The name of the Astro application}
-        {--template=minimal : Astro template (minimal, blog, portfolio, docs)}
-        {--fast : Skip wizard and use defaults}';
+        {--template= : Astro template (minimal, blog, portfolio, docs) — skips the prompt}
+        {--fast : Skip the wizard and use defaults (minimal)}';
 
     protected $description = 'Scaffold a new Astro application (minimal, blog, portfolio, docs) with LaraKube infrastructure';
 
@@ -58,10 +59,7 @@ class AstroNewCommand extends Command
             return 1;
         }
 
-        $template = strtolower((string) $this->option('template'));
-        if (! in_array($template, ['minimal', 'blog', 'portfolio', 'docs'], true)) {
-            $template = 'minimal';
-        }
+        $template = $this->gatherTemplate();
 
         // --yes --no-git --skip-houston keep every prompt suppressed. With no
         // TTY a create-* tool that reaches a prompt exits 0 having produced
@@ -146,5 +144,30 @@ class AstroNewCommand extends Command
         );
 
         return true;
+    }
+
+    /**
+     * Ask which starter to scaffold.
+     *
+     * create-astro is run with --yes --skip-houston so it never prompts: it
+     * runs inside a container, where a prompt either hangs or exits 0 having
+     * produced nothing. So the question has to be asked HERE or not at all.
+     */
+    protected function gatherTemplate(): string
+    {
+        $template = $this->option('template') ?? ((bool) $this->option('fast') ? 'minimal' : select(
+            label: 'Which Astro starter would you like?',
+            options: [
+                'minimal' => 'Minimal — an empty starter (Recommended)',
+                'blog' => 'Blog — posts, RSS and a content collection',
+                'portfolio' => 'Portfolio — a personal site',
+                'docs' => 'Docs — Starlight documentation',
+            ],
+            default: 'minimal',
+        ));
+
+        $template = strtolower((string) $template);
+
+        return in_array($template, ['minimal', 'blog', 'portfolio', 'docs'], true) ? $template : 'minimal';
     }
 }

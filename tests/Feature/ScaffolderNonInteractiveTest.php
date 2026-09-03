@@ -47,35 +47,27 @@ function scaffolderCommandFor(array $commands, string $tool): string
     return '';
 }
 
-test('docs:new never lets create-docusaurus reach its language prompt', function (): void {
+test('docs:new never lets create-docusaurus reach its language prompt', function (string $flags, string $expected): void {
     $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
     $old = getcwd();
     chdir($dir->path());
 
     try {
-        $commands = scaffolderCommands(fn () => $this->artisan('docs:new mydocs --no-interaction')->run());
+        $commands = scaffolderCommands(fn () => $this->artisan("docs:new mydocs {$flags} --no-interaction")->run());
 
         expect(scaffolderCommandFor($commands, 'create-docusaurus'))
-            ->toContain('--javascript');
+            ->toContain($expected);
     } finally {
         chdir($old);
     }
-});
-
-test('docs:new --typescript picks the language explicitly too', function (): void {
-    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
-    $old = getcwd();
-    chdir($dir->path());
-
-    try {
-        $commands = scaffolderCommands(fn () => $this->artisan('docs:new mydocs --typescript --no-interaction')->run());
-
-        expect(scaffolderCommandFor($commands, 'create-docusaurus'))
-            ->toContain('--typescript');
-    } finally {
-        chdir($old);
-    }
-});
+})->with([
+    // However the LaraKube wizard is short-circuited, a language ALWAYS
+    // reaches create-docusaurus. Unanswered, it exits 0 having created
+    // nothing, which is the failure this whole file exists for.
+    'fast defaults to TypeScript' => ['--fast', '--typescript'],
+    'explicit template, no --typescript' => ['--template=classic', '--javascript'],
+    'explicit --typescript' => ['--template=classic --typescript', '--typescript'],
+]);
 
 test('astro:new suppresses every prompt', function (): void {
     $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
@@ -83,7 +75,7 @@ test('astro:new suppresses every prompt', function (): void {
     chdir($dir->path());
 
     try {
-        $commands = scaffolderCommands(fn () => $this->artisan('astro:new mysite --no-interaction')->run());
+        $commands = scaffolderCommands(fn () => $this->artisan('astro:new mysite --fast --no-interaction')->run());
 
         expect(scaffolderCommandFor($commands, 'create-astro'))
             ->toContain('--yes')
@@ -100,7 +92,7 @@ test('scaffolders run in Node, not on the host', function (): void {
     chdir($dir->path());
 
     try {
-        $commands = scaffolderCommands(fn () => $this->artisan('docs:new mydocs --no-interaction')->run());
+        $commands = scaffolderCommands(fn () => $this->artisan('docs:new mydocs --fast --no-interaction')->run());
 
         expect(scaffolderCommandFor($commands, 'create-docusaurus'))
             ->toContain('docker run')

@@ -15,6 +15,8 @@ use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
+use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
@@ -28,9 +30,9 @@ class DocsNewCommand extends Command
 
     protected $signature = 'docs:new
         {name? : The name of the Docusaurus documentation site}
-        {--template=classic : Docusaurus template (classic, facebook)}
+        {--template= : Docusaurus template (classic, facebook) — skips the prompt}
         {--typescript : Use TypeScript variant}
-        {--fast : Skip wizard and use defaults}';
+        {--fast : Skip the wizard and use defaults (classic + TypeScript)}';
 
     protected $description = 'Scaffold a new Docusaurus documentation site with LaraKube infrastructure';
 
@@ -59,17 +61,14 @@ class DocsNewCommand extends Command
             return 1;
         }
 
-        $template = strtolower((string) $this->option('template'));
-        if (! in_array($template, ['classic', 'facebook'], true)) {
-            $template = 'classic';
-        }
+        [$template, $typescript] = $this->gatherStack();
 
         // The language flag is REQUIRED, not cosmetic: without it
         // create-docusaurus asks "Which language do you want to use?", and with
         // no TTY it exits 0 having created nothing. The command then reported a
         // ✓ spinner immediately followed by "scaffolding failed", because the
         // exit code was genuinely 0 — confirmed live.
-        $langFlag = $this->option('typescript') ? '--typescript' : '--javascript';
+        $langFlag = $typescript ? '--typescript' : '--javascript';
 
         if (! $this->runScaffolderInNode(
             $appName,
@@ -151,5 +150,46 @@ class DocsNewCommand extends Command
         );
 
         return true;
+    }
+
+    /**
+     * Ask what create-docusaurus would have asked.
+     *
+     * Its language question is the reason this exists at all: unanswered, with
+     * no TTY, create-docusaurus exits 0 having created nothing, so the command
+     * printed a ✓ spinner and "scaffolding failed" in the same breath. Asking
+     * here — before the container starts — is what makes the answer available
+     * to pass as a flag.
+     *
+     * @return array{0: string, 1: bool}
+     */
+    protected function gatherStack(): array
+    {
+        $fast = (bool) $this->option('fast');
+        $explicit = $this->option('template') !== null;
+
+        $template = $this->option('template') ?? ($fast ? 'classic' : select(
+            label: 'Which Docusaurus template would you like?',
+            options: [
+                'classic' => 'Classic — docs, blog and pages (Recommended)',
+                'facebook' => 'Facebook — the internal-style preset',
+            ],
+            default: 'classic',
+        ));
+
+        $template = strtolower((string) $template);
+
+        if (! in_array($template, ['classic', 'facebook'], true)) {
+            $template = 'classic';
+        }
+
+        $typescript = $this->option('typescript')
+            || ($fast && ! $explicit)
+            || (! $fast && ! $explicit && confirm(
+                label: 'Use TypeScript?',
+                default: true,
+            ));
+
+        return [$template, $typescript];
     }
 }
