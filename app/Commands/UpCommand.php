@@ -351,12 +351,14 @@ class UpCommand extends Command
         $appName = $config->getName() ?? basename($projectPath);
         $path = ".infrastructure/k8s/overlays/{$environment}";
 
-        // The preview overlay reuses the parent's resource NAMES (web), so
-        // applying either one swaps the other out in place — same host, same
-        // namespace, same URL, different workload.
+        // The preview overlay carries its own resource names and its own host,
+        // so applying it adds the built-bundle workload NEXT TO the dev server
+        // rather than evicting it (kustomize apply does not prune).
         if ($preview) {
             $path .= '/preview';
         }
+
+        $previewHost = $config->getServiceHost('preview', 'local');
 
         $namespace = $this->getNamespace($environment, $appName);
 
@@ -407,6 +409,13 @@ class UpCommand extends Command
         }
 
         // 1. Build image if local (Docker-Compose logic: only if missing or forced)
+        if ($preview) {
+            // Its own hosts block: passing custom hosts REPLACES the named
+            // block, so reusing the project's would drop the project's own
+            // entries. Skipped entirely when dnsmasq already wildcards the TLD.
+            $this->ensureHostsAreSet([$previewHost], $appName.'-preview');
+        }
+
         if ($preview && ! $this->option('no-build')) {
             if (! $this->buildStaticPreviewImage($config)) {
                 return 1;
@@ -579,10 +588,20 @@ class UpCommand extends Command
             });
         }
 
-        // Scale down to release file locks (Safe transition)
-        $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace): void {
-            Process::run("kubectl scale deployment --all --replicas=0 -n $namespace");
-        });
+        // Scale down to release file locks (Safe transition).
+        //
+        // Skipped in preview mode — the preview pod holds no hostPath lock, and
+        // scaling here would take the dev server down, which is exactly what
+        // giving preview its own host was meant to stop. Outside preview mode
+        // the selector spares the preview pod: it is not in this overlay, so
+        // `--all` would park it at zero replicas with nothing to restore it.
+        // `!=` also matches objects lacking the label, so every other workload
+        // scales exactly as it did before.
+        if (! $preview) {
+            $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace): void {
+                Process::run("kubectl scale deployment --replicas=0 -l 'larakube-preview!=true' -n $namespace");
+            });
+        }
 
         $this->runStreaming($this->kustomizeApplyCommand($path));
 
@@ -595,7 +614,9 @@ class UpCommand extends Command
 
         // 5. Restart deployments to pick up new ConfigMap/Secret changes
         $this->laraKubeInfo('Restarting deployments to apply potential configuration changes...');
-        $this->runStreaming("kubectl rollout restart deployment -n $namespace");
+        $this->runStreaming($preview
+            ? "kubectl rollout restart deployment/web-preview -n $namespace"
+            : "kubectl rollout restart deployment -l 'larakube-preview!=true' -n $namespace");
 
         // 6. Proactive HTTPS Trust Check
         if ($environment === 'local' && str_starts_with($config->getAppUrl(), 'https://') && ! $this->isSslTrusted()) {
@@ -616,9 +637,9 @@ class UpCommand extends Command
 
         if ($preview) {
             $this->newLine();
-            $this->line('  <fg=yellow>🔍 Preview mode</> <fg=gray>— serving the production build through Caddy.</>');
-            $this->line('  <fg=gray>There is no HMR here: the bundle is baked into the image, so re-run</>');
-            $this->line('  <fg=yellow>larakube up --preview</> <fg=gray>to pick up changes, or</> <fg=yellow>larakube up</> <fg=gray>to return to the dev server.</>');
+            $this->line('  <fg=yellow>🔍 Preview</> <fg=gray>— the production build, served by Caddy at</> <fg=cyan>https://'.$previewHost.'</>');
+            $this->line('  <fg=gray>Your dev server keeps running at</> <fg=cyan>https://'.$config->getWebHost('local').'</><fg=gray>, so you can compare them side by side.</>');
+            $this->line('  <fg=gray>No HMR here — the bundle is baked into the image, so re-run</> <fg=yellow>larakube up --preview</> <fg=gray>after changes.</>');
         }
 
         if ($environment === 'local') {

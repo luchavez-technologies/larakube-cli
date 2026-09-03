@@ -83,7 +83,7 @@ test('--preview is accepted for every static stack, local only', function (AppFr
     'docusaurus' => [AppFramework::DOCUSAURUS],
 ]);
 
-test('the preview overlay runs the production workload under the local host', function (): void {
+test('the preview overlay runs the production workload on its own host', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $tempDir = $temporaryDirectory->path();
     $config = upPreviewConfig($tempDir);
@@ -107,15 +107,27 @@ test('the preview overlay runs the production workload under the local host', fu
     $service = collect($documents)->firstWhere('kind', 'Service');
     $ingress = collect($documents)->firstWhere('kind', 'Ingress');
 
-    // Same resource NAMES as the dev-server overlay, so applying either swaps
-    // the other out in place rather than leaving two workloads on one host.
-    expect($deployment['metadata']['name'])->toBe('web')
-        ->and($service['metadata']['name'])->toBe('web')
-        ->and($ingress['metadata']['name'])->toBe('web')
+    // Distinct resource names from the dev server's, which is what lets both
+    // run at once — the point of the whole design. Sharing them made
+    // `--preview` evict the very thing you want to compare against.
+    expect($deployment['metadata']['name'])->toBe('web-preview')
+        ->and($service['metadata']['name'])->toBe('web-preview')
+        ->and($ingress['metadata']['name'])->toBe('web-preview')
+        ->and($deployment['spec']['selector']['matchLabels']['app'])->toBe('web-preview')
+        ->and($service['spec']['selector']['app'])->toBe('web-preview')
         ->and($deployment['spec']['template']['spec']['containers'][0]['image'])->toBe('spa:preview')
         // Caddy serves the baked bundle: nothing is fetched at runtime.
-        ->and($deployment['spec']['template']['spec']['containers'][0])->not->toHaveKey('volumeMounts')
-        ->and($ingress['spec']['rules'][0]['host'])->toBe($config->getWebHost('local'));
+        ->and($deployment['spec']['template']['spec']['containers'][0])->not->toHaveKey('volumeMounts');
+
+    // Its own host, and NOT the dev server's.
+    expect($ingress['spec']['rules'][0]['host'])->toBe('preview.spa.'.$config->getLocalTld())
+        ->and($ingress['spec']['rules'][0]['host'])->not->toBe($config->getWebHost('local'))
+        ->and($ingress['spec']['tls'][0]['hosts'])->toBe(['preview.spa.'.$config->getLocalTld()]);
+
+    // The label a plain `larakube up` uses to spare this pod from its
+    // scale-to-zero. Without it, `up` parks preview at zero replicas and
+    // nothing in the local overlay ever restores it.
+    expect($deployment['metadata']['labels']['larakube-preview'] ?? null)->toBe('true');
 
     // A .test host can never pass an ACME HTTP-01 challenge — asking for one
     // leaves Traefik serving its built-in dev cert instead of the LaraKube
@@ -125,10 +137,34 @@ test('the preview overlay runs the production workload under the local host', fu
         ->and($ingress['metadata']['annotations'])
         ->not->toHaveKey('external-dns.alpha.kubernetes.io/cloudflare-proxied');
 
-    // The parent overlay is untouched — `larakube up` still gets the dev server.
+    // The parent overlay is untouched — `larakube up` still gets the dev server,
+    // and the two overlays never reference each other's resources.
     expect(file_get_contents("{$tempDir}/.infrastructure/k8s/overlays/local/kustomization.yaml"))
         ->toContain('dev-server.yaml')
         ->not->toContain('caddy.yaml');
+
+    // The dev server keeps the plain `web` names, so neither apply touches the
+    // other's Deployment, Service or Ingress.
+    expect(file_get_contents("{$tempDir}/.infrastructure/k8s/overlays/local/dev-server.yaml"))
+        ->not->toContain('web-preview');
+});
+
+test('the cloud overlay is unaffected by the preview parameters', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
+
+    upPreviewHolder()->generate(upPreviewConfig($tempDir));
+
+    $production = (string) file_get_contents("{$tempDir}/.infrastructure/k8s/overlays/production/caddy.yaml");
+
+    // The same template renders both; production must keep the bare `web`
+    // names its kustomization's image transform and every rollout command
+    // already target, and must NOT carry the local-only preview label.
+    expect($production)->toContain('image: spa:latest')
+        ->and($production)->not->toContain('web-preview')
+        ->and($production)->not->toContain('larakube-preview')
+        // …and it still asks for a real certificate.
+        ->and($production)->toContain('certresolver: letsencrypt');
 });
 
 test('the preview build uses the deploy Dockerfile with the ship-guard lifted', function (): void {

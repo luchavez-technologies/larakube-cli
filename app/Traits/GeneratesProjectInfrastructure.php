@@ -505,18 +505,25 @@ trait GeneratesProjectInfrastructure
 
         // --- local/preview: the CLOUD workload, on the local cluster. ---
         // Same image, same Caddy, same Caddyfile as production; only the TLS
-        // issuer and the hostname differ. `up --preview` applies this nested
-        // overlay instead of its parent, so the serving layer — SPA fallback,
-        // cache headers, compression, security headers — can be exercised
-        // before it ships, instead of only ever running in production.
+        // issuer and the hostname differ. `up --preview` applies this overlay
+        // ALONGSIDE its parent, so the serving layer — SPA fallback, cache
+        // headers, compression, security headers — can be exercised before it
+        // ships, instead of only ever running in production.
+        //
+        // Its own host and its own resource names, deliberately: sharing them
+        // with the dev server made `--preview` evict the thing you want to
+        // compare against, and cost you the warm node_modules PVC on the way
+        // back. Both run at once now.
         $render('overlays/local/preview/kustomization.yaml', 'k8s.static.preview-kustomization', $localData);
         $render('overlays/local/preview/caddy.yaml', 'k8s.static.caddy', [
             'config' => $config,
             'namespace' => $config->getNamespace('local'),
             'environment' => 'local',
-            'hosts' => [$config->getWebHost('local')],
+            'hosts' => [$config->getServiceHost('preview', 'local')],
             'proxied' => false,
             'image' => $config->getName().':preview',
+            'resourceName' => 'web-preview',
+            'isPreview' => true,
             // A .test host can never pass an ACME challenge; Traefik serves the
             // LaraKube Local CA leaf here.
             'letsencrypt' => false,

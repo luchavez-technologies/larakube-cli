@@ -3,13 +3,27 @@
      no credentials, no init container, and `kubectl rollout undo` is a real
      rollback.
 
+     This same template renders twice: as the cloud workload (`web`), and as the
+     local rehearsal `up --preview` deploys (`web-preview`, on its own host, at
+     its own resource names) so it runs ALONGSIDE the dev server instead of
+     evicting it. Two tabs, one built and one hot-reloading, is the comparison
+     the flag exists to make possible.
+
      Blade @if directives stay at column 0: an indented one leaks its own
      leading whitespace onto the next line when it closes and corrupts the
      following key. --}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: web
+  name: {{ $resourceName ?? 'web' }}
+{{-- `up` scales every OTHER deployment to zero before applying, to release
+     file locks on the hostPath mount. A preview pod holds no such lock and is
+     not part of that overlay, so without a label to exclude it, a plain
+     `larakube up` would park it at zero replicas and never bring it back. --}}
+@if($isPreview ?? false)
+  labels:
+    larakube-preview: "true"
+@endif
 spec:
   replicas: {{ $config->getReplicas($environment, 'web') }}
   strategy:
@@ -19,11 +33,11 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: web
+      app: {{ $resourceName ?? 'web' }}
   template:
     metadata:
       labels:
-        app: web
+        app: {{ $resourceName ?? 'web' }}
     spec:
       containers:
         - name: caddy
@@ -54,10 +68,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: web
+  name: {{ $resourceName ?? 'web' }}
 spec:
   selector:
-    app: web
+    app: {{ $resourceName ?? 'web' }}
   ports:
     - protocol: TCP
       port: 80
@@ -67,7 +81,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: web
+  name: {{ $resourceName ?? 'web' }}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -105,7 +119,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: web
+                name: {{ $resourceName ?? 'web' }}
                 port:
                   number: 80
 @endforeach
