@@ -4,6 +4,7 @@ namespace App\Commands\Astro;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
+use App\Enums\PackageManager;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
@@ -78,16 +79,32 @@ class AstroNewCommand extends Command
             frontend: null,
         );
 
+        $config->setIsScaffolding(true);
+
+        $config->setName($appName);
+
+        $config->setPath($projectDir);
+
+        // Cloud environments are opt-in — `larakube env production` adds one.
+
+        $config->setEnvironments(['local']);
+
+        $config->setPackageManager(PackageManager::NPM);
+
         $this->saveProjectConfig($projectDir, $config);
 
-        // Generate .env.example with PocketBase / API URL placeholders
-        $envExamplePath = "{$projectDir}/.env.example";
-        $envContent = "PUBLIC_POCKETBASE_URL=https://data.dev.test\n"
-            ."PUBLIC_API_URL=https://api.dev.test\n";
-        file_put_contents($envExamplePath, $envContent);
-        file_put_contents("{$projectDir}/.env", $envContent);
+        // No PocketBase/Directus vars are seeded: a landing page has no backend,
+
+        // and `larakube data:wire` exists to add them on demand.
+
+        $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config): void {
+
+            $this->orchestrateProjectScaffolding($config, installFeatures: false, buildImage: false);
+
+        });
 
         $this->laraKubeNewLine();
+
         $this->laraKubeInfo("✅ Scaffolding complete! Created Astro ({$template}) site in {$appName}/");
         $this->newLine();
         $this->line('  <fg=gray>Run</> <fg=yellow>cd '.$appName.' && larakube data:wire</> <fg=gray>to connect PocketBase/Directus</>');

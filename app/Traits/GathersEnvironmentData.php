@@ -283,6 +283,24 @@ trait GathersEnvironmentData
                     $forgejoHost = $config->getSharedServiceHost(SharedClusterService::FORGEJO, $envName);
                 }
             }
+
+            // getSharedServiceHost() falls back to the LOCAL tld when a cloud
+            // env has no web host recorded yet, so a production registry could
+            // silently end up as `git.test` — confirmed live: the deploy only
+            // failed much later, at `docker login git.test`, after a full image
+            // build. A registry a cloud cluster cannot reach is never right, so
+            // ask rather than record a host that cannot work.
+            if ($envName !== 'local' && $this->isLocalRegistryHost((string) $forgejoHost)) {
+                $forgejoHost = trim(text(
+                    label: "Forgejo registry host for '{$envName}'",
+                    placeholder: 'git.example.com',
+                    hint: "'{$forgejoHost}' is a local host — a remote cluster cannot pull from it.",
+                    required: true,
+                    validate: fn (string $v) => $this->isLocalRegistryHost(trim($v))
+                        ? 'That is still a local host. Use the registry\'s real, publicly resolvable domain.'
+                        : null,
+                ));
+            }
         }
 
         return new RegistryData(
@@ -290,6 +308,28 @@ trait GathersEnvironmentData
             image: trim($image) !== '' ? trim($image) : null,
             host: $forgejoHost,
         );
+    }
+
+    /**
+     * A registry host on a local TLD. Deliberately its own method rather than
+     * reusing EnsuresRealHosts::isLocalDomain(): this trait does not compose
+     * that one, and a registry host is a different question from a web host.
+     */
+    protected function isLocalRegistryHost(string $host): bool
+    {
+        $host = trim($host);
+
+        if ($host === '' || str_contains($host, '.dev.test')) {
+            return true;
+        }
+
+        foreach (GlobalConfigData::ALLOWED_TLDS as $tld) {
+            if (str_ends_with($host, '.'.$tld)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

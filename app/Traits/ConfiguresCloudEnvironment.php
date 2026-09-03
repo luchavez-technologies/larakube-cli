@@ -221,6 +221,21 @@ trait ConfiguresCloudEnvironment
      */
     protected function configureCi(?string $environment, bool $rotate): int
     {
+        // Both pipeline templates are Laravel end to end — setup-php, composer
+        // install, php artisan test, Dockerfile.php, --target deploy. Generating
+        // one for a project with no PHP in it produces a file that cannot work
+        // and does not say so: it fails later, in CI, on someone else's machine.
+        if ($this->getProjectConfig(getcwd())?->framework?->isStaticSpa()) {
+            $this->laraKubeError('No CI pipeline for a static site yet.');
+            $this->line('   <fg=gray>The GitHub Actions and GitLab templates build a PHP image</> ');
+            $this->line('   <fg=gray>(setup-php, composer install, php artisan test) — nothing a static</> ');
+            $this->line('   <fg=gray>site can use. Refusing rather than writing a workflow that fails in CI.</>');
+            $this->newLine();
+            $this->line('   <fg=gray>Deploy manually meanwhile:</> <fg=yellow>larakube cloud:deploy '.($environment ?? '<env>').'</>');
+
+            return 1;
+        }
+
         return $this->detectCiPlatform() === 'gitlab'
             ? $this->configureGitlab($environment, $rotate)
             : $this->configureGha($environment, $rotate);

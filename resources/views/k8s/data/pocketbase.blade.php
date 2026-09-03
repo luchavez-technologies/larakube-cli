@@ -67,7 +67,12 @@ spec:
       containers:
         - name: pocketbase
           # PocketBase has no official image — this is the community-maintained one.
-          image: ghcr.io/muchobien/pocketbase:0.39.10
+          # Held on the 0.39 line deliberately. 0.40.x is available, but it
+          # bumps to Go 1.27 and encoding/json/v2, which upstream states is "not
+          # fully backward compatible", and changes console commands to
+          # propagate errors so `&&` chains behave differently. That is a tested
+          # upgrade against live data, not a version bump.
+          image: ghcr.io/muchobien/pocketbase:0.39.11
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8090

@@ -238,3 +238,44 @@ test('generateK8sManifests builds a complete, self-contained tree for a static S
 
     $temporaryDirectory->delete();
 });
+
+test('astro:new and docs:new produce the same deployable tree as vite:new', function (AppFramework $framework, string $outputDir): void {
+    // These had exactly the gaps vite:new had — no orchestrateProjectScaffolding
+    // call at all, so .larakube.json was the only artifact and nothing was
+    // deployable. They now inherit the whole static pipeline.
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
+
+    $config = new ConfigData(id: 'site', name: 'site', path: $tempDir, framework: $framework);
+    $config->setEnvironments(['local', 'production']);
+    $config->setPackageManager(App\Enums\PackageManager::NPM);
+
+    $holder = new class
+    {
+        use GeneratesProjectInfrastructure;
+
+        public function go(ConfigData $config): void
+        {
+            $this->orchestrateProjectScaffolding($config, installFeatures: false, buildImage: false);
+        }
+    };
+
+    $holder->go($config);
+
+    expect(file_exists("{$tempDir}/Dockerfile.static"))->toBeTrue()
+        ->and(file_exists("{$tempDir}/Caddyfile"))->toBeTrue()
+        ->and(file_exists("{$tempDir}/.infrastructure/k8s/overlays/local/dev-server.yaml"))->toBeTrue()
+        ->and(file_exists("{$tempDir}/.infrastructure/k8s/overlays/production/caddy.yaml"))->toBeTrue()
+        // A static site has no PHP image.
+        ->and(file_exists("{$tempDir}/Dockerfile.php"))->toBeFalse();
+
+    // Docusaurus writes build/, not dist/ — the difference has to reach the
+    // Dockerfile, or the image would copy an empty directory and serve nothing.
+    expect(file_get_contents("{$tempDir}/Dockerfile.static"))
+        ->toContain("COPY --from=assets /app/{$outputDir} /srv");
+
+    $temporaryDirectory->delete();
+})->with([
+    'astro' => [AppFramework::ASTRO, 'dist'],
+    'docusaurus' => [AppFramework::DOCUSAURUS, 'build'],
+]);

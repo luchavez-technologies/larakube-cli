@@ -4,6 +4,7 @@ namespace App\Commands\Docs;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
+use App\Enums\PackageManager;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
@@ -81,9 +82,32 @@ class DocsNewCommand extends Command
             frontend: null,
         );
 
+        $config->setIsScaffolding(true);
+
+        $config->setName($appName);
+
+        $config->setPath($projectDir);
+
+        // Cloud environments are opt-in — `larakube env production` adds one.
+
+        $config->setEnvironments(['local']);
+
+        $config->setPackageManager(PackageManager::NPM);
+
         $this->saveProjectConfig($projectDir, $config);
 
+        // No PocketBase/Directus vars are seeded: a landing page has no backend,
+
+        // and `larakube data:wire` exists to add them on demand.
+
+        $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config): void {
+
+            $this->orchestrateProjectScaffolding($config, installFeatures: false, buildImage: false);
+
+        });
+
         $this->laraKubeNewLine();
+
         $this->laraKubeInfo("✅ Scaffolding complete! Created Docusaurus documentation site in {$appName}/");
         $this->newLine();
 
