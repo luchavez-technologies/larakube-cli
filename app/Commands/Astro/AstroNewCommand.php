@@ -100,14 +100,11 @@ class AstroNewCommand extends Command
 
         $this->saveProjectConfig($projectDir, $config);
 
-        // No PocketBase/Directus vars are seeded: a landing page has no backend,
-
-        // and `larakube data:wire` exists to add them on demand.
+        // No backend vars are seeded — `larakube data:wire` adds them on demand,
+        // as PUBLIC_* so Astro's client islands can read them.
 
         $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config): void {
-
             $this->orchestrateProjectScaffolding($config, installFeatures: false, buildImage: false);
-
         });
 
         $this->laraKubeNewLine();

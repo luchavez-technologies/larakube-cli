@@ -74,8 +74,21 @@ class DataWireCommand extends Command
         // four prefixes unconditionally left three dead variables in every
         // project. A directory with no blueprint is the one case where we
         // genuinely cannot tell, so it still gets all of them.
-        $prefixes = $this->getProjectConfig($projectPath)?->framework?->publicEnvPrefixes()
-            ?? ['VITE_', 'PUBLIC_', 'NEXT_PUBLIC_', 'ASTRO_'];
+        $framework = $this->getProjectConfig($projectPath)?->framework;
+        $prefixes = $framework?->publicEnvPrefixes() ?? ['VITE_', 'PUBLIC_', 'NEXT_PUBLIC_', 'ASTRO_'];
+
+        // A static framework with no client-env prefix cannot read a .env value
+        // from browser code at all — Docusaurus is the case: it exposes
+        // build-time values through customFields in docusaurus.config.js and
+        // useDocusaurusContext(), never process.env. Writing the variable would
+        // look like wiring and do nothing, so say so instead.
+        if ($framework?->isStaticSpa() && $prefixes === []) {
+            $this->laraKubeError("{$framework->getLabel()} has no client-side env prefix — a .env value here would never reach the browser.");
+            $this->line('   <fg=gray>Expose it through</> <fg=blue>customFields</> <fg=gray>in docusaurus.config.js and read it with</> ');
+            $this->line('   <fg=blue>useDocusaurusContext()</><fg=gray>. Point it at:</> <fg=yellow>https://'.$host.'</>');
+
+            return 1;
+        }
 
         $envVars = [];
         foreach ($prefixes as $prefix) {

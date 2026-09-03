@@ -107,14 +107,11 @@ class DocsNewCommand extends Command
 
         $this->saveProjectConfig($projectDir, $config);
 
-        // No PocketBase/Directus vars are seeded: a landing page has no backend,
-
-        // and `larakube data:wire` exists to add them on demand.
-
+        // No backend vars are seeded. Unlike Vite and Astro, Docusaurus has no
+        // client-env prefix at all — a .env value never reaches browser code,
+        // so data:wire has nothing useful to write here (see its own guard).
         $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config): void {
-
             $this->orchestrateProjectScaffolding($config, installFeatures: false, buildImage: false);
-
         });
 
         $this->laraKubeNewLine();

@@ -200,3 +200,62 @@ test('data:wire takes the engine from the registry rather than asking', function
         $temporaryDirectory->delete();
     }
 });
+
+test('data:wire refuses a framework whose browser code cannot read a .env value', function (): void {
+    // Docusaurus exposes build-time values through customFields in
+    // docusaurus.config.js and useDocusaurusContext(), never process.env. It
+    // would have received a bare POCKETBASE_URL that nothing could read —
+    // wiring that looks done and is not.
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
+    file_put_contents("{$tempDir}/.larakube.json", (string) json_encode([
+        'id' => 'docs', 'name' => 'docs', 'framework' => 'docusaurus',
+    ]));
+
+    $oldCwd = getcwd();
+    chdir($tempDir);
+
+    try {
+        Process::fake([
+            '*get secret larakube-tools-registry*' => Process::result(output: dataWireRegistry()),
+            '*get secret*' => Process::result(output: base64_encode('data.dev.test')),
+            '*' => Process::result(output: 'data.dev.test'),
+        ]);
+
+        $this->artisan('data:wire local --engine=pocketbase')->assertExitCode(1);
+
+        // And it writes nothing rather than leaving a dead variable behind.
+        expect(file_exists("{$tempDir}/.env"))->toBeFalse();
+    } finally {
+        chdir($oldCwd);
+        $temporaryDirectory->delete();
+    }
+});
+
+test('astro gets PUBLIC_, which its client islands actually read', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
+    file_put_contents("{$tempDir}/.larakube.json", (string) json_encode([
+        'id' => 'site', 'name' => 'site', 'framework' => 'astro',
+    ]));
+
+    $oldCwd = getcwd();
+    chdir($tempDir);
+
+    try {
+        Process::fake([
+            '*get secret larakube-tools-registry*' => Process::result(output: dataWireRegistry()),
+            '*get secret*' => Process::result(output: base64_encode('data.dev.test')),
+            '*' => Process::result(output: 'data.dev.test'),
+        ]);
+
+        $this->artisan('data:wire local --engine=pocketbase')->assertExitCode(0);
+
+        expect(file_get_contents("{$tempDir}/.env"))
+            ->toContain('PUBLIC_POCKETBASE_URL=https://data.')
+            ->not->toContain('VITE_');
+    } finally {
+        chdir($oldCwd);
+        $temporaryDirectory->delete();
+    }
+});
