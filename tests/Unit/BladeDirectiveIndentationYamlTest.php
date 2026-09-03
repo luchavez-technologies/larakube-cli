@@ -122,12 +122,36 @@ test('static-site caddy manifest parses as valid YAML for one or many hosts', fu
 
     $ingress = collect($documents)->firstWhere('kind', 'Ingress');
     expect($ingress['spec']['rules'])->toHaveSameSize($hosts)
+        // OFF unless asked for. Orange-clouding a host breaks Let's Encrypt's
+        // HTTP-01 challenge, so Traefik never gets a certificate, falls back to
+        // the dev cert baked into its image, and Cloudflare answers every
+        // request with 526 — confirmed live on a real deploy.
         ->and($ingress['metadata']['annotations']['external-dns.alpha.kubernetes.io/cloudflare-proxied'] ?? null)
-        ->toBe('true');
+        ->toBeNull();
 })->with([
     'single host' => [['demo.com']],
     'apex plus www' => [['demo.com', 'www.demo.com']],
 ]);
+
+test('static-site ingress proxies only when explicitly asked', function (): void {
+    $config = new App\Data\ConfigData(
+        id: 'demo', name: 'demo', path: '/tmp/demo', framework: App\Enums\AppFramework::VITE,
+    );
+
+    $rendered = view('k8s.static.caddy', [
+        'config' => $config, 'namespace' => 'demo-production', 'environment' => 'production',
+        'hosts' => ['demo.com'], 'proxied' => true,
+    ])->render();
+
+    $ingress = collect(bladeYamlDocuments($rendered))->firstWhere('kind', 'Ingress');
+
+    expect($ingress['metadata']['annotations']['external-dns.alpha.kubernetes.io/cloudflare-proxied'] ?? null)
+        ->toBe('true')
+        // The certresolver must survive alongside it — an indented @if would
+        // swallow the following key.
+        ->and($ingress['metadata']['annotations']['traefik.ingress.kubernetes.io/router.tls.certresolver'] ?? null)
+        ->toBe('letsencrypt');
+});
 
 test('errors (Glitchtip) secret manifest parses as valid YAML across noPlex branches', function (bool $noPlex): void {
     $rendered = view('k8s.errors.shared', [
