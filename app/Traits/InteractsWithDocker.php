@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use App\Enums\AppFramework;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithDocker
@@ -45,6 +46,39 @@ trait InteractsWithDocker
     }
 
     /**
+     * Why `--preview` cannot run, or null when it can. Pure, so the rules are
+     * testable without driving all of `up`'s interactive handle().
+     *
+     * Refused rather than ignored: silently dropping a flag teaches the wrong
+     * model of what the flag does.
+     *
+     * @return array{0: string, 1: list<string>}|null [error, detail lines]
+     */
+    public function previewModeRefusal(?AppFramework $framework, string $environment): ?array
+    {
+        if (! ($framework?->isStaticSpa() ?? false)) {
+            $label = $framework?->getLabel() ?? 'This project';
+
+            return [
+                '--preview applies to frontend-only stacks (Vite, Astro, Docusaurus).',
+                [
+                    "{$label} already serves through the same image locally and in production —",
+                    'there is no separate serving layer to rehearse. Use `larakube up` instead.',
+                ],
+            ];
+        }
+
+        if ($environment !== 'local') {
+            return [
+                '--preview is a local rehearsal of the production build; it only runs against `local`.',
+                ["To ship the real thing, use `larakube cloud:deploy {$environment}`."],
+            ];
+        }
+
+        return null;
+    }
+
+    /**
      * Get the base Docker run command for a specific type (php or node).
      */
     protected function getDockerCommand(string $path, string $type = 'php', string $envs = ''): string
@@ -81,6 +115,59 @@ trait InteractsWithDocker
 
         // Build Primary Project Image (Includes PHP, Node, and correct permissions)
         $this->buildTargetedImage("$appName:local", "$path/Dockerfile.php", $path, $uid, $gid);
+    }
+
+    /**
+     * Build the production static image for a LOCAL rehearsal (`up --preview`).
+     *
+     * Deliberately the same Dockerfile.static and the same BuildKit dotenv
+     * secret the deploy uses, so the preview exercises the real serving layer
+     * rather than an approximation of it. Two differences, both required:
+     *
+     *  - the mounted env file is the project's local `.env`, because VITE_* are
+     *    compiled into the bundle and a local preview must talk to the local
+     *    backend;
+     *  - STRICT_HOSTS=0, since that same local `.env` is exactly what the
+     *    Dockerfile's ship-guard is built to reject.
+     *
+     * Returns false (already reported) when the build fails.
+     */
+    protected function buildStaticPreviewImage(ConfigData $config): bool
+    {
+        $path = $config->getPath();
+        $dockerfile = "$path/Dockerfile.static";
+
+        if (! file_exists($dockerfile)) {
+            $this->laraKubeError('No Dockerfile.static found — run `larakube heal` to regenerate it.');
+
+            return false;
+        }
+
+        $imageTag = $config->getName().':preview';
+        $dotenv = "$path/.env";
+        $secret = file_exists($dotenv)
+            ? '--secret id=dotenv,src='.escapeshellarg($dotenv).' '
+            : '';
+
+        $this->laraKubeInfo("Building preview image '$imageTag' from Dockerfile.static...");
+
+        $code = $this->runStreaming(
+            'docker buildx build --build-arg STRICT_HOSTS=0 '
+            .'-t '.escapeshellarg($imageTag)
+            .' -f '.escapeshellarg($dockerfile).' '
+            .$secret
+            .escapeshellarg($path).' --load',
+        );
+
+        if ($code !== 0) {
+            $this->laraKubeError('Preview build failed.');
+
+            return false;
+        }
+
+        $this->sideloadToActiveCluster($imageTag);
+
+        return true;
     }
 
     protected function buildTargetedImage(string $imageTag, string $dockerfile, string $path, int $uid, int $gid): void

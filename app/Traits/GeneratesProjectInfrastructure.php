@@ -503,6 +503,25 @@ trait GeneratesProjectInfrastructure
         $render('overlays/local/kustomization.yaml', 'k8s.static.local-kustomization', $localData);
         $render('overlays/local/dev-server.yaml', 'k8s.static.dev-server', $localData);
 
+        // --- local/preview: the CLOUD workload, on the local cluster. ---
+        // Same image, same Caddy, same Caddyfile as production; only the TLS
+        // issuer and the hostname differ. `up --preview` applies this nested
+        // overlay instead of its parent, so the serving layer — SPA fallback,
+        // cache headers, compression, security headers — can be exercised
+        // before it ships, instead of only ever running in production.
+        $render('overlays/local/preview/kustomization.yaml', 'k8s.static.preview-kustomization', $localData);
+        $render('overlays/local/preview/caddy.yaml', 'k8s.static.caddy', [
+            'config' => $config,
+            'namespace' => $config->getNamespace('local'),
+            'environment' => 'local',
+            'hosts' => [$config->getWebHost('local')],
+            'proxied' => false,
+            'image' => $config->getName().':preview',
+            // A .test host can never pass an ACME challenge; Traefik serves the
+            // LaraKube Local CA leaf here.
+            'letsencrypt' => false,
+        ]);
+
         // --- cloud: Caddy fronting the published bundle. ---
         foreach ($config->getCloudEnvironments() as $env) {
             $cloudData = [

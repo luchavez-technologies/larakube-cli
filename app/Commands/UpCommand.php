@@ -53,6 +53,7 @@ class UpCommand extends Command
                             {--no-env : Skip syncing local .env files}
                             {--build : Force building the Docker image}
                             {--no-build : Skip building the Docker image}
+                            {--preview : Frontend-only stacks (Vite/Astro/Docusaurus): serve the production build locally instead of the dev server. Not applicable to Laravel or other server-rendered projects.}
                             {--dry-run : Validate manifests without deploying}
                             {--test : Run smoke test without prompting}
                             {--no-test : Skip smoke test without prompting}
@@ -305,6 +306,27 @@ class UpCommand extends Command
         // then tried to run composer against a project with no vendor/ at all.
         $isStaticSite = $config->framework?->isStaticSpa() ?? false;
 
+        // --- 🔍 PREVIEW MODE ---
+        // Frontend-only stacks are the only ones whose local and production
+        // workloads genuinely differ: locally the framework's dev server both
+        // compiles and serves, while production is a prebuilt bundle behind
+        // Caddy. Everything in that serving layer — SPA fallback, cache
+        // headers, compression — therefore runs ONLY in production unless you
+        // rehearse it. Server-rendered projects build from the same Dockerfile
+        // either way and have nothing to rehearse, so the flag is refused
+        // rather than silently ignored.
+        $preview = (bool) $this->option('preview');
+
+        if ($preview && $refusal = $this->previewModeRefusal($config->framework, $environment)) {
+            [$error, $details] = $refusal;
+            $this->laraKubeError($error);
+            foreach ($details as $detail) {
+                $this->line("  <fg=gray>{$detail}</>");
+            }
+
+            return 1;
+        }
+
         if ($environment === 'local' && ! $isStaticSite) {
             // 🔒 1. Handle missing .env
             if (! file_exists($projectPath.'/.env')) {
@@ -328,6 +350,13 @@ class UpCommand extends Command
 
         $appName = $config->getName() ?? basename($projectPath);
         $path = ".infrastructure/k8s/overlays/{$environment}";
+
+        // The preview overlay reuses the parent's resource NAMES (web), so
+        // applying either one swaps the other out in place — same host, same
+        // namespace, same URL, different workload.
+        if ($preview) {
+            $path .= '/preview';
+        }
 
         $namespace = $this->getNamespace($environment, $appName);
 
@@ -378,7 +407,11 @@ class UpCommand extends Command
         }
 
         // 1. Build image if local (Docker-Compose logic: only if missing or forced)
-        if ($environment === 'local' && ! $this->option('no-build')) {
+        if ($preview && ! $this->option('no-build')) {
+            if (! $this->buildStaticPreviewImage($config)) {
+                return 1;
+            }
+        } elseif ($environment === 'local' && ! $this->option('no-build')) {
             $imageTag = "{$appName}:local";
 
             if ($this->option('build') || ! $this->imageExists($imageTag)) {
@@ -580,6 +613,13 @@ class UpCommand extends Command
         }
 
         $this->renderHotReloadTip($config, $environment);
+
+        if ($preview) {
+            $this->newLine();
+            $this->line('  <fg=yellow>🔍 Preview mode</> <fg=gray>— serving the production build through Caddy.</>');
+            $this->line('  <fg=gray>There is no HMR here: the bundle is baked into the image, so re-run</>');
+            $this->line('  <fg=yellow>larakube up --preview</> <fg=gray>to pick up changes, or</> <fg=yellow>larakube up</> <fg=gray>to return to the dev server.</>');
+        }
 
         if ($environment === 'local') {
             $this->ensureProjectCompanions($config, $appName);

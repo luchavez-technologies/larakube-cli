@@ -25,7 +25,13 @@ RUN --mount=type=secret,id=dotenv,target=/app/.env.production \
 # Refuse to ship a bundle still pointing at a developer's machine. Vite compiles
 # these values in, so by the time the image is running nothing downstream can
 # tell. `[.]` keeps the class from matching the literal string in this grep.
-RUN if grep -rEq "https?://[a-z0-9.-]+[.](kube|test|localhost|local|internal)([^a-z0-9-]|$)" {{ $outputDir }}; then \
+#
+# `larakube up --preview` builds this same Dockerfile to rehearse the production
+# serving layer on the local cluster, where pointing at .test hosts is the whole
+# point — that is the only caller that passes STRICT_HOSTS=0. It defaults to 1,
+# so a plain `docker build` and every deploy keep the guard.
+ARG STRICT_HOSTS=1
+RUN if [ "$STRICT_HOSTS" = "1" ] && grep -rEq "https?://[a-z0-9.-]+[.](kube|test|localhost|local|internal)([^a-z0-9-]|$)" {{ $outputDir }}; then \
       echo "ERROR: the built bundle references local hosts:"; \
       grep -rEoh "https?://[a-z0-9.-]+[.](kube|test|localhost|local|internal)" {{ $outputDir }} | sort -u; \
       echo "Point .env.{{ $environment }} at real hosts and rebuild."; \

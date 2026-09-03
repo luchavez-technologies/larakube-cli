@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: caddy
-          image: {{ $config->getName() }}:latest
+          image: {{ $image ?? $config->getName().':latest' }}
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -71,7 +71,12 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
+{{-- No ACME locally: `up --preview` runs this same workload on the local
+     cluster, where the host is a .test name Let's Encrypt can never validate.
+     Traefik serves it with the LaraKube Local CA leaf instead. --}}
+@if($letsencrypt ?? true)
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+@endif
 {{-- Proxying is OFF by default, matching resolveProxied() and every other
      ingress in the codebase.
 
