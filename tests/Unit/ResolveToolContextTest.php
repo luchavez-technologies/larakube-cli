@@ -30,11 +30,15 @@ function resolveToolContextHolder(?ConfigData $config, bool $canPrompt = false):
             return $this->canPrompt;
         }
 
-        protected function promptCloudTarget(ConfigData $config, string $env, string $path): ConfigData
+        // Must match what resolveToolContext() actually calls. It used to be
+        // promptCloudTarget(); when that changed, this override went dead and
+        // the REAL method ran — shelling out to kubectl and then blocking
+        // forever on a live select() prompt inside the test suite.
+        protected function captureToolContext(ConfigData $config, string $env, string $path): ?string
         {
             $this->prompted = true;
 
-            return $config;
+            return null;
         }
     };
 }

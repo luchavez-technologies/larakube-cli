@@ -7,6 +7,9 @@ use App\Enums\ClusterTool;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
+
+use function Laravel\Prompts\select;
+
 use RuntimeException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
@@ -82,10 +85,8 @@ trait DeploysClusterTool
             // That is what makes `crm:init production` afterwards need no
             // question — it reads what data:init just established.
             if ($this->canPromptForContext()) {
-                $config = $this->promptCloudTarget($config, $env, $projectPath);
-
-                if ($recorded = $this->recordedContextFor($config, $env)) {
-                    return $recorded;
+                if ($chosen = $this->captureToolContext($config, $env, $projectPath)) {
+                    return $chosen;
                 }
             }
         }
@@ -99,6 +100,49 @@ trait DeploysClusterTool
             .'the right cluster — refusing to fall back to the current context, which would deploy '
             .'a cloud tool onto whatever cluster kubectl happens to point at.',
         );
+    }
+
+    /**
+     * Ask which cluster this environment is, and record ONLY that.
+     *
+     * Deliberately not promptCloudTarget(): that also captures SSH user, port
+     * and key, which exist solely for cloud:deploy's image sideload
+     * (`docker save | ssh … ctr images import`). A cluster tool speaks kubectl
+     * and nothing else, so demanding SSH credentials to install one is asking
+     * for a secret the command will never use.
+     *
+     * Recording just the ip is sufficient: user/port/key each default
+     * independently (larakube / 22 / ~/.ssh/id_rsa), and cloud:configure
+     * refines them if and when a deploy actually needs something else.
+     */
+    protected function captureToolContext(ConfigData $config, string $env, string $projectPath): ?string
+    {
+        $contexts = $this->kubeContextChoices();
+
+        if ($contexts === []) {
+            return null;
+        }
+
+        $choice = select(
+            label: "Which cluster is '{$env}'?",
+            options: array_combine($contexts, $contexts),
+            hint: 'Saved to .larakube.local.json, so every tool in this project reads it.',
+        );
+
+        $data = $config->toArray();
+
+        // A larakube-<ip> context IS a VPS, so store the ip — otherwise the env
+        // would look "managed" (context, no ip) and cloud:deploy would demand a
+        // registry for a server it can sideload into.
+        $data['environments'][$env]['cloud'] = preg_match('/^larakube-(.+)$/', $choice, $m)
+            ? ['ip' => $m[1]]
+            : ['context' => $choice];
+
+        ConfigData::from($data)->saveToFile($projectPath);
+
+        $this->laraKubeInfo("Saved to .larakube.local.json (environments.{$env}.cloud) — other tools won't ask again.");
+
+        return $choice;
     }
 
     /** The context an environment is recorded as reaching, from the project blueprint. */
