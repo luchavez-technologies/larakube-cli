@@ -11,26 +11,28 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ScaffoldsInNode;
 use App\Traits\StreamsProcessOutput;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 
 class AstroNewCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput;
+    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, ScaffoldsInNode, StreamsProcessOutput;
 
     /** Same Node the dev pod and the image build use. */
     protected const NODE_IMAGE = 'node:24-alpine';
 
+    /** What a scripted run gets when nobody can answer create-astro's wizard. */
+    protected const SCRIPTED_TEMPLATE = 'minimal';
+
     protected $signature = 'astro:new
         {name? : The name of the Astro application}
-        {--template= : Astro template (minimal, blog, portfolio, docs) — skips the prompt}
-        {--fast : Skip the wizard and use defaults (minimal)}';
+        {--template= : Pass a create-astro template through (skips its wizard)}
+        {--fast : Skip create-astro\'s wizard and take the minimal template}';
 
     protected $description = 'Scaffold a new Astro application (minimal, blog, portfolio, docs) with LaraKube infrastructure';
 
@@ -59,16 +61,23 @@ class AstroNewCommand extends Command
             return 1;
         }
 
-        $template = $this->gatherTemplate();
+        $template = $this->option('template');
 
-        // --yes --no-git --skip-houston keep every prompt suppressed. With no
-        // TTY a create-* tool that reaches a prompt exits 0 having produced
-        // nothing, so the directory — not the exit code — is the real check.
-        if (! $this->runScaffolderInNode(
+        // Interactive: create-astro runs its OWN wizard (template, TypeScript,
+        // dependencies, git) — the one Astro keeps current — so nothing is
+        // passed that would answer for it. --skip-houston only silences the
+        // mascot animation, which garbles a wrapped terminal; it suppresses no
+        // question. Scripted: every prompt must be pre-answered, since a
+        // create-* tool that reaches one with no terminal exits 0 having
+        // produced nothing.
+        if (! $this->scaffoldInNode(
             $appName,
             $projectPath,
-            "Astro ({$template}) site",
-            "npx --yes create-astro@latest {$appName} --template {$template} --yes --no-git --skip-houston --install",
+            'Astro site',
+            "npx --yes create-astro@latest {$appName} --skip-houston",
+            "npx --yes create-astro@latest {$appName} --template "
+                .escapeshellarg((string) ($template ?? self::SCRIPTED_TEMPLATE))
+                .' --yes --no-git --skip-houston --install',
         )) {
             $this->laraKubeError('Astro scaffolding failed — no project directory was created.');
 
@@ -107,67 +116,11 @@ class AstroNewCommand extends Command
 
         $this->laraKubeNewLine();
 
-        $this->laraKubeInfo("✅ Scaffolding complete! Created Astro ({$template}) site in {$appName}/");
+        $this->laraKubeInfo("✅ Scaffolding complete! Created Astro site in {$appName}/");
         $this->newLine();
         $this->line('  <fg=gray>Run</> <fg=yellow>cd '.$appName.' && larakube data:wire</> <fg=gray>to connect PocketBase/Directus</>');
         $this->newLine();
 
         return 0;
-    }
-
-    /**
-     * Run the upstream scaffolder in Node rather than on the host.
-     *
-     * Matches vite:new, and removes the host-Node dependency entirely. $create
-     * MUST be fully non-interactive: there is no TTY here, and a create-* tool
-     * that reaches a prompt exits 0 having produced nothing — which is why the
-     * is_dir() check below is the real success test, not the exit code.
-     */
-    protected function runScaffolderInNode(string $appName, string $baseDir, string $label, string $create): bool
-    {
-        $this->laraKubeInfo('Pulling the Node builder image...');
-        Process::forever()->run('docker pull '.self::NODE_IMAGE);
-
-        $this->withSpin("Scaffolding {$label}...", fn (): bool => Process::forever()->run(
-            'docker run --rm -v '.escapeshellarg($baseDir).':/app -w /app --user root '
-            .self::NODE_IMAGE.' sh -c '.escapeshellarg($create),
-        )->successful());
-
-        if (! is_dir("{$baseDir}/{$appName}")) {
-            return false;
-        }
-
-        // The container writes as root; hand the tree back to the host user.
-        $this->runStreaming(
-            'docker run --rm -v '.escapeshellarg($baseDir).':/app --user root '
-            .self::NODE_IMAGE.' chown -R '.$this->hostUid().':'.$this->hostGid().' /app/'.escapeshellarg($appName),
-        );
-
-        return true;
-    }
-
-    /**
-     * Ask which starter to scaffold.
-     *
-     * create-astro is run with --yes --skip-houston so it never prompts: it
-     * runs inside a container, where a prompt either hangs or exits 0 having
-     * produced nothing. So the question has to be asked HERE or not at all.
-     */
-    protected function gatherTemplate(): string
-    {
-        $template = $this->option('template') ?? ((bool) $this->option('fast') ? 'minimal' : select(
-            label: 'Which Astro starter would you like?',
-            options: [
-                'minimal' => 'Minimal — an empty starter (Recommended)',
-                'blog' => 'Blog — posts, RSS and a content collection',
-                'portfolio' => 'Portfolio — a personal site',
-                'docs' => 'Docs — Starlight documentation',
-            ],
-            default: 'minimal',
-        ));
-
-        $template = strtolower((string) $template);
-
-        return in_array($template, ['minimal', 'blog', 'portfolio', 'docs'], true) ? $template : 'minimal';
     }
 }

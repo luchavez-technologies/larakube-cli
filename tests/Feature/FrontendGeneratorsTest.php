@@ -18,12 +18,14 @@ test('vite:new, astro:new, docs:new, and data:wire commands are registered', fun
         ->expectsOutputToContain('data:wire');
 });
 
-test('vite:new command has template and ts options', function (): void {
-    $command = app(ViteNewCommand::class);
-    $definition = $command->getDefinition();
+test('vite:new passes a template through but owns no --ts of its own', function (): void {
+    $definition = app(ViteNewCommand::class)->getDefinition();
 
     expect($definition->hasOption('template'))->toBeTrue()
-        ->and($definition->hasOption('ts'))->toBeTrue();
+        // create-vite has no --ts flag: the TypeScript variants are separate
+        // template ids, and which ones exist is create-vite's own wizard to
+        // ask about. Synthesising `-ts` here meant maintaining that mapping.
+        ->and($definition->hasOption('ts'))->toBeFalse();
 });
 
 test('astro:new command has template option', function (): void {
@@ -67,7 +69,7 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
 
         chdir($tempDir);
 
-        $this->artisan('vite:new my-vite-app --template=react --ts --no-interaction')
+        $this->artisan('vite:new my-vite-app --template=react-ts --no-interaction')
             ->assertExitCode(0);
 
         $project = "{$tempDir}/my-vite-app";
@@ -148,7 +150,7 @@ test('astro:new scaffolds project and generates .larakube.json blueprint', funct
 
         $this->artisan('astro:new my-astro-app --template=minimal')
             ->assertExitCode(0)
-            ->expectsOutputToContain('Scaffolding complete! Created Astro (minimal) site in my-astro-app/');
+            ->expectsOutputToContain('Scaffolding complete! Created Astro site in my-astro-app/');
 
         expect(file_exists("{$tempDir}/my-astro-app/.larakube.json"))->toBeTrue();
         $config = ConfigData::loadFromFile("{$tempDir}/my-astro-app");
