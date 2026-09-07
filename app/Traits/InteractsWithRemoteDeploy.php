@@ -273,13 +273,19 @@ trait InteractsWithRemoteDeploy
      * for a managed context; defaults to linux/amd64), then pushes to registry.
      * When $dotenvPath is provided it is mounted as a BuildKit secret (id=dotenv).
      */
-    public function buildAndPushImageCommand(string $registryImage, string $dockerfile, string $path, string $platform = 'linux/amd64', string $dotenvPath = '', string $target = '--target deploy '): string
+    public function buildAndPushImageCommand(string $registryImage, string $dockerfile, string $path, string $platform = 'linux/amd64', string $dotenvPath = '', string $target = '--target deploy ', string $digestFile = ''): string
     {
         // Podman has no `buildx`/`--push`: build to local storage (via the shared
-        // builder), then a separate `podman push`.
+        // builder), then a separate `podman push`. `--digestfile` writes the
+        // registry-assigned manifest digest so the deploy can pin repo@sha256
+        // (parity with Docker's `buildx imagetools`) — see resolvePushedDigest().
         if ($this->runtimeIsPodman()) {
+            $push = 'podman push'
+                .($digestFile !== '' ? ' --digestfile '.escapeshellarg($digestFile) : '')
+                .' '.escapeshellarg($registryImage);
+
             return $this->buildImageCommand($registryImage, $dockerfile, $path, $platform, $dotenvPath, $target)
-                .' && podman push '.escapeshellarg($registryImage);
+                .' && '.$push;
         }
 
         $secret = $dotenvPath !== '' ? '--secret id=dotenv,src='.escapeshellarg($dotenvPath).' ' : '';
@@ -581,13 +587,18 @@ trait InteractsWithRemoteDeploy
         $platform = $this->resolveDeployPlatform($config->getCloud($environment), $context, null);
         $dotenvTemporaryDirectory = $this->createDotenvBuildSecret($config, $environment);
         $dotenvPath = $dotenvTemporaryDirectory->path().'/dotenv-build-secret';
+        // Podman writes the pushed manifest digest here (Docker resolves it via
+        // buildx imagetools instead); read back below to pin repo@sha256.
+        $digestTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $digestFile = $digestTemporaryDirectory->path().'/digest';
         $this->laraKubeInfo("Building and pushing image to {$registry->getRegistryHost()} ({$platform})...");
         try {
-            $code = $this->runStreaming($this->buildAndPushImageCommand($registryImage, $dockerfile, $path, $platform, $dotenvPath, $this->buildTargetFor($config)));
+            $code = $this->runStreaming($this->buildAndPushImageCommand($registryImage, $dockerfile, $path, $platform, $dotenvPath, $this->buildTargetFor($config), $digestFile));
         } finally {
             $dotenvTemporaryDirectory->delete();
         }
         if ($code !== 0) {
+            $digestTemporaryDirectory->delete();
             $this->laraKubeError('Image build/push failed. Ensure Docker credentials are configured and you have push access.');
 
             return 1;
@@ -595,14 +606,15 @@ trait InteractsWithRemoteDeploy
 
         // Pin the deploy to the immutable digest the registry just assigned, not the
         // mutable tag — an attacker with push access can repoint a tag, never a digest.
-        // Fall back to the tag (with a warning) if buildx can't resolve it.
+        // Fall back to the tag (with a warning) if the digest can't be resolved.
         $deployImage = $registryImage;
-        if (($digest = $this->resolvePushedDigest($registryImage)) !== null) {
+        if (($digest = $this->resolvePushedDigest($registryImage, $digestFile)) !== null) {
             $deployImage = $registry->getDigestReference($digest);
             $this->line('  <fg=gray>Pinned digest:</> <fg=cyan>'.$digest.'</>');
         } else {
             $this->laraKubeWarn('Could not resolve the pushed image digest — deploying by tag (mutable).');
         }
+        $digestTemporaryDirectory->delete();
 
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
         $kubectl = $this->remoteKubectl($context);
@@ -624,16 +636,23 @@ trait InteractsWithRemoteDeploy
 
     /**
      * The immutable digest the registry assigned to the just-pushed image, so the
-     * deploy can pin `repo@sha256:…` instead of a mutable `:tag`. Null when buildx
-     * imagetools can't resolve it (caller falls back to the tag with a warning).
+     * deploy can pin `repo@sha256:…` instead of a mutable `:tag`. Null when the
+     * digest can't be resolved (caller falls back to the tag with a warning).
+     *
+     * Docker reads it back via `buildx imagetools`; Podman reads the `--digestfile`
+     * that buildAndPushImageCommand() had `podman push` write (no skopeo dependency).
      */
-    protected function resolvePushedDigest(string $registryImage): ?string
+    protected function resolvePushedDigest(string $registryImage, string $digestFile = ''): ?string
     {
-        // `buildx imagetools` is Docker-only. Under Podman the deploy pins by tag
-        // (the caller falls back with a warning) rather than pulling in skopeo
-        // just to read one digest.
+        // Podman: the digest was captured at push time into $digestFile.
         if ($this->runtimeIsPodman()) {
-            return null;
+            if ($digestFile === '' || ! is_file($digestFile)) {
+                return null;
+            }
+
+            $digest = trim((string) file_get_contents($digestFile));
+
+            return preg_match('/^sha256:[0-9a-f]{64}$/', $digest) === 1 ? $digest : null;
         }
 
         $digest = trim(Process::run(

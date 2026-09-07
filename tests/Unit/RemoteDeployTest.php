@@ -9,12 +9,20 @@
 use App\Data\RegistryData;
 use App\Enums\RegistryProvider;
 use App\Traits\InteractsWithRemoteDeploy;
+use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function remoteDeploy(): object
 {
     return new class
     {
         use InteractsWithRemoteDeploy;
+
+        // resolvePushedDigest() is protected; expose it for the digest tests.
+        public function digest(string $registryImage, string $digestFile = ''): ?string
+        {
+            return $this->resolvePushedDigest($registryImage, $digestFile);
+        }
 
         // Pin to the `kubectl kustomize` fallback so the command-builder assertions are
         // deterministic regardless of whether a standalone kustomize is installed on the
@@ -62,6 +70,57 @@ test('under Podman the production build drops buildx/--load and the sideload use
     } finally {
         putenv('LARAKUBE_CONTAINER_RUNTIME=docker');
     }
+});
+
+test('under Podman buildAndPushImageCommand captures the pushed digest via --digestfile', function (): void {
+    putenv('LARAKUBE_CONTAINER_RUNTIME=podman');
+
+    try {
+        $cmd = remoteDeploy()->buildAndPushImageCommand(
+            'ghcr.io/me/app:abc', '/proj/Dockerfile.php', '/proj', 'linux/amd64', '', '--target deploy ', '/tmp/lk_digest/digest',
+        );
+
+        expect($cmd)
+            ->toStartWith('podman build ')
+            ->not->toContain('buildx')
+            ->toContain("&& podman push --digestfile '/tmp/lk_digest/digest' 'ghcr.io/me/app:abc'");
+
+        // No digestfile arg → plain push (unchanged).
+        expect(remoteDeploy()->buildAndPushImageCommand('ghcr.io/me/app:abc', '/proj/Dockerfile.php', '/proj'))
+            ->toContain("&& podman push 'ghcr.io/me/app:abc'")
+            ->not->toContain('--digestfile');
+    } finally {
+        putenv('LARAKUBE_CONTAINER_RUNTIME=docker');
+    }
+});
+
+test('resolvePushedDigest under Podman reads the digest written by --digestfile', function (): void {
+    putenv('LARAKUBE_CONTAINER_RUNTIME=podman');
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $file = $dir->path().'/digest';
+    $sha = 'sha256:'.str_repeat('a', 64);
+
+    try {
+        // No file yet (push didn't capture one) → null, caller falls back to the tag.
+        expect(remoteDeploy()->digest('ghcr.io/me/app:abc', $file))->toBeNull();
+
+        // A valid digest is read back and returned.
+        file_put_contents($file, $sha."\n");
+        expect(remoteDeploy()->digest('ghcr.io/me/app:abc', $file))->toBe($sha);
+
+        // Garbage in the file is rejected rather than pinned.
+        file_put_contents($file, 'not-a-digest');
+        expect(remoteDeploy()->digest('ghcr.io/me/app:abc', $file))->toBeNull();
+    } finally {
+        putenv('LARAKUBE_CONTAINER_RUNTIME=docker');
+    }
+});
+
+test('resolvePushedDigest under Docker still resolves via buildx imagetools', function (): void {
+    $sha = 'sha256:'.str_repeat('b', 64);
+    Process::fake(['docker buildx imagetools inspect *' => $sha]);
+
+    expect(remoteDeploy()->digest('ghcr.io/me/app:abc'))->toBe($sha);
 });
 
 test('normalizeArch maps uname / kubectl / override tokens to a docker platform', function (): void {

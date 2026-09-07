@@ -59,9 +59,15 @@ networking — see `plans/active/wsl-hosts-networking.md`. (Shares `SetupCommand
 `InteractsWithDocker`, `GeneratesProjectInfrastructure` with this plan.)
 
 **Still open (Phase 2):**
-- Phase 2: `buildAndPushImageCommand`, `dockerLoginCommand`, `resolvePushedDigest`
-  still emit `docker`/`docker buildx` — the registry/push path is unchanged.
-- **Manual WSL validation** of the build+save+import round-trip (see Verification).
+- ~~Phase 2: `buildAndPushImageCommand`, `dockerLoginCommand`, `resolvePushedDigest`
+  still emit `docker`/`docker buildx`.~~ **DONE (2026-09-07).** The registry/push
+  path is now runtime-aware: `buildAndPushImageCommand` builds via the shared builder
+  then `podman push` under Podman; `dockerLoginCommand` → `loginCommand()`;
+  `resolvePushedDigest` reads the digest `podman push --digestfile` captures (Docker
+  still uses `buildx imagetools`), so Podman deploys pin `repo@sha256` too — no skopeo
+  dependency. Covered by `RemoteDeployTest`.
+- **Manual WSL validation** of the build+save+import round-trip (see Verification) —
+  still the one remaining item; needs `./build` + a real cluster.
 
 The only *other* Podman in the repo is an unrelated **rootless Podman CI sidecar** for
 Forgejo Actions (`resources/views/k8s/git/forgejo.blade.php`, commit `762b8ef`) — that
