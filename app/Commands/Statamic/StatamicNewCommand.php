@@ -226,9 +226,11 @@ class StatamicNewCommand extends Command
         $image = $config->getPhpImage(true); // CLI image
 
         $this->laraKubeInfo("Pulling builder image: $image...");
-        Process::forever()->run("docker pull $image");
+        Process::forever()->run($this->pullImageCommand($image));
 
-        $cmd = "docker run --rm -it -v $baseDir:/var/www/html"
+        $runtime = $this->containerRuntime();
+
+        $cmd = "$runtime run --rm -it -v $baseDir:/var/www/html"
             .' -e COMPOSER_CACHE_DIR=/dev/null'
             .' -e COMPOSER_ALLOW_SUPERUSER=1'
             .' -e SHOW_WELCOME_MESSAGE=false'
@@ -240,7 +242,7 @@ class StatamicNewCommand extends Command
         // Chown back to host user
         if (is_dir("$baseDir/$appName")) {
             $this->runStreaming(
-                "docker run --rm -v $baseDir:/var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R $uid:$gid /var/www/html/$appName",
+                "$runtime run --rm -v $baseDir:/var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R {$this->containerChownSpec($uid, $gid)} /var/www/html/$appName",
             );
         }
     }

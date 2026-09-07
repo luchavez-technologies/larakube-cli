@@ -60,14 +60,13 @@ test('preview is refused on stacks that have no separate serving layer', functio
     $refusal = previewUpHolder()->previewModeRefusal($framework);
 
     expect($refusal)->not->toBeNull()
-        ->and($refusal[0])->toContain('frontend-only stacks')
+        ->and($refusal[0])->toContain('serving differ')
         // The message has to name the framework, because the whole point of
         // the flag's existence is that a Laravel dev should read one line and
         // know it isn't for them.
         ->and($refusal[1][0])->toContain($framework->getLabel());
 })->with([
     'laravel' => [AppFramework::LARAVEL],
-    'nextjs' => [AppFramework::NEXTJS],
     'wordpress' => [AppFramework::WORDPRESS],
 ]);
 
@@ -75,12 +74,15 @@ test('preview is refused with no framework at all', function (): void {
     expect(previewUpHolder()->previewModeRefusal(null))->not->toBeNull();
 });
 
-test('preview is accepted for every static stack', function (AppFramework $framework): void {
+test('preview is accepted for every stack whose local and production serving differ', function (AppFramework $framework): void {
     expect(previewUpHolder()->previewModeRefusal($framework))->toBeNull();
 })->with([
     'vite' => [AppFramework::VITE],
     'astro' => [AppFramework::ASTRO],
     'docusaurus' => [AppFramework::DOCUSAURUS],
+    // Next.js runs its dev server locally but the standalone image in
+    // production, so it has a serving layer to rehearse just like the SPAs.
+    'nextjs' => [AppFramework::NEXTJS],
 ]);
 
 test('the preview overlay runs the production workload on its own host', function (): void {

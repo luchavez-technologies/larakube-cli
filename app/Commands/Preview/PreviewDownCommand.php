@@ -67,7 +67,7 @@ class PreviewDownCommand extends Command
         if ($this->option('image')) {
             $image = $config->getName().':preview';
             $this->laraKubeInfo("Removing local image '{$image}'...");
-            Process::run('docker rmi '.escapeshellarg($image));
+            Process::run($this->removeImageCommand($image));
         }
 
         $this->newLine();

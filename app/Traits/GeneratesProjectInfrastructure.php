@@ -8,6 +8,8 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\AppFramework;
 use App\Enums\Blueprint;
+use App\Enums\CacheDriver;
+use App\Enums\DatabaseDriver;
 use App\Enums\DeploymentStrategy;
 use App\Enums\LaravelFeature;
 use Random\RandomException;
@@ -402,9 +404,17 @@ trait GeneratesProjectInfrastructure
         // getServerVariation()->value and getPhpVersion()->value, both null.
         if ($config->framework?->isStaticSpa()) {
             $this->generateStaticDockerfiles($config);
-        }
+        } elseif ($config->framework === AppFramework::NEXTJS) {
+            // Next.js is a Node SERVER, not PHP and not static: it builds the
+            // standalone output and runs `node server.js`. docker.php would hit
+            // the same null getPhpVersion()/getServerVariation() as static does.
+            if (! $config->isLocked('Dockerfile.nextjs')) {
+                $nextjsDockerfile = view('docker.nextjs', ['config' => $config])->render();
+                file_put_contents("$projectPath/Dockerfile.nextjs", $nextjsDockerfile);
+            }
 
-        if (! $config->framework?->isStaticSpa()) {
+            $this->generateDockerIgnore($config);
+        } else {
             if (! $config->isLocked('Dockerfile.php')) {
                 $phpDockerfile = view('docker.php', ['config' => $config])->render();
                 file_put_contents("$projectPath/Dockerfile.php", $phpDockerfile);
@@ -553,6 +563,130 @@ trait GeneratesProjectInfrastructure
         }
     }
 
+    /**
+     * Self-contained manifests for a Next.js Node server. Like the static path,
+     * it shares no base with the PHP stack: local runs the framework's own dev
+     * server (HMR, the same generic node pod the static frameworks use), while
+     * `preview` and cloud run the standalone image behind a Service + Ingress.
+     * $resourceName distinguishes the workloads (web-preview vs {name}-nextjs)
+     * and each overlay's kustomize rewrites {name}:latest to its own tag.
+     */
+    protected function generateNextjsManifests(ConfigData $config): void
+    {
+        $k8sPath = $config->getK8sPath();
+
+        $render = function (string $stub, string $view, array $data) use ($config, $k8sPath): void {
+            @mkdir(dirname("$k8sPath/$stub"), 0755, true);
+            $this->writeManagedManifest(
+                $config,
+                "$k8sPath/$stub",
+                ".infrastructure/k8s/{$stub}",
+                view($view, $data)->render(),
+            );
+        };
+
+        // --- local: the framework's own dev server (HMR). The generic node pod
+        // the static frameworks share — source bind-mounted, node_modules on a
+        // PVC so a linux install survives a darwin-arm64 host. ---
+        $localData = [
+            'config' => $config,
+            'namespace' => $config->getNamespace('local'),
+            'host' => $config->getWebHost('local'),
+            'devPort' => $config->framework->devServerPort() ?? 3000,
+            'devCommand' => $this->resolveDevServerCommand($config),
+        ];
+        $render('overlays/local/kustomization.yaml', 'k8s.static.local-kustomization', $localData);
+        $render('overlays/local/dev-server.yaml', 'k8s.static.dev-server', $localData);
+
+        // The production workload (preview + cloud) reads DATABASE_URL/REDIS_URL
+        // from a Secret built from the .env written at scaffold time. When the
+        // project joined Plex Commons its DB + Redis live there, so we render
+        // neither pod; --no-plex projects get a self-hosted DB + Redis pod.
+        $env = $this->readDotEnv($config->getPath().'/.env');
+        $selfHosted = $config->getPlex('local') === [];
+        $database = $config->getDatabase() ?? DatabaseDriver::POSTGRESQL;
+        $secrets = array_filter([
+            'DATABASE_URL' => $env['DATABASE_URL'] ?? null,
+            'REDIS_URL' => $env['REDIS_URL'] ?? null,
+            'DB_DATABASE' => $selfHosted ? ($env['DB_DATABASE'] ?? null) : null,
+            'DB_USERNAME' => $selfHosted ? ($env['DB_USERNAME'] ?? null) : null,
+            'DB_PASSWORD' => $selfHosted ? ($env['DB_PASSWORD'] ?? null) : null,
+        ], fn ($v): bool => $v !== null && $v !== '');
+
+        $renderProd = function (string $dir, array $data) use ($render, $config, $secrets, $selfHosted, $database): void {
+            $render("$dir/deployment.yaml", 'k8s.nextjs.deployment', $data);
+            $render("$dir/service.yaml", 'k8s.nextjs.service', $data);
+            $render("$dir/ingress.yaml", 'k8s.nextjs.ingress', $data);
+            $render("$dir/secret.yaml", 'k8s.nextjs.secret', ['config' => $config, 'secrets' => $secrets]);
+            if ($selfHosted) {
+                $render("$dir/redis.yaml", 'k8s.redis.deployment', ['config' => $config, 'driver' => CacheDriver::REDIS]);
+                $render("$dir/database.yaml", 'k8s.nextjs.database', ['config' => $config, 'driver' => $database]);
+            }
+        };
+
+        // --- local/preview: the CLOUD workload (standalone image) on the local
+        // cluster, so `preview:up` can rehearse production serving. web-preview
+        // resource names, {name}:preview image. ---
+        $previewData = [
+            'config' => $config,
+            'namespace' => $config->getNamespace('local'),
+            'environment' => 'local',
+            'resourceName' => 'web-preview',
+            'hosts' => [$config->getServiceHost('preview', 'local')],
+            'selfHosted' => $selfHosted,
+        ];
+        $render('overlays/local/preview/kustomization.yaml', 'k8s.nextjs.preview-kustomization', $previewData);
+        $renderProd('overlays/local/preview', $previewData);
+
+        // --- cloud: the standalone image behind a Service + Ingress, one
+        // overlay per non-local environment. ---
+        foreach ($config->getCloudEnvironments() as $cloudEnv) {
+            $cloudData = [
+                'config' => $config,
+                'namespace' => $config->getNamespace($cloudEnv),
+                'environment' => $cloudEnv,
+                'resourceName' => $config->getName().'-nextjs',
+                'hosts' => $config->getWebHosts($cloudEnv),
+                'selfHosted' => $selfHosted,
+            ];
+            $render("overlays/$cloudEnv/kustomization.yaml", 'k8s.nextjs.cloud-kustomization', $cloudData);
+            $render("overlays/$cloudEnv/namespace.yaml", 'k8s.overlays.production.namespace', $cloudData);
+            $renderProd("overlays/$cloudEnv", $cloudData);
+        }
+    }
+
+    /**
+     * Minimal KEY=VALUE reader for pulling scaffold-time connection strings out
+     * of a project's .env. Returns [] when the file is absent.
+     *
+     * @return array<string, string>
+     */
+    protected function readDotEnv(string $file): array
+    {
+        if (! is_file($file)) {
+            return [];
+        }
+
+        $vars = [];
+        foreach (preg_split('/\r\n|\r|\n/', (string) file_get_contents($file)) ?: [] as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#') || ! str_contains($line, '=')) {
+                continue;
+            }
+            [$key, $value] = explode('=', $line, 2);
+            $key = trim($key);
+            $value = trim($value);
+            if (strlen($value) >= 2 && ($value[0] === '"' || $value[0] === "'") && $value[-1] === $value[0]) {
+                $value = substr($value, 1, -1);
+            }
+            if ($key !== '') {
+                $vars[$key] = $value;
+            }
+        }
+
+        return $vars;
+    }
+
     protected function generateK8sManifests(ConfigData $config): void
     {
         $config->resolveDependencies();
@@ -580,6 +714,16 @@ trait GeneratesProjectInfrastructure
         // and applyScopedDeploy() can `kustomize build overlays/{env}` directly.
         if ($config->framework?->isStaticSpa()) {
             $this->generateStaticSiteManifests($config);
+
+            return;
+        }
+
+        // Next.js is a Node SERVER: local runs its own dev server (HMR), cloud
+        // runs the standalone image. Like static, it shares nothing with the PHP
+        // base stack — and it must be routed out of it, since k8s.base.deployment
+        // dereferences the null getServerVariation() Next.js has no value for.
+        if ($config->framework === AppFramework::NEXTJS) {
+            $this->generateNextjsManifests($config);
 
             return;
         }
@@ -1084,7 +1228,17 @@ trait GeneratesProjectInfrastructure
     protected function setLaravelStoragePermissions(string $projectPath): void
     {
         $this->laraKubeInfo('Fixing storage permissions...');
-        $this->runInContainer('chown -R www-data:www-data storage bootstrap/cache && chmod -R 775 storage bootstrap/cache', $projectPath);
+
+        // Docker: hand storage to www-data (the serversideup/php web user), the
+        // classic Laravel setup. Rootless Podman can't chown a bind mount to an
+        // arbitrary host uid like www-data's 33 — from inside a rootless
+        // container only the host user (container 0) and its subuid range are
+        // reachable, so a `www-data` chown lands on an unwritable host subuid.
+        // The local dev pod runs with host-UID/GID parity anyway, so `0:0`
+        // (host user) plus the 775 group bit is what lets BOTH the host and the
+        // pod write storage/ under Podman.
+        $owner = $this->runtimeIsPodman() ? '0:0' : 'www-data:www-data';
+        $this->runInContainer("chown -R {$owner} storage bootstrap/cache && chmod -R 775 storage bootstrap/cache", $projectPath);
     }
 
     protected function ensureHttpsCompatibility(ConfigData $config): void

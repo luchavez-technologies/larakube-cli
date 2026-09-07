@@ -319,7 +319,7 @@ trait InteractsWithHosts
             return;
         }
 
-        $ingressIp = $this->resolveIngressIp();
+        $ingressIp = $this->windowsReachableIngressIp();
         $entry = "{$ingressIp} ".implode(' ', $hosts);
         $blockId = "# LaraKube: {$appName}";
         $current = (string) file_get_contents($winHosts);
@@ -369,7 +369,7 @@ trait InteractsWithHosts
         }
 
         $blockIdentifier = "# LaraKube: $appName";
-        $ingressIp = $this->resolveIngressIp();
+        $ingressIp = $this->windowsReachableIngressIp();
         $entry = "{$ingressIp} ".implode(' ', $requiredHosts);
 
         $current = (string) file_get_contents($winHosts);
@@ -433,7 +433,24 @@ trait InteractsWithHosts
      */
     protected function syncWindowsHostsFile(string $content, string $entry): bool
     {
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        // CRITICAL: stage on the WINDOWS filesystem, not WSL's /tmp. The elevated
+        // PowerShell below (`Start-Process -Verb RunAs`) runs in the Administrator
+        // logon session, which does NOT have WSL's per-user 9P share
+        // (\\wsl.localhost\<distro>\...) mapped. `wslpath -w` on a /tmp file yields
+        // exactly such a UNC path, so the admin process cannot read either the .ps1
+        // or its Copy-Item source — the elevation "succeeds" while silently copying
+        // nothing (the window just sits, then the entry is missing). Staging under
+        // the Windows %TEMP% gives a native C:\Users\...\Temp\... path that the
+        // elevated session CAN read. See windowsTempDir().
+        $winTempDir = $this->windowsTempDir();
+        if ($winTempDir === null) {
+            $this->laraKubeWarn('Could not locate a writable Windows temp directory for the elevated hosts sync.');
+            $this->printWindowsHostsManualHelp($entry);
+
+            return false;
+        }
+
+        $temporaryDirectory = (new TemporaryDirectory($winTempDir))->deleteWhenDestroyed()->create();
         $contentTmp = $temporaryDirectory->path().'/win-hosts';
         $scriptTmp = $temporaryDirectory->path().'/win-hosts-sync.ps1';
         file_put_contents($contentTmp, $content);
@@ -491,6 +508,44 @@ trait InteractsWithHosts
     protected function windowsHostsPath(): string
     {
         return '/mnt/c/Windows/System32/drivers/etc/hosts';
+    }
+
+    /**
+     * The ingress IP to write into the WINDOWS hosts file. Under WSL mirrored
+     * networking Windows shares WSL's localhost, so the ingress is reachable from
+     * the Windows browser at a STABLE 127.0.0.1 — vastly better than the node
+     * InternalIP, which changes on every `wsl --shutdown` and silently staleifies
+     * the hosts entry (forcing another admin-elevated re-sync). Falls back to the
+     * resolved LoadBalancer/node IP under NAT networking.
+     */
+    protected function windowsReachableIngressIp(): string
+    {
+        return $this->mirroredNetworkingActive() ? '127.0.0.1' : $this->resolveIngressIp();
+    }
+
+    /**
+     * A writable directory on the WINDOWS filesystem, returned as a WSL path
+     * (e.g. /mnt/c/Users/<you>/AppData/Local/Temp), or null if it can't be
+     * resolved. This is where syncWindowsHostsFile() must stage the elevation
+     * .ps1 and the new hosts content: a file staged in WSL's /tmp is reachable
+     * from WSL only via the \\wsl.localhost 9P share, which the elevated
+     * Administrator logon session can't see — so the elevated copy silently
+     * no-ops (see syncWindowsHostsFile()). A file under %TEMP% resolves to a
+     * native C:\ path that the elevated session can read.
+     */
+    protected function windowsTempDir(): ?string
+    {
+        // Run cmd.exe from a Windows cwd (/mnt/c) so it doesn't print the
+        // "UNC paths are not supported" warning it emits when the cwd is a
+        // \\wsl$ path — that warning would otherwise pollute the captured output.
+        $winTemp = trim(Process::path('/mnt/c')->run('cmd.exe /c echo %TEMP%')->output());
+        if ($winTemp === '' || ! str_contains($winTemp, ':\\')) {
+            return null;
+        }
+
+        $wslTemp = trim(Process::run('wslpath -u '.escapeshellarg($winTemp))->output());
+
+        return ($wslTemp !== '' && is_dir($wslTemp) && is_writable($wslTemp)) ? $wslTemp : null;
     }
 
     /**

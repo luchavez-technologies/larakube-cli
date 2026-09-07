@@ -3,9 +3,20 @@ includes:
     - vendor/larastan/larastan/extension.neon
 
 parameters:
-    # Disable parallel processing to avoid Phar extraction locks in Docker on macOS
+    # Parallel workers. Was pinned to 1 "to avoid Phar extraction locks in Docker
+    # on macOS" — but the project now runs on the host (see CLAUDE.md), where that
+    # lock doesn't apply, and single-process forced all files through one core
+    # (glacial on a many-core box). Bounded at 8 so it uses cores without letting
+    # every worker's peak memory add up on a smaller box.
     parallel:
-        maximumNumberOfProcesses: 1
+        maximumNumberOfProcesses: 8
+
+    # Persist the result cache in-project (gitignored) instead of the system temp
+    # dir, which some setups (WSL, CI) wipe between sessions. The cache is what
+    # makes PHPStan fast: a COLD run analyses all ~650 files (minutes), every run
+    # after only re-checks what changed (~3s). Losing the cache = a needless cold
+    # run every time. Never `phpstan clear-result-cache` as part of normal work.
+    tmpDir: .phpstan
 
     # Level 0 = the high-impact, fast, deterministic checks. The bug that crashed
     # init was an undefined CLASS (App\Traits\IngressController); undefined

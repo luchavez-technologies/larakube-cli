@@ -16,15 +16,16 @@ function prerequisitesChecker(): object
 
         // Prompts helpers (error/info/warning) write directly to stdout via
         // Termwind, independent of Artisan's output — silence isn't needed for
-        // the assertions here, but laraKubeError() is called on the Docker-not-
-        // running path and isn't part of this trait.
+        // the assertions here, but laraKubeError() is called on the runtime-not-
+        // responding path and isn't part of this trait.
         public function laraKubeError($text = null) {}
     };
 }
 
-test('checkPrerequisites passes when docker, kubectl, and the docker engine are all available', function (): void {
+test('passes with a working Docker runtime (no Podman)', function (): void {
     Process::fake([
-        'which docker' => Process::result(exitCode: 0),
+        'command -v podman' => Process::result(exitCode: 1),
+        'command -v docker' => Process::result(output: '/usr/bin/docker'),
         'which kubectl' => Process::result(exitCode: 0),
         'docker info' => Process::result(exitCode: 0),
     ]);
@@ -32,37 +33,53 @@ test('checkPrerequisites passes when docker, kubectl, and the docker engine are 
     expect(prerequisitesChecker()->check())->toBeTrue();
 });
 
-test('checkPrerequisites fails when docker is missing', function (): void {
+test('passes with a working rootless Podman runtime (no Docker) — the post-`larakube setup` state', function (): void {
     Process::fake([
-        'which docker' => Process::result(exitCode: 1),
+        'command -v podman' => Process::result(output: '/usr/bin/podman'),
+        'command -v docker' => Process::result(exitCode: 1),
+        'which kubectl' => Process::result(exitCode: 0),
+        'podman info' => Process::result(exitCode: 0),
+    ]);
+
+    expect(prerequisitesChecker()->check())->toBeTrue();
+});
+
+test('fails when NEITHER Podman nor Docker is installed', function (): void {
+    Process::fake([
+        'command -v podman' => Process::result(exitCode: 1),
+        'command -v docker' => Process::result(exitCode: 1),
         'which kubectl' => Process::result(exitCode: 0),
     ]);
 
     expect(prerequisitesChecker()->check())->toBeFalse();
 });
 
-test('checkPrerequisites fails when kubectl is missing', function (): void {
+test('fails when kubectl is missing', function (): void {
     Process::fake([
-        'which docker' => Process::result(exitCode: 0),
+        'command -v podman' => Process::result(output: '/usr/bin/podman'),
+        'command -v docker' => Process::result(exitCode: 1),
         'which kubectl' => Process::result(exitCode: 1),
+        'podman info' => Process::result(exitCode: 0),
     ]);
 
     expect(prerequisitesChecker()->check())->toBeFalse();
 });
 
-test('checkPrerequisites fails when the Docker engine is not running', function (): void {
+test('fails when the runtime is installed but not responding', function (): void {
     Process::fake([
-        'which docker' => Process::result(exitCode: 0),
+        'command -v podman' => Process::result(exitCode: 1),
+        'command -v docker' => Process::result(output: '/usr/bin/docker'),
         'which kubectl' => Process::result(exitCode: 0),
-        'docker info' => Process::result(exitCode: 1),
+        'docker info' => Process::result(exitCode: 1), // daemon down
     ]);
 
     expect(prerequisitesChecker()->check())->toBeFalse();
 });
 
-test('checkPrerequisites does not require k9s unless requested', function (): void {
+test('does not require k9s unless requested', function (): void {
     Process::fake([
-        'which docker' => Process::result(exitCode: 0),
+        'command -v podman' => Process::result(exitCode: 1),
+        'command -v docker' => Process::result(output: '/usr/bin/docker'),
         'which kubectl' => Process::result(exitCode: 0),
         'which k9s' => Process::result(exitCode: 1),
         'docker info' => Process::result(exitCode: 0),

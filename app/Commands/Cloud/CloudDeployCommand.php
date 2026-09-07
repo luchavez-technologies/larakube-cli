@@ -286,9 +286,10 @@ class CloudDeployCommand extends Command
 
         // Docker Hub / others: we can't mint a token — just verify a session exists.
         // </dev/null keeps a missing session from hanging on a credential prompt.
-        if (! Process::run('docker login '.escapeshellarg($host).' </dev/null')->successful()) {
+        $runtime = $this->containerRuntime();
+        if (! Process::run($runtime.' login '.escapeshellarg($host).' </dev/null')->successful()) {
             $this->laraKubeError("Not authenticated to {$host}.");
-            $this->line("   <fg=gray>Run</> <fg=yellow>docker login {$host}</> <fg=gray>then re-run the deploy.</>");
+            $this->line("   <fg=gray>Run</> <fg=yellow>{$runtime} login {$host}</> <fg=gray>then re-run the deploy.</>");
 
             return false;
         }

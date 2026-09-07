@@ -41,6 +41,29 @@ test('the production build cross-compiles for the amd64 node and targets the dep
         ->toContain("-t 'app-one:abc123'");
 });
 
+test('under Podman the production build drops buildx/--load and the sideload uses podman save', function (): void {
+    putenv('LARAKUBE_CONTAINER_RUNTIME=podman');
+
+    try {
+        $r = remoteDeploy();
+        $build = $r->buildProductionImageCommand('app-one:abc123', '/proj/Dockerfile.php', '/proj');
+        $ssh = $r->sshBaseCommand('larakube', '159.223.43.95', 22, '/home/me/.ssh/id_rsa');
+        $sideload = $r->sideloadOverSshCommand('app-one:abc123', $ssh);
+
+        expect($build)
+            ->toStartWith('podman build ')
+            ->toContain('--platform linux/amd64')
+            ->toContain('--target deploy')
+            ->not->toContain('buildx')
+            ->not->toContain('--load')
+            ->and($sideload)
+            ->toContain("podman save 'app-one:abc123' | ssh")
+            ->toContain("'sudo k3s ctr images import -'");
+    } finally {
+        putenv('LARAKUBE_CONTAINER_RUNTIME=docker');
+    }
+});
+
 test('normalizeArch maps uname / kubectl / override tokens to a docker platform', function (): void {
     $r = remoteDeploy();
 

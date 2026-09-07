@@ -18,6 +18,9 @@ docker-*.yml
 # Secrets & Environment
 .env*
 
+# Next.js build output — rebuilt inside the image; never ship the host's copy.
+.next
+
 # Dependencies
 # We allow these to support building assets/dependencies on GitHub Runners
 @if($config->getGithubActions())

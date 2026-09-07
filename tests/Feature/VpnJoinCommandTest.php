@@ -20,11 +20,22 @@ function vpnJoinRunner(string $environment = 'local', array $options = []): arra
     // says so even though it's a plain Linux container) — pin "not WSL" so
     // these tests exercise vpn:join's own logic, not DetectsWsl's, which has
     // its own dedicated test coverage.
+    // installNetBirdClient() shells out via shell_exec()/passthru() (unfakeable
+    // by Process::fake) — `command -v netbird`, then a real `curl | sh` install
+    // if it's absent. On the Mac this silently passed because netbird was on
+    // PATH; on WSL it isn't, so the real install ran and failed before the
+    // setup-key logic these tests actually cover was ever reached. Stub it: the
+    // client-install step has no bearing on what's under test here.
     $command = new class extends VpnJoinCommand
     {
         protected function wslKernelSignaturePresent(): bool
         {
             return false;
+        }
+
+        protected function installNetBirdClient(): bool
+        {
+            return true;
         }
     };
 
@@ -101,7 +112,7 @@ test('vpn:join --sso errors when NetBird is not wired to SSO yet, without ever t
 
     Process::fake([
         "{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => 'vpn-management   1/1   1   1   5d',
-        "{$kubectl} get secret vpn-management-oidc -n larakube-vpn" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} get secret netbird-oidc -n larakube-vpn" => Process::result(output: '', exitCode: 1),
     ]);
 
     [$command, $output] = vpnJoinRunner('local', ['--sso' => true]);

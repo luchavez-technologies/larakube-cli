@@ -6,6 +6,7 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesContainerRuntime;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -15,7 +16,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class PurgeCommand extends Command
 {
-    use HasConsoleInteraction, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput;
+    use HasConsoleInteraction, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesContainerRuntime;
 
     /**
      * The name and signature of the console command.
@@ -136,9 +137,9 @@ class PurgeCommand extends Command
         });
 
         if ($this->option('image')) {
-            $this->withSpin('Cleaning up Docker images...', function () use ($appName) {
-                Process::run("docker rmi -f {$appName}:latest");
-                Process::run("docker rmi -f {$appName}:local");
+            $this->withSpin('Cleaning up local images...', function () use ($appName) {
+                Process::run($this->removeImageCommand("{$appName}:latest", force: true));
+                Process::run($this->removeImageCommand("{$appName}:local", force: true));
 
                 return true;
             });

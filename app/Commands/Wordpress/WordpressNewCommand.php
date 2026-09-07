@@ -241,22 +241,45 @@ class WordpressNewCommand extends Command
         $image = $config->getPhpImage(true); // CLI image
 
         $this->laraKubeInfo("Pulling builder image: $image...");
-        Process::forever()->run("docker pull $image");
+        Process::forever()->run($this->pullImageCommand($image));
 
-        $cmd = "docker run --rm -it -v $baseDir:/var/www/html"
-            .' -e COMPOSER_CACHE_DIR=/dev/null'
-            .' -e COMPOSER_ALLOW_SUPERUSER=1'
-            .' -e SHOW_WELCOME_MESSAGE=false'
-            ." --user root $image"
-            ." sh -c 'composer create-project roots/bedrock $appName --prefer-dist --no-interaction'";
+        $runtime = $this->containerRuntime();
 
-        passthru($cmd);
+        $envFlags = '-e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false';
+        $scaffold = "composer create-project roots/bedrock $appName --prefer-dist --no-interaction";
+
+        // Hand the terminal to composer when there is one, so its progress
+        // streams live; otherwise (CI, a piped run, --no-interaction) drop -it
+        // and go through the Process facade, since `<runtime> run -it` fails
+        // outright without a TTY. Bedrock has no wizard of its own, so the
+        // scaffold command is identical either way — this is purely about
+        // whether a terminal is handed over, mirroring ScaffoldsInNode.
+        if ($this->canHandOverTerminal()) {
+            passthru("$runtime run --rm -it -v $baseDir:/var/www/html $envFlags --user root $image sh -c '$scaffold'");
+        } else {
+            $this->withSpin("Scaffolding WordPress (Bedrock): $appName...", fn (): bool => Process::forever()->run(
+                "$runtime run --rm -v $baseDir:/var/www/html $envFlags --user root $image sh -c '$scaffold'",
+            )->successful());
+        }
 
         // Chown back to host user
         if (is_dir("$baseDir/$appName")) {
             $this->runStreaming(
-                "docker run --rm -v $baseDir:/var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R $uid:$gid /var/www/html/$appName",
+                "$runtime run --rm -v $baseDir:/var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R {$this->containerChownSpec($uid, $gid)} /var/www/html/$appName",
             );
         }
+    }
+
+    /**
+     * Whether the scaffolder can be handed the terminal: a real TTY, not a test
+     * run, and no --fast/--no-interaction opt-out. Mirrors
+     * ScaffoldsInNode::scaffolderCanPrompt for this PHP/composer scaffolder.
+     */
+    private function canHandOverTerminal(): bool
+    {
+        return ! app()->runningUnitTests()
+            && ! (bool) $this->option('no-interaction')
+            && ! (bool) $this->option('fast')
+            && stream_isatty(STDIN);
     }
 }

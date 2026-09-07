@@ -39,6 +39,84 @@ trait DetectsWsl
     }
 
     /**
+     * The active WSL2 networking mode as reported by `wslinfo` — 'nat' (the
+     * default) or 'mirrored'. Empty string off WSL or when wslinfo is absent
+     * (older WSL builds). This is the RUNNING mode, which differs from whatever
+     * ~/.wslconfig requests until the next `wsl --shutdown`.
+     */
+    protected function wslNetworkingMode(): string
+    {
+        if (! $this->isWsl()) {
+            return '';
+        }
+
+        return strtolower(trim(Process::run('wslinfo --networking-mode')->output()));
+    }
+
+    /**
+     * Whether WSL2 mirrored networking is ACTIVE. In mirrored mode Windows and
+     * WSL share localhost, so the cluster ingress is reachable from the Windows
+     * browser at a stable 127.0.0.1 — no churning node IP, so a Windows hosts
+     * entry written once never goes stale.
+     */
+    protected function mirroredNetworkingActive(): bool
+    {
+        return $this->wslNetworkingMode() === 'mirrored';
+    }
+
+    /**
+     * Whether ~/.wslconfig REQUESTS mirrored networking. Distinct from
+     * mirroredNetworkingActive() (the RUNNING mode): the two diverge after
+     * `setup` writes the config but before the user runs `wsl --shutdown`.
+     */
+    protected function mirroredNetworkingRequested(): bool
+    {
+        $path = $this->wslConfigPath();
+        if ($path === null || ! is_file($path)) {
+            return false;
+        }
+
+        $ini = (string) @file_get_contents($path);
+
+        return preg_match('/^[ \t]*networkingMode[ \t]*=[ \t]*mirrored\b/mi', $ini) === 1;
+    }
+
+    /**
+     * Whether mirrored networking is configured in ~/.wslconfig but isn't the
+     * running mode yet — i.e. a one-time `wsl --shutdown` is still needed for it
+     * to take effect. `up` uses this to re-surface that reminder so a forgotten
+     * restart doesn't silently leave the churning node-IP hosts entry in place.
+     */
+    protected function mirroredRestartPending(): bool
+    {
+        return $this->isWsl()
+            && ! $this->mirroredNetworkingActive()
+            && $this->mirroredNetworkingRequested();
+    }
+
+    /**
+     * Path to the Windows-side ~/.wslconfig, as seen from inside WSL (e.g.
+     * /mnt/c/Users/<you>/.wslconfig), or null if the Windows profile can't be
+     * resolved. It lives at %USERPROFILE%, NOT inside the distro.
+     */
+    protected function wslConfigPath(): ?string
+    {
+        // Run cmd.exe from a Windows cwd so it doesn't emit the "UNC paths are
+        // not supported" warning it prints when the cwd is a \\wsl$ path.
+        $winProfile = trim(Process::path('/mnt/c')->run('cmd.exe /c echo %USERPROFILE%')->output());
+        if ($winProfile === '' || ! str_contains($winProfile, ':\\')) {
+            return null;
+        }
+
+        $wslProfile = trim(Process::run('wslpath -u '.escapeshellarg($winProfile))->output());
+        if ($wslProfile === '' || ! is_dir($wslProfile)) {
+            return null;
+        }
+
+        return $wslProfile.'/.wslconfig';
+    }
+
+    /**
      * Whether Kubernetes is provided by Docker Desktop injected into WSL2.
      *
      * When Docker Desktop's "Enable Kubernetes" is on and its WSL2 integration

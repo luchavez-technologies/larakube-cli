@@ -160,7 +160,7 @@ enum AppFramework: string implements HasLabel
     public function devServerScriptCandidates(): array
     {
         return match ($this) {
-            self::VITE, self::ASTRO => ['dev'],
+            self::VITE, self::ASTRO, self::NEXTJS => ['dev'],
             self::DOCUSAURUS => ['start', 'dev'],
             default => [],
         };
@@ -184,6 +184,9 @@ enum AppFramework: string implements HasLabel
             // boundary on macOS, and Docusaurus is webpack, so Vite's
             // watch.usePolling does not apply to it.
             self::DOCUSAURUS => '--host 0.0.0.0 --port 3000 --poll 300',
+            // `next dev` binds to localhost by default; -H 0.0.0.0 makes it
+            // reachable from the Service, and -p pins the port the probe checks.
+            self::NEXTJS => '--hostname 0.0.0.0 --port 3000',
             default => '',
         };
     }
@@ -195,7 +198,7 @@ enum AppFramework: string implements HasLabel
     {
         return match ($this) {
             self::VITE, self::ASTRO => 5173,
-            self::DOCUSAURUS => 3000,
+            self::DOCUSAURUS, self::NEXTJS => 3000,
             default => null,
         };
     }

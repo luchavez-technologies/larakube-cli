@@ -188,12 +188,14 @@ class AdonisjsNewCommand extends Command
     protected function runCreateAdonisjs(string $appName, string $baseDir): void
     {
         $this->laraKubeInfo('Pulling Node.js 22 Alpine builder image...');
-        Process::forever()->run('docker pull node:22-alpine');
+        Process::forever()->run($this->pullImageCommand('node:22-alpine'));
+
+        $runtime = $this->containerRuntime();
 
         $uid = $this->hostUid();
         $gid = $this->hostGid();
 
-        $cmd = "docker run --rm -it -v $baseDir:/app -w /app --user root node:22-alpine"
+        $cmd = "$runtime run --rm -it -v $baseDir:/app -w /app --user root node:22-alpine"
             ." sh -c 'npm create adonisjs@latest $appName -- --kit=api --db=postgres --no-git'";
 
         passthru($cmd);
@@ -201,7 +203,7 @@ class AdonisjsNewCommand extends Command
         // Chown back to host user
         if (is_dir("$baseDir/$appName")) {
             $this->runStreaming(
-                "docker run --rm -v $baseDir:/app --user root node:22-alpine chown -R $uid:$gid /app/$appName",
+                "$runtime run --rm -v $baseDir:/app --user root node:22-alpine chown -R {$this->containerChownSpec($uid, $gid)} /app/$appName",
             );
         }
     }

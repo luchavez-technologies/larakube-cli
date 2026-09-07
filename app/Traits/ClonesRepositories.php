@@ -7,7 +7,7 @@ use RuntimeException;
 
 trait ClonesRepositories
 {
-    use StreamsProcessOutput;
+    use ResolvesContainerRuntime, StreamsProcessOutput;
 
     /**
      * Resolve a raw repo argument to a full git-clonable URL.
@@ -91,10 +91,11 @@ trait ClonesRepositories
             }
         }
 
-        // Docker fallback (same philosophy as gh)
+        // Containerised fallback (same philosophy as gh) — runs under whichever
+        // runtime is active (Podman or Docker).
         $wd = escapeshellarg($workDir);
 
-        return "docker run --rm -v {$wd}:/app -w /app composer:latest";
+        return $this->runContainerCommand("--rm -v {$wd}:/app -w /app composer:latest");
     }
 
     /**

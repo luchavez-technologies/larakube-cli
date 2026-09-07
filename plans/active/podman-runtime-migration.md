@@ -1,11 +1,71 @@
 # Plan: Podman as the container runtime (WSL/Linux), Docker on Mac
 
-**Status:** ⛔ NOT STARTED — scoped 2026-09-04. No Podman host-runtime work exists
-today: `SetupCommand` installs `docker-ce` for Linux/WSL2 and has never referenced
-Podman (`git log -S podman -- app/Commands/SetupCommand.php` is empty). The only
-Podman in the repo is an unrelated **rootless Podman CI sidecar** for Forgejo
-Actions (`resources/views/k8s/git/forgejo.blade.php`, commit `762b8ef`) — that runs
-Podman *inside a pod* as a CI image-builder, not as the developer's host runtime.
+**Status:** 🟡 PHASE 1 + PHASE 3 LANDED — 2026-09-04. Phase 2 (registry/push path)
+deferred. Implemented:
+- `App\Traits\ResolvesContainerRuntime` — `containerRuntime()`/`runtimeIsPodman()`
+  (env override → Mac=docker → WSL/Linux podman-if-functional) plus the pure
+  command builders `buildImageCommand()` (the buildx/`--load` vs plain-`podman build`
+  split), `saveImageCommand()`, `pullImageCommand()`, `imageQuietLookupCommand()`.
+- Wired through `InteractsWithDocker` (local build, sideload, imageExists, chown,
+  runInContainer), `InteractsWithRemoteDeploy` (`buildProductionImageCommand`,
+  `sideloadOverSshCommand`), and `ScaffoldsInNode` (create-* pull/run + chown).
+  `sideloadIntoK3s` now streams `save | k3s ctr import` via the Process facade
+  (fakeable) instead of `passthru`.
+- Phase 3: `SetupCommand` prefers rootless Podman on WSL/Linux (`--runtime` flag or
+  a prompt defaulting to Podman; installs `podman slirp4netns fuse-overlayfs
+  uidmap` on apt hosts and verifies `podman info`). `DoctorCommand` gained a
+  container-runtime health check.
+- Tests: `ResolvesContainerRuntimeTest`, `SetupRuntimeInstallTest`, a podman-variant
+  case in `RemoteDeployTest`. The suite pins `LARAKUBE_CONTAINER_RUNTIME=docker` in
+  `Tests\TestCase::setUp()` so runtime detection never flips assertions on a host
+  that has Podman installed.
+
+The rootless-Podman install lives in `App\Traits\InstallsPodman` (shared by `setup`
+and `up`'s WSL runtime menu, which now offers "rootless Podman + k3s" as its default).
+
+---
+
+## 🧳 MACHINE-SWITCH HANDOFF (2026-09-05)
+
+Committed as an uncommitted-tree checkpoint before james moved to another computer.
+Everything below is **code-complete and green** (full suite 2131 passed / 2 skipped,
+pint + phpstan clean) but **not yet `./build`-ed or validated live**.
+
+Landed since the original Phase 1+3 note:
+- **All hardcoded `docker` literals swept** through the runtime abstraction across
+  the polyglot scaffolders (New/Adonisjs/Django/Dotnet/Nestjs/Statamic/Wordpress),
+  Bundle/Cloud/Purge/Preview/Pipeline commands, `InteractsWithGlobalConfig`,
+  `ClonesRepositories`, `LocalHealthCheckTool`.
+- **Rootless-Podman ownership fixes** (Docker-compat kept): `containerChownSpec()`
+  returns `0:0` under Podman vs `uid:gid` under Docker at all chown-back sites;
+  `setLaravelStoragePermissions()` uses `0:0` vs `www-data:www-data`.
+- **Test hermeticity/speed:** `Tests\TestCase::pinTestHostBinaries()` prepends a
+  per-worker dir of no-op stubs for host-coupled binaries; `getRegisteredTools()`
+  memoized. Suite ~130s → ~30s. (See memory `prevent-stray-processes-unfit.md` for
+  why global `preventStrayProcesses()` was rejected.)
+
+**RESUME HERE — remaining TODOs:**
+1. `./build` (james runs it — never the agent).
+2. Manual WSL validation of the build → `podman save` → `k3s ctr images import`
+   round-trip (the Verification section below).
+3. `larakube setup` on this box → confirm rootless Podman installs, `podman info`
+   green, then `larakube up` on a scaffolded app with NO `LARAKUBE_CONTAINER_RUNTIME`
+   override (auto-detect picks Podman) → pod Running, HTTPS 200.
+4. Phase 2 (registry/push path) still emits `docker`/`docker buildx` — `cloud:deploy`
+   push/login/digest unchanged. Do this when the push path is next touched.
+
+**Related workstream (same machine switch):** WSL Windows hosts sync + mirrored
+networking — see `plans/active/wsl-hosts-networking.md`. (Shares `SetupCommand`,
+`InteractsWithDocker`, `GeneratesProjectInfrastructure` with this plan.)
+
+**Still open (Phase 2):**
+- Phase 2: `buildAndPushImageCommand`, `dockerLoginCommand`, `resolvePushedDigest`
+  still emit `docker`/`docker buildx` — the registry/push path is unchanged.
+- **Manual WSL validation** of the build+save+import round-trip (see Verification).
+
+The only *other* Podman in the repo is an unrelated **rootless Podman CI sidecar** for
+Forgejo Actions (`resources/views/k8s/git/forgejo.blade.php`, commit `762b8ef`) — that
+runs Podman *inside a pod* as a CI image-builder, not as the developer's host runtime.
 
 ## 🎯 Vision
 

@@ -190,12 +190,14 @@ class DotnetNewCommand extends Command
     protected function runDotnetNewWebapi(string $appName, string $baseDir): void
     {
         $this->laraKubeInfo('Pulling .NET 9 SDK builder image...');
-        Process::forever()->run('docker pull mcr.microsoft.com/dotnet/sdk:9.0');
+        Process::forever()->run($this->pullImageCommand('mcr.microsoft.com/dotnet/sdk:9.0'));
+
+        $runtime = $this->containerRuntime();
 
         $uid = $this->hostUid();
         $gid = $this->hostGid();
 
-        $cmd = "docker run --rm -it -v $baseDir:/app -w /app --user root mcr.microsoft.com/dotnet/sdk:9.0"
+        $cmd = "$runtime run --rm -it -v $baseDir:/app -w /app --user root mcr.microsoft.com/dotnet/sdk:9.0"
             ." sh -c 'dotnet new webapi -o $appName --no-https'";
 
         passthru($cmd);
@@ -203,7 +205,7 @@ class DotnetNewCommand extends Command
         // Chown back to host user
         if (is_dir("$baseDir/$appName")) {
             $this->runStreaming(
-                "docker run --rm -v $baseDir:/app --user root mcr.microsoft.com/dotnet/sdk:9.0 chown -R $uid:$gid /app/$appName",
+                "$runtime run --rm -v $baseDir:/app --user root mcr.microsoft.com/dotnet/sdk:9.0 chown -R {$this->containerChownSpec($uid, $gid)} /app/$appName",
             );
         }
     }

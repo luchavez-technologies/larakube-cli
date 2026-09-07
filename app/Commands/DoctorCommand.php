@@ -11,12 +11,13 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithTraefik;
 use App\Traits\InteractsWithTrust;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesContainerRuntime;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class DoctorCommand extends Command
 {
-    use CheckPrerequisites, DetectsWsl, HasConsoleInteraction, InteractsWithEnvironments, InteractsWithProjectConfig, InteractsWithTraefik, InteractsWithTrust, LaraKubeOutput;
+    use CheckPrerequisites, DetectsWsl, HasConsoleInteraction, InteractsWithEnvironments, InteractsWithProjectConfig, InteractsWithTraefik, InteractsWithTrust, LaraKubeOutput, ResolvesContainerRuntime;
 
     /**
      * The name and signature of the console command.
@@ -87,7 +88,21 @@ class DoctorCommand extends Command
             ];
         }
 
-        // 2. Check Cluster Connectivity
+        // 2. Container runtime health — the build/sideload layer. On macOS this
+        // is Docker via OrbStack/Docker Desktop; on WSL/Linux it's rootless
+        // Podman (or Docker). A missing runtime is why `larakube up --build`
+        // fails, so surface it before the cluster check.
+        if (! $this->podmanIsFunctional() && ! $this->dockerIsFunctional()) {
+            $issues[] = [
+                'title' => 'No Container Runtime',
+                'description' => 'Neither Podman nor Docker responded — image builds and sideloads will fail.',
+                'fix' => PHP_OS_FAMILY === 'Darwin'
+                    ? 'Start OrbStack or Docker Desktop (with Kubernetes enabled).'
+                    : 'Run larakube setup to install rootless Podman, or start Docker.',
+            ];
+        }
+
+        // 3. Check Cluster Connectivity
         $result = Process::run('kubectl cluster-info');
         $check = $result->output().$result->errorOutput();
         if (str_contains($check, 'refused') || str_contains($check, 'error')) {

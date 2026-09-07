@@ -3,24 +3,30 @@
 namespace App\Commands;
 
 use App\Traits\CollectsReminders;
+use App\Traits\ConfiguresWslNetworking;
 use App\Traits\DetectsWsl;
 use App\Traits\InstallsK9s;
+use App\Traits\InstallsPodman;
 use App\Traits\InteractsWithOs;
 use App\Traits\InteractsWithTrust;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ResolvesContainerRuntime;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
 
 class SetupCommand extends Command
 {
-    use CollectsReminders, DetectsWsl, InstallsK9s, InteractsWithOs, InteractsWithTrust, LaraKubeOutput;
+    use CollectsReminders, ConfiguresWslNetworking, DetectsWsl, InstallsK9s, InstallsPodman, InteractsWithOs, InteractsWithTrust, LaraKubeOutput, ResolvesContainerRuntime, StreamsProcessOutput;
 
-    protected $signature = 'setup';
+    protected $signature = 'setup
+        {--runtime= : Container runtime to install without prompting (podman or docker)}';
 
-    protected $description = 'First-time setup: Docker Engine, k3s cluster, Traefik, dnsmasq, and k9s';
+    protected $description = 'First-time setup: container runtime (Podman/Docker), k3s cluster, Traefik, dnsmasq, and k9s';
 
     public function handle(): int
     {
@@ -43,8 +49,10 @@ class SetupCommand extends Command
             $this->line('  <fg=gray>Make sure one of them is running (with Kubernetes enabled) before continuing.</>');
             $this->newLine();
         } else {
-            // Step 1 — Docker Engine (Linux/WSL2 only)
-            if (! $this->ensureDockerInstalled()) {
+            // Step 1 — container runtime (Linux/WSL2 only). Rootless Podman is
+            // preferred here — daemonless, no privileged socket, nothing to
+            // `systemctl start` — with Docker Engine as the alternative.
+            if (! $this->ensureContainerRuntimeInstalled()) {
                 return 1;
             }
 
@@ -81,9 +89,86 @@ class SetupCommand extends Command
         // Step 5 — k9s (terminal UI for browsing the cluster)
         $this->ensureK9sInstalled();
 
+        // Step 6 — WSL2 mirrored networking (WSL only; self-guards otherwise).
+        // Gives the Windows browser a stable 127.0.0.1 to the cluster so the
+        // hosts entry never staleifies on the next reboot — the recurring pain
+        // the one-time hosts sync can't fix on its own.
+        $this->newLine();
+        $this->ensureMirroredNetworking();
+
         $this->renderReminders();
 
         return 0;
+    }
+
+    /** Validate the --runtime flag, or null when unset/unrecognised. Pure. */
+    public function normalizeRuntimeFlag(?string $flag): ?string
+    {
+        if ($flag === null) {
+            return null;
+        }
+
+        $flag = strtolower(trim($flag));
+
+        return in_array($flag, ['podman', 'docker'], true) ? $flag : null;
+    }
+
+    /**
+     * Ensure a functional container runtime exists on this Linux/WSL2 host,
+     * preferring rootless Podman. Returns false (already reported) when nothing
+     * usable could be installed.
+     */
+    protected function ensureContainerRuntimeInstalled(): bool
+    {
+        // Already functional? Prefer Podman, accept an existing Docker.
+        if ($this->podmanIsFunctional()) {
+            $this->laraKubeInfo('Rootless Podman already installed and functional.');
+
+            return true;
+        }
+
+        if ($this->dockerIsFunctional()) {
+            // Hand off to the Docker path, which keeps its Docker-Desktop-in-WSL
+            // guidance and service-start handling.
+            return $this->ensureDockerInstalled();
+        }
+
+        return $this->chooseRuntimeToInstall() === 'docker'
+            ? $this->ensureDockerInstalled()
+            : $this->installRootlessPodman();
+    }
+
+    /**
+     * Which runtime to install when none is functional yet. `--runtime` decides
+     * headlessly; otherwise prompt, defaulting to Podman.
+     */
+    protected function chooseRuntimeToInstall(): string
+    {
+        if (($flag = $this->normalizeRuntimeFlag($this->option('runtime'))) !== null) {
+            return $flag;
+        }
+
+        $this->laraKubeInfo('No functional container runtime found yet.');
+        $this->newLine();
+        $this->line('  <fg=yellow>Rootless Podman</> — daemonless, no root socket, nothing to start (recommended on WSL/Linux).');
+        $this->line('  <fg=yellow>Docker Engine</> — the classic daemon; needs a running service.');
+        $this->newLine();
+
+        return select(
+            label: 'Which container runtime should larakube install?',
+            options: ['podman' => 'Rootless Podman (recommended)', 'docker' => 'Docker Engine'],
+            default: 'podman',
+        );
+    }
+
+    /**
+     * A fresh WSL2 distro's apt cache can be stale enough to make a package
+     * install misbehave, so refresh it before installing Podman — the
+     * InstallsPodman hook `setup` opts into (the `up` menu skips it).
+     */
+    protected function beforePodmanInstall(): void
+    {
+        $this->updateSystemPackages();
     }
 
     protected function ensureDockerInstalled(): bool
@@ -192,15 +277,15 @@ class SetupCommand extends Command
     }
 
     /**
-     * Refresh and upgrade system packages before installing Docker — a fresh
-     * WSL2 distro's apt cache (and kernel-adjacent tooling) can be stale enough
-     * to make the Docker installer misbehave. Best-effort: a failed/interrupted
-     * upgrade only gets a warning, since Docker's own installer runs its own
-     * `apt-get update` regardless.
+     * Refresh and upgrade system packages before installing the container
+     * runtime (Podman or Docker) — a fresh WSL2 distro's apt cache (and
+     * kernel-adjacent tooling) can be stale enough to make an installer
+     * misbehave. Best-effort: a failed/interrupted upgrade only warns, since the
+     * subsequent apt install / vendor installer refreshes indexes regardless.
      */
     protected function updateSystemPackages(): void
     {
-        if (! confirm('Update system packages before installing Docker Engine? (recommended on a fresh system)', default: true)) {
+        if (! confirm('Update system packages before installing the container runtime? (recommended on a fresh system)', default: true)) {
             return;
         }
 
@@ -208,7 +293,7 @@ class SetupCommand extends Command
         passthru('sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y', $code);
 
         if ($code !== 0) {
-            $this->laraKubeWarn('System package upgrade failed or was interrupted — continuing with Docker installation anyway.');
+            $this->laraKubeWarn('System package upgrade failed or was interrupted — continuing with the install anyway.');
         }
 
         $this->newLine();

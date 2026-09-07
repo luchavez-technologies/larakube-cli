@@ -221,10 +221,10 @@ class BundleBuildCommand extends Command
             $tar = "$outDir/images/".$this->imageTarName($image);
             if ($index > 0) {
                 $this->line('  <fg=gray>pull</> '.$image.' for '.$platform);
-                $this->runStreaming('docker pull --platform '.escapeshellarg($platform).' '.escapeshellarg($image));
+                $this->runStreaming($this->containerRuntime().' pull --platform '.escapeshellarg($platform).' '.escapeshellarg($image));
             }
             $this->line('  <fg=gray>save</> '.$image);
-            $code = $this->runStreaming('docker save --platform '.escapeshellarg($platform).' '.escapeshellarg($image).' -o '.escapeshellarg($tar));
+            $code = $this->runStreaming($this->containerRuntime().' save --platform '.escapeshellarg($platform).' '.escapeshellarg($image).' -o '.escapeshellarg($tar));
             if ($code !== 0) {
                 $this->laraKubeError("Failed to save {$image} — is it built/pulled and is Docker running?");
 

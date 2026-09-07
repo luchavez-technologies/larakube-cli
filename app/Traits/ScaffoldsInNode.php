@@ -26,6 +26,15 @@ trait ScaffoldsInNode
 {
     use InteractsWithDocker, StreamsProcessOutput;
 
+    /**
+     * A persistent, runtime-managed named volume for npm/npx's cache. It
+     * survives `--rm` (the container's own layer does not), so the second
+     * scaffold onward reuses the create-* package instead of re-downloading it
+     * from the registry every run. Shared across nextjs/astro/vite/docs since
+     * they all pull the same Node builder image.
+     */
+    protected const NPM_CACHE_VOLUME = 'larakube-npm-cache';
+
     /** The decision itself, free of globals so it can be tested directly. */
     public function promptCapable(bool $noInteraction, bool $fast, bool $hasTty): bool
     {
@@ -46,11 +55,18 @@ trait ScaffoldsInNode
         string $scripted,
     ): bool {
         $this->laraKubeInfo('Pulling the Node builder image...');
-        Process::forever()->run('docker pull '.self::NODE_IMAGE);
+        Process::forever()->run($this->pullImageCommand(self::NODE_IMAGE));
 
         $canPrompt = $this->scaffolderCanPrompt();
 
-        $mount = '-v '.escapeshellarg($baseDir).':/app -w /app --user root ';
+        $runtime = $this->containerRuntime();
+
+        // The npm cache rides on a named volume pointed at by npm_config_cache,
+        // not a host bind-mount, so it needs no chown: npm owns its own cache
+        // inside runtime-managed storage, identically under Docker (root there)
+        // and rootless Podman (the host user via userns).
+        $cache = '-v '.self::NPM_CACHE_VOLUME.':/npm-cache -e npm_config_cache=/npm-cache ';
+        $mount = '-v '.escapeshellarg($baseDir).':/app -w /app '.$cache.'--user root ';
 
         if ($canPrompt) {
             // passthru, not Process::run: the scaffolder owns stdin and stdout
@@ -61,11 +77,11 @@ trait ScaffoldsInNode
             $this->newLine();
 
             passthru(
-                'docker run --rm -it '.$mount.self::NODE_IMAGE.' sh -c '.escapeshellarg($interactive),
+                $runtime.' run --rm -it '.$mount.self::NODE_IMAGE.' sh -c '.escapeshellarg($interactive),
             );
         } else {
             $this->withSpin("Scaffolding {$label}...", fn (): bool => Process::forever()->run(
-                'docker run --rm '.$mount.self::NODE_IMAGE.' sh -c '.escapeshellarg($scripted),
+                $runtime.' run --rm '.$mount.self::NODE_IMAGE.' sh -c '.escapeshellarg($scripted),
             )->successful());
         }
 
@@ -77,8 +93,8 @@ trait ScaffoldsInNode
 
         // The container writes as root; hand the tree back to the host user.
         $this->runStreaming(
-            'docker run --rm -v '.escapeshellarg($baseDir).':/app --user root '
-            .self::NODE_IMAGE.' chown -R '.$this->hostUid().':'.$this->hostGid().' /app/'.escapeshellarg($appName),
+            $runtime.' run --rm -v '.escapeshellarg($baseDir).':/app --user root '
+            .self::NODE_IMAGE.' chown -R '.$this->containerChownSpec($this->hostUid(), $this->hostGid()).' /app/'.escapeshellarg($appName),
         );
 
         return true;

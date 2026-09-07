@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\CloudData;
 use App\Data\ConfigData;
+use App\Enums\AppFramework;
 use App\Enums\LaravelFeature;
 use App\Enums\RegistryProvider;
 use Illuminate\Support\Facades\Process;
@@ -22,7 +23,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 trait InteractsWithRemoteDeploy
 {
-    use DeploysMonitoringExporters, InteractsWithGitForge, InteractsWithKustomize, StreamsProcessOutput;
+    use DeploysMonitoringExporters, InteractsWithGitForge, InteractsWithKustomize, ResolvesContainerRuntime, StreamsProcessOutput;
 
     /** The kube-context cloud:init creates for a host. Pure. */
     public function remoteContextName(string $ip): string
@@ -57,12 +58,7 @@ trait InteractsWithRemoteDeploy
      */
     public function buildProductionImageCommand(string $image, string $dockerfile, string $path, string $platform = 'linux/amd64', string $dotenvPath = '', string $target = '--target deploy '): string
     {
-        $secret = $dotenvPath !== '' ? '--secret id=dotenv,src='.escapeshellarg($dotenvPath).' ' : '';
-
-        return 'docker buildx build --platform '.$platform.' '.$target
-            .'-t '.escapeshellarg($image).' -f '.escapeshellarg($dockerfile).' '
-            .$secret
-            .escapeshellarg($path).' --load';
+        return $this->buildImageCommand($image, $dockerfile, $path, $platform, $dotenvPath, $target);
     }
 
     public function runPreDeploymentSteps(ConfigData $config): bool
@@ -163,7 +159,7 @@ trait InteractsWithRemoteDeploy
      */
     public function sideloadOverSshCommand(string $image, string $sshBase): string
     {
-        return 'docker save '.escapeshellarg($image).' | '.$sshBase.' '.escapeshellarg('sudo k3s ctr images import -');
+        return $this->saveImageCommand($image).' | '.$sshBase.' '.escapeshellarg('sudo k3s ctr images import -');
     }
 
     /**
@@ -279,6 +275,13 @@ trait InteractsWithRemoteDeploy
      */
     public function buildAndPushImageCommand(string $registryImage, string $dockerfile, string $path, string $platform = 'linux/amd64', string $dotenvPath = '', string $target = '--target deploy '): string
     {
+        // Podman has no `buildx`/`--push`: build to local storage (via the shared
+        // builder), then a separate `podman push`.
+        if ($this->runtimeIsPodman()) {
+            return $this->buildImageCommand($registryImage, $dockerfile, $path, $platform, $dotenvPath, $target)
+                .' && podman push '.escapeshellarg($registryImage);
+        }
+
         $secret = $dotenvPath !== '' ? '--secret id=dotenv,src='.escapeshellarg($dotenvPath).' ' : '';
 
         return 'docker buildx build --platform '.$platform.' '.$target
@@ -328,10 +331,10 @@ trait InteractsWithRemoteDeploy
         };
     }
 
-    /** Test docker login to a registry. Pure. */
+    /** Log in to a registry with the active runtime (`podman`/`docker login`). Pure. */
     public function dockerLoginCommand(string $registryHost, string $username, string $password): string
     {
-        return 'echo '.escapeshellarg($password).' | docker login -u '.escapeshellarg($username).' --password-stdin '.escapeshellarg($registryHost);
+        return $this->loginCommand($registryHost, $username, $password);
     }
 
     /**
@@ -348,12 +351,14 @@ trait InteractsWithRemoteDeploy
      */
     protected function dockerfileFor(ConfigData $config, string $path): string
     {
-        return $config->framework?->isStaticSpa()
-            ? "{$path}/Dockerfile.static"
-            : "{$path}/Dockerfile.php";
+        return match (true) {
+            $config->framework?->isStaticSpa() => "{$path}/Dockerfile.static",
+            $config->framework === AppFramework::NEXTJS => "{$path}/Dockerfile.nextjs",
+            default => "{$path}/Dockerfile.php",
+        };
     }
 
-    /** Static images have a single final stage; only the PHP image is multi-target. */
+    /** Static images have a single final stage; the PHP and Next.js images target `deploy`. */
     protected function buildTargetFor(ConfigData $config): string
     {
         return $config->framework?->isStaticSpa() ? '' : '--target deploy ';
@@ -596,7 +601,7 @@ trait InteractsWithRemoteDeploy
             $deployImage = $registry->getDigestReference($digest);
             $this->line('  <fg=gray>Pinned digest:</> <fg=cyan>'.$digest.'</>');
         } else {
-            $this->laraKubeWarn('Could not resolve the pushed image digest — deploying by tag (mutable). Is `docker buildx` available?');
+            $this->laraKubeWarn('Could not resolve the pushed image digest — deploying by tag (mutable).');
         }
 
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
@@ -624,6 +629,13 @@ trait InteractsWithRemoteDeploy
      */
     protected function resolvePushedDigest(string $registryImage): ?string
     {
+        // `buildx imagetools` is Docker-only. Under Podman the deploy pins by tag
+        // (the caller falls back with a warning) rather than pulling in skopeo
+        // just to read one digest.
+        if ($this->runtimeIsPodman()) {
+            return null;
+        }
+
         $digest = trim(Process::run(
             'docker buildx imagetools inspect '.escapeshellarg($registryImage)
             .' --format '.escapeshellarg('{{.Manifest.Digest}}'),

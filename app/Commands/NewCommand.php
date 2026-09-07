@@ -290,7 +290,9 @@ class NewCommand extends Command
         $image = $config->getPhpImage(true);
 
         $this->laraKubeInfo("Pulling builder image: $image...");
-        Process::forever()->run("docker pull $image");
+        Process::forever()->run($this->pullImageCommand($image));
+
+        $runtime = $this->containerRuntime();
 
         // Skip LaraKube-specific flags (Dynamic from Enums)
         $larakubeFlags = array_merge(
@@ -344,7 +346,7 @@ class NewCommand extends Command
         $pkgCommand = $this->getNodeInstallationCommand($image);
         $baseDir = dirname($projectPath);
 
-        $cmd = "docker run --rm -it -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false --user root $image ".
+        $cmd = "$runtime run --rm -it -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false --user root $image ".
                "sh -c '$pkgCommand && composer config -g bin-dir /usr/local/bin && composer global require laravel/installer && laravel new $appName $extraFlags'";
 
         passthru($cmd);
@@ -354,7 +356,7 @@ class NewCommand extends Command
         // could silently no-op (notably on WSL) and leave a root-owned project you'd need
         // sudo to manage. Uses the host user's real uid/gid (see InteractsWithDocker::hostUid).
         if (is_dir($projectPath)) {
-            $this->runStreaming("docker run --rm -v $baseDir:/var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R $uid:$gid /var/www/html/$appName");
+            $this->runStreaming("$runtime run --rm -v $baseDir:/var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R {$this->containerChownSpec($uid, $gid)} /var/www/html/$appName");
         }
     }
 }

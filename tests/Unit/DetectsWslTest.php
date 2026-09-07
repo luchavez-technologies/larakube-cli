@@ -9,6 +9,7 @@
 
 use App\Traits\DetectsWsl;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function wslDetector(): object
 {
@@ -34,6 +35,26 @@ function wslDetector(): object
         public function dockerDesktopOnWsl(): bool
         {
             return $this->hasDockerDesktopOnWsl();
+        }
+
+        public function networkingMode(): string
+        {
+            return $this->wslNetworkingMode();
+        }
+
+        public function mirroredActive(): bool
+        {
+            return $this->mirroredNetworkingActive();
+        }
+
+        public function requestedMirrored(): bool
+        {
+            return $this->mirroredNetworkingRequested();
+        }
+
+        public function restartPending(): bool
+        {
+            return $this->mirroredRestartPending();
         }
 
         // Tests only ever simulate "is WSL" via WSL_DISTRO_NAME (see forceWsl()
@@ -98,6 +119,82 @@ test('isDockerDesktop matches the daemon operating-system string, case-insensiti
 
     Process::fake(['docker info --format "{{.OperatingSystem}}"' => Process::result(output: '', exitCode: 1)]);
     expect(wslDetector()->dockerDesktop())->toBeFalse();
+});
+
+test('wslNetworkingMode is empty outside WSL and never shells out', function (): void {
+    $original = getenv('WSL_DISTRO_NAME');
+
+    try {
+        putenv('WSL_DISTRO_NAME');
+        Process::fake(['wslinfo --networking-mode' => 'mirrored']);
+
+        expect(wslDetector()->networkingMode())->toBe('');
+        Process::assertNotRan(fn ($process) => str_contains($process->command, 'wslinfo'));
+    } finally {
+        putenv($original === false ? 'WSL_DISTRO_NAME' : "WSL_DISTRO_NAME={$original}");
+    }
+});
+
+test('mirroredNetworkingActive reflects wslinfo on WSL', function (): void {
+    forceWsl(function (): void {
+        Process::fake(['wslinfo --networking-mode' => "mirrored\n"]);
+        expect(wslDetector()->mirroredActive())->toBeTrue()
+            ->and(wslDetector()->networkingMode())->toBe('mirrored');
+
+        Process::fake(['wslinfo --networking-mode' => "nat\n"]);
+        expect(wslDetector()->mirroredActive())->toBeFalse();
+
+        // Older WSL builds without wslinfo: absent binary → not mirrored.
+        Process::fake(['wslinfo --networking-mode' => Process::result(output: '', exitCode: 127)]);
+        expect(wslDetector()->mirroredActive())->toBeFalse();
+    });
+});
+
+test('mirroredNetworkingRequested reads networkingMode=mirrored from ~/.wslconfig', function (): void {
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    file_put_contents($dir->path().'/.wslconfig', "[wsl2]\nmemory=8GB\nnetworkingMode=mirrored\n");
+
+    Process::fake([
+        'cmd.exe *' => "C:\\Users\\jsluc\r\n",
+        'wslpath -u *' => $dir->path()."\n",
+    ]);
+
+    expect(wslDetector()->requestedMirrored())->toBeTrue();
+});
+
+test('mirroredNetworkingRequested is false when .wslconfig requests nat', function (): void {
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    file_put_contents($dir->path().'/.wslconfig', "[wsl2]\nnetworkingMode=nat\n");
+
+    Process::fake([
+        'cmd.exe *' => "C:\\Users\\jsluc\r\n",
+        'wslpath -u *' => $dir->path()."\n",
+    ]);
+
+    expect(wslDetector()->requestedMirrored())->toBeFalse();
+});
+
+test('mirroredRestartPending is true only when mirrored is requested but not yet the running mode', function (): void {
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    file_put_contents($dir->path().'/.wslconfig', "[wsl2]\nnetworkingMode=mirrored\n");
+
+    forceWsl(function () use ($dir): void {
+        // Configured mirrored, but still running nat → restart pending.
+        Process::fake([
+            'wslinfo --networking-mode' => "nat\n",
+            'cmd.exe *' => "C:\\Users\\jsluc\r\n",
+            'wslpath -u *' => $dir->path()."\n",
+        ]);
+        expect(wslDetector()->restartPending())->toBeTrue();
+
+        // Already running mirrored → nothing pending.
+        Process::fake([
+            'wslinfo --networking-mode' => "mirrored\n",
+            'cmd.exe *' => "C:\\Users\\jsluc\r\n",
+            'wslpath -u *' => $dir->path()."\n",
+        ]);
+        expect(wslDetector()->restartPending())->toBeFalse();
+    });
 });
 
 test('hasDockerDesktopOnWsl requires both WSL and a reachable Docker Desktop daemon', function (): void {

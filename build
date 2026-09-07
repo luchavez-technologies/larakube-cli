@@ -54,10 +54,17 @@ build_standalone() {
 
 # 🔍 Static analysis gate — fail before packaging if new code has an undefined
 # class/method/function (the bug class that crashed init). Fast at level 0.
-echo -e "🔍 ${BOLD}Static analysis${RESET} (PHPStan/Larastan)..."
-# --memory-limit must be 4G: the 256M default OOMs a parallel worker, and 1G now
-# OOMs too on the grown codebase — a crashed worker hangs / prints a false error.
-./vendor/bin/phpstan analyse --no-progress --memory-limit=4G
+if [ -n "$SKIP_PHPSTAN" ]; then
+    echo -e "⏭  ${BOLD}Skipping static analysis${RESET} (SKIP_PHPSTAN set) — packaging only."
+else
+    echo -e "🔍 ${BOLD}Static analysis${RESET} (PHPStan/Larastan) — live progress below:"
+    # NO --no-progress here: this is an interactive build, so let PHPStan stream its
+    # progress bar so a long run is visibly working, not apparently hung. (CI keeps
+    # --no-progress in .github/workflows/ci.yml for clean logs.) --memory-limit is a
+    # cap only — a packaged PHP's CLI php.ini already sets memory_limit=-1. Override
+    # on a tight box with: PHPSTAN_MEMORY_LIMIT=2G ./build
+    ./vendor/bin/phpstan analyse --memory-limit="${PHPSTAN_MEMORY_LIMIT:-6G}"
+fi
 
 case $BUILD_TYPE in
     "--local")

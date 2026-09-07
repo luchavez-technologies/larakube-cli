@@ -17,9 +17,16 @@ abstract class TestCase extends BaseTestCase
 {
     private ?TemporaryDirectory $testHomeDir = null;
 
+    /** Per-worker stub-bin dir (created once) that neutralises unfaked host tools. */
+    private static ?string $stubBinDir = null;
+
+    /** The real PATH, captured before the stub dir is prepended. */
+    private static ?string $originalPath = null;
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->pinTestHostBinaries();
         // Point HOME at a fresh, UNIQUE-PER-TEST temp dir so
         // GlobalConfigData::load() returns defaults (TLD=kube) and never
         // reads the developer's real config. Unique, not a shared fixed
@@ -126,6 +133,17 @@ abstract class TestCase extends BaseTestCase
         // now()-based deadline loop to actually expire in tests instead of
         // spinning for the real wall-clock timeout.
         Sleep::fake(syncWithCarbon: true);
+
+        // Pin the container runtime to Docker for the whole suite. The
+        // ResolvesContainerRuntime trait otherwise shells out to detect Podman
+        // (`command -v podman` + `podman info`), so on a host that HAS a working
+        // Podman — which `larakube setup` now installs on WSL/Linux — every test
+        // that asserts a `docker …`/`docker buildx …` command string would flip
+        // to `podman …` and fail. The explicit override short-circuits detection
+        // (no process runs), keeping those assertions host-independent. Podman's
+        // own command-builder tests set LARAKUBE_CONTAINER_RUNTIME=podman
+        // themselves; this default is restored on the next test's setUp().
+        putenv('LARAKUBE_CONTAINER_RUNTIME=docker');
     }
 
     protected function tearDown(): void
@@ -143,5 +161,42 @@ abstract class TestCase extends BaseTestCase
         Carbon::setTestNow();
 
         parent::tearDown();
+    }
+
+    /**
+     * Prepend a directory of no-op stubs for the host/cluster binaries onto PATH
+     * so the suite is HERMETIC on every machine — CI (no kubectl), a laptop, or
+     * a dev box that ran `larakube setup` and now has a live k3s + Podman.
+     *
+     * A test that forgot a Process::fake() would otherwise shell out for real:
+     * on CI that fails instantly (binary absent) and looks fine, but on a box
+     * with the real tools it hits the live cluster (~0.3s per kubectl, dozens per
+     * command) or blocks on a sudo password — the "why is CI fine but local slow"
+     * split. Faked commands never reach these stubs: Process::fake() intercepts
+     * before the shell runs, so a test that DOES populate the registry/cluster
+     * still gets its own data. Only genuinely unfaked calls fall through here,
+     * and they get deterministic empty output (exit 0), fast, everywhere.
+     *
+     * Deliberately NOT stubbed: portable, deterministic tools the suite uses for
+     * real (openssl for cert generation, git, id, tar, npm/composer, …). We only
+     * neutralise the host-coupled ones.
+     */
+    private function pinTestHostBinaries(): void
+    {
+        if (self::$stubBinDir === null) {
+            self::$originalPath = getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin';
+            $dir = sys_get_temp_dir().'/larakube-test-stubs-'.getmypid();
+            @mkdir($dir, 0755, true);
+
+            foreach (['kubectl', 'docker', 'podman', 'netbird', 'helm', 'k3s', 'crictl', 'ctr', 'sudo', 'systemctl'] as $bin) {
+                $path = "$dir/$bin";
+                @file_put_contents($path, "#!/bin/sh\nexit 0\n");
+                @chmod($path, 0755);
+            }
+
+            self::$stubBinDir = $dir;
+        }
+
+        putenv('PATH='.self::$stubBinDir.':'.self::$originalPath);
     }
 }

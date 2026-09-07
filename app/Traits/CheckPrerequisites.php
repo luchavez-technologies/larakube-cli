@@ -10,16 +10,25 @@ use function Laravel\Prompts\warning;
 
 trait CheckPrerequisites
 {
+    use ResolvesContainerRuntime;
+
     /**
-     * Check if the necessary tools are installed.
+     * Check that the tools larakube needs are installed and responding: a
+     * container runtime — rootless Podman (the default on WSL/Linux) OR Docker,
+     * either of which builds and sideloads images — plus kubectl.
      */
     protected function checkPrerequisites(bool $requireK9s = false): bool
     {
         $missing = [];
 
-        // 1. Check Docker Installation
-        if (! Process::run('which docker')->successful()) {
-            $missing[] = 'Docker (https://docs.docker.com/get-docker/)';
+        // 1. A container runtime — Podman or Docker. (Was Docker-only, which
+        //    wrongly failed on a Podman host after `larakube setup`.) `command -v`
+        //    exits 0 when the binary is on PATH, non-zero otherwise.
+        $hasPodman = Process::run('command -v podman')->successful();
+        $hasDocker = Process::run('command -v docker')->successful();
+
+        if (! $hasPodman && ! $hasDocker) {
+            $missing[] = 'a container runtime — install rootless Podman with `larakube setup`, or Docker (https://docs.docker.com/get-docker/)';
         }
 
         // 2. Check Kubectl Installation
@@ -42,10 +51,12 @@ trait CheckPrerequisites
             return false;
         }
 
-        // 4. Live Engine Check: Verify if Docker is actually RUNNING
-        if (! Process::run('docker info')->successful()) {
-            $this->laraKubeError('Docker engine is not running!');
-            info('Please start OrbStack, Docker Desktop, or your local Docker daemon and try again.');
+        // 4. Live engine check — the runtime must actually respond, not merely be
+        //    on PATH: a fresh rootless Podman awaiting a new shell, or a stopped
+        //    Docker daemon, both fail here.
+        if (! $this->podmanIsFunctional() && ! $this->dockerIsFunctional()) {
+            $this->laraKubeError('Your container runtime is installed but not responding.');
+            info('Podman: a fresh rootless install needs a new shell — open one and retry. Docker: start OrbStack, Docker Desktop, or your local daemon.');
 
             return false;
         }

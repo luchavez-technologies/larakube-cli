@@ -13,7 +13,7 @@ use Throwable;
 
 trait InteractsWithGlobalConfig
 {
-    use InteractsWithOs;
+    use InteractsWithOs, ResolvesContainerRuntime;
 
     protected function getGlobalConfig(): GlobalConfigData
     {
@@ -70,7 +70,7 @@ trait InteractsWithGlobalConfig
         // We always include -i to support piping data (like secrets) into the container
         $interactiveFlag = $interactive ? '-it' : '-i';
 
-        return "docker run --rm {$interactiveFlag} {$mountString} -w /work alpine:latest sh -c 'apk add --no-cache github-cli >/dev/null && gh \"\$@\"' larakube-gh ";
+        return $this->runContainerCommand("--rm {$interactiveFlag} {$mountString} -w /work alpine:latest sh -c 'apk add --no-cache github-cli >/dev/null && gh \"\$@\"' larakube-gh ");
     }
 
     protected function getEmail(): ?string

@@ -24,6 +24,36 @@ function frontendGeneratorsPackageJson(string $dir, AppFramework $framework): vo
     file_put_contents("{$dir}/package.json", json_encode(['scripts' => $scripts], JSON_PRETTY_PRINT));
 }
 
+/**
+ * checkPrerequisites() shells out to detect a container runtime
+ * (`command -v podman`/`command -v docker`, then `podman info`/`docker info`) and
+ * `which kubectl` before any scaffolding runs. Unmatched Process::fake() patterns
+ * fall through to the REAL binary, so on a host missing those the check fails and
+ * the command bails — the Mac-only pass was leaking the host's installed
+ * toolchain. Fake them so the scaffolding tests exercise scaffolding, not the
+ * host's environment.
+ *
+ * @return array<string, Illuminate\Process\FakeProcessResult>
+ */
+function frontendGeneratorsPrereqFakes(): array
+{
+    return [
+        // checkPrerequisites() accepts Podman OR Docker; fake a working Docker
+        // and no Podman so it resolves deterministically to the Docker path.
+        'command -v podman' => Process::result(exitCode: 1),
+        'command -v docker' => Process::result(output: '/usr/bin/docker'),
+        'which kubectl' => Process::result(output: '/usr/bin/kubectl'),
+        'docker info' => Process::result(output: 'Server Version: 27.0.0'),
+        // scaffoldInNode() also pulls the Node builder image and, once the
+        // create-* tool has written the tree as root, chowns it back via a
+        // throwaway `docker run … chown`. Both are common to every scaffolder,
+        // so fake them here — otherwise astro:new/docs:new run them for real and
+        // the chown's streamed output spills `docker: not found` into the suite.
+        '*pull*node:*' => Process::result(output: 'pulled'),
+        '*chown*' => Process::result(output: ''),
+    ];
+}
+
 use App\Commands\Astro\AstroNewCommand;
 use App\Commands\Docs\DocsNewCommand;
 use App\Commands\Vite\ViteNewCommand;
@@ -69,6 +99,7 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
 
     try {
         Process::fake([
+            ...frontendGeneratorsPrereqFakes(),
             // create-vite now runs inside Node rather than on the host, so the
             // toolchain matches the dev pod's and no local Node is required.
             '*create-vite*' => function ($process) use ($tempDir) {
@@ -83,8 +114,6 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
 
                 return Process::result(output: 'Scaffolded');
             },
-            '*docker pull*' => Process::result(output: 'pulled'),
-            '*chown*' => Process::result(output: ''),
         ]);
 
         chdir($tempDir);
@@ -159,6 +188,7 @@ test('astro:new scaffolds project and generates .larakube.json blueprint', funct
 
     try {
         Process::fake([
+            ...frontendGeneratorsPrereqFakes(),
             '*create-astro*' => function ($process) use ($tempDir) {
                 mkdir("{$tempDir}/my-astro-app", 0755, true);
                 frontendGeneratorsPackageJson("{$tempDir}/my-astro-app", AppFramework::ASTRO);
@@ -189,6 +219,7 @@ test('docs:new scaffolds project and generates .larakube.json blueprint', functi
 
     try {
         Process::fake([
+            ...frontendGeneratorsPrereqFakes(),
             '*create-docusaurus*' => function ($process) use ($tempDir) {
                 mkdir("{$tempDir}/my-docs-app", 0755, true);
                 frontendGeneratorsPackageJson("{$tempDir}/my-docs-app", AppFramework::DOCUSAURUS);

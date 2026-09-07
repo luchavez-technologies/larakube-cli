@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Process;
 
 trait InteractsWithDocker
 {
-    use InteractsWithProjectConfig, StreamsProcessOutput;
+    use InteractsWithProjectConfig, ResolvesContainerRuntime, StreamsProcessOutput;
 
     /**
      * Whether a freshly built image must be sideloaded into a local cluster's
@@ -57,14 +57,18 @@ trait InteractsWithDocker
      */
     public function previewModeRefusal(?AppFramework $framework): ?array
     {
-        if ($framework?->isStaticSpa() ?? false) {
+        // Static SPAs and Next.js both run their own dev server locally but a
+        // built image in production, so both have a serving layer worth
+        // rehearsing. The PHP stacks run the same image in both, so preview is
+        // meaningless for them.
+        if (($framework?->isStaticSpa() ?? false) || $framework === AppFramework::NEXTJS) {
             return null;
         }
 
         $label = $framework?->getLabel() ?? 'This project';
 
         return [
-            'preview is for frontend-only stacks (Vite, Astro, Docusaurus).',
+            'preview is for stacks whose local and production serving differ (Vite, Astro, Docusaurus, Next.js).',
             [
                 "{$label} already serves through the same image locally and in production —",
                 'there is no separate serving layer to rehearse. Use `larakube up` instead.',
@@ -82,17 +86,17 @@ trait InteractsWithDocker
         $localImage = "$appName:local";
 
         // Check if we have a local image, otherwise fallback to base
-        $imageExists = Process::run("docker images -q {$localImage}")->output();
+        $imageExists = Process::run($this->imageQuietLookupCommand($localImage))->output();
         $image = $imageExists !== '' ? $localImage : $this->getProjectConfig($path)->getPhpImage(true);
 
         $baseEnvs = '-e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_IGNORE_PLATFORM_REQS=1 -e SHOW_WELCOME_MESSAGE=false';
 
-        return "docker run --rm --init -v $path:/var/www/html -w /var/www/html --user root $baseEnvs $envs {$image} ";
+        return $this->containerRuntime()." run --rm --init -v $path:/var/www/html -w /var/www/html --user root $baseEnvs $envs {$image} ";
     }
 
     protected function imageExists(string $image): bool
     {
-        $id = Process::run('docker images -q '.escapeshellarg($image))->output();
+        $id = Process::run($this->imageQuietLookupCommand($image))->output();
 
         return trim($id) !== '';
     }
@@ -107,8 +111,12 @@ trait InteractsWithDocker
         $appName = $config->getName();
         $path = $config->getPath();
 
-        // Build Primary Project Image (Includes PHP, Node, and correct permissions)
-        $this->buildTargetedImage("$appName:local", "$path/Dockerfile.php", $path, $uid, $gid);
+        // Build Primary Project Image. Next.js is a Node server with its own
+        // standalone Dockerfile; everything else here builds the PHP image.
+        $dockerfile = $config->framework === AppFramework::NEXTJS
+            ? "$path/Dockerfile.nextjs"
+            : "$path/Dockerfile.php";
+        $this->buildTargetedImage("$appName:local", $dockerfile, $path, $uid, $gid);
     }
 
     /**
@@ -129,28 +137,35 @@ trait InteractsWithDocker
     protected function buildStaticPreviewImage(ConfigData $config): bool
     {
         $path = $config->getPath();
-        $dockerfile = "$path/Dockerfile.static";
+
+        // Next.js previews the standalone Node image (multi-stage → `deploy`);
+        // the static frameworks preview the single-stage Caddy image. Same
+        // {name}:preview tag and dotenv secret either way; only the Dockerfile,
+        // the build target, and the static-only STRICT_HOSTS guard differ.
+        $isNext = $config->framework === AppFramework::NEXTJS;
+        $dockerfile = $isNext ? "$path/Dockerfile.nextjs" : "$path/Dockerfile.static";
+        $dockerfileLabel = basename($dockerfile);
 
         if (! file_exists($dockerfile)) {
-            $this->laraKubeError('No Dockerfile.static found — run `larakube heal` to regenerate it.');
+            $this->laraKubeError("No {$dockerfileLabel} found — run `larakube heal` to regenerate it.");
 
             return false;
         }
 
         $imageTag = $config->getName().':preview';
         $dotenv = "$path/.env";
-        $secret = file_exists($dotenv)
-            ? '--secret id=dotenv,src='.escapeshellarg($dotenv).' '
-            : '';
 
-        $this->laraKubeInfo("Building preview image '$imageTag' from Dockerfile.static...");
+        $this->laraKubeInfo("Building preview image '$imageTag' from {$dockerfileLabel}...");
 
         $code = $this->runStreaming(
-            'docker buildx build --build-arg STRICT_HOSTS=0 '
-            .'-t '.escapeshellarg($imageTag)
-            .' -f '.escapeshellarg($dockerfile).' '
-            .$secret
-            .escapeshellarg($path).' --load',
+            $this->buildImageCommand(
+                image: $imageTag,
+                dockerfile: $dockerfile,
+                path: $path,
+                dotenvPath: file_exists($dotenv) ? $dotenv : '',
+                target: $isNext ? '--target deploy ' : '',
+                buildArgs: $isNext ? '' : '--build-arg STRICT_HOSTS=0',
+            ),
         );
 
         if ($code !== 0) {
@@ -181,7 +196,9 @@ trait InteractsWithDocker
             $buildArgs = "--build-arg USER_ID=$uid --build-arg GROUP_ID=$gid";
         }
 
-        $this->runStreaming("docker build $target $buildArgs -t $imageTag -f $dockerfile $path");
+        // Plain `build` (no BuildKit/cross-arch features here) aliases cleanly
+        // between the runtimes, so a straight binary swap is enough.
+        $this->runStreaming($this->containerRuntime()." build $target $buildArgs -t $imageTag -f $dockerfile $path");
 
         // --- 🛡 LOCAL IMAGE BRIDGE ---
         // Images built on the host Docker engine are invisible to a local
@@ -248,11 +265,17 @@ trait InteractsWithDocker
         $this->line('  <fg=gray>k3s uses containerd; importing requires sudo.</>');
 
         // Pre-warm sudo so the credential prompt is interactive (the import runs
-        // through a pipe where a prompt would otherwise be swallowed).
-        passthru('sudo -v');
+        // through a pipe where a prompt would otherwise be swallowed). Skipped
+        // in tests: passthru() bypasses the Process fake, so a real sudo prompt
+        // would leak into (and hang) the suite.
+        if (! app()->runningUnitTests()) {
+            passthru('sudo -v');
+        }
 
-        $code = 0;
-        passthru('docker save '.escapeshellarg($imageTag).' | sudo k3s ctr images import -', $code);
+        // Streamed via the Process facade (not passthru) so it's fakeable and
+        // caught by the suite's stray-process guard. `<runtime> save` emits a
+        // docker-archive tarball either way, which `k3s ctr` imports.
+        $code = $this->runStreaming($this->saveImageCommand($imageTag).' | sudo k3s ctr images import -');
 
         if ($code !== 0) {
             $this->laraKubeError("Could not sideload '$imageTag' into k3s.");
@@ -382,11 +405,11 @@ trait InteractsWithDocker
         $image = "$appName:local";
 
         // Fallback if image doesn't exist
-        $imageExists = Process::run("docker images -q {$image}")->output();
+        $imageExists = Process::run($this->imageQuietLookupCommand($image))->output();
         if (trim($imageExists) === '') {
             $image = $this->getProjectConfig($path)->getPhpImage(true);
         }
 
-        $this->runStreaming("docker run --rm --init -v $path:/var/www/html -w /var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R $uid:$gid .");
+        $this->runStreaming($this->containerRuntime()." run --rm --init -v $path:/var/www/html -w /var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R {$this->containerChownSpec($uid, $gid)} .");
     }
 }

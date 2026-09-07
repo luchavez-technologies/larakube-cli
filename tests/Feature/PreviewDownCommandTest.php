@@ -90,7 +90,7 @@ test('preview:down refuses on a stack that has no preview', function (): void {
 
     // laraKubeError renders through termwind, outside Artisan's buffer, so
     // the headline is asserted where it is actually recorded.
-    expect(State::$lastError)->toContain('frontend-only stacks')
+    expect(State::$lastError)->toContain('serving differ')
         ->and($output)->toContain('Laravel')
         // Crucially it must not delete anything on the way out.
         ->and(collect($commands)->contains(fn (string $c) => str_contains($c, 'kubectl delete')))->toBeFalse();

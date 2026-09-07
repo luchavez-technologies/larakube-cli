@@ -8,6 +8,31 @@ use App\Enums\PhpVersion;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
+
+/**
+ * Record every command the Bedrock scaffold shells out through. Tests never get
+ * a TTY, so runBedrockNew() takes its scripted branch (Process, not passthru) —
+ * which is what makes the container commands observable rather than a real
+ * `docker run` leaking out of the suite.
+ *
+ * @return list<string>
+ */
+function wordpressScaffoldCommands(callable $run): array
+{
+    $recorded = [];
+
+    Process::fake(['*' => function ($process) use (&$recorded) {
+        $recorded[] = (string) $process->command;
+
+        return Process::result(output: '');
+    }]);
+
+    $run();
+
+    return $recorded;
+}
 
 // ── wordpress:new Command Tests ──────────────────────────────────────────────
 
@@ -24,6 +49,33 @@ test('wordpress:new command has --fast option', function (): void {
     expect($commands)->toHaveKey('wordpress:new')
         ->and($commands['wordpress:new']->getDefinition()->hasOption('fast'))->toBeTrue();
 });
+
+// ── Scaffold runs under the resolved container runtime (Docker or Podman) ─────
+
+test('wordpress:new pulls and runs composer create-project through the resolved runtime', function (string $runtime): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $old = (string) getcwd();
+    chdir($temporaryDirectory->path());
+    putenv("LARAKUBE_CONTAINER_RUNTIME={$runtime}");
+
+    try {
+        // --no-plex keeps this a pure local scaffold (no cluster provisioning).
+        $commands = wordpressScaffoldCommands(fn () => $this->artisan('wordpress:new wp-demo --fast --no-plex')->run());
+    } finally {
+        chdir($old);
+        // Restore the suite-wide default pinned in TestCase::setUp().
+        putenv('LARAKUBE_CONTAINER_RUNTIME=docker');
+    }
+
+    $pull = collect($commands)->first(fn ($c): bool => str_contains($c, ' pull '));
+    $scaffold = collect($commands)->first(fn ($c): bool => str_contains($c, 'create-project roots/bedrock'));
+
+    expect($pull)->toContain("{$runtime} pull")
+        ->and($scaffold)->toContain("{$runtime} run")
+        ->toContain('create-project roots/bedrock')
+        // Scripted (no TTY) path drops -it so `<runtime> run` does not fail.
+        ->not->toContain(' -it ');
+})->with(['docker', 'podman']);
 
 // ── Driver Compatibility Matrix — WordPress ───────────────────────────────────
 

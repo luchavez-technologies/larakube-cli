@@ -14,15 +14,16 @@ test('pipeline:test guides installation when act is missing', function (): void 
         ->expectsOutputToContain('Install it via Homebrew: brew install nektos/tap/act');
 });
 
-test('pipeline:test fails when docker is not running', function (): void {
+test('pipeline:test fails when no container runtime is responding', function (): void {
     Process::fake([
         'which act' => '/usr/local/bin/act',
+        'command -v podman' => Process::result(exitCode: 1),
         'docker info' => Process::result(output: 'error', exitCode: 1),
     ]);
 
     $this->artisan('pipeline:test production')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Docker daemon is not running. Please start Docker and try again.');
+        ->expectsOutputToContain('No container runtime is responding. Start Podman or Docker and try again.');
 });
 
 test('pipeline:test runs act builder locally with mock secrets', function (): void {

@@ -4,6 +4,9 @@
 /.vscode
 /.vagrant
 .phpunit.result.cache
+# PHPStan result cache (see phpstan.neon tmpDir) — machine-local, holds absolute
+# paths, fully rebuildable. Keeping it makes analysis ~3s instead of a cold run.
+/.phpstan
 .env*
 # Generated knowledge graph — ~65MB incl. a cache/ dir, fully rebuildable from
 # source. Each contributor generates their own; see .agents/workflows/graphify.md.

@@ -14,7 +14,6 @@ use App\Traits\InteractsWithScopedRbac;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
 use App\Traits\StreamsProcessOutput;
-use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
@@ -58,9 +57,8 @@ class PipelineTestCommand extends Command
             return 1;
         }
 
-        $dockerCheck = Process::run('docker info');
-        if (! $dockerCheck->successful()) {
-            $this->laraKubeError('Docker daemon is not running. Please start Docker and try again.');
+        if (! $this->containerRuntimeIsResponding()) {
+            $this->laraKubeError('No container runtime is responding. Start Podman or Docker and try again.');
 
             return 1;
         }

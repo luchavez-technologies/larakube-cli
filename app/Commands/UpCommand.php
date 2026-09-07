@@ -14,6 +14,7 @@ use App\Traits\DetectsWsl;
 use App\Traits\EnsuresHostDependencies;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
+use App\Traits\InstallsPodman;
 use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithDocker;
@@ -39,7 +40,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class UpCommand extends Command
 {
-    use CollectsReminders, DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithKustomize, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
+    use CollectsReminders, DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InstallsPodman, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithKustomize, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -254,6 +255,15 @@ class UpCommand extends Command
         if ($environment === 'local') {
             if ($hostsWarning = $this->ensureHostsAreSet()) {
                 $this->reminders[] = $hostsWarning;
+            }
+
+            // Mirrored networking was configured (e.g. by `setup`) but isn't live
+            // yet — the Windows browser won't get its stable 127.0.0.1 until a
+            // one-time `wsl --shutdown`. Re-surface that here so a forgotten
+            // restart doesn't silently leave the churning node-IP hosts entry in
+            // place while everything looks fine.
+            if ($this->mirroredRestartPending()) {
+                $this->reminders[] = 'Mirrored networking is set in ~/.wslconfig but not active yet — run <fg=cyan>wsl --shutdown</> from Windows PowerShell, then reopen your terminal for a stable 127.0.0.1 to the cluster.';
             }
         }
 
@@ -702,23 +712,31 @@ class UpCommand extends Command
             return 1;
         }
 
-        // No Docker at all — offer Docker CLI install or k3s.
-        $this->line('  Neither Docker nor a Kubernetes cluster was found on this WSL2 distro.');
+        // Nothing installed — offer the full WSL runtime picture.
+        $this->line('  Neither a container runtime nor a Kubernetes cluster was found on this WSL2 distro.');
         $this->newLine();
         $this->line('  <fg=gray>Your options:</>');
-        $this->line('  1. <fg=yellow>Install k3s</> — a standalone Kubernetes cluster (recommended, includes its own container runtime).');
-        $this->line('  2. Install Docker Engine — gives you `docker` on WSL2, then use k3s or Docker Desktop.');
+        $this->line('  1. <fg=yellow>Rootless Podman + k3s</> — daemonless build runtime plus a standalone cluster (recommended).');
+        $this->line('  2. Install k3s only — the cluster brings its own containerd; add a build runtime later.');
+        $this->line('  3. Install Docker Engine — gives you `docker` on WSL2, then use k3s or Docker Desktop.');
         $this->newLine();
 
         $choice = select(
             label: 'What would you like to do?',
             options: [
-                'k3s' => 'Install k3s (recommended)',
+                'podman' => 'Install rootless Podman + k3s (recommended)',
+                'k3s' => 'Install k3s only',
                 'docker' => 'Install Docker CLI',
                 'skip' => 'Skip for now',
             ],
-            default: 'k3s',
+            default: 'podman',
         );
+
+        if ($choice === 'podman') {
+            // A build runtime with no cluster still can't run `up`, so follow a
+            // successful Podman install straight into the cluster install.
+            return $this->installRootlessPodman() ? $this->call('cluster:setup') : 1;
+        }
 
         if ($choice === 'k3s') {
             return $this->call('cluster:setup');

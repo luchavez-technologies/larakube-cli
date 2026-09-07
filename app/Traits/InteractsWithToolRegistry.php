@@ -13,6 +13,18 @@ trait InteractsWithToolRegistry
     use ReadsClusterSecrets;
 
     /**
+     * Per-run memo of the tool registry, keyed by the kubectl prefix (so two
+     * contexts don't share a cache). A single command resolves the registry
+     * many times — e.g. `mail:wire` fired the same `get secret
+     * larakube-tools-registry` read 25× — and the registry can't change under it
+     * except through saveToolRegistry(), which clears this. Only the read is
+     * memoized; live-cluster probes stay live.
+     *
+     * @var array<string, list<array<string, mixed>>>
+     */
+    private array $registeredToolsCache = [];
+
+    /**
      * One flat, self-describing list across every tool and every instance —
      * each entry carries its own `tool` field rather than being nested under
      * a tool-name key, so "all instances of X" is a filter, not a lookup.
@@ -21,15 +33,15 @@ trait InteractsWithToolRegistry
      */
     protected function getRegisteredTools(string $kubectl): array
     {
-        $json = $this->readClusterSecretKey($kubectl, 'larakube-shared', 'larakube-tools-registry', 'registry.json');
-
-        if ($json === null) {
-            return [];
+        if (array_key_exists($kubectl, $this->registeredToolsCache)) {
+            return $this->registeredToolsCache[$kubectl];
         }
 
-        $decoded = json_decode($json, true);
+        $json = $this->readClusterSecretKey($kubectl, 'larakube-shared', 'larakube-tools-registry', 'registry.json');
 
-        return is_array($decoded) ? array_values($decoded) : [];
+        $decoded = $json === null ? [] : json_decode($json, true);
+
+        return $this->registeredToolsCache[$kubectl] = is_array($decoded) ? array_values($decoded) : [];
     }
 
     /**
@@ -362,6 +374,9 @@ trait InteractsWithToolRegistry
 
         $result = Process::run($cmd)->successful();
         $temporaryDirectory->delete();
+
+        // The registry just changed; drop the memo so the next read re-fetches.
+        $this->registeredToolsCache = [];
 
         return $result;
     }

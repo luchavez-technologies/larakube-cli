@@ -12,6 +12,7 @@
 
 use App\Traits\InteractsWithHosts;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function hostsProcessHelper(): object
 {
@@ -32,6 +33,11 @@ function hostsProcessHelper(): object
         public function writeHosts(string $content): bool
         {
             return $this->writeToEtcHosts($content);
+        }
+
+        public function winTempDir(): ?string
+        {
+            return $this->windowsTempDir();
         }
     };
 }
@@ -89,4 +95,26 @@ test('writeToEtcHosts returns false when sudo cp fails', function (): void {
     ]);
 
     expect(hostsProcessHelper()->writeHosts("127.0.0.1 test.kube\n"))->toBeFalse();
+});
+
+test('windowsTempDir resolves the Windows %TEMP% to a writable WSL-visible path', function (): void {
+    // Staging the elevated-sync files here (a native C:\ path) rather than WSL's
+    // /tmp (a \\wsl.localhost UNC path) is what lets the elevated Administrator
+    // session actually read them — see syncWindowsHostsFile().
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+
+    Process::fake([
+        'cmd.exe *' => "C:\\Users\\jsluc\\AppData\\Local\\Temp\r\n",
+        'wslpath -u *' => $dir->path()."\n",
+    ]);
+
+    expect(hostsProcessHelper()->winTempDir())->toBe($dir->path());
+});
+
+test('windowsTempDir returns null when %TEMP% cannot be resolved', function (): void {
+    Process::fake([
+        'cmd.exe *' => Process::result(output: '', exitCode: 1),
+    ]);
+
+    expect(hostsProcessHelper()->winTempDir())->toBeNull();
 });

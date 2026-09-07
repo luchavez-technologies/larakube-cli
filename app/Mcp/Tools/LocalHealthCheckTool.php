@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Data\GlobalConfigData;
+use App\Traits\ResolvesContainerRuntime;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
 use Laravel\Mcp\Request;
@@ -17,6 +18,8 @@ use Laravel\Mcp\Server\Tool;
 #[Description('Verifies the status of the local orchestration environment (Docker, Kubernetes, Networking).')]
 class LocalHealthCheckTool extends Tool
 {
+    use ResolvesContainerRuntime;
+
     /**
      * Handle the tool request.
      */
@@ -24,11 +27,11 @@ class LocalHealthCheckTool extends Tool
     {
         $report = ['### 🩺 LaraKube Local Health Report'];
 
-        // 1. Check Docker
-        if (Process::run('docker info')->successful()) {
-            $report[] = '- ✅ **Docker:** Engine is running.';
+        // 1. Check the container runtime (Podman or Docker).
+        if ($this->containerRuntimeIsResponding()) {
+            $report[] = '- ✅ **Container runtime:** '.ucfirst($this->containerRuntime()).' is running.';
         } else {
-            $report[] = '- ❌ **Docker:** Engine is NOT running or not accessible.';
+            $report[] = '- ❌ **Container runtime:** No Podman/Docker engine is running or accessible.';
         }
 
         // 2. Check Kubernetes
