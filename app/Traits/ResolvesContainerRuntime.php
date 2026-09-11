@@ -26,6 +26,10 @@ use Illuminate\Support\Facades\Process;
  */
 trait ResolvesContainerRuntime
 {
+    // isDarwin() rather than PHP_OS_FAMILY directly: a constant can't be faked,
+    // so the WSL/Linux branch below was untestable on a Mac.
+    use InteractsWithOs;
+
     /**
      * The active container runtime: 'podman' or 'docker'.
      *
@@ -51,7 +55,7 @@ trait ResolvesContainerRuntime
 
         // macOS: never auto-pick Podman even if it is installed (brew) — the
         // OrbStack/Docker Desktop store can't see a Podman-built image.
-        if (PHP_OS_FAMILY === 'Darwin') {
+        if ($this->isDarwin()) {
             return 'docker';
         }
 

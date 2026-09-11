@@ -45,6 +45,15 @@ trait InteractsWithTraefik
         // Both are local-only services, so their host derives from the dev TLD.
         $localTld = GlobalConfigData::load()->getLocalTld();
 
+        // Wildcard *.{tld} DNS inside the cluster. Deliberately not wrapped in
+        // withSpin(): its failure paths explain themselves as they go, and a
+        // spinner would overwrite them.
+        $this->laraKubeLine("  Pointing *.{$localTld} at Traefik inside the cluster...");
+
+        if ($this->applyLocalWildcardDns($localTld)) {
+            $this->laraKubeInfo("In-cluster DNS: *.{$localTld} now resolves to Traefik.");
+        }
+
         $this->withSpin('Starting shared Mailpit (catch-all SMTP)...', function () use ($localTld) {
             $this->applySharedService(SharedClusterService::MAILPIT, SharedClusterService::MAILPIT->hostFor($localTld));
 
@@ -58,6 +67,83 @@ trait InteractsWithTraefik
         });
 
         return $ok;
+    }
+
+    /**
+     * Point *.{tld} at Traefik from INSIDE the cluster.
+     *
+     * A pod inherits the host's resolver for the local TLD, where *.{tld} is
+     * 127.0.0.1 — and in a pod that is its own loopback, not the ingress. So
+     * any workload that has to reach its OWN public host breaks locally while
+     * working in the cloud, where public DNS already points that host at the
+     * node: oCIS's built-in IdP verifies every access token by fetching
+     * https://drive.{tld}/.well-known/openid-configuration, hit "connection
+     * refused" on 127.0.0.1:443, and sent every SUCCESSFUL login straight to
+     * /access-denied.
+     *
+     * k3s and OrbStack both import /etc/coredns/custom/*.server from their
+     * Corefile, so a coredns-custom ConfigMap is the supported hook here —
+     * never a patch of CoreDNS's own config. Best-effort throughout: a cluster
+     * without that import (Docker Desktop) is told so, never failed.
+     */
+    protected function applyLocalWildcardDns(string $tld): bool
+    {
+        $corefile = Process::run(
+            "kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}'",
+        )->output();
+
+        if (! str_contains($corefile, 'import /etc/coredns/custom/')) {
+            $this->laraKubeWarn("CoreDNS on this cluster imports no custom config — skipping in-cluster *.{$tld} DNS.");
+            $this->laraKubeLine("  <fg=gray>A tool that calls its own https://…{$tld} host from inside a pod will fail here.</>");
+
+            return false;
+        }
+
+        $ip = trim(Process::run(
+            "kubectl get service traefik -n traefik -o jsonpath='{.spec.clusterIP}'",
+        )->output());
+
+        if ($ip === '' || $ip === 'None') {
+            $this->laraKubeWarn("Could not read Traefik's ClusterIP — skipping in-cluster *.{$tld} DNS.");
+
+            return false;
+        }
+
+        // Answering with the queried name keeps the reply's name matching the
+        // question, so no answer-name rewrite is needed; AAAA returns NODATA so
+        // clients fall straight through to the A record instead of stalling.
+        $server = <<<COREDNS
+        {$tld}:53 {
+            errors
+            template IN A {
+                answer "{{ .Name }} 60 IN A {$ip}"
+            }
+            template IN AAAA {
+                rcode NOERROR
+            }
+            cache 30
+        }
+        COREDNS;
+
+        $applied = Process::run(
+            'kubectl create configmap coredns-custom -n kube-system '
+            .'--from-literal='.escapeshellarg("{$tld}.server={$server}").' '
+            .'--dry-run=client -o yaml | kubectl apply -f -',
+        )->successful();
+
+        if (! $applied) {
+            $this->laraKubeWarn("Could not apply the in-cluster *.{$tld} DNS override.");
+
+            return false;
+        }
+
+        // CoreDNS re-reads an imported file only on its own reload interval, so
+        // roll it now — otherwise setup reports success while the override sits
+        // inert for minutes.
+        Process::run('kubectl rollout restart deployment coredns -n kube-system');
+        Process::run('kubectl rollout status deployment coredns -n kube-system --timeout=60s');
+
+        return true;
     }
 
     /**

@@ -10,11 +10,22 @@
 
 use App\Traits\ResolvesContainerRuntime;
 
-function containerRuntimeHarness(): object
+function containerRuntimeHarness(bool $onMac = false): object
 {
-    return new class
+    return new class($onMac)
     {
         use ResolvesContainerRuntime;
+
+        public function __construct(private bool $onMac) {}
+
+        // The host OS decides which branch of containerRuntime() is reachable,
+        // so it is pinned here — otherwise the WSL/Linux cases below assert
+        // something a Mac can never reach, and go red on the dev's own machine
+        // while staying green on CI's Linux runner.
+        protected function isDarwin(): bool
+        {
+            return $this->onMac;
+        }
     };
 }
 
@@ -63,6 +74,21 @@ test('on WSL/Linux Podman is the default: preferred when up, and the fallback wh
         'docker info' => Process::result(output: '', exitCode: 1),
     ]);
     expect(containerRuntimeHarness()->containerRuntime())->toBe('podman');
+});
+
+test('macOS stays on Docker even with a working Podman installed', function (): void {
+    // A Podman-built image lands in Podman's own store, which OrbStack and
+    // Docker Desktop cannot see — `larakube up` would ImagePullBackOff.
+    putenv('LARAKUBE_CONTAINER_RUNTIME=containerd'); // force detection
+    Process::fake([
+        'command -v podman' => Process::result(output: '/opt/homebrew/bin/podman'),
+        'podman info' => Process::result(output: 'host: ...'),
+    ]);
+
+    expect(containerRuntimeHarness(onMac: true)->containerRuntime())->toBe('docker');
+
+    // The pin is a short-circuit, not a preference: detection never runs.
+    Process::assertNotRan(fn ($process): bool => str_contains($process->command, 'podman info'));
 });
 
 test('an existing Docker-only box is respected (Podman absent, Docker up → docker)', function (): void {
