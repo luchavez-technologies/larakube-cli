@@ -97,7 +97,7 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
                 // Skip envs where this service is externally managed — it has
                 // no in-cluster volumes there (a delete-patch removes the
                 // workload instead).
-                if (in_array($this->value, $config->getManaged($env), true)) {
+                if (in_array($this->value, $config->getExternallyHosted($env), true)) {
                     continue;
                 }
                 $dest = "overlays/$env/{$storageDest}";
@@ -417,7 +417,13 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
 
     public function onPostInstall(string $projectPath, ?ConfigData $context = null): void
     {
-        $this->syncEnvFile($projectPath, $this->getEnvironmentVariables($context));
+        // Skipped when the Commons owns this driver: plex:join already wrote the
+        // tenant values, and this would overwrite them with a project-namespace
+        // pod that the overlay's delete-patch has removed. The rest of this hook
+        // still runs — it is not env wiring.
+        if (! $context?->isPlexBacked($this, 'local')) {
+            $this->syncEnvFile($projectPath, $this->getEnvironmentVariables($context));
+        }
 
         if ($this === self::MONGODB) {
             $configPath = "$projectPath/config/database.php";

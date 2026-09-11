@@ -101,6 +101,15 @@ enum SearchDriver: string implements AsDependency, HasCommandOptions, HasCompose
 
     public function onPostInstall(string $projectPath, ?ConfigData $context = null): void
     {
+        // The Commons owns these values once this driver is joined — plex:join
+        // wrote them into .env and ConfigData's env roll-up already skips
+        // plex-backed components. Writing the project-namespace FQDN here
+        // clobbers them, and the pod it names no longer exists (the overlay
+        // delete-patches removed it), so the app dies on first connect.
+        if ($context?->isPlexBacked($this, 'local')) {
+            return;
+        }
+
         $this->syncEnvFile($projectPath, $this->getEnvironmentVariables($context));
     }
 
@@ -210,7 +219,7 @@ enum SearchDriver: string implements AsDependency, HasCommandOptions, HasCompose
 
         if ($this === self::MEILISEARCH || $this === self::TYPESENSE) {
             foreach (array_merge(['local'], $config->getCloudEnvironments()) as $env) {
-                if (in_array($this->value, $config->getManaged($env), true)) {
+                if (in_array($this->value, $config->getExternallyHosted($env), true)) {
                     continue;
                 }
                 @mkdir("$k8sPath/overlays/$env", 0755, true);

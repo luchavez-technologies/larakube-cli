@@ -8,6 +8,7 @@ use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
+use App\Services\PlexService;
 use Illuminate\Process\FakeInvokedProcess;
 use Illuminate\Process\InvokedProcess;
 use Illuminate\Support\Facades\Process;
@@ -165,24 +166,7 @@ trait InteractsWithPlex
      */
     public function projectCommonsServices(ConfigData $config): array
     {
-        $drivers = array_filter([
-            $config->getDatabase(),
-            $config->getCacheDriver(),
-            $config->getScoutDriver(),
-            $config->getObjectStorage(),
-        ]);
-
-        $services = [];
-        foreach ($drivers as $driver) {
-            if ($driver instanceof PlexProvisionable && $driver->isPlexReady()) {
-                $name = $driver->commonsServiceName();
-                if ($name !== null) {
-                    $services[] = $name;
-                }
-            }
-        }
-
-        return array_values(array_unique($services));
+        return $this->plex()->projectCommonsServices($config);
     }
 
     /**
@@ -195,23 +179,7 @@ trait InteractsWithPlex
      */
     public function plexTenantIdentifier(string $appName, string $env = 'production'): string
     {
-        $id = strtolower(trim($appName));
-        $id = (string) preg_replace('/[^a-z0-9]+/', '_', $id);
-        $id = trim($id, '_');
-
-        // SQL identifiers must start with a letter; prefix if not.
-        if ($id === '' || ! preg_match('/^[a-z]/', $id)) {
-            $id = 'app_'.$id;
-        }
-
-        // Non-production envs get an env suffix so staging/develop/etc. each
-        // get their own isolated DB, Redis slot, and S3 bucket on the Commons.
-        if ($env !== 'production') {
-            $suffix = '_'.preg_replace('/[^a-z0-9]+/', '_', strtolower(trim($env)));
-            $id = substr($id, 0, 63 - strlen($suffix)).$suffix;
-        }
-
-        return substr($id, 0, 63); // Postgres identifier length cap.
+        return $this->plex()->plexTenantIdentifier($appName, $env);
     }
 
     /**
@@ -256,9 +224,6 @@ trait InteractsWithPlex
         );
     }
 
-    /**
-     * Check if a specific Plex Commons service is scaled to 0, and if so, auto-resume it (scale to 1).
-     */
     public function ensurePlexServiceRunning(string $service, string $kubectl, string $namespace = 'larakube-plex'): bool
     {
         $deployName = "plex-{$service}";
@@ -317,16 +282,7 @@ trait InteractsWithPlex
      */
     public function plexBucketName(string $tenant): string
     {
-        $name = strtolower($tenant);
-        $name = (string) preg_replace('/[^a-z0-9-]+/', '-', $name);
-        $name = (string) preg_replace('/-+/', '-', $name);
-        $name = trim($name, '-');
-
-        if (strlen($name) < 3) {
-            $name = 'lk-'.$name; // S3 requires ≥3 chars.
-        }
-
-        return substr($name, 0, 63);
+        return $this->plex()->plexBucketName($tenant);
     }
 
     /**
@@ -481,10 +437,7 @@ trait InteractsWithPlex
      */
     public function buildPostgresTenantSql(string $db, string $role, string $password): string
     {
-        // The per-engine tenant SQL lives on the DatabaseDriver enum now (so each
-        // Commons backend owns its own provisioning); this stays as the Postgres
-        // shorthand the unit tests pin.
-        return (string) DatabaseDriver::POSTGRESQL->commonsTenantSql($db, $role, $password);
+        return $this->plex()->buildPostgresTenantSql($db, $role, $password);
     }
 
     /**
@@ -581,7 +534,7 @@ trait InteractsWithPlex
      */
     public function buildDropTenantSql(string $db, string $role): string
     {
-        return (string) DatabaseDriver::POSTGRESQL->commonsDropSql($db, $role);
+        return $this->plex()->buildDropTenantSql($db, $role);
     }
 
     /**
@@ -643,6 +596,87 @@ trait InteractsWithPlex
         }
 
         return $indexes;
+    }
+
+    /**
+     * The extracted domain object, built fresh per call from the ambient
+     * context this trait still holds. Phase 1 of the strangler in
+     * `plans/active/plex-service-extraction.md`: callers keep calling
+     * `$this->method()`, so none of the 55 composing commands change.
+     */
+    protected function plex(): PlexService
+    {
+        return new PlexService($this->plexContext);
+    }
+
+    /**
+     * Check if a specific Plex Commons service is scaled to 0, and if so, auto-resume it (scale to 1).
+     */
+    /**
+     * Hand the freshly scaffolded project to plex:join.
+     *
+     * Deliberately a delegation, not a reimplementation: plex:join owns tenant
+     * allocation, the .env rewrite, the `managed` list the deploy-skip checks
+     * read, and the manifest regeneration that follows. It resolves the project
+     * from the working directory, so this runs from inside it.
+     *
+     * Best-effort. A failure here (Commons unreachable, no eligible services,
+     * SQLite) must leave a perfectly good self-hosted project behind, never a
+     * failed scaffold.
+     */
+    /**
+     * Scale up the Commons services this project has already joined.
+     *
+     * `up` needs the Commons awake before the app starts, but it must not
+     * ALLOCATE: allocation is plex:join's job, keyed to the environment the
+     * user actually joined. Provisioning from here minted a second tenant under
+     * a different env suffix that nothing connected to.
+     */
+    protected function wakeJoinedCommonsServices(ConfigData $config, string $env = 'local'): void
+    {
+        $services = $config->getPlex($env);
+
+        if ($services === []) {
+            return;
+        }
+
+        if (! $this->plexContextReachable()) {
+            return;
+        }
+
+        $kubectl = $this->plexKubectl();
+
+        foreach ($services as $service) {
+            $this->ensurePlexServiceRunning($service, $kubectl);
+        }
+    }
+
+    protected function joinPlexCommons(ConfigData $config, string $projectPath): void
+    {
+        $database = $config->getDatabase();
+
+        if ($database === DatabaseDriver::SQLITE || $database === DatabaseDriver::MONGODB) {
+            return;
+        }
+
+        $previousDirectory = getcwd();
+        chdir($projectPath);
+
+        try {
+            $exit = $this->call('plex:join', [
+                'environment' => 'local',
+                '--no-interaction' => true,
+            ]);
+        } finally {
+            if ($previousDirectory !== false) {
+                chdir($previousDirectory);
+            }
+        }
+
+        if ($exit !== 0) {
+            $this->laraKubeWarn('Could not join the Plex Commons — the project stays self-hosted.');
+            $this->laraKubeLine('  <fg=gray>Run</> <fg=cyan>larakube plex:join local</> <fg=gray>from the project once the Commons is reachable.</>');
+        }
     }
 
     /**
@@ -1083,7 +1117,7 @@ trait InteractsWithPlex
      */
     protected function plexNamespace(): string
     {
-        return 'larakube-plex';
+        return PlexService::NAMESPACE;
     }
 
     /**

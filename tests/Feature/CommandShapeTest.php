@@ -48,9 +48,12 @@ test('no command takes more than one positional', function (): void {
         .json_encode($offenders));
 });
 
-test('the mail, sso and vpn suites take environment as their only positional', function (): void {
+test('the mail, sso, vpn and plex suites take environment as their only positional', function (): void {
+    // plex was added 2026-09-10: the suite conformed by convention but nothing
+    // enforced it, and `plex:evict` shipped a {tenant} positional — one
+    // positional, so the guard above passed, just the wrong one.
     foreach (app(Kernel::class)->all() as $name => $command) {
-        if (! preg_match('/^(mail|sso|vpn):/', $name)) {
+        if (! preg_match('/^(mail|sso|vpn|plex):/', $name)) {
             continue;
         }
 

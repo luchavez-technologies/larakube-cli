@@ -66,7 +66,13 @@ class PlexJoinCommand extends Command
             $this->line('  <fg=gray>Plex commons data will be lost when you run <fg=yellow>larakube down</>. Use a cloud environment for persistent deployments.</>');
             $this->newLine();
 
-            if (! confirm('Continue anyway?', false)) {
+            // The warning still prints, but the question is only asked of a
+            // human. Prompt::interactive(false) above resolves confirm() to its
+            // default — and this default is "abort" — so every programmatic
+            // local join (new's post-scaffold join, plex:migrate's nested
+            // finalize call) returned 0 having done absolutely nothing, which
+            // callers correctly read as success.
+            if (! $this->option('no-interaction') && ! confirm('Continue anyway?', false)) {
                 return 0;
             }
         }
@@ -234,9 +240,24 @@ class PlexJoinCommand extends Command
                 ?? $this->allocateRedisDbIndex($this->registryUsedRedisIndexes($registry));
 
             if ($redisIndex === null) {
-                $this->laraKubeError('The Commons Redis is full (16 logical DBs). Add a tenant Redis ACL or a bigger plan.');
+                // Degrade, don't abort: one exhausted service used to cost the
+                // tenant the other three, which is how a Statamic scaffold
+                // ended up fully self-hosted with Postgres, S3 and Meilisearch
+                // all sitting idle-capacity on the Commons. Dropping 'redis'
+                // from $services is enough — .env, the `managed`/`plex`
+                // markers and heal's delete-patches all read that one list, so
+                // Redis simply keeps its own pod.
+                $this->laraKubeWarn('The Commons Redis is full (16 logical DBs) — this app keeps its own Redis pod.');
+                $this->laraKubeLine('  <fg=gray>Free a slot with</> <fg=cyan>larakube plex:evict '.$env.' --tenant=…</><fg=gray>, then re-run</> <fg=cyan>larakube plex:join '.$env.'</><fg=gray>.</>');
+                $this->laraKubeNewLine();
 
-                return 1;
+                $services = array_values(array_diff($services, ['redis']));
+
+                if ($services === []) {
+                    $this->laraKubeError('Redis was the only service to join — nothing left to do.');
+
+                    return 1;
+                }
             }
         }
 
@@ -435,6 +456,9 @@ class PlexJoinCommand extends Command
     protected function detectExistingData(ConfigData $config, string $env, array $services): array
     {
         $namespace = $config->getNamespace($env);
+        // getManaged(), NOT getExternallyHosted(): a config can claim `plex`
+        // without having joined, and treating that as joined would skip this
+        // check and strand a live volume.
         $managed = $config->getManaged($env);
         $found = [];
 

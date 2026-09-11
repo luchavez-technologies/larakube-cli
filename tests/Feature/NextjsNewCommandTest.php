@@ -308,3 +308,44 @@ test('NextjsNewCommand::generateCacheHandler creates cache-handler.mjs', functio
 
     $temporaryDirectory->delete();
 });
+
+test('the Prisma generate step carries a build-time DATABASE_URL placeholder', function (): void {
+    $rendered = view('docker.nextjs', ['config' => null])->render();
+
+    // `prisma generate` never connects, but prisma 6.19's init scaffolds a
+    // prisma.config.ts that reads env("DATABASE_URL") via dotenv while LOADING.
+    // .dockerignore excludes .env*, so inside the image there is nothing for
+    // dotenv to read and the build died at "Missing required environment
+    // variable: DATABASE_URL". A placeholder is correct here — copying the real
+    // .env into the build context would bake the credential into a layer.
+    expect($rendered)
+        ->toContain('prisma generate')
+        ->toContain('DATABASE_URL="postgresql://placeholder')
+        ->not->toContain('COPY .env');
+});
+
+test('every command that renders infrastructure can actually install components', function (): void {
+    // GeneratesProjectInfrastructure CALLS installComponents(), but the method is
+    // defined in InteractsWithArchitecturalEngine. Commands that pulled in only
+    // the former hit a "method does not exist" fatal at feature-install time —
+    // nextjs:new was simply the first one to reach that line.
+    $commands = [];
+    foreach (glob(base_path('app/Commands/**/*Command.php')) + glob(base_path('app/Commands/*Command.php')) as $file) {
+        $source = (string) file_get_contents($file);
+        if (! str_contains($source, 'GeneratesProjectInfrastructure')) {
+            continue;
+        }
+        preg_match('/namespace\s+([^;]+);/', $source, $ns);
+        $class = trim($ns[1] ?? '').'\\'.basename($file, '.php');
+        if (class_exists($class)) {
+            $commands[] = $class;
+        }
+    }
+
+    expect($commands)->not->toBeEmpty();
+
+    foreach ($commands as $class) {
+        expect(method_exists($class, 'installComponents'))
+            ->toBeTrue("{$class} renders infrastructure but cannot call installComponents()");
+    }
+});

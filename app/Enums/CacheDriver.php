@@ -282,6 +282,15 @@ enum CacheDriver: string implements AsDependency, HasArtisanCommands, HasCommand
 
     public function onPostInstall(string $projectPath, ?ConfigData $context = null): void
     {
+        // The Commons owns these values once this driver is joined — plex:join
+        // wrote them into .env and ConfigData's env roll-up already skips
+        // plex-backed components. Writing the project-namespace FQDN here
+        // clobbers them, and the pod it names no longer exists (the overlay
+        // delete-patches removed it), so the app dies on first connect.
+        if ($context?->isPlexBacked($this, 'local')) {
+            return;
+        }
+
         $this->syncEnvFile($projectPath, $this->getEnvironmentVariables($context));
     }
 

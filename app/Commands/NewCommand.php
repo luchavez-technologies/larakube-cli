@@ -174,27 +174,16 @@ class NewCommand extends Command
 
         $this->laraKubeInfo("Scaffolding architectural masterpiece: $appName...");
 
-        // Auto-provision Plex Commons database for the app (unless SQLite or --no-plex)
-        $plexCredentials = null;
-        if (! $this->option('no-plex')) {
-            $plexCredentials = $this->ensurePlexProvisionedForApp($config);
-        }
-
-        // Run "laravel new" command
-        $this->runLaravelNew($inputName, $config, $plexCredentials);
+        // Run "laravel new" command. Plex is joined AFTER scaffolding, not
+        // before: provisioning here would run against a project directory that
+        // does not exist yet, so the installer's own fresh .env would overwrite
+        // any Commons wiring anyway (see the plex:join call below).
+        $this->runLaravelNew($inputName, $config);
 
         if (! is_dir($projectPath)) {
             $this->laraKubeError('Failed to create Laravel application.');
 
             return 1;
-        }
-
-        // If Plex provisioned successfully, mark the local environment as Plex-backed
-        // so manifest generation emits delete-patches (not self-hosted Deployments)
-        // for the database and any other Plex-joined services.
-        if ($plexCredentials !== null) {
-            $config->addEnvironment('local');
-            $config->environments['local']->plex = array_unique(array_merge($config->environments['local']->plex, $plexCredentials['services']));
         }
 
         $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config): void {
@@ -208,6 +197,17 @@ class NewCommand extends Command
                 ]);
             }
         });
+
+        // Join the Commons through plex:join itself rather than reimplementing
+        // it here. plex:join is the one path that writes the tenant .env AND
+        // sets `managed` (which is what the manifest generator honours when it
+        // decides to skip a self-hosted Deployment) and then regenerates the
+        // manifests. Setting only `plex` here — as this command used to — left
+        // a provisioned Commons tenant nobody used while the app kept talking
+        // to its own pods.
+        if (! $this->option('no-plex')) {
+            $this->joinPlexCommons($config, $projectPath);
+        }
 
         $this->laraKubeInfo("Project $appName created successfully!");
 
@@ -236,7 +236,10 @@ class NewCommand extends Command
         // Collect instructions from all components
         $allInstructions = [];
         foreach ($config->getComponents() as $component) {
-            if ($component instanceof HasLifecycleHooks) {
+            // Skip Commons-backed components: their bucket/database already
+            // exists (ensurePlexProvisionedForApp), so the manual walkthrough
+            // names a bucket the app does not use.
+            if ($component instanceof HasLifecycleHooks && ! $config->isPlexBacked($component, 'local')) {
                 $allInstructions = array_merge($allInstructions, $component->getPostInstallInstructions($config));
             }
         }
@@ -280,7 +283,7 @@ class NewCommand extends Command
         }
     }
 
-    protected function runLaravelNew($inputName, ConfigData $config, ?array $plexCredentials = null): void
+    protected function runLaravelNew($inputName, ConfigData $config): void
     {
         $appName = $config->getName();
         $projectPath = $config->getPath();

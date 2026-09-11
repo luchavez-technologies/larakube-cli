@@ -234,10 +234,18 @@ trait LaraKubeOutput
      * in `about` — means they're always one command away instead of a one-time-only
      * printout. Silent no-op when nothing in the project has instructions.
      */
-    protected function showArchitecturalInstructions(ConfigData $config): void
+    protected function showArchitecturalInstructions(ConfigData $config, string $environment = 'local'): void
     {
         $instructions = [];
-        foreach ($config->getComponents() as $component) {
+        foreach ($config->getComponents($environment) as $component) {
+            // A Commons-backed component has nothing to set up by hand:
+            // ensurePlexProvisionedForApp() already created the tenant bucket
+            // under plexBucketName(), so the manual walkthrough would send the
+            // user to create a SECOND bucket under a name the app never uses.
+            if ($config->isPlexBacked($component, $environment)) {
+                continue;
+            }
+
             if ($component instanceof HasLifecycleHooks) {
                 $instructions = array_merge($instructions, $component->getPostInstallInstructions($config));
             }

@@ -2,10 +2,9 @@
      local `preview` overlay; $resourceName distinguishes them ({name}-nextjs vs
      web-preview). The image tag is rewritten per overlay by kustomize.
 
-     Phase 1: a plain `node server.js` workload — no envFrom config/secret and no
-     Prisma init container yet (those arrive with the Redis cache and Prisma
-     phases). NODE_ENV/PORT/HOSTNAME are set inline so the server binds correctly
-     even before any ConfigMap exists. --}}
+     NODE_ENV/PORT/HOSTNAME stay inline so the server binds correctly regardless
+     of what the Secret carries; DATABASE_URL/REDIS_URL arrive via envFrom, and
+     the prisma-migrate init container runs before the server starts. --}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

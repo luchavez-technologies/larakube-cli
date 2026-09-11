@@ -182,7 +182,10 @@ class InitCommand extends Command
                 }
             }
 
-            if ($component instanceof HasLifecycleHooks) {
+            // Skip Commons-backed components: their bucket/database already
+            // exists (ensurePlexProvisionedForApp), so the manual walkthrough
+            // names a bucket the app does not use.
+            if ($component instanceof HasLifecycleHooks && ! $config->isPlexBacked($component, 'local')) {
                 $allInstructions = array_merge($allInstructions, $component->getPostInstallInstructions($config));
             }
         }

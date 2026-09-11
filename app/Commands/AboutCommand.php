@@ -208,7 +208,7 @@ class AboutCommand extends Command
 
         // 8. One-time architectural steps (e.g. MinIO's bucket-creation walkthrough)
         // — the same ones `new`/`up` print, resurfaced here so they're not lost.
-        $this->showArchitecturalInstructions($config);
+        $this->showArchitecturalInstructions($config, $environment);
 
         return 0;
     }

@@ -8,6 +8,7 @@ use App\Enums\StorageDriver;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\RemovesPlexTenants;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
 
@@ -19,7 +20,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexLeaveCommand extends Command
 {
-    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, RemovesPlexTenants, ResolvesEnvironmentContext;
 
     protected $signature = 'plex:leave
         {environment? : Environment to remove from the Commons — "local" (default) or a cloud environment. Omit to be prompted.}
@@ -280,19 +281,13 @@ class PlexLeaveCommand extends Command
         // 5. Flush the tenant's Redis logical DB (best-effort — index is freed
         //    by the registry removal regardless).
         if ($redisIndex !== null) {
-            $this->withSpin("Flushing Redis db {$redisIndex}...", fn () => Process::run(
-                $this->plexKubectl().' exec -n '.escapeshellarg($ns)." deploy/redis -- redis-cli -n {$redisIndex} FLUSHDB",
-            ));
+            $this->flushTenantRedis($ns, $redisIndex);
         }
 
         // 6. Delete the tenant's S3 bucket from the Commons (best-effort) —
         //    now that its contents are safely mirrored back.
-        $s3Driver = StorageDriver::tryFrom($s3Service);
-        if ($s3Bucket && $s3Driver !== null) {
-            $cmd = $s3Driver->commonsBucketDeleteCommand($s3Bucket);
-            $this->withSpin("Deleting object-storage bucket '{$s3Bucket}'...", fn () => Process::run(
-                $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$s3Service.' -- sh -c '.escapeshellarg($cmd),
-            ));
+        if ($s3Bucket) {
+            $this->deleteTenantBucket($ns, $s3Service, $s3Bucket);
         }
 
         // 7. Remove the tenant from the Commons registry (frees its redis index).
@@ -427,72 +422,6 @@ class PlexLeaveCommand extends Command
         return trim(Process::run(
             $this->plexKubectl().' get deploy -n '.escapeshellarg($config->getNamespace($env)).' -o name',
         )->output()) !== '';
-    }
-
-    /**
-     * Dump the tenant database to a local file using the engine's own tool
-     * (pg_dump / mysqldump, from the driver). Returns false (and writes no
-     * destructive change) if the dump fails or is empty.
-     */
-    protected function backupTenantDatabase(string $ns, DatabaseDriver $driver, string $db, string $path): bool
-    {
-        $service = $driver->value;
-        $cmd = $driver->commonsBackupCommand($db);
-        $code = 0;
-        $this->withSpin("Backing up database '{$db}'...", function () use ($ns, $service, $cmd, $path, &$code) {
-            $code = Process::run(
-                $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$service.' -- '.
-                'sh -c '.escapeshellarg($cmd).' > '.escapeshellarg($path),
-            )->exitCode();
-
-            return $code === 0;
-        });
-
-        return $code === 0 && file_exists($path) && filesize($path) > 0;
-    }
-
-    /**
-     * Run the engine's drop SQL (DROP DATABASE + DROP login) in the Commons via
-     * kubectl exec. SQL + admin client come from the DatabaseDriver enum.
-     */
-    protected function dropTenantDatabase(string $ns, DatabaseDriver $driver, string $db, string $tenant): bool
-    {
-        $sql = $driver->commonsDropSql($db, $tenant);
-        if ($sql === null) {
-            return true; // non-relational engine — nothing to drop.
-        }
-
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $temporaryDirectory->path().'/drop.sql';
-        file_put_contents($tmp, $sql);
-
-        $service = $driver->value;
-        $client = $driver->commonsAdminClient();
-        $output = [];
-        $code = 0;
-        $this->withSpin("Dropping database '{$db}' and login '{$tenant}'...", function () use ($ns, $service, $client, $tmp, &$output, &$code) {
-            $result = Process::run(
-                $this->plexKubectl().' exec -i -n '.escapeshellarg($ns).' deploy/'.$service.' -- '.
-                'sh -c '.escapeshellarg($client).' < '.escapeshellarg($tmp),
-            );
-            $code = $result->exitCode();
-            $output = explode("\n", trim($result->output().$result->errorOutput()));
-
-            return $code === 0;
-        });
-
-        $temporaryDirectory->delete();
-
-        if ($code !== 0) {
-            $this->laraKubeError('Could not drop the tenant database/login from the Commons.');
-            foreach (array_slice($output, -4) as $line) {
-                $this->laraKubeLine('    '.$line);
-            }
-
-            return false;
-        }
-
-        return true;
     }
 
     /**

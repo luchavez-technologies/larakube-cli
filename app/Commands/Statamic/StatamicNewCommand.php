@@ -6,8 +6,11 @@ use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
+use App\Enums\LaravelFeature;
+use App\Enums\PackageManager;
 use App\Enums\PhpVersion;
 use App\Enums\SearchDriver;
+use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
@@ -23,6 +26,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
@@ -88,7 +92,60 @@ class StatamicNewCommand extends Command
             );
         $phpVersion = PhpVersion::from($version);
 
-        // 2. DatabaseDriver — MySQL, MariaDB, PostgreSQL only (plan §2a)
+        // Build the config here, not after the prompts: the feature multiselect
+        // below needs it, and the driver prompts that follow READ the features.
+        $config = new ConfigData;
+        $config->setIsScaffolding(true);
+        $config->setName($appName);
+        $config->setPath($projectDir);
+        $config->setEnvironments(['local']);
+        $config->framework = AppFramework::STATAMIC;
+        // Statamic inherited this from the Laravel blueprint path until it got
+        // its own command; without it the manifest views deref null on
+        // getServerVariation()->value and orchestration dies.
+        $config->serverVariation = ServerVariation::FPM_NGINX;
+        $config->phpVersion = $phpVersion;
+        // Statamic ships an npm-based front end and this wizard does not ask;
+        // recording it keeps the blueprint explicit instead of leaning on
+        // getPackageManager()'s fallback at every call site.
+        $config->setPackageManager(PackageManager::NPM);
+
+        // 2. Laravel features. Asked BEFORE the drivers, exactly as
+        // gatherConfig() does, because the driver steps below depend on them:
+        // Horizon forces Redis (and skips the cache question), and AI flips the
+        // database default to PostgreSQL for pgvector. Statamic IS a Laravel
+        // app, so these applied until b7d7a10 moved it off the Blueprint path.
+        $featureOptions = LaravelFeature::getSelectOptions($config);
+
+        if (! empty($featureOptions)) {
+            $features = $this->option('fast')
+                ? [LaravelFeature::TASK_SCHEDULING->value, LaravelFeature::HORIZON->value]
+                : multiselect(
+                    label: 'Select Laravel features:',
+                    options: $featureOptions,
+                    // Whatever the config already carries — nothing, for a fresh
+                    // scaffold. Same as gatherConfig(): the wizard must not
+                    // pre-tick infrastructure the user never asked for.
+                    default: array_map(fn (LaravelFeature $f) => $f->value, $config->getFeatures()),
+                    scroll: count($featureOptions),
+                    validate: function (array $values) {
+                        // Both would work the same queue twice.
+                        if (in_array(LaravelFeature::HORIZON->value, $values, true)
+                            && in_array(LaravelFeature::QUEUES->value, $values, true)) {
+                            return 'You cannot select both Horizon and Queues. Please choose one.';
+                        }
+
+                        return null;
+                    },
+                );
+
+            $config->setFeatures(array_map(
+                fn (string $feature) => LaravelFeature::from($feature),
+                array_values(array_filter($features)),
+            ));
+        }
+
+        // 3. DatabaseDriver — MySQL, MariaDB, PostgreSQL only (plan §2a)
         $allowedDbs = collect(DatabaseDriver::cases())
             ->filter(fn ($d) => in_array($d, [
                 DatabaseDriver::MYSQL,
@@ -98,30 +155,44 @@ class StatamicNewCommand extends Command
             ->mapWithKeys(fn ($d) => [$d->value => $d->getLabel()])
             ->all();
 
+        $defaultDb = DatabaseDriver::MYSQL->value;
+
+        if ($config->hasFeature(LaravelFeature::AI)) {
+            $defaultDb = DatabaseDriver::POSTGRESQL->value;
+            $this->laraKubeInfo('AI SDK detected: PostgreSQL with <fg=cyan;options=bold>pgvector</> is recommended for vector storage.');
+        }
+
         $dbValue = $this->option('fast')
-            ? DatabaseDriver::MYSQL->value
+            ? $defaultDb
             : select(
                 label: 'Which database engine would you like to use?',
                 options: $allowedDbs,
-                default: DatabaseDriver::MYSQL->value,
+                default: $defaultDb,
             );
         $database = DatabaseDriver::from($dbValue);
 
-        // 3. CacheDriver — all three available for Statamic (plan §2b)
+        // 4. CacheDriver — all three available for Statamic (plan §2b)
         $allowedCaches = collect(CacheDriver::cases())
             ->mapWithKeys(fn ($c) => [$c->value => $c->getLabel()])
             ->all();
 
-        $cacheValue = $this->option('fast')
-            ? CacheDriver::REDIS->value
-            : select(
-                label: 'Which cache driver would you like to use?',
-                options: $allowedCaches,
-                default: CacheDriver::REDIS->value,
-            );
-        $cacheDriver = CacheDriver::from($cacheValue);
+        if ($config->hasFeature(LaravelFeature::HORIZON)) {
+            // Not a prompt: Horizon IS Redis queues, so offering Memcached here
+            // would let the wizard produce a Horizon install with nothing to run on.
+            $this->laraKubeInfo('Horizon detected: Auto-selecting Redis for caching and queues.');
+            $cacheDriver = CacheDriver::REDIS;
+        } else {
+            $cacheValue = $this->option('fast')
+                ? CacheDriver::REDIS->value
+                : select(
+                    label: 'Which cache driver would you like to use?',
+                    options: $allowedCaches,
+                    default: CacheDriver::REDIS->value,
+                );
+            $cacheDriver = CacheDriver::from($cacheValue);
+        }
 
-        // 4. StorageDriver (plan §2d)
+        // 5. StorageDriver (plan §2d)
         $allowedStorages = collect(StorageDriver::cases())
             ->mapWithKeys(fn ($s) => [$s->value => $s->getLabel()])
             ->all();
@@ -135,7 +206,7 @@ class StatamicNewCommand extends Command
             );
         $objectStorage = StorageDriver::tryFrom($storageValue);
 
-        // 5. SearchDriver — all three via Scout (plan §2c)
+        // 6. SearchDriver — all three via Scout (plan §2c)
         $allowedSearch = collect(SearchDriver::cases())
             ->mapWithKeys(fn ($s) => [$s->value => $s->getLabel()])
             ->all();
@@ -149,14 +220,7 @@ class StatamicNewCommand extends Command
             );
         $scoutDriver = SearchDriver::tryFrom($searchValue);
 
-        // Build ConfigData
-        $config = new ConfigData;
-        $config->setIsScaffolding(true);
-        $config->setName($appName);
-        $config->setPath($projectDir);
-        $config->setEnvironments(['local']);
-        $config->framework = AppFramework::STATAMIC;
-        $config->phpVersion = $phpVersion;
+        // Apply the driver choices to the config built above.
         $config->setDatabase($database);
         $config->setCacheDriver($cacheDriver);
         if ($objectStorage) {
@@ -168,14 +232,8 @@ class StatamicNewCommand extends Command
 
         $this->laraKubeInfo("Scaffolding Statamic: $appName...");
 
-        // Auto-provision Plex Commons database for the app (unless SQLite or --no-plex)
-        $plexCredentials = null;
-        if (! $this->option('no-plex')) {
-            $plexCredentials = $this->ensurePlexProvisionedForApp($config);
-        }
-
-        // 6. Run composer create-project inside Docker
-        $this->runStatamicNew($appName, $config, $projectPath, $plexCredentials);
+        // 7. Run composer create-project inside Docker
+        $this->runStatamicNew($appName, $config, $projectPath);
 
         if (! is_dir($projectDir)) {
             $this->laraKubeError('Failed to create Statamic application.');
@@ -183,16 +241,15 @@ class StatamicNewCommand extends Command
             return 1;
         }
 
-        // If Plex provisioned successfully, mark the local environment as Plex-backed
-        if ($plexCredentials !== null) {
-            $config->addEnvironment('local');
-            $config->environments['local']->plex = array_unique(array_merge($config->environments['local']->plex, $plexCredentials['services']));
-        }
-
-        // 7. Generate K8s manifests
+        // 8. Generate K8s manifests
         $this->withSpin('Orchestrating Statamic infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
+
+        // Join the Commons AFTER the project exists — see NewCommand.
+        if (! $this->option('no-plex')) {
+            $this->joinPlexCommons($config, $projectDir);
+        }
 
         $this->laraKubeInfo("✅ Statamic project '$appName' created successfully!");
         $this->newLine();
@@ -219,7 +276,7 @@ class StatamicNewCommand extends Command
      * Scaffold a Statamic project using `composer create-project statamic/statamic`
      * inside an SSU Docker container (mirrors NewCommand::runLaravelNew pattern).
      */
-    protected function runStatamicNew(string $appName, ConfigData $config, string $baseDir, ?array $plexCredentials = null): void
+    protected function runStatamicNew(string $appName, ConfigData $config, string $baseDir): void
     {
         $uid = $this->hostUid();
         $gid = $this->hostGid();
@@ -230,12 +287,21 @@ class StatamicNewCommand extends Command
 
         $runtime = $this->containerRuntime();
 
+        // `composer create-project` ends with `artisan package:discover`, which
+        // BOOTS Statamic — and Intervention's GD driver checkHealth() throws if
+        // gd is absent. The image only gains extensions via the generated
+        // Dockerfile, which does not exist yet, so install them here too.
+        $extensions = $config->getAllPhpExtensions();
+        $extensionCommand = $extensions === []
+            ? ''
+            : 'install-php-extensions '.implode(' ', $extensions).' && ';
+
         $cmd = "$runtime run --rm -it -v $baseDir:/var/www/html"
             .' -e COMPOSER_CACHE_DIR=/dev/null'
             .' -e COMPOSER_ALLOW_SUPERUSER=1'
             .' -e SHOW_WELCOME_MESSAGE=false'
             ." --user root $image"
-            ." sh -c 'composer create-project statamic/statamic $appName --prefer-dist --no-interaction'";
+            ." sh -c '{$extensionCommand}composer create-project statamic/statamic $appName --prefer-dist --no-interaction'";
 
         passthru($cmd);
 

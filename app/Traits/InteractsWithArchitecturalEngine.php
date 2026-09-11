@@ -66,7 +66,11 @@ trait InteractsWithArchitecturalEngine
 
         // Execute JS installation if needed
         if (! empty($jsCommands)) {
-            $js = array_merge($jsCommands, [$config->packageManager->buildCommand()]);
+            // getPackageManager(), not the raw nullable property: a command that
+            // never prompted for one (statamic:new, wordpress:new — only
+            // gatherConfig() asks) leaves it null, and this fataled the moment a
+            // component contributed any JS. The accessor defaults to npm.
+            $js = array_merge($jsCommands, [$config->getPackageManager()->buildCommand()]);
             $this->runInContainer(implode(' && ', $js), $projectPath, 'php');
         }
     }
@@ -126,7 +130,11 @@ trait InteractsWithArchitecturalEngine
         // JS
         if (! empty($jsCommands)) {
             $this->laraKubeInfo('Installing JS packages and building assets...');
-            $js = array_merge($jsCommands, [$config->packageManager->buildCommand()]);
+            // getPackageManager(), not the raw nullable property: a command that
+            // never prompted for one (statamic:new, wordpress:new — only
+            // gatherConfig() asks) leaves it null, and this fataled the moment a
+            // component contributed any JS. The accessor defaults to npm.
+            $js = array_merge($jsCommands, [$config->getPackageManager()->buildCommand()]);
 
             $this->runInContainer(implode(' && ', $js), $projectPath, 'php');
         }

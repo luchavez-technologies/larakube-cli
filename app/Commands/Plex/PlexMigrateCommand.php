@@ -86,6 +86,7 @@ class PlexMigrateCommand extends Command
         // already-managed only skips its COPY — $driver/$storage stay non-null
         // so Step 6 (PVC cleanup) below still runs for it; "already migrated"
         // must never mean "can't clean up a leftover PVC anymore".
+        // Strict getManaged() — see detectExistingData() in plex:join.
         $managed = $config->getManaged($env);
         $skipDbCopy = $dbService !== null && in_array($dbService, $managed, true);
         $skipStorageCopy = $storageService !== null && in_array($storageService, $managed, true);

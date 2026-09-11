@@ -98,7 +98,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         // Write storage
         if ($viewName = $this->getStorageViewName()) {
             foreach (array_merge(['local'], $config->getCloudEnvironments()) as $env) {
-                if (in_array($this->value, $config->getManaged($env), true)) {
+                if (in_array($this->value, $config->getExternallyHosted($env), true)) {
                     continue;
                 }
                 @mkdir("$k8sPath/overlays/$env", 0755, true);
@@ -200,7 +200,10 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
 
     public function onPostInstall(string $projectPath, ?ConfigData $context = null): void
     {
-        $this->syncEnvFile($projectPath, $this->getEnvironmentVariables($context));
+        // See DatabaseDriver::onPostInstall() — the Commons owns these once joined.
+        if (! $context?->isPlexBacked($this, 'local')) {
+            $this->syncEnvFile($projectPath, $this->getEnvironmentVariables($context));
+        }
 
         if ($this === self::GARAGE) {
             // Garage requires explicit key and bucket creation via its CLI.

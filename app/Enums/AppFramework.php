@@ -3,8 +3,9 @@
 namespace App\Enums;
 
 use App\Contracts\HasLabel;
+use App\Contracts\RequiresPhpExtensions;
 
-enum AppFramework: string implements HasLabel
+enum AppFramework: string implements HasLabel, RequiresPhpExtensions
 {
     public function getLabel(): string
     {
@@ -324,6 +325,23 @@ enum AppFramework: string implements HasLabel
         }
 
         return null;
+    }
+
+    /**
+     * Extensions the framework itself needs, regardless of drivers.
+     *
+     * Statamic's `['gd', 'exif']` lived on Blueprint::STATAMIC until b7d7a10
+     * moved Statamic to its own command — the framework is not part of
+     * getComponents(), so the declaration was silently lost and both the built
+     * image AND `composer create-project` came up without GD. Intervention's GD
+     * driver checkHealth() then throws during package:discover.
+     */
+    public function getPhpExtensions(): array
+    {
+        return match ($this) {
+            self::STATAMIC => ['gd', 'exif'],
+            default => [],
+        };
     }
 
     /**

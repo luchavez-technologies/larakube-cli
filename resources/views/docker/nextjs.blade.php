@@ -38,7 +38,18 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Generate the Prisma client before the build when a schema is present (the app
 # may import @prisma/client). Uses the pinned local prisma from node_modules —
 # never npx-fetches a different (RC) version. A no-op for a project without it.
-RUN if [ -f prisma/schema.prisma ]; then ./node_modules/.bin/prisma generate; fi
+#
+# DATABASE_URL is a build-time placeholder, never a real credential. `generate`
+# reads the schema and never connects — but prisma 6.19's own `init` scaffolds a
+# prisma.config.ts that does `import "dotenv/config"` then env("DATABASE_URL"),
+# which THROWS while the config loads. On a developer's host that passes (the
+# project .env is right there); in the image it cannot, because .dockerignore
+# excludes .env* by design. Hence a placeholder here rather than copying the
+# real .env into the build context. The true URL arrives at runtime via envFrom.
+RUN if [ -f prisma/schema.prisma ]; then \
+      DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
+      ./node_modules/.bin/prisma generate; \
+    fi
 
 # NEXT_PUBLIC_* are compiled into the bundle here (see header). The env file is
 # mounted for this RUN only; a COPY would persist it as a layer. Absent (no

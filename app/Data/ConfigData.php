@@ -456,6 +456,30 @@ class ConfigData extends Data
     }
 
     /**
+     * Services that do NOT run in this project's namespace for this env.
+     *
+     * The invariant `plex ⊆ managed` is not enforced at write time (the two
+     * lists are set by different commands), so every decision about deployment
+     * SHAPE — skip the workload, write a delete-patch, skip the volumes, don't
+     * make an init container wait on a pod that isn't there — must ask this,
+     * never getManaged() alone. Reading `managed` by itself is what let a
+     * Plex-joined project keep deploying its own Postgres/Redis/SeaweedFS.
+     *
+     * Deliberately NOT used by the data-safety guards in plex:join/plex:migrate:
+     * those must distinguish "actually joined" from "claims to be joined", or
+     * they would skip the existing-data check and strand a live volume.
+     *
+     * @return array<int, string>
+     */
+    public function getExternallyHosted(string $environment): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->getManaged($environment),
+            $this->getPlex($environment),
+        )));
+    }
+
+    /**
      * Effective resources for a pod component in an env, merging in precedence:
      * code default ← env "default" block ← per-component override. Always returns a
      * full {requests:{cpu,memory}, limits:{cpu,memory}} so templates render it
@@ -1343,7 +1367,7 @@ class ConfigData extends Data
         // Don't wait on services that are external in this env (managed/Plex) —
         // they're not in the app's namespace, so an in-namespace `nc <pod>` would
         // never resolve (the app connects to them directly on boot).
-        $managed = $this->getManaged($environment);
+        $managed = $this->getExternallyHosted($environment);
 
         return array_values(array_filter(
             [$this->database, $this->cacheDriver],
@@ -1700,6 +1724,13 @@ class ConfigData extends Data
     public function getAllPhpExtensions(): array
     {
         $extensions = $this->additionalExtensions;
+
+        // The framework is NOT in getComponents() (which ~10 other loops read),
+        // so it is folded in here rather than widening that set.
+        if ($this->framework instanceof RequiresPhpExtensions) {
+            $extensions = array_merge($extensions, $this->framework->getPhpExtensions());
+        }
+
         foreach ($this->getComponents() as $component) {
             if ($component instanceof RequiresPhpExtensions) {
                 $extensions = array_merge($extensions, $component->getPhpExtensions());
@@ -1910,6 +1941,18 @@ class ConfigData extends Data
         return self::from(json_decode(base64_decode($encoded), true));
     }
 
+    /**
+     * Is this component backed by the Plex Commons in this env? If so, its
+     * connection env is owned by `plex:join` (in .env) and must NOT be
+     * recomputed by env-sync — otherwise a `heal`/regenerate would overwrite
+     * the Commons host/db/user/password with in-namespace defaults.
+     */
+    public function isPlexBacked(object $component, string $environment): bool
+    {
+        return $component instanceof BackedEnum
+            && in_array($component->value, $this->getPlex($environment), true);
+    }
+
     /** Append a pattern to the project's .gitignore if not already present. */
     protected static function ensureGitignored(string $directory, string $pattern): void
     {
@@ -1922,17 +1965,5 @@ class ConfigData extends Data
 
         $prefix = ($existing !== '' && ! str_ends_with($existing, "\n")) ? "\n" : '';
         file_put_contents($gitignore, $prefix.$pattern."\n", FILE_APPEND);
-    }
-
-    /**
-     * Is this component backed by the Plex Commons in this env? If so, its
-     * connection env is owned by `plex:join` (in .env) and must NOT be
-     * recomputed by env-sync — otherwise a `heal`/regenerate would overwrite
-     * the Commons host/db/user/password with in-namespace defaults.
-     */
-    protected function isPlexBacked(object $component, string $environment): bool
-    {
-        return $component instanceof BackedEnum
-            && in_array($component->value, $this->getPlex($environment), true);
     }
 }

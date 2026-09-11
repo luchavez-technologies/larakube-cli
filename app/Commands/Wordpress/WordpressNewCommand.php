@@ -183,17 +183,6 @@ class WordpressNewCommand extends Command
 
         $this->laraKubeInfo("Scaffolding WordPress (Bedrock): $appName...");
 
-        // Auto-provision Plex Commons database/services for WordPress (unless --no-plex)
-        $plexCredentials = null;
-        if (! $this->option('no-plex')) {
-            $plexCredentials = $this->ensurePlexProvisionedForApp($config);
-        }
-
-        if ($plexCredentials !== null) {
-            $config->addEnvironment('local');
-            $config->environments['local']->plex = array_values(array_unique(array_merge($config->environments['local']->plex, $plexCredentials['services'] ?? [])));
-        }
-
         // 6. Run composer create-project roots/bedrock inside Docker
         $this->runBedrockNew($appName, $config, $projectPath);
 
@@ -207,6 +196,12 @@ class WordpressNewCommand extends Command
         $this->withSpin('Orchestrating WordPress infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
+
+        // Join the Commons AFTER the project exists — plex:join writes the
+        // tenant .env and the `managed` list the manifest generator reads.
+        if (! $this->option('no-plex')) {
+            $this->joinPlexCommons($config, $projectDir);
+        }
 
         $this->laraKubeInfo("✅ WordPress (Bedrock) project '$appName' created successfully!");
         $this->newLine();

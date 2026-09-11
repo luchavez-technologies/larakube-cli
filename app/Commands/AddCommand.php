@@ -363,7 +363,8 @@ class AddCommand extends Command
                     }
                 }
 
-                if ($component instanceof HasLifecycleHooks) {
+                // Skip Commons-backed components — see NewCommand.
+                if ($component instanceof HasLifecycleHooks && ! $config->isPlexBacked($component, 'local')) {
                     $allInstructions = array_merge($allInstructions, $component->getPostInstallInstructions($config));
                 }
             }

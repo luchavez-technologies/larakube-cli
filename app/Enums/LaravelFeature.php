@@ -267,7 +267,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
         // live in the app's namespace, so an in-namespace `nc <pod>` would never
         // resolve and the init container would wait forever (the app connects to
         // them directly on boot via .env).
-        $managed = $config->getManaged($environment);
+        $managed = $config->getExternallyHosted($environment);
 
         return array_values(array_filter(
             $deps,

@@ -17,9 +17,17 @@ use Symfony\Component\Yaml\Yaml;
 
 trait GeneratesProjectInfrastructure
 {
+    // installComponents() is called from this trait (feature install), but was
+    // only reachable when the composing command happened to pull the defining
+    // trait in as well — 22 of them did not, so the call was a latent
+    // "method does not exist" fatal (hit first by nextjs:new).
+    use InteractsWithArchitecturalEngine;
     use InteractsWithHosts, InteractsWithProjectConfig, LaraKubeOutput;
     use ManagesLocalCa;
     use ResolvesStaticScripts;
+
+    /** Marks a `server` block this CLI owns, so re-runs realign instead of advising. */
+    public const VITE_MANAGED_SENTINEL = 'larakube:managed';
 
     /** Caddy is the origin behind Traefik; pinned like every other vendored image. */
     protected const CADDY_VERSION = '2.11.2';
@@ -182,9 +190,14 @@ trait GeneratesProjectInfrastructure
         // structural markers (not by hostname, which changes with the TLD/app name)
         // so re-running heal after `config:tld` or a rename re-aligns the host
         // instead of leaving it stale and merely advising.
-        $isManagedTemplate = str_contains($content, 'cors: true')
-            && str_contains($content, 'strictPort: true')
-            && str_contains($content, "ignored: ['**/.infrastructure/volume_data/**']");
+        // The sentinel is authoritative; the three structural markers stay as the
+        // legacy signal for configs written before it existed (every project
+        // scaffolded up to now), so a re-run still realigns them instead of
+        // demoting them to "custom" and merely advising.
+        $isManagedTemplate = str_contains($content, self::VITE_MANAGED_SENTINEL)
+            || (str_contains($content, 'cors: true')
+                && str_contains($content, 'strictPort: true')
+                && str_contains($content, "ignored: ['**/.infrastructure/volume_data/**']"));
 
         if (! str_contains($content, 'server: {')) {
             $harden = view('k8s.viteserver', ['viteHost' => $viteHost])->render();
@@ -194,6 +207,14 @@ trait GeneratesProjectInfrastructure
             $content = preg_replace("/origin:\s*['\"][^'\"]+['\"]/", "origin: 'https://{$viteHost}'", $content, 1);
             $content = preg_replace("/(hmr:\s*\{\s*host:\s*)['\"][^'\"]+['\"]/", "$1'{$viteHost}'", $content, 1);
             file_put_contents($viteFile, $content);
+        } elseif (($merged = $this->mergeIntoViteServerBlock($content, $viteHost)) !== null) {
+            // Laravel's Vite+ starter kits ship their OWN `server` block (a
+            // watch.ignored list for .agents/.claude/.cursor/.junie/vendor), so
+            // the "no server key" insert never fires and the config is not ours
+            // either. Merge our keys in beside theirs rather than advising —
+            // otherwise every new Laravel app silently loses HMR alignment.
+            file_put_contents($viteFile, $merged);
+            $this->laraKubeInfo('Merged LaraKube HMR settings into the existing Vite server block.');
         } else {
             $harden = view('k8s.viteserver', ['viteHost' => $viteHost])->render();
             $this->laraKubeNewLine();
@@ -263,6 +284,185 @@ trait GeneratesProjectInfrastructure
             $config->getK8sPath().'/.larakube-sigs.json',
             json_encode($sigs, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n",
         );
+    }
+
+    /**
+     * Merge our HMR keys into a `server` block somebody else wrote.
+     *
+     * Only keys the config does not already define are added, so a deliberate
+     * user value always wins, and their watch.ignored entries are preserved —
+     * ours is appended to the list rather than replacing it. Returns null when
+     * the block cannot be parsed with confidence, which sends the caller back
+     * to the hands-off advisory rather than risking a mangled config.
+     */
+    protected function mergeIntoViteServerBlock(string $content, string $viteHost): ?string
+    {
+        $start = strpos($content, 'server: {');
+        if ($start === false) {
+            return null;
+        }
+
+        $open = strpos($content, '{', $start);
+        $close = $this->matchingBracePosition($content, $open);
+        if ($close === null) {
+            return null;
+        }
+
+        $body = substr($content, $open + 1, $close - $open - 1);
+        $existing = $this->topLevelObjectKeys($body);
+
+        // Indent from the `server:` line so the result matches the file's style.
+        $lineStart = (int) strrpos(substr($content, 0, $start), "\n");
+        $indent = str_repeat(' ', $start - $lineStart - 1);
+        $inner = $indent.'    ';
+
+        $additions = [];
+        $managed = [
+            'cors' => 'true',
+            'origin' => "'https://{$viteHost}'",
+            'host' => "'0.0.0.0'",
+            'port' => '5173',
+            'strictPort' => 'true',
+        ];
+
+        foreach ($managed as $key => $value) {
+            if (! in_array($key, $existing, true)) {
+                $additions[] = "{$inner}{$key}: {$value},";
+            }
+        }
+
+        if (! in_array('hmr', $existing, true)) {
+            $additions[] = "{$inner}hmr: {";
+            $additions[] = "{$inner}    host: '{$viteHost}',";
+            $additions[] = "{$inner}},";
+        }
+
+        $ignore = "'**/.infrastructure/volume_data/**'";
+
+        if (! in_array('watch', $existing, true)) {
+            $additions[] = "{$inner}watch: {";
+            $additions[] = "{$inner}    ignored: [{$ignore}],";
+            $additions[] = "{$inner}},";
+        } elseif (! str_contains($body, $ignore)) {
+            // Their watch block stays; our path joins their ignore list.
+            $patched = preg_replace('/ignored:\s*\[/', "ignored: [\n{$inner}        {$ignore},", $body, 1);
+            if ($patched === null || $patched === $body) {
+                return null;
+            }
+            $body = $patched;
+        }
+
+        if ($additions === []) {
+            return null;
+        }
+
+        array_unshift($additions, "{$inner}// ".self::VITE_MANAGED_SENTINEL);
+        $newBody = "\n".implode("\n", $additions).$body;
+
+        return substr($content, 0, $open + 1).$newBody.substr($content, $close);
+    }
+
+    /** Index of the brace closing the one at $open, or null if unbalanced. */
+    protected function matchingBracePosition(string $content, int $open): ?int
+    {
+        $depth = 0;
+        $quote = null;
+        $length = strlen($content);
+
+        for ($i = $open; $i < $length; $i++) {
+            $char = $content[$i];
+
+            if ($quote !== null) {
+                if ($char === '\\') {
+                    $i++;
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($char === "'" || $char === '"' || $char === '`') {
+                $quote = $char;
+            } elseif ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+                if ($depth === 0) {
+                    return $i;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Keys declared at the top level of an object body — depth- and
+     * string-aware, so `host:` nested inside `hmr: {}` or a colon inside
+     * 'https://…' is not mistaken for one.
+     *
+     * @return list<string>
+     */
+    protected function topLevelObjectKeys(string $body): array
+    {
+        $keys = [];
+        $depth = 0;
+        $quote = null;
+        $token = '';
+        $length = strlen($body);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $body[$i];
+
+            if ($quote !== null) {
+                if ($char === '\\') {
+                    $i++;
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($char === "'" || $char === '"' || $char === '`') {
+                $quote = $char;
+                $token = '';
+
+                continue;
+            }
+
+            if ($char === '{' || $char === '[' || $char === '(') {
+                $depth++;
+                $token = '';
+
+                continue;
+            }
+
+            if ($char === '}' || $char === ']' || $char === ')') {
+                $depth--;
+                $token = '';
+
+                continue;
+            }
+
+            if ($depth !== 0) {
+                continue;
+            }
+
+            if ($char === ':') {
+                if (preg_match('/([A-Za-z_$][\w$]*)\s*$/', $token, $matches) === 1) {
+                    $keys[] = $matches[1];
+                }
+                $token = '';
+
+                continue;
+            }
+
+            $token = $char === ',' ? '' : $token.$char;
+        }
+
+        return $keys;
     }
 
     /**
@@ -854,7 +1054,7 @@ trait GeneratesProjectInfrastructure
         // emit a delete-patch) — a Plex-joined service must actually stop
         // deploying locally on `up`, not just skip volumes while the base
         // Deployment keeps coming back regardless of managed status.
-        $managedLocal = $config->getManaged('local');
+        $managedLocal = $config->getExternallyHosted('local');
         $base = $local = $localPatches = [];
         foreach ($config->getComponents() as $pod) {
             if (! $pod instanceof HasKubernetesFiles) {
@@ -890,7 +1090,7 @@ trait GeneratesProjectInfrastructure
         // feature filtering (getComponents($env)) and skipping services that
         // are externally managed in that env.
         foreach ($cloudEnvs as $env) {
-            $managed = $config->getManaged($env);
+            $managed = $config->getExternallyHosted($env);
             $cloudFiles = [];
 
             foreach ($config->getComponents($env) as $pod) {
@@ -1241,6 +1441,49 @@ trait GeneratesProjectInfrastructure
         $this->runInContainer("chown -R {$owner} storage bootstrap/cache && chmod -R 775 storage bootstrap/cache", $projectPath);
     }
 
+    /**
+     * Trust the ingress proxy, so the app sees the scheme the BROWSER used.
+     *
+     * ensureHttpsCompatibility() only fixes URL generation (forceScheme). The
+     * incoming request stays http:// because Traefik terminates TLS and
+     * forwards plain HTTP, and Laravel ignores X-Forwarded-Proto until the
+     * proxy is trusted. Plain Laravel apps never notice — they route on path —
+     * but Statamic resolves the SITE by absolute URL, so every front-end page
+     * 404'd while /cp worked (confirmed live 2026-09-09: same pod, in-process
+     * https:// returned 200 and http:// returned 404). `at: '*'` is correct
+     * here: the pod is only reachable through the ingress.
+     */
+    protected function ensureTrustedProxies(ConfigData $config): void
+    {
+        $bootstrapPath = $config->getPath().'/bootstrap/app.php';
+
+        // Non-Laravel skeletons (Bedrock, the polyglot scaffolders) have none.
+        if (! file_exists($bootstrapPath)) {
+            return;
+        }
+
+        $content = (string) file_get_contents($bootstrapPath);
+
+        if (str_contains($content, 'trustProxies')) {
+            return;
+        }
+
+        $pattern = '/(->withMiddleware\(function \(Middleware \$middleware\)(?:\s*:\s*void)?\s*\{)/';
+
+        if (preg_match($pattern, $content) !== 1) {
+            $this->laraKubeWarn('Could not trust the ingress proxy automatically — bootstrap/app.php has no recognisable withMiddleware() block.');
+            $this->laraKubeLine("  <fg=gray>Add</> <fg=cyan>\$middleware->trustProxies(at: '*');</> <fg=gray>or HTTPS-dependent routing will see http://.</>");
+
+            return;
+        }
+
+        $this->laraKubeInfo('Trusting the ingress proxy in bootstrap/app.php...');
+
+        $injection = "$1\n        // Traefik terminates TLS; the pod itself receives plain HTTP.\n        \$middleware->trustProxies(at: '*');\n";
+
+        file_put_contents($bootstrapPath, preg_replace($pattern, $injection, $content, 1));
+    }
+
     protected function ensureHttpsCompatibility(ConfigData $config): void
     {
         $projectPath = $config->getPath();
@@ -1378,6 +1621,7 @@ trait GeneratesProjectInfrastructure
                 $this->hardenStaticDevConfig($config);
             } else {
                 $this->ensureHttpsCompatibility($config);
+                $this->ensureTrustedProxies($config);
                 $this->hardenViteConfig($config);
             }
         }

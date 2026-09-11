@@ -9,7 +9,16 @@ parameters:
     # (glacial on a many-core box). Bounded at 8 so it uses cores without letting
     # every worker's peak memory add up on a smaller box.
     parallel:
-        maximumNumberOfProcesses: 8
+        # Sized for RAM, not cores. --memory-limit is PER WORKER, so N workers
+        # ask for N x the limit: at 8 (set during a machine switch, tuned on
+        # core count) this 8GB box asked for 16GB at 2G each, swapped, and hit
+        # the worker timeout before the result cache was ever written — making
+        # every following run cold too. OrbStack alone holds ~2.7GB here.
+        maximumNumberOfProcesses: 2
+        # A cold run (no/stale result cache) exceeds the 600s default per worker
+        # on this codebase, and the run dies before the cache is ever written —
+        # so every subsequent run is cold too. Raised so the cache can warm once.
+        processTimeout: 1800.0
 
     # Persist the result cache in-project (gitignored) instead of the system temp
     # dir, which some setups (WSL, CI) wipe between sessions. The cache is what
