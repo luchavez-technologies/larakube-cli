@@ -11,6 +11,7 @@
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\InteractsWithOs;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Validator;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 function globalConfigHelper(): object
@@ -91,25 +92,58 @@ test('acmeEmailError rejects syntactically invalid input without touching the ne
     expect(globalConfigEmailHelper()->error('not-an-email'))->not->toBeNull();
 });
 
-test('acmeEmailError rejects example.com/.net/.org — Let\'s Encrypt refuses their published Null MX record', function (): void {
-    $helper = globalConfigEmailHelper();
-
-    expect($helper->error('admin@example.com'))->not->toBeNull()
-        ->and($helper->error('admin@example.net'))->not->toBeNull()
-        ->and($helper->error('admin@example.org'))->not->toBeNull();
-});
-
-test('acmeEmailError accepts a real, deliverable address', function (): void {
+test('acmeEmailError accepts a deliverable address', function (): void {
+    // TestCase::setUp() calls Validator::fakeDnsLookups(), so the domain is not
+    // actually resolved — this asserts our own plumbing (rule wired up, message
+    // surfaced), not what gmail.com's nameservers say today.
     expect(globalConfigEmailHelper()->error('admin@gmail.com'))->toBeNull();
 });
 
-test('validStoredEmail discards a stored-but-undeliverable email, forcing a fresh prompt', function (): void {
+test('validStoredEmail passes a usable address through and discards nothing else', function (): void {
     $helper = globalConfigEmailHelper();
 
-    expect($helper->stored('admin@example.com'))->toBeNull()
-        ->and($helper->stored(null))->toBeNull()
+    expect($helper->stored(null))->toBeNull()
+        ->and($helper->stored(''))->toBeNull()
+        ->and($helper->stored('not-an-email'))->toBeNull()
         ->and($helper->stored('admin@gmail.com'))->toBe('admin@gmail.com');
 });
+
+/**
+ * The Null MX rejection is real and load-bearing — Let's Encrypt refuses
+ * example.com/.net/.org as an ACME contact — but it is EGULIAS' behaviour
+ * reached through a live resolver, not ours. Asserting it in the normal suite
+ * made the result depend on the developer's DNS, which failed in both
+ * directions on 2026-09-10/11 with no code change in between.
+ *
+ * So it lives here, opt-in and self-skipping: it turns the fake off, checks the
+ * resolver can actually see the Null MX, and only then asserts. On a plane, in
+ * CI without egress, or behind a resolver that filters MX, it skips instead of
+ * failing the build.
+ */
+test('acmeEmailError rejects Null MX domains against a real resolver', function (): void {
+    Validator::fakeDnsLookups(false);
+
+    $records = @dns_get_record('example.com', DNS_MX);
+    $publishesNullMx = is_array($records) && $records !== [] && array_reduce(
+        $records,
+        fn (bool $carry, array $r): bool => $carry && rtrim((string) ($r['target'] ?? ''), '.') === '',
+        true,
+    );
+
+    if (! $publishesNullMx) {
+        Validator::fakeDnsLookups();
+        test()->markTestSkipped('resolver did not return example.com\'s Null MX — cannot assert it here');
+    }
+
+    $helper = globalConfigEmailHelper();
+
+    try {
+        expect($helper->error('admin@example.com'))->not->toBeNull()
+            ->and($helper->stored('admin@example.com'))->toBeNull();
+    } finally {
+        Validator::fakeDnsLookups();
+    }
+})->group('network');
 
 test('checkCaTrust on macOS reflects whether the CA is in the keychain', function (): void {
     Process::fake(['security find-certificate -c "Server Side Up CA"' => "keychain: ...\n"]);

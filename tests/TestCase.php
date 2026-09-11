@@ -4,6 +4,7 @@ namespace Tests;
 
 use App\State;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Sleep;
 use Laravel\Prompts\Prompt;
 use LaravelZero\Framework\Testing\TestCase as BaseTestCase;
@@ -53,6 +54,17 @@ abstract class TestCase extends BaseTestCase
         // "can't run in WSL2" guard and DetectsWsl's "not WSL" cases invert.
         // Tests that need "is WSL" set it explicitly (forceWsl()).
         putenv('WSL_DISTRO_NAME');
+
+        // No test may reach a real DNS resolver. `Rule::email()->validateMxRecord()`
+        // (acmeEmailError's ACME contact check) delegates to egulias, which calls
+        // dns_get_record() for real — so the suite's result depended on what the
+        // developer's resolver happened to answer. Confirmed live 2026-09-10/11:
+        // the same unchanged code failed in BOTH directions within twenty minutes
+        // (gmail.com's MX vanished, then example.com's Null MX did). Laravel's own
+        // switch swaps in FakeDnsGetRecordWrapper, which reports a synthetic A
+        // record for every host — so validation becomes deterministic and offline.
+        // A test that needs the real thing turns it off explicitly.
+        Validator::fakeDnsLookups();
 
         // Keep the test runner's output clean. Every laraKube* output helper (and
         // the header tagline) renders via termwind's render(), which writes to its
