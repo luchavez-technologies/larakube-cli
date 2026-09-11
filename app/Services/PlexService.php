@@ -7,28 +7,13 @@ use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 
 /**
- * The Plex Commons domain — tenant lifecycle and Commons lifecycle — extracted
- * from `InteractsWithPlex` one group at a time.
- *
- * See `plans/active/plex-service-extraction.md` for why this exists, which
- * methods move in which phase, and the exit gate that decides whether the
- * remaining 130 traits follow. `InteractsWithPlex` stays as a delegating shim
- * so none of the 55 composing commands change.
- *
- * The kube-context is constructor state because it is fixed once per run: every
- * command resolves exactly one context and keeps it (the three that assign it
- * more than once do so in mutually exclusive branches). Phase 1 methods below
- * are pure and ignore it; later phases will not.
+ * The Plex Commons domain: tenant and Commons lifecycle. `InteractsWithPlex`
+ * delegates here. The kube-context is constructor state because a run targets
+ * exactly one context.
  */
 final class PlexService
 {
-    /**
-     * The namespace that hosts the shared Commons services.
-     *
-     * A constant, not a constructor argument: one definition, never overridden,
-     * never passed anywhere. Making it injectable would invent a variability
-     * that has never existed.
-     */
+    /** The namespace that hosts the shared Commons services. */
     public const NAMESPACE = 'larakube-plex';
 
     public function __construct(

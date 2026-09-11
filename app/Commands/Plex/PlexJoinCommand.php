@@ -240,13 +240,8 @@ class PlexJoinCommand extends Command
                 ?? $this->allocateRedisDbIndex($this->registryUsedRedisIndexes($registry));
 
             if ($redisIndex === null) {
-                // Degrade, don't abort: one exhausted service used to cost the
-                // tenant the other three, which is how a Statamic scaffold
-                // ended up fully self-hosted with Postgres, S3 and Meilisearch
-                // all sitting idle-capacity on the Commons. Dropping 'redis'
-                // from $services is enough — .env, the `managed`/`plex`
-                // markers and heal's delete-patches all read that one list, so
-                // Redis simply keeps its own pod.
+                // Drop only Redis: .env, the managed/plex markers and heal's
+                // delete-patches all read $services, so Redis keeps its own pod.
                 $this->laraKubeWarn('The Commons Redis is full (16 logical DBs) — this app keeps its own Redis pod.');
                 $this->laraKubeLine('  <fg=gray>Free a slot with</> <fg=cyan>larakube plex:evict '.$env.' --tenant=…</><fg=gray>, then re-run</> <fg=cyan>larakube plex:join '.$env.'</><fg=gray>.</>');
                 $this->laraKubeNewLine();

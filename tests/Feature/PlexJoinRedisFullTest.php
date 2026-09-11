@@ -9,14 +9,7 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\BufferedOutput;
 
-/**
- * Found live 2026-09-09: `statamic:new` scaffolded a project whose Postgres,
- * SeaweedFS and Meilisearch all had room on the Commons, but the join aborted
- * outright because the Commons Redis had all 16 logical DBs allocated — twelve
- * of them held by deleted scratch projects. The app then deployed four
- * self-hosted pods, and the one-line warning scrolled past under composer
- * output. Redis exhaustion must cost the tenant Redis, and nothing else.
- */
+/** A full Commons Redis must cost the tenant Redis only, not the whole join. */
 
 /** A join command whose only stub is `heal`, so handle() runs for real. */
 function plexJoinRedisFullCommand(BufferedOutput $output, array $arguments): object

@@ -1,10 +1,10 @@
 # Plan: Extract `PlexService` — the first trait→service strangler
 
-**Status:** 📋 APPROVED, not started. Created 2026-09-09, revised 2026-09-11.
+**Status:** 🟡 Phase 1 done (`5a90d48`). Phase 2 next, then the exit gate. Created 2026-09-09, revised 2026-09-11.
 **Scope:** `InteractsWithPlex` ONLY. This is a pilot, not a programme.
 **Shape:** stateful service, constructed directly (decided 2026-09-11 — see Design).
 
-> **Prerequisite:** fix the live-DNS flake in
+> **Prerequisite (done, `2f0c18f`):** fix the live-DNS flake in
 > `tests/Unit/InteractsWithGlobalConfigProcessTest.php` FIRST. Every phase below
 > is verified by "full suite green, zero test edits"; two tests that flap on a
 > resolver blip make a red suite ambiguous and the gate worthless.

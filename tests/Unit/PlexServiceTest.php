@@ -1,17 +1,6 @@
 <?php
 
-/**
- * Phase 1 of `plans/active/plex-service-extraction.md`.
- *
- * The point of this file is as much HOW it is written as what it asserts.
- * `PlexJoinAllocationTest` covers the same behaviour through
- * `new class { use InteractsWithPlex; }` — an anonymous class existing only to
- * make a pure function reachable. Here the same logic is called on a real
- * object. No trait, no command, no `Process::fake()`.
- *
- * Both files stay green: the old ones prove the move was pure (they run through
- * the shim), these prove the extraction bought something.
- */
+/** PlexService's pure helpers, called directly on the object. */
 
 use App\Data\ConfigData;
 use App\Services\PlexService;
@@ -99,8 +88,7 @@ test('the tenant SQL round-trips through create and drop', function (): void {
 });
 
 test('the context is accepted but irrelevant to the pure helpers', function (): void {
-    // Phase 1 moves only pure methods, so a service built for one cluster and
-    // one built for another must agree. Phase 2 is where this stops holding.
+    // Pure helpers must not depend on which cluster the service targets.
     $local = new PlexService;
     $cloud = new PlexService('larakube-203-0-113-1');
 

@@ -142,10 +142,8 @@ test('plex:evict asks for confirmation when --force is absent', function (): voi
 });
 
 test('plex:evict says so plainly when the registry outlived its database', function (): void {
-    // The exact 2026-09-10 case: hello_php_local's entry pointed at a database
-    // Postgres no longer had, so the dump failed and blocked an eviction that
-    // had no data left to destroy. Saying nothing here would read as "LaraKube
-    // CLI deleted my database" to anyone reviewing the output afterwards.
+    // A registry entry can outlive its database; say so rather than imply
+    // the eviction destroyed it.
     Process::fake(plexEvictFakes([
         '*pg_database*' => Process::result(output: 'live_local'),
     ]));

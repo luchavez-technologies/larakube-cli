@@ -8,14 +8,8 @@ use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
- * The destructive half of removing a tenant from a Commons: back up, drop the
- * database + login, flush the Redis logical DB, delete the bucket.
- *
- * Shared by `plex:leave` (the project is present and its data is restored to
- * self-hosted pods first) and `plex:evict` (the project is gone, so there is
- * nothing to restore into). Both end in exactly the same Commons-side state,
- * which is the reason these steps live in one place rather than being written
- * twice: a divergence here leaks a tenant's database or its Redis index.
+ * The destructive half of removing a tenant from the Commons, shared by
+ * plex:leave and plex:evict so both leave identical Commons state.
  */
 trait RemovesPlexTenants
 {

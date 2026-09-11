@@ -16,25 +16,9 @@ use function Laravel\Prompts\select;
 use LaravelZero\Framework\Commands\Command;
 
 /**
- * Evict a tenant from the Commons FROM THE COMMONS SIDE — the counterpart to
- * plex:leave, for the case plex:leave structurally cannot serve: the project
- * is gone.
- *
- * plex:leave runs from inside a project, because its whole point is to copy
- * the Commons data back into self-hosted pods before dropping the tenant. Once
- * the project directory has been deleted there is nothing to copy back into
- * and no `.larakube.json` to resolve a tenant from, so the tenant's slot was
- * unreclaimable through the CLI — it just sat in the registry forever.
- *
- * That is not a cosmetic leak: the Commons Redis has exactly 16 logical DBs,
- * and on 2026-09-09 twelve of them were held by deleted scratch projects,
- * which made `plex:join` refuse every new tenant on a Commons that was
- * otherwise almost empty.
- *
- * Deliberately its own command rather than a mode of plex:leave: it destroys
- * data with no restore step, and burying that behind a flag on a command whose
- * contract is "restore first, then drop" is exactly the kind of hidden distinct
- * operation this CLI avoids (cluster:grant/cluster:revoke).
+ * Evicts a tenant from the Commons side, for when its project no longer exists
+ * and plex:leave (which restores data into the project first) cannot run.
+ * Destroys data with no restore step, so it is its own command, not a flag.
  */
 class PlexEvictCommand extends Command
 {
@@ -236,8 +220,9 @@ class PlexEvictCommand extends Command
         }
 
         if ($inUse === null) {
-            $this->laraKubeWarn('Could not verify whether anything still uses this tenant'.
-                ($namespace === null || $namespace === '' ? ' (no namespace recorded — a pre-2026-08 entry).' : " (namespace '{$namespace}' is gone)."));
+            $this->laraKubeWarn($namespace === null || $namespace === ''
+                ? 'Could not verify whether anything still uses this tenant: its registry entry records no namespace to check.'
+                : "Could not verify whether anything still uses this tenant: namespace '{$namespace}' no longer exists.");
         }
 
         return true;

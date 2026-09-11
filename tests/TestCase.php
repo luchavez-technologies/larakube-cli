@@ -55,15 +55,8 @@ abstract class TestCase extends BaseTestCase
         // Tests that need "is WSL" set it explicitly (forceWsl()).
         putenv('WSL_DISTRO_NAME');
 
-        // No test may reach a real DNS resolver. `Rule::email()->validateMxRecord()`
-        // (acmeEmailError's ACME contact check) delegates to egulias, which calls
-        // dns_get_record() for real — so the suite's result depended on what the
-        // developer's resolver happened to answer. Confirmed live 2026-09-10/11:
-        // the same unchanged code failed in BOTH directions within twenty minutes
-        // (gmail.com's MX vanished, then example.com's Null MX did). Laravel's own
-        // switch swaps in FakeDnsGetRecordWrapper, which reports a synthetic A
-        // record for every host — so validation becomes deterministic and offline.
-        // A test that needs the real thing turns it off explicitly.
+        // No test may reach a real DNS resolver (email MX validation calls one).
+        // A test that needs real DNS turns this off explicitly.
         Validator::fakeDnsLookups();
 
         // Keep the test runner's output clean. Every laraKube* output helper (and

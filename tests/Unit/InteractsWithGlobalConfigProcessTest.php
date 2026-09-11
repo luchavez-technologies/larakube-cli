@@ -109,16 +109,8 @@ test('validStoredEmail passes a usable address through and discards nothing else
 });
 
 /**
- * The Null MX rejection is real and load-bearing — Let's Encrypt refuses
- * example.com/.net/.org as an ACME contact — but it is EGULIAS' behaviour
- * reached through a live resolver, not ours. Asserting it in the normal suite
- * made the result depend on the developer's DNS, which failed in both
- * directions on 2026-09-10/11 with no code change in between.
- *
- * So it lives here, opt-in and self-skipping: it turns the fake off, checks the
- * resolver can actually see the Null MX, and only then asserts. On a plane, in
- * CI without egress, or behind a resolver that filters MX, it skips instead of
- * failing the build.
+ * Needs a live resolver, so it is opt-in (`--group=network`) and skips when the
+ * resolver cannot see example.com's Null MX record.
  */
 test('acmeEmailError rejects Null MX domains against a real resolver', function (): void {
     Validator::fakeDnsLookups(false);
