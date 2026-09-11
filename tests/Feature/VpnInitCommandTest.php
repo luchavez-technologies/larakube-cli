@@ -53,6 +53,8 @@ test('vpn:init deploys netbird vpn to larakube-vpn', function (): void {
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -108,6 +110,8 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
     try {
         Process::fake([
             '*get namespace larakube-vpn*' => Process::result(output: ''),
+            '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+            '*get storageclass*' => Process::result(output: ''),
             '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
             '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
             '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -146,6 +150,8 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
 test('vpn:remove removes netbird vpn namespace when --remove is passed', function (): void {
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -168,6 +174,8 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -230,6 +238,8 @@ test('vpn:init warns but does not fail when NetBird auth bootstrap fails', funct
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -279,6 +289,8 @@ test('vpn:remove also targets the CHOSEN environment\'s own saved context', func
     try {
         Process::fake([
             '*get namespace larakube-vpn*' => Process::result(output: ''),
+            '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+            '*get storageclass*' => Process::result(output: ''),
             '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
             '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
             '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -328,6 +340,8 @@ test('vpn:init re-renders management.json from the PRESERVED relay secret + encr
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -368,6 +382,8 @@ test('vpn:init does NOT restart management when the re-rendered config is byte-i
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -403,6 +419,8 @@ test('vpn:init generates the relay secret + management.json on first run', funct
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -468,6 +486,8 @@ test('vpn:init deploys the dashboard and waits for it', function (): void {
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -503,6 +523,8 @@ test('vpn:init warns when single-account mode did not come up', function (): voi
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -538,6 +560,8 @@ test('vpn:init reuses an existing larakube-cli service user rather than creating
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -587,6 +611,8 @@ test('vpn:init falls back to the owner token when the service user cannot be cre
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
@@ -671,6 +697,8 @@ test('vpn:init defers to the OpenBao-owned password when the tenant is already w
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         // Must precede the presence check below — readOpenBaoBootstrapSecret()
         // base64-decodes this, and an unmatched catch-all yields a binary token
@@ -678,6 +706,8 @@ test('vpn:init defers to the OpenBao-owned password when the tenant is already w
         // removeNamespace() polls for the namespace to disappear rather than
         // blocking on kubectl's finalizer wait.
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*root-token*' => Process::result(output: base64_encode('test-root-token')),
         '*get secret openbao-bootstrap*' => Process::result(output: 'openbao-bootstrap'),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
@@ -868,6 +898,8 @@ test('the bootstrap owner gets an address inside the SSO domain, not the operato
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configured'),
@@ -913,6 +945,8 @@ test('vpn:init explains a 412 from /api/setup instead of blaming the dashboard',
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configured'),
@@ -978,6 +1012,8 @@ test('vpn:init seeds the PAT into OpenBao so its ExternalSecret is green from th
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*root-token*' => Process::result(output: base64_encode('test-root-token')),
         '*get secret openbao-bootstrap*' => Process::result(output: 'openbao-bootstrap'),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
@@ -1032,6 +1068,8 @@ test('vpn:init recreates the service user and groups after the account was repla
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configured'),
@@ -1084,6 +1122,8 @@ test('vpn:init registers the tool even when the gateway does not settle', functi
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configured'),
@@ -1125,6 +1165,8 @@ test('vpn:init keeps the owner token, which is the only one that can retire the 
 
     Process::fake([
         '*get namespace larakube-vpn*' => Process::result(output: ''),
+        '*get pvc -n larakube-vpn*' => Process::result(output: ''),
+        '*get storageclass*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*configmap plex-registry*' => Process::result(output: 'configured'),

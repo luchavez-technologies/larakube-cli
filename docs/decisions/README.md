@@ -38,3 +38,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0020](0020-saloonphp-for-new-api-integrations.md) | New external API integrations use SaloonPHP, not the `Http` facade | Accepted |
 | [0021](0021-cluster-tool-resource-naming.md) | Every cluster-tool resource is named `{category}-{component}-{instance}` | Accepted |
 | [0022](0022-environment-names-are-project-relative.md) | An environment name is project-relative; the cluster it means is recorded per project | Accepted |
+| [0023](0023-cluster-tool-volume-sizing-and-growth.md) | A volume's size is a request; growth requires an expandable StorageClass | Accepted |

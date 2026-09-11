@@ -8,7 +8,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('desk-storage', '5Gi', true) }}
 @if($noPlex)
 ---
 apiVersion: v1
@@ -21,7 +21,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('desk-freescout-db-storage', '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment

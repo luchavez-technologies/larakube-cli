@@ -105,7 +105,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 128Mi
+      storage: {{ $volumeSize('traefik-acme', '128Mi', false) }}
 @isset($storageClass)
   storageClassName: {{ $storageClass }}
 @endisset

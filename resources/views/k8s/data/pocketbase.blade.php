@@ -1,4 +1,15 @@
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $pvcName }}
+  namespace: {{ $namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ $volumeSize($pvcName, '2Gi', true) }}
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ $deployName }}-hooks

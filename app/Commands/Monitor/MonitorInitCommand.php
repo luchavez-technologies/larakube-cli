@@ -11,6 +11,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithMonitoring;
 use App\Traits\InteractsWithPlex;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
@@ -28,7 +29,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MonitorInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, InteractsWithPlex, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'monitor:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Grafana host.}
@@ -143,6 +144,7 @@ class MonitorInitCommand extends Command
         }
 
         $manifest = view('k8s.monitoring.shared', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,
             'appName' => $branding['appName'],

@@ -12,6 +12,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithStalwartApi;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
@@ -25,7 +26,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class WebmailInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'webmail:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -122,6 +123,7 @@ class WebmailInitCommand extends Command
         });
 
         $manifest = view('k8s.webmail.bulwark', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,
             'mailHost' => $mailHost,

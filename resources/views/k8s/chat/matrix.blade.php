@@ -34,7 +34,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('chat-synapse-data', '5Gi', true) }}
 @if($noPlex)
 ---
 apiVersion: v1
@@ -47,7 +47,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('chat-synapse-db-storage', '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment

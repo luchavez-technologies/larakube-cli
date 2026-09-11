@@ -10,6 +10,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSecrets;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
@@ -21,7 +22,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SecretsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSecrets, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'secrets:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the secrets manager host.}
@@ -63,6 +64,7 @@ class SecretsInitCommand extends Command
         }
 
         $manifest = view('k8s.secrets.openbao', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'namespace' => $ns,
             'image' => SecretsBackend::OPENBAO->getDockerImage(),
             'port' => SecretsBackend::OPENBAO->getDefaultPort(),

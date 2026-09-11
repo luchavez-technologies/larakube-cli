@@ -202,7 +202,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 2Gi
+      storage: {{ $volumeSize('glitchtip-db-storage', '2Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment

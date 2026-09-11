@@ -11,6 +11,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithDesk;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
@@ -26,7 +27,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class DeskInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesk, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'desk:init
         {environment?    : Environment this install targets — "local" (default) or cloud.}
@@ -97,6 +98,7 @@ class DeskInitCommand extends Command
         });
 
         $manifest = view('k8s.desk.freescout', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'adminEmail' => $adminEmail,
             'plexNamespace' => $this->plexNamespace(),

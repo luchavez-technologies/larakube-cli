@@ -35,7 +35,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('openbao-data', '5Gi', false) }}
 ---
 apiVersion: v1
 kind: ConfigMap

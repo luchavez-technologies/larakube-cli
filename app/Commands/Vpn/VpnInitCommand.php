@@ -19,6 +19,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
@@ -37,7 +38,7 @@ use Throwable;
 
 class VpnInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithVolumeSizing, InteractsWithVpn, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'vpn:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the NetBird VPN host.}
@@ -131,6 +132,7 @@ class VpnInitCommand extends Command
         }
 
         $manifest = view('k8s.vpn.shared', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'isLocal' => $env === 'local',
             'ssoDomain' => $this->vpnSsoDomain($host, $this->option('sso-domain')),
@@ -220,7 +222,10 @@ class VpnInitCommand extends Command
         // them. Both helpers reuse-by-name, so this is idempotent.
         $this->ensureVpnServiceIdentity($kubectl, $ns, $host, $env);
 
-        $clientManifest = view('k8s.vpn.client', ['instance' => ClusterTool::VPN->instanceSlugFromHost($host)])->render();
+        $clientManifest = view('k8s.vpn.client', [
+            'instance' => ClusterTool::VPN->instanceSlugFromHost($host),
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
+        ])->render();
         $clientTemporaryDirectory = TemporaryDirectory::make();
         $clientTmp = $clientTemporaryDirectory->path('larakube-vpn-client.yaml');
         file_put_contents($clientTmp, $clientManifest);

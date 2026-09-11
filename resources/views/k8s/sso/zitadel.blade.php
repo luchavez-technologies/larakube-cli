@@ -9,7 +9,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('sso-zitadel-db-storage', '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -23,7 +23,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('forgejo-data', '5Gi', true) }}
 ---
 apiVersion: v1
 kind: Secret

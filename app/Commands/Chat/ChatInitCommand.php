@@ -13,6 +13,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSso;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesToolFirewallPorts;
@@ -30,7 +31,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ChatInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, SchedulesCronJobs, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSso, InteractsWithVolumeSizing, InteractsWithZitadelApi, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, SchedulesCronJobs, StreamsProcessOutput, SyncsClusterSecrets;
 
     /**
      * Verify against the actual current stable release before shipping —
@@ -156,6 +157,7 @@ class ChatInitCommand extends Command
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::CHAT);
 
         $manifest = view('k8s.chat.matrix', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,
             'appName' => $branding['appName'],
@@ -484,6 +486,7 @@ class ChatInitCommand extends Command
 
         // 5. Apply the chat-mas Deployment/Service/Ingress.
         $manifest = view('k8s.chat.mas', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'instance' => $instance,
             'masImage' => self::MAS_IMAGE,
             'masConfigHash' => substr(hash('sha256', $configYaml), 0, 16),

@@ -11,6 +11,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithErrors;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolBranding;
@@ -24,7 +25,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ErrorsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'errors:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the GlitchTip host.}
@@ -101,6 +102,7 @@ class ErrorsInitCommand extends Command
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::ERRORS);
 
         $manifest = view('k8s.errors.shared', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'appName' => $branding['appName'],
             'logoUrl' => $branding['logoUrl'],

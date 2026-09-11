@@ -16,7 +16,7 @@ spec:
     requests:
       # Bulwark stores only its own admin config + per-user settings-sync here,
       # never mail (that lives in Stalwart). 1Gi is generous.
-      storage: 1Gi
+      storage: {{ $volumeSize('webmail-storage', '1Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment

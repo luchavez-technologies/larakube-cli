@@ -13,6 +13,7 @@ use App\Traits\InteractsWithData;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSecrets;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
@@ -30,7 +31,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class DataInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'data:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -145,25 +146,6 @@ class DataInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        if ($engine === 'pocketbase') {
-            $this->withSpin("Ensuring PVC {$pvcName}...", function () use ($kubectl, $ns, $pvcName): void {
-                $cmd = "{$kubectl} apply -f - <<EOF\n"
-                    ."apiVersion: v1\n"
-                    ."kind: PersistentVolumeClaim\n"
-                    ."metadata:\n"
-                    ."  name: {$pvcName}\n"
-                    ."  namespace: {$ns}\n"
-                    ."spec:\n"
-                    ."  accessModes:\n"
-                    ."    - ReadWriteOnce\n"
-                    ."  resources:\n"
-                    ."    requests:\n"
-                    ."      storage: 2Gi\n"
-                    .'EOF';
-                Process::run($cmd);
-            });
-        }
-
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $secret, $key, $dbPassword, $adminEmail, $adminPassword, $s3Key, $s3Secret): void {
             $cmd = "{$kubectl} create secret generic {$secretName} -n {$ns} "
                 .'--from-literal=secret='.escapeshellarg($secret).' '
@@ -197,6 +179,7 @@ class DataInitCommand extends Command
         $ssoWired = $this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, $engine === 'pocketbase' ? 'POCKETBASE_OIDC_CLIENT_ID' : 'AUTH_ZITADEL_CLIENT_ID') !== null;
 
         $manifest = view('k8s.data.shared', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'engine' => $engine,
             'instance' => $instance,
             'deployName' => $deployName,

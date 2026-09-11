@@ -12,6 +12,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithGitForge;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesToolFirewallPorts;
 use App\Traits\RequiresFlagsWhenNonInteractive;
@@ -31,7 +32,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class GitInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     /**
      * Labels the Actions runner advertises, server-side. Kept in sync by hand
@@ -216,6 +217,7 @@ class GitInitCommand extends Command
 
         // 1. Initial deployment with Forgejo Core only (runner token placeholder)
         $manifest = view('k8s.git.forgejo', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,
             'appName' => $branding['appName'],
@@ -338,6 +340,7 @@ class GitInitCommand extends Command
 
         // 3. Re-apply final configuration containing real tokens
         $manifestFinal = view('k8s.git.forgejo', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,
             'adminPassword' => $adminPassword,

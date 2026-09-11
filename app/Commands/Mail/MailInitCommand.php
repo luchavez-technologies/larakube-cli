@@ -17,6 +17,7 @@ use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\InteractsWithStalwartApi;
 use App\Traits\InteractsWithTraefik;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesCloudFirewall;
 use App\Traits\RequiresFlagsWhenNonInteractive;
@@ -36,7 +37,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MailInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, LaraKubeOutput, ManagesCloudFirewall, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, InteractsWithVolumeSizing, LaraKubeOutput, ManagesCloudFirewall, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'mail:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -170,6 +171,7 @@ class MailInitCommand extends Command
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::MAIL, $resourceInstance);
 
         $manifest = view('k8s.mail.stalwart', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $resourceInstance,
             'aliasHosts' => $aliasHosts,

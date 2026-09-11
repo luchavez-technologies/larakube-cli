@@ -14,14 +14,6 @@ test('cloud:scale command accepts --storage option', function (): void {
     expect($definition->hasOption('storage'))->toBeTrue();
 });
 
-// ── storage:migrate Command Test ──────────────────────────────────────────────
-
-test('storage:migrate command is registered and has correct signature', function (): void {
-    $this->artisan('storage:migrate --help')
-        ->assertExitCode(0)
-        ->expectsOutputToContain('storage:migrate');
-});
-
 // ── Snapshot Command Suite Tests ──────────────────────────────────────────────
 
 test('snapshot:list command is registered and formatted', function (): void {

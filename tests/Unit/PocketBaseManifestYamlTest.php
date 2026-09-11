@@ -97,3 +97,21 @@ test('pocketbase deployment relies on the image\'s own entrypoint, not a broken 
     expect($envNames)->toContain('PB_ADMIN_EMAIL', 'PB_ADMIN_PASSWORD')
         ->not->toContain('ADMIN_EMAIL', 'ADMIN_PASSWORD');
 });
+
+test('pocketbase manifest declares its own PVC, ahead of the Deployment that mounts it', function (): void {
+    // Order matters: kubectl applies a multi-document file top-down, so the
+    // claim must precede the Deployment that mounts it.
+    $documents = pocketbaseDocuments(pocketbaseManifest());
+    $kinds = array_column($documents, 'kind');
+
+    $claim = collect($documents)->firstWhere('kind', 'PersistentVolumeClaim');
+    expect($claim)->not->toBeNull()
+        ->and($claim['metadata']['name'])->toBe('data-pocketbase-pvc')
+        ->and($claim['metadata']['namespace'])->toBe('larakube-shared')
+        ->and(array_search('PersistentVolumeClaim', $kinds, true))
+        ->toBeLessThan(array_search('Deployment', $kinds, true));
+
+    $deployment = collect($documents)->firstWhere('kind', 'Deployment');
+    $volume = collect($deployment['spec']['template']['spec']['volumes'])->firstWhere('name', 'pb-data');
+    expect($volume['persistentVolumeClaim']['claimName'])->toBe('data-pocketbase-pvc');
+});

@@ -14,6 +14,7 @@ use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\InteractsWithSso;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
@@ -32,7 +33,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithVolumeSizing, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'sso:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -173,6 +174,7 @@ class SsoInitCommand extends Command
         });
 
         $manifest = view('k8s.sso.zitadel', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'adminEmail' => $adminEmail,
             'plexNamespace' => $this->plexNamespace(),

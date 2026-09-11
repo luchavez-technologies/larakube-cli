@@ -9,7 +9,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('insights-storage', '5Gi', true) }}
 ---
 @endif
 apiVersion: apps/v1

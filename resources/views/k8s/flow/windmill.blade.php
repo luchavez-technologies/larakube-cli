@@ -9,7 +9,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('flow-windmill-db-storage', '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment

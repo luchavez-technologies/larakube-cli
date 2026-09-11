@@ -101,7 +101,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 2Gi
+      storage: {{ $volumeSize('prometheus-storage', '2Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -231,7 +231,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('loki-storage', '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -358,7 +358,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('tempo-storage', '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -741,7 +741,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 1Gi
+      storage: {{ $volumeSize('grafana-storage', '1Gi', false) }}
 @endif
 ---
 apiVersion: apps/v1

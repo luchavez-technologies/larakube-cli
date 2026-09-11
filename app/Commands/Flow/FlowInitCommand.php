@@ -11,6 +11,7 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithFlow;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
@@ -27,7 +28,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class FlowInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'flow:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -130,6 +131,7 @@ class FlowInitCommand extends Command
         });
 
         $manifest = view("k8s.flow.{$engine}", [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'engine' => $engine,
             'host' => $host,
             'dbPassword' => $dbPassword,

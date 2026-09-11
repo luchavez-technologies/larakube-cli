@@ -28,7 +28,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ $volumeSize('stalwart-data', '5Gi', true) }}
 ---
 @if($storeBootstrap ?? null)
 {{-- EXPERIMENTAL, local-only: pre-seeds Stalwart's DataStore config.json so

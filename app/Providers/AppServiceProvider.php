@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Console\Application as Artisan;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Phar;
 use Spatie\LaravelData\LaravelDataServiceProvider;
@@ -24,6 +25,18 @@ class AppServiceProvider extends ServiceProvider
         // passed it explicitly, resolved fresh from GlobalConfigData::load() at the
         // point of use (see ManagesCompanions::deployCompanion(), the
         // SharedClusterService reconcile, etc.).
+
+        // Every k8s template may call $volumeSize('claim', '5Gi', $growth) to size
+        // a PVC. A command that resolves it against the live cluster passes its
+        // own resolver (InteractsWithVolumeSizing); this default stands in for
+        // every other render — tests, a tool whose :init has not been wired yet —
+        // and simply returns the template's own default. Without it a template
+        // and its command would have to change in lockstep or the render fatals.
+        View::composer('k8s.*', function ($view): void {
+            if (! array_key_exists('volumeSize', $view->getData())) {
+                $view->with('volumeSize', fn (string $claim, string $default, bool $growth = false): string => $default);
+            }
+        });
 
         // Ensure view cache directory exists
         $viewCachePath = config('view.compiled');

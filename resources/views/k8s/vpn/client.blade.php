@@ -10,7 +10,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 128Mi
+      storage: {{ $volumeSize('vpn-client-storage'.$sfx, '128Mi', false) }}
 ---
 apiVersion: apps/v1
 kind: Deployment

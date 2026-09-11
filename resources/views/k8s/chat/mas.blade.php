@@ -38,7 +38,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 2Gi
+      storage: {{ $volumeSize($masDbStorageName, '2Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment

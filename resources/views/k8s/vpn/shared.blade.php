@@ -8,7 +8,7 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 2Gi
+      storage: {{ $volumeSize('vpn-management-storage'.$sfx, '2Gi', false) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
