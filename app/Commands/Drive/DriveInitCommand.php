@@ -10,6 +10,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
+use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsClusterSecrets;
 use App\Traits\RequiresFlagsWhenNonInteractive;
@@ -24,7 +25,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class DriveInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ReadsClusterSecrets, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ReadsClusterSecrets, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'drive:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -121,8 +122,16 @@ class DriveInitCommand extends Command
 
         $extensions = $this->resolveExtensions();
 
+        // Re-render WITH the office layer whenever CODE is deployed, so a plain
+        // re-run of this command never silently strips the WOPI sidecar that
+        // drive:office:init added.
+        $office = $this->driveOfficeInstalled($kubectl, $ns);
+
         $manifest = view('k8s.drive.ocis', [
+            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
+            'office' => $office,
+            'officeHost' => "office.{$host}",
             's3Creds' => $s3Creds,
             'plexNamespace' => $this->plexNamespace(),
             'noPlex' => $noPlex,
@@ -207,6 +216,13 @@ class DriveInitCommand extends Command
     protected function driveNamespace(): string
     {
         return 'larakube-shared';
+    }
+
+    protected function driveOfficeInstalled(string $kubectl, string $ns): bool
+    {
+        return trim(Process::run(
+            "{$kubectl} get deployment drive-code -n {$ns} -o name --ignore-not-found",
+        )->output()) !== '';
     }
 
     protected function readDriveSecret(string $kubectl, string $ns, string $key): ?string

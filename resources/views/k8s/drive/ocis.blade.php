@@ -1,3 +1,8 @@
+@php($ocisImage = 'owncloud/ocis:8.0.6')
+@php($cspYaml = view('k8s.drive.csp', ['office' => $office ?? false, 'officeHost' => $officeHost ?? ''])->render())
+{{-- Indent here rather than in the partial: rendering drops the leading
+     whitespace of its first line, which silently empties the block scalar. --}}
+@php($cspYaml = implode("\n", array_map(fn ($l) => $l === '' ? '' : '    '.$l, explode("\n", rtrim($cspYaml)))))
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,10 +19,15 @@ spec:
     metadata:
       labels:
         app: drive-ocis
+      annotations:
+        # csp.yaml is mounted by subPath, which NEVER sees a ConfigMap update —
+        # and even a plain mount would need a restart. Without this checksum the
+        # CSP change applies silently and the running pod keeps the old policy.
+        larakube.io/csp-checksum: "{{ substr(md5($cspYaml), 0, 10) }}"
     spec:
       containers:
         - name: ocis
-          image: owncloud/ocis:8.0.6
+          image: {{ $ocisImage }}
           # Headless boot: everything is configured via OCIS_* env vars, so we skip
           # the interactive `ocis init` wizard and start the full server directly.
           command: ["ocis"]
@@ -232,6 +242,81 @@ spec:
               mountPath: /etc/ocis/csp.yaml
               subPath: csp.yaml
               readOnly: true
+@if ($office ?? false)
+        # The WOPI bridge is a SIDECAR, not its own Deployment: every oCIS
+        # service binds 127.0.0.1 (registry 9233, gateway 9142) and the micro
+        # registry hands back loopback addresses, so only a process sharing this
+        # pod's network namespace can reach them.
+        - name: collaboration
+          image: {{ $ocisImage }}
+          command: ["ocis"]
+          args: ["collaboration", "server"]
+          env:
+            - name: OCIS_URL
+              value: "https://{{ $host }}"
+            - name: OCIS_INSECURE
+              value: "true"
+            - name: COLLABORATION_HTTP_ADDR
+              value: "0.0.0.0:9300"
+            - name: COLLABORATION_GRPC_ADDR
+              value: "127.0.0.1:9301"
+            - name: MICRO_REGISTRY
+              value: "nats-js-kv"
+            - name: MICRO_REGISTRY_ADDRESS
+              value: "127.0.0.1:9233"
+            # What CODE calls back on to read and write the file. Cluster-internal
+            # by design — the browser never follows it.
+            - name: COLLABORATION_WOPI_SRC
+              value: "http://drive-collaboration.larakube-shared.svc.cluster.local:9300"
+            - name: COLLABORATION_WOPI_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: drive-office-secrets
+                  key: wopi-secret
+            - name: COLLABORATION_APP_NAME
+              value: "CollaboraOnline"
+            - name: COLLABORATION_APP_PRODUCT
+              value: "Collabora"
+            - name: COLLABORATION_APP_ADDR
+              value: "https://{{ $officeHost }}"
+            - name: COLLABORATION_APP_ICON
+              value: "https://{{ $officeHost }}/favicon.ico"
+            - name: COLLABORATION_APP_INSECURE
+              value: "true"
+            # Proof keys are a Microsoft Office Online mechanism; Collabora never
+            # sends WopiProof/WopiStamp headers, so the bridge rejected every
+            # CheckFileInfo with "ProofKeys verification failed: Invalid
+            # timestamp" and CODE showed an empty editor. The WOPI access token
+            # signed with COLLABORATION_WOPI_SECRET is the real authentication.
+            - name: COLLABORATION_APP_PROOF_DISABLE
+              value: "true"
+            - name: COLLABORATION_CS3API_DATAGATEWAY_INSECURE
+              value: "true"
+            - name: OCIS_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: drive-secrets
+                  key: jwt-secret
+            - name: OCIS_TRANSFER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: drive-secrets
+                  key: transfer-secret
+            - name: OCIS_MACHINE_AUTH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: drive-secrets
+                  key: machine-auth-api-key
+            - name: OCIS_SERVICE_ACCOUNT_ID
+              value: "4c510ada-c86b-4815-8820-42cdf27c3d51"
+            - name: OCIS_SERVICE_ACCOUNT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: drive-secrets
+                  key: service-account-secret
+          ports:
+            - containerPort: 9300
+@endif
       volumes:
         - name: drive-ocis-data
           persistentVolumeClaim:
@@ -264,42 +349,7 @@ data:
   # 'none'" hardening in the official example is deliberately not adopted here
   # to keep the diff to exactly what the SSO login requires.
   csp.yaml: |
-    directives:
-      child-src:
-        - '''self'''
-      connect-src:
-        - '''self'''
-        - 'blob:'
-        - 'https://raw.githubusercontent.com/owncloud/awesome-ocis/'
-        - '${OCIS_OIDC_ISSUER}'
-      default-src:
-        - '''none'''
-      font-src:
-        - '''self'''
-      frame-ancestors:
-        - '''self'''
-      frame-src:
-        - '''self'''
-        - 'blob:'
-        - 'https://embed.diagrams.net/'
-      img-src:
-        - '''self'''
-        - 'data:'
-        - 'blob:'
-        - 'https://raw.githubusercontent.com/owncloud/awesome-ocis/'
-      manifest-src:
-        - '''self'''
-      media-src:
-        - '''self'''
-      object-src:
-        - '''self'''
-        - 'blob:'
-      script-src:
-        - '''self'''
-        - '''unsafe-inline'''
-      style-src:
-        - '''self'''
-        - '''unsafe-inline'''
+{!! $cspYaml !!}
 ---
 apiVersion: v1
 kind: Service
@@ -312,6 +362,20 @@ spec:
   ports:
     - port: 80
       targetPort: 80
+@if ($office ?? false)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drive-collaboration
+  namespace: larakube-shared
+spec:
+  selector:
+    app: drive-ocis
+  ports:
+    - port: 9300
+      targetPort: 9300
+@endif
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -323,6 +387,6 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 10Gi
+      storage: {{ $volumeSize('drive-ocis-storage', '10Gi', true) }}
 ---
 @include('k8s.drive.ingress', ['engine' => 'ocis'])
