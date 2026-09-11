@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use BackedEnum;
 
 /**
  * Canonical implementation of HasHosts::getHosts() for components whose
@@ -21,6 +22,11 @@ trait DerivesHostsFromServices
 {
     public function getHosts(ConfigData $config, string $environment = 'local'): array
     {
+        // A managed or Commons-backed component has no project-scoped route to publish.
+        if ($this instanceof BackedEnum && in_array($this->value, $config->getExternallyHosted($environment), true)) {
+            return [];
+        }
+
         $hosts = [];
         foreach ($this->getHostServices() as $service => $label) {
             $hosts[$config->getServiceHost($service, $environment)] = $label;

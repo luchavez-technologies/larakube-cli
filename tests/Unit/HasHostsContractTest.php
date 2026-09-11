@@ -191,3 +191,33 @@ test('all HasHosts implementers conform to the new contract', function (): void 
             ->and($component->getHostServices())->toBeArray();
     }
 });
+
+test('an externally hosted component publishes no project-scoped host', function (): void {
+    $config = ConfigData::from([
+        'name' => 'demo',
+        'objectStorage' => 'seaweedfs',
+        'scoutDriver' => 'meilisearch',
+        'environments' => ['local' => [
+            'managed' => ['seaweedfs', 'meilisearch'],
+            'plex' => ['seaweedfs', 'meilisearch'],
+        ]],
+    ]);
+
+    expect(StorageDriver::SEAWEEDFS->getHosts($config, 'local'))->toBeEmpty()
+        ->and(SearchDriver::MEILISEARCH->getHosts($config, 'local'))->toBeEmpty()
+        ->and(array_values($config->getAllHosts('local')))
+        ->not->toContain('SeaweedFS S3 API')
+        ->not->toContain('Meilisearch Console');
+});
+
+test('a self-hosted component still publishes its hosts', function (): void {
+    $config = ConfigData::from([
+        'name' => 'demo',
+        'objectStorage' => 'seaweedfs',
+        'scoutDriver' => 'meilisearch',
+        'environments' => ['local' => []],
+    ]);
+
+    expect(StorageDriver::SEAWEEDFS->getHosts($config, 'local'))->not->toBeEmpty()
+        ->and(SearchDriver::MEILISEARCH->getHosts($config, 'local'))->not->toBeEmpty();
+});

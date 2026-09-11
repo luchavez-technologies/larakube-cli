@@ -24,6 +24,9 @@ trait InteractsWithToolRegistry
      */
     private array $registeredToolsCache = [];
 
+    /** @var array<string, list<string>> */
+    private array $clusterDeploymentNamesCache = [];
+
     /**
      * One flat, self-describing list across every tool and every instance —
      * each entry carries its own `tool` field rather than being nested under
@@ -385,7 +388,7 @@ trait InteractsWithToolRegistry
      * Ask the cluster whether a tool's workload is actually there, independent
      * of the registry.
      */
-    protected function isToolPresentOnCluster(string $kubectl, ClusterTool $tool): bool
+    protected function isToolPresentOnCluster(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
     {
         if ($tool === ClusterTool::DNS) {
             return trim(Process::run("{$kubectl} get deployment -n larakube-shared --no-headers --ignore-not-found 2>/dev/null | grep external-dns")->output()) !== '';
@@ -393,11 +396,49 @@ trait InteractsWithToolRegistry
 
         $probe = $tool->service()?->presenceProbe();
 
-        if ($probe === null) {
-            return false;
+        if ($probe !== null && trim(Process::run("{$kubectl} get {$probe} --no-headers --ignore-not-found 2>/dev/null")->output()) !== '') {
+            return true;
         }
 
-        return trim(Process::run("{$kubectl} get {$probe} --no-headers --ignore-not-found 2>/dev/null")->output()) !== '';
+        // The service probe names one fixed Deployment, so it cannot see an
+        // engine- or instance-suffixed install. Additive: it only adds a true.
+        return $tool->supportsMultipleInstances() && $this->hasInstancedDeployment($kubectl, $tool, $instance);
+    }
+
+    /** Whether a convention-named Deployment of $tool (optionally one instance) exists. */
+    protected function hasInstancedDeployment(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
+    {
+        foreach ($this->clusterDeploymentNames($kubectl, $tool->namespace()) as $name) {
+            $hit = ClusterTool::forInstancedDeployment($name);
+
+            if ($hit !== null && $hit['tool'] === $tool && ($instance === null || $instance === '' || $hit['instance'] === $instance)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Deployment names in a namespace, memoized per kubectl prefix for the run —
+     * `tool:list` asks once per tool, and most tools share larakube-shared.
+     *
+     * @return list<string>
+     */
+    protected function clusterDeploymentNames(string $kubectl, string $namespace): array
+    {
+        $key = $kubectl.'|'.$namespace;
+
+        if (array_key_exists($key, $this->clusterDeploymentNamesCache)) {
+            return $this->clusterDeploymentNamesCache[$key];
+        }
+
+        $out = trim(Process::run(
+            "{$kubectl} get deployment -n ".escapeshellarg($namespace)
+            .' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.name}{"\n"}{end}'),
+        )->output());
+
+        return $this->clusterDeploymentNamesCache[$key] = $out === '' ? [] : array_values(array_filter(array_map('trim', explode("\n", $out))));
     }
 
     /**

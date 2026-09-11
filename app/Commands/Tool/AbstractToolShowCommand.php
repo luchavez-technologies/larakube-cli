@@ -81,11 +81,10 @@ abstract class AbstractToolShowCommand extends Command
         // handful of {tool}:init commands ever call registerDeployedTool(), so
         // trusting it alone reported long-running installs as "not installed"
         // (sso:show said Zitadel was missing while sso-zitadel had been up for
-        // days). Fall back to asking the cluster itself. isToolPresentOnCluster()
-        // has no instance concept — it's a coarse "does this tool exist at all"
-        // probe, which is the correct fallback only for the main instance.
+        // days). Fall back to asking the cluster itself, by instance, so an
+        // engine- or instance-suffixed Deployment counts as installed too.
         $installed = $this->isToolRegistered($kubectl, $tool, $instance)
-            || $this->isToolPresentOnCluster($kubectl, $tool);
+            || $this->isToolPresentOnCluster($kubectl, $tool, $instance);
         $host = $this->resolveHost($tool, $env, $kubectl, $instance);
         $rows = $this->rows($host, $env, $kubectl, $instance);
 

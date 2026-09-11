@@ -6,7 +6,6 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithData
 {
@@ -25,13 +24,6 @@ trait InteractsWithData
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    protected function isDataInstalled(string $kubectl, string $ns): bool
-    {
-        $out = Process::run("{$kubectl} get deployment data-directus -n {$ns} --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
-    }
-
     protected function readDataSecret(string $kubectl, string $ns, string $key, string $instance = ''): ?string
     {
         $secretName = $instance !== '' ? "data-secrets-{$instance}" : 'data-secrets';
@@ -48,20 +40,5 @@ trait InteractsWithData
         }
 
         return $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
-    }
-
-    protected function dataAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
-    {
-        $kubectl = $this->dataKubectl($context);
-        $ns = $this->dataNamespace();
-
-        if (! $this->isDataInstalled($kubectl, $ns)) {
-            return null;
-        }
-
-        return [
-            'host' => $this->resolveDataHostReadOnly($env, $config),
-            'label' => 'Directus',
-        ];
     }
 }

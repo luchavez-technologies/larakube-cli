@@ -420,17 +420,6 @@ class ToolListCommand extends Command
     }
 
     /** @return list<string> */
-    protected function clusterDeploymentNames(string $kubectl, string $namespace): array
-    {
-        $out = trim(Process::run(
-            "{$kubectl} get deployment -n ".escapeshellarg($namespace)
-            .' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.name}{"\n"}{end}'),
-        )->output());
-
-        return $out === '' ? [] : array_values(array_filter(array_map('trim', explode("\n", $out))));
-    }
-
-    /** @return list<string> */
     protected function clusterIngressHosts(string $kubectl, string $namespace): array
     {
         $out = trim(Process::run(
