@@ -7,6 +7,7 @@ use App\Contracts\HasComposerDependencies;
 use App\Contracts\HasJsDependencies;
 use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
+use App\Enums\AppFramework;
 
 /**
  * Trait InteractsWithArchitecturalEngine
@@ -42,6 +43,11 @@ trait InteractsWithArchitecturalEngine
 
         if ($component instanceof HasLifecycleHooks) {
             $component->onPostInstall($projectPath, $config);
+        }
+
+        // Env values apply to every framework; the rest is PHP-only.
+        if (! ($config->framework ?? AppFramework::LARAVEL)->isPhp()) {
+            return;
         }
 
         // Execute PHP installation if needed
@@ -102,6 +108,11 @@ trait InteractsWithArchitecturalEngine
             if ($pod instanceof HasLifecycleHooks) {
                 $pod->onPostInstall($projectPath, $config);
             }
+        }
+
+        // Env values apply to every framework; the rest is PHP-only.
+        if (! ($config->framework ?? AppFramework::LARAVEL)->isPhp()) {
+            return;
         }
 
         // PHP
