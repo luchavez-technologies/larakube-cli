@@ -40,10 +40,24 @@ spec:
           ports:
             - containerPort: {{ $config->getServerVariation()->containerPort() }}
           env:
+@if($config->framework === \App\Enums\AppFramework::WORDPRESS)
+            # WordPress shares the serversideup image but has no artisan to autorun.
+            - name: AUTORUN_ENABLED
+              value: "false"
+            # Bedrock's document root is web/, not the image's default public/.
+            - name: NGINX_WEBROOT
+              value: /var/www/html/web
+            # Bedrock's names for the database keys every writer, the Commons included, fills.
+            - name: DB_NAME
+              value: "$(DB_DATABASE)"
+            - name: DB_USER
+              value: "$(DB_USERNAME)"
+@else
             - name: AUTORUN_ENABLED
               value: "true"
             - name: AUTORUN_LARAVEL_MIGRATION
               value: "true"
+@endif
 @if($config->isSystem())
             - name: LARAKUBE_HOST_WORKSPACE
               value: {{ $workspacePath }}
@@ -74,26 +88,32 @@ spec:
           # SIGKILLed mid-flight. failureThreshold 30 x 10s = up to 5 min.
           startupProbe:
             httpGet:
-              path: /up
+              path: {{ ($config->framework ?? \App\Enums\AppFramework::LARAVEL)->healthProbePath() }}
               port: {{ $config->getServerVariation()->containerPort() }}
             periodSeconds: 10
             timeoutSeconds: 30
             failureThreshold: 30
           livenessProbe:
             httpGet:
-              path: /up
+              path: {{ ($config->framework ?? \App\Enums\AppFramework::LARAVEL)->healthProbePath() }}
               port: {{ $config->getServerVariation()->containerPort() }}
             initialDelaySeconds: 120
             periodSeconds: 60
             timeoutSeconds: 30
           readinessProbe:
             httpGet:
-              path: /up
+              path: {{ ($config->framework ?? \App\Enums\AppFramework::LARAVEL)->healthProbePath() }}
               port: {{ $config->getServerVariation()->containerPort() }}
             initialDelaySeconds: 30
             periodSeconds: 20
             timeoutSeconds: 30
           volumeMounts:
+@if($config->framework === \App\Enums\AppFramework::WORDPRESS)
+            # Media outlives the image; Bedrock keeps it under web/app/uploads.
+            - name: storage
+              mountPath: /var/www/html/web/app/uploads
+              subPath: uploads
+@else
             - name: storage
               mountPath: /var/www/html/storage/logs
               subPath: logs
@@ -112,6 +132,7 @@ spec:
             - name: storage
               mountPath: /var/www/html/storage/app/public
               subPath: app/public
+@endif
 @if($config->hasDatabase(\App\Enums\DatabaseDriver::SQLITE))
             - name: data
               mountPath: /var/lib/larakube

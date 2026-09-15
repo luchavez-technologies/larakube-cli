@@ -100,7 +100,8 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
     {
         return match ($this) {
             self::LARAVEL, self::STATAMIC => '/up',
-            self::WORDPRESS => '/wp-includes/version.php',
+            // Bedrock serves WordPress core from web/wp; no database needed to answer.
+            self::WORDPRESS => '/wp/wp-includes/version.php',
             self::NEXTJS => '/api/health',
             self::SPRINGBOOT => '/actuator/health',
             self::DJANGO, self::FASTAPI, self::DOTNET, self::GIN, self::AXUM, self::NESTJS, self::ADONISJS => '/healthz',
@@ -111,6 +112,12 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
     public function isStaticSpa(): bool
     {
         return in_array($this, [self::ASTRO, self::VITE, self::DOCUSAURUS], true);
+    }
+
+    /** Whether components may add composer packages, artisan commands or Laravel JS. */
+    public function isPhp(): bool
+    {
+        return in_array($this, [self::LARAVEL, self::STATAMIC, self::WORDPRESS], true);
     }
 
     /**

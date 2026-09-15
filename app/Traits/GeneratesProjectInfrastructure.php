@@ -887,6 +887,46 @@ trait GeneratesProjectInfrastructure
         return $vars;
     }
 
+    /**
+     * Generate Bedrock's salts once per env file. Only a salt that is absent, empty or
+     * still Bedrock's placeholder is written, so a re-run never logs anyone out; a cloud
+     * env file's salt copied from .env is replaced, so environments never share cookies.
+     */
+    protected function seedBedrockSalts(ConfigData $config): void
+    {
+        $keys = ['AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY', 'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT'];
+        $path = $config->getPath();
+        $local = [];
+
+        foreach (['local', ...$config->getCloudEnvironments()] as $environment) {
+            $file = $path.'/'.($environment === 'local' ? '.env' : '.env.'.$environment);
+
+            if (! is_file($file)) {
+                continue;
+            }
+
+            $current = $this->readDotEnv($file);
+            $generated = [];
+
+            foreach ($keys as $key) {
+                $value = $current[$key] ?? '';
+                $inherited = $environment !== 'local' && $value === ($local[$key] ?? null);
+
+                if ($value === '' || $value === 'generateme' || $inherited) {
+                    $generated[$key] = bin2hex(random_bytes(32));
+                }
+            }
+
+            if ($generated !== []) {
+                $this->syncEnvFile($path, $generated, false, $environment);
+            }
+
+            if ($environment === 'local') {
+                $local = $this->readDotEnv($file);
+            }
+        }
+    }
+
     protected function generateK8sManifests(ConfigData $config): void
     {
         $config->resolveDependencies();
@@ -1596,7 +1636,16 @@ trait GeneratesProjectInfrastructure
                         }
                     }
                 }
+
+                if ($config->framework === AppFramework::WORDPRESS) {
+                    $this->line('  <fg=gray>[.ENV]</> Would generate any missing WordPress salts.');
+                }
             } else {
+                // Bedrock ships no .env, and syncEnvFile only updates one that exists.
+                if ($config->framework === AppFramework::WORDPRESS && ! file_exists($config->getPath().'/.env')) {
+                    touch($config->getPath().'/.env');
+                }
+
                 $this->syncEnvFile($config->getPath(), $envChanges);
 
                 // Sync every configured cloud environment's own .env.<environment>
@@ -1609,6 +1658,10 @@ trait GeneratesProjectInfrastructure
                         $config->getAllEnvironmentVariables($cloudEnv),
                         environment: $cloudEnv,
                     );
+                }
+
+                if ($config->framework === AppFramework::WORDPRESS) {
+                    $this->seedBedrockSalts($config);
                 }
             }
         }

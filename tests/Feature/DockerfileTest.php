@@ -14,6 +14,33 @@ function renderDockerfile(array $overrides = []): string
     return view('docker.php', ['config' => $config])->render();
 }
 
+test('a WordPress build context leaves local uploads out of the image', function (): void {
+    $ignore = fn (array $overrides): string => view('docker.ignore', ['config' => ConfigData::from(array_merge([
+        'name' => 'docktest',
+        'serverVariation' => 'fpm-nginx',
+        'phpVersion' => '8.4',
+        'os' => 'alpine',
+    ], $overrides))])->render();
+
+    expect($ignore(['framework' => 'wordpress']))->toContain('web/app/uploads/*')
+        ->and($ignore([]))->not->toContain('web/app/uploads');
+});
+
+test('a WordPress image has no npm assets stage and owns web/app/uploads instead of Laravel storage', function (): void {
+    $wordpress = renderDockerfile(['framework' => 'wordpress', 'serverVariation' => 'fpm-nginx']);
+    $deploy = substr($wordpress, strpos($wordpress, 'AS deploy'));
+    $laravel = renderDockerfile();
+
+    expect($wordpress)->not->toContain('AS assets')
+        ->not->toContain('npm ci')
+        ->not->toContain('--from=assets')
+        ->and($deploy)->toContain('mkdir -p web/app/uploads')
+        ->not->toContain('storage bootstrap/cache')
+        ->and($laravel)->toContain('AS assets')
+        ->toContain('--from=assets')
+        ->toContain('mkdir -p storage bootstrap/cache');
+});
+
 test('Node is always installed in the development stage, regardless of SSR', function (): void {
     foreach ([[], ['features' => ['ssr']], ['features' => ['horizon', 'queues']]] as $overrides) {
         $dockerfile = renderDockerfile($overrides);

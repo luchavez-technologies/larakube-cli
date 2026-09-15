@@ -24,7 +24,7 @@ test('AppFramework::getLabel returns human-readable names', function (): void {
 test('AppFramework::healthProbePath returns correct paths', function (): void {
     expect(AppFramework::LARAVEL->healthProbePath())->toBe('/up')
         ->and(AppFramework::STATAMIC->healthProbePath())->toBe('/up')
-        ->and(AppFramework::WORDPRESS->healthProbePath())->toBe('/wp-includes/version.php')
+        ->and(AppFramework::WORDPRESS->healthProbePath())->toBe('/wp/wp-includes/version.php')
         ->and(AppFramework::NEXTJS->healthProbePath())->toBe('/api/health');
 });
 

@@ -75,6 +75,7 @@ jobs:
       - name: 📦 Install Composer dependencies
         run: composer install --optimize-autoloader --no-interaction --no-progress --ignore-platform-reqs
 
+@if($config->framework !== \App\Enums\AppFramework::WORDPRESS)
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -83,13 +84,16 @@ jobs:
 
       - name: 🛠 Install Node dependencies
         run: {!! $config->getPackageManager()->installCommand() !!}
+@endif
 
 @if($audit['dependencyAudit'])
 
       - name: 🧪 Dependency audit (Composer & NPM)
         run: |
           composer audit
+@if($config->framework !== \App\Enums\AppFramework::WORDPRESS)
           npm audit --audit-level={{ $audit['auditLevel'] }}
+@endif
 @endif
 @if($audit['semgrep'])
 
@@ -245,6 +249,7 @@ jobs:
       - name: 📦 Install Composer dependencies
         run: composer install --optimize-autoloader --no-interaction --no-progress --ignore-platform-reqs
 
+@if($config->framework !== \App\Enums\AppFramework::WORDPRESS)
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -253,6 +258,7 @@ jobs:
 
       - name: 🛠 Install Node dependencies
         run: {!! $config->getPackageManager()->installCommand() !!}
+@endif
 @if($config->usesWayfinder())
 
       - name: 🏎 Generate Wayfinder files

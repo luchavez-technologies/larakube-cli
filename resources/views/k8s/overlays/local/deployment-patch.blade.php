@@ -63,7 +63,11 @@ spec:
           volumeMounts:
             - name: code
               mountPath: /var/www/html
-@if($name !== 'node')
+@if($name !== 'node' && $config->framework === \App\Enums\AppFramework::WORDPRESS)
+            - name: storage
+              mountPath: /var/www/html/web/app/uploads
+              subPath: uploads
+@elseif($name !== 'node')
             - name: storage
               mountPath: /var/www/html/storage/logs
               subPath: logs

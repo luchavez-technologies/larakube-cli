@@ -11,6 +11,7 @@ USER root
 RUN install-php-extensions {{ implode(' ', $config->getAllPhpExtensions()) }}
 USER www-data
 @endif
+@php($bedrock = $config->framework === \App\Enums\AppFramework::WORDPRESS)
 
 ############################################
 # Development Image
@@ -37,7 +38,7 @@ RUN docker-php-serversideup-set-id www-data $USER_ID:$GROUP_ID  && \
     chown -R www-data:www-data storage bootstrap/cache && \
     chmod -R 775 storage bootstrap/cache
 
-# Drop privileges back to www-data    
+# Drop privileges back to www-data
 USER www-data
 
 ############################################
@@ -48,6 +49,7 @@ FROM base AS ci
 # Sometimes CI images need to run as root
 USER root
 
+@unless($bedrock)
 ############################################
 # Assets Build Stage
 # Runs `npm run build` inside Docker so the compiled JS always reflects the
@@ -64,6 +66,7 @@ WORKDIR /var/www/html
 COPY --chown=www-data:www-data . .
 RUN --mount=type=secret,id=dotenv,target=/var/www/html/.env \
     npm ci && npm run build
+@endunless
 
 ############################################
 # Production Image
@@ -82,10 +85,18 @@ RUN apk add --no-cache nodejs npm
 
 # Copy application files
 COPY --chown=www-data:www-data . /var/www/html
+@unless($bedrock)
 
 # Overlay assets built inside Docker (correct VITE_* baking, no host pollution)
 COPY --from=assets --chown=www-data:www-data /var/www/html/public/build /var/www/html/public/build
+@endunless
 
+@if($bedrock)
+# Bedrock has no build step; uploads are mounted from a volume at this path.
+RUN mkdir -p web/app/uploads && \
+    chown -R www-data:www-data web/app/uploads && \
+    chmod -R 775 web/app/uploads
+@else
 # Ensure storage and bootstrap are owned by www-data
 # Sub-paths will be handled by K8s volume mounts
 RUN mkdir -p storage bootstrap/cache && \
@@ -96,6 +107,7 @@ RUN mkdir -p storage bootstrap/cache && \
     chown -R www-data:www-data storage bootstrap/cache && \
 @endif
     chmod -R 775 storage bootstrap/cache
+@endif
 
 # Drop privileges back to www-data
 USER www-data

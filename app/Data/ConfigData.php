@@ -1609,6 +1609,17 @@ class ConfigData extends Data
             }
         }
 
+        // Bedrock refuses to boot without these, and reads none of Laravel's APP_* keys.
+        if ($this->framework === AppFramework::WORDPRESS) {
+            $envs['WP_ENV'] = match ($environment) {
+                'local' => 'development',
+                'staging' => 'staging',
+                default => 'production',
+            };
+            $envs['WP_HOME'] = $this->getAppUrl($environment);
+            $envs['WP_SITEURL'] = $this->getAppUrl($environment).'/wp';
+        }
+
         // Cloud environments deploy production-safe: APP_ENV=production (hardcoded,
         // NOT the env name) + debug OFF, instead of inheriting local/true from the
         // scaffolded .env. Hardcoded because Laravel keys its safeguards on exactly

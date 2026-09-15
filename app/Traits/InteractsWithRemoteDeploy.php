@@ -84,6 +84,13 @@ trait InteractsWithRemoteDeploy
             return false;
         }
 
+        // Bedrock has no package.json and no artisan: composer install is its whole build.
+        if ($config->framework === AppFramework::WORDPRESS) {
+            $this->newLine();
+
+            return true;
+        }
+
         // 2. Node install (needed so node_modules exist for the Docker COPY context)
         $this->line("  <fg=gray>🛠  {$pm} install</>");
         $installCmd = $config->getPackageManager()->installCommand();

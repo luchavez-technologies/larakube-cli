@@ -94,6 +94,22 @@ function ghaViewData(array $overrides = []): array
     ], $overrides);
 }
 
+test('a WordPress workflow installs composer but never sets up Node or audits npm', function (): void {
+    $wordpress = new ConfigData(name: 'test-app');
+    $wordpress->framework = App\Enums\AppFramework::WORDPRESS;
+    $wordpress->setPackageManager(PackageManager::NPM);
+
+    $workflow = view('k8s.cloud-pilot-deploy', ghaViewData(['config' => $wordpress]))->render();
+    $laravel = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
+
+    expect($workflow)->toContain('composer install')
+        ->not->toContain('Setup Node.js')
+        ->not->toContain('Install Node dependencies')
+        ->not->toContain('npm audit')
+        ->and($laravel)->toContain('Setup Node.js')
+        ->toContain('npm audit');
+});
+
 test('GHA workflow generation uses correct literal injection syntax', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
 

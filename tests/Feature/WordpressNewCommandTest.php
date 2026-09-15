@@ -82,7 +82,7 @@ test('wordpress:new pulls and runs composer create-project through the resolved 
 test('AppFramework WORDPRESS framework value is correct', function (): void {
     expect(AppFramework::WORDPRESS->value)->toBe('wordpress')
         ->and(AppFramework::WORDPRESS->getLabel())->toBe('WordPress (Bedrock)')
-        ->and(AppFramework::WORDPRESS->healthProbePath())->toBe('/wp-includes/version.php');
+        ->and(AppFramework::WORDPRESS->healthProbePath())->toBe('/wp/wp-includes/version.php');
 });
 
 test('WordPress DatabaseDriver matrix: only MySQL and MariaDB are valid', function (): void {
@@ -157,6 +157,77 @@ test('WordPress config pins the Nginx server variation so the Dockerfile renders
 
     expect($rendered)->toContain('serversideup/php:8.4-fpm-nginx')
         ->and(ServerVariation::FPM_NGINX->value)->toBe('fpm-nginx');
+});
+
+function wordpressManifestConfig(AppFramework $framework): ConfigData
+{
+    $config = new ConfigData;
+    $config->framework = $framework;
+    $config->phpVersion = PhpVersion::PHP_8_4;
+    $config->serverVariation = ServerVariation::FPM_NGINX;
+    $config->setName('wp');
+    $config->setDatabase(DatabaseDriver::MYSQL);
+    $config->setCacheDriver(CacheDriver::REDIS);
+    $config->setObjectStorage(StorageDriver::MINIO);
+
+    return $config;
+}
+
+test('the WordPress web pod turns off serversideup autorun, since there is no artisan', function (): void {
+    $manifests = generateManifests(wordpressManifestConfig(AppFramework::WORDPRESS));
+
+    expect($manifests)->toMatch('/name: AUTORUN_ENABLED\s+value: "false"/')
+        ->not->toMatch('/name: AUTORUN_ENABLED\s+value: "true"/')
+        ->not->toMatch('/name: AUTORUN_LARAVEL_MIGRATION\s/');
+});
+
+test('the WordPress web pod serves Bedrock\'s web root and probes a file that exists there', function (): void {
+    $manifests = generateManifests(wordpressManifestConfig(AppFramework::WORDPRESS));
+
+    expect($manifests)->toMatch('/name: NGINX_WEBROOT\s+value: \/var\/www\/html\/web\n/')
+        ->not->toContain('path: /up')
+        ->and(substr_count($manifests, 'path: /wp/wp-includes/version.php'))->toBe(3);
+});
+
+test('the WordPress web pod gives Bedrock DB_NAME and DB_USER from the keys every writer fills', function (): void {
+    $manifests = generateManifests(wordpressManifestConfig(AppFramework::WORDPRESS));
+
+    expect($manifests)->toMatch('/name: DB_NAME\s+value: "\$\(DB_DATABASE\)"/')
+        ->toMatch('/name: DB_USER\s+value: "\$\(DB_USERNAME\)"/')
+        ->and(generateManifests(wordpressManifestConfig(AppFramework::LARAVEL)))->not->toContain('DB_NAME');
+});
+
+test('the env roll-up gives Bedrock the URL and environment keys it refuses to boot without', function (): void {
+    $config = wordpressManifestConfig(AppFramework::WORDPRESS);
+    $local = $config->getAllPublicEnvironmentVariables('local');
+    $bedrockKeys = array_flip(['WP_ENV', 'WP_HOME', 'WP_SITEURL']);
+
+    expect($local['WP_ENV'])->toBe('development')
+        ->and($local['WP_HOME'])->toBe($config->getAppUrl('local'))
+        ->and($local['WP_SITEURL'])->toBe($config->getAppUrl('local').'/wp')
+        ->and($config->getAllPublicEnvironmentVariables('staging')['WP_ENV'])->toBe('staging')
+        ->and($config->getAllPublicEnvironmentVariables('production')['WP_ENV'])->toBe('production')
+        ->and(array_intersect_key(wordpressManifestConfig(AppFramework::LARAVEL)->getAllPublicEnvironmentVariables('local'), $bedrockKeys))->toBe([]);
+});
+
+test('WordPress keeps its uploads on the volume and gets none of Laravel\'s storage mounts', function (): void {
+    $wordpress = generateManifests(wordpressManifestConfig(AppFramework::WORDPRESS));
+    $laravel = generateManifests(wordpressManifestConfig(AppFramework::LARAVEL));
+
+    expect($wordpress)->toMatch('/mountPath: \/var\/www\/html\/web\/app\/uploads\s+subPath: uploads/')
+        ->not->toContain('mountPath: /var/www/html/storage/')
+        ->not->toContain('mountPath: /var/www/html/bootstrap/cache')
+        ->and($laravel)->toContain('mountPath: /var/www/html/storage/logs')
+        ->not->toContain('web/app/uploads');
+});
+
+test('a Laravel web pod keeps autorun, its migrations, the default web root and /up', function (): void {
+    $manifests = generateManifests(wordpressManifestConfig(AppFramework::LARAVEL));
+
+    expect($manifests)->toMatch('/name: AUTORUN_ENABLED\s+value: "true"/')
+        ->toMatch('/name: AUTORUN_LARAVEL_MIGRATION\s+value: "true"/')
+        ->not->toContain('NGINX_WEBROOT')
+        ->and(substr_count($manifests, 'path: /up'))->toBe(3);
 });
 
 // ── wp:new Alias Tests ───────────────────────────────────────────────────────

@@ -44,6 +44,46 @@ function remoteDeployProcessHelper(): object
     };
 }
 
+/** Records what the pre-deploy build would run instead of running it. */
+function remoteDeployPreDeployHelper(): object
+{
+    return new class
+    {
+        use InteractsWithRemoteDeploy;
+
+        /** @var list<string> */
+        public array $ran = [];
+
+        public function line($string, $style = null, $verbosity = null) {}
+
+        public function newLine($count = 1) {}
+
+        protected function runStreaming(string $command, int $timeoutSeconds = 0, array $env = []): int
+        {
+            $this->ran[] = $command;
+
+            return 0;
+        }
+
+        protected function laraKubeInfo(string $message): void {}
+
+        protected function laraKubeError(string $message): void {}
+    };
+}
+
+test('a WordPress deploy builds with composer install alone, since Bedrock has no package.json', function (): void {
+    $wordpress = new App\Data\ConfigData(name: 'wp');
+    $wordpress->framework = App\Enums\AppFramework::WORDPRESS;
+    $wordpressHost = remoteDeployPreDeployHelper();
+    $laravelHost = remoteDeployPreDeployHelper();
+
+    expect($wordpressHost->runPreDeploymentSteps($wordpress))->toBeTrue()
+        ->and($wordpressHost->ran)->toHaveCount(1)
+        ->and($wordpressHost->ran[0])->toContain('composer install')
+        ->and($laravelHost->runPreDeploymentSteps(new App\Data\ConfigData(name: 'app')))->toBeTrue()
+        ->and(count($laravelHost->ran))->toBeGreaterThan(1);
+});
+
 test('remoteContextReachable reflects cluster-info exit code', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'larakube-1.2.3.4'";
 

@@ -20,6 +20,11 @@ docker-*.yml
 
 # Next.js build output — rebuilt inside the image; never ship the host's copy.
 .next
+@if($config->framework === \App\Enums\AppFramework::WORDPRESS)
+
+# WordPress uploads live on a volume, never in the image.
+web/app/uploads/*
+@endif
 
 # Dependencies
 # We allow these to support building assets/dependencies on GitHub Runners
