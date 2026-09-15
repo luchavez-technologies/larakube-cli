@@ -26,6 +26,7 @@ test('no scaffolder provisions the Commons on its own any more', function (): vo
         'app/Commands/NewCommand.php',
         'app/Commands/Wordpress/WordpressNewCommand.php',
         'app/Commands/Statamic/StatamicNewCommand.php',
+        'app/Commands/Nextjs/NextjsNewCommand.php',
     ];
 
     foreach ($files as $file) {
@@ -44,6 +45,7 @@ test('each scaffolder joins only after its project exists', function (): void {
         'app/Commands/NewCommand.php' => '$this->runLaravelNew($inputName, $config)',
         'app/Commands/Wordpress/WordpressNewCommand.php' => '$this->runBedrockNew(',
         'app/Commands/Statamic/StatamicNewCommand.php' => '$this->runStatamicNew(',
+        'app/Commands/Nextjs/NextjsNewCommand.php' => '$this->runCreateNextApp(',
     ];
 
     foreach ($cases as $file => $scaffoldCall) {
@@ -63,9 +65,7 @@ test('the dead credentials parameters are gone', function (): void {
 });
 
 test('up wakes the joined Commons services instead of allocating new ones', function (): void {
-    // ensurePlexProvisionedForApp() ALLOCATES, and maps local to a 'production'
-    // tenant suffix — so every local `up` minted a second tenant ({app}) beside
-    // plex:join's ({app}_local) that nothing ever connected to.
+    // up only wakes services a project already joined; it never allocates.
     $up = (string) file_get_contents(base_path('app/Commands/UpCommand.php'));
     $trait = (string) file_get_contents(base_path('app/Traits/InteractsWithPlex.php'));
 
@@ -84,10 +84,16 @@ test('a non-interactive local join is not aborted by the human-only warning', fu
     expect($source)->toContain("! \$this->option('no-interaction') && ! confirm('Continue anyway?', false)");
 });
 
-test('WordPress and Statamic keep their --no-plex escape hatch', function (): void {
-    foreach (['app/Commands/Wordpress/WordpressNewCommand.php', 'app/Commands/Statamic/StatamicNewCommand.php'] as $file) {
+test('WordPress, Statamic and Next.js keep their --no-plex escape hatch', function (): void {
+    foreach (['app/Commands/Wordpress/WordpressNewCommand.php', 'app/Commands/Statamic/StatamicNewCommand.php', 'app/Commands/Nextjs/NextjsNewCommand.php'] as $file) {
         $source = (string) file_get_contents(base_path($file));
 
         expect($source)->toContain("if (! \$this->option('no-plex')) {\n            \$this->joinPlexCommons(");
     }
+});
+
+test('the allocating provisioning path no longer exists', function (): void {
+    $trait = (string) file_get_contents(base_path('app/Traits/InteractsWithPlex.php'));
+
+    expect($trait)->not->toContain('function ensurePlexProvisionedForApp(');
 });

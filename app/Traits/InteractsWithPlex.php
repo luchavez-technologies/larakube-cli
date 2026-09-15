@@ -18,7 +18,6 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 
 use Spatie\TemporaryDirectory\TemporaryDirectory;
-use Throwable;
 
 /**
  * Shared helpers for the Plex feature — the multi-tenant "Commons" (shared
@@ -438,94 +437,6 @@ trait InteractsWithPlex
     public function buildPostgresTenantSql(string $db, string $role, string $password): string
     {
         return $this->plex()->buildPostgresTenantSql($db, $role, $password);
-    }
-
-    /**
-     * @return array{tenant: string, password: string, driver: DatabaseDriver, host: string, port: int, services: list<string>}|null
-     */
-    public function ensurePlexProvisionedForApp(ConfigData $config, string $env = 'local'): ?array
-    {
-        try {
-            $dbDriver = $config->getDatabase();
-            if ($dbDriver === DatabaseDriver::SQLITE || $dbDriver === DatabaseDriver::MONGODB) {
-                return null;
-            }
-
-            if (! $this->plexContextReachable()) {
-                return null;
-            }
-
-            $neededServices = $this->projectCommonsServices($config);
-            if (empty($neededServices)) {
-                return null;
-            }
-
-            if (! $this->ensureCommons($neededServices)) {
-                return null;
-            }
-
-            // Ensure all required Plex Commons services are running (scaled up from 0 if paused)
-            foreach ($neededServices as $svc) {
-                $this->ensurePlexServiceRunning($svc, $this->plexKubectl());
-            }
-
-            $serviceName = $dbDriver->commonsServiceName();
-            if ($serviceName === null) {
-                return null;
-            }
-
-            Process::run($this->plexKubectl().' rollout status deploy/'.$serviceName.' -n '.$this->plexNamespace().' --timeout=60s');
-
-            $tenantSuffix = $env === 'local' ? 'production' : $env;
-            $tenant = $this->plexTenantIdentifier($config->getName(), $tenantSuffix);
-            $password = bin2hex(random_bytes(16));
-
-            if (! $this->allocateDatabase($dbDriver, $tenant, $password)) {
-                return null;
-            }
-
-            // Allocate Redis logical database index if Redis cache driver is selected
-            if (in_array('redis', $neededServices, true)) {
-                $registry = $this->getRegistry();
-                $isReattach = isset($registry['tenants'][$tenant]['redis_index']);
-                $redisIndex = $registry['tenants'][$tenant]['redis_index']
-                    ?? $this->allocateRedisDbIndex($this->registryUsedRedisIndexes($registry));
-
-                if ($redisIndex !== null) {
-                    $spinLabel = $isReattach
-                        ? "Reattaching Redis DB slot #{$redisIndex} for '{$tenant}' in the Commons..."
-                        : "Allocating Redis DB slot #{$redisIndex} for '{$tenant}' in the Commons...";
-
-                    $this->withSpin($spinLabel, function () use (&$registry, $tenant, $redisIndex) {
-                        $registry['tenants'][$tenant]['redis_index'] = $redisIndex;
-                        $this->saveRegistry($registry);
-
-                        return true;
-                    });
-                }
-            }
-
-            // Auto-create object storage S3 bucket in Plex Commons if configured
-            $storageDriver = $config->getObjectStorage();
-            if ($storageDriver !== null && $storageDriver->isPlexReady()) {
-                $bucket = $this->plexBucketName($tenant);
-                $storageService = $storageDriver->commonsServiceName();
-                if ($storageService !== null) {
-                    $this->allocateStorageBucket($storageDriver, $bucket);
-                }
-            }
-
-            return [
-                'tenant' => $tenant,
-                'password' => $password,
-                'driver' => $dbDriver,
-                'host' => $serviceName.'.'.$this->plexNamespace().'.svc.cluster.local',
-                'port' => $dbDriver->dbPort(),
-                'services' => $neededServices,
-            ];
-        } catch (Throwable) {
-            return null;
-        }
     }
 
     /**

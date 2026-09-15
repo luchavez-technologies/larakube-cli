@@ -6,9 +6,12 @@ use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\SearchDriver;
+use Illuminate\Console\OutputStyle;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 /**
  * Record every command the scaffold path shells out through. Tests never get a
@@ -348,4 +351,139 @@ test('every command that renders infrastructure can actually install components'
         expect(method_exists($class, 'installComponents'))
             ->toBeTrue("{$class} renders infrastructure but cannot call installComponents()");
     }
+});
+
+// ── Commons wiring after plex:join ───────────────────────────────────────────
+
+/** A command whose `heal` call is recorded instead of run. */
+function nextjsCommonsWiringCommand(): object
+{
+    $command = new class extends NextjsNewCommand
+    {
+        /** @var list<string> */
+        public array $healed = [];
+
+        public function callSilent($command, array $arguments = []): int
+        {
+            $this->healed[] = $command;
+
+            return 0;
+        }
+
+        /** @return array<string, string> */
+        public function wire(string $projectDir, DatabaseDriver $database): array
+        {
+            return $this->wireCommonsDatabaseEnv($projectDir, $database);
+        }
+    };
+
+    $input = new ArrayInput([]);
+    $input->bind($command->getDefinition());
+    $command->setInput($input);
+    $command->setOutput(new OutputStyle($input, new BufferedOutput));
+
+    return $command;
+}
+
+/** A scaffolded Next.js project whose blueprint lists what plex:join joined. */
+function nextjsCommonsProject(array $plex, array $env): TemporaryDirectory
+{
+    $dir = TemporaryDirectory::make();
+
+    ConfigData::from([
+        'name' => 'hello-next',
+        'framework' => 'nextjs',
+        'database' => 'postgres',
+        'cacheDriver' => 'redis',
+        'environments' => ['local' => ['plex' => $plex, 'managed' => $plex]],
+    ])->saveToFile($dir->path());
+
+    $lines = [];
+    foreach ($env as $key => $value) {
+        $lines[] = "{$key}={$value}";
+    }
+    file_put_contents($dir->path().'/.env', implode("\n", $lines)."\n");
+
+    return $dir;
+}
+
+/** The self-hosted values wireDatabaseEnv() leaves before any join. */
+function nextjsSelfHostedEnv(): array
+{
+    return [
+        'DATABASE_URL' => 'postgresql://hello-next:self@hello-next-postgres:5432/hello-next',
+        'REDIS_URL' => 'redis://redis:6379',
+    ];
+}
+
+/** What plex:join writes for a tenant that joined both Postgres and Redis. */
+function nextjsJoinedEnv(): array
+{
+    return [
+        'DB_HOST' => 'postgres.larakube-plex.svc.cluster.local',
+        'DB_PORT' => '5432',
+        'DB_DATABASE' => 'hello_next_local',
+        'DB_USERNAME' => 'hello_next_local',
+        'DB_PASSWORD' => 'tenantpass',
+        'REDIS_HOST' => 'redis.larakube-plex.svc.cluster.local',
+        'REDIS_PORT' => '6379',
+        'REDIS_DB' => '7',
+    ];
+}
+
+test('Commons wiring rebuilds both URLs from what plex:join wrote', function (): void {
+    $project = nextjsCommonsProject(['postgres', 'redis'], array_merge(nextjsSelfHostedEnv(), nextjsJoinedEnv()));
+
+    $command = nextjsCommonsWiringCommand();
+    $written = $command->wire($project->path(), DatabaseDriver::POSTGRESQL);
+    $env = (string) file_get_contents($project->path().'/.env');
+
+    expect($written['DATABASE_URL'])->toBe('postgresql://hello_next_local:tenantpass@postgres.larakube-plex.svc.cluster.local:5432/hello_next_local')
+        ->and($written['REDIS_URL'])->toBe('redis://redis.larakube-plex.svc.cluster.local:6379/7')
+        ->and($env)->toContain('hello_next_local:tenantpass@postgres.larakube-plex')
+        ->and($env)->not->toContain('hello-next-postgres')
+        // The generated Secret carries these values, so manifests render again.
+        ->and($command->healed)->toBe(['heal']);
+
+    $project->delete();
+});
+
+test('Commons wiring leaves the self-hosted values alone when nothing joined', function (): void {
+    $project = nextjsCommonsProject([], nextjsSelfHostedEnv());
+    $before = (string) file_get_contents($project->path().'/.env');
+
+    $command = nextjsCommonsWiringCommand();
+
+    expect($command->wire($project->path(), DatabaseDriver::POSTGRESQL))->toBe([])
+        ->and((string) file_get_contents($project->path().'/.env'))->toBe($before)
+        ->and($command->healed)->toBe([]);
+
+    $project->delete();
+});
+
+test('Commons wiring never builds a DATABASE_URL without a password in .env', function (): void {
+    $joined = nextjsJoinedEnv();
+    unset($joined['DB_PASSWORD']);
+    $project = nextjsCommonsProject(['postgres', 'redis'], array_merge(nextjsSelfHostedEnv(), $joined));
+
+    $written = nextjsCommonsWiringCommand()->wire($project->path(), DatabaseDriver::POSTGRESQL);
+
+    expect($written)->not->toHaveKey('DATABASE_URL')
+        ->and($written['REDIS_URL'])->toBe('redis://redis.larakube-plex.svc.cluster.local:6379/7');
+
+    $project->delete();
+});
+
+test('Commons wiring keeps the self-hosted Redis when only the database joined', function (): void {
+    $joined = array_intersect_key(nextjsJoinedEnv(), array_flip(['DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USERNAME', 'DB_PASSWORD']));
+    $project = nextjsCommonsProject(['postgres'], array_merge(nextjsSelfHostedEnv(), $joined));
+
+    $written = nextjsCommonsWiringCommand()->wire($project->path(), DatabaseDriver::POSTGRESQL);
+    $env = (string) file_get_contents($project->path().'/.env');
+
+    expect($written)->toHaveKey('DATABASE_URL')
+        ->not->toHaveKey('REDIS_URL')
+        ->and($env)->toContain('redis://redis:6379');
+
+    $project->delete();
 });

@@ -177,22 +177,20 @@ class NextjsNewCommand extends Command
         // 8. Generate health check route
         $this->generateHealthRoute($projectDir);
 
-        // 8b. Provision the database + Redis (Plex Commons by default, self-hosted
-        //     with --no-plex), then wire DATABASE_URL/REDIS_URL into .env so Prisma
-        //     and the cache handler resolve them and the synced Secret carries them.
-        $plexCredentials = $this->option('no-plex') ? null : $this->ensurePlexProvisionedForApp($config);
-        if ($plexCredentials !== null) {
-            $config->addEnvironment('local');
-            $config->environments['local']->plex = array_values(array_unique(
-                array_merge($config->environments['local']->plex, $plexCredentials['services'] ?? []),
-            ));
-        }
-        $this->wireDatabaseEnv($config, $projectDir, $database, $plexCredentials);
+        // 8b. Self-hosted values first, so the first render already works; a
+        //     Commons join below replaces whatever it actually joined.
+        $this->wireDatabaseEnv($config, $projectDir, $database);
 
         // 9. Generate K8s manifests
         $this->withSpin('Orchestrating Next.js infrastructure manifests...', function () use ($config): void {
             $this->orchestrateProjectScaffolding($config);
         });
+
+        // 10. Join the Commons once the project exists, like every other scaffolder.
+        if (! $this->option('no-plex')) {
+            $this->joinPlexCommons($config, $projectDir);
+            $this->wireCommonsDatabaseEnv($projectDir, $database);
+        }
 
         $this->laraKubeInfo("✅ Next.js project '$appName' created successfully!");
         $this->newLine();
@@ -375,34 +373,12 @@ JS;
     }
 
     /**
-     * Build DATABASE_URL (Prisma) and REDIS_URL (cache handler) and write them to
-     * .env. Plex points at the Commons engines with the tenant's credentials
-     * (the password is in the provisioning result here at scaffold time); the
-     * self-hosted --no-plex path points at the pods this pipeline renders, with a
-     * fresh password shared with the DB pod via DB_PASSWORD.
+     * Point DATABASE_URL (Prisma) and REDIS_URL (cache handler) at the self-hosted
+     * pods this pipeline renders. A Commons join replaces what it joined.
      */
-    protected function wireDatabaseEnv(ConfigData $config, string $projectDir, DatabaseDriver $database, ?array $plexCredentials): void
+    protected function wireDatabaseEnv(ConfigData $config, string $projectDir, DatabaseDriver $database): void
     {
         $scheme = $database === DatabaseDriver::POSTGRESQL ? 'postgresql' : 'mysql';
-
-        if ($plexCredentials !== null) {
-            $tenant = (string) $plexCredentials['tenant'];
-            $password = (string) $plexCredentials['password'];
-            $host = (string) $plexCredentials['host'];
-            $port = (int) $plexCredentials['port'];
-
-            $redisIndex = $this->getRegistry()['tenants'][$tenant]['redis_index'] ?? 0;
-            $redisUrl = 'redis://redis.'.$this->plexNamespace().".svc.cluster.local:6379/{$redisIndex}";
-
-            $this->syncEnvFile($projectDir, [
-                'DATABASE_URL' => "{$scheme}://{$tenant}:{$password}@{$host}:{$port}/{$tenant}",
-                'REDIS_URL' => $redisUrl,
-            ], false, 'local');
-
-            return;
-        }
-
-        // Self-hosted: a per-app DB pod (rendered on --no-plex) + the Redis pod.
         $dbName = $config->getName();
         $dbHost = $config->getName().'-'.$database->value;
         $port = $database->dbPort();
@@ -416,6 +392,75 @@ JS;
             'DB_USERNAME' => $dbName,
             'DB_PASSWORD' => $password,
         ], false, 'local');
+    }
+
+    /**
+     * Rebuild DATABASE_URL/REDIS_URL from the values plex:join wrote, for only the
+     * services the blueprint says actually joined. Returns what it wrote.
+     *
+     * @return array<string, string>
+     */
+    protected function wireCommonsDatabaseEnv(string $projectDir, DatabaseDriver $database): array
+    {
+        $plex = $this->getProjectConfig($projectDir)?->getPlex('local') ?? [];
+        $dbJoined = in_array($database->commonsServiceName(), $plex, true);
+        $redisJoined = in_array('redis', $plex, true);
+
+        if (! $dbJoined && ! $redisJoined) {
+            return [];
+        }
+
+        $env = $this->readDotEnv($projectDir.'/.env');
+        $values = [];
+
+        if ($dbJoined) {
+            $missing = array_values(array_filter(
+                ['DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USERNAME', 'DB_PASSWORD'],
+                fn (string $key): bool => ($env[$key] ?? '') === '',
+            ));
+
+            if ($missing === []) {
+                $scheme = $database === DatabaseDriver::POSTGRESQL ? 'postgresql' : 'mysql';
+                $values['DATABASE_URL'] = sprintf(
+                    '%s://%s:%s@%s:%s/%s',
+                    $scheme,
+                    rawurlencode($env['DB_USERNAME']),
+                    rawurlencode($env['DB_PASSWORD']),
+                    $env['DB_HOST'],
+                    $env['DB_PORT'],
+                    $env['DB_DATABASE'],
+                );
+            } else {
+                $this->laraKubeWarn('DATABASE_URL still points at the self-hosted database: .env is missing '.implode(', ', $missing).'.');
+                $this->laraKubeLine('  <fg=gray>Set</> <fg=cyan>DATABASE_URL</> <fg=gray>in .env to the Commons database before running</> <fg=cyan>larakube up</><fg=gray>.</>');
+            }
+        }
+
+        if ($redisJoined && ($env['REDIS_HOST'] ?? '') !== '') {
+            $values['REDIS_URL'] = sprintf('redis://%s:%s/%s', $env['REDIS_HOST'], $env['REDIS_PORT'] ?? '6379', $env['REDIS_DB'] ?? '0');
+        }
+
+        if ($values === []) {
+            return [];
+        }
+
+        $this->syncEnvFile($projectDir, $values, false, 'local');
+
+        // The generated Secret carries these, so render it again with the final values.
+        $previous = getcwd();
+        chdir($projectDir);
+
+        try {
+            if ($this->callSilent('heal', ['--force' => true]) !== 0) {
+                $this->laraKubeWarn('Could not regenerate manifests. Run `larakube heal --force` before `larakube up`.');
+            }
+        } finally {
+            if ($previous !== false) {
+                chdir($previous);
+            }
+        }
+
+        return $values;
     }
 
     /**

@@ -293,11 +293,7 @@ class UpCommand extends Command
         // match the current machine's paths (e.g. hostPath code mounts)
         // and ensure any required Plex Commons services are provisioned and live.
         if ($environment === 'local') {
-            // Only wake the Commons services this project already joined.
-            // This used to call ensurePlexProvisionedForApp(), which ALLOCATES —
-            // and maps local to a 'production' tenant suffix, so every local up
-            // minted a second tenant ({app} alongside plex:join's {app}_local)
-            // that nothing ever connected to.
+            // Only wake the Commons services this project already joined; never allocate here.
             $this->wakeJoinedCommonsServices($config);
 
             $syncK8s = ! $this->option('no-k8s');

@@ -238,10 +238,8 @@ trait LaraKubeOutput
     {
         $instructions = [];
         foreach ($config->getComponents($environment) as $component) {
-            // A Commons-backed component has nothing to set up by hand:
-            // ensurePlexProvisionedForApp() already created the tenant bucket
-            // under plexBucketName(), so the manual walkthrough would send the
-            // user to create a SECOND bucket under a name the app never uses.
+            // A Commons-backed component has nothing to set up by hand: plex:join
+            // already created its bucket, so the walkthrough would name another.
             if ($config->isPlexBacked($component, $environment)) {
                 continue;
             }

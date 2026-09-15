@@ -5,11 +5,8 @@ use App\Data\EnvironmentData;
 use App\Enums\StorageDriver;
 
 /**
- * A Commons-backed component has no manual setup left to do:
- * ensurePlexProvisionedForApp() creates the tenant bucket under
- * plexBucketName($tenant) before the app ever runs. Printing the walkthrough
- * anyway is not merely noise — it names a bucket ("laravel") the app is not
- * wired to, so following it leaves a stray, unused bucket behind.
+ * A Commons-backed component has no manual setup left: plex:join already
+ * created its bucket, so the walkthrough would name one the app never uses.
  */
 function plexBackedConfig(array $plex): ConfigData
 {

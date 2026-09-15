@@ -182,9 +182,8 @@ class InitCommand extends Command
                 }
             }
 
-            // Skip Commons-backed components: their bucket/database already
-            // exists (ensurePlexProvisionedForApp), so the manual walkthrough
-            // names a bucket the app does not use.
+            // Skip Commons-backed components: plex:join already created their
+            // bucket and database, so the walkthrough would name ones the app never uses.
             if ($component instanceof HasLifecycleHooks && ! $config->isPlexBacked($component, 'local')) {
                 $allInstructions = array_merge($allInstructions, $component->getPostInstallInstructions($config));
             }
