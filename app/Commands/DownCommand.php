@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Traits\InteractsWithEnvironments;
+use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
@@ -16,7 +17,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DownCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
+    use InteractsWithEnvironments, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -55,6 +56,14 @@ class DownCommand extends Command
         // the env's cluster is safer — no accidental delete on the wrong context.
         $kubectl = $this->environmentKubectl($config, $environment);
 
+        // --full and --vols already promise to destroy data, so on local they also
+        // evict this project's own Commons tenant. Plain `down` keeps it for `up`.
+        $commonsTenant = $environment === 'local'
+            && ($this->option('vols') || $this->option('full'))
+            && $config->getPlex('local') !== []
+                ? $this->plexTenantIdentifier($appName, 'local')
+                : null;
+
         if ($this->option('dry-run')) {
             $this->laraKubeInfo("DRY RUN: Project '$appName' cleanup preview:");
             $this->line("  <fg=gray>[K8S-CLUSTER]</> Would delete namespace '$namespace' and cluster-scoped PVs.");
@@ -65,6 +74,10 @@ class DownCommand extends Command
 
             if ($this->option('vols') || $this->option('full')) {
                 $this->line('  <fg=red>[DATA]</> Would IRREVERSIBLY delete local volume data in .infrastructure/volume_data/');
+            }
+
+            if ($commonsTenant !== null) {
+                $this->line("  <fg=red>[COMMONS]</> Would evict Plex Commons tenant '{$commonsTenant}' (database, Redis slot, bucket), if registered.");
             }
 
             $this->laraKubeInfo('DRY RUN COMPLETE: No resources were modified.');
@@ -82,6 +95,12 @@ class DownCommand extends Command
                 $warning = 'WARNING: This will delete the namespace AND ALL LOCAL DATABASE DATA.';
             } elseif ($this->option('k8s')) {
                 $warning = 'WARNING: This will delete the namespace AND ALL LOCAL GENERATED MANIFESTS.';
+            }
+
+            if ($commonsTenant !== null) {
+                $warning .= " This includes its Plex Commons tenant '{$commonsTenant}'.";
+            } elseif ($environment === 'local' && $config->getPlex('local') !== []) {
+                $warning .= ' Its Plex Commons tenant is kept.';
             }
 
             $this->laraKubeError($warning);
@@ -103,6 +122,8 @@ class DownCommand extends Command
 
         $this->laraKubeInfo('Cleaning up cluster-scoped PersistentVolumes...');
         $this->runStreaming("{$kubectl} delete pv -l larakube-project=$appName");
+
+        $evicted = $commonsTenant !== null && $this->evictOwnCommonsTenant($commonsTenant);
 
         // 2. Manifest Cleanup (Local)
         if ($this->option('k8s') || $this->option('full')) {
@@ -136,8 +157,32 @@ class DownCommand extends Command
         });
 
         $this->laraKubeInfo('Cleanup complete. Your local Docker image and project files remain intact.');
-        $this->info('Next steps: larakube up');
+        // `up` never re-creates a tenant, and .env still names the dropped one.
+        $this->info($evicted ? 'Next steps: larakube plex:join local, then larakube up' : 'Next steps: larakube up');
 
         return 0;
+    }
+
+    /** Evict this project's own local Commons tenant, if it is registered. */
+    protected function evictOwnCommonsTenant(string $tenant): bool
+    {
+        $this->plexContext = null;
+
+        if (! $this->plexContextReachable()) {
+            $this->laraKubeWarn("Could not reach the cluster, so Commons tenant '{$tenant}' was not evicted.");
+
+            return false;
+        }
+
+        if (! isset($this->getRegistry()['tenants'][$tenant])) {
+            return false;
+        }
+
+        return $this->call('plex:evict', [
+            'environment' => 'local',
+            '--tenant' => $tenant,
+            '--force' => true,
+            '--no-backup' => true,
+        ]) === 0;
     }
 }

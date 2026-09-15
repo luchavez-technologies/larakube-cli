@@ -65,7 +65,7 @@ class PlexLeaveCommand extends Command
         $env = $this->resolvePlexEnvironment($config);
         if ($env === 'local') {
             $this->laraKubeWarn('You are leaving Plex in a local environment.');
-            $this->line('  <fg=gray>Local Plex commons data is ephemeral and lost on <fg=yellow>larakube down</>.</>');
+            $this->line('  <fg=gray>Its Commons data outlives <fg=yellow>larakube down</>; <fg=yellow>larakube down --full</> or <fg=yellow>--vols</> evicts it.</>');
             $this->newLine();
 
             if (! confirm('Continue anyway?', false)) {

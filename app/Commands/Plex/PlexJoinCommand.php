@@ -63,7 +63,7 @@ class PlexJoinCommand extends Command
 
         if ($env === 'local') {
             $this->laraKubeWarn('You are joining Plex in a local environment.');
-            $this->line('  <fg=gray>Plex commons data will be lost when you run <fg=yellow>larakube down</>. Use a cloud environment for persistent deployments.</>');
+            $this->line('  <fg=gray>Its Commons data outlives <fg=yellow>larakube down</>; <fg=yellow>larakube down --full</> or <fg=yellow>--vols</> evicts it.</>');
             $this->newLine();
 
             // The warning still prints, but the question is only asked of a
