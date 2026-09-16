@@ -50,9 +50,8 @@ trait InteractsWithVolumeSizing
             if ($growth && ! $expandable && ! $this->warnedUnexpandableGrowth) {
                 $this->warnedUnexpandableGrowth = true;
                 $this->laraKubeWarn(
-                    "This cluster's default StorageClass cannot expand a volume, and this tool claims one that "
-                    .'grows with use. Its declared size is advisory — nothing enforces it and nothing can raise '
-                    .'it in place. See ADR 0023.',
+                    "This tool's data volume grows with use, but this cluster's storage can't resize volumes "
+                    ."or cap their size. Keep an eye on the node's free disk space.",
                 );
             }
 

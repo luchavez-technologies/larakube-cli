@@ -55,6 +55,10 @@ kind: Deployment
 metadata:
   name: {{ $deploymentName }}
   namespace: larakube-shared
+  {{-- The name is instance-suffixed, so "is Forgejo installed" probes select
+       on this label instead (SharedClusterService::FORGEJO). --}}
+  labels:
+    larakube-tool: git
 spec:
   replicas: 1
   strategy:
@@ -69,7 +73,7 @@ spec:
     spec:
       containers:
         - name: forgejo
-          image: codeberg.org/forgejo/forgejo:{{ $forgejoVersion ?? '16.0.1' }}
+          image: codeberg.org/forgejo/forgejo:{{ $forgejoVersion }}
           ports:
             - containerPort: 3000
               name: http
@@ -308,12 +312,27 @@ metadata:
   name: {{ $runnerConfigMapName }}
   namespace: larakube-shared
 data:
+  {{-- Jobs build images with the podman CLI as a REMOTE client of the Podman
+       sidecar: docker_host mounts its socket into every job container at
+       /var/run/docker.sock, and CONTAINER_HOST points podman at it.
+
+       network: host because a per-job bridge network cannot be created here:
+       rootless netavark writes a sysctl under /proc/sys, which Kubernetes
+       mounts read-only. Jobs share the pod's network instead. --}}
+@php
+    $runnerConfig = implode("\n", [
+        'runner:',
+        '  envs:',
+        '    CONTAINER_HOST: "unix:///var/run/docker.sock"',
+        '  labels:',
+        ...array_map(fn (string $label) => "    - \"{$label}:docker://{$jobImage}\"", $runnerLabels),
+        'container:',
+        '  docker_host: "unix:///run/podman/podman.sock"',
+        '  network: host',
+    ]);
+@endphp
   config.yml: |
-    runner:
-      labels:
-        - "ubuntu-latest:docker://node:22-bookworm"
-        - "ubuntu-22.04:docker://node:22-bookworm"
-        - "docker:docker://node:22-bookworm"
+{!! preg_replace('/^/m', '    ', $runnerConfig) !!}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -331,13 +350,17 @@ spec:
     metadata:
       labels:
         app: {{ $runnerDeploymentName }}
+      {{-- The runner reads config.yml only at startup, and a ConfigMap change
+           alone never restarts a pod — this checksum is what rolls it. --}}
+      annotations:
+        larakube.io/config-checksum: "{{ substr(hash('sha256', $runnerConfig), 0, 16) }}"
     spec:
       initContainers:
         {{-- Offline registration: turn the shared secret into /data/.runner
              before the daemon starts. Fails loudly (pod never starts) rather
              than silently running an unregistered runner. --}}
         - name: register
-          image: code.forgejo.org/forgejo/runner:{{ $runnerVersion ?? '6.4.0' }}
+          image: code.forgejo.org/forgejo/runner:{{ $runnerVersion }}
           command: ["sh", "-c"]
           args:
             - |
@@ -390,7 +413,7 @@ spec:
              the way. /dev/fuse is for fuse-overlayfs, the storage driver
              rootless mode uses. --}}
         - name: podman
-          image: quay.io/podman/stable:v5.8.2
+          image: quay.io/podman/stable:{{ $podmanVersion }}
           securityContext:
             privileged: false
             allowPrivilegeEscalation: true
@@ -413,8 +436,14 @@ spec:
               memory: 256Mi
               cpu: 100m
         - name: runner
-          image: code.forgejo.org/forgejo/runner:{{ $runnerVersion ?? '6.4.0' }}
-          command: ["forgejo-runner", "daemon", "--config", "/config/config.yml"]
+          image: code.forgejo.org/forgejo/runner:{{ $runnerVersion }}
+          {{-- The daemon exits if the Podman socket isn't up yet, which costs a
+               container restart on every rollout. Wait for the sidecar first. --}}
+          command: ["sh", "-c"]
+          args:
+            - |
+              until [ -S /run/podman/podman.sock ]; do sleep 1; done
+              exec forgejo-runner daemon --config /config/config.yml
           env:
             - name: DOCKER_HOST
               value: unix:///run/podman/podman.sock

@@ -29,8 +29,8 @@ test('forgejo manifest renders valid multi-document YAML with public registratio
         's3Host' => 'files.luchtech.dev',
         's3AccessKey' => 'ak',
         's3SecretKey' => 'sk',
-        'forgejoVersion' => '16.0.1',
-        'runnerVersion' => '6.4.0',
+        'forgejoVersion' => '16.0.4',
+        'runnerVersion' => '13.1.0',
         'appName' => null,
     ])->render();
 
@@ -65,4 +65,72 @@ test('forgejo manifest renders valid multi-document YAML with public registratio
         ->and($env->get('FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION'))->toBe('true')
         ->and($env->get('FORGEJO__oauth2_client__ACCOUNT_LINKING'))->toBe('auto')
         ->and($env->get('FORGEJO__oauth2_client__USERNAME'))->toBe('preferred_username');
+});
+
+test('runner config mounts the Podman socket into jobs and maps every label to the job image', function (): void {
+    $rendered = view('k8s.git.forgejo', [
+        'host' => 'git.example.com',
+        'instance' => 'git-example-com',
+        'tenant' => 'forgejo_git_example_com',
+        'plexNamespace' => 'larakube-plex',
+        'redisIndex' => 3,
+        's3AccessKey' => 'ak',
+        's3SecretKey' => 'sk',
+        'volumeSize' => fn (string $name, string $default) => $default,
+        'runnerSecret' => str_repeat('a', 40),
+        'forgejoVersion' => '16.0.4',
+        'runnerVersion' => '13.1.0',
+        'podmanVersion' => 'v5.8.4',
+        'jobImage' => 'node:24-trixie',
+        'runnerLabels' => ['ubuntu-latest', 'docker'],
+    ])->render();
+
+    $documents = array_map(
+        fn (string $doc) => Yaml::parse($doc),
+        array_values(array_filter(array_map('trim', preg_split('/^---$/m', $rendered)), fn (string $doc) => $doc !== '')),
+    );
+
+    $configMap = collect($documents)->firstWhere('metadata.name', 'git-forgejo-runner-config-git-example-com');
+    $runnerConfig = Yaml::parse($configMap['data']['config.yml']);
+    $forgejo = collect($documents)->first(fn (array $doc) => $doc['kind'] === 'Deployment' && $doc['metadata']['name'] === 'git-forgejo-git-example-com');
+    $runner = collect($documents)->firstWhere('metadata.name', 'git-forgejo-runner-git-example-com');
+    $images = collect($runner['spec']['template']['spec']['containers'])->pluck('image');
+
+    expect($runnerConfig['runner']['labels'])->toBe(['ubuntu-latest:docker://node:24-trixie', 'docker:docker://node:24-trixie'])
+        ->and($runnerConfig['runner']['envs']['CONTAINER_HOST'])->toBe('unix:///var/run/docker.sock')
+        ->and($runnerConfig['container']['docker_host'])->toBe('unix:///run/podman/podman.sock')
+        ->and($runnerConfig['container']['network'])->toBe('host')
+        ->and($forgejo['metadata']['labels']['larakube-tool'])->toBe('git')
+        ->and($images->all())->toContain('quay.io/podman/stable:v5.8.4', 'code.forgejo.org/forgejo/runner:13.1.0');
+});
+
+test('changing the runner config changes the runner pod checksum, so the pod restarts to read it', function (): void {
+    $checksum = function (string $jobImage): string {
+        $rendered = view('k8s.git.forgejo', [
+            'host' => 'git.example.com',
+            'instance' => 'git-example-com',
+            'tenant' => 'forgejo_git_example_com',
+            'plexNamespace' => 'larakube-plex',
+            'redisIndex' => 3,
+            's3AccessKey' => 'ak',
+            's3SecretKey' => 'sk',
+            'volumeSize' => fn (string $name, string $default) => $default,
+            'runnerSecret' => str_repeat('a', 40),
+            'forgejoVersion' => '16.0.4',
+            'runnerVersion' => '13.1.0',
+            'podmanVersion' => 'v5.8.4',
+            'jobImage' => $jobImage,
+            'runnerLabels' => ['ubuntu-latest'],
+        ])->render();
+
+        $runner = collect(preg_split('/^---$/m', $rendered))
+            ->map(fn (string $doc) => trim($doc))->filter()
+            ->map(fn (string $doc) => Yaml::parse($doc))
+            ->firstWhere('metadata.name', 'git-forgejo-runner-git-example-com');
+
+        return $runner['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
+    };
+
+    expect($checksum('node:24-trixie'))->toBe($checksum('node:24-trixie'))
+        ->not->toBe($checksum('node:26-trixie'));
 });

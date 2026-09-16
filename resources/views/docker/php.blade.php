@@ -4,7 +4,7 @@
 
 # Learn more about the Server Side Up PHP Docker Images at:
 # https://serversideup.net/open-source/docker-php/
-FROM serversideup/php:{{ $config->getPhpVersion()->value }}-{{ $config->getServerVariation()->value }}{{ $config->getOsSuffix() }} AS base
+FROM docker.io/serversideup/php:{{ $config->getPhpVersion()->value }}-{{ $config->getServerVariation()->value }}{{ $config->getOsSuffix() }} AS base
 
 @if($config->hasPhpExtensions())
 USER root

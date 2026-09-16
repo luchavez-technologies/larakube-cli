@@ -22,25 +22,6 @@ test('every shared service renders its manifest with the resolved host', functio
     foreach (SharedClusterService::cases() as $service) {
         $host = $service->hostFor('example.test');
         $params = ['host' => $host];
-        if ($service === SharedClusterService::FORGEJO) {
-            $params = array_merge($params, [
-                'instance' => 'git-example-test',
-                'tenant' => 'forgejo_git_example_test',
-                'buckets' => ['forgejo-storage-git-example-test', 'forgejo-packages-git-example-test', 'forgejo-lfs-git-example-test'],
-                'adminPassword' => 'secret',
-                'dbPassword' => 'secret',
-                'registryToken' => 'pending',
-                'runnerToken' => 'pending',
-                'secretKey' => 'key',
-                'internalToken' => 'token',
-                'jwtSecret' => 'jwt',
-                'noPlex' => true,
-                's3Endpoint' => '',
-                's3AccessKey' => '',
-                's3SecretKey' => '',
-                'plexNamespace' => 'larakube-system',
-            ]);
-        }
         if (in_array($service, [SharedClusterService::FLOW, SharedClusterService::SHEET, SharedClusterService::INSIGHTS, SharedClusterService::DRIVE, SharedClusterService::DATA])) {
             $params = array_merge($params, [
                 'noPlex' => true,

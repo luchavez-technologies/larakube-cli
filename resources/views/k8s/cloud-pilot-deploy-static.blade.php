@@ -10,6 +10,10 @@ env:
   IMAGE_NAME: {!! $gha['image_name'] !!}
   REGISTRY_PROVIDER: {!! $gha['registry_provider'] !!}
 
+{{-- Forgejo ignores `permissions:` and warns about it on every run. --}}
+{{-- A static site: Node builds the bundle inside Dockerfile.static and Caddy
+     serves it. No PHP, no Composer, and no runtime environment — every value
+     the site uses is compiled into the bundle at build time. --}}
 jobs:
   build:
 @if(! $audit['skip'])
@@ -37,9 +41,7 @@ jobs:
 @endif
 
       - name: 🔍 Resolve & Verify Secrets
-        id: secrets
         run: |
-          # Robust resolution for KUBECONFIG
           FINAL_KUBE="{!! $secrets['k_env'] !!}"
 
           if [ -z "$FINAL_KUBE" ]; then
@@ -62,42 +64,15 @@ jobs:
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_${ARCH}.tar.gz" | tar -xz -C /tmp gitleaks
           /tmp/gitleaks git --redact --no-banner --exit-code=1 .
 @endif
-
-      - name: 🐘 Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '{{ $config->getPhpVersion()->value }}'
-          extensions: {{ implode(', ', array_unique(array_merge(['ctype', 'dom', 'fileinfo', 'filter', 'hash', 'mbstring', 'openssl', 'pcre', 'pdo', 'session', 'tokenizer', 'xml', 'zip'], $config->getAllPhpExtensions()))) }}
-          tools: composer:v2
-
-      - name: 📋 Cache Composer dependencies
-        uses: actions/cache@v5
-        with:
-          path: vendor
-          key: {!! $gha['composer_cache_key'] !!}
-          restore-keys: composer-
-
-      - name: 📦 Install Composer dependencies
-        run: composer install --optimize-autoloader --no-interaction --no-progress --ignore-platform-reqs
-@if($config->framework !== \App\Enums\AppFramework::WORDPRESS)
+@if($audit['dependencyAudit'])
 
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: '24'
-          cache: '{{ $config->getPackageManager()->value }}'
 
-      - name: 🛠 Install Node dependencies
-        run: {!! $config->getPackageManager()->installCommand() !!}
-@endif
-@if($audit['dependencyAudit'])
-
-      - name: 🧪 Dependency audit (Composer & NPM)
-        run: |
-          composer audit
-@if($config->framework !== \App\Enums\AppFramework::WORDPRESS)
-          npm audit --audit-level={{ $audit['auditLevel'] }}
-@endif
+      - name: 🧪 Dependency audit (NPM)
+        run: npm audit --audit-level={{ $audit['auditLevel'] }}
 @endif
 @if($audit['semgrep'])
 
@@ -121,24 +96,16 @@ jobs:
           /tmp/trivy fs --quiet --ignore-unfixed --exit-code 0 .
 @endif
 
-      - name: 🛡 Create .env file (public/build vars only)
+      - name: 🛡 Create .env file (browser-bundle vars only)
         run: |
           touch .env
+@if($publicEnvScript !== '')
           {!! $publicEnvScript !!}
-@if($audit['withTests'])
-
-      - name: 🧪 Application tests
-        run: php artisan test
-@endif
-@if($config->usesWayfinder())
-
-      - name: 🏎 Generate Wayfinder files
-        run: php artisan wayfinder:generate --with-form
 @endif
 
 @include('k8s.ci.podman-build', [
-    'dockerfile' => 'Dockerfile.php',
-    'target' => 'deploy',
+    'dockerfile' => 'Dockerfile.static',
+    'target' => null,
     'trivy' => $audit['trivy'],
     'failOn' => $audit['failOn'],
     'registryUser' => $gha['registry_provider'] === 'ghcr' ? $gha['actor'] : $gha['registry_user'],
@@ -157,40 +124,11 @@ jobs:
     steps:
 @include('k8s.ci.deploy-connect')
 
-      - name: 🛡 Create .env file (public/build vars only)
+      - name: 🏗 Deploy
         run: |
-          touch .env
-          {!! $publicEnvScript !!}
-
-      - name: 🔒 Verify runtime secrets were pushed
-        run: |
-          # laravel-secrets now only ever comes from `larakube dotenv:push`, run
-          # from a developer's own machine — this workflow never holds runtime
-          # credentials, only the public/build subset above. Fail fast with a
-          # clear fix instead of letting every pod CrashLoop on a missing
-          # envFrom source a few minutes from now.
-          if ! kubectl get secret laravel-secrets -n {{ $namespace }} >/dev/null 2>&1; then
-            echo "::error::'laravel-secrets' is missing in '{{ $namespace }}'. Run 'larakube dotenv:push {{ $environment }}' from your machine before deploying."
-            exit 1
-          fi
-
-      - name: 🏗 Prepare Manifests & Deploy
-        run: |
-          # 1. Update ConfigMap (public/build config only — runtime secrets are
-          #    dotenv:push's job, verified above, never this workflow's).
-          kubectl create configmap laravel-config -n {{ $namespace }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
-
-          # 2. Deploy via Kustomize at the pushed digest. The namespace already
-          #    exists (created at `cloud:configure` time), and this runner uses a
-          #    NAMESPACE-SCOPED credential — so strip the cluster-scoped
-          #    Namespace doc, which the scoped ServiceAccount can't apply.
+          # Kustomize at the pushed digest. This runner holds a NAMESPACE-SCOPED
+          # credential, so the cluster-scoped Namespace doc is stripped.
           cd .infrastructure/k8s/overlays/{{ $environment }}
           kubectl kustomize . | sed "s|image: {{ $appName }}:{{ $environment }}-latest|image: {!! $gha['image_ref'] !!}|g" | awk 'function flush(){if(!drop&&doc!=""){printf "%s",doc} doc="";drop=0} /^---[ \t\r]*$/{flush();print;next} {doc=doc $0 "\n"; if($0 ~ /^kind:[ \t]+Namespace[ \t\r]*$/)drop=1} END{flush()}' | kubectl apply -f -
 
-          # 3. Wait for rollouts
-@foreach(['web', 'horizon', 'queues', 'reverb'] as $name)
-@php($feature = \App\Enums\LaravelFeature::fromPodName($name))
-@if($name === 'web' || ($feature && $config->hasFeature($feature)))
-          kubectl rollout status deployment/{{ $name }} -n {{ $namespace }} --timeout=300s
-@endif
-@endforeach
+          kubectl rollout status deployment/web -n {{ $namespace }} --timeout=300s

@@ -40,13 +40,18 @@ build:{{ $envName }}:
   script:
     - |
       # Public/build vars only — computed from your blueprint, never a secret.
+      touch .env
       {!! $envMeta['publicEnvScript'] !!}
     - |
       # Build and push image (BuildKit --secret keeps .env out of layers)
       docker build \
         --secret id=dotenv,src=.env \
+@if($envMeta['static'] ?? false)
+        --file Dockerfile.static \
+@else
         --file Dockerfile.php \
         --target deploy \
+@endif
         --tag {{ $envMeta['imageLatest'] }} \
         --tag {{ $envMeta['imageSha'] }} \
         .
@@ -55,7 +60,7 @@ build:{{ $envName }}:
 
 deploy:{{ $envName }}:
   stage: deploy
-  image: registry.k8s.io/kubectl:v1.36.3
+  image: registry.k8s.io/kubectl:v1.37.0
   needs: ["build:{{ $envName }}"]
   rules:
     - if: '$CI_COMMIT_BRANCH == "{{ $envMeta['branch'] }}"'
@@ -74,6 +79,7 @@ deploy:{{ $envName }}:
         exit 1
       fi
 
+@unless($envMeta['static'] ?? false)
       # Public/build vars only — computed from your blueprint, never a secret.
       {!! $envMeta['publicEnvScript'] !!}
 
@@ -91,6 +97,7 @@ deploy:{{ $envName }}:
       kubectl create configmap laravel-config \
         -n {{ $envMeta['namespace'] }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
 
+@endunless
       # Deploy via Kustomize (strip Namespace doc — scoped credentials can't apply it)
       cd .infrastructure/k8s/overlays/{{ $envName }}
       kubectl kustomize . \

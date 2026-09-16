@@ -13,7 +13,7 @@
 ############################################
 # Dependencies
 ############################################
-FROM node:24-alpine AS dependencies
+FROM docker.io/library/node:24-alpine AS dependencies
 WORKDIR /app
 
 # libc6-compat: some Next.js/native deps expect glibc on Alpine's musl.
@@ -26,7 +26,7 @@ RUN npm ci
 ############################################
 # Builder
 ############################################
-FROM node:24-alpine AS builder
+FROM docker.io/library/node:24-alpine AS builder
 WORKDIR /app
 
 COPY --from=dependencies /app/node_modules ./node_modules
@@ -64,7 +64,7 @@ RUN mkdir -p public
 ############################################
 # Production Image
 ############################################
-FROM node:24-alpine AS deploy
+FROM docker.io/library/node:24-alpine AS deploy
 WORKDIR /app
 
 ENV NODE_ENV=production

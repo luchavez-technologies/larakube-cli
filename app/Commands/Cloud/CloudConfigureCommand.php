@@ -34,7 +34,7 @@ class CloudConfigureCommand extends Command
         {--web-hosts= : Comma-separated additional web hostnames; pass an empty value to clear (skips the prompt)}
         {--registry-provider= : Legacy alias for the --registry option}
         {--registry= : Container registry provider: ghcr|dockerhub|gitlab|forgejo (skips the prompt)}
-        {--platform= : CI/CD platform: github|gitlab (skips the prompt)}
+        {--platform= : CI/CD platform: github|gitlab|forgejo (auto-detected from the git remote)}
         {--image= : Registry image repository path, owner/repo (skips the prompt)}
         {--branch= : Git branch that triggers the CI deployment (skips the prompt)}
         {--strict : Also fail security gates on HIGH severity (not just CRITICAL)}

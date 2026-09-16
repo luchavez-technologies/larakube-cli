@@ -44,6 +44,20 @@ class GitInitCommand extends Command
      */
     protected const RUNNER_LABELS = ['ubuntu-latest', 'ubuntu-22.04', 'docker'];
 
+    protected const FORGEJO_VERSION = '16.0.4';
+
+    protected const RUNNER_VERSION = '13.1.0';
+
+    /** Tag of the rootless Podman sidecar that runs every job's containers. */
+    protected const PODMAN_VERSION = 'v5.8.4';
+
+    /**
+     * What every runner label maps to. Carries node for JavaScript actions
+     * (actions/checkout); no maintained image also ships podman, so workflows
+     * install Debian's podman-remote client when it is missing.
+     */
+    protected const JOB_IMAGE = 'node:24-trixie';
+
     protected $signature = 'git:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Forgejo host.}
         {--context=  : Target a specific kube-context (defaults to current context)}
@@ -207,7 +221,7 @@ class GitInitCommand extends Command
         ));
 
         $vpnOnly = (bool) $this->option('vpn-only');
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::GIT);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::GIT, $instance);
 
         if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::GIT, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
@@ -215,8 +229,10 @@ class GitInitCommand extends Command
             return 1;
         }
 
-        // 1. Initial deployment with Forgejo Core only (runner token placeholder)
-        $manifest = view('k8s.git.forgejo', [
+        // One parameter set for both renders — the final apply differs only in
+        // the tokens, so anything else left out there would be dropped from the
+        // live Deployment.
+        $manifestParams = [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,
@@ -225,10 +241,6 @@ class GitInitCommand extends Command
             'adminPassword' => $adminPassword,
             'adminEmail' => $adminEmail,
             'dbPassword' => $dbPassword,
-            // Carry the existing token through the first pass — 'pending' here
-            // would overwrite it before the read-back above could be used.
-            'registryToken' => $registryToken ?? 'pending',
-            'runnerSecret' => 'pending',
             'oauthJwtSecret' => $oauthJwtSecret,
             'secretKey' => $secretKey,
             'internalToken' => $internalToken,
@@ -244,6 +256,20 @@ class GitInitCommand extends Command
             'vpnOnly' => $vpnOnly,
             'buckets' => $buckets,
             'tenant' => $tenant,
+            'forgejoVersion' => self::FORGEJO_VERSION,
+            'runnerVersion' => self::RUNNER_VERSION,
+            'podmanVersion' => self::PODMAN_VERSION,
+            'jobImage' => self::JOB_IMAGE,
+            'runnerLabels' => self::RUNNER_LABELS,
+        ];
+
+        // 1. Initial deployment with Forgejo Core only (runner token placeholder)
+        $manifest = view('k8s.git.forgejo', [
+            ...$manifestParams,
+            // Carry the existing token through the first pass — 'pending' here
+            // would overwrite it before the read-back above could be used.
+            'registryToken' => $registryToken ?? 'pending',
+            'runnerSecret' => 'pending',
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
@@ -340,29 +366,9 @@ class GitInitCommand extends Command
 
         // 3. Re-apply final configuration containing real tokens
         $manifestFinal = view('k8s.git.forgejo', [
-            'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
-            'host' => $host,
-            'instance' => $instance,
-            'adminPassword' => $adminPassword,
-            'adminEmail' => $adminEmail,
-            'dbPassword' => $dbPassword,
+            ...$manifestParams,
             'registryToken' => $registryToken ?? 'pending',
             'runnerSecret' => $runnerSecret,
-            'oauthJwtSecret' => $oauthJwtSecret,
-            'secretKey' => $secretKey,
-            'internalToken' => $internalToken,
-            'jwtSecret' => $jwtSecret,
-            'noPlex' => $noPlex,
-            'redisIndex' => $redisIndex,
-            's3Endpoint' => $s3Endpoint,
-            's3AccessKey' => $s3AccessKey,
-            's3SecretKey' => $s3SecretKey,
-            'plexNamespace' => $this->plexNamespace(),
-            'isLocal' => $env === 'local',
-            'proxied' => $this->resolveProxied($env === 'local'),
-            'vpnOnly' => $vpnOnly,
-            'buckets' => $buckets,
-            'tenant' => $tenant,
         ])->render();
 
         $finalTemporaryDirectory = TemporaryDirectory::make();
@@ -388,8 +394,10 @@ class GitInitCommand extends Command
 
         $runnerDeployment = ClusterTool::GIT->componentByKey('runner', $instance)->deployment;
 
-        if ($registered && ! $this->withSpin('Waiting for Actions Runner...', fn () => Process::timeout(130)->run(
-            "{$kubectl} rollout status deploy/{$runnerDeployment} -n {$ns} --timeout=120s",
+        // A runner version bump means a fresh image pull on the node, which
+        // has taken over 12 minutes from code.forgejo.org.
+        if ($registered && ! $this->withSpin('Waiting for Actions Runner...', fn () => Process::timeout(910)->run(
+            "{$kubectl} rollout status deploy/{$runnerDeployment} -n {$ns} --timeout=900s",
         )->successful())) {
             $this->laraKubeError("{$runnerDeployment} never became Ready.");
 

@@ -65,6 +65,8 @@ function ghaViewData(array $overrides = []): array
         'registry_password' => '${{ secrets.'.$upperEnv.'_REGISTRY_PASSWORD }}',
         'trivy_cache_key' => '${{ runner.os }}-trivy-db',
         'trivy_restore_key' => '${{ runner.os }}-trivy-',
+        'push_ref_output' => '${{ steps.push.outputs.ref }}',
+        'image_ref' => '${{ needs.build.outputs.image_ref }}',
     ], $overrides['gha'] ?? []);
     unset($overrides['gha']);
 
@@ -144,31 +146,36 @@ test('GHA workflow generation uses correct literal injection syntax', function (
     expect($workflowContent)->not->toContain('{{ $upperEnv }}');
 });
 
-test('GHA workflow with default audit config emits security gates and split build', function (): void {
+test('GHA workflow with default audit config emits security gates and scans the image before pushing it', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
 
     // Phase 1 — Audit gates are present. Gitleaks runs as the MIT-licensed
     // binary, not gitleaks/gitleaks-action, which demands a paid licence on
     // organisation-owned repos and fails the build without one.
     expect($workflowContent)
-        ->toContain('ghcr.io/gitleaks/gitleaks')
-        ->toContain('detect --source=/repo')
-        // The name still appears in an explanatory comment, so pin the thing
-        // that actually matters: it is never invoked as an action.
+        ->toContain('gitleaks/releases/download/v8.30.1/')
+        ->toContain('/tmp/gitleaks git --redact')
         ->not->toContain('uses: gitleaks/gitleaks-action')
         ->toContain('composer audit')
         ->toContain('npm audit --audit-level=critical')
         ->toContain('semgrep scan --config=auto --severity=ERROR --error')
-        ->toContain("scan-type: 'fs'")
+        ->toContain('/tmp/trivy fs --quiet --ignore-unfixed --exit-code 0 .')
+        ->not->toContain('aquasecurity/trivy-action')
         ->toContain('fetch-depth: 0');
 
-    // Phase 2+3 — Build is split: load locally, scan, then push
+    // Phase 2 — Podman builds, the saved image is scanned, and only then pushed.
+    $build = strpos($workflowContent, 'podman build');
+    $scan = strpos($workflowContent, 'Trivy image scan');
+    $push = strpos($workflowContent, 'podman push --digestfile');
+
     expect($workflowContent)
-        ->toContain('load: true')
-        ->toContain('push: false')
-        ->toContain('Trivy image scan')
-        ->toContain("severity: 'CRITICAL'")
-        ->toContain('Push verified image');
+        ->toContain('--target deploy')
+        ->toContain('--file Dockerfile.php')
+        ->toContain('podman save -o image.tar')
+        ->toContain('--input image.tar --ignore-unfixed --severity CRITICAL --exit-code 1')
+        ->not->toContain('docker/build-push-action')
+        ->and($build)->toBeLessThan($scan)
+        ->and($scan)->toBeLessThan($push);
 
     // Job name reflects audit is active
     expect($workflowContent)->toContain('Audit, Build & Push');
@@ -185,19 +192,14 @@ test('GHA workflow with --skip-audit produces the lean pipeline without gates', 
         ->not->toContain('semgrep')
         ->not->toContain('Trivy')
         ->not->toContain('composer audit')
-        ->not->toContain('npm audit');
+        ->not->toContain('npm audit')
+        ->not->toContain('fetch-depth')
+        ->not->toContain('podman save');
 
-    // No fetch-depth: 0
-    expect($workflowContent)->not->toContain('fetch-depth');
-
-    // No split build — a single push: true step
+    // Still builds and pushes by digest.
     expect($workflowContent)
-        ->not->toContain('load: true')
-        ->not->toContain('push: false')
-        ->not->toContain('Push verified image');
-
-    // Direct push
-    expect($workflowContent)->toContain('push: true');
+        ->toContain('podman build')
+        ->toContain('podman push --digestfile');
 
     // Job name is the lean version
     expect($workflowContent)
@@ -242,23 +244,16 @@ test('each remaining gate can be dropped on its own', function (): void {
         ->toContain('composer audit');
 });
 
-test('dropping Trivy collapses the split build instead of building twice', function (): void {
-    // The load/scan/push split exists only to scan the artifact before
-    // publishing it. With no image scan the middle step is dead weight, so it
-    // must collapse to one build-and-push rather than building the image twice.
+test('dropping Trivy skips exporting the image, and it is still built once and pushed', function (): void {
     $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData([
         'audit' => ['trivy' => false],
     ]))->render();
 
     expect($workflowContent)
-        ->toContain('Build and push application image')
-        ->not->toContain('load, do not push')
-        ->not->toContain('load: true')
-        ->not->toContain('push: false')
-        ->not->toContain('Push verified image');
-
-    // Still one push of both tags.
-    expect(substr_count($workflowContent, 'push: true'))->toBe(1);
+        ->not->toContain('podman save')
+        ->not->toContain('Trivy image scan')
+        ->and(substr_count($workflowContent, 'podman build'))->toBe(1)
+        ->and(substr_count($workflowContent, 'podman push --digestfile'))->toBe(1);
 });
 
 test('GHA workflow with --strict uses CRITICAL,HIGH severity', function (): void {
@@ -271,7 +266,7 @@ test('GHA workflow with --strict uses CRITICAL,HIGH severity', function (): void
     ]))->render();
 
     // Trivy image scan severity escalates
-    expect($workflowContent)->toContain("severity: 'CRITICAL,HIGH'");
+    expect($workflowContent)->toContain('--severity CRITICAL,HIGH --exit-code 1');
 
     // NPM audit level escalates
     expect($workflowContent)->toContain('npm audit --audit-level=high');
@@ -318,4 +313,39 @@ test('the deploy job refuses to proceed when laravel-secrets is missing, and nev
     // The ConfigMap still gets created from the public .env — only the Secret
     // creation moved to `dotenv:push`.
     expect($workflowContent)->toContain('kubectl create configmap laravel-config');
+});
+
+test('the deploy job pins the image to the digest the build job pushed', function (): void {
+    $workflowContent = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
+
+    expect($workflowContent)
+        ->toContain('image_ref: ${{ steps.push.outputs.ref }}')
+        ->toContain('echo "ref=$IMAGE@$(cat digest)" >> "$GITHUB_OUTPUT"')
+        ->toContain('s|image: test-app:production-latest|image: ${{ needs.build.outputs.image_ref }}|g');
+});
+
+test('GHCR logs in with the workflow token, any other registry with the uploaded registry secrets', function (): void {
+    $ghcr = view('k8s.cloud-pilot-deploy', ghaViewData())->render();
+    $forgejo = view('k8s.cloud-pilot-deploy', ghaViewData(['gha' => [
+        'registry_provider' => 'forgejo',
+        'registry_host' => 'git.example.com',
+        'image_name' => 'acme/site',
+    ]]))->render();
+
+    expect($ghcr)
+        ->toContain('REGISTRY_USER: ${{ github.actor }}')
+        ->toContain('REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}')
+        ->and($forgejo)
+        ->toContain('REGISTRY_HOST: git.example.com')
+        ->toContain('REGISTRY_USER: ${{ secrets.PRODUCTION_REGISTRY_USERNAME }}')
+        ->toContain('REGISTRY_PASSWORD: ${{ secrets.PRODUCTION_REGISTRY_PASSWORD }}');
+});
+
+test('every audit combination renders a workflow that parses as YAML', function (): void {
+    foreach ([[], ['skip' => true], ['trivy' => false], ['gitleaks' => false], ['withTests' => true]] as $audit) {
+        $parsed = Symfony\Component\Yaml\Yaml::parse(view('k8s.cloud-pilot-deploy', ghaViewData(['audit' => $audit, 'vpnHost' => 'vpn.example.com']))->render());
+
+        expect(array_keys($parsed['jobs']))->toBe(['build', 'deploy'])
+            ->and(collect($parsed['jobs']['build']['steps'])->pluck('name')->filter()->count())->toBeGreaterThan(3);
+    }
 });

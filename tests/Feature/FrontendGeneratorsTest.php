@@ -144,8 +144,8 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
         // The host never builds — its node_modules lives in the dev pod's PVC,
         // so `npm run build` there finds no vite at all.
         expect(file_get_contents("{$project}/Dockerfile.static"))
-            ->toContain('FROM node:24-alpine AS assets')
-            ->toContain('FROM caddy:2.11.2-alpine')
+            ->toContain('FROM docker.io/library/node:24-alpine AS assets')
+            ->toContain('FROM docker.io/library/caddy:2.11.4-alpine')
             // VITE_* values compile into the bundle, so .env must be readable
             // during the build and must never become an image layer.
             ->toContain('--mount=type=secret,id=dotenv');

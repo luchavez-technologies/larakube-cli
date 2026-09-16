@@ -7,7 +7,7 @@
 ############################################
 # Assets Build Stage
 ############################################
-FROM node:24-alpine AS assets
+FROM docker.io/library/node:24-alpine AS assets
 WORKDIR /app
 
 # package.json first: dependencies only reinstall when they actually change.
@@ -41,7 +41,7 @@ RUN if [ "$STRICT_HOSTS" = "1" ] && grep -rEq "https?://[a-z0-9.-]+[.](kube|test
 ############################################
 # Production Image
 ############################################
-FROM caddy:{{ $caddyVersion }}-alpine
+FROM docker.io/library/caddy:{{ $caddyVersion }}-alpine
 
 COPY --from=assets /app/{{ $outputDir }} /srv
 COPY Caddyfile /etc/caddy/Caddyfile

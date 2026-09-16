@@ -284,7 +284,7 @@ test('nextjs:new renders a Node standalone Dockerfile, not the PHP one', functio
 
     // The official standalone shape: multi-stage Node build ending in a `deploy`
     // stage that runs `node server.js` from the standalone output on port 3000.
-    expect($rendered)->toContain('FROM node:24-alpine AS deploy')
+    expect($rendered)->toContain('FROM docker.io/library/node:24-alpine AS deploy')
         ->toContain('.next/standalone')
         ->toContain('"node", "server.js"')
         ->toContain('EXPOSE 3000');

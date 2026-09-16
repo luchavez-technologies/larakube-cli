@@ -27,12 +27,17 @@ trait InteractsWithGitForge
         return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
-    /** Forgejo Deployment present? A cheap "is Forgejo installed" probe. */
-    protected function isGitInstalled(string $kubectl, string $ns): bool
+    /**
+     * Forgejo Deployment present? With an instance, probes that exact
+     * Deployment; without one, any Deployment carrying the git tool label.
+     */
+    protected function isGitInstalled(string $kubectl, string $ns, ?string $instance = null): bool
     {
-        $out = Process::run("{$kubectl} get deployment forgejo -n {$ns} --no-headers")->output();
+        $target = $instance !== null
+            ? 'deployment '.ClusterTool::GIT->deploymentName($instance)
+            : 'deployment -l larakube-tool=git';
 
-        return trim($out) !== '';
+        return trim(Process::run("{$kubectl} get {$target} -n {$ns} --no-headers")->output()) !== '';
     }
 
     /**
@@ -62,42 +67,47 @@ trait InteractsWithGitForge
         $kubectl = $this->gitKubectl($context);
         $ns = $this->gitNamespace();
 
-        if (! $this->isGitInstalled($kubectl, $ns)) {
+        $host = $this->resolveGitHostReadOnly($env, $config);
+        $instance = $host !== null ? ClusterTool::GIT->instanceSlugFromHost($host) : null;
+
+        if (! $this->isGitInstalled($kubectl, $ns, $instance)) {
             return null;
         }
 
         return [
-            'host' => $this->resolveGitHostReadOnly($env, $config),
+            'host' => $host,
             'label' => 'Forgejo',
         ];
     }
 
     /**
-     * Copy registry credentials from the shared `git-secrets` secret in the
-     * `larakube-shared` namespace and create a local namespace-scoped pull-secret
-     * named `forgejo-login` so project pods can pull private registry images.
+     * Copy the registry credentials `git:init` minted (git-secrets-{instance},
+     * the instance being the registry host's slug) into the project namespace
+     * as the `forgejo-login` pull secret.
      */
-    protected function ensureForgejoPullSecret(string $context, string $namespace): void
+    protected function ensureForgejoPullSecret(string $context, string $namespace, string $environment): void
     {
-        $kubectl = $this->gitKubectl($context);
-        $sharedNs = $this->gitNamespace();
+        $config = $this->getProjectConfigObject(getcwd());
+        $registryHost = $config->getRegistry($environment)?->host;
 
-        // Read username and registry-token from git-secrets secret
-        $usernameRaw = Process::run("{$kubectl} get secret git-secrets -n {$sharedNs} -o jsonpath='{.data.username}'")->output();
-        $tokenRaw = Process::run("{$kubectl} get secret git-secrets -n {$sharedNs} -o jsonpath='{.data.registry-token}'")->output();
-
-        $username = trim((string) base64_decode(trim($usernameRaw)));
-        $token = trim((string) base64_decode(trim($tokenRaw)));
-
-        if ($username === '' || $token === '') {
-            $this->laraKubeWarn('Skipped Forgejo pull secret — could not read git-secrets credentials from '.$sharedNs);
+        if (! $registryHost) {
+            $this->laraKubeWarn("Skipped Forgejo pull secret — the environment's Forgejo registry has no host.");
 
             return;
         }
 
-        $config = $this->getProjectConfigObject(getcwd());
-        $registry = $config->getRegistry($this->environmentContextName($namespace));
-        $registryHost = $registry ? $registry->getRegistryHost() : 'git.dev.test';
+        $kubectl = $this->gitKubectl($context);
+        $sharedNs = $this->gitNamespace();
+        $secret = 'git-secrets-'.ClusterTool::GIT->instanceSlugFromHost($registryHost);
+
+        $username = trim((string) $this->readClusterSecretKey($kubectl, $sharedNs, $secret, 'username'));
+        $token = trim((string) $this->readClusterSecretKey($kubectl, $sharedNs, $secret, 'registry-token'));
+
+        if ($username === '' || $token === '' || $token === 'pending') {
+            $this->laraKubeWarn("Skipped Forgejo pull secret — could not read {$secret} credentials from {$sharedNs}.");
+
+            return;
+        }
 
         $ns = escapeshellarg($namespace);
 

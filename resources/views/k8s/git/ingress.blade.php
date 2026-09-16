@@ -1,4 +1,7 @@
 @php
+    // `up` reconciles this Ingress with only the host; git:init derives the
+    // instance from the host the same way.
+    $instance ??= \App\Enums\ClusterTool::GIT->instanceSlugFromHost($host);
     $ingressName = "git-forgejo-{$instance}";
     $httpServiceName = "git-forgejo-http-{$instance}";
 @endphp

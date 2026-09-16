@@ -160,5 +160,57 @@ test('git:init registers itself in the cluster tool registry, including the admi
         ->and($gitEntry['adminEmail'])->toBe('admin@example.com');
 });
 
+test('git:init reads and keeps the brand name on its own instance row when the registry holds other git rows', function (): void {
+    // With more than one git row, an instance-less lookup matched nothing:
+    // every run prompted for the brand again and appended another row.
+    $registry = [
+        ['tool' => 'git', 'instance' => 'git-example-com', 'host' => 'git.example.com', 'brandName' => 'Acme Git'],
+        ['tool' => 'git', 'instance' => '', 'host' => 'git.example.com'],
+        ['tool' => 'git', 'instance' => null, 'brandName' => 'Acme Git'],
+    ];
+    $captured = null;
+    $manifests = [];
+
+    Process::fake([
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => [
+                'postgres' => ['enabled' => true],
+                'redis' => ['enabled' => true],
+                'seaweedfs' => ['enabled' => true],
+            ],
+        ]),
+        '*get secret plex-admin*' => base64_encode('test-cred'),
+        '*get secret larakube-tools-registry*' => base64_encode(json_encode($registry)),
+        '*create secret generic larakube-tools-registry*' => function ($process) use (&$captured) {
+            if (preg_match('/--from-file=registry\.json=(\S+)/', $process->command, $m)) {
+                $captured = json_decode(file_get_contents($m[1]), true);
+            }
+
+            return Process::result();
+        },
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *larakube-forgejo*' => function ($process) use (&$manifests) {
+            if (preg_match('/apply -f (\S+larakube-forgejo\S*\.yaml)/', $process->command, $m)) {
+                $manifests[] = file_get_contents(trim($m[1], "'"));
+            }
+
+            return Process::result(output: 'applied');
+        },
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+    ]);
+
+    $this->artisan('git:init local --domain=git.example.com --no-interaction --admin-email=admin@example.com')
+        ->assertExitCode(0);
+
+    expect($manifests)->toHaveCount(2)->each->toContain('value: "Acme Git"');
+
+    $gitRows = collect($captured)->where('tool', 'git');
+    expect($gitRows)->toHaveCount(3)
+        ->and($gitRows->firstWhere('instance', 'git-example-com')['brandName'])->toBe('Acme Git');
+});
+
 // git:remove's own coverage lives in GitRemoveCommandTest.php (the
 // resource-set regression test) rather than duplicated here.

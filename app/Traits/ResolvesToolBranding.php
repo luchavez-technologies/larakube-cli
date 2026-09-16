@@ -28,14 +28,14 @@ trait ResolvesToolBranding
      *
      * @return array{appName: string, logoUrl: ?string}
      */
-    protected function resolveToolBranding(?string $kubectl, ClusterTool $tool): array
+    protected function resolveToolBranding(?string $kubectl, ClusterTool $tool, ?string $instance = null): array
     {
         $flagAppName = (string) ($this->option('app-name') ?? '');
         $flagLogoUrl = (string) ($this->option('logo-url') ?? '');
 
         // Fetch stored registry entry (main instance) if available
         $registered = ($kubectl !== null && method_exists($this, 'findToolInstanceEntry'))
-            ? ($this->findToolInstanceEntry($kubectl, $tool) ?? [])
+            ? ($this->findToolInstanceEntry($kubectl, $tool, $instance) ?? [])
             : [];
 
         $storedAppName = $registered['brandName'] ?? null;
@@ -79,7 +79,7 @@ trait ResolvesToolBranding
                 $updates['logoUrl'] = $logoUrl;
             }
             if ($updates !== []) {
-                $this->registerTool($kubectl, $tool, $updates);
+                $this->registerTool($kubectl, $tool, $updates, $instance);
             }
         }
 

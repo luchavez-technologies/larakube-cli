@@ -30,7 +30,7 @@ trait GeneratesProjectInfrastructure
     public const VITE_MANAGED_SENTINEL = 'larakube:managed';
 
     /** Caddy is the origin behind Traefik; pinned like every other vendored image. */
-    protected const CADDY_VERSION = '2.11.2';
+    protected const CADDY_VERSION = '2.11.4';
 
     /**
      * Dev-server config for a STANDALONE Vite/Astro SPA, where the framework's

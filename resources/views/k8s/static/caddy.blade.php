@@ -39,6 +39,12 @@ spec:
       labels:
         app: {{ $resourceName ?? 'web' }}
     spec:
+{{-- Only a registry-pushed image needs credentials; a sideloaded one is
+     already on the node. --}}
+@if(! ($isPreview ?? false) && $config->getRegistry($environment) && ($pullSecret = $config->getImagePullSecret($environment)))
+      imagePullSecrets:
+        - name: {{ $pullSecret }}
+@endif
       containers:
         - name: caddy
           image: {{ $image ?? $config->getName().':latest' }}

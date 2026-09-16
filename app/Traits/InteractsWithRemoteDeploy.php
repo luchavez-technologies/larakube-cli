@@ -634,7 +634,7 @@ trait InteractsWithRemoteDeploy
         if ($registry->provider === RegistryProvider::GHCR) {
             $this->ensureGhcrPullSecret($context, $namespace);
         } elseif ($registry->provider === RegistryProvider::FORGEJO) {
-            $this->ensureForgejoPullSecret($context, $namespace);
+            $this->ensureForgejoPullSecret($context, $namespace, $environment);
         }
 
         // 4-5. env-sync + apply + rollout THROUGH a namespace-scoped credential.

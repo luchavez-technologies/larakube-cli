@@ -73,6 +73,60 @@ trait InteractsWithGlobalConfig
         return $this->runContainerCommand("--rm {$interactiveFlag} {$mountString} -w /work alpine:latest sh -c 'apk add --no-cache github-cli >/dev/null && gh \"\$@\"' larakube-gh ");
     }
 
+    protected function getTeaConfigPath(): string
+    {
+        return home_path('.larakube/tea-config');
+    }
+
+    /**
+     * Gitea's official CLI, which also drives Forgejo. A host install wins;
+     * otherwise the official image runs through the resolved container
+     * runtime, so nothing needs installing. Arguments are appended by the
+     * caller, e.g. `{$tea} logins list`. $envNames are forwarded into the
+     * container by name only, so their values never appear in its arguments.
+     *
+     * @param  list<string>  $envNames
+     */
+    protected function getTeaCommand(bool $interactive = false, array $envNames = []): string
+    {
+        $candidates = array_filter([
+            trim(Process::run('command -v tea')->output()),
+            '/usr/local/bin/tea',
+            '/opt/homebrew/bin/tea',
+            '/home/linuxbrew/.linuxbrew/bin/tea',
+        ]);
+
+        foreach ($candidates as $path) {
+            if ($path !== '' && @is_executable($path)) {
+                return $path;
+            }
+        }
+
+        $configPath = $this->getTeaConfigPath();
+        if (! is_dir($configPath)) {
+            @mkdir($configPath, 0700, true);
+        }
+
+        $interactiveFlag = $interactive ? '-it' : '-i';
+        $envFlags = implode('', array_map(fn (string $name) => '-e '.escapeshellarg($name).' ', $envNames));
+
+        // The image's entrypoint is `sh -c`, so the arguments reach tea through
+        // "$@". Root inside the container is the host user under rootless
+        // Podman, which keeps the mounted config writable.
+        //
+        // tea probes the working directory with `git rev-parse` even when
+        // --repo is given, and aborts if git is missing — which it is in the
+        // official image. No checkout is mounted, so a stub answering "not a
+        // git repository" is the truthful reply, and tea then uses --repo.
+        $script = 'printf \'#!/bin/sh\necho "fatal: not a git repository" >&2\nexit 128\n\' > /tmp/git'
+            .' && chmod +x /tmp/git && PATH=/tmp:$PATH tea "$@"';
+
+        return $this->runContainerCommand(
+            "--rm {$interactiveFlag} {$envFlags}--user 0 -v ".escapeshellarg($configPath).':/app/.config/tea '
+            .'docker.io/gitea/tea:0.16.0 '.escapeshellarg($script).' tea ',
+        );
+    }
+
     protected function getEmail(): ?string
     {
         return $this->getGlobalConfig()->getEmail();
