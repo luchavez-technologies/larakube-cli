@@ -261,7 +261,9 @@ trait InteractsWithRemoteDeploy
                 || str_contains($key, 'PASSWORD')
                 || str_contains($key, 'SECRET')
                 || str_contains($key, 'KEY')
-                || str_contains($key, 'TOKEN');
+                || str_contains($key, 'TOKEN')
+                // A connection URL with credentials in it (DATABASE_URL, REDIS_URL).
+                || preg_match('#^[a-z][a-z0-9+.-]*://[^/@\s]*:[^/@\s]+@#i', trim($value, " \t\"'")) === 1;
 
             $literal = ' --from-literal='.escapeshellarg("{$key}={$value}");
             if ($isSecret) {

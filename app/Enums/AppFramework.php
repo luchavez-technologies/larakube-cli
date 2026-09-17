@@ -145,6 +145,41 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
         return $this->isStaticSpa() || $this->isPhp() ? 'web' : "{$appName}-{$this->value}";
     }
 
+    /**
+     * A long-running server that is neither PHP nor a static bundle, deployed
+     * through the shared server-app engine. Next.js predates the engine and
+     * keeps its own manifests.
+     */
+    public function isServerApp(): bool
+    {
+        return ! $this->isPhp() && ! $this->isStaticSpa() && $this !== self::NEXTJS;
+    }
+
+    /** The port the production server listens on inside its container. */
+    public function containerPort(): int
+    {
+        return match ($this) {
+            self::NESTJS, self::NEXTJS => 3000,
+            self::ADONISJS => 3333,
+            self::DJANGO, self::FASTAPI => 8000,
+            self::GIN, self::AXUM, self::SPRINGBOOT, self::DOTNET => 8080,
+            default => 80,
+        };
+    }
+
+    /**
+     * The command a migration init container runs before the server starts,
+     * or null when there is nothing to migrate. $hasPrisma: the project ships
+     * a prisma/schema.prisma.
+     */
+    public function migrateCommand(bool $hasPrisma): ?string
+    {
+        return match ($this) {
+            self::NESTJS => $hasPrisma ? 'npx --yes prisma@6 migrate deploy' : null,
+            default => null,
+        };
+    }
+
     /** Whether dependencies come from npm, so CI audits them with `npm audit`. */
     public function usesNpm(): bool
     {
@@ -211,6 +246,7 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
     {
         return match ($this) {
             self::VITE, self::ASTRO, self::NEXTJS => ['dev'],
+            self::NESTJS => ['start:dev'],
             self::DOCUSAURUS => ['start', 'dev'],
             default => [],
         };
@@ -248,7 +284,7 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
     {
         return match ($this) {
             self::VITE, self::ASTRO => 5173,
-            self::DOCUSAURUS, self::NEXTJS => 3000,
+            self::DOCUSAURUS, self::NEXTJS, self::NESTJS => 3000,
             default => null,
         };
     }

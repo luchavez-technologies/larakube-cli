@@ -14,8 +14,9 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PreparesNestjsProject;
+use App\Traits\ScaffoldsInNode;
 use App\Traits\SyncsClusterSecrets;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
@@ -26,7 +27,10 @@ use Random\RandomException;
 
 class NestjsNewCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, PreparesNestjsProject, ScaffoldsInNode, SyncsClusterSecrets;
+
+    /** Same Node the dev pod and the image build use. */
+    protected const NODE_IMAGE = 'node:24-alpine';
 
     /**
      * The name and signature of the console command.
@@ -150,18 +154,18 @@ class NestjsNewCommand extends Command
 
         $this->laraKubeInfo("Scaffolding NestJS: $appName...");
 
-        // 5. Run npx @nestjs/cli new inside a Node.js 22-alpine Docker container
-        $this->runNestCliNew($appName, $projectPath);
-
-        if (! is_dir($projectDir)) {
+        // 5. Scaffold with the Nest CLI inside Node (Docker or Podman).
+        if (! $this->runNestCliNew($appName, $projectPath)) {
             $this->laraKubeError('Failed to create NestJS application.');
 
             return 1;
         }
 
+        $this->addNestjsHealthController($projectDir);
+
         // 6. Generate K8s manifests
         $this->withSpin('Orchestrating NestJS infrastructure manifests...', function () use ($config): void {
-            $this->orchestrateProjectScaffolding($config);
+            $this->orchestrateProjectScaffolding($config, installFeatures: false, buildImage: false);
         });
 
         $this->laraKubeInfo("✅ NestJS project '$appName' created successfully!");
@@ -170,8 +174,8 @@ class NestjsNewCommand extends Command
         $this->line("  <fg=yellow>cd $appName && larakube up</>");
         $this->newLine();
         $this->line('  <fg=gray>Features configured:</>');
-        $this->line('  <fg=gray>  • NestJS TypeScript modular architecture (Node.js 22 Alpine)</>');
-        $this->line('  <fg=gray>  • Prisma ORM database migration init container (prisma migrate deploy)</>');
+        $this->line('  <fg=gray>  • NestJS TypeScript modular architecture (Node.js 24 Alpine)</>');
+        $this->line('  <fg=gray>  • Migrations run before each rollout once the project has prisma/schema.prisma</>');
         $this->line('  <fg=gray>  • Health check endpoint at /healthz</>');
         $this->newLine();
         $this->line('  <fg=gray>Ready to deploy? Create a cloud environment first:</>');
@@ -182,28 +186,15 @@ class NestjsNewCommand extends Command
     }
 
     /**
-     * Run `npx @nestjs/cli new` inside a Node.js 22-alpine Docker container.
+     * Run the Nest CLI inside Node via ScaffoldsInNode, so it works under Docker
+     * or Podman and with or without a terminal. --no-observe answers the one
+     * prompt `nest new` would otherwise raise; git and the package manager are
+     * pinned so the Dockerfile's `npm ci` finds a package-lock.json.
      */
-    protected function runNestCliNew(string $appName, string $baseDir): void
+    protected function runNestCliNew(string $appName, string $baseDir): bool
     {
-        $this->laraKubeInfo('Pulling Node.js 22 Alpine builder image...');
-        Process::forever()->run($this->pullImageCommand('node:22-alpine'));
+        $command = "npx --yes @nestjs/cli@latest new {$appName} --package-manager npm --skip-git --strict --no-observe";
 
-        $runtime = $this->containerRuntime();
-
-        $uid = $this->hostUid();
-        $gid = $this->hostGid();
-
-        $cmd = "$runtime run --rm -it -v $baseDir:/app -w /app --user root node:22-alpine"
-            ." sh -c 'npx --yes @nestjs/cli new $appName --package-manager npm --strict --no-git'";
-
-        passthru($cmd);
-
-        // Chown back to host user
-        if (is_dir("$baseDir/$appName")) {
-            $this->runStreaming(
-                "$runtime run --rm -v $baseDir:/app --user root node:22-alpine chown -R {$this->containerChownSpec($uid, $gid)} /app/$appName",
-            );
-        }
+        return $this->scaffoldInNode($appName, $baseDir, 'NestJS app', $command, $command);
     }
 }

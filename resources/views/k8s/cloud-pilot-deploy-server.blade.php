@@ -124,6 +124,17 @@ jobs:
 
     steps:
 @include('k8s.ci.deploy-connect')
+@if($framework->isServerApp())
+
+      - name: 🔒 Verify runtime secrets were pushed
+        run: |
+          # This app's runtime env only ever comes from `larakube dotenv:push`,
+          # run from a developer's machine; the workflow never holds it.
+          if ! kubectl get secret laravel-secrets -n {{ $namespace }} >/dev/null 2>&1; then
+            echo "::error::'laravel-secrets' is missing in '{{ $namespace }}'. Run 'larakube dotenv:push {{ $environment }}' from your machine before deploying."
+            exit 1
+          fi
+@endif
 
       - name: 🏗 Deploy
         run: |

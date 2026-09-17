@@ -26,7 +26,7 @@ docker-*.yml
 web/app/uploads/*
 @endif
 
-@if($config->framework?->isStaticSpa() || $config->framework === \App\Enums\AppFramework::NEXTJS)
+@if($config->framework?->usesNpm())
 # Dependencies and build output: the image runs `npm ci` and the build itself.
 # A host node_modules copied over them carries the wrong platform's binaries.
 node_modules
@@ -41,7 +41,7 @@ build
 node_modules
 @endif
 @endif
-@unless($config->framework?->isStaticSpa() || $config->framework === \App\Enums\AppFramework::NEXTJS)
+@unless($config->framework !== null && ! $config->framework->isPhp())
 
 # Laravel Specifics
 # Vite HMR marker. If this ships in an image, Laravel's Vite directive serves

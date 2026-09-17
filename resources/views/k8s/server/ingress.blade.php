@@ -1,14 +1,19 @@
+{{-- No ACME on the local preview: its .test host is served with the LaraKube
+     Local CA leaf instead. --}}
+@php($port = $config->framework->containerPort())
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ $config->getName() }}-nestjs
+  name: {{ $resourceName }}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/service.serversscheme: http
+@if($environment !== 'local')
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+@endif
 spec:
   rules:
-@foreach($config->getWebHosts('local') as $host)
+@foreach($hosts as $host)
     - host: {{ $host }}
       http:
         paths:
@@ -16,12 +21,12 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ $config->getName() }}-nestjs
+                name: {{ $resourceName }}
                 port:
-                  number: 3000
+                  number: {{ $port }}
 @endforeach
   tls:
     - hosts:
-@foreach($config->getWebHosts('local') as $host)
+@foreach($hosts as $host)
         - {{ $host }}
 @endforeach

@@ -12,6 +12,7 @@ use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\DeploymentStrategy;
 use App\Enums\LaravelFeature;
+use Illuminate\Support\Facades\View;
 use Random\RandomException;
 use Symfony\Component\Yaml\Yaml;
 
@@ -615,6 +616,23 @@ trait GeneratesProjectInfrastructure
             }
 
             $this->generateDockerIgnore($config);
+        } elseif ($config->framework?->isServerApp()) {
+            // docker/php.blade.php would fatal here: these frameworks have no
+            // server variation or PHP version. Each gets its own image template
+            // as it joins the server-app engine.
+            $dockerfile = $config->framework->dockerfile();
+            $view = 'docker.'.$config->framework->value;
+
+            if (! View::exists($view)) {
+                $this->laraKubeWarn("No production image template for {$config->framework->getLabel()} yet — {$dockerfile} was not generated.");
+            } elseif (! $config->isLocked($dockerfile)) {
+                file_put_contents("$projectPath/$dockerfile", view($view, [
+                    'config' => $config,
+                    'hasPrisma' => file_exists("$projectPath/prisma/schema.prisma"),
+                ])->render());
+            }
+
+            $this->generateDockerIgnore($config);
         } else {
             if (! $config->isLocked('Dockerfile.php')) {
                 $phpDockerfile = view('docker.php', ['config' => $config])->render();
@@ -857,6 +875,87 @@ trait GeneratesProjectInfrastructure
     }
 
     /**
+     * Manifests for a server-app framework (see AppFramework::isServerApp()).
+     *
+     * - local: the framework's own dev server with the source bind-mounted
+     *   (npm frameworks with a dev script share the static sites' Node dev pod).
+     * - local/preview: the production image on the local cluster, with a
+     *   Secret built from the local .env (the local overlay is gitignored).
+     * - cloud: Deployment + Service + Ingress per environment. No Secret is
+     *   rendered, because these files are committed; runtime env comes from
+     *   `larakube dotenv:push`. Databases and caches are expected to come from
+     *   Plex Commons or a managed service.
+     */
+    protected function generateServerAppManifests(ConfigData $config): void
+    {
+        $k8sPath = $config->getK8sPath();
+        $framework = $config->framework;
+
+        $render = function (string $stub, string $view, array $data) use ($config, $k8sPath): void {
+            @mkdir(dirname("$k8sPath/$stub"), 0755, true);
+            $this->writeManagedManifest(
+                $config,
+                "$k8sPath/$stub",
+                ".infrastructure/k8s/{$stub}",
+                view($view, $data)->render(),
+            );
+        };
+
+        // Only frameworks that name their dev script get the Node dev pod; the
+        // rest have no local dev workload until their slice adds one.
+        if ($framework->usesNpm() && $framework->devServerScriptCandidates() !== []) {
+            $localData = [
+                'config' => $config,
+                'namespace' => $config->getNamespace('local'),
+                'host' => $config->getWebHost('local'),
+                'devPort' => $framework->devServerPort() ?? $framework->containerPort(),
+                'devCommand' => $this->resolveDevServerCommand($config),
+            ];
+            $render('overlays/local/kustomization.yaml', 'k8s.static.local-kustomization', $localData);
+            $render('overlays/local/dev-server.yaml', 'k8s.static.dev-server', $localData);
+        }
+
+        $env = $this->readDotEnv($config->getPath().'/.env');
+        $envSecret = $config->getName().'-'.$framework->value.'-secrets';
+        $migrate = $framework->migrateCommand(file_exists($config->getPath().'/prisma/schema.prisma'));
+
+        $previewData = [
+            'config' => $config,
+            'namespace' => $config->getNamespace('local'),
+            'environment' => 'local',
+            'resourceName' => 'web-preview',
+            'hosts' => [$config->getServiceHost('preview', 'local')],
+            'envSecret' => $envSecret,
+            'migrate' => $migrate,
+        ];
+        $render('overlays/local/preview/kustomization.yaml', 'k8s.server.preview-kustomization', $previewData);
+        $render('overlays/local/preview/deployment.yaml', 'k8s.server.deployment', $previewData);
+        $render('overlays/local/preview/service.yaml', 'k8s.server.service', $previewData);
+        $render('overlays/local/preview/ingress.yaml', 'k8s.server.ingress', $previewData);
+        $render('overlays/local/preview/secret.yaml', 'k8s.server.secret', [
+            'envSecret' => $envSecret,
+            'secrets' => array_filter($env, fn ($value): bool => $value !== ''),
+        ]);
+
+        foreach ($config->getCloudEnvironments() as $cloudEnv) {
+            $cloudData = [
+                'config' => $config,
+                'namespace' => $config->getNamespace($cloudEnv),
+                'environment' => $cloudEnv,
+                'resourceName' => $framework->workloadName((string) $config->getName()),
+                'hosts' => $config->getWebHosts($cloudEnv),
+                'envSecret' => null,
+                'migrate' => $migrate,
+            ];
+            $render("overlays/$cloudEnv/kustomization.yaml", 'k8s.server.cloud-kustomization', $cloudData);
+            $render("overlays/$cloudEnv/namespace.yaml", 'k8s.overlays.production.namespace', $cloudData);
+            $render("overlays/$cloudEnv/deployment.yaml", 'k8s.server.deployment', $cloudData);
+            $render("overlays/$cloudEnv/service.yaml", 'k8s.server.service', $cloudData);
+            $render("overlays/$cloudEnv/ingress.yaml", 'k8s.server.ingress', $cloudData);
+        }
+    }
+
+    /**
      * Minimal KEY=VALUE reader for pulling scaffold-time connection strings out
      * of a project's .env. Returns [] when the file is absent.
      *
@@ -965,6 +1064,12 @@ trait GeneratesProjectInfrastructure
         // dereferences the null getServerVariation() Next.js has no value for.
         if ($config->framework === AppFramework::NEXTJS) {
             $this->generateNextjsManifests($config);
+
+            return;
+        }
+
+        if ($config->framework?->isServerApp()) {
+            $this->generateServerAppManifests($config);
 
             return;
         }

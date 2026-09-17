@@ -99,4 +99,15 @@ trait ReadsEnvSources
             || str_contains($key, 'KEY')
             || str_contains($key, 'TOKEN');
     }
+
+    /**
+     * A connection URL that carries its own credentials
+     * (postgresql://user:password@host/db, redis://:password@host). Such a
+     * value is secret whatever its key is named — DATABASE_URL and REDIS_URL
+     * match none of the name patterns above. Pure.
+     */
+    protected function hasEmbeddedCredentials(string $value): bool
+    {
+        return preg_match('#^[a-z][a-z0-9+.-]*://[^/@\s]*:[^/@\s]+@#i', trim($value, " \t\"'")) === 1;
+    }
 }

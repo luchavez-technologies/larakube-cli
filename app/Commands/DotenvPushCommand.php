@@ -63,7 +63,11 @@ class DotenvPushCommand extends Command
 
         $local = $this->parseDotenvVars((string) file_get_contents($envFile));
         $knownSecrets = array_keys($config->getAllSecretEnvironmentVariables($env));
-        $toPush = array_filter($local, fn (string $key) => $this->isSecretKey($key, $knownSecrets), ARRAY_FILTER_USE_KEY);
+        $toPush = array_filter(
+            $local,
+            fn (string $value, string $key) => $this->isSecretKey($key, $knownSecrets) || $this->hasEmbeddedCredentials($value),
+            ARRAY_FILTER_USE_BOTH,
+        );
 
         // Plex/OpenBao owns these regardless of what the local file happens to
         // hold — a manually-added or stale DB_PASSWORD must never overwrite a
