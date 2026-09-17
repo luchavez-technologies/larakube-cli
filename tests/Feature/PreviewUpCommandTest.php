@@ -221,3 +221,18 @@ test('the ship-guard stays on for every build that is not a local rehearsal', fu
         ->toContain('ARG STRICT_HOSTS=1')
         ->toContain('if [ "$STRICT_HOSTS" = "1" ] && grep');
 });
+
+test('a Docusaurus image builds without the env secret or the local-host guard', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
+
+    previewUpHolder()->generate(previewUpConfig($tempDir, AppFramework::DOCUSAURUS));
+
+    // Docusaurus reads no env file, and docs content legitimately shows local
+    // URLs such as https://my-app.kube, which the guard would reject.
+    expect(file_get_contents("{$tempDir}/Dockerfile.static"))
+        ->not->toContain('STRICT_HOSTS')
+        ->not->toContain('--mount=type=secret')
+        ->toContain('RUN npm run build')
+        ->toContain('COPY --from=assets /app/build /srv');
+});

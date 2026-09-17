@@ -586,6 +586,7 @@ trait GeneratesProjectInfrastructure
             file_put_contents("{$projectPath}/Dockerfile.static", view('docker.static', [
                 'buildCommand' => $this->resolveBuildCommand($config),
                 'outputDir' => $framework?->staticOutputDir() ?? 'dist',
+                'bakesEnv' => $framework?->bakesEnvIntoBuild() ?? true,
                 'caddyVersion' => self::CADDY_VERSION,
                 'environment' => 'production',
             ])->render());
@@ -594,6 +595,23 @@ trait GeneratesProjectInfrastructure
         if (! $config->isLocked('Caddyfile')) {
             file_put_contents("{$projectPath}/Caddyfile", view('docker.caddyfile')->render());
         }
+    }
+
+    /**
+     * The files generateDockerfiles() writes for this framework, for dry-run previews.
+     *
+     * @return list<string>
+     */
+    protected function plannedImageFiles(ConfigData $config): array
+    {
+        $framework = $config->framework;
+
+        return match (true) {
+            $framework?->isStaticSpa() => ['Dockerfile.static', 'Caddyfile', '.dockerignore'],
+            $framework?->isServerApp() && ! View::exists('docker.'.$framework->value) => ['.dockerignore'],
+            $framework === AppFramework::NEXTJS, $framework?->isServerApp() => [$framework->dockerfile(), '.dockerignore'],
+            default => ["Dockerfile.php ({$config->getServerVariation()?->value})"],
+        };
     }
 
     protected function generateDockerfiles(ConfigData $config): void
@@ -1727,7 +1745,7 @@ trait GeneratesProjectInfrastructure
         if ($syncEnv) {
             $envChanges = $config->getAllEnvironmentVariables();
 
-            if ($dryRun) {
+            if ($dryRun && $envChanges !== []) {
                 $this->line('  <fg=gray>[.ENV]</> Would sync the following variables to local .env:');
                 foreach ($envChanges as $k => $v) {
                     $this->line("         $k=$v");
@@ -1746,7 +1764,7 @@ trait GeneratesProjectInfrastructure
                 if ($config->framework === AppFramework::WORDPRESS) {
                     $this->line('  <fg=gray>[.ENV]</> Would generate any missing WordPress salts.');
                 }
-            } else {
+            } elseif (! $dryRun) {
                 // Bedrock ships no .env, and syncEnvFile only updates one that exists.
                 if ($config->framework === AppFramework::WORDPRESS && ! file_exists($config->getPath().'/.env')) {
                     touch($config->getPath().'/.env');
@@ -1788,7 +1806,7 @@ trait GeneratesProjectInfrastructure
         // 4. Generate Dockerfiles
         if ($syncK8s) {
             if ($dryRun) {
-                $this->line("  <fg=gray>[FILE]</> Would generate Dockerfile.php ({$config->getServerVariation()?->value}).");
+                $this->line('  <fg=gray>[FILE]</> Would generate '.implode(', ', $this->plannedImageFiles($config)).'.');
             } else {
                 $this->generateDockerfiles($config);
             }

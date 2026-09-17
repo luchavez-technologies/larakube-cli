@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Process;
 
 test('resume:remove deletes Reactive Resume resources', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('resume:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);

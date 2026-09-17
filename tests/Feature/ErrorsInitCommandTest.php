@@ -52,7 +52,7 @@ test('errors:init deploys standalone glitchtip when --no-plex is passed', functi
 });
 
 test('errors:remove --purge removes glitchtip resources and drops database from plex', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('errors:remove'),
         '*get secret*' => Process::result(output: base64_encode('postgres://glitchtip@postgres.larakube-plex...')),
         '*exec *' => Process::result(output: 'success'),
         '*delete *' => Process::result(output: 'deleted'),
@@ -66,7 +66,7 @@ test('errors:remove --purge removes glitchtip resources and drops database from 
 });
 
 test('errors:remove removes standalone glitchtip resources and skips plex database drop', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('errors:remove'),
         '*get secret*' => Process::result(output: base64_encode('postgres://glitchtip@glitchtip-db...')),
         '*delete *' => Process::result(output: 'deleted'),
     ]);

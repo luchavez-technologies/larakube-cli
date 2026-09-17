@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Process;
 
 test('drive:remove preserves the Commons database and drive-secrets by default', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('drive:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -19,7 +19,7 @@ test('drive:remove preserves the Commons database and drive-secrets by default',
 });
 
 test('drive:remove --purge removes workloads while preserving drive-secrets encryption keys', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('drive:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);

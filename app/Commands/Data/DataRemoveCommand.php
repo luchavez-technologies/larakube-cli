@@ -113,9 +113,40 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
                 ."ingress/{$pocketbaseDeploy}-ingress configmap/{$pocketbaseDeploy}-hooks ";
         }
 
-        return $this->removeResources(
+        $ok = $this->removeResources(
             'Removing Data resources...',
             "{$kubectl} delete {$resources}secret/{$secretName} secret/{$smtpSecret} secret/{$oidcSecret} -n {$namespace} --ignore-not-found",
         );
+
+        // PocketBase keeps its SQLite database and uploads on its own volume,
+        // not in Plex Commons, so --purge must delete that volume too. It
+        // can't be deleted while the pod still mounts it.
+        if ($removePocketbase && $this->option('purge')) {
+            Process::run("{$kubectl} wait --for=delete pod -l app.kubernetes.io/name={$pocketbaseDeploy} -n {$namespace} --timeout=60s 2>/dev/null || true");
+
+            $ok = $this->removeResources(
+                'Removing PocketBase storage...',
+                "{$kubectl} delete pvc/".$this->pocketbaseVolume($instance)." -n {$namespace} --ignore-not-found",
+            ) && $ok;
+        }
+
+        return $ok;
+    }
+
+    protected function teardownWarning(string $env): array
+    {
+        $lines = parent::teardownWarning($env);
+
+        if ($this->option('purge')) {
+            $lines[] = 'PocketBase data volume(s) WILL BE DESTROYED: its database, users and uploaded files.';
+        }
+
+        return $lines;
+    }
+
+    /** The volume data:init gives a PocketBase instance. */
+    private function pocketbaseVolume(?string $instance): string
+    {
+        return 'data-pocketbase-pvc-'.$instance;
     }
 }

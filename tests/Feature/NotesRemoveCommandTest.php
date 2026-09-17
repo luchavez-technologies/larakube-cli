@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Process;
 
 test('notes:remove tears down main\'s resources by their un-suffixed names', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('notes:remove'),
         '*get secret notes-secrets*' => Process::result(output: '', exitCode: 1),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),

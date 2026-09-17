@@ -148,7 +148,7 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
 });
 
 test('vpn:remove removes netbird vpn namespace when --remove is passed', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('vpn:remove'),
         '*get namespace larakube-vpn*' => Process::result(output: ''),
         '*get pvc -n larakube-vpn*' => Process::result(output: ''),
         '*get storageclass*' => Process::result(output: ''),
@@ -302,6 +302,9 @@ test('vpn:remove also targets the CHOSEN environment\'s own saved context', func
             "{$kubectl} delete namespace larakube-vpn*" => Process::result(output: 'deleted'),
             // The shared base also unregisters the tool from the cluster
             // registry, which the old --remove path skipped entirely.
+            '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+                ['tool' => 'vpn', 'instance' => '', 'host' => 'vpn.example.com'],
+            ]))),
             '*larakube-tools-registry*' => Process::result(output: ''),
             '*apply -f -*' => Process::result(output: 'configured'),
         ]);

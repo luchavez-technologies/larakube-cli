@@ -275,7 +275,7 @@ test('data:remove --domain removes EVERY instance registered for the host (dupli
 });
 
 test('data:remove --engine=pocketbase removes pocketbase resources', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('data:remove'),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -292,7 +292,7 @@ test('data:remove tears down pocketbase\'s own Service and Ingress, not just Dir
     // real names (service/data-pocketbase, ingress/data-pocketbase-ingress).
     // Every past data:remove left those orphaned, and the next data:init for
     // either engine collided with them on the shared Data host.
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('data:remove'),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -314,7 +314,7 @@ test('data:remove asks which engine when both are deployed for the same instance
     // ::cannotPrompt() is true under runningUnitTests()), so this exercises
     // the "ask" path as the flag-required failure — interactively it's a
     // select() prompt instead, per flagOrPrompt()'s contract.
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('data:remove'),
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
         '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
         '*' => Process::result(output: ''),
@@ -326,7 +326,7 @@ test('data:remove asks which engine when both are deployed for the same instance
 })->throws(MissingFlagException::class, 'Missing required --engine');
 
 test('data:remove --engine=all removes both when both are genuinely deployed', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('data:remove'),
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
         '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
         '*delete*' => Process::result(output: 'deleted'),
@@ -341,7 +341,7 @@ test('data:remove --engine=all removes both when both are genuinely deployed', f
 });
 
 test('data:remove auto-detects the single engine actually deployed, without needing --engine', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('data:remove'),
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
         '*get deployment data-pocketbase*' => Process::result(output: ''),
         '*delete*' => Process::result(output: 'deleted'),

@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Process;
  * delete`, so this compares the resource SET, not a literal string).
  */
 test('chat:remove deletes the same resource set as before the component refactor', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('chat:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -120,7 +120,7 @@ test('chat:remove targets the real instance-suffixed resources when chat is actu
 });
 
 test('chat:remove aborts when a delete step fails', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('chat:remove'),
         '*get deployment chat-synapse-db*' => Process::result(output: 'chat-synapse-db   1/1   1   1   1d'),
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);

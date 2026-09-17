@@ -51,7 +51,7 @@ test('sso:init deploys standalone zitadel when --no-plex is passed', function ()
 });
 
 test('sso:remove removes zitadel namespace and drops the commons database', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('sso:remove'),
         '*get deployment sso-zitadel-db*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*delete *' => Process::result(output: 'deleted'),
@@ -64,7 +64,7 @@ test('sso:remove removes zitadel namespace and drops the commons database', func
 });
 
 test('sso:remove aborts when the namespace delete fails', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('sso:remove'),
         '*get deployment sso-zitadel-db*' => Process::result(output: 'sso-zitadel-db   1/1   1   1   1d'),
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);

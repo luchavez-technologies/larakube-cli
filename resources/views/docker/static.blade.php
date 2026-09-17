@@ -1,9 +1,9 @@
 {{-- Static site image: build the bundle, serve it from Caddy.
 
-     Mirrors docker/php.blade.php's `assets` stage deliberately, including the
-     BuildKit secret: VITE_* values are compiled INTO the bundle at build time,
-     so .env.{env} has to be readable during the build but must never survive
-     as an image layer. --}}
+     When the framework compiles public env values into the bundle, the build
+     reads .env.{env} through a BuildKit secret (readable during the build,
+     never an image layer) and refuses a bundle that still points at local
+     hosts. Frameworks that read no env file get a plain build. --}}
 ############################################
 # Assets Build Stage
 ############################################
@@ -16,14 +16,15 @@ RUN npm ci
 
 COPY . .
 
-# The env file is mounted for this RUN only. Vite reads .env.{mode} at BUILD
-# time and bakes VITE_-prefixed values into the output, so it must be present
-# here — and must not be baked into a layer, which a COPY would do.
+@if($bakesEnv)
+# The env file is mounted for this RUN only: the build reads .env.{mode} and
+# compiles its public values into the output, so it must be present here, and
+# must not be baked into a layer, which a COPY would do.
 RUN --mount=type=secret,id=dotenv,target=/app/.env.production \
     {{ $buildCommand }}
 
-# Refuse to ship a bundle still pointing at a developer's machine. Vite compiles
-# these values in, so by the time the image is running nothing downstream can
+# Refuse to ship a bundle still pointing at a developer's machine. The values
+# are compiled in, so by the time the image is running nothing downstream can
 # tell. `[.]` keeps the class from matching the literal string in this grep.
 #
 # `larakube up --preview` builds this same Dockerfile to rehearse the production
@@ -37,6 +38,9 @@ RUN if [ "$STRICT_HOSTS" = "1" ] && grep -rEq "https?://[a-z0-9.-]+[.](kube|test
       echo "Point .env.{{ $environment }} at real hosts and rebuild."; \
       exit 1; \
     fi
+@else
+RUN {{ $buildCommand }}
+@endif
 
 ############################################
 # Production Image

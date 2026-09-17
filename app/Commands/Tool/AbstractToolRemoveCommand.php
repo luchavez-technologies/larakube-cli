@@ -47,6 +47,9 @@ abstract class AbstractToolRemoveCommand extends Command
     /** The instance the teardown loop is currently removing; null outside handle(). */
     protected ?string $currentInstance = null;
 
+    /** @var list<string|null>|null */
+    private ?array $resolvedTargets = null;
+
     public function __construct()
     {
         if (static::class === self::class) {
@@ -113,7 +116,20 @@ abstract class AbstractToolRemoveCommand extends Command
         // serving this host", so all matching instances go.
         $targets = $this->resolveInstanceTargets($kubectl);
 
-        if (! $this->confirmDestructive($this->teardownWarning($env))) {
+        if ($targets === []) {
+            $this->laraKubeInfo("No {$tool->getLabel()} instances are registered in '{$env}', so there is nothing to remove.");
+            $this->line("  <fg=gray>Deployed but not listed? Run</> <fg=yellow>larakube tool:list {$env} --refresh</><fg=gray>, then try again.</>");
+
+            return 0;
+        }
+
+        $hosts = $this->targetHosts($kubectl, $targets);
+        $warning = $this->teardownWarning($env);
+        if ($hosts !== []) {
+            array_splice($warning, 1, 0, ['Instance(s): '.implode(', ', $hosts)]);
+        }
+
+        if (! $this->confirmDestructive($warning)) {
             return 0;
         }
 
@@ -156,94 +172,21 @@ abstract class AbstractToolRemoveCommand extends Command
     abstract protected function tool(): ClusterTool;
 
     /**
-     * Which instance(s) to remove.
-     * 1. --domain given → target instances registered for that domain/host.
-     * 2. --all given → target every registered instance of this tool.
-     * 3. Interactive with multiple registered instances → prompt select choice.
-     * 4. Single/unregistered → default to the tool's registered instance, or null.
+     * Which instance(s) to remove, read from the tool registry.
+     * 1. --domain given → the instances registered for that host.
+     * 2. Nothing registered → none (handle() reports nothing to remove).
+     * 3. --all given → every registered instance.
+     * 4. Interactive → a picker of the registered instances by host.
+     * 5. Non-interactive → the only registered instance; several is an error.
      *
-     * @return list<string>
+     * Cached: teardown() re-resolves through resolveInstance(), which must
+     * never prompt a second time.
+     *
+     * @return list<string|null>
      */
     protected function resolveInstanceTargets(string $kubectl): array
     {
-        $domain = (string) ($this->option('domain') ?: '');
-        if ($domain !== '') {
-            return $this->resolveInstanceTargetsForDomain($kubectl, $this->tool(), $domain);
-        }
-
-        $tool = $this->tool();
-
-        if ($this->hasOption('all') && $this->option('all')) {
-            $instances = $this->getToolInstances($kubectl, $tool);
-
-            if ($instances !== []) {
-                return $instances;
-            }
-
-            // Removal is read-only targeting, not installation — never write a
-            // fresh registry stub just to compute a fallback instance slug,
-            // and never GUESS one via instanceSlugFromHost() either: it always
-            // derives a real, non-empty slug (ADR 0012, amended 2026-08-15),
-            // which would target resources that don't exist for a legacy,
-            // pre-registry deployment. null is what every teardown method
-            // below already treats as "this tool's
-            // own unsuffixed default" — the exact same value the plain
-            // no-flags branch a few lines down already falls back to.
-            return [null];
-        }
-
-        $registered = array_values(array_filter(
-            $this->getRegisteredTools($kubectl),
-            fn (array $e) => ($e['tool'] ?? null) === $tool->value,
-        ));
-
-        if (count($registered) > 1 && ! $this->cannotPrompt()) {
-            $options = [];
-            foreach ($registered as $entry) {
-                // A registry entry missing its own 'instance' key is a
-                // malformed/legacy write — '' (this tool's default), never a
-                // guessed slug, matches every other fallback in this file.
-                $inst = (string) ($entry['instance'] ?? '');
-                $host = (string) ($entry['host'] ?? '');
-                $label = $host !== '' ? "{$inst} ({$host})" : $inst;
-                $options[$inst] = $label;
-            }
-            $options['__all__'] = 'All instances';
-
-            $choice = select(
-                label: "Which {$tool->getLabel()} instance would you like to remove?",
-                options: $options,
-            );
-
-            if ($choice === '__all__') {
-                return array_values(array_filter(array_keys($options), fn ($k) => $k !== '__all__'));
-            }
-
-            return [$choice];
-        }
-
-        if (count($registered) > 1) {
-            // Reaching here means cannotPrompt() was true — the branch above
-            // already handles the interactive multi-instance case with a
-            // select() prompt. Silently picking $registered[0] here (the old
-            // behaviour) meant a non-interactive run could tear down the
-            // wrong instance without the operator ever being told there was
-            // a choice to make. Same "fail loud, don't guess" philosophy as
-            // ResolvesToolHost::resolveNonInteractiveHost().
-            throw new RuntimeException(
-                "Multiple {$tool->getLabel()} instances are registered, and this command is running ".
-                'non-interactively, so which one to remove cannot be guessed. '.
-                'Pass --domain=<host> to target one, or --all to remove every registered instance.',
-            );
-        }
-
-        if ($registered !== []) {
-            $firstInst = (string) ($registered[0]['instance'] ?? '');
-
-            return [$firstInst !== '' ? $firstInst : null];
-        }
-
-        return [null];
+        return $this->resolvedTargets ??= $this->pickInstanceTargets($kubectl);
     }
 
     /**
@@ -501,5 +444,86 @@ abstract class AbstractToolRemoveCommand extends Command
         }
 
         return "{$kubectl} delete ".implode(' ', $refs)." -n {$namespace} --ignore-not-found";
+    }
+
+    /**
+     * @return list<string|null>
+     */
+    private function pickInstanceTargets(string $kubectl): array
+    {
+        $tool = $this->tool();
+
+        $domain = (string) ($this->option('domain') ?: '');
+        if ($domain !== '') {
+            return $this->resolveInstanceTargetsForDomain($kubectl, $tool, $domain);
+        }
+
+        $registered = array_values(array_filter(
+            $this->getRegisteredTools($kubectl),
+            fn (array $e) => ($e['tool'] ?? null) === $tool->value,
+        ));
+
+        // A row without an instance is this tool's unsuffixed default (null).
+        $instances = array_values(array_unique(array_map(
+            fn (array $e) => (string) ($e['instance'] ?? ''),
+            $registered,
+        )));
+        $asTarget = fn (string $inst): ?string => $inst !== '' ? $inst : null;
+
+        if ($instances === []) {
+            return [];
+        }
+
+        if ($this->hasOption('all') && $this->option('all')) {
+            return array_map($asTarget, $instances);
+        }
+
+        if (! $this->cannotPrompt()) {
+            $options = [];
+            foreach ($registered as $entry) {
+                $inst = (string) ($entry['instance'] ?? '');
+                $host = (string) ($entry['host'] ?? '');
+                $options[$inst] ??= $host !== '' ? $host : ($inst !== '' ? $inst : 'default instance');
+            }
+            if (count($options) > 1) {
+                $options['__all__'] = 'All instances';
+            }
+
+            $choice = (string) select(
+                label: "Which {$tool->getLabel()} instance would you like to remove?",
+                options: $options,
+            );
+
+            return $choice === '__all__'
+                ? array_map($asTarget, $instances)
+                : [$asTarget($choice)];
+        }
+
+        if (count($instances) > 1) {
+            // Guessing here could tear down the wrong instance unseen.
+            throw new RuntimeException(
+                "Multiple {$tool->getLabel()} instances are registered, and this command is running ".
+                'non-interactively, so which one to remove cannot be guessed. '.
+                'Pass --domain=<host> to target one, or --all to remove every registered instance.',
+            );
+        }
+
+        return [$asTarget($instances[0])];
+    }
+
+    /**
+     * The registered hosts of the targeted instances, for the confirmation.
+     *
+     * @param  list<string|null>  $targets
+     * @return list<string>
+     */
+    private function targetHosts(string $kubectl, array $targets): array
+    {
+        $wanted = array_map(fn (?string $t): string => (string) $t, $targets);
+
+        return array_values(array_unique(array_filter(array_map(
+            fn (array $e): string => in_array((string) ($e['instance'] ?? ''), $wanted, true) ? (string) ($e['host'] ?? '') : '',
+            array_filter($this->getRegisteredTools($kubectl), fn (array $e) => ($e['tool'] ?? null) === $this->tool()->value),
+        ))));
     }
 }

@@ -75,6 +75,9 @@ test('the picker offers deployable frameworks with the detected one pre-selected
 
         $this->artisan('init --dry-run')
             ->expectsChoice('Which framework is this project?', 'astro', $options)
+            ->expectsOutputToContain('Would generate Dockerfile.static, Caddyfile, .dockerignore.')
+            ->doesntExpectOutputToContain('Dockerfile.php')
+            ->doesntExpectOutputToContain('Would sync the following variables')
             ->assertExitCode(0);
 
         expect(file_exists("{$project}/.larakube.json"))->toBeFalse();
@@ -136,4 +139,11 @@ test('a Next.js dry run lists the project changes without touching the project',
         expect(file_get_contents("{$project}/next.config.ts"))->not->toContain('standalone')
             ->and(file_exists("{$project}/.larakube.json"))->toBeFalse();
     });
+});
+
+test('a static site watches its own framework paths, not Laravel\'s', function (): void {
+    $config = ConfigData::forStaticSite(AppFramework::DOCUSAURUS, 'docs', '/tmp/docs', App\Enums\PackageManager::NPM);
+
+    expect($config->watchPaths)->toContain('docs', 'docusaurus.config.ts', 'sidebars.ts')
+        ->not->toContain('app', 'composer.lock');
 });

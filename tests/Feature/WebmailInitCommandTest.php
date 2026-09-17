@@ -108,7 +108,7 @@ test('webmail:init --vpn-only creates the Traefik Middleware before applying the
 });
 
 test('webmail:remove deletes the Bulwark resources', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('webmail:remove'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
@@ -119,7 +119,7 @@ test('webmail:remove deletes the Bulwark resources', function (): void {
 });
 
 test('webmail:remove aborts when a delete step fails', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('webmail:remove'),
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);
 

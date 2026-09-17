@@ -132,7 +132,7 @@ test('dashboard manifest binds cluster-admin to the OIDC-authenticated -dashboar
 });
 
 test('dashboard:remove deletes Headlamp resources', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('dashboard:remove'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 

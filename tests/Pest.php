@@ -244,3 +244,23 @@ function something(): void
 {
     // ..
 }
+
+/**
+ * Process fakes for a `{tool}:remove` run against one registered instance:
+ * removal targets come from the tool registry, so an empty registry means
+ * nothing to remove. Spread first into Process::fake() so these win.
+ *
+ * @return array<string, mixed>
+ */
+function registeredToolRemoveFakes(string $removeCommand, string $instance = '', string $host = 'tool.example.com'): array
+{
+    $tool = collect(App\Enums\ClusterTool::cases())->first(fn ($t) => $t->removeCommand() === $removeCommand);
+
+    return [
+        '*get secret larakube-tools-registry*' => Illuminate\Support\Facades\Process::result(output: base64_encode(json_encode([
+            ['tool' => $tool->value, 'instance' => $instance, 'host' => $host],
+        ]))),
+        '*create namespace larakube-shared*' => Illuminate\Support\Facades\Process::result(),
+        '*create secret generic larakube-tools-registry*' => Illuminate\Support\Facades\Process::result(),
+    ];
+}

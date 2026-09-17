@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Process;
 
 test('paste:remove deletes Yopass resources', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('paste:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);

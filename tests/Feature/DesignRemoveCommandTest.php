@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Process;
  * ChatRemoveCommandTest for the full rationale.
  */
 test('design:remove deletes the same resource set as before the component refactor', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('design:remove'),
         '*get secret design-secrets*' => Process::result(output: 'design-secrets   Opaque   1   10d'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),

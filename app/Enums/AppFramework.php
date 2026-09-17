@@ -215,6 +215,33 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
     }
 
     /**
+     * Whether the production build reads `.env.{environment}` and compiles its
+     * public values into the bundle (Vite's VITE_*, Astro's PUBLIC_*).
+     * Docusaurus reads no env file, so its bundle has no configured hosts to
+     * check, and a docs site legitimately mentions local URLs in its content.
+     */
+    public function bakesEnvIntoBuild(): bool
+    {
+        return in_array($this, [self::VITE, self::ASTRO], true);
+    }
+
+    /**
+     * The paths `larakube watch` follows for a static site, or null for the
+     * blueprint's defaults (Laravel's).
+     *
+     * @return list<string>|null
+     */
+    public function staticWatchPaths(): ?array
+    {
+        return match ($this) {
+            self::VITE => ['src', 'public', 'index.html', 'package.json', 'vite.config.js', 'vite.config.ts'],
+            self::ASTRO => ['src', 'public', 'package.json', 'astro.config.mjs', 'astro.config.ts'],
+            self::DOCUSAURUS => ['docs', 'blog', 'src', 'static', 'package.json', 'docusaurus.config.ts', 'docusaurus.config.js', 'sidebars.ts', 'sidebars.js'],
+            default => null,
+        };
+    }
+
+    /**
      * Directory the build lands in, relative to the project root. Docusaurus is
      * the odd one out — it writes `build/`, not `dist/`.
      */

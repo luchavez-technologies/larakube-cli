@@ -78,3 +78,47 @@ test('data:remove --all removes all registered instances', function (): void {
         '--no-interaction' => true,
     ])->assertExitCode(0);
 });
+
+test('data:remove --all --purge deletes every PocketBase instance and its data volume', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ['tool' => 'data', 'instance' => 'data-test', 'host' => 'data.test'],
+            ['tool' => 'data', 'instance' => 'data-second-test', 'host' => 'data-second.test'],
+        ]))),
+        '*get deployment data-directus*' => Process::result(output: ''),
+        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
+        '*' => Process::result(output: 'deleted'),
+    ]);
+
+    $this->artisan(DataRemoveCommand::class, [
+        'environment' => 'local',
+        '--all' => true,
+        '--purge' => true,
+        '--force' => true,
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    foreach (['data-test', 'data-second-test'] as $instance) {
+        Process::assertRan(fn ($process) => str_contains($process->command, "delete deployment/data-pocketbase-{$instance} "));
+        Process::assertRan(fn ($process) => str_contains($process->command, "delete pvc/data-pocketbase-pvc-{$instance} "));
+    }
+});
+
+test('data:remove without --purge keeps the PocketBase data volume', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ['tool' => 'data', 'instance' => 'data-test', 'host' => 'data.test'],
+        ]))),
+        '*get deployment data-directus*' => Process::result(output: ''),
+        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
+        '*' => Process::result(output: 'deleted'),
+    ]);
+
+    $this->artisan(DataRemoveCommand::class, [
+        'environment' => 'local',
+        '--force' => true,
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete pvc/'));
+});

@@ -31,7 +31,7 @@ test('every tool has a remove command and none of them still accept --remove on 
 });
 
 test('flow:remove preserves the Commons database by default', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('flow:remove'),
         '*get secret flow-secrets*' => Process::result(output: 'flow-secrets'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
@@ -44,7 +44,7 @@ test('flow:remove preserves the Commons database by default', function (): void 
 });
 
 test('flow:remove --purge drops both engine databases and deletes the resources', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('flow:remove'),
         // A non-empty flow-secrets means this install leased a Commons tenant.
         '*get secret flow-secrets*' => Process::result(output: 'flow-secrets'),
         '*exec *' => Process::result(output: 'dropped'),
@@ -67,7 +67,7 @@ test('a failed database drop does not delete the OpenBao static role for a still
     // OpenBao's rotation for a tenant that kept running fine. Confirmed live
     // 2026-08-23 on 4 tools (stalwart, record_sendrec, resume_reactive,
     // sheet's role) — see plans/active/openbao-static-role-coverage.md.
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('flow:remove'),
         '*get secret flow-secrets*' => Process::result(output: 'flow-secrets'),
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*exec *' => Process::result(output: '', exitCode: 1),
@@ -87,7 +87,7 @@ test('sheets:remove --purge drops the Commons database AND its S3 buckets, not j
     // The bug this guards: --purge dropped the Postgres tenant but silently
     // left every tool's S3 bucket (and its contents) behind — commonsBuckets()
     // was declared but never consulted by the teardown path.
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('sheets:remove'),
         '*get configmap plex-registry*' => Process::result(output: json_encode([
             'tenants' => [
                 'sheet-public' => ['s3_bucket' => 'sheet-public', 's3_service' => 'seaweedfs'],
@@ -111,7 +111,7 @@ test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when th
     // tracked s3_service) has nothing to read the backend from — fall back
     // to whichever S3 service the live Commons spec has enabled, the same
     // discovery order every {tool}:init uses to pick one in the first place.
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('sheets:remove'),
         '*get configmap plex-registry*' => Process::result(output: json_encode(['tenants' => []])),
         '*get configmap plex-commons*' => Process::result(output: json_encode([
             'services' => ['seaweedfs' => ['enabled' => true]],
@@ -127,7 +127,7 @@ test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when th
 });
 
 test('drive:remove --purge does NOT drop its Commons bucket — oCIS encryption keys would orphan the data', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('drive:remove'),
         '*get configmap plex-registry*' => Process::result(output: json_encode([
             'tenants' => ['drive-ocis' => ['s3_bucket' => 'drive-ocis', 's3_service' => 'seaweedfs']],
         ])),
@@ -146,7 +146,7 @@ test('drive:remove --purge does NOT drop its Commons bucket — oCIS encryption 
 test('a failed delete exits non-zero instead of reporting success', function (): void {
     // The bug this guards: every tool's remove path used to discard the step
     // result and print "removed" regardless of what kubectl actually did.
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('flow:remove'),
         '*get secret flow-secrets*' => Process::result(output: '', exitCode: 1),
         '*delete *' => Process::result(output: 'forbidden', exitCode: 1),
     ]);
@@ -158,7 +158,7 @@ test('a failed delete exits non-zero instead of reporting success', function ():
 
 test('namespace-wholesale tools delete their own namespace and nothing shared', function (): void {
     foreach ([ClusterTool::PASSWORDS, ClusterTool::VPN] as $tool) {
-        Process::fake([
+        Process::fake([...registeredToolRemoveFakes($tool->removeCommand()),
             '*delete namespace*' => Process::result(output: 'deleted'),
             '*' => Process::result(output: ''),
         ]);
@@ -171,7 +171,7 @@ test('namespace-wholesale tools delete their own namespace and nothing shared', 
 });
 
 test('mail:remove closes the firewall ports it opened', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('mail:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*wait *' => Process::result(output: ''),
         '*get secrets*' => Process::result(output: ''),
@@ -199,7 +199,7 @@ test('--domain on a single-instance tool errors instead of silently no-opping', 
 });
 
 test('omitting --domain is always allowed, even for single-instance tools', function (): void {
-    Process::fake(['*' => Process::result(output: '')]);
+    Process::fake([...registeredToolRemoveFakes('sso:remove'), '*' => Process::result(output: '')]);
 
     $this->artisan('sso:remove local --force')->assertExitCode(0);
 });
@@ -227,4 +227,32 @@ test('--domain on a tool without real per-instance teardown errors instead of si
             ->assertExitCode(1)
             ->expectsOutputToContain('does not support multiple instances');
     }
+});
+
+test('a tool with no registered instance reports nothing to remove and deletes nothing', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode('[]')),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('notes:remove local')
+        ->expectsOutputToContain("instances are registered in 'local', so there is nothing to remove.")
+        ->assertExitCode(0);
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete'));
+});
+
+test('the confirmation names the host of the registered instance being removed', function (): void {
+    Process::fake([...registeredToolRemoveFakes('notes:remove', 'notes-example-com', 'notes.example.com'),
+        '*delete*' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('notes:remove local')
+        ->expectsOutputToContain('Instance(s): notes.example.com')
+        ->expectsQuestion('Type confirm to proceed', 'confirm')
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
+        && str_contains($process->command, 'deployment/notes-outline-notes-example-com'));
 });

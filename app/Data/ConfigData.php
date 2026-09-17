@@ -1848,9 +1848,9 @@ class ConfigData extends Data
         $config->setPackageManager($packageManager);
 
         // Default watchPaths are Laravel's (app/, bootstrap/, routes/, …),
-        // none of which exist in a Vite project.
-        if ($framework === AppFramework::VITE) {
-            $config->watchPaths = ['src', 'public', 'index.html', 'package.json', 'vite.config.js', 'vite.config.ts'];
+        // none of which exist in a static site.
+        if ($paths = $framework->staticWatchPaths()) {
+            $config->watchPaths = $paths;
         }
 
         return $config;

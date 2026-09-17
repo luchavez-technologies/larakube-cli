@@ -36,7 +36,7 @@ test('a fresh meet:init points you at the wire command instead of pretending it 
 });
 
 test('meet:remove tears down the SFU and its bridge', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('meet:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*get *' => Process::result(output: '', exitCode: 1),
     ]);
@@ -52,7 +52,7 @@ test('meet:remove tears down the SFU and its bridge', function (): void {
 });
 
 test('meet:remove aborts when a delete step fails', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('meet:remove'),
         '*delete *' => Process::result(output: '', exitCode: 1),
         '*get *' => Process::result(output: '', exitCode: 1),
     ]);

@@ -9,7 +9,7 @@ test('secrets:remove is registered', function (): void {
 });
 
 test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the shared CRDs', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('secrets:remove'),
         '*' => Process::result(output: ''),
     ]);
 
@@ -42,7 +42,7 @@ test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the sha
 });
 
 test('secrets:remove --purge deletes the PVC and bootstrap secret', function (): void {
-    Process::fake([
+    Process::fake([...registeredToolRemoveFakes('secrets:remove'),
         '*' => Process::result(output: ''),
     ]);
 
