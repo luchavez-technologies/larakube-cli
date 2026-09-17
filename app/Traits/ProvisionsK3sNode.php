@@ -23,7 +23,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 trait ProvisionsK3sNode
 {
-    use InstallsK3s, InteractsWithRemoteSsh, InteractsWithServerHardening, VerifiesKubernetesRollout;
+    use InstallsK3s, InteractsWithRemoteSsh, InteractsWithServerHardening, ManagesTraefikAcmeChallenge, VerifiesKubernetesRollout;
 
     /**
      * Install K3s on the remote server.
@@ -338,6 +338,29 @@ BASH;
     }
 
     /**
+     * The IP Traefik advertises as its ingress endpoint. Read from the running
+     * Deployment so an upgrade preserves exactly what provisioning set; fall back
+     * to the address embedded in the `larakube-<ip>` context name.
+     */
+    protected function resolveTraefikIngressIp(string $context): ?string
+    {
+        $args = Process::run(
+            $this->kubectlPinned($context).' get deployment traefik -n traefik '
+            ."-o jsonpath='{.spec.template.spec.containers[0].args}' --ignore-not-found",
+        )->output();
+
+        if (preg_match('/ingressendpoint\.ip=([0-9.]+)/', $args, $m) === 1) {
+            return $m[1];
+        }
+
+        if (preg_match('/(\d+\.\d+\.\d+\.\d+)/', $context, $m) === 1) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
+    /**
      * `kubectl --context X` on its own follows the shell's own $KUBECONFIG when
      * one is set (e.g. k3s's own setup docs suggest exporting
      * /etc/rancher/k3s/k3s.yaml) — but syncKubeconfig() only ever merges
@@ -367,8 +390,12 @@ BASH;
      *                       cluster could never pick up manifest changes — which
      *                       is how these clusters ended up with no Traefik CRDs.
      *                       `traefik:setup {env}` passes true to upgrade in place.
+     * @param  bool|null  $dnsChallenge  Which Let's Encrypt challenge to render. Null
+     *                                   reads it from the cluster (see
+     *                                   ManagesTraefikAcmeChallenge), so every
+     *                                   re-render keeps what `tls:init` set.
      */
-    protected function deployTraefik(string $contextName, string $ip, bool $force = false): bool
+    protected function deployTraefik(string $contextName, string $ip, bool $force = false, ?bool $dnsChallenge = null): bool
     {
         if (! $force && $this->traefikInstalledOnContext($contextName)) {
             $this->laraKubeInfo('ℹ️  Traefik is already installed on this cluster — skipping deploy.');
@@ -423,8 +450,12 @@ BASH;
         // 3. Apply Traefik Cloud manifest
         $tmpInstall = $temporaryDirectory->path('traefik-cloud.yaml');
         file_put_contents($tmpInstall, view('k8s.traefik-cloud', [
-            'email' => $this->getEmail(),
+            // The running cluster's ACME email wins over this machine's global
+            // config: another operator re-rendering Traefik must not change the
+            // Let's Encrypt account, or drop ACME when they have no email set.
+            'email' => $this->liveTraefikAcmeEmail($kubectl) ?? $this->getEmail(),
             'ip' => $ip,
+            'dnsChallenge' => $dnsChallenge ?? $this->traefikUsesDnsChallenge($kubectl),
         ])->render());
         $ok = $this->applyAndVerifyRollout($kubectl, $tmpInstall, $namespace, 'traefik', extraApplyFlags: '--validate=false');
         $temporaryDirectory->delete();

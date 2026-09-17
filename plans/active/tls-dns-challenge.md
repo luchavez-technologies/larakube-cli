@@ -1,6 +1,11 @@
 # Plan: `tls:init` / `tls:remove`, Let's Encrypt via the Cloudflare DNS challenge
 
-**Status:** 📝 PLANNED, not started.
+**Status:** Phase 0 ✅ done (`d8a51de`, verified live on production). Phase 1 ✅ built; `tls:init` switched production to the DNS challenge (Traefik args/env verified, sites 200). Still to prove: a certificate actually issued through DNS (walkthrough Phase 1c). Next: `tls:prune`.
+
+**Phase 1 deviations from this plan:**
+- **Managed (DOKS) clusters are refused for now.** Their Traefik install path never re-renders an existing install, so there is no safe apply path yet. Both templates already render the DNS challenge.
+- **No tool-registry row.** `dns:init` doesn't register one either; `tls:show` is the status view.
+- **Every cloud Traefik re-render keeps the cluster's own ACME email** (read from the running Deployment) over the operator's global config.
 **Walkthrough:** `plans/active/tls-dns-challenge-testing.md`
 
 ## Why
@@ -92,7 +97,14 @@ Switches back to the HTTP challenge.
 
 ### `tls:show {environment}`
 Shows the challenge in use, the token source, the covered zones, and any
-uncovered hosts (the preflight from step 4, read-only).
+uncovered hosts (the preflight from step 4, read-only). It also lists
+**stored certificates with no ingress**: Traefik renews every certificate in
+`acme.json`, used or not. After the Phase 0 upgrade, production logged failed
+renewals for 5 removed tools (`sheet`, `inbox`, `flow`, `desk` on luchtech.dev,
+`mail.larakube.app`). Under the HTTP challenge they fail harmlessly (no DNS).
+Under the DNS challenge they would **succeed**, issuing certificates for dead
+hosts. Listing them is read-only; removing them stays a manual step, since it
+means editing `acme.json`.
 
 ## One render path for Traefik (the part that must not regress)
 
@@ -120,7 +132,7 @@ challenge, or it silently reverts to HTTP.
 
 ## Phases
 
-### Phase 0: Traefik version (prerequisite, its own commit)
+### Phase 0: Traefik version (prerequisite, its own commit) ✅
 Both templates pin the floating `traefik:v3.1`, and production runs it. The
 latest stable release is **v3.7.13** (2026-09-04; re-check at implementation
 time). The DNS challenge options were renamed after 3.1

@@ -35,3 +35,33 @@ test('Traefik runs the pinned image and can read what its providers watch', func
 test('the Traefik image is pinned to an exact release, never a floating minor tag', function (): void {
     expect(ConfigData::TRAEFIK_IMAGE)->toMatch('/^traefik:v\d+\.\d+\.\d+$/');
 });
+
+test('the DNS challenge swaps the HTTP challenge for Cloudflare and injects the token from the Traefik Secret', function (string $view): void {
+    $rendered = view($view, [
+        'email' => 'ops@example.com',
+        'ip' => '203.0.113.10',
+        'loadBalancerName' => 'lb-example',
+        'dnsChallenge' => true,
+    ])->render();
+
+    $container = collect(Yaml::parse(
+        collect(preg_split('/^---\s*$/m', $rendered))->first(fn ($doc) => str_contains($doc, 'kind: Deployment')),
+    )['spec']['template']['spec']['containers'])->first();
+
+    expect($container['args'])
+        ->toContain('--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare')
+        ->not->toContain('--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web')
+        ->and($container['env'])->toBe([[
+            'name' => 'CF_DNS_API_TOKEN',
+            'valueFrom' => ['secretKeyRef' => ['name' => 'traefik-acme-cloudflare', 'key' => 'token']],
+        ]]);
+})->with(['k8s.traefik-cloud', 'k8s.traefik-managed']);
+
+test('the HTTP challenge stays the default and carries no Cloudflare token', function (): void {
+    $rendered = view('k8s.traefik-cloud', ['email' => 'ops@example.com', 'ip' => '203.0.113.10'])->render();
+
+    expect($rendered)
+        ->toContain('--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web')
+        ->not->toContain('dnschallenge')
+        ->not->toContain('CF_DNS_API_TOKEN');
+});

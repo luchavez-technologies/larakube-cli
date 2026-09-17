@@ -12,6 +12,7 @@ use App\Traits\InteractsWithClusterIdentity;
 use App\Traits\InteractsWithDnsZones;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
+use App\Traits\ReadsStoredCloudflareTokens;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
@@ -56,7 +57,7 @@ class DnsInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi,
         InteractsWithClusterContext, InteractsWithClusterIdentity, InteractsWithDnsZones,
-        LaraKubeOutput, PromotesIngressDns, RequiresFlagsWhenNonInteractive,
+        LaraKubeOutput, PromotesIngressDns, ReadsStoredCloudflareTokens, RequiresFlagsWhenNonInteractive,
         ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'dns:init
@@ -166,36 +167,6 @@ class DnsInitCommand extends Command
         $this->newLine();
 
         return 0;
-    }
-
-    /**
-     * Every stored Cloudflare token, keyed by its group slug.
-     *
-     * @return array<string, string>
-     */
-    protected function storedCloudflareTokens(string $kubectl, string $ns): array
-    {
-        $names = trim(Process::run(
-            "{$kubectl} get secret -n {$ns} -o name --no-headers --ignore-not-found",
-        )->output());
-
-        $tokens = [];
-
-        foreach (preg_split('/\s+/', $names) ?: [] as $name) {
-            $name = str_replace('secret/', '', trim($name));
-
-            if (! str_starts_with($name, 'cloudflare-token-')) {
-                continue;
-            }
-
-            $value = $this->readClusterSecretKey($kubectl, $ns, $name, 'token');
-
-            if ($value !== null && $value !== '') {
-                $tokens[substr($name, strlen('cloudflare-token-'))] = $value;
-            }
-        }
-
-        return $tokens;
     }
 
     /**

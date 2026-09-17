@@ -133,7 +133,23 @@ spec:
 @if(isset($email))
             - --certificatesresolvers.letsencrypt.acme.email={{ $email }}
             - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+@if($dnsChallenge ?? false)
+            {{-- `larakube tls:init`: prove control through a Cloudflare TXT record,
+                 so renewal works for proxied (orange-cloud) hosts too. Checked
+                 against Cloudflare's resolvers, not the node's. --}}
+            - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare
+            - --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,1.0.0.1:53
+@else
             - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+@endif
+@endif
+@if(($dnsChallenge ?? false) && isset($email))
+          env:
+            - name: CF_DNS_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: traefik-acme-cloudflare
+                  key: token
 @endif
           ports:
             - name: web

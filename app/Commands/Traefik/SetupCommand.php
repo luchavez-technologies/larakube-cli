@@ -7,7 +7,6 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithTraefik;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
-use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class SetupCommand extends Command
@@ -91,28 +90,5 @@ class SetupCommand extends Command
         $this->laraKubeInfo("✅ Traefik upgraded on '{$env}'.");
 
         return 0;
-    }
-
-    /**
-     * The IP Traefik advertises as its ingress endpoint. Read from the running
-     * Deployment so an upgrade preserves exactly what provisioning set; fall back
-     * to the address embedded in the `larakube-<ip>` context name.
-     */
-    protected function resolveTraefikIngressIp(string $context): ?string
-    {
-        $args = Process::run(
-            $this->kubectlPinned($context).' get deployment traefik -n traefik '
-            ."-o jsonpath='{.spec.template.spec.containers[0].args}' --ignore-not-found",
-        )->output();
-
-        if (preg_match('/ingressendpoint\.ip=([0-9.]+)/', $args, $m) === 1) {
-            return $m[1];
-        }
-
-        if (preg_match('/(\d+\.\d+\.\d+\.\d+)/', $context, $m) === 1) {
-            return $m[1];
-        }
-
-        return null;
     }
 }
