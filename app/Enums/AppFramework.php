@@ -123,6 +123,34 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
         ], true);
     }
 
+    /** The Dockerfile that builds this framework's production image, relative to the project root. */
+    public function dockerfile(): string
+    {
+        return match (true) {
+            $this->isStaticSpa() => 'Dockerfile.static',
+            $this->isPhp() => 'Dockerfile.php',
+            default => "Dockerfile.{$this->value}",
+        };
+    }
+
+    /** The Dockerfile stage to build, or null when the image has a single final stage. */
+    public function buildTarget(): ?string
+    {
+        return $this->isStaticSpa() ? null : 'deploy';
+    }
+
+    /** The cloud Deployment a rollout waits on. */
+    public function workloadName(string $appName): string
+    {
+        return $this->isStaticSpa() || $this->isPhp() ? 'web' : "{$appName}-{$this->value}";
+    }
+
+    /** Whether dependencies come from npm, so CI audits them with `npm audit`. */
+    public function usesNpm(): bool
+    {
+        return $this->isStaticSpa() || in_array($this, [self::NEXTJS, self::NESTJS, self::ADONISJS], true);
+    }
+
     public function isStaticSpa(): bool
     {
         return in_array($this, [self::ASTRO, self::VITE, self::DOCUSAURUS], true);

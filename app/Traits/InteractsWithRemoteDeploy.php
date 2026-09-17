@@ -364,17 +364,14 @@ trait InteractsWithRemoteDeploy
      */
     protected function dockerfileFor(ConfigData $config, string $path): string
     {
-        return match (true) {
-            $config->framework?->isStaticSpa() => "{$path}/Dockerfile.static",
-            $config->framework === AppFramework::NEXTJS => "{$path}/Dockerfile.nextjs",
-            default => "{$path}/Dockerfile.php",
-        };
+        return "{$path}/".($config->framework ?? AppFramework::LARAVEL)->dockerfile();
     }
 
-    /** Static images have a single final stage; the PHP and Next.js images target `deploy`. */
     protected function buildTargetFor(ConfigData $config): string
     {
-        return $config->framework?->isStaticSpa() ? '' : '--target deploy ';
+        $target = ($config->framework ?? AppFramework::LARAVEL)->buildTarget();
+
+        return $target === null ? '' : "--target {$target} ";
     }
 
     /** Resolve the rollout-triggering image tag for a project. */
@@ -821,7 +818,8 @@ trait InteractsWithRemoteDeploy
 
             // 7. Wait for the web rollout (scoped). Bounded a bit past the command's
             // own --timeout=180s so kubectl's own timeout fires first.
-            $this->runStreaming('KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s', 190);
+            $workload = ($config->framework ?? AppFramework::LARAVEL)->workloadName($config->getName());
+            $this->runStreaming('KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl rollout status deploy/'.escapeshellarg($workload).' -n '.escapeshellarg($namespace).' --timeout=180s', 190);
         } finally {
             $kubeconfigTemporaryDirectory->delete();
         }

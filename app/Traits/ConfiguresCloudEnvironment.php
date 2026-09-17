@@ -6,6 +6,7 @@ use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
 use App\Data\RegistryData;
+use App\Enums\AppFramework;
 use App\Enums\ClusterTool;
 use App\Enums\RegistryProvider;
 use Illuminate\Support\Facades\Process;
@@ -351,6 +352,9 @@ trait ConfiguresCloudEnvironment
         // the web host is missing or still a local .kube/.dev.test value.
         $config = $this->getProjectConfigObject($projectPath);
         $isStatic = (bool) $config->framework?->isStaticSpa();
+        // Neither PHP nor static: Next.js, and the server frameworks as they
+        // become deployable. A project with no framework recorded is Laravel.
+        $isServerApp = $config->framework !== null && ! $isStatic && ! $config->framework->isPhp();
         $previousHost = $config->getHost($environment, 'web');
 
         $host = $this->ensureHosts($config, $environment);
@@ -439,8 +443,8 @@ trait ConfiguresCloudEnvironment
         $registryHost = $registry ? $registry->getRegistryHost() : 'ghcr.io';
         $imageName = $registry ? ($registry->image ?? '${{ github.repository }}') : '${{ github.repository }}';
 
-        if ($isStatic && $this->flag('with-tests')) {
-            $this->laraKubeWarn('--with-tests has no effect on a static site — there is no test suite convention to run.');
+        if (($isStatic || $isServerApp) && $this->flag('with-tests')) {
+            $this->laraKubeWarn("--with-tests has no effect on a {$config->framework->getLabel()} project — there is no test suite convention to run.");
         }
 
         // Resolve security audit configuration — CLI flags override persisted
@@ -479,15 +483,19 @@ trait ConfiguresCloudEnvironment
             rows: array_values(array_filter([
                 ['Gitleaks (secret scan)', $auditConfig->runsGitleaks() ? '✅ Enabled' : '⏭ Skipped'],
                 ['Semgrep (SAST)', $auditConfig->runsSemgrep() ? '✅ ERROR-only' : '⏭ Skipped'],
-                [$isStatic ? 'NPM audit' : 'Composer / NPM audit', $auditConfig->runsDependencyAudit() ? '✅ '.$auditConfig->auditLevel() : '⏭ Skipped'],
+                [$isStatic || $isServerApp ? 'NPM audit' : 'Composer / NPM audit', $auditConfig->runsDependencyAudit() ? '✅ '.$auditConfig->auditLevel() : '⏭ Skipped'],
                 ['Trivy filesystem scan', $auditConfig->runsTrivy() ? '📊 Report-only' : '⏭ Skipped'],
                 ['Trivy image scan', $auditConfig->runsTrivy() ? '🚦 '.$auditConfig->failOnSeverity() : '⏭ Skipped'],
-                $isStatic ? null : ['Application tests', $auditConfig->runsTests() ? '✅ Enabled' : '⏭ Skipped'],
+                $isStatic || $isServerApp ? null : ['Application tests', $auditConfig->runsTests() ? '✅ Enabled' : '⏭ Skipped'],
                 ['Severity policy', $auditConfig->strict ? '🔒 Strict (HIGH+CRITICAL)' : '🛡 Default (CRITICAL)'],
             ])),
         );
 
-        $workflowContent = view($isStatic ? 'k8s.cloud-pilot-deploy-static' : 'k8s.cloud-pilot-deploy', [
+        $workflowContent = view(match (true) {
+            $isStatic => 'k8s.cloud-pilot-deploy-static',
+            $isServerApp => 'k8s.cloud-pilot-deploy-server',
+            default => 'k8s.cloud-pilot-deploy',
+        }, [
             'config' => $config,
             'environment' => $environment,
             'branch' => $branch,
@@ -496,7 +504,7 @@ trait ConfiguresCloudEnvironment
             'podName' => $podName,
             'upperEnv' => $upperEnv,
             'vpnHost' => $vpnHost,
-            'publicEnvScript' => $isStatic
+            'publicEnvScript' => $isStatic || $isServerApp
                 ? $this->buildStaticPublicEnvScript($config, $environment)
                 : $this->buildPublicEnvScript($config, $environment),
             'secrets' => [
@@ -535,7 +543,7 @@ trait ConfiguresCloudEnvironment
                 'semgrep' => $auditConfig->runsSemgrep(),
                 'dependencyAudit' => $auditConfig->runsDependencyAudit(),
                 'trivy' => $auditConfig->runsTrivy(),
-                'withTests' => ! $isStatic && $auditConfig->runsTests(),
+                'withTests' => ! $isStatic && ! $isServerApp && $auditConfig->runsTests(),
                 'failOn' => $auditConfig->failOnSeverity(),
                 'auditLevel' => $auditConfig->auditLevel(),
             ],
@@ -1111,7 +1119,9 @@ trait ConfiguresCloudEnvironment
      */
     protected function deploymentPodName(ConfigData $config): string
     {
-        return $config->getServerVariation()?->getPodName($config) ?? 'web';
+        return $config->getServerVariation()?->getPodName($config)
+            ?? $config->framework?->workloadName((string) $config->getName())
+            ?? 'web';
     }
 
     protected function generateGitlabPipeline(string $projectPath, ConfigData $config): int
@@ -1144,7 +1154,10 @@ trait ConfiguresCloudEnvironment
                     ? '$CI_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHA'
                     : "{$registryHost}/{$imagePath}:\$CI_COMMIT_SHA",
                 'static' => (bool) $config->framework?->isStaticSpa(),
-                'publicEnvScript' => $config->framework?->isStaticSpa()
+                'php' => $config->framework === null || $config->framework->isPhp(),
+                'dockerfile' => ($config->framework ?? AppFramework::LARAVEL)->dockerfile(),
+                'target' => ($config->framework ?? AppFramework::LARAVEL)->buildTarget(),
+                'publicEnvScript' => $config->framework !== null && ! $config->framework->isPhp()
                     ? $this->buildStaticPublicEnvScript($config, $envName, '      ')
                     : $this->buildPublicEnvScript($config, $envName, '      '),
             ];

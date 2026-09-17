@@ -25,7 +25,8 @@ variables:
 # {{ strtoupper($envName) }}
 # ═══════════════════════════════════════════════════════════════════
 
-@unless($envMeta['static'] ?? false)
+@php($isPhp = $envMeta['php'] ?? ! ($envMeta['static'] ?? false))
+@if($isPhp)
 {{-- The image copies the build context, vendor/ included. The dind daemon
      cannot see this job's checkout, so Composer runs as its own job and hands
      vendor/ to the build as an artifact. --}}
@@ -41,7 +42,7 @@ composer:{{ $envName }}:
       - vendor/
     expire_in: 1 hour
 
-@endunless
+@endif
 build:{{ $envName }}:
   stage: build
   image: docker:27
@@ -49,9 +50,9 @@ build:{{ $envName }}:
     - docker:27-dind
   rules:
     - if: '$CI_COMMIT_BRANCH == "{{ $envMeta['branch'] }}"'
-@unless($envMeta['static'] ?? false)
+@if($isPhp)
   needs: ["composer:{{ $envName }}"]
-@endunless
+@endif
   before_script:
 @if($envMeta['registry'] === 'gitlab')
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
@@ -67,11 +68,9 @@ build:{{ $envName }}:
       # Build and push image (BuildKit --secret keeps .env out of layers)
       docker build \
         --secret id=dotenv,src=.env \
-@if($envMeta['static'] ?? false)
-        --file Dockerfile.static \
-@else
-        --file Dockerfile.php \
-        --target deploy \
+        --file {{ $envMeta['dockerfile'] ?? (($envMeta['static'] ?? false) ? 'Dockerfile.static' : 'Dockerfile.php') }} \
+@if(array_key_exists('target', $envMeta) ? $envMeta['target'] !== null : ! ($envMeta['static'] ?? false))
+        --target {{ $envMeta['target'] ?? 'deploy' }} \
 @endif
         --tag {{ $envMeta['imageLatest'] }} \
         --tag {{ $envMeta['imageSha'] }} \
@@ -100,7 +99,7 @@ deploy:{{ $envName }}:
         exit 1
       fi
 
-@unless($envMeta['static'] ?? false)
+@if($isPhp)
       # Public/build vars only — computed from your blueprint, never a secret.
       {!! $envMeta['publicEnvScript'] !!}
 
@@ -118,7 +117,7 @@ deploy:{{ $envName }}:
       kubectl create configmap laravel-config \
         -n {{ $envMeta['namespace'] }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
 
-@endunless
+@endif
       # Deploy via Kustomize (strip Namespace doc — scoped credentials can't apply it)
       cd .infrastructure/k8s/overlays/{{ $envName }}
       kubectl kustomize . \
