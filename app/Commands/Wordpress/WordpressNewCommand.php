@@ -207,9 +207,7 @@ class WordpressNewCommand extends Command
         $this->newLine();
         $this->line('  <fg=gray>To start your WordPress application:</>');
         $this->line("  <fg=yellow>cd $appName && larakube up</>");
-        $this->newLine();
-        $this->line('  <fg=gray>Important environment variables have been generated in .infrastructure/k8s/secrets/</>');
-        $this->line('  <fg=gray>WP-Cron is disabled; a Kubernetes CronJob runs every 5 minutes instead.</>');
+        $this->line('  <fg=gray>Then open the site and WordPress\'s installer takes it from there.</>');
 
         if ($scoutDriver) {
             $this->newLine();
