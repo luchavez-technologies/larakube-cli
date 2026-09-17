@@ -84,26 +84,9 @@ class AstroNewCommand extends Command
             return 1;
         }
 
-        // Initialize .larakube.json blueprint
-        $config = new ConfigData(
-            id: $appName,
-            name: $appName,
-            path: $projectDir,
-            framework: AppFramework::ASTRO,
-            frontend: null,
-        );
-
-        $config->setIsScaffolding(true);
-
-        $config->setName($appName);
-
-        $config->setPath($projectDir);
-
         // Cloud environments are opt-in — `larakube env production` adds one.
-
-        $config->setEnvironments(['local']);
-
-        $config->setPackageManager(PackageManager::NPM);
+        $config = ConfigData::forStaticSite(AppFramework::ASTRO, $appName, $projectDir, PackageManager::NPM);
+        $config->setIsScaffolding(true);
 
         $this->saveProjectConfig($projectDir, $config);
 

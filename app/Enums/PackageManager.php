@@ -95,6 +95,17 @@ enum PackageManager: string implements HasCommandOptions, HasLabel, HasSelectOpt
         return "--$this->value";
     }
 
+    /** The package manager an existing project already uses, read from its lockfile. */
+    public static function detect(string $projectPath): self
+    {
+        return match (true) {
+            file_exists("{$projectPath}/pnpm-lock.yaml") => self::PNPM,
+            file_exists("{$projectPath}/bun.lock"), file_exists("{$projectPath}/bun.lockb") => self::BUN,
+            file_exists("{$projectPath}/yarn.lock") => self::YARN,
+            default => self::NPM,
+        };
+    }
+
     case NPM = 'npm';
     case PNPM = 'pnpm';
     case BUN = 'bun';

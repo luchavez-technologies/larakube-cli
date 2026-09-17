@@ -76,22 +76,9 @@ class ViteNewCommand extends Command
             return 1;
         }
 
-        $config = new ConfigData(
-            id: $appName,
-            name: $appName,
-            path: $projectDir,
-            framework: AppFramework::VITE,
-            frontend: null,
-        );
-        $config->setIsScaffolding(true);
-        $config->setName($appName);
-        $config->setPath($projectDir);
         // Cloud environments are opt-in — `larakube env production` adds one.
-        $config->setEnvironments(['local']);
-        $config->setPackageManager($packageManager);
-        // Default watchPaths are Laravel's (app/, bootstrap/, routes/,
-        // composer.lock, .env) — none of which exist here.
-        $config->watchPaths = ['src', 'public', 'index.html', 'package.json', 'vite.config.js', 'vite.config.ts'];
+        $config = ConfigData::forStaticSite(AppFramework::VITE, $appName, $projectDir, $packageManager);
+        $config->setIsScaffolding(true);
 
         // No PocketBase/Directus variables are seeded. A landing page has no
         // backend, and `larakube data:wire` exists to add them on demand — a

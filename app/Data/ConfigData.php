@@ -1837,6 +1837,25 @@ class ConfigData extends Data
 
     // --- 💾 PERSISTENCE ---
 
+    /**
+     * The blueprint a static site starts from — shared by the `:new`
+     * scaffolders and `init`, so an adopted project matches a scaffolded one.
+     */
+    public static function forStaticSite(AppFramework $framework, string $name, string $path, PackageManager $packageManager): self
+    {
+        $config = new self(id: $name, name: $name, path: $path, framework: $framework);
+        $config->setEnvironments(['local']);
+        $config->setPackageManager($packageManager);
+
+        // Default watchPaths are Laravel's (app/, bootstrap/, routes/, …),
+        // none of which exist in a Vite project.
+        if ($framework === AppFramework::VITE) {
+            $config->watchPaths = ['src', 'public', 'index.html', 'package.json', 'vite.config.js', 'vite.config.ts'];
+        }
+
+        return $config;
+    }
+
     public static function loadFromFile(?string $directory = null): self
     {
         $directory = $directory ?: getcwd();

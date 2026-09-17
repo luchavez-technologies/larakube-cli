@@ -109,6 +109,20 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
         };
     }
 
+    /**
+     * Whether the LaraKube CLI can take this framework to a running cloud
+     * deployment. `init` only offers these; the rest can be scaffolded by their
+     * `:new` command but have no image or manifests yet.
+     */
+    public function isDeployable(): bool
+    {
+        return in_array($this, [
+            self::LARAVEL, self::STATAMIC, self::WORDPRESS,
+            self::NEXTJS,
+            self::ASTRO, self::VITE, self::DOCUSAURUS,
+        ], true);
+    }
+
     public function isStaticSpa(): bool
     {
         return in_array($this, [self::ASTRO, self::VITE, self::DOCUSAURUS], true);
