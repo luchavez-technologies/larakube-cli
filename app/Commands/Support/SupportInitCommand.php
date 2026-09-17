@@ -104,7 +104,7 @@ class SupportInitCommand extends Command
             Process::run($cmd);
         });
 
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::SUPPORT);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::SUPPORT, ClusterTool::SUPPORT->instanceSlugFromHost($host));
 
         $manifest = view('k8s.support.shared', [
             'host' => $host,

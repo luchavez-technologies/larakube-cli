@@ -26,15 +26,22 @@ docker-*.yml
 web/app/uploads/*
 @endif
 
-# Dependencies
-# We allow these to support building assets/dependencies on GitHub Runners
-@if($config->getGithubActions())
-# node_modules
-# vendor
-@else
+@if($config->framework?->isStaticSpa() || $config->framework === \App\Enums\AppFramework::NEXTJS)
+# Dependencies and build output: the image runs `npm ci` and the build itself.
+# A host node_modules copied over them carries the wrong platform's binaries.
 node_modules
-vendor
+dist
+build
+.astro
+.docusaurus
+@else
+# vendor/ ships in the image: every build path runs composer install first
+# (CI jobs and cloud:deploy alike), and the deploy stage copies the context.
+@if(! $config->getGithubActions())
+node_modules
 @endif
+@endif
+@unless($config->framework?->isStaticSpa() || $config->framework === \App\Enums\AppFramework::NEXTJS)
 
 # Laravel Specifics
 # Vite HMR marker. If this ships in an image, Laravel's Vite directive serves
@@ -50,3 +57,4 @@ storage/logs/*
 !storage/framework/sessions/.gitignore
 !storage/framework/views/.gitignore
 !storage/logs/.gitignore
+@endunless

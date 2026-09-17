@@ -93,7 +93,7 @@ class LinkInitCommand extends Command
             Process::run($cmd);
         });
 
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::LINK);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::LINK, ClusterTool::LINK->instanceSlugFromHost($host));
         $instance = ClusterTool::LINK->instanceSlugFromHost($host);
         $deploymentName = ClusterTool::LINK->primaryComponent($instance)->deployment;
 

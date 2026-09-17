@@ -154,7 +154,7 @@ class ChatInitCommand extends Command
         // Calling lives in the Meet tool now — chat only records that it is
         // wired, so a re-run cannot silently disable it.
         $meetJwtUrl = $this->readChatWiredMeet($kubectl, $ns);
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::CHAT);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::CHAT, ClusterTool::CHAT->instanceSlugFromHost($host));
 
         $manifest = view('k8s.chat.matrix', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),

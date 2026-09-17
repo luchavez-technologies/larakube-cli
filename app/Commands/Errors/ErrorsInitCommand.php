@@ -99,7 +99,7 @@ class ErrorsInitCommand extends Command
             return 1;
         }
 
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::ERRORS);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::ERRORS, ClusterTool::ERRORS->instanceSlugFromHost($host));
 
         $manifest = view('k8s.errors.shared', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),

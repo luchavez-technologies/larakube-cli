@@ -76,3 +76,14 @@ test('Node is no longer baked into the base stage', function (): void {
         expect($baseSection)->not->toContain('nodejs npm');
     }
 });
+
+test('vendor stays in every PHP build context, and Node images never take the host node_modules', function (): void {
+    $ignore = fn (array $data): string => view('docker.ignore', ['config' => ConfigData::from(array_merge(['name' => 'shop'], $data))])->render();
+    $lines = fn (string $content): array => array_map('trim', explode("\n", $content));
+
+    expect($lines($ignore(['githubActions' => false])))->not->toContain('vendor')
+        ->and($lines($ignore(['githubActions' => true])))->not->toContain('vendor')
+        ->and($lines($ignore(['framework' => 'astro'])))->toContain('node_modules')->toContain('dist')
+        ->and($lines($ignore(['framework' => 'nextjs'])))->toContain('node_modules')
+        ->and($ignore(['framework' => 'astro']))->not->toContain('storage/framework');
+});

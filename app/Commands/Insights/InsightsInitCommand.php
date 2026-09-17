@@ -96,7 +96,7 @@ class InsightsInitCommand extends Command
             );
         });
 
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::INSIGHTS);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::INSIGHTS, ClusterTool::INSIGHTS->instanceSlugFromHost($host));
 
         $manifest = view('k8s.insights.shared', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),

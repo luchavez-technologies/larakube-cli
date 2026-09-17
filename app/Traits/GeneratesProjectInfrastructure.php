@@ -604,6 +604,7 @@ trait GeneratesProjectInfrastructure
         // getServerVariation()->value and getPhpVersion()->value, both null.
         if ($config->framework?->isStaticSpa()) {
             $this->generateStaticDockerfiles($config);
+            $this->generateDockerIgnore($config);
         } elseif ($config->framework === AppFramework::NEXTJS) {
             // Next.js is a Node SERVER, not PHP and not static: it builds the
             // standalone output and runs `node server.js`. docker.php would hit

@@ -71,7 +71,7 @@ class DashboardInitCommand extends Command
         ));
 
         $oidc = $this->readDashboardWiredOidc($kubectl, $ns, $instance);
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::DASHBOARD);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::DASHBOARD, ClusterTool::DASHBOARD->instanceSlugFromHost($host));
 
         $manifest = view('k8s.dashboard.headlamp', [
             'host' => $host,

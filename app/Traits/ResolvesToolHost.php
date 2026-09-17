@@ -76,6 +76,13 @@ trait ResolvesToolHost
             if ($recorded !== null && $recorded !== '') {
                 return $recorded;
             }
+
+            // Rows are keyed by the host-derived slug, which is unknown until
+            // the host is. With no instance asked for, a single recorded host
+            // for the tool is that answer.
+            if ($instance === '' && ($single = $this->singleRecordedToolHost($kubectl, $tool)) !== null) {
+                return $single;
+            }
         }
 
         $config = $this->resolveProjectConfig();
@@ -85,6 +92,21 @@ trait ResolvesToolHost
         }
 
         return $this->promptForCloudHost($service, $env, $config, $tool, $kubectl, $instance, $labelOverride, $deferRegistration);
+    }
+
+    /** The one host recorded for a tool, or null when there are none or several. */
+    protected function singleRecordedToolHost(string $kubectl, ClusterTool $tool): ?string
+    {
+        if (! method_exists($this, 'getRegisteredTools')) {
+            return null;
+        }
+
+        $hosts = array_values(array_unique(array_filter(array_map(
+            fn (array $entry) => ($entry['tool'] ?? null) === $tool->value ? ($entry['host'] ?? null) : null,
+            $this->getRegisteredTools($kubectl),
+        ))));
+
+        return count($hosts) === 1 ? $hosts[0] : null;
     }
 
     protected function resolveToolAliasHosts(string $kubectl, ClusterTool $tool, string $instance = ''): array
@@ -240,7 +262,7 @@ trait ResolvesToolHost
         // method's docblock) — their caller's own final registerDeployedTool()
         // call, made once the real instance is known, is the only write.
         if (! $deferRegistration && $tool !== null && $kubectl !== null && method_exists($this, 'registerTool')) {
-            $this->registerTool($kubectl, $tool, ['host' => $host], $instance);
+            $this->registerTool($kubectl, $tool, ['host' => $host], $instance !== '' ? $instance : $tool->instanceSlugFromHost($host));
             $this->laraKubeInfo("Recorded the {$service->label()} host on the cluster.");
         }
 

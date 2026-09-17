@@ -11,6 +11,7 @@
 # run from your own machine.
 
 stages:
+  - dependencies
   - build
   - deploy
 
@@ -24,6 +25,23 @@ variables:
 # {{ strtoupper($envName) }}
 # ═══════════════════════════════════════════════════════════════════
 
+@unless($envMeta['static'] ?? false)
+{{-- The image copies the build context, vendor/ included. The dind daemon
+     cannot see this job's checkout, so Composer runs as its own job and hands
+     vendor/ to the build as an artifact. --}}
+composer:{{ $envName }}:
+  stage: dependencies
+  image: docker.io/library/composer:2.10.3
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "{{ $envMeta['branch'] }}"'
+  script:
+    - composer install --no-dev --optimize-autoloader --no-interaction --no-progress --ignore-platform-reqs
+  artifacts:
+    paths:
+      - vendor/
+    expire_in: 1 hour
+
+@endunless
 build:{{ $envName }}:
   stage: build
   image: docker:27
@@ -31,6 +49,9 @@ build:{{ $envName }}:
     - docker:27-dind
   rules:
     - if: '$CI_COMMIT_BRANCH == "{{ $envMeta['branch'] }}"'
+@unless($envMeta['static'] ?? false)
+  needs: ["composer:{{ $envName }}"]
+@endunless
   before_script:
 @if($envMeta['registry'] === 'gitlab')
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
