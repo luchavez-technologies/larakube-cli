@@ -1,6 +1,6 @@
 # Plan: Extract `PlexService` — the first trait→service strangler
 
-**Status:** 🟡 Phase 1 done (`5a90d48`). Phase 2 next, then the exit gate. Created 2026-09-09, revised 2026-09-11.
+**Status:** 🟡 Phase 1 done (`5a90d48`). Phase 2 done — exit gate answered below; awaiting the stop/continue decision. Created 2026-09-09, revised 2026-09-11.
 **Scope:** `InteractsWithPlex` ONLY. This is a pilot, not a programme.
 **Shape:** stateful service, constructed directly (decided 2026-09-11 — see Design).
 
@@ -211,6 +211,30 @@ After **Phase 2**, answer in writing:
 **If 1 and 2 are not clearly yes, stop and keep the remaining 130 traits.** A
 half-converted codebase with both patterns is worse than either pattern alone,
 and that risk is the reason this plan is scoped to one trait.
+
+### Exit gate answers (after Phase 2)
+
+Phase 2 moved `kubectl()`, `contextReachable()`, `registry()`, `saveRegistry()`
+and the pure registry helpers into `PlexService`, reading the context from the
+constructor. The trait keeps seven one-line delegations. Every existing Plex test
+passed unedited; new unit tests hit `new PlexService('orbstack')` directly.
+
+1. **Bug prevented or found by the explicit dependency?** No. The move surfaced
+   nothing. The day's real finding — eight scaffolders rendering the PHP
+   Dockerfile and crashing — came from reading `GeneratesProjectInfrastructure`,
+   not from the service boundary.
+2. **Is `PlexJoinCommand` easier to read?** Not yet. Its `$this->` calls are
+   unchanged, by design (no call-site churn in phases 1–4), so a reader still
+   can't see which cluster a call targets from the call site. The service itself
+   reads well — targeting now has one visible source, the constructor — but that
+   only helps once callers hold a `PlexService` instead of setting `plexContext`.
+3. **Did the shim stay thin?** Yes — delegation only, no logic.
+
+**Verdict by this gate's own rule: 1 and 2 are not clearly yes, so stop before
+Phase 3.** The one open question worth answering before abandoning the pattern:
+converting `PlexJoinCommand`'s call sites to an explicit `$plex = new
+PlexService($context)` is the real test of #2. Decide between that single
+experiment and stopping here.
 
 ## What this does NOT fix
 

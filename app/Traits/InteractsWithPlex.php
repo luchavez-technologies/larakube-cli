@@ -292,13 +292,7 @@ trait InteractsWithPlex
      */
     public function allocateRedisDbIndex(array $used, int $max = 16): ?int
     {
-        for ($i = 0; $i < $max; $i++) {
-            if (! in_array($i, $used, true)) {
-                return $i;
-            }
-        }
-
-        return null;
+        return $this->plex()->allocateRedisDbIndex($used, $max);
     }
 
     /**
@@ -454,16 +448,12 @@ trait InteractsWithPlex
      */
     public function registryAdd(array $registry, string $tenant, array $allocation): array
     {
-        $registry['tenants'][$tenant] = $allocation;
-
-        return $registry;
+        return $this->plex()->registryAdd($registry, $tenant, $allocation);
     }
 
     public function registryRemove(array $registry, string $tenant): array
     {
-        unset($registry['tenants'][$tenant]);
-
-        return $registry;
+        return $this->plex()->registryRemove($registry, $tenant);
     }
 
     /**
@@ -499,14 +489,7 @@ trait InteractsWithPlex
      */
     public function registryUsedRedisIndexes(array $registry): array
     {
-        $indexes = [];
-        foreach ($registry['tenants'] ?? [] as $alloc) {
-            if (isset($alloc['redis_index']) && is_int($alloc['redis_index'])) {
-                $indexes[] = $alloc['redis_index'];
-            }
-        }
-
-        return $indexes;
+        return $this->plex()->registryUsedRedisIndexes($registry);
     }
 
     /**
@@ -977,11 +960,7 @@ trait InteractsWithPlex
     /** A `kubectl` prefix scoped to the resolved plex context (current when null). */
     protected function plexKubectl(): string
     {
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $this->plexContext !== null && $this->plexContext !== ''
-            ? $kubectl.' --context '.escapeshellarg($this->plexContext)
-            : $kubectl;
+        return $this->plex()->kubectl();
     }
 
     /**
@@ -1017,10 +996,7 @@ trait InteractsWithPlex
     /** Whether the resolved plex context's API server is reachable. */
     protected function plexContextReachable(): bool
     {
-        // `cluster-info` is the reliable connectivity probe (matches the proven
-        // hasActiveCluster check). A short timeout keeps us from hanging on a
-        // down/unreachable cluster. (/readyz proved unreliable as a gate.)
-        return Process::run($this->plexKubectl().' cluster-info --request-timeout=8s')->successful();
+        return $this->plex()->contextReachable();
     }
 
     /**
@@ -1056,14 +1032,7 @@ trait InteractsWithPlex
      */
     protected function getRegistry(): array
     {
-        $ns = $this->plexNamespace();
-        $json = trim(Process::run(
-            $this->plexKubectl()." get configmap plex-registry -n {$ns} -o jsonpath='{.data.registry\\.json}'",
-        )->output());
-
-        $registry = $json === '' ? [] : json_decode($json, true);
-
-        return is_array($registry) ? $registry : [];
+        return $this->plex()->registry();
     }
 
     /**
@@ -1116,19 +1085,7 @@ trait InteractsWithPlex
      */
     protected function saveRegistry(array $registry): void
     {
-        $ns = $this->plexNamespace();
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $temporaryDirectory->path().'/registry.json';
-        file_put_contents($tmp, (string) json_encode($registry, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-
-        $kubectl = $this->plexKubectl();
-        Process::run(
-            "{$kubectl} create configmap plex-registry -n {$ns} ".
-            '--from-file=registry.json='.escapeshellarg($tmp).
-            " --dry-run=client -o yaml | {$kubectl} apply -f -",
-        );
-
-        $temporaryDirectory->delete();
+        $this->plex()->saveRegistry($registry);
     }
 
     /**

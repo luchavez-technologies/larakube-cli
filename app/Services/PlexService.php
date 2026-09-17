@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
+use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * The Plex Commons domain: tenant and Commons lifecycle. `InteractsWithPlex`
@@ -20,6 +22,122 @@ final class PlexService
         /** Null means the current kube-context. */
         private readonly ?string $context = null,
     ) {}
+
+    /** A `kubectl` prefix scoped to this service's context (the current context when null). */
+    public function kubectl(): string
+    {
+        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+
+        return $this->context !== null && $this->context !== ''
+            ? $kubectl.' --context '.escapeshellarg($this->context)
+            : $kubectl;
+    }
+
+    /** Whether this context's API server is reachable. */
+    public function contextReachable(): bool
+    {
+        // `cluster-info` is the reliable connectivity probe (matches the proven
+        // hasActiveCluster check). A short timeout keeps us from hanging on a
+        // down/unreachable cluster. (/readyz proved unreliable as a gate.)
+        return Process::run($this->kubectl().' cluster-info --request-timeout=8s')->successful();
+    }
+
+    /**
+     * Read the live tenant registry from the cluster (empty shape if absent).
+     *
+     * @return array<string, mixed>
+     */
+    public function registry(): array
+    {
+        $json = trim(Process::run(
+            $this->kubectl().' get configmap plex-registry -n '.self::NAMESPACE." -o jsonpath='{.data.registry\\.json}'",
+        )->output());
+
+        $registry = $json === '' ? [] : json_decode($json, true);
+
+        return is_array($registry) ? $registry : [];
+    }
+
+    /**
+     * Persist the tenant registry back to the cluster (idempotent apply of the
+     * single registry.json key).
+     *
+     * @param  array<string, mixed>  $registry
+     */
+    public function saveRegistry(array $registry): void
+    {
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/registry.json';
+        file_put_contents($tmp, (string) json_encode($registry, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        $kubectl = $this->kubectl();
+        Process::run(
+            "{$kubectl} create configmap plex-registry -n ".self::NAMESPACE.' '.
+            '--from-file=registry.json='.escapeshellarg($tmp).
+            " --dry-run=client -o yaml | {$kubectl} apply -f -",
+        );
+
+        $temporaryDirectory->delete();
+    }
+
+    /**
+     * Pure registry transforms. The plex-registry shape is
+     * {"tenants": {"<id>": {"db": "<id>", "redis_index": <int|null>}}}.
+     *
+     * @param  array<string, mixed>  $registry
+     * @param  array<string, mixed>  $allocation
+     * @return array<string, mixed>
+     */
+    public function registryAdd(array $registry, string $tenant, array $allocation): array
+    {
+        $registry['tenants'][$tenant] = $allocation;
+
+        return $registry;
+    }
+
+    /**
+     * @param  array<string, mixed>  $registry
+     * @return array<string, mixed>
+     */
+    public function registryRemove(array $registry, string $tenant): array
+    {
+        unset($registry['tenants'][$tenant]);
+
+        return $registry;
+    }
+
+    /**
+     * @param  array<string, mixed>  $registry
+     * @return array<int, int>
+     */
+    public function registryUsedRedisIndexes(array $registry): array
+    {
+        $indexes = [];
+        foreach ($registry['tenants'] ?? [] as $alloc) {
+            if (isset($alloc['redis_index']) && is_int($alloc['redis_index'])) {
+                $indexes[] = $alloc['redis_index'];
+            }
+        }
+
+        return $indexes;
+    }
+
+    /**
+     * Pick the lowest free Redis logical-DB index (0..max-1), or null if the
+     * Commons Redis is full. Pure.
+     *
+     * @param  array<int, int>  $used
+     */
+    public function allocateRedisDbIndex(array $used, int $max = 16): ?int
+    {
+        for ($i = 0; $i < $max; $i++) {
+            if (! in_array($i, $used, true)) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
 
     /**
      * The Commons service names THIS project's drivers map to and that are
