@@ -3,6 +3,8 @@
 /** PlexService's pure helpers, called directly on the object. */
 
 use App\Data\ConfigData;
+use App\Enums\DatabaseDriver;
+use App\Enums\StorageDriver;
 use App\Services\PlexService;
 use Illuminate\Support\Facades\Process;
 
@@ -162,4 +164,110 @@ test('the lowest free Redis slot is allocated, and none once all 16 are used', f
 
     expect($plex->allocateRedisDbIndex([0, 1, 3]))->toBe(2)
         ->and($plex->allocateRedisDbIndex(range(0, 15)))->toBeNull();
+});
+
+test('context() reports the kube-context the service was built for', function (): void {
+    expect((new PlexService('orbstack'))->context())->toBe('orbstack')
+        ->and((new PlexService)->context())->toBeNull();
+});
+
+test('commonsSpec decodes the plex-commons ConfigMap on the constructor context', function (): void {
+    Process::fake(['*get configmap plex-commons -n larakube-plex*' => Process::result(output: '{"services":{"postgres":{"enabled":true}}}')]);
+
+    expect((new PlexService('orbstack'))->commonsSpec())->toBe(['services' => ['postgres' => ['enabled' => true]]]);
+    Process::assertRan(fn ($process): bool => str_contains((string) $process->command, "--context 'orbstack' get configmap plex-commons"));
+});
+
+test('commonsSpec is null before the Commons exists', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+
+    expect((new PlexService('orbstack'))->commonsSpec())->toBeNull();
+});
+
+test('s3Credentials decodes both keys from plex-admin', function (): void {
+    Process::fake([
+        '*S3_ACCESS_KEY*' => Process::result(output: base64_encode('access-id')),
+        '*S3_SECRET_KEY*' => Process::result(output: base64_encode('secret-key')),
+    ]);
+
+    expect((new PlexService('orbstack'))->s3Credentials())->toBe(['access' => 'access-id', 'secret' => 'secret-key']);
+});
+
+test('s3Credentials is null when a key is missing', function (): void {
+    Process::fake([
+        '*S3_ACCESS_KEY*' => Process::result(output: base64_encode('access-id')),
+        '*S3_SECRET_KEY*' => Process::result(output: ''),
+    ]);
+
+    expect((new PlexService('orbstack'))->s3Credentials())->toBeNull();
+});
+
+test('meiliKey decodes the shared master key', function (): void {
+    Process::fake(['*MEILI_MASTER_KEY*' => Process::result(output: base64_encode('meili-master'))]);
+
+    expect((new PlexService('orbstack'))->meiliKey())->toBe('meili-master');
+});
+
+test('s3Endpoints signs against the public host, and says when there is none', function (): void {
+    Process::fake(['*get configmap plex-commons*' => Process::result(output: '{"services":{"seaweedfs":{"enabled":true,"host":"files.example.com"}}}')]);
+
+    expect((new PlexService('orbstack'))->s3Endpoints(StorageDriver::SEAWEEDFS))->toBe([
+        'internal' => 'http://seaweedfs.larakube-plex.svc.cluster.local:'.StorageDriver::SEAWEEDFS->port(),
+        'public' => 'https://files.example.com',
+        'publicHost' => 'files.example.com',
+    ]);
+});
+
+test('s3Endpoints falls back to the internal endpoint without a public host', function (): void {
+    Process::fake(['*' => Process::result(output: '{"services":{"minio":{"enabled":true}}}')]);
+    $endpoints = (new PlexService('orbstack'))->s3Endpoints(StorageDriver::MINIO);
+
+    expect($endpoints['public'])->toBe($endpoints['internal'])
+        ->and($endpoints['publicHost'])->toBeNull();
+});
+
+test('runTenantDatabaseSql pipes the tenant SQL to the engine pod, and skips engines with none', function (): void {
+    Process::fake(['*' => Process::result(output: 'CREATE DATABASE')]);
+    $plex = new PlexService('orbstack');
+
+    expect($plex->runTenantDatabaseSql(DatabaseDriver::SQLITE, 'shop', 'secret'))->toBeNull()
+        ->and($plex->runTenantDatabaseSql(DatabaseDriver::POSTGRESQL, 'shop', 'secret')?->successful())->toBeTrue();
+
+    Process::assertRan(fn ($process): bool => str_contains((string) $process->command, "--context 'orbstack' exec -i -n 'larakube-plex' deploy/postgres -- sh -c "));
+});
+
+test('createBucket runs the backend bucket command in its Commons pod', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+
+    (new PlexService('orbstack'))->createBucket(StorageDriver::SEAWEEDFS, 'shop');
+
+    Process::assertRan(fn ($process): bool => str_contains((string) $process->command, "--context 'orbstack' exec -n 'larakube-plex' deploy/seaweedfs -- sh -c "));
+});
+
+test('allocateRedisIndex reuses a tenant slot instead of taking another', function (): void {
+    Process::fake([
+        '*get configmap plex-registry*' => Process::result(output: '{"tenants":{"notes_main":{"redis_index":4}}}'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    expect((new PlexService('orbstack'))->allocateRedisIndex('notes_main'))->toBe(4);
+    Process::assertNotRan(fn ($process): bool => str_contains((string) $process->command, 'create configmap plex-registry'));
+});
+
+test('allocateRedisIndex takes the lowest free slot and records it', function (): void {
+    Process::fake([
+        '*get configmap plex-registry*' => Process::result(output: '{"tenants":{"shop":{"redis_index":0}}}'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    expect((new PlexService('orbstack'))->allocateRedisIndex('notes_main'))->toBe(1);
+    Process::assertRan(fn ($process): bool => str_contains((string) $process->command, "--context 'orbstack' create configmap plex-registry"));
+});
+
+test('commonsEnvValues points a tenant at the Commons services', function (): void {
+    $values = (new PlexService)->commonsEnvValues('shop', 'secret', 2, ['postgres', 'redis']);
+
+    expect($values['DB_HOST'])->toBe('postgres.larakube-plex.svc.cluster.local')
+        ->and($values['DB_DATABASE'])->toBe('shop')
+        ->and($values['REDIS_DB'])->toBe(2);
 });

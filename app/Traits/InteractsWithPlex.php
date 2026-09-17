@@ -4,9 +4,7 @@ namespace App\Traits;
 
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
-use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
-use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use App\Services\PlexService;
 use Illuminate\Process\FakeInvokedProcess;
@@ -16,8 +14,6 @@ use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
-
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Shared helpers for the Plex feature — the multi-tenant "Commons" (shared
@@ -44,12 +40,7 @@ trait InteractsWithPlex
      */
     public function defaultCommonsSpec(): array
     {
-        return $this->normalizeCommonsSpec([
-            'services' => [
-                'postgres' => ['enabled' => true],
-                'redis' => ['enabled' => true],
-            ],
-        ]);
+        return $this->plex()->defaultCommonsSpec();
     }
 
     /**
@@ -59,52 +50,7 @@ trait InteractsWithPlex
      */
     public function normalizeCommonsSpec(array $spec): array
     {
-        // Images/ports are derived from the SAME driver enums the rest of LaraKube
-        // uses, so the Commons never drifts from the project defaults (e.g. Meili's
-        // version stays in lockstep with SearchDriver instead of a stale literal).
-        $defaults = [
-            'postgres' => ['image' => DatabaseDriver::POSTGRESQL->getDockerImage(), 'port' => DatabaseDriver::POSTGRESQL->dbPort(), 'storage' => '10Gi', 'memory' => '1Gi'],
-            'mysql' => ['image' => DatabaseDriver::MYSQL->getDockerImage(),       'port' => DatabaseDriver::MYSQL->dbPort(),       'storage' => '10Gi', 'memory' => '1Gi'],
-            'mariadb' => ['image' => DatabaseDriver::MARIADB->getDockerImage(),     'port' => DatabaseDriver::MARIADB->dbPort(),     'storage' => '10Gi', 'memory' => '1Gi'],
-            'redis' => ['image' => CacheDriver::REDIS->getDockerImage(),          'port' => CacheDriver::REDIS->dbPort(),                               'memory' => '128Mi'],
-            'meilisearch' => ['image' => SearchDriver::MEILISEARCH->getDockerImage(),    'port' => SearchDriver::MEILISEARCH->port(),      'storage' => '5Gi',  'memory' => '512Mi'],
-            'seaweedfs' => ['image' => StorageDriver::SEAWEEDFS->getDockerImage(),    'port' => StorageDriver::SEAWEEDFS->port(),      'storage' => '10Gi', 'memory' => '512Mi'],
-            'minio' => ['image' => StorageDriver::MINIO->getDockerImage(),        'port' => StorageDriver::MINIO->port(),          'storage' => '10Gi', 'memory' => '512Mi'],
-            'garage' => ['image' => StorageDriver::GARAGE->getDockerImage(),       'port' => StorageDriver::GARAGE->port(),         'storage' => '10Gi', 'memory' => '512Mi'],
-        ];
-
-        // See plans/active/commons-connection-pooling.md. Pooling is an
-        // attribute of a database service, not a Commons service of its own —
-        // it only exists as a sub-key on the engines DatabaseDriver says
-        // support it, and defaults OFF: this normalizer runs on every
-        // plex:init/plex:resources call, so an on-by-default here would be a
-        // silent cutover, not the deliberate one the plan calls for.
-        $poolerDefault = ['enabled' => false, 'mode' => 'transaction', 'poolSize' => 20, 'maxClients' => 400];
-
-        $given = $spec['services'] ?? [];
-        $resolved = [];
-
-        foreach ($defaults as $name => $default) {
-            $service = is_array($given[$name] ?? null) ? $given[$name] : [];
-            $resolved[$name] = array_merge($default, $service);
-
-            // Postgres + Redis default-on; Meili default-off — unless the spec
-            // says otherwise explicitly.
-            $resolved[$name]['enabled'] = (bool) ($service['enabled']
-                ?? in_array($name, ['postgres', 'redis'], true));
-
-            $driver = DatabaseDriver::tryFrom($name);
-            if ($driver?->supportsPooling()) {
-                $givenPooler = is_array($service['pooler'] ?? null) ? $service['pooler'] : [];
-                $resolved[$name]['pooler'] = array_merge($poolerDefault, $givenPooler);
-                $resolved[$name]['pooler']['enabled'] = (bool) ($givenPooler['enabled'] ?? false);
-            }
-        }
-
-        return [
-            'version' => $spec['version'] ?? 1,
-            'services' => $resolved,
-        ];
+        return $this->plex()->normalizeCommonsSpec($spec);
     }
 
     /**
@@ -114,10 +60,7 @@ trait InteractsWithPlex
      */
     public function enabledCommonsServices(array $spec): array
     {
-        return array_keys(array_filter(
-            $spec['services'] ?? [],
-            fn ($service) => (bool) ($service['enabled'] ?? false),
-        ));
+        return $this->plex()->enabledCommonsServices($spec);
     }
 
     /**
@@ -131,28 +74,7 @@ trait InteractsWithPlex
      */
     public function commonsServiceCatalog(): array
     {
-        $drivers = array_merge(
-            DatabaseDriver::cases(),
-            CacheDriver::cases(),
-            SearchDriver::cases(),
-            StorageDriver::cases(),
-        );
-
-        $catalog = [];
-        foreach ($drivers as $driver) {
-            $service = $driver->commonsServiceName();
-            if ($service === null) {
-                continue; // not a shareable service (SQLite, database cache/scout)
-            }
-
-            $catalog[$service] = [
-                'label' => $driver->getLabel() ?? $service,
-                'ready' => $driver->isPlexReady(),
-                'driver' => $driver,
-            ];
-        }
-
-        return $catalog;
+        return $this->plex()->commonsServiceCatalog();
     }
 
     /**
@@ -355,72 +277,7 @@ trait InteractsWithPlex
      */
     public function commonsEnvValues(string $tenant, string $password, ?int $redisIndex, array $services, ?array $s3 = null, ?array $search = null): array
     {
-        $ns = $this->plexNamespace();
-        $values = [];
-
-        // Database. A tenant declares exactly one relational engine; point its
-        // DB_* at that engine's Commons service (host = service name, port from
-        // the driver). DB_CONNECTION is already correct in the app's own .env.
-        foreach (['postgres', 'mysql', 'mariadb'] as $dbService) {
-            if (! in_array($dbService, $services, true)) {
-                continue;
-            }
-            $driver = DatabaseDriver::tryFrom($dbService);
-            $values['DB_HOST'] = "{$dbService}.{$ns}.svc.cluster.local";
-            $values['DB_PORT'] = $driver?->dbPort() ?? 5432;
-            $values['DB_DATABASE'] = $tenant;
-            $values['DB_USERNAME'] = $tenant;
-            $values['DB_PASSWORD'] = $password;
-            break;
-        }
-
-        if (in_array('redis', $services, true)) {
-            $values['REDIS_HOST'] = "redis.{$ns}.svc.cluster.local";
-            $values['REDIS_PORT'] = 6379;
-            if ($redisIndex !== null) {
-                $values['REDIS_DB'] = $redisIndex;
-            }
-        }
-
-        // Object storage. The caller passes the tenant's chosen backend in $s3
-        // (service name + port + creds + optional public host), so this stays
-        // generic across S3 backends — SeaweedFS, MinIO, Garage — with no
-        // hardcoded service. The AWS_* keys are the standard Laravel S3 contract.
-        if ($s3 !== null) {
-            // DNS-safe bucket name (S3/MinIO reject the underscores a tenant id
-            // can carry); SeaweedFS tolerates either, so one rule fits all backends.
-            $bucket = $this->plexBucketName($tenant);
-            $values['FILESYSTEM_DISK'] = 's3';
-            $values['AWS_ACCESS_KEY_ID'] = $s3['access'];
-            $values['AWS_SECRET_ACCESS_KEY'] = $s3['secret'];
-            $values['AWS_DEFAULT_REGION'] = 'us-east-1';
-            $values['AWS_BUCKET'] = $bucket;
-            $values['AWS_ENDPOINT'] = 'http://'.$s3['service'].'.'.$ns.'.svc.cluster.local:'.$s3['port'];
-            $values['AWS_USE_PATH_STYLE_ENDPOINT'] = 'true';
-
-            // Public file URLs (Storage::url()) come from THIS backend's own public
-            // host (path-style → host/bucket), if one is configured. In-cluster
-            // access always works via AWS_ENDPOINT regardless.
-            if (! empty($s3['host'])) {
-                $values['AWS_URL'] = 'https://'.$s3['host'].'/'.$bucket;
-                $values['AWS_TEMPORARY_URL'] = 'https://'.$s3['host'].'/'.$bucket;
-            }
-        }
-
-        // Search. Wired explicitly rather than generically like S3 above: each
-        // Scout engine has its own env contract (MEILISEARCH_* vs TYPESENSE_*),
-        // and Meilisearch is the only Commons-provisionable one today
-        // (SearchDriver::isPlexReady). Without this the overlay deletes the
-        // self-hosted Deployment while MEILISEARCH_HOST still points at it.
-        // The caller passes the shared Commons master key in $search — tenants
-        // share it (isolation is by index name), and reading it is I/O, which
-        // stays out of this method.
-        if ($search !== null && in_array($search['service'], $services, true)) {
-            $values['MEILISEARCH_HOST'] = 'http://'.$search['service'].'.'.$ns.'.svc.cluster.local:'.$search['port'];
-            $values['MEILISEARCH_KEY'] = $search['key'];
-        }
-
-        return $values;
+        return $this->plex()->commonsEnvValues($tenant, $password, $redisIndex, $services, $s3, $search);
     }
 
     /**
@@ -466,22 +323,7 @@ trait InteractsWithPlex
      */
     public function commonsServiceTenants(array $registry, string $service): array
     {
-        $users = [];
-        foreach ($registry['tenants'] ?? [] as $name => $alloc) {
-            $uses = match (true) {
-                $service === 'redis' => ($alloc['redis_index'] ?? null) !== null,
-                in_array($service, ['postgres', 'mysql', 'mariadb'], true) => ! empty($alloc['db'])
-                    && ($alloc['db_service'] ?? 'postgres') === $service,
-                ($alloc['s3_service'] ?? null) === $service => true,
-                default => false,
-            };
-
-            if ($uses) {
-                $users[] = $name;
-            }
-        }
-
-        return $users;
+        return $this->plex()->commonsServiceTenants($registry, $service);
     }
 
     /**
@@ -493,10 +335,9 @@ trait InteractsWithPlex
     }
 
     /**
-     * The extracted domain object, built fresh per call from the ambient
-     * context this trait still holds. Phase 1 of the strangler in
-     * `plans/active/plex-service-extraction.md`: callers keep calling
-     * `$this->method()`, so none of the 55 composing commands change.
+     * The domain object, built from the context this trait holds. Commands that
+     * construct their own `PlexService` pass it to the prompting helpers
+     * (ensureCommons, allocateDatabase, allocateStorageBucket) instead.
      */
     protected function plex(): PlexService
     {
@@ -583,26 +424,13 @@ trait InteractsWithPlex
      */
     protected function applyCommonsManifest(array $spec): void
     {
-        $json = (string) json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        $kubectl = $this->plexKubectl();
-        $hasMonitoring = trim(Process::run("{$kubectl} get deployment prometheus -n larakube-shared --no-headers --ignore-not-found")->output()) !== '';
-
-        $manifest = view('k8s.plex.commons', [
-            'spec' => $spec,
-            'specJsonIndented' => preg_replace('/^/m', '    ', $json),
-            'isLocal' => $this->targetsLocalCluster(),
-            'withMonitoring' => $hasMonitoring,
-        ])->render();
-
-        $ns = $this->plexNamespace();
-        $kubectl = $this->plexKubectl();
-        $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-plex-commons.yaml');
-        file_put_contents($tmp, $manifest);
-        Process::run("{$kubectl} apply -n {$ns} -f ".escapeshellarg($tmp), function (string $type, string $output): void {
-            echo $output;
-        });
-        $temporaryDirectory->delete();
+        $this->plex()->applyCommonsManifest(
+            $spec,
+            fn (): bool => $this->targetsLocalCluster(),
+            function (string $type, string $output): void {
+                echo $output;
+            },
+        );
     }
 
     /**
@@ -638,9 +466,10 @@ trait InteractsWithPlex
      *
      * @param  array<int, string>  $services
      */
-    protected function ensureCommons(array $services): bool
+    protected function ensureCommons(array $services, ?PlexService $plex = null): bool
     {
-        $spec = $this->getCommonsSpec();
+        $plex ??= $this->plex();
+        $spec = $plex->commonsSpec();
 
         if ($spec === null) {
             // Defaults to yes: bootstrapping the Commons is non-destructive
@@ -653,11 +482,11 @@ trait InteractsWithPlex
             }
 
             $bootstrap = ['--services' => implode(',', $services)];
-            if ($this->plexContext) {
-                $bootstrap['--context'] = $this->plexContext;
+            if ($plex->context()) {
+                $bootstrap['--context'] = $plex->context();
             }
             $this->call('plex:init', $bootstrap);
-            $spec = $this->getCommonsSpec();
+            $spec = $plex->commonsSpec();
 
             if ($spec === null) {
                 $this->laraKubeError('Commons bootstrap failed. Run `larakube plex:init` and retry.');
@@ -666,19 +495,19 @@ trait InteractsWithPlex
             }
         }
 
-        $offered = $this->enabledCommonsServices($spec);
+        $offered = $plex->enabledCommonsServices($spec);
         $missing = array_diff($services, $offered);
 
         if (! empty($missing)) {
             if (confirm('The Commons is missing required service(s): '.implode(', ', $missing).'. Would you like to enable them now?', true)) {
                 $allServices = array_values(array_unique(array_merge($offered, $services)));
                 $bootstrap = ['--services' => implode(',', $allServices)];
-                if ($this->plexContext) {
-                    $bootstrap['--context'] = $this->plexContext;
+                if ($plex->context()) {
+                    $bootstrap['--context'] = $plex->context();
                 }
                 $this->call('plex:init', $bootstrap);
-                $spec = $this->getCommonsSpec();
-                $offered = $this->enabledCommonsServices($spec);
+                $spec = $plex->commonsSpec();
+                $offered = $plex->enabledCommonsServices($spec);
                 $missing = array_diff($services, $offered);
             }
         }
@@ -698,34 +527,22 @@ trait InteractsWithPlex
      * `kubectl exec`. The engine-specific SQL and admin client come from the
      * DatabaseDriver enum, so this single path serves Postgres, MySQL, and MariaDB.
      */
-    protected function allocateDatabase(DatabaseDriver $driver, string $tenant, string $password): bool
+    protected function allocateDatabase(DatabaseDriver $driver, string $tenant, string $password, ?PlexService $plex = null): bool
     {
-        $ns = $this->plexNamespace();
-        $sql = $driver->commonsTenantSql($tenant, $tenant, $password);
+        $plex ??= $this->plex();
 
-        if ($sql === null) {
+        if ($driver->commonsTenantSql($tenant, $tenant, $password) === null) {
             return true;
         }
 
-        $sqlTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $sqlTemporaryDirectory->path().'/plex.sql';
-        file_put_contents($tmp, $sql);
-
-        $service = $driver->value;
-        $client = $driver->commonsAdminClient();
         $result = null;
-        $this->withSpin("Allocating database '{$tenant}' in the Commons...", function () use ($ns, $service, $client, $tmp, &$result) {
-            $result = Process::run(
-                $this->plexKubectl().' exec -i -n '.escapeshellarg($ns).' deploy/'.$service.' -- '.
-                'sh -c '.escapeshellarg($client).' < '.escapeshellarg($tmp),
-            );
+        $this->withSpin("Allocating database '{$tenant}' in the Commons...", function () use ($plex, $driver, $tenant, $password, &$result) {
+            $result = $plex->runTenantDatabaseSql($driver, $tenant, $password);
 
-            return $result->successful();
+            return $result === null || $result->successful();
         });
 
-        $sqlTemporaryDirectory->delete();
-
-        if (! $result->successful()) {
+        if ($result !== null && ! $result->successful()) {
             $this->laraKubeError("Could not allocate the tenant database in the Commons {$driver->getLabel()}.");
             $output = explode("\n", trim($result->output().$result->errorOutput()));
             foreach (array_slice($output, -4) as $line) {
@@ -735,7 +552,7 @@ trait InteractsWithPlex
             return false;
         }
 
-        $this->registerTenantDatabase($tenant, $driver);
+        $plex->registerTenantDatabase($tenant, $driver);
 
         return true;
     }
@@ -745,10 +562,7 @@ trait InteractsWithPlex
      */
     protected function registerTenantDatabase(string $tenant, DatabaseDriver $driver): void
     {
-        $registry = $this->getRegistry();
-        $registry['tenants'][$tenant]['db'] = $tenant;
-        $registry['tenants'][$tenant]['db_service'] = $driver->value;
-        $this->saveRegistry($registry);
+        $this->plex()->registerTenantDatabase($tenant, $driver);
     }
 
     /**
@@ -756,10 +570,7 @@ trait InteractsWithPlex
      */
     protected function registerTenantStorage(string $bucket, StorageDriver $driver): void
     {
-        $registry = $this->getRegistry();
-        $registry['tenants'][$bucket]['s3_bucket'] = $bucket;
-        $registry['tenants'][$bucket]['s3_service'] = $driver->value;
-        $this->saveRegistry($registry);
+        $this->plex()->registerTenantStorage($bucket, $driver);
     }
 
     /**
@@ -767,11 +578,7 @@ trait InteractsWithPlex
      */
     protected function unregisterTenant(string $tenant): void
     {
-        $registry = $this->getRegistry();
-        if (isset($registry['tenants'][$tenant])) {
-            unset($registry['tenants'][$tenant]);
-            $this->saveRegistry($registry);
-        }
+        $this->plex()->unregisterTenant($tenant);
     }
 
     /**
@@ -788,25 +595,12 @@ trait InteractsWithPlex
      */
     protected function grantPostgresCreateDb(string $role): bool
     {
-        $ns = $this->plexNamespace();
-        $client = DatabaseDriver::POSTGRESQL->commonsAdminClient();
-        $service = DatabaseDriver::POSTGRESQL->value;
-
-        $grantTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $grantTemporaryDirectory->path().'/grant.sql';
-        file_put_contents($tmp, 'ALTER ROLE "'.$role.'" CREATEDB;');
-
         $ok = false;
-        $this->withSpin("Granting CREATEDB to '{$role}' in the Commons...", function () use ($ns, $service, $client, $tmp, &$ok) {
-            $ok = Process::run(
-                $this->plexKubectl().' exec -i -n '.escapeshellarg($ns).' deploy/'.$service.' -- '.
-                'sh -c '.escapeshellarg($client).' < '.escapeshellarg($tmp),
-            )->successful();
+        $this->withSpin("Granting CREATEDB to '{$role}' in the Commons...", function () use ($role, &$ok) {
+            $ok = $this->plex()->grantPostgresCreateDb($role);
 
             return $ok;
         });
-
-        $grantTemporaryDirectory->delete();
 
         return $ok;
     }
@@ -845,19 +639,7 @@ trait InteractsWithPlex
      */
     protected function readCommonsS3Credentials(): ?array
     {
-        $ns = $this->plexNamespace();
-        $read = fn (string $key): string => trim(Process::run(
-            $this->plexKubectl()." get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.'.$key.'}'),
-        )->output());
-
-        $access = $read('S3_ACCESS_KEY');
-        $secret = $read('S3_SECRET_KEY');
-
-        if ($access === '' || $secret === '') {
-            return null;
-        }
-
-        return ['access' => (string) base64_decode($access), 'secret' => (string) base64_decode($secret)];
+        return $this->plex()->s3Credentials();
     }
 
     /**
@@ -867,13 +649,7 @@ trait InteractsWithPlex
      */
     protected function readCommonsMeiliKey(): ?string
     {
-        $ns = $this->plexNamespace();
-
-        $value = trim(Process::run(
-            $this->plexKubectl().' get secret plex-admin -n '.$ns.' -o jsonpath='.escapeshellarg('{.data.MEILI_MASTER_KEY}'),
-        )->output());
-
-        return $value === '' ? null : (string) base64_decode($value);
+        return $this->plex()->meiliKey();
     }
 
     /**
@@ -881,23 +657,18 @@ trait InteractsWithPlex
      * per-backend command (weed / mc / …) comes from the StorageDriver enum, run
      * via `kubectl exec deploy/<value> -- sh -c '…'` so the pod expands its creds.
      */
-    protected function allocateStorageBucket(StorageDriver $driver, string $bucket): bool
+    protected function allocateStorageBucket(StorageDriver $driver, string $bucket, ?PlexService $plex = null): bool
     {
-        $ns = $this->plexNamespace();
-        $service = $driver->value;
-        $cmd = $driver->commonsBucketCreateCommand($bucket);
-        $registry = $this->getRegistry();
-        $isReattach = isset($registry['tenants'][$bucket]['s3_bucket']);
+        $plex ??= $this->plex();
+        $isReattach = $plex->isBucketRegistered($bucket);
 
         $spinLabel = $isReattach
             ? "Reattaching to existing object-storage bucket '{$bucket}' in the Commons..."
             : "Creating object-storage bucket '{$bucket}' in the Commons...";
 
         $result = null;
-        $this->withSpin($spinLabel, function () use ($ns, $service, $cmd, &$result) {
-            $result = Process::run(
-                $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$service.' -- sh -c '.escapeshellarg($cmd),
-            );
+        $this->withSpin($spinLabel, function () use ($plex, $driver, $bucket, &$result) {
+            $result = $plex->createBucket($driver, $bucket);
 
             return $result->successful();
         });
@@ -912,7 +683,7 @@ trait InteractsWithPlex
             return false;
         }
 
-        $this->registerTenantStorage($bucket, $driver);
+        $plex->registerTenantStorage($bucket, $driver);
 
         if ($isReattach) {
             $this->laraKubeInfo("✅ Reattached to existing object-storage bucket '{$bucket}'.");
@@ -938,23 +709,16 @@ trait InteractsWithPlex
      */
     protected function resolveCommonsS3Endpoints(StorageDriver $driver, string $toolLabel): array
     {
-        $s3Service = $driver->value;
-        $internalEndpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
+        $endpoints = $this->plex()->s3Endpoints($driver);
 
-        $spec = $this->getCommonsSpec() ?? [];
-        $publicHost = $spec['services'][$s3Service]['host'] ?? null;
-        $publicEndpoint = $publicHost !== null && $publicHost !== ''
-            ? 'https://'.$publicHost
-            : $internalEndpoint;
-
-        if (! $publicHost) {
+        if ($endpoints['publicHost'] === null) {
             $this->laraKubeWarn(
-                "The Commons '{$s3Service}' has no public host, so {$toolLabel}'s attachment links will not "
+                "The Commons '{$driver->value}' has no public host, so {$toolLabel}'s attachment links will not "
                 .'resolve from a browser. Set one with `larakube plex:init --s3-host=files.example.com`.',
             );
         }
 
-        return ['internal' => $internalEndpoint, 'public' => $publicEndpoint];
+        return ['internal' => $endpoints['internal'], 'public' => $endpoints['public']];
     }
 
     /** A `kubectl` prefix scoped to the resolved plex context (current when null). */
@@ -1013,18 +777,7 @@ trait InteractsWithPlex
      */
     protected function getCommonsSpec(): ?array
     {
-        $ns = $this->plexNamespace();
-        $json = trim(Process::run(
-            $this->plexKubectl()." get configmap plex-commons -n {$ns} -o jsonpath='{.data.commons\\.json}'",
-        )->output());
-
-        if ($json === '') {
-            return null;
-        }
-
-        $spec = json_decode($json, true);
-
-        return is_array($spec) ? $spec : null;
+        return $this->plex()->commonsSpec();
     }
 
     /**
@@ -1044,21 +797,7 @@ trait InteractsWithPlex
      */
     protected function allocateCommonsRedisIndex(string $tenant): ?int
     {
-        $registry = $this->getRegistry();
-        $existing = $registry['tenants'][$tenant]['redis_index'] ?? null;
-        if (is_int($existing)) {
-            return $existing;
-        }
-
-        $index = $this->allocateRedisDbIndex($this->registryUsedRedisIndexes($registry));
-        if ($index === null) {
-            return null;
-        }
-
-        $registry['tenants'][$tenant]['redis_index'] = $index;
-        $this->saveRegistry($registry);
-
-        return $index;
+        return $this->plex()->allocateRedisIndex($tenant);
     }
 
     /**
@@ -1067,16 +806,7 @@ trait InteractsWithPlex
      */
     protected function releaseCommonsRedisIndex(string $tenant): void
     {
-        $registry = $this->getRegistry();
-        if (! isset($registry['tenants'][$tenant]['redis_index'])) {
-            return;
-        }
-
-        unset($registry['tenants'][$tenant]['redis_index']);
-        if (($registry['tenants'][$tenant] ?? []) === []) {
-            unset($registry['tenants'][$tenant]);
-        }
-        $this->saveRegistry($registry);
+        $this->plex()->releaseRedisIndex($tenant);
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Commands\Plex;
 
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
+use App\Services\PlexService;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -77,9 +78,6 @@ class PlexJoinCommand extends Command
             }
         }
 
-        $appName = $config->getName();
-        $tenant = $this->plexTenantIdentifier($appName, $env);
-
         // 1. Which of this app's services are Commons-eligible?
         $services = $this->resolveTenantServices($config);
 
@@ -113,7 +111,10 @@ class PlexJoinCommand extends Command
             }
         }
 
-        $this->plexContext = $context;
+        // Every Commons call below goes through this one service, so they all
+        // target the context resolved above.
+        $plex = new PlexService($context);
+        $tenant = $plex->plexTenantIdentifier($config->getName(), $env);
 
         if (! $this->environmentContextReachable($context)) {
             $this->laraKubeError("Cluster context '{$context}' is unreachable. Check the server / re-run cloud:init.");
@@ -154,7 +155,7 @@ class PlexJoinCommand extends Command
         //    easy-to-miss distinct operation this CLI avoids elsewhere
         //    (sso:grant/sso:revoke, cluster:grant/cluster:revoke). Resetting
         //    a tenant's credentials is plex:rotate's job now, exclusively.
-        $registry = $this->getRegistry();
+        $registry = $plex->registry();
 
         if (isset($registry['tenants'][$tenant])) {
             $this->line("  <fg=gray>'{$tenant}' is already a tenant — reviewing its Commons services.</>");
@@ -163,7 +164,7 @@ class PlexJoinCommand extends Command
         // 4. Existing-data guard: never silently strand a self-hosted DB or
         //    object storage bucket — detect it and either delegate to
         //    plex:migrate (copy first) or drop that service to mixed mode.
-        $existingData = $this->detectExistingData($config, $env, $services);
+        $existingData = $this->detectExistingData($config, $env, $services, $plex);
 
         if (! empty($existingData)) {
             $labels = array_map(fn (array $d) => $d['label'], $existingData);
@@ -177,7 +178,7 @@ class PlexJoinCommand extends Command
                 // which instead keeps them self-hosted untouched.
                 $this->laraKubeLine('  <fg=gray>--fresh: discarding it instead of migrating — joining Commons empty.</>');
                 $namespace = $config->getNamespace($env);
-                $kubectl = $this->plexKubectl();
+                $kubectl = $plex->kubectl();
 
                 foreach ($existingData as $service => $target) {
                     $released = false;
@@ -228,7 +229,7 @@ class PlexJoinCommand extends Command
         }
 
         // 5. Ensure the Commons exists and offers what we need.
-        if (! $this->ensureCommons($services)) {
+        if (! $this->ensureCommons($services, $plex)) {
             return 1;
         }
 
@@ -237,7 +238,7 @@ class PlexJoinCommand extends Command
         $redisIndex = null;
         if (in_array('redis', $services, true)) {
             $redisIndex = $registry['tenants'][$tenant]['redis_index']
-                ?? $this->allocateRedisDbIndex($this->registryUsedRedisIndexes($registry));
+                ?? $plex->allocateRedisDbIndex($plex->registryUsedRedisIndexes($registry));
 
             if ($redisIndex === null) {
                 // Drop only Redis: .env, the managed/plex markers and heal's
@@ -273,9 +274,9 @@ class PlexJoinCommand extends Command
             // idempotent no-op only protects OpenBao's OWN bookkeeping, not
             // Postgres, which allocateDatabase() below unconditionally
             // ALTERs regardless. See resolveManagedDbPassword()'s docblock.
-            $password = $this->resolveManagedDbPassword($this->plexKubectl(), "tenant-{$tenant}", $password);
+            $password = $this->resolveManagedDbPassword($plex->kubectl(), "tenant-{$tenant}", $password);
 
-            if (! $this->allocateDatabase($dbDriver, $tenant, $password)) {
+            if (! $this->allocateDatabase($dbDriver, $tenant, $password, $plex)) {
                 return 1;
             }
         }
@@ -288,7 +289,7 @@ class PlexJoinCommand extends Command
         $s3 = null;
         $storage = $config->getObjectStorage();
         if ($storage !== null && in_array($storage->commonsServiceName(), $services, true)) {
-            $creds = $this->readCommonsS3Credentials();
+            $creds = $plex->s3Credentials();
 
             if ($creds === null) {
                 $this->laraKubeError('Commons S3 credentials (plex-admin) not found. Re-run `larakube plex:init`.');
@@ -297,16 +298,16 @@ class PlexJoinCommand extends Command
             }
 
             $svc = $storage->commonsServiceName();
-            $bucket = $this->plexBucketName($tenant);
+            $bucket = $plex->plexBucketName($tenant);
             $s3 = [
                 'service' => $svc,
                 'port' => $storage->port(),
                 'access' => $creds['access'],
                 'secret' => $creds['secret'],
-                'host' => $this->getCommonsSpec()['services'][$svc]['host'] ?? null,  // public host for AWS_URL
+                'host' => $plex->commonsSpec()['services'][$svc]['host'] ?? null,  // public host for AWS_URL
             ];
 
-            if (! $this->allocateStorageBucket($storage, $bucket)) {
+            if (! $this->allocateStorageBucket($storage, $bucket, $plex)) {
                 return 1;
             }
         }
@@ -318,7 +319,7 @@ class PlexJoinCommand extends Command
         $scout = $config->getScoutDriver();
         $scoutService = $scout?->commonsServiceName();
         if ($scout !== null && $scoutService !== null && in_array($scoutService, $services, true)) {
-            $meiliKey = $this->readCommonsMeiliKey();
+            $meiliKey = $plex->meiliKey();
 
             if ($meiliKey === null) {
                 $this->laraKubeError('Commons Meilisearch master key (plex-admin) not found. Re-run `larakube plex:init`.');
@@ -335,18 +336,18 @@ class PlexJoinCommand extends Command
         //    checked out locally — force a reconcile/restart after resetting
         //    an OpenBao-wired tenant's credential, instead of just hoping
         //    ESO's refreshInterval eventually notices. Added 2026-08-01.
-        $registry = $this->registryAdd($registry, $tenant, [
+        $registry = $plex->registryAdd($registry, $tenant, [
             'db' => $dbService !== null ? $tenant : null,
             'db_service' => $dbService,            // which engine holds this tenant's DB (Postgres/MySQL/MariaDB)
             'redis_index' => $redisIndex,
-            's3_bucket' => $s3 !== null ? $this->plexBucketName($tenant) : null,
+            's3_bucket' => $s3 !== null ? $plex->plexBucketName($tenant) : null,
             's3_service' => $s3['service'] ?? null,
             'namespace' => $config->getNamespace($env),
         ]);
-        $this->saveRegistry($registry);
+        $plex->saveRegistry($registry);
 
         // Push secrets to OpenBao if bootstrapped
-        $kubectl = $this->plexKubectl();
+        $kubectl = $plex->kubectl();
         $dbHandledByOpenBao = false;
         if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
             $targetNs = $config->getNamespace($env);
@@ -448,7 +449,7 @@ class PlexJoinCommand extends Command
      * @param  array<int, string>  $services
      * @return array<string, array{label: string, pvc: string}>
      */
-    protected function detectExistingData(ConfigData $config, string $env, array $services): array
+    protected function detectExistingData(ConfigData $config, string $env, array $services, PlexService $plex): array
     {
         $namespace = $config->getNamespace($env);
         // getManaged(), NOT getExternallyHosted(): a config can claim `plex`
@@ -461,7 +462,7 @@ class PlexJoinCommand extends Command
         $dbService = $dbDriver?->commonsServiceName();
         if ($dbDriver !== null && $dbService !== null && in_array($dbService, $services, true) && ! in_array($dbService, $managed, true)) {
             $pvc = $config->getName().'-'.$dbService.'-pvc';
-            if ($this->pvcExists($pvc, $namespace)) {
+            if ($this->pvcExists($pvc, $namespace, $plex)) {
                 $found[$dbService] = ['label' => $dbDriver->getLabel(), 'pvc' => $pvc];
             }
         }
@@ -470,7 +471,7 @@ class PlexJoinCommand extends Command
         $storageService = $storage?->commonsServiceName();
         if ($storage !== null && $storageService !== null && in_array($storageService, $services, true) && ! in_array($storageService, $managed, true)) {
             $pvc = $config->getName().'-'.$storage->value.'-pvc';
-            if ($this->pvcExists($pvc, $namespace)) {
+            if ($this->pvcExists($pvc, $namespace, $plex)) {
                 $found[$storageService] = ['label' => $storage->getLabel(), 'pvc' => $pvc];
             }
         }
@@ -478,11 +479,11 @@ class PlexJoinCommand extends Command
         return $found;
     }
 
-    /** Whether a PVC exists in the given namespace, via the resolved Plex context. */
-    protected function pvcExists(string $pvc, string $namespace): bool
+    /** Whether a PVC exists in the given namespace, on the Commons' target cluster. */
+    protected function pvcExists(string $pvc, string $namespace, PlexService $plex): bool
     {
         return trim(Process::run(
-            $this->plexKubectl().' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' -o name',
+            $plex->kubectl().' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' -o name',
         )->output()) !== '';
     }
 

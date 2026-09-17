@@ -1,6 +1,6 @@
 # Plan: Extract `PlexService` — the first trait→service strangler
 
-**Status:** 🟡 Phase 1 done (`5a90d48`). Phase 2 done — exit gate answered below; awaiting the stop/continue decision. Created 2026-09-09, revised 2026-09-11.
+**Status:** ✅ Phases 1–4 done (Phase 1 `5a90d48`, Phase 2 `2214393`, Phases 3–4 after the gate by explicit decision). `PlexJoinCommand` holds its own `PlexService`; the other commands still set `$plexContext`. Created 2026-09-09, revised 2026-09-11.
 **Scope:** `InteractsWithPlex` ONLY. This is a pilot, not a programme.
 **Shape:** stateful service, constructed directly (decided 2026-09-11 — see Design).
 
@@ -235,6 +235,33 @@ Phase 3.** The one open question worth answering before abandoning the pattern:
 converting `PlexJoinCommand`'s call sites to an explicit `$plex = new
 PlexService($context)` is the real test of #2. Decide between that single
 experiment and stopping here.
+
+### After the gate: Phases 3–4 and the PlexJoinCommand conversion
+
+Decided to continue after the `PlexJoinCommand` experiment showed the half-way
+state was worse: with Phase 2 alone the command held a `PlexService` for ten
+calls but still had to set `$plexContext` for the nine that did the real work.
+
+- **Phase 3–4 moved into `PlexService`:** the Commons spec and its pure helpers,
+  the shared S3 and Meilisearch credential reads, S3 endpoint resolution,
+  tenant `.env` values, database SQL execution, the CREATEDB grant, bucket
+  creation, tenant registration, Redis index allocation and release, and
+  applying the Commons manifest.
+- **Stayed on the trait:** everything that prompts, spins, prints or runs another
+  command — `ensureCommons()`, the spinner and error output around allocation,
+  `resolveCommonsS3Endpoints()`'s warning, `printPlexHint()`, `joinPlexCommons()`,
+  `wakeJoinedCommonsServices()` — plus helpers that aren't the Commons at all
+  (`.env` editing, PVC release, port polling, `targetsLocalCluster()`).
+- **The seam:** `ensureCommons()`, `allocateDatabase()` and `allocateStorageBucket()`
+  take an optional `PlexService`. `PlexJoinCommand` passes its own and no longer
+  reads or sets `$plexContext`; every other caller is unchanged.
+- **One test edit:** `PlexContextWiringTest` now also accepts `new PlexService(`
+  as explicit targeting. That is the command conversion, not a phase move.
+
+**Gate question 2, revisited:** yes for `PlexJoinCommand` now — the cluster it
+touches is the one `$plex` was built with, visible in `handle()`, with no ambient
+property involved. The other 48 commands still set `$plexContext`; converting
+them is optional, one command at a time, using the same seam.
 
 ## What this does NOT fix
 
