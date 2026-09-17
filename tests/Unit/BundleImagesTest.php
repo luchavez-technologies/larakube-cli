@@ -22,7 +22,7 @@ test('bundleImages derives the app image + every declared dependency, enum-drive
     $images = bundleAssembler()->bundleImages($config);
 
     expect($images['app'])->toBe('shop:latest')
-        ->and($images['dependencies'])->toContain('traefik:v3.1')
+        ->and($images['dependencies'])->toContain(ConfigData::TRAEFIK_IMAGE)
         ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'postgres')))->toBeTrue()
         ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'valkey') || str_contains($i, 'redis')))->toBeTrue()
         ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'minio')))->toBeTrue();
@@ -31,7 +31,7 @@ test('bundleImages derives the app image + every declared dependency, enum-drive
 test('a SQLite + database-cache project adds only the system image (no DB/cache service)', function (): void {
     $config = ConfigData::from(['name' => 'tiny', 'database' => 'sqlite', 'cacheDriver' => 'database']);
 
-    expect(bundleAssembler()->bundleImages($config)['dependencies'])->toBe(['traefik:v3.1']);
+    expect(bundleAssembler()->bundleImages($config)['dependencies'])->toBe([ConfigData::TRAEFIK_IMAGE]);
 });
 
 test('imageTarName produces filesystem-safe tarball names', function (): void {

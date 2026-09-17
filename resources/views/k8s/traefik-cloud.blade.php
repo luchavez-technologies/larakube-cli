@@ -23,6 +23,7 @@ rules:
       - secrets
       - nodes
       - namespaces
+      - configmaps
     verbs:
       - get
       - list
@@ -110,7 +111,7 @@ spec:
       hostNetwork: false
       containers:
         - name: traefik
-          image: traefik:v3.1
+          image: {{ \App\Data\ConfigData::TRAEFIK_IMAGE }}
           args:
             - --api.insecure
             - --accesslog

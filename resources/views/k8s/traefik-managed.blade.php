@@ -27,6 +27,7 @@ rules:
       - secrets
       - nodes
       - namespaces
+      - configmaps
     verbs:
       - get
       - list
@@ -132,7 +133,7 @@ spec:
       serviceAccountName: traefik-ingress-controller
       containers:
         - name: traefik
-          image: traefik:v3.1
+          image: {{ \App\Data\ConfigData::TRAEFIK_IMAGE }}
           args:
             - --accesslog
             - --entrypoints.web.Address=:80

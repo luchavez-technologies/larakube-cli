@@ -12,7 +12,7 @@ use App\Data\ConfigData;
 trait AssemblesBundle
 {
     /** System images every bundle carries regardless of the blueprint (ingress, …). */
-    private const BUNDLE_SYSTEM_IMAGES = ['traefik:v3.1'];
+    private const BUNDLE_SYSTEM_IMAGES = [ConfigData::TRAEFIK_IMAGE];
 
     /**
      * Every container image an air-gapped bundle must carry: the app image (built

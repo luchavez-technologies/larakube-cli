@@ -50,6 +50,9 @@ class ConfigData extends Data
     /** Pinned k3s version — installed locally (cluster:setup), remotely (cloud:provision), and bundled. */
     const string DEFAULT_K3S_VERSION = 'v1.36.2+k3s1';
 
+    /** The Traefik image every cluster runs (VPS, managed, local and air-gapped bundles). */
+    const string TRAEFIK_IMAGE = 'traefik:v3.7.13';
+
     /** Conservative default pod resources, applied to every app pod and overridable per env/component. */
     const array DEFAULT_RESOURCES = [
         'requests' => ['cpu' => '50m', 'memory' => '128Mi'],
