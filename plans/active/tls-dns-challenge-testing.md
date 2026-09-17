@@ -71,6 +71,17 @@ On a scratch cluster with no `cloudflare-token-*` Secrets:
   challenge, `traefik-acme-cloudflare` is gone, and
   `larakube-shared/cloudflare-token-luchtech-dev` still exists.
 
+## Phase 1f: `tls:prune`
+- [ ] `larakube tls:show production` lists the unused stored certificates.
+- [ ] `larakube tls:prune production` lists the same domains and asks to
+  confirm. Answer anything but `confirm`: nothing changes (`tls:show` still
+  lists them).
+- [ ] Run it again and confirm: it reports the count removed, Traefik restarts,
+  and `tls:show` no longer lists them.
+- [ ] Every routed host still serves its existing certificate (spot-check
+  `portal`, `cli.larakube.app`, `git`, `chat`).
+- [ ] `acme.json.bak` exists: `kubectl --context larakube-159.89.205.239 -n traefik exec deploy/traefik -- ls -l /acme`.
+
 ## Cleanup
 Remove the scratch site and its namespace. Decide whether production stays on
 the DNS challenge (the intended end state) or goes back via `tls:remove`.

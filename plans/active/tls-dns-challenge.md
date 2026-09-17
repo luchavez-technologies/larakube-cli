@@ -1,6 +1,6 @@
 # Plan: `tls:init` / `tls:remove`, Let's Encrypt via the Cloudflare DNS challenge
 
-**Status:** Phase 0 ✅ done (`d8a51de`, verified live on production). Phase 1 ✅ built; `tls:init` switched production to the DNS challenge (Traefik args/env verified, sites 200). Still to prove: a certificate actually issued through DNS (walkthrough Phase 1c). Next: `tls:prune`.
+**Status:** Phase 0 ✅ done (`d8a51de`, verified live on production). Phase 1 ✅ built; `tls:init` switched production to the DNS challenge (Traefik args/env verified, sites 200). Still to prove: a certificate actually issued through DNS (walkthrough Phase 1c). `tls:prune` ✅ verified live (12 unused certificates removed, backup kept, hosts unchanged). Phase 2 (app proxying) = `cloud:proxy`/`cloud:unproxy`, in progress.
 
 **Phase 1 deviations from this plan:**
 - **Managed (DOKS) clusters are refused for now.** Their Traefik install path never re-renders an existing install, so there is no safe apply path yet. Both templates already render the DNS challenge.
@@ -105,6 +105,19 @@ renewals for 5 removed tools (`sheet`, `inbox`, `flow`, `desk` on luchtech.dev,
 Under the DNS challenge they would **succeed**, issuing certificates for dead
 hosts. Listing them is read-only; removing them stays a manual step, since it
 means editing `acme.json`.
+
+### `tls:prune {environment}`
+Removes stored certificates no ingress uses from `acme.json`. Traefik renews
+every certificate it holds and has no API to delete one, so each removed tool
+leaves one behind.
+- Reads `acme.json` over `kubectl exec` (decoded as objects so Traefik's `{}`
+  values survive), drops certificates whose main domain and SANs are all
+  unrouted, and lists them for confirmation.
+- Backs up to `acme.json.bak` in place, writes the result on stdin to a temp
+  file (mode 0600) and swaps it in, then restarts Traefik immediately so it
+  can't save the pruned certificates back from memory.
+- Re-reads the stored domains to confirm they're gone. Nothing touches the
+  local disk. Managed clusters are refused for now.
 
 ## One render path for Traefik (the part that must not regress)
 

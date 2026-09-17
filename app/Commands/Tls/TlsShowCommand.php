@@ -88,7 +88,7 @@ class TlsShowCommand extends Command
             foreach ($unused as $domain) {
                 $this->line("  <fg=gray>•</> {$domain}");
             }
-            $this->line('  <fg=gray>Remove them from Traefik\'s acme.json by hand if they\'re gone for good.</>');
+            $this->line("  <fg=gray>Remove them with</> <fg=blue>larakube tls:prune {$env}</><fg=gray>.</>");
         }
 
         if ($ok) {
