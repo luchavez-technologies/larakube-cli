@@ -234,5 +234,11 @@ class EnvironmentData extends Data
          * uploaded, so re-generating the workflow later doesn't re-prompt.
          */
         public bool $ciVpn = false,
+        /**
+         * Route this env's app hosts through the Cloudflare proxy (orange
+         * cloud). Set by `larakube cloud:proxy` / `cloud:unproxy`, rendered
+         * as ExternalDNS's cloudflare-proxied annotation on every app Ingress.
+         */
+        public bool $proxied = false,
     ) {}
 }

@@ -135,14 +135,16 @@ test('static-site caddy manifest parses as valid YAML for one or many hosts', fu
     'apex plus www' => [['demo.com', 'www.demo.com']],
 ]);
 
-test('static-site ingress proxies only when explicitly asked', function (): void {
+test('static-site ingress proxies only when the environment is proxied', function (): void {
     $config = new App\Data\ConfigData(
         id: 'demo', name: 'demo', path: '/tmp/demo', framework: App\Enums\AppFramework::VITE,
     );
+    $config->setEnvironments(['local', 'production']);
+    $config->setProxied('production', true);
 
     $rendered = view('k8s.static.caddy', [
         'config' => $config, 'namespace' => 'demo-production', 'environment' => 'production',
-        'hosts' => ['demo.com'], 'proxied' => true,
+        'hosts' => ['demo.com'],
     ])->render();
 
     $ingress = collect(bladeYamlDocuments($rendered))->firstWhere('kind', 'Ingress');

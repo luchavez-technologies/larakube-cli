@@ -758,7 +758,27 @@ class ConfigData extends Data
      */
     public function getIngressAnnotations(string $environment): array
     {
-        return $this->getEnvironment($environment)?->ingressAnnotations ?? [];
+        $annotations = $this->getEnvironment($environment)?->ingressAnnotations ?? [];
+
+        if ($environment !== 'local' && $this->isProxied($environment)) {
+            $annotations['external-dns.alpha.kubernetes.io/cloudflare-proxied'] = 'true';
+        }
+
+        return $annotations;
+    }
+
+    public function isProxied(string $environment): bool
+    {
+        return $this->getEnvironment($environment)?->proxied ?? false;
+    }
+
+    public function setProxied(string $environment, bool $proxied): self
+    {
+        if ($envData = $this->getEnvironment($environment)) {
+            $envData->proxied = $proxied;
+        }
+
+        return $this;
     }
 
     public function getRegistry(string $environment): ?RegistryData

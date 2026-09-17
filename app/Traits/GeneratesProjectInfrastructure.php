@@ -830,7 +830,6 @@ trait GeneratesProjectInfrastructure
             'namespace' => $config->getNamespace('local'),
             'environment' => 'local',
             'hosts' => [$config->getServiceHost('preview', 'local')],
-            'proxied' => false,
             'image' => $config->getName().':preview',
             'resourceName' => 'web-preview',
             'isPreview' => true,
@@ -849,7 +848,6 @@ trait GeneratesProjectInfrastructure
                 // Off unless the env opts in via ingressAnnotations. On breaks
                 // ACME HTTP-01, leaving the host on Traefik's dev cert and
                 // every request a Cloudflare 526.
-                'proxied' => false,
             ];
             $render("overlays/$env/kustomization.yaml", 'k8s.static.cloud-kustomization', $cloudData);
             $render("overlays/$env/namespace.yaml", 'k8s.overlays.production.namespace', $cloudData);

@@ -97,20 +97,10 @@ metadata:
 @if($letsencrypt ?? true)
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 @endif
-{{-- Proxying is OFF by default, matching resolveProxied() and every other
-     ingress in the codebase.
-
-     It cannot be on by default: orange-clouding a host breaks Let's Encrypt's
-     HTTP-01 challenge, so Traefik never obtains a certificate and falls back to
-     the dev cert baked into its image (CN=*.dev.test). Cloudflare in Full
-     (Strict) then rejects the origin and every request is a 526 — confirmed
-     live. Turn it on only once a real certificate exists. --}}
-@if($proxied ?? false)
-    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
-@endif
+{{-- Proxying (`larakube cloud:proxy`) arrives through the per-env annotations
+     below. Safe only on a cluster using the DNS challenge (`tls:init`): an
+     orange-clouded host can't renew through the HTTP challenge. --}}
 @if($extraAnnotations = $config->getIngressAnnotations($environment))
-{{-- Per-env passthrough, same mechanism the Laravel ingress uses — this is how
-     you enable proxying durably, since manifests regenerate on every deploy. --}}
 @foreach($extraAnnotations as $key => $value)
     {{ $key }}: {!! json_encode($value) !!}
 @endforeach

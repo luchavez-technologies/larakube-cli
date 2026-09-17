@@ -1,6 +1,6 @@
 # Plan: `tls:init` / `tls:remove`, Let's Encrypt via the Cloudflare DNS challenge
 
-**Status:** Phase 0 ✅ done (`d8a51de`, verified live on production). Phase 1 ✅ built; `tls:init` switched production to the DNS challenge (Traefik args/env verified, sites 200). Still to prove: a certificate actually issued through DNS (walkthrough Phase 1c). `tls:prune` ✅ verified live (12 unused certificates removed, backup kept, hosts unchanged). Phase 2 (app proxying) = `cloud:proxy`/`cloud:unproxy`, in progress.
+**Status:** Phase 0 ✅ done (`d8a51de`, verified live on production). Phase 1 ✅ built; `tls:init` switched production to the DNS challenge (Traefik args/env verified, sites 200). Still to prove: a certificate actually issued through DNS (walkthrough Phase 1c). `tls:prune` ✅ verified live (12 unused certificates removed, backup kept, hosts unchanged). Phase 2 ✅ `cloud:proxy`/`cloud:unproxy` verified live: cli.larakube.app resolves to Cloudflare IPs, serves 200 with cf-ray.
 
 **Phase 1 deviations from this plan:**
 - **Managed (DOKS) clusters are refused for now.** Their Traefik install path never re-renders an existing install, so there is no safe apply path yet. Both templates already render the DNS challenge.
@@ -178,7 +178,22 @@ verification, preflight, commands, tests.
   `cloudflare-token-*`.
 - The token never appears in any faked command line.
 
-### Phase 2: proxying apps (after Phase 1 is verified live)
+### Phase 2: proxying apps: `cloud:proxy` / `cloud:unproxy` (built)
+Users never edit `.larakube.json` for this. `EnvironmentData::$proxied` is set
+by the commands and rendered through `ConfigData::getIngressAnnotations()` on
+every app Ingress (Laravel web + Reverb, static sites, Next.js, server apps).
+
+`cloud:proxy {env}` refuses unless:
+- the cluster renews through the DNS challenge (Traefik ACME environments),
+- an ExternalDNS instance on the cluster manages every host's zone (it would
+  otherwise reset a manual orange-cloud toggle, or nothing could set it),
+- Cloudflare's SSL mode isn't Off/Flexible (Full warns; unreadable warns).
+
+Then it saves the setting, regenerates the manifests and says how it goes
+live (commit + push for CI projects, else `cloud:deploy`). `cloud:unproxy`
+has no preconditions.
+
+### Original Phase 2 notes
 - A real per-environment setting for apps (`cloud:configure --proxied` writing
   a blueprint field), replacing hand-edited `ingressAnnotations`.
 - `--proxied` on apps and Cluster Tools warns when the cluster still uses the

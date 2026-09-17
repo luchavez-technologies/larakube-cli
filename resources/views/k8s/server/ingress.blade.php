@@ -11,6 +11,11 @@ metadata:
 @if($environment !== 'local')
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 @endif
+@if($environment !== 'local' && ($extraAnnotations = $config->getIngressAnnotations($environment)))
+@foreach($extraAnnotations as $key => $value)
+    {{ $key }}: {!! json_encode($value) !!}
+@endforeach
+@endif
 spec:
   rules:
 @foreach($hosts as $host)

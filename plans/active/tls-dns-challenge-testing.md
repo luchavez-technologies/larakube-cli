@@ -82,6 +82,20 @@ On a scratch cluster with no `cloudflare-token-*` Secrets:
   `portal`, `cli.larakube.app`, `git`, `chat`).
 - [ ] `acme.json.bak` exists: `kubectl --context larakube-159.89.205.239 -n traefik exec deploy/traefik -- ls -l /acme`.
 
+## Phase 2: `cloud:proxy` on the docs site (cli.larakube.app)
+From `docs/`, after the Caddyfile fix is pushed.
+- [ ] In Cloudflare, `larakube.app` SSL/TLS mode is Full (strict).
+- [ ] `larakube cloud:proxy production` passes its checks, then says to commit
+  and push.
+- [ ] `git diff` shows only `.larakube.json` (`"proxied": true`) and the
+  production ingress gaining `external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"`.
+- [ ] After the CI deploy: `dig +short cli.larakube.app` returns Cloudflare IPs,
+  `curl -sI https://cli.larakube.app` shows `cf-ray`, and the page loads (no 526).
+- [ ] Toggling the orange cloud off in the Cloudflare dashboard gets put back
+  by ExternalDNS within a minute (the blueprint is the source of truth).
+- [ ] `larakube cloud:unproxy production` + push returns it to DNS-only
+  (optional; re-run `cloud:proxy` after).
+
 ## Cleanup
 Remove the scratch site and its namespace. Decide whether production stays on
 the DNS challenge (the intended end state) or goes back via `tls:remove`.

@@ -9,6 +9,11 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/service.serversscheme: http
+@if($environment !== 'local' && ($extraAnnotations = $config->getIngressAnnotations($environment)))
+@foreach($extraAnnotations as $key => $value)
+    {{ $key }}: {!! json_encode($value) !!}
+@endforeach
+@endif
 spec:
   rules:
 @foreach($hosts as $host)
