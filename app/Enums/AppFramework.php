@@ -215,6 +215,29 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
     }
 
     /**
+     * Whether the static build writes one HTML file per page (Astro,
+     * Docusaurus) rather than a single app shell that routes in the browser
+     * (Vite). A multi-page site must serve each page's own HTML and a real 404.
+     */
+    public function isMultiPageSite(): bool
+    {
+        return in_array($this, [self::ASTRO, self::DOCUSAURUS], true);
+    }
+
+    /**
+     * The folder copied verbatim into a static build, where a Netlify/Pages
+     * style `_redirects` file lives.
+     */
+    public function staticPublicDir(): ?string
+    {
+        return match ($this) {
+            self::VITE, self::ASTRO => 'public',
+            self::DOCUSAURUS => 'static',
+            default => null,
+        };
+    }
+
+    /**
      * Whether the production build reads `.env.{environment}` and compiles its
      * public values into the bundle (Vite's VITE_*, Astro's PUBLIC_*).
      * Docusaurus reads no env file, so its bundle has no configured hosts to

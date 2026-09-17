@@ -152,7 +152,7 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
 
         expect(file_get_contents("{$project}/Caddyfile"))
             // The deep-link failure a dev server structurally cannot show.
-            ->toContain('try_files {path} /index.html')
+            ->toContain('try_files {path} {path}/index.html /index.html')
             ->toContain('max-age=31536000, immutable')
             ->toContain('max-age=0, must-revalidate');
 

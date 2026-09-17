@@ -593,8 +593,65 @@ trait GeneratesProjectInfrastructure
         }
 
         if (! $config->isLocked('Caddyfile')) {
-            file_put_contents("{$projectPath}/Caddyfile", view('docker.caddyfile')->render());
+            file_put_contents("{$projectPath}/Caddyfile", view('docker.caddyfile', [
+                'multiPage' => $framework?->isMultiPageSite() ?? false,
+                'redirects' => $this->staticSiteRedirects($config),
+            ])->render());
         }
+    }
+
+    /**
+     * The project's `_redirects` rules (the Netlify / Cloudflare Pages format)
+     * that Caddy can serve as plain redirects. Caddy ignores the file itself,
+     * so without this every rule silently stops working after a move off Pages.
+     *
+     * @return list<array{from: string, to: string, status: int}>
+     */
+    protected function staticSiteRedirects(ConfigData $config): array
+    {
+        $publicDir = $config->framework?->staticPublicDir();
+        $file = $config->getPath()."/{$publicDir}/_redirects";
+
+        if ($publicDir === null || ! is_file($file)) {
+            return [];
+        }
+
+        $redirects = [];
+        $skipped = [];
+
+        foreach (file($file, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+
+            $parts = preg_split('/\s+/', $line) ?: [];
+            $status = (int) ($parts[2] ?? 301);
+
+            // Splats, placeholders, rewrites (200) and proxying have no plain
+            // redirect equivalent.
+            $supported = count($parts) >= 2 && count($parts) <= 3
+                && in_array($status, [301, 302, 303, 307, 308], true)
+                && ! preg_match('/[*:!{}]/', $parts[0].$parts[1].($parts[2] ?? ''))
+                && str_starts_with($parts[0], '/');
+
+            if (! $supported) {
+                $skipped[] = $line;
+
+                continue;
+            }
+
+            $redirects[] = ['from' => $parts[0], 'to' => $parts[1], 'status' => $status];
+        }
+
+        if ($skipped !== []) {
+            $this->laraKubeWarn("{$publicDir}/_redirects has rules the Caddyfile can't serve as plain redirects, so they were left out:");
+            foreach ($skipped as $rule) {
+                $this->line("  <fg=gray>{$rule}</>");
+            }
+        }
+
+        return $redirects;
     }
 
     /**
