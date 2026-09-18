@@ -2,6 +2,7 @@
 
 namespace App\Commands\Resume;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -87,7 +88,8 @@ class ResumeInitCommand extends Command
             return 1;
         }
         $s3Driver = StorageDriver::from($s3Service);
-        $s3Bucket = 'reactive-resume-storage';
+        $names = ToolInstance::forHost(ClusterTool::RESUME, $host);
+        $s3Bucket = $names->bucket();
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;
         }
@@ -97,7 +99,7 @@ class ResumeInitCommand extends Command
         $dbPassword = $this->readResumeSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         $authSecret = $this->readResumeSecret($kubectl, $ns, 'auth-secret') ?? Str::random(32);
 
-        $dbName = 'reactiveresume';
+        $dbName = $names->database();
         // Once OpenBao's database secrets engine already owns this static
         // role, defer to ITS current password instead of re-affirming a
         // locally-cached one that may predate OpenBao's own rotation — see
@@ -145,6 +147,7 @@ class ResumeInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
             's3Endpoint' => $s3Endpoint,
             's3Bucket' => $s3Bucket,
+            'dbName' => $dbName,
             's3AccessKey' => $s3Creds['access'],
             's3SecretKey' => $s3Creds['secret'],
         ])->render();

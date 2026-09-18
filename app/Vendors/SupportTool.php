@@ -5,13 +5,14 @@ namespace App\Vendors;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasWhiteLabel;
 
 /** The single vendor backing the SUPPORT category — 'Customer Support'. Only Chatwoot. */
-final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDeploymentBaseName, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel
+final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasCommonsRedisKeys, HasDeploymentBaseName, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel
 {
     public function getLabel(): string
     {
@@ -58,6 +59,11 @@ final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
         // real key is just 'LOGO' ('LOGO_DARK'/'LOGO_THUMBNAIL' also exist
         // for variants, not used here). INSTALLATION_NAME is correct as-is.
         return ['app_name_key' => 'INSTALLATION_NAME', 'logo_url_key' => 'LOGO'];
+    }
+
+    public function commonsRedisKeys(): array
+    {
+        return ['support_chatwoot'];
     }
 
     public function commonsDatabaseList(): array

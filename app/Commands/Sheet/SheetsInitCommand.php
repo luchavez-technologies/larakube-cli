@@ -2,6 +2,7 @@
 
 namespace App\Commands\Sheet;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -49,6 +50,7 @@ class SheetsInitCommand extends Command
         $this->plexContext = $context;
         $kubectl = $this->sheetKubectl($context);
         $host = $this->resolveToolHost(SharedClusterService::SHEET, ClusterTool::SHEETS, $env, $kubectl);
+        $names = ToolInstance::forHost(ClusterTool::SHEETS, $host);
 
         $ns = $this->sheetNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -68,16 +70,18 @@ class SheetsInitCommand extends Command
         $dbPassword = $this->readSheetDbPassword($kubectl, $ns) ?? Str::random(24);
         $secretKey = $this->readSheetSecret($kubectl, $ns, 'secret-key') ?? Str::random(50);
 
-        $storage = $this->resolveSheetStorage();
+        $storage = $this->resolveSheetStorage($names);
         if ($storage === null) {
             return 1;
         }
 
-        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'teable', $dbPassword)) {
+        $dbName = $names->database();
+
+        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
         }
 
-        $redisIndex = $this->allocateCommonsRedisIndex('teable');
+        $redisIndex = $this->allocateCommonsRedisIndex($names->redisTenant());
         if ($redisIndex === null) {
             $this->laraKubeError('The Commons Valkey has no free logical DB index (all 16 in use).');
 
@@ -92,7 +96,7 @@ class SheetsInitCommand extends Command
         // can read it directly from the Secret. Kubernetes does NOT expand
         // $(VAR) in env value fields — Prisma would see the literal string.
         $plexNs = $this->plexNamespace();
-        $dbUrl = "postgresql://teable:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/teable";
+        $dbUrl = "postgresql://{$dbName}:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/{$dbName}";
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey, $storage, $dbUrl): void {
             Process::run(
@@ -159,7 +163,7 @@ class SheetsInitCommand extends Command
      *
      * @return array{access: string, secret: string, publicEndpoint: string, internalEndpoint: string, publicBucket: string, privateBucket: string}|null
      */
-    protected function resolveSheetStorage(): ?array
+    protected function resolveSheetStorage(ToolInstance $names): ?array
     {
         $spec = $this->getCommonsSpec();
         $s3Service = null;
@@ -187,8 +191,8 @@ class SheetsInitCommand extends Command
         $driver = StorageDriver::from($s3Service);
         $internalEndpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
 
-        $publicBucket = 'sheet-public';
-        $privateBucket = 'sheet-private';
+        $publicBucket = $names->bucket('sheet-public');
+        $privateBucket = $names->bucket('sheet-private');
 
         if (! $this->allocateStorageBucket($driver, $publicBucket)
             || ! $this->allocateStorageBucket($driver, $privateBucket)) {

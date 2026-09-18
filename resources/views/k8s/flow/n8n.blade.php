@@ -1,3 +1,4 @@
+@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, 'n8n')->database())
 @if($noPlex)
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -63,9 +64,9 @@ spec:
             - name: DB_POSTGRESDB_PORT
               value: "5432"
             - name: DB_POSTGRESDB_DATABASE
-              value: n8n
+              value: {{ $dbName }}
             - name: DB_POSTGRESDB_USER
-              value: n8n
+              value: {{ $dbName }}
             - name: DB_POSTGRESDB_PASSWORD
               valueFrom:
                 secretKeyRef:

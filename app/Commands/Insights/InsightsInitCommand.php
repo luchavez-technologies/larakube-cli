@@ -2,6 +2,7 @@
 
 namespace App\Commands\Insights;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -76,8 +77,10 @@ class InsightsInitCommand extends Command
         $dbPassword = $this->readInsightsDbPassword($kubectl, $ns) ?? Str::random(24);
         $encryptionKey = $this->readInsightsEncryptionKey($kubectl, $ns) ?? Str::random(64);
 
+        $dbName = ToolInstance::forHost(ClusterTool::INSIGHTS, $host)->database();
+
         if (! $noPlex) {
-            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'metabase', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
                 return 1;
             }
         }
@@ -99,6 +102,7 @@ class InsightsInitCommand extends Command
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::INSIGHTS, ClusterTool::INSIGHTS->instanceSlugFromHost($host));
 
         $manifest = view('k8s.insights.shared', [
+            'dbName' => $dbName,
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'appName' => $branding['appName'],

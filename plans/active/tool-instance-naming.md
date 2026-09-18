@@ -1,6 +1,14 @@
 # Plan: `ToolInstance`, one source of truth for every Cluster Tool resource name
 
-**Status:** Stage 0 ✅ done. Stages 1–3 not started.
+**Status:** Stage 0 ✅. Stage 1: part 1 ✅ (CRM, Design), Batch A ✅ (Flow, Link,
+Sheets, Record, Resume, Errors, Insights, Support, Tasks: not live, code only).
+Batch B (live: SSO, Passwords, Chat, Monitor, Sign, Drive) needs a per-tool
+production migration first. Stages 2–3 not started.
+
+**Decision (2026-09-18):** every tool gets per-instance Commons names, and live
+tools are migrated by hand on production (not declared single-instance).
+`ToolInstance` also owns the ADR 0021 names for Secrets, ConfigMaps and volumes
+(`secret()`, `configMap()`, `volume()`), used by Stage 2.
 
 **Stage 0 results** (`tests/Feature/ToolNamingDriftTest.php`, harness in
 `tests/Support/ToolDriftHarness.php`): of 29 shipped tools, 2 pass (Paste,

@@ -2,6 +2,7 @@
 
 namespace App\Commands\Record;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -87,7 +88,8 @@ class RecordInitCommand extends Command
             return 1;
         }
         $s3Driver = StorageDriver::from($s3Service);
-        $s3Bucket = 'record-storage';
+        $names = ToolInstance::forHost(ClusterTool::RECORD, $host);
+        $s3Bucket = $names->bucket();
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;
         }
@@ -104,7 +106,7 @@ class RecordInitCommand extends Command
         $dbPassword = $this->readRecordSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         $jwtSecret = $this->readRecordSecret($kubectl, $ns, 'jwt-secret') ?? bin2hex(random_bytes(32));
 
-        $dbName = 'record_sendrec';
+        $dbName = $names->database();
         // Once OpenBao's database secrets engine already owns this static
         // role, defer to ITS current password instead of re-affirming a
         // locally-cached one that may predate OpenBao's own rotation — see
@@ -166,6 +168,7 @@ class RecordInitCommand extends Command
             's3Endpoint' => $s3Endpoint,
             's3PublicEndpoint' => $s3PublicEndpoint,
             's3Bucket' => $s3Bucket,
+            'dbName' => $dbName,
             's3AccessKey' => $s3Creds['access'],
             's3SecretKey' => $s3Creds['secret'],
             // The blade reads this to set REGISTRATION_ENABLED. It was never

@@ -1,3 +1,4 @@
+@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::SUPPORT, $host)->database())
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,9 +40,9 @@ spec:
                   name: support-secrets
                   key: db-password
             - name: POSTGRES_DATABASE
-              value: "support_chatwoot"
+              value: "{{ $dbName }}"
             - name: POSTGRES_USERNAME
-              value: "support_chatwoot"
+              value: "{{ $dbName }}"
             - name: POSTGRES_HOST
               value: "postgres.{{ $plexNamespace }}.svc.cluster.local"
             - name: REDIS_URL
@@ -197,9 +198,9 @@ spec:
                   name: support-secrets
                   key: db-password
             - name: POSTGRES_DATABASE
-              value: "support_chatwoot"
+              value: "{{ $dbName }}"
             - name: POSTGRES_USERNAME
-              value: "support_chatwoot"
+              value: "{{ $dbName }}"
             - name: POSTGRES_HOST
               value: "postgres.{{ $plexNamespace }}.svc.cluster.local"
             - name: REDIS_URL

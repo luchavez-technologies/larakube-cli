@@ -1,3 +1,4 @@
+@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::TASKS, $host, 'planka')->database())
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,7 +40,7 @@ spec:
                   name: tasks-planka-secrets
                   key: db-password
             - name: DATABASE_URL
-              value: "postgres://tasks_planka:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/tasks_planka"
+              value: "postgres://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}"
           startupProbe:
             httpGet:
               path: /

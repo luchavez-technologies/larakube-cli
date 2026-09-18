@@ -1,3 +1,4 @@
+@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::ERRORS, $host)->database())
 apiVersion: v1
 kind: Secret
 metadata:
@@ -15,8 +16,8 @@ data:
   database-url: {{ base64_encode("postgres://glitchtip:{$dbPassword}@glitchtip-db:5432/glitchtip") }}
   redis-url: {{ base64_encode("redis://glitchtip-cache:6379/0") }}
 @else
-  database-url: {{ base64_encode("postgres://glitchtip:{$dbPassword}@postgres.{$plexNamespace}.svc.cluster.local:5432/glitchtip") }}
-  redis-url: {{ base64_encode("redis://redis.{$plexNamespace}.svc.cluster.local:6379/15") }}
+  database-url: {{ base64_encode("postgres://{$dbName}:{$dbPassword}@postgres.{$plexNamespace}.svc.cluster.local:5432/{$dbName}") }}
+  redis-url: {{ base64_encode("redis://redis.{$plexNamespace}.svc.cluster.local:6379/{$redisIndex}") }}
 @endif
   secret-key: {{ base64_encode(\Illuminate\Support\Str::random(50)) }}
 ---

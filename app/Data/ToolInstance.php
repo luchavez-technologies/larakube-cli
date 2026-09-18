@@ -3,6 +3,7 @@
 namespace App\Data;
 
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use LogicException;
 
 /**
@@ -42,6 +43,63 @@ final readonly class ToolInstance
             ?? throw new LogicException("{$this->tool->value} has no '{$component}' component.");
 
         return $match->deployment;
+    }
+
+    /**
+     * `{category}-{component}`: the component's Deployment name without the
+     * instance, the stem every other resource of that component shares.
+     */
+    public function base(?string $component = null): string
+    {
+        $deployment = $this->deployment($component);
+        $suffix = "-{$this->instance}";
+
+        return str_ends_with($deployment, $suffix) ? substr($deployment, 0, -strlen($suffix)) : $deployment;
+    }
+
+    /** `{category}-{component}-{token}-{instance}` (ADR 0021). */
+    public function name(string $token, ?string $component = null): string
+    {
+        return "{$this->base($component)}-{$token}-{$this->instance}";
+    }
+
+    public function secret(SecretKind $kind = SecretKind::CREDENTIALS, ?string $component = null): string
+    {
+        return $this->name($kind->value, $component);
+    }
+
+    public function configMap(string $key, ?string $component = null): string
+    {
+        return $this->name($key, $component);
+    }
+
+    public function volume(string $key = 'storage', ?string $component = null): string
+    {
+        return $this->name($key, $component);
+    }
+
+    /** The one Commons database this instance owns. */
+    public function database(): string
+    {
+        return $this->commonsDatabases()[0] ?? throw new LogicException("{$this->tool->value} uses no Commons database.");
+    }
+
+    /** The one Commons Redis tenant this instance owns. */
+    public function redisTenant(): string
+    {
+        return $this->commonsRedisTenants()[0] ?? throw new LogicException("{$this->tool->value} uses no Commons Redis.");
+    }
+
+    /** A Commons bucket this instance owns: the first, or the one whose base name is $base. */
+    public function bucket(?string $base = null): string
+    {
+        foreach ($this->commonsBuckets() as $bucket) {
+            if ($base === null || $bucket === "{$base}-{$this->instance}") {
+                return $bucket;
+            }
+        }
+
+        throw new LogicException("{$this->tool->value} declares no Commons bucket".($base !== null ? " '{$base}'" : '').'.');
     }
 
     /** @return list<ClusterToolComponentData> */

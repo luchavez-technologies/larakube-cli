@@ -2,6 +2,7 @@
 
 namespace App\Commands\Link;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -73,13 +74,14 @@ class LinkInitCommand extends Command
         $dbPassword = $this->readLinkSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         $jwtSecret = $this->readLinkSecret($kubectl, $ns, 'jwt-secret') ?? bin2hex(random_bytes(32));
 
-        $dbName = 'link_kutt';
+        $names = ToolInstance::forHost(ClusterTool::LINK, $host);
+        $dbName = $names->database();
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
         }
 
-        $redisIndex = $this->allocateCommonsRedisIndex('link_kutt');
+        $redisIndex = $this->allocateCommonsRedisIndex($names->redisTenant());
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -107,6 +109,7 @@ class LinkInitCommand extends Command
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'redisIndex' => $redisIndex,
+            'dbName' => $dbName,
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();

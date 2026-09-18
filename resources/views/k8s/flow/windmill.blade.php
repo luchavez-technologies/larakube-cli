@@ -1,3 +1,4 @@
+@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, 'windmill')->database())
 @if($noPlex)
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -96,7 +97,7 @@ spec:
               value: postgres://windmill:$(DB_PASSWORD)@flow-windmill-db:5432/windmill
 @else
             - name: DATABASE_URL
-              value: postgres://windmill:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/windmill
+              value: postgres://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}
 @endif
             - name: MODE
               value: server
@@ -124,7 +125,7 @@ spec:
               value: postgres://windmill:$(DB_PASSWORD)@flow-windmill-db:5432/windmill
 @else
             - name: DATABASE_URL
-              value: postgres://windmill:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/windmill
+              value: postgres://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}
 @endif
             - name: MODE
               value: worker

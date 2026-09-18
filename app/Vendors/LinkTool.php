@@ -4,6 +4,7 @@ namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasOidcWiring;
@@ -12,7 +13,7 @@ use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasWhiteLabel;
 
 /** The single vendor backing the LINK category — 'Link Management'. Only Kutt. */
-final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel
+final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel
 {
     public function getLabel(): string
     {
@@ -74,6 +75,11 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSec
     public function dbSecretRef(): ?array
     {
         return ['secret' => 'link-secrets', 'key' => 'db-password'];
+    }
+
+    public function commonsRedisKeys(): array
+    {
+        return ['link_kutt'];
     }
 
     public function commonsDatabaseList(): array

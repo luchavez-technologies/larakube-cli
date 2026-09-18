@@ -2,6 +2,7 @@
 
 namespace App\Commands\Tasks;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -66,14 +67,14 @@ class TasksInitCommand extends Command
 
         $dbPassword = $this->readTasksSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         // tasks:init doesn't know or care whether OpenBao is installed —
-        // only secrets:wire --tool=tasks may register the 'tasks_planka'
+        // only secrets:wire --tool=tasks may register this instance's database
         // static role. This is a READ-only exception: it defers to OpenBao's
         // current password when a PAST secrets:wire run already made it the
         // owner, so a re-run here never clobbers it back to a fresh local one.
-        $dbPassword = $this->resolveManagedDbPassword($kubectl, 'tasks_planka', $dbPassword);
+        $names = ToolInstance::forHost(ClusterTool::TASKS, $host, 'planka');
+        $dbName = $names->database();
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
         $secretKey = $this->readTasksSecret($kubectl, $ns, 'secret-key') ?? bin2hex(random_bytes(32));
-
-        $dbName = 'tasks_planka';
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
@@ -94,6 +95,7 @@ class TasksInitCommand extends Command
         $manifest = view('k8s.tasks.shared', [
             'engine' => 'planka',
             'host' => $host,
+            'dbName' => $dbName,
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',

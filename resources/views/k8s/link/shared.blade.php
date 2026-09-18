@@ -1,5 +1,6 @@
 @php
     $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::LINK->instanceSlugFromHost($host) : 'link');
+    $dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::LINK, $host)->database();
     $linkDeploymentName = "link-kutt-{$instance}";
     $linkServiceName = "link-kutt-{$instance}";
 @endphp
@@ -48,9 +49,9 @@ spec:
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME
-              value: "link_kutt"
+              value: "{{ $dbName }}"
             - name: DB_USER
-              value: "link_kutt"
+              value: "{{ $dbName }}"
             - name: DB_CLIENT
               value: "pg"
             - name: REDIS_ENABLED

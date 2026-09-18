@@ -1,3 +1,4 @@
+@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::INSIGHTS, $host)->database())
 @if($noPlex)
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -55,11 +56,11 @@ spec:
             - name: MB_DB_TYPE
               value: postgres
             - name: MB_DB_DBNAME
-              value: metabase
+              value: {{ $dbName }}
             - name: MB_DB_PORT
               value: "5432"
             - name: MB_DB_USER
-              value: metabase
+              value: {{ $dbName }}
             - name: MB_DB_HOST
               value: postgres.{{ $plexNamespace }}.svc.cluster.local
             - name: MB_DB_PASS

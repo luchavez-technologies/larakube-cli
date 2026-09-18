@@ -22,7 +22,8 @@ test('errors:init deploys glitchtip using plex commons postgres and redis', func
 
     $this->artisan('errors:init local --admin-email=admin@example.com')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Allocating database \'glitchtip\' in the Commons...')
+        // Per instance, from ToolInstance: never a fixed name every instance shares.
+        ->expectsOutputToContain("Allocating database 'glitchtip_errors_")
         ->expectsOutputToContain('Applying GlitchTip manifests...')
         ->expectsOutputToContain('Waiting for database migrations...')
         ->expectsOutputToContain('Waiting for GlitchTip Web...')

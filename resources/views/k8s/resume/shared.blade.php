@@ -1,3 +1,4 @@
+@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::RESUME, $host)->database())
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,7 +42,7 @@ spec:
                   name: resume-reactive-secrets
                   key: db-password
             - name: DATABASE_URL
-              value: "postgresql://reactiveresume:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/reactiveresume"
+              value: "postgresql://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}"
             - name: REDIS_URL
               value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/0"
             - name: S3_ENDPOINT

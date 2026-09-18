@@ -2,6 +2,7 @@
 
 namespace App\Commands\Flow;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -90,20 +91,24 @@ class FlowInitCommand extends Command
         $dbPassword = $this->readFlowDbPassword($kubectl, $ns) ?? Str::random(24);
         $encryptionKey = $this->readFlowEncryptionKey($kubectl, $ns) ?? Str::random(32);
 
+        $dbName = ToolInstance::forHost(ClusterTool::FLOW, $host, $engine)->database();
+
         if (! $noPlex) {
             $driver = DatabaseDriver::POSTGRESQL;
 
-            if (! $this->allocateDatabase($driver, $engine, $dbPassword)) {
+            if (! $this->allocateDatabase($driver, $dbName, $dbPassword)) {
                 return 1;
             }
 
             if ($engine === 'windmill') {
-                $this->withSpin('Creating Windmill DB roles (windmill_user, windmill_admin) in the Commons...', function () use ($driver, $kubectl): void {
+                $this->withSpin('Creating Windmill DB roles (windmill_user, windmill_admin) in the Commons...', function () use ($driver, $kubectl, $dbName): void {
                     $sql = implode("\n", [
                         "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'windmill_admin') THEN CREATE ROLE windmill_admin; END IF; END \$\$;",
                         "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'windmill_user') THEN CREATE ROLE windmill_user; END IF; END \$\$;",
-                        'GRANT windmill_user TO windmill;',
-                        'GRANT windmill_admin TO windmill;',
+                        // Windmill requires these two role names; they're shared by
+                        // every instance, and granted to this instance's own role.
+                        "GRANT windmill_user TO {$dbName};",
+                        "GRANT windmill_admin TO {$dbName};",
                     ]);
                     $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
                     $tmp = $temporaryDirectory->path().'/windmill-roles.sql';
@@ -134,6 +139,7 @@ class FlowInitCommand extends Command
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'engine' => $engine,
             'host' => $host,
+            'dbName' => $dbName,
             'dbPassword' => $dbPassword,
             'plexNamespace' => $this->plexNamespace(),
             'noPlex' => $noPlex,

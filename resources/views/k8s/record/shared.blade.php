@@ -1,3 +1,4 @@
+@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::RECORD, $host)->database())
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,7 +35,7 @@ spec:
                   name: record-secrets
                   key: db-password
             - name: DATABASE_URL
-              value: "postgres://record_sendrec:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/record_sendrec?sslmode=disable"
+              value: "postgres://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}?sslmode=disable"
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

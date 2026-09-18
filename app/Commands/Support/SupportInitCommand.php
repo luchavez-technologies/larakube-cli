@@ -2,6 +2,7 @@
 
 namespace App\Commands\Support;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -76,20 +77,20 @@ class SupportInitCommand extends Command
         $adminEmail = $this->readSupportSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readSupportSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
         // support:init doesn't know or care whether OpenBao is installed —
-        // only secrets:wire --tool=support may register the 'support_chatwoot'
+        // only secrets:wire --tool=support may register this instance's database
         // static role. This is a READ-only exception: it defers to OpenBao's
         // current password when a PAST secrets:wire run already made it the
         // owner, so a re-run here never clobbers it back to a fresh local one.
-        $dbPassword = $this->resolveManagedDbPassword($kubectl, 'support_chatwoot', $dbPassword);
+        $names = ToolInstance::forHost(ClusterTool::SUPPORT, $host);
+        $dbName = $names->database();
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
         $secretKeyBase = $this->readSupportSecret($kubectl, $ns, 'secret-key-base') ?? bin2hex(random_bytes(32));
-
-        $dbName = 'support_chatwoot';
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
         }
 
-        $redisIndex = $this->allocateCommonsRedisIndex('support_chatwoot');
+        $redisIndex = $this->allocateCommonsRedisIndex($names->redisTenant());
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -115,6 +116,7 @@ class SupportInitCommand extends Command
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'redisIndex' => $redisIndex,
+            'dbName' => $dbName,
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();

@@ -2,6 +2,7 @@
 
 namespace App\Commands\Errors;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -70,9 +71,20 @@ class ErrorsInitCommand extends Command
             $dbPassword = Str::random(24);
         }
 
-        // Allocate database and user on Plex PostgreSQL
+        $names = ToolInstance::forHost(ClusterTool::ERRORS, $host);
+        $dbName = $names->database();
+        $redisIndex = null;
+
+        // Allocate database, user and a Redis index on Plex Commons
         if (! $noPlex) {
-            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'glitchtip', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
+                return 1;
+            }
+
+            $redisIndex = $this->allocateCommonsRedisIndex($names->redisTenant());
+            if ($redisIndex === null) {
+                $this->laraKubeError('Every Commons Redis index (0-15) is already allocated — free one up (larakube <tool>:remove --purge) and retry.');
+
                 return 1;
             }
         }
@@ -102,6 +114,8 @@ class ErrorsInitCommand extends Command
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::ERRORS, ClusterTool::ERRORS->instanceSlugFromHost($host));
 
         $manifest = view('k8s.errors.shared', [
+            'dbName' => $dbName,
+            'redisIndex' => $redisIndex,
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'appName' => $branding['appName'],

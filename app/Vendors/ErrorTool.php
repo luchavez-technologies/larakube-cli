@@ -5,6 +5,7 @@ namespace App\Vendors;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
@@ -13,7 +14,7 @@ use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the ERRORS category — 'Error Tracking'. Only GlitchTip. */
-final class ErrorTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
+final class ErrorTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasCommonsRedisKeys, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -82,6 +83,11 @@ final class ErrorTool implements ClusterToolVendor, HasAdminEmailPrompt, HasComm
     }
 
     public function commonsDatabaseList(): array
+    {
+        return ['glitchtip'];
+    }
+
+    public function commonsRedisKeys(): array
     {
         return ['glitchtip'];
     }

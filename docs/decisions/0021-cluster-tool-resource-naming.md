@@ -45,6 +45,7 @@ Deployment named `{category}-{component}-{instance}`, the database is
 | DB Secret | `{category}-{component}-store-{instance}` | `vpn-management-store-vpn-luchtech-dev` |
 | Database + role | `{category}_{component}_{dbInstance}` | `vpn_management_vpn_luchtech_dev` |
 | S3 bucket | `{category}-{component}-{instance}` | `drive-ocis-drive-luchtech-dev` |
+| Commons Redis tenant | `{category}_{component}_{instance}` | `link_kutt_link-luchtech-dev` |
 | Backup archive | the Deployment's own name | `vpn-management-vpn-luchtech-dev` |
 | Zitadel app Secret | `sso-app-{category}-{instance}` | `sso-app-vpn-vpn-luchtech-dev` |
 | Zitadel project | `{category}-{component}-{instance}` | `vpn-management-vpn-luchtech-dev` |
