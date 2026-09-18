@@ -497,6 +497,23 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /**
+     * The Commons Redis tenant names one instance allocates and `--purge`
+     * releases. `:init` and `:remove` must both derive them here, or a purge
+     * frees a name nothing ever allocated.
+     *
+     * @return list<string>
+     */
+    public function commonsRedisTenants(?string $instance = null): array
+    {
+        $keys = $this->commonsRedisKeys();
+        if ($instance === null || $instance === '') {
+            return $keys;
+        }
+
+        return array_map(fn (string $key) => "{$key}_{$instance}", $keys);
+    }
+
+    /**
      * Selectable engines for tools that ship more than one implementation, as
      * engine-slug => label. The FIRST entry is the default. Drives both the
      * `--engine=` validation and the `{tool}:init` engine prompt, so adding an
@@ -990,7 +1007,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function hasInstanceAwareRemoval(): bool
     {
         return match ($this) {
-            self::DATA, self::NOTES, self::CRM, self::DESIGN => true,
+            self::DATA, self::NOTES, self::CRM, self::DESIGN, self::PASTE => true,
             default => false,
         };
     }

@@ -50,10 +50,7 @@ final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
         return 'paste-yopass';
     }
 
-    /**
-     * Matches the tenant key PasteInitCommand passes to
-     * allocateCommonsRedisIndex() — released on paste:remove --purge.
-     */
+    /** Base Redis tenant name; each instance gets its own via the enum's commonsRedisTenants(). */
     public function commonsRedisKeys(): array
     {
         return ['paste_yopass'];

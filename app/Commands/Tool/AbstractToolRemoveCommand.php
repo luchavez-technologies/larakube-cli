@@ -281,7 +281,9 @@ abstract class AbstractToolRemoveCommand extends Command
         $databases = $tool->commonsDatabases($instance);
         $buckets = $tool->commonsBuckets($instance);
 
-        if (($databases === [] && $buckets === []) || $this->usesBundledStorage($kubectl, $tool->namespace())) {
+        $redisTenants = $tool->commonsRedisTenants($instance);
+
+        if (($databases === [] && $buckets === [] && $redisTenants === []) || $this->usesBundledStorage($kubectl, $tool->namespace())) {
             return true;
         }
 
@@ -337,8 +339,7 @@ abstract class AbstractToolRemoveCommand extends Command
         $tenantKey = ($instance === null || $instance === '') ? $tool->value : "{$tool->value}_{$instance}";
         $this->unregisterTenant($tenantKey);
 
-        foreach ($tool->commonsRedisKeys() as $key) {
-            $redisTenant = ($instance === null || $instance === '') ? $key : "{$key}_{$instance}";
+        foreach ($redisTenants as $redisTenant) {
             $this->releaseCommonsRedisIndex($redisTenant);
         }
 

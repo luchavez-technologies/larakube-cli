@@ -527,13 +527,20 @@ final class PlexService
         return $index;
     }
 
-    /** Release a tenant's Redis index so it can be reused; a no-op when none is recorded. */
+    /**
+     * Release a tenant's Redis index so it can be reused; a no-op when none is
+     * recorded. Its keys are flushed first, or the next tenant allocated the
+     * same index would inherit them.
+     */
     public function releaseRedisIndex(string $tenant): void
     {
         $registry = $this->registry();
-        if (! isset($registry['tenants'][$tenant]['redis_index'])) {
+        $index = $registry['tenants'][$tenant]['redis_index'] ?? null;
+        if (! is_int($index)) {
             return;
         }
+
+        Process::run($this->kubectl().' exec -n '.self::NAMESPACE." deploy/redis -- redis-cli -n {$index} FLUSHDB");
 
         unset($registry['tenants'][$tenant]['redis_index']);
         if (($registry['tenants'][$tenant] ?? []) === []) {

@@ -59,3 +59,48 @@ test('paste ingress applies the vpn-only middleware referencing the exact name P
 
     expect($manifest)->toContain('larakube-shared-paste-yopass-vpn-only@kubernetescrd');
 });
+
+/**
+ * Every registry save paste:init makes, in order. `plex-registry` is re-read
+ * from $current on each call, so later saves see earlier allocations.
+ */
+function pasteInitRegistryFakes(array &$saved): array
+{
+    $saved = [];
+    $current = ['tenants' => []];
+
+    return [
+        '*plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => [
+            'redis' => ['enabled' => true],
+            'seaweedfs' => ['enabled' => true],
+        ]])),
+        '*create configmap plex-registry*' => function (Illuminate\Process\PendingProcess $process) use (&$saved, &$current) {
+            preg_match("/registry\\.json='([^']+)'/", $process->command, $m);
+            $current = json_decode((string) file_get_contents($m[1]), true);
+            $saved[] = $current;
+
+            return Process::result(output: 'configmap/plex-registry configured');
+        },
+        '*get configmap plex-registry*' => function () use (&$current) {
+            return Process::result(output: (string) json_encode($current));
+        },
+        '*get secret plex-admin*' => Process::result(output: base64_encode('key')),
+        '*larakube-tools-registry*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ];
+}
+
+test('paste:init gives each instance its own Commons Redis tenant and bucket', function (): void {
+    $saved = [];
+    Process::fake(pasteInitRegistryFakes($saved));
+
+    $this->artisan('paste:init local --domain=paste.check.example.com --force --no-interaction')->run();
+
+    $tenants = end($saved)['tenants'] ?? [];
+
+    // The same names `paste:remove --purge` derives, so a purge frees them.
+    expect($tenants)->toHaveKey(App\Enums\ClusterTool::PASTE->commonsRedisTenants('paste-check-example-com')[0])
+        ->and($tenants)->toHaveKey(App\Enums\ClusterTool::PASTE->commonsBuckets('paste-check-example-com')[0])
+        ->and($tenants)->not->toHaveKey('paste_yopass')
+        ->and($tenants)->not->toHaveKey('paste-yopass');
+});

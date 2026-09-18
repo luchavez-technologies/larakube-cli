@@ -60,9 +60,9 @@ class PasteInitCommand extends Command
         $this->plexContext = $context;
         $kubectl = $this->pasteKubectl($context);
         $host = $this->resolveToolHost(SharedClusterService::PASTE, ClusterTool::PASTE, $env, $kubectl);
-        // Every tool's instance identifier is a real, host-derived slug now
-        // — Paste included, even though it's a simple, always-single-instance
-        // stateless tool.
+        // Every Commons resource is named per instance (see
+        // ClusterTool::commonsRedisTenants()/commonsBuckets()), so instances
+        // never share a Redis index or bucket and `--purge` frees exactly these.
         $instance = ClusterTool::PASTE->instanceSlugFromHost($host);
         $ns = $this->pasteNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -85,7 +85,7 @@ class PasteInitCommand extends Command
         }
 
         $plexNs = $this->plexNamespace();
-        $redisIndex = $this->allocateCommonsRedisIndex('paste_yopass');
+        $redisIndex = $this->allocateCommonsRedisIndex(ClusterTool::PASTE->commonsRedisTenants($instance)[0]);
 
         if ($redisIndex === null) {
             $this->laraKubeError('Every Commons Redis index (0-15) is already allocated — free one up (larakube <tool>:remove --purge) and retry.');
@@ -158,7 +158,7 @@ class PasteInitCommand extends Command
         }
 
         $services = $this->enabledCommonsServices($spec);
-        $bucket = 'paste-yopass';
+        $bucket = ClusterTool::PASTE->commonsBuckets($instance)[0];
 
         foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
             if (! in_array($candidate, $services, true)) {
