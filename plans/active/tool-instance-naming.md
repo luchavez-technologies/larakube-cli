@@ -1,0 +1,120 @@
+# Plan: `ToolInstance`, one source of truth for every Cluster Tool resource name
+
+**Status:** 📝 PLANNED, not started.
+**Walkthrough:** `plans/active/tool-instance-naming-testing.md`
+**Enforces:** ADR 0021 (`{category}-{component}-{instance}`), whose rule 1 ("never
+hardcode a resource name in a command") has no enforcement today.
+
+## Why
+
+Every `*:init`, `*:remove`, `*:show` and `*:wire` builds names from its own
+string templates, and nothing checks they agree. Drift found in one session:
+
+| Tool | Drift | Effect |
+|---|---|---|
+| Paste | init allocated fixed `paste_yopass` / `paste-yopass`; purge freed per-instance names | instances shared one Redis index and bucket; purge freed nothing (fixed in `ce5adb4`) |
+| Mail | allocates Redis tenant `stalwart`; purge frees `stalwart_<instance>` | purge never frees Mail's index |
+| Link, Support, Sheets | fixed Redis tenants `link_kutt`, `support_chatwoot`, `teable` | a second instance shares the first one's Redis; purge misses |
+| Link, Meet, Monitor, Webmail | teardown deletes shared resources (`link-secrets`, `meet-keys`, the Prometheus/Loki stack, `webmail-storage`) | removing one instance breaks the other |
+| Chat, Git | teardown closes shared firewall ports | same |
+| `hasInstanceAwareRemoval()` | hand-maintained allow-list of 5 tools | wrong both ways: blocked Paste, and can't express "safe except shared ports" |
+| VPN, SSO (ADR 0021) | init tenant ≠ purge tenant | purge reported success, dropped nothing |
+
+Scale: 120 init/remove/show/wire commands, ~125 hand-built instance names in
+PHP and ~44 in 30 Blade templates.
+
+## What exists to build on
+
+- `ClusterTool::components($instance, $engine)` → `ClusterToolComponentData`
+  (deployment + `resources` + `backupVolume`), and
+  `AbstractToolRemoveCommand::teardownComponentsCommand()`, already used by
+  Chat, Dashboard and Git.
+- `commonsDatabases($instance)`, `commonsBuckets($instance)`,
+  `commonsRedisTenants($instance)` (new in `ce5adb4`), `vpnMiddlewareTarget()`,
+  `dbSecretRef()`, `instanceSlugFromHost()`.
+- Vendor contracts (`HasWorkloadComponents`, `HasCommonsDatabases`, …).
+
+## Design
+
+### `App\Data\ToolInstance`
+An immutable value object: `tool`, `instance` (host-derived slug, ADR 0012),
+`host`, `engine`. Built once per command from the resolved host:
+`ToolInstance::forHost(ClusterTool $tool, string $host, ?string $engine)`.
+
+It answers every name, delegating to the vendor where a tool deviates:
+
+| Method | Returns |
+|---|---|
+| `deployment(?component)`, `service()`, `ingress()` | workload names |
+| `secret(SecretKind)` | `credentials`, `oidc`, `smtp`, `config`, `store` (ADR 0021 table) |
+| `configMap(key)`, `volume(key)` | ConfigMaps, PVCs |
+| `vpnMiddleware()` | the `--vpn-only` Middleware |
+| `commonsDatabases()`, `commonsRedisTenants()`, `commonsBuckets()` | Commons tenants |
+| `owned(): list<ResourceRef>` | every namespaced resource this instance owns |
+| `shared(): list<ResourceRef>` | resources shared by all instances of the tool (e.g. `meet-keys`, monitoring RBAC, firewall ports) |
+
+`owned()` vs `shared()` is the key addition: a vendor must declare what is
+shared, and teardown only ever deletes `owned()` unless it's the last instance.
+
+### Commands consume it, never build names
+- `*:init` renders manifests with names from the `ToolInstance`, passed to the
+  Blade view as one `$names` array (no string templates in views).
+- `AbstractToolRemoveCommand` deletes `owned()`, and `shared()` only when no
+  other instance of the tool is registered. Subclass `teardown()` shrinks to
+  the genuinely tool-specific steps (e.g. Mail's wired SMTP secrets), or goes
+  away.
+- `hasInstanceAwareRemoval()` is deleted: every tool is instance-aware by
+  construction, and the `--domain` guard goes with it.
+- `*:show`, `*:wire`, backup discovery and `tool:list --refresh` read names from
+  it too.
+
+### The drift test (the real enforcement)
+One test file across every shipped tool, with two instances each:
+1. Render the tool's `:init` manifests for both instances; collect every
+   resource name, plus every Commons allocation `:init` requests (faked Plex).
+2. Assert `:remove --purge --domain=<instance A>`:
+   - deletes exactly A's `owned()` set,
+   - releases exactly A's Commons tenants,
+   - touches nothing of B's, and nothing in `shared()`.
+3. Assert A's and B's sets intersect only in `shared()`.
+
+Any future hand-built name that disagrees fails CI before it can reach a
+cluster.
+
+## No renames of live resources
+
+This is a refactor of **where names come from**, not **what they are**.
+Stage 1 must render byte-identical manifests for every tool (snapshot test
+per tool), except where the drift test proves an init/remove mismatch, which
+is fixed on its own, one tool at a time.
+
+Renaming a live resource to match ADR 0021 (e.g. `grafana` →
+`monitor-grafana-…`) orphans the old one and, for volumes and databases, its
+data. Per the no-migration-code rule, any such rename is a separate, explicit
+per-tool step with a hand cleanup on the cluster, never part of this refactor.
+
+## Stages (one commit each, after the drift test is green for that stage)
+
+0. **`ToolInstance` + drift test harness.** The class, `ResourceRef`,
+   `SecretKind`, and the drift test running against all tools with a
+   `KNOWN_DRIFT` list that starts full and must only shrink. No command changes.
+1. **Commons tenants.** Every `:init` allocates databases, Redis tenants and
+   buckets through `ToolInstance`; purge frees the same. Fixes Mail, Link,
+   Support, Sheets (Redis), and SSO's database name (ADR 0021). Amend ADR 0021
+   with the Redis tenant row. Live effect: Link, Support, Sheets and Mail get
+   new per-instance Redis tenants on their next `:init` (sessions and caches
+   reset once; no persistent data lives in their Redis).
+2. **Workload resources + `shared()`.** Deployments, Services, Ingresses,
+   Secrets, ConfigMaps, PVCs, Middlewares through `ToolInstance`, in batches of
+   ~6 tools. Link, Meet, Monitor, Webmail and the port-closing tools (Chat, Git,
+   Meet, Mail) declare their shared resources. Delete
+   `hasInstanceAwareRemoval()`.
+3. **Readers.** `*:show`, `*:wire`, backup volume discovery and
+   `tool:list --refresh` read from `ToolInstance`. `KNOWN_DRIFT` is empty.
+
+## Open questions
+- Should `shared()` resources be reference-counted in the tool registry, or is
+  "no other registered instance" enough? (Registry-based is simpler; it's
+  already the source of truth for instances.)
+- Blade: pass `$names` (array) or the `ToolInstance` itself to views? Passing
+  the object keeps views honest but couples them to PHP; decide in Stage 0.
