@@ -1,6 +1,21 @@
 # Plan: `ToolInstance`, one source of truth for every Cluster Tool resource name
 
-**Status:** 📝 PLANNED, not started.
+**Status:** Stage 0 ✅ done. Stages 1–3 not started.
+
+**Stage 0 results** (`tests/Feature/ToolNamingDriftTest.php`, harness in
+`tests/Support/ToolDriftHarness.php`): of 29 shipped tools, 2 pass (Paste,
+Data), 22 are on `toolNamingKnownDrift()`, 5 on `toolNamingHarnessPending()`.
+- 20 tools refuse `:remove --domain` (the allow-list), which hides any other drift.
+- CRM: Redis tenant `crm_twenty_<instance>` is never freed by purge.
+- Design: init hand-builds `design-backend-`, `design-secrets-`, `design-oidc-`
+  names that remove never deletes; its Commons tenants aren't freed.
+- Real bugs found, outside naming: `desk:init` calls a `flagOrPrompt()` it
+  doesn't have; `notes:init` crashes non-interactively (select() with no default).
+
+**Stage 0 deviation:** `ToolInstance` only exposes names that already have one
+source (workloads, Commons tenants, VPN middleware, DB secret). `secret()`,
+`configMap()`, `volume()`, `owned()`/`shared()` arrive in Stage 2, as each tool
+declares them; adding ADR-pattern names now would invent names nothing uses.
 **Walkthrough:** `plans/active/tool-instance-naming-testing.md`
 **Enforces:** ADR 0021 (`{category}-{component}-{instance}`), whose rule 1 ("never
 hardcode a resource name in a command") has no enforcement today.
