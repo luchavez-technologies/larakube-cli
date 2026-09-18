@@ -7,7 +7,10 @@ use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
+use App\Traits\DeregistersSsoApp;
 use App\Traits\InteractsWithPlex;
+use App\Traits\InteractsWithSso;
+use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
@@ -42,7 +45,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 abstract class AbstractToolRemoveCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolHost, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, DeregistersSsoApp, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolHost, SyncsClusterSecrets;
 
     /** The instance the teardown loop is currently removing; null outside handle(). */
     protected ?string $currentInstance = null;
@@ -142,7 +145,12 @@ abstract class AbstractToolRemoveCommand extends Command
                 $ok = $this->dropCommonsTenants($kubectl, $targetInstance) && $ok;
             }
 
+            if ($tool->hasSsoWire() && ! $tool->usesForwardAuth()) {
+                $this->deregisterSsoApp($tool, $targetInstance, $kubectl, $env);
+            }
+
             $ok = $this->teardown($kubectl, $namespace) && $ok;
+            $this->removeDatabaseSecretSync($kubectl, $targetInstance);
 
             $this->unregisterTool($kubectl, $tool, $targetInstance);
         }
@@ -445,6 +453,25 @@ abstract class AbstractToolRemoveCommand extends Command
         }
 
         return "{$kubectl} delete ".implode(' ', $refs)." -n {$namespace} --ignore-not-found";
+    }
+
+    /**
+     * `secrets:wire` syncs the database password into the tool's DB Secret with
+     * an ExternalSecret and a generator, both named `<db secret>-db`. Once the
+     * tool is gone they only retry forever against a Secret (and, after a
+     * purge, an OpenBao role) that no longer exists.
+     */
+    private function removeDatabaseSecretSync(string $kubectl, ?string $instance): void
+    {
+        $ref = $this->tool()->dbSecretRef($instance);
+        if ($ref === null) {
+            return;
+        }
+
+        Process::run(
+            "{$kubectl} delete externalsecret,vaultdynamicsecret.generators.external-secrets.io {$ref['secret']}-db "
+            ."-n {$ref['namespace']} --ignore-not-found",
+        );
     }
 
     /**

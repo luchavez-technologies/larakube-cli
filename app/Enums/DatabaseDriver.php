@@ -516,8 +516,9 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
     {
         return match ($this) {
             self::POSTGRESQL => implode("\n", [
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{$db}' AND pid <> pg_backend_pid();",
-                "DROP DATABASE IF EXISTS \"{$db}\";",
+                // FORCE closes connections and drops in one step: a pooled
+                // app can't reconnect in between and block the drop.
+                "DROP DATABASE IF EXISTS \"{$db}\" WITH (FORCE);",
                 "DROP ROLE IF EXISTS \"{$user}\";",
             ]),
             self::MYSQL, self::MARIADB => implode("\n", [

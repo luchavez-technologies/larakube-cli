@@ -25,7 +25,7 @@ class SignRemoveCommand extends AbstractToolRemoveCommand
         return $this->removeResources(
             'Removing Documenso resources...',
             "{$kubectl} delete deployment/sign-documenso service/sign ingress/sign "
-            ."secret/sign-secrets secret/sign-smtp secret/sign-oidc -n {$namespace} --ignore-not-found",
+            ."secret/sign-secrets secret/sign-smtp secret/sign-oidc secret/sign-signing-cert -n {$namespace} --ignore-not-found",
         );
     }
 }

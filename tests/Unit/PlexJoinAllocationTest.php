@@ -139,16 +139,17 @@ test('postgres tenant SQL is idempotent and escapes the password', function (): 
         ->toContain("PASSWORD 'pa''ss'");                                                    // '' escaping
 });
 
-test('drop tenant SQL terminates connections then drops the database and role', function (): void {
+test('drop tenant SQL force-drops the database (closing live sessions in the same step), then the role', function (): void {
     $p = plexJoin();
 
     $sql = $p->buildDropTenantSql('app_one', 'app_one');
 
+    // A separate pg_terminate_backend() left a gap a pooled app could reconnect
+    // through, failing the drop; FORCE closes sessions and drops atomically.
     expect($sql)
-        ->toContain('pg_terminate_backend(pid)')                                  // kill live sessions first
-        ->toContain("WHERE datname = 'app_one' AND pid <> pg_backend_pid()")      // …but not ourselves
-        ->toContain('DROP DATABASE IF EXISTS "app_one"')                          // idempotent db drop
-        ->toContain('DROP ROLE IF EXISTS "app_one"');                             // then the role
+        ->toContain('DROP DATABASE IF EXISTS "app_one" WITH (FORCE);')
+        ->toContain('DROP ROLE IF EXISTS "app_one"')
+        ->and(strpos($sql, 'DROP DATABASE'))->toBeLessThan(strpos($sql, 'DROP ROLE'));
 });
 
 test('registry transforms add, remove, and report used redis indexes', function (): void {
