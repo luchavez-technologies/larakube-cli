@@ -15,8 +15,13 @@ class DesignRemoveCommand extends AbstractToolRemoveCommand
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
+        // The same per-instance name design:init writes; a bare `design-secrets`
+        // never exists, which made every purge skip the Commons entirely.
+        $instance = $this->resolveInstance($kubectl);
+        $secret = ($instance === null || $instance === '') ? 'design-secrets' : "design-secrets-{$instance}";
+
         return trim(Process::run(
-            "{$kubectl} get secret design-secrets -n {$namespace} --ignore-not-found",
+            "{$kubectl} get secret {$secret} -n {$namespace} --ignore-not-found",
         )->output()) === '';
     }
 

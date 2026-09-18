@@ -108,20 +108,19 @@ class CrmInitCommand extends Command
         $fileTokenSecret = $this->readCrmSecret($kubectl, $ns, 'file-token-secret', $instance) ?? bin2hex(random_bytes(32));
         $encryptionKey = $this->readCrmSecret($kubectl, $ns, 'encryption-key', $instance) ?? bin2hex(random_bytes(32));
 
-        $dbName = 'crm_twenty_'.str_replace('-', '_', $instance);
+        $dbName = ClusterTool::CRM->commonsDatabases($instance)[0];
         $dbUser = $dbName;
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
         }
 
-        $redisKey = "crm_twenty_{$instance}";
-        $redisIndex = $this->allocateCommonsRedisIndex($redisKey);
+        $redisIndex = $this->allocateCommonsRedisIndex(ClusterTool::CRM->commonsRedisTenants($instance)[0]);
 
         $s3Creds = $this->readCommonsS3Credentials();
         $s3Key = $s3Creds['access'] ?? 'seaweedfs-access-key';
         $s3Secret = $s3Creds['secret'] ?? 'seaweedfs-secret-key';
-        $bucket = ClusterTool::CRM->commonsBuckets($instance)[0] ?? "crm-twenty-storage-{$instance}";
+        $bucket = ClusterTool::CRM->commonsBuckets($instance)[0];
 
         if (! $this->allocateStorageBucket($s3Driver, $bucket)) {
             return 1;

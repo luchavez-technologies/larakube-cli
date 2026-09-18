@@ -75,7 +75,11 @@ final class ToolDriftHarness
         $tenantsBefore = array_keys($this->tenants);
         $removed = $this->artisan($this->tool->removeCommand(), ['--domain' => $hostA, '--purge' => true, '--force' => true]);
         if ($removed !== null && str_contains($removed, 'does not support multiple instances')) {
-            return ['harnessed' => true, 'reason' => null, 'problems' => ['remove refuses --domain: instances can\'t be removed one at a time']];
+            $problems = ['remove refuses --domain: instances can\'t be removed one at a time',
+                ...$this->allocationProblems($tenantsA, $tenantsB, $hostA, $hostB)];
+            sort($problems);
+
+            return ['harnessed' => true, 'reason' => null, 'problems' => $problems];
         }
         if ($removed !== null) {
             return ['harnessed' => false, 'reason' => "remove A: {$removed}", 'problems' => []];
@@ -97,19 +101,12 @@ final class ToolDriftHarness
             $problems[] = "deleted shared: {$key}";
         }
 
-        $expectedA = $this->expectedTenants($hostA);
-        $expectedB = $this->expectedTenants($hostB);
-        foreach (array_diff($tenantsA, $expectedA) as $tenant) {
-            $problems[] = "tenant not derived from ToolInstance: {$tenant}";
-        }
+        array_push($problems, ...$this->allocationProblems($tenantsA, $tenantsB, $hostA, $hostB));
         foreach (array_diff($tenantsA, $releasedTenants) as $tenant) {
             $problems[] = "tenant not freed by purge: {$tenant}";
         }
-        foreach (array_intersect($releasedTenants, array_merge($tenantsB, $expectedB)) as $tenant) {
+        foreach (array_intersect($releasedTenants, array_merge($tenantsB, $this->expectedTenants($hostB))) as $tenant) {
             $problems[] = "purge freed B's tenant: {$tenant}";
-        }
-        if ($tenantsB === [] && $tenantsA !== []) {
-            $problems[] = 'instances share Commons tenants: B allocated none of its own';
         }
 
         sort($problems);
@@ -138,6 +135,28 @@ final class ToolDriftHarness
         }
 
         return [$this->created, array_values(array_diff(array_keys($this->tenants), $tenantsBefore)), $host];
+    }
+
+    /**
+     * What `:init` allocated versus what ToolInstance says each instance owns.
+     *
+     * @param  list<string>  $tenantsA
+     * @param  list<string>  $tenantsB
+     * @return list<string>
+     */
+    private function allocationProblems(array $tenantsA, array $tenantsB, string $hostA, string $hostB): array
+    {
+        $problems = [];
+        foreach ([[$tenantsA, $hostA], [$tenantsB, $hostB]] as [$allocated, $host]) {
+            foreach (array_diff($allocated, $this->expectedTenants($host)) as $tenant) {
+                $problems[] = "tenant not derived from ToolInstance: {$tenant}";
+            }
+        }
+        if ($tenantsB === [] && $tenantsA !== []) {
+            $problems[] = 'instances share Commons tenants: B allocated none of its own';
+        }
+
+        return $problems;
     }
 
     /** @return list<string> */

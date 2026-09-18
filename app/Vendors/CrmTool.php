@@ -6,6 +6,7 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
@@ -13,7 +14,7 @@ use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the CRM category — 'CRM'. Only Twenty. */
-final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
+final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -95,5 +96,10 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
     public function commonsBucketList(): array
     {
         return ['crm-twenty-storage'];
+    }
+
+    public function commonsRedisKeys(): array
+    {
+        return ['crm_twenty'];
     }
 }

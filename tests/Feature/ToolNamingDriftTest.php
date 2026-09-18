@@ -14,13 +14,12 @@ use Tests\Support\ToolDriftHarness;
  */
 function toolNamingKnownDrift(): array
 {
-    $refusesDomain = ':remove refuses --domain (the instance-aware allow-list), which hides any other drift';
+    $refusesDomain = ':remove refuses --domain (the instance-aware allow-list); most also allocate fixed Commons tenants every instance shares';
 
     return [
         'chat' => $refusesDomain,
         'meet' => $refusesDomain,
-        'crm' => 'Redis tenant allocated as crm_twenty_<instance> is never freed by purge',
-        'design' => 'init hand-builds design-backend/-secrets/-oidc names remove never deletes; Commons tenants not freed',
+        'design' => 'init hand-builds design-backend/-secrets/-oidc names remove never deletes',
         'drive' => $refusesDomain,
         'errors' => $refusesDomain,
         'flow' => $refusesDomain,
