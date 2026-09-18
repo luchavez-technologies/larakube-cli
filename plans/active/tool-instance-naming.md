@@ -116,6 +116,36 @@ Renaming a live resource to match ADR 0021 (e.g. `grafana` →
 data. Per the no-migration-code rule, any such rename is a separate, explicit
 per-tool step with a hand cleanup on the cluster, never part of this refactor.
 
+## Wiring names belong to the instance too
+
+`sso:wire`, `mail:wire`, `vpn:wire`, `secrets:wire` and `meet:wire` create
+resources that belong to one tool instance, and today each wire command and
+each vendor names them separately. Removing Sign from production left two of
+them behind (its Zitadel app and `sso-app-sign`, and an old
+`sign-documenso-secrets-db` generator). `ToolInstance` owns these as well:
+
+| Method | Resource | Today (examples) |
+|---|---|---|
+| `secret(SecretKind::OIDC)` | tool-side OIDC client Secret | `sign-oidc`, `link-oidc`, `drive-ocis-oidc` (vendor `oidcEnv()['secret']`) |
+| `secret(SecretKind::SMTP)` | tool-side SMTP Secret | `sign-smtp`, `vaultwarden-smtp`, `sheet-teable-smtp` (vendor `smtpEnv()['secret']`) |
+| `ssoApp()` | `larakube-sso/sso-app-{category}-{instance}` Secret + the Zitadel project/app names | `sso-app-sign`, `sso-app-notes-{instance}` |
+| `vpnMiddleware()` | `--vpn-only` Middleware | `crm-vpn-only-{instance}`, `desk-vpn-only` |
+| `databaseSecret()` / `databaseSecretSync()` | DB password Secret, and `secrets:wire`'s ExternalSecret + generator (`{secret}-db`) | vendor `dbSecretRef()`: `sign-secrets`, `link-secrets` |
+| `openbaoStaticRole()` | OpenBao static role | the Commons database name |
+| `meetBridge()` | `meet:wire`'s per-tool bridge Secret | per tool today |
+
+Consequences:
+- Vendors stop declaring these names (`oidcEnv()`/`smtpEnv()` keep their env
+  mappings, but the `secret` key comes from `ToolInstance`).
+- Every `:wire`/`:unwire` asks `ToolInstance` for the name, and
+  `AbstractToolRemoveCommand` removes all of them through `owned()` instead of
+  the special cases added in `dd3934c` (`deregisterSsoApp()`,
+  `removeDatabaseSecretSync()`).
+- The drift harness gains a wiring pass: wire every supported integration on
+  instance A and B, remove A, and assert A's wiring is gone and B's untouched.
+- Live renames (e.g. `sso-app-sign` → per-instance) follow the Batch B rule:
+  a per-tool runbook, then re-run the relevant `:wire`.
+
 ## Stages (one commit each, after the drift test is green for that stage)
 
 0. **`ToolInstance` + drift test harness.** The class, `ResourceRef`,
@@ -132,6 +162,8 @@ per-tool step with a hand cleanup on the cluster, never part of this refactor.
    ~6 tools. Link, Meet, Monitor, Webmail and the port-closing tools (Chat, Git,
    Meet, Mail) declare their shared resources. Delete
    `hasInstanceAwareRemoval()`.
+2b. **Wiring names.** The table above, tool by tool with Stage 2, plus the
+   harness's wiring pass.
 3. **Readers.** `*:show`, `*:wire`, backup volume discovery and
    `tool:list --refresh` read from `ToolInstance`. `KNOWN_DRIFT` is empty.
 
