@@ -216,8 +216,8 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
     // anything is written, so a token that cannot mint keys never gets stored.
     Saloon::assertSent(fn ($request, $response) => $request instanceof CreateSetupKeyRequest
         && $response->getPendingRequest()->headers()->get('Authorization') === 'Token nbp_service_token');
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic vpn-management-secrets')
-        && str_contains($process->command, 'nbp_service_token'));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-secrets')
+        && (appliedSecret($process)['data']['pat'] ?? null) === 'nbp_service_token');
 
     // The gateway is the routing peer every Network will point at, so it has to
     // land in larakube-routers as it enrols — it cannot be moved there later.
@@ -228,9 +228,8 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
     // password is the only credential that opens it. Discarding it (as this
     // did until 2026-08-28) left the dashboard unreachable, recoverable only
     // via `netbird-mgmt admin user change-password` inside the pod.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic vpn-management-secrets')
-        && str_contains($process->command, '--from-literal=admin-email=')
-        && str_contains($process->command, '--from-literal=admin-password='));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-secrets')
+        && isset(appliedSecret($process)['data']['admin-email'], appliedSecret($process)['data']['admin-password']));
 });
 
 test('vpn:init warns but does not fail when NetBird auth bootstrap fails', function (): void {
@@ -376,8 +375,8 @@ test('vpn:init re-renders management.json from the PRESERVED relay secret + encr
         ->expectsOutputToContain('Restarting NetBird Management to pick up config changes...');
 
     // The real secrets survive unchanged into the re-rendered config.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'kubectl create secret generic vpn-management-config')
-        && str_contains($process->command, '--from-literal=relay-secret='.escapeshellarg('preserved-relay-secret')));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-config')
+        && (appliedSecret($process)['data']['relay-secret'] ?? null) === 'preserved-relay-secret');
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vpn-management'));
 });
 
@@ -415,7 +414,7 @@ test('vpn:init does NOT restart management when the re-rendered config is byte-i
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Restarting NetBird Management to pick up config changes...');
 
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'kubectl create secret generic vpn-management-config'));
+    Process::assertNotRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-config'));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vpn-management'));
 });
 
@@ -449,9 +448,8 @@ test('vpn:init generates the relay secret + management.json on first run', funct
 
     $this->artisan('vpn:init local')->assertExitCode(0);
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'kubectl create secret generic vpn-management-config')
-        && str_contains($process->command, '--from-literal=relay-secret=')
-        && str_contains($process->command, '--from-file=management.json='));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-config')
+        && isset(appliedSecret($process)['data']['relay-secret'], appliedSecret($process)['data']['management.json']));
 });
 
 test('the management manifest always carries a single-account domain we chose', function (): void {
@@ -980,7 +978,7 @@ test('vpn:init explains a 412 from /api/setup instead of blaming the dashboard',
         ->expectsOutputToContain('vpn:setup-key');
 
     // Nothing was written: a half-built vpn-management-secrets would be worse than none.
-    Process::assertDidntRun(fn ($p) => str_contains($p->command, 'create secret generic vpn-management-secrets'));
+    Process::assertDidntRun(fn ($p) => str_starts_with(appliedSecret($p)['name'] ?? '', 'vpn-management-secrets'));
 });
 
 test('vpn:init allocates exactly the database vpn:remove --purge will drop', function (): void {
@@ -1206,7 +1204,7 @@ test('vpn:init keeps the owner token, which is the only one that can retire the 
 
     // Routine work uses the service user's token; the owner's is kept beside it
     // purely for the owner-only operations.
-    Process::assertRan(fn ($p) => str_contains($p->command, 'create secret generic vpn-management-secrets')
-        && str_contains($p->command, '--from-literal=pat='."'".'nbp_service'."'")
-        && str_contains($p->command, '--from-literal=owner-pat='."'".'nbp_owner'."'"));
+    Process::assertRan(fn ($p) => str_starts_with(appliedSecret($p)['name'] ?? '', 'vpn-management-secrets')
+        && (appliedSecret($p)['data']['pat'] ?? null) === 'nbp_service'
+        && (appliedSecret($p)['data']['owner-pat'] ?? null) === 'nbp_owner');
 });

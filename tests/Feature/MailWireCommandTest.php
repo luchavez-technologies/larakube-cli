@@ -37,7 +37,6 @@ test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
-        '*create secret generic mail-sender*' => Process::result(output: 'created'),
     ]);
 
     $this->artisan('mail:wire local --tool=sso')
@@ -50,8 +49,7 @@ test('mail:wire local --tool=data configures Directus SMTP via deployment secret
         '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
         '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
-        '*create secret generic mail-sender*' => Process::result(output: 'created'),
-        '*create secret generic data-smtp*' => Process::result(output: 'created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/data-directus*' => Process::result(output: 'updated'),
         '*rollout restart deployment/data-directus*' => Process::result(output: 'restarted'),
     ]);
@@ -73,8 +71,7 @@ test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a
         '*get deployment data-directus*' => Process::result(output: '', exitCode: 1),
         '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
-        '*create secret generic mail-sender*' => Process::result(output: 'created'),
-        '*create secret generic data-smtp*' => Process::result(output: 'created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/data-pocketbase*' => Process::result(output: 'updated'),
         '*rollout restart deployment/data-pocketbase*' => Process::result(output: 'restarted'),
     ]);
@@ -84,8 +81,8 @@ test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-pocketbase')
         && str_contains($process->command, '--from=secret/data-smtp'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic data-smtp')
-        && str_contains($process->command, 'POCKETBASE_SMTP_HOST'));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'data-smtp')
+        && isset(appliedSecret($process)['data']['POCKETBASE_SMTP_HOST']));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'deployment/data-directus'));
 });
 
@@ -95,8 +92,7 @@ test('mail:wire local --tool=design configures Penpot SMTP via deployment secret
         '*get deployment design-penpot-backend*' => Process::result(output: 'design-penpot-backend   1/1   1   1   10d'),
         '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
-        '*create secret generic mail-sender*' => Process::result(output: 'created'),
-        '*create secret generic design-smtp*' => Process::result(output: 'created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/design-penpot-backend*' => Process::result(output: 'updated'),
         '*set env deployment/design-penpot-frontend*' => Process::result(output: 'updated'),
         '*rollout restart deployment/design-penpot-backend*' => Process::result(output: 'restarted'),
@@ -106,7 +102,7 @@ test('mail:wire local --tool=design configures Penpot SMTP via deployment secret
     $this->artisan('mail:wire local --tool=design')
         ->expectsOutputToContain('Wired to Stalwart: Design & Prototyping (Penpot)');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'PENPOT_SMTP_HOST'));
+    Process::assertRan(fn ($process) => isset(appliedSecret($process)['data']['PENPOT_SMTP_HOST']));
 });
 
 test('mail:wire local --tool=errors composes GlitchTip EMAIL_URL and patches the worker too', function (): void {
@@ -115,8 +111,7 @@ test('mail:wire local --tool=errors composes GlitchTip EMAIL_URL and patches the
         '*get deployment glitchtip-web*' => Process::result(output: 'glitchtip-web   1/1   1   1   10d'),
         '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
-        '*create secret generic mail-sender*' => Process::result(output: 'created'),
-        '*create secret generic glitchtip-smtp*' => Process::result(output: 'created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/glitchtip-web*' => Process::result(output: 'updated'),
         '*set env deployment/glitchtip-worker*' => Process::result(output: 'updated'),
         '*rollout restart deployment/glitchtip-web*' => Process::result(output: 'restarted'),
@@ -128,10 +123,9 @@ test('mail:wire local --tool=errors composes GlitchTip EMAIL_URL and patches the
 
     // GlitchTip reads one composed django-environ URL, not per-host vars —
     // credentials must be percent-encoded (the sender's @ would break it).
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic glitchtip-smtp')
-        && str_contains($process->command, 'EMAIL_URL')
-        && str_contains($process->command, 'DEFAULT_FROM_EMAIL')
-        && str_contains($process->command, 'smtp+ssl://noreply%40luchtech.dev:noreply%40luchtech.dev@'));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'glitchtip-smtp')
+        && isset(appliedSecret($process)['data']['DEFAULT_FROM_EMAIL'])
+        && str_starts_with(appliedSecret($process)['data']['EMAIL_URL'] ?? '', 'smtp+ssl://noreply%40luchtech.dev:noreply%40luchtech.dev@'));
 
     // The worker sends the actual alert emails, so it shares the primary's
     // SMTP secret via also_patch.
@@ -153,8 +147,7 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
         '*get deployment crm-twenty-crm-luchtech-dev*' => Process::result(output: 'crm-twenty-crm-luchtech-dev   1/1   1   1   10d'),
         '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
-        '*create secret generic mail-sender*' => Process::result(output: 'created'),
-        '*create secret generic crm-smtp-crm-luchtech-dev*' => Process::result(output: 'created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/crm-twenty-crm-luchtech-dev*' => Process::result(output: 'updated'),
         '*set env deployment/crm-twenty-worker-crm-luchtech-dev*' => Process::result(output: 'updated'),
         '*rollout restart deployment/crm-twenty-crm-luchtech-dev*' => Process::result(output: 'restarted'),
@@ -164,8 +157,8 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
     $this->artisan('mail:wire local --tool=crm')
         ->expectsOutputToContain('Wired to Stalwart: CRM (Twenty)');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic crm-smtp-crm-luchtech-dev')
-        && str_contains($process->command, 'EMAIL_SMTP_HOST'));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'crm-smtp-crm-luchtech-dev')
+        && isset(appliedSecret($process)['data']['EMAIL_SMTP_HOST']));
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/crm-twenty-worker-crm-luchtech-dev')
         && str_contains($process->command, '--from=secret/crm-smtp-crm-luchtech-dev'));
 

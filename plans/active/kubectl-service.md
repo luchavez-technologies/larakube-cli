@@ -4,7 +4,7 @@
 `Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
 `~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
 copies). Stage 2b ✅ (`forKubeconfig()`; only `Kubectl` sets KUBECONFIG for a
-kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 726 string-built kubectl commands (`KubectlTest`), down from 892.
+kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 702 string-built kubectl commands (`KubectlTest`), down from 892.
 
 
 Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned
@@ -145,9 +145,11 @@ moves onto it and stops parsing command lines.
    base64 is null).
    Next, in order: the remaining traits by count (`ReconcilesPenpotFlags`,
    `InteractsWithScopedRbac`, ...), then each tool's commands. Also still in
-   argv: the `create secret generic` sites the bulk conversion skipped
-   (`--from-file`, loops that build literals, Synapse config); move them to
-   `putSecret()`, then add a guard test like the `patch secret` one.
+   argv: none. Every `--from-literal` and `patch secret` now goes through
+   `putSecret()`/`patchSecret()`, and a guard test fails on either string.
+   The `create secret --from-file` sites left (Synapse/MAS config, certs,
+   the blueprint, the tool registry) pass only a temp-file path; move them
+   to `putSecret()` when their tools come up.
    - Stray processes: 186 tests run at least one command no fake matches.
      Laravel then runs it for real; the PATH stubs (`kubectl` etc. exit 0)
      keep that harmless, but those calls are invisible to assertions. Turning

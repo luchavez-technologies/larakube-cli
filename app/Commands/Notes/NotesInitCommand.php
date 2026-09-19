@@ -346,14 +346,12 @@ class NotesInitCommand extends Command
 
         $ssoAppSecret = "sso-app-notes-{$instance}";
 
-        Process::run(
-            "{$kubectl} create secret generic {$ssoAppSecret} -n ".$this->ssoNamespace().' '
-            .'--from-literal=project-id='.escapeshellarg($registered['projectId']).' '
-            .'--from-literal=app-id='.escapeshellarg($registered['appId']).' '
-            .'--from-literal=client-id='.escapeshellarg($registered['clientId']).' '
-            .'--from-literal=client-secret='.escapeshellarg($registered['clientSecret']).' '
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-        );
+        Kubectl::fromPrefix($kubectl)->putSecret($this->ssoNamespace(), $ssoAppSecret, [
+            'project-id' => $registered['projectId'],
+            'app-id' => $registered['appId'],
+            'client-id' => $registered['clientId'],
+            'client-secret' => $registered['clientSecret'],
+        ]);
 
         $this->writeNotesOidcSecret($kubectl, $ns, $oidcSecretName, [
             'OIDC_CLIENT_ID' => $registered['clientId'],
@@ -371,14 +369,7 @@ class NotesInitCommand extends Command
 
     protected function writeNotesOidcSecret(string $kubectl, string $ns, string $secretName, array $data): void
     {
-        $literals = '';
-        foreach ($data as $key => $value) {
-            $literals .= '--from-literal='.$key.'='.escapeshellarg($value).' ';
-        }
-
-        $this->withSpin('Writing OIDC secret...', fn () => Process::run(
-            "{$kubectl} create secret generic {$secretName} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
-        ));
+        $this->withSpin('Writing OIDC secret...', fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, $data));
     }
 
     protected function resolveEnvironment(): string

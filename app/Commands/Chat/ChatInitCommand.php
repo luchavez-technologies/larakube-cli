@@ -353,16 +353,14 @@ class ChatInitCommand extends Command
         //    require restarting Synapse too, which this method never does).
         $masTrustSecret = $this->readClusterSecretKey($kubectl, $ns, $masSecretsName, 'trust-secret') ?? Str::random(32);
 
-        Process::run(
-            "{$kubectl} create secret generic {$masSecretsName} -n {$ns} "
-            .'--from-literal=db-password='.escapeshellarg($masDbPassword).' '
-            .'--from-literal=trust-secret='.escapeshellarg($masTrustSecret).' '
+        Kubectl::fromPrefix($kubectl)->putSecret($ns, $masSecretsName, [
+            'db-password' => $masDbPassword,
+            'trust-secret' => $masTrustSecret,
             // Resolved once, here, at deploy time — readChatWiredMas()/
             // chatInstanceSlug() just re-derive this same instance-suffixed
             // name from chat's host rather than needing it threaded through.
-            .'--from-literal=public-issuer='.escapeshellarg("https://{$masHost}/").' '
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-        );
+            'public-issuer' => "https://{$masHost}/",
+        ]);
 
         // 3. Register MAS itself as an independent Zitadel OIDC client.
         $pat = $this->readSsoSecret($kubectl, $this->ssoNamespace(), 'machine-pat');
@@ -402,15 +400,13 @@ class ChatInitCommand extends Command
             return false;
         }
 
-        Process::run(
-            "{$kubectl} create secret generic {$ssoAppSecretName} -n {$this->ssoNamespace()} "
-            .'--from-literal=project-id='.escapeshellarg($registered['projectId']).' '
-            .'--from-literal=app-id='.escapeshellarg($registered['appId']).' '
-            .'--from-literal=client-id='.escapeshellarg($registered['clientId']).' '
-            .'--from-literal=client-secret='.escapeshellarg($registered['clientSecret']).' '
-            .'--from-literal=provider-id='.escapeshellarg($providerId).' '
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-        );
+        Kubectl::fromPrefix($kubectl)->putSecret($this->ssoNamespace(), $ssoAppSecretName, [
+            'project-id' => $registered['projectId'],
+            'app-id' => $registered['appId'],
+            'client-id' => $registered['clientId'],
+            'client-secret' => $registered['clientSecret'],
+            'provider-id' => $providerId,
+        ]);
 
         // 4. Bootstrap or re-patch chat-mas-config-{instance}. First run:
         //    generate a real base config (with real crypto material) via a

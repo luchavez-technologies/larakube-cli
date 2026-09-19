@@ -363,17 +363,10 @@ class VpnInitCommand extends Command
         $changed = false;
         $configSecret = $this->vpnNameForHost('vpn-management-config', $host);
         $this->withSpin('Preparing NetBird relay config...', function () use (&$changed, $kubectl, $ns, $relaySecret, $managementConfig, $configSecret): void {
-            $temporaryDirectory = TemporaryDirectory::make();
-            $tmp = $temporaryDirectory->path('larakube-vpn-management.json');
-            file_put_contents($tmp, $managementConfig);
-
-            $changed = Process::run(
-                "{$kubectl} create secret generic {$configSecret} -n {$ns} "
-                .'--from-literal=relay-secret='.escapeshellarg($relaySecret).' '
-                .'--from-file=management.json='.escapeshellarg($tmp).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            )->successful();
-            $temporaryDirectory->delete();
+            $changed = Kubectl::fromPrefix($kubectl)->putSecret($ns, $configSecret, [
+                'relay-secret' => $relaySecret,
+                'management.json' => $managementConfig,
+            ])->ok;
         });
 
         return $changed && ! $isFreshInstall;
@@ -499,21 +492,16 @@ class VpnInitCommand extends Command
 
             $this->seedVpnPatIntoOpenBao($kubectl, $host, $pat, $env);
 
-            Process::run(
-                "{$kubectl} create secret generic ".$this->vpnNameForHost('vpn-management-secrets', $host)." -n {$ns} "
-                .'--from-literal=pat='.escapeshellarg($pat).' '
-                // The owner's own token, kept ONLY because NetBird restricts a
-                // few actions to the account owner and refuses them to an admin
-                // service user — deleting the account among them, which is what
-                // sso:wire's retire needs. Discarding it left that step
-                // impossible to perform through the API at all (403, confirmed
-                // live 2026-08-29). Everything routine still uses `pat`.
-                .'--from-literal=owner-pat='.escapeshellarg($ownerPat).' '
-                .'--from-literal=setup-key='.escapeshellarg($key).' '
-                .'--from-literal=admin-email='.escapeshellarg($email).' '
-                .'--from-literal=admin-password='.escapeshellarg($password).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->vpnNameForHost('vpn-management-secrets', $host), [
+                'pat' => $pat,
+                // The owner's own token, kept only because NetBird reserves a
+                // few actions to the account owner (deleting the account, which
+                // sso:wire's retire needs). Everything routine uses `pat`.
+                'owner-pat' => $ownerPat,
+                'setup-key' => $key,
+                'admin-email' => $email,
+                'admin-password' => $password,
+            ]);
         });
     }
 

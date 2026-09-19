@@ -212,7 +212,7 @@ test('only Kubectl sets KUBECONFIG for a kubectl command', function (): void {
 
 test('string-built kubectl commands only ever decrease (KubectlService Stage 4)', function (): void {
     // Lower this as tools move onto typed Kubectl calls; never raise it.
-    $ceiling = 726;
+    $ceiling = 702;
 
     $count = 0;
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
@@ -248,11 +248,11 @@ test('patchSecret fails when the Secret does not exist', function (): void {
     expect(Kubectl::forContext('ctx')->patchSecret('apps', 'missing', ['k' => 'v'])->ok)->toBeFalse();
 });
 
-test('Secrets are only ever patched through patchSecret(), which keeps values out of argv', function (): void {
+test('Secret values never go in argv: no hand-built patch secret or --from-literal', function (): void {
     $offenders = [];
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path())) as $file) {
         if (str_ends_with((string) $file, '.php') && ! str_ends_with((string) $file, 'Services/Kubectl.php')
-            && preg_match('/patch secret /', (string) file_get_contents((string) $file)) === 1) {
+            && preg_match('/patch secret |--from-literal=/', (string) file_get_contents((string) $file)) === 1) {
             $offenders[] = str_replace(app_path().'/', '', (string) $file);
         }
     }

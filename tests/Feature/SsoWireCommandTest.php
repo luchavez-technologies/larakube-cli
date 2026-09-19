@@ -216,9 +216,9 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
     $this->artisan('sso:wire', ['--tool' => 'monitor', '--sso-only' => true, '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0);
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic grafana-oidc')
-        && str_contains($process->command, "GF_AUTH_DISABLE_LOGIN_FORM='true'")
-        && str_contains($process->command, "GF_USERS_ALLOW_SIGN_UP='false'"));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'grafana-oidc')
+        && (appliedSecret($process)['data']['GF_AUTH_DISABLE_LOGIN_FORM'] ?? null) === 'true'
+        && (appliedSecret($process)['data']['GF_USERS_ALLOW_SIGN_UP'] ?? null) === 'false');
 
     // No literal `set env deployment/grafana GF_AUTH_DISABLE_LOGIN_FORM=...`
     // override — only --from=secret (declarative) and the harmless KEY-
@@ -1039,8 +1039,8 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
     // flip OIDC_ENABLED on. Per ADR 0018, OIDC_ENABLED reaches the
     // Deployment declaratively (in the link-oidc Secret, pulled in via
     // --from=secret), never as a literal `set env KEY=value` override.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic link-oidc')
-        && str_contains($process->command, 'OIDC_ENABLED'));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'link-oidc')
+        && isset(appliedSecret($process)['data']['OIDC_ENABLED']));
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/link-kutt')
         && str_contains($process->command, '--from=secret/link-oidc'));
 
@@ -1423,16 +1423,16 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
     // marks an OIDC tool as SSO-wired by probing for the `{tool}-oidc`
     // Secret — NetBird's wiring lives in its own storage (the API call
     // above), so wireNetbirdOidc() must write the marker secret itself.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic vpn-management-oidc -n larakube-vpn')
-        && str_contains($process->command, '--from-literal=client-id=')
-        && str_contains($process->command, 'cid-vpn'));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-oidc')
+        && appliedSecret($process)['namespace'] === 'larakube-vpn'
+        && (appliedSecret($process)['data']['client-id'] ?? null) === 'cid-vpn');
 
     // No auth-* keys: the dashboard logs in against the EMBEDDED IdP with its
     // own static client, and Dex federates to the Zitadel client above.
     // Writing them here is the retired standalone-IdP topology.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic vpn-management-oidc')
-        && ! str_contains($process->command, 'auth-authority=')
-        && ! str_contains($process->command, 'auth-client-id='));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-oidc')
+        && ! isset(appliedSecret($process)['data']['auth-authority'])
+        && ! isset(appliedSecret($process)['data']['auth-client-id']));
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vpn-dashboard'));
 

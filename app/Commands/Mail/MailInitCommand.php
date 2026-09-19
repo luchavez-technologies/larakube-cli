@@ -125,25 +125,26 @@ class MailInitCommand extends Command
         $mailSecretsName = $resourceInstance === '' ? 'mail-secrets' : "mail-secrets-{$resourceInstance}";
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $adminEmail, $storeBootstrap, $mailSecretsName): void {
-            $cmd = "{$kubectl} create secret generic {$mailSecretsName} -n {$ns} "
-                .'--from-literal=recovery-admin='.escapeshellarg('admin:'.$adminPassword).' '
-                .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
-                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' ';
+            $data = [
+                'recovery-admin' => 'admin:'.$adminPassword,
+                'admin-password' => $adminPassword,
+                'admin-email' => $adminEmail,
+            ];
 
             if ($storeBootstrap !== null) {
-                $cmd .= '--from-literal=store-password='.escapeshellarg($storeBootstrap['password']).' ';
+                $data['store-password'] = $storeBootstrap['password'];
 
                 if ($storeBootstrap['blob'] !== null) {
-                    $cmd .= '--from-literal=s3-access-key='.escapeshellarg($storeBootstrap['blob']['accessKey']).' '
-                        .'--from-literal=s3-secret-key='.escapeshellarg($storeBootstrap['blob']['secretKey']).' ';
+                    $data['s3-access-key'] = $storeBootstrap['blob']['accessKey'];
+                    $data['s3-secret-key'] = $storeBootstrap['blob']['secretKey'];
                 }
 
                 if ($storeBootstrap['search']['type'] === 'meilisearch') {
-                    $cmd .= '--from-literal=search-meili-key='.escapeshellarg($storeBootstrap['search']['key']).' ';
+                    $data['search-meili-key'] = $storeBootstrap['search']['key'];
                 }
             }
 
-            Process::run($cmd."--dry-run=client -o yaml | {$kubectl} apply -f -");
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $mailSecretsName, $data);
         });
 
         // Auto-configure the Postgres main store via Plex Commons + the secrets

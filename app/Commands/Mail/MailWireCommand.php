@@ -403,13 +403,10 @@ class MailWireCommand extends Command
             unset($staticVars['PENPOT_FLAGS']);
         }
 
-        $literals = '';
-        foreach ($staticVars as $envName => $value) {
-            $literals .= '--from-literal='.$envName.'='.escapeshellarg($value).' ';
-        }
+        $data = $staticVars;
         foreach ($schema['vars'] as $key => $envName) {
             if (isset($logical[$key])) {
-                $literals .= '--from-literal='.$envName.'='.escapeshellarg($logical[$key]).' ';
+                $data[$envName] = $logical[$key];
             }
         }
 
@@ -417,15 +414,13 @@ class MailWireCommand extends Command
 
         $ok = true;
         $label = $engine ? "{$tool->getLabel()} ({$engine})" : $tool->getLabel();
-        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotSuffix, &$ok): void {
-            Process::run(
-                "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $data, $deployment, $schema, $isPenpot, $penpotSuffix, &$ok): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secret, $data);
 
             $set = Process::run("{$kubectl} set env deployment/{$deployment} --from=secret/{$secret} -n {$ns}");
             $ok = $set->successful();
 
-            // ADR 0018: $staticVars is already in the Secret (see $literals
+            // ADR 0018: $staticVars is already in the Secret (see $data
             // above) and already applied declaratively via --from=secret —
             // a second literal `kubectl set env KEY=value` pass here would
             // desync kubectl apply's bookkeeping for every future

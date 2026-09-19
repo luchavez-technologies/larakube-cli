@@ -1010,7 +1010,7 @@ class SsoWireCommand extends Command
         // literal here.
         unset($staticVars['PENPOT_FLAGS']);
 
-        // sso_only_vars must be folded into $staticVars BEFORE $literals is
+        // sso_only_vars must be folded into $staticVars BEFORE $data is
         // built below — see docs/decisions/0018-wire-commands-never-literal-env.md
         // point 6. Previously this merge happened after the secret write, so
         // these vars only ever reached the Deployment through a literal
@@ -1032,10 +1032,7 @@ class SsoWireCommand extends Command
             }
         }
 
-        $literals = '';
-        foreach ($staticVars as $envName => $value) {
-            $literals .= '--from-literal='.$envName.'='.escapeshellarg($value).' ';
-        }
+        $data = $staticVars;
         foreach ($schema['vars'] as $key => $envName) {
             if (isset($logical[$key])) {
                 $value = $logical[$key];
@@ -1046,7 +1043,7 @@ class SsoWireCommand extends Command
                 if (in_array($key, $schema['string_cast'] ?? [], true) && preg_match('/^\d+$/', $value)) {
                     $value = 'string:'.$value;
                 }
-                $literals .= '--from-literal='.$envName.'='.escapeshellarg($value).' ';
+                $data[$envName] = $value;
             }
         }
 
@@ -1055,10 +1052,8 @@ class SsoWireCommand extends Command
         $ns = $schema['namespace'];
 
         $ok = true;
-        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $literals, $deployment, $schema, $isPenpot, $penpotSuffix, $ssoOnlyOption, $unsetPairs, &$ok): void {
-            Process::run(
-                "{$kubectl} create secret generic {$secret} -n {$ns} {$literals}--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $data, $deployment, $schema, $isPenpot, $penpotSuffix, $ssoOnlyOption, $unsetPairs, &$ok): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secret, $data);
 
             $set = Process::run("{$kubectl} set env deployment/{$deployment} --from=secret/{$secret} -n {$ns}");
             $ok = $set->successful();
@@ -1189,14 +1184,12 @@ class SsoWireCommand extends Command
     ): bool {
         // 1. Persist credentials to the chat-oidc Secret so chat:init can
         //    re-render the oidc_providers: block on a re-run.
-        Process::run(
-            "{$kubectl} create secret generic chat-oidc -n {$ns} "
-            .'--from-literal=issuer='.escapeshellarg($issuer).' '
-            .'--from-literal=client-id='.escapeshellarg($clientId).' '
-            .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
-            .'--from-literal=name=Zitadel '
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-        );
+        Kubectl::fromPrefix($kubectl)->putSecret($ns, 'chat-oidc', [
+            'issuer' => $issuer,
+            'client-id' => $clientId,
+            'client-secret' => $clientSecret,
+            'name' => 'Zitadel',
+        ]);
 
         // 2. Re-render homeserver.yaml with the oidc_providers: block,
         //    preserving any existing email: block (same read-back discipline).
@@ -1469,12 +1462,7 @@ class SsoWireCommand extends Command
             // IdP with its own static `netbird-dashboard` OIDC client, and Dex
             // federates to the Zitadel client registered above. Pointing the
             // dashboard straight at Zitadel is the retired standalone topology.
-            Process::run(
-                "{$kubectl} create secret generic ".$this->vpnName('vpn-management-oidc', $kubectl)." -n {$ns} "
-                .'--from-literal=client-id='.escapeshellarg($clientId).' '
-                .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->vpnName('vpn-management-oidc', $kubectl), ['client-id' => $clientId, 'client-secret' => $clientSecret]);
 
             // Per ADR 0018 the values above reach the Deployment through
             // valueFrom, so the running pod keeps its old env until restarted.

@@ -461,14 +461,7 @@ class PlexInitCommand extends Command
         )->output()) !== '';
 
         if (! $exists) {
-            $literals = '';
-            foreach ($generators as $key => $generate) {
-                $literals .= '--from-literal='.$key.'='.escapeshellarg($generate()).' ';
-            }
-            Process::run(
-                "{$kubectl} create secret generic plex-admin -n {$ns} {$literals}".
-                "--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'plex-admin', array_map(fn (callable $generate) => $generate(), $generators));
 
             return;
         }
