@@ -1,6 +1,6 @@
 # Test Plan: `ToolInstance` naming refactor
 
-**Status:** ⛔ NOT STARTED (the feature isn't built yet).
+**Status:** ⛔ NOT STARTED. Built so far: Stage 0, Stage 1 part 1 and Batch A, Sign, Flow (see the plan).
 **Plan:** `plans/active/tool-instance-naming.md`
 
 After `./build`, per stage. Never route a check through a destructive picker

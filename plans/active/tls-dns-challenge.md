@@ -1,6 +1,6 @@
 # Plan: `tls:init` / `tls:remove`, Let's Encrypt via the Cloudflare DNS challenge
 
-**Status:** Phase 0 ✅ done (`d8a51de`, verified live on production). Phase 1 ✅ built; `tls:init` switched production to the DNS challenge (Traefik args/env verified, sites 200). Still to prove: a certificate actually issued through DNS (walkthrough Phase 1c). `tls:prune` ✅ verified live (12 unused certificates removed, backup kept, hosts unchanged). Phase 2 ✅ `cloud:proxy`/`cloud:unproxy` verified live: cli.larakube.app resolves to Cloudflare IPs, serves 200 with cf-ray.
+**Status:** Phase 0 ✅ done (`d8a51de`, verified live on production). Phase 1 ✅ built; `tls:init` switched production to the DNS challenge (Traefik args/env verified, sites 200). Phase 1c ✅: a new host got its certificate through the DNS challenge while proxied. `tls:prune` ✅ verified live (12 unused certificates removed, backup kept, hosts unchanged). Phase 2 ✅ `cloud:proxy`/`cloud:unproxy` verified live: cli.larakube.app resolves to Cloudflare IPs, serves 200 with cf-ray.
 
 **Phase 1 deviations from this plan:**
 - **Managed (DOKS) clusters are refused for now.** Their Traefik install path never re-renders an existing install, so there is no safe apply path yet. Both templates already render the DNS challenge.

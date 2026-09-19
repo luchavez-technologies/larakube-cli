@@ -1,6 +1,6 @@
 # Test Plan: `tls:init` / `tls:remove` (Cloudflare DNS challenge)
 
-**Status:** ⛔ NOT STARTED (the feature isn't built yet).
+**Status:** Largely verified live; results are recorded in `plans/active/tls-dns-challenge.md`'s status (Phases 0, 1, 1c, prune, `cloud:proxy`).
 **Plan:** `plans/active/tls-dns-challenge.md`
 
 After `./build`. Never route a check through a picker or confirm over live data:

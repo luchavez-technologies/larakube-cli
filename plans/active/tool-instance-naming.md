@@ -2,8 +2,9 @@
 
 **Status:** Stage 0 ✅. Stage 1: part 1 ✅ (CRM, Design), Batch A ✅ (Flow, Link,
 Sheets, Record, Resume, Errors, Insights, Support, Tasks: not live, code only).
-Batch B (live: SSO, Passwords, Chat, Monitor, Sign, Drive) needs a per-tool
-production migration first. Stages 2–3 not started.
+Sign ✅ (fresh install on per-instance names, `230400b`); Flow ✅ per instance with
+ToolInstance names throughout (`2a19413`). Batch B (live: SSO, Passwords, Chat,
+Monitor, Drive) needs a per-tool production migration first. Stages 2–3 not started.
 
 **Decision (2026-09-18):** every tool gets per-instance Commons names, and live
 tools are migrated by hand on production (not declared single-instance).

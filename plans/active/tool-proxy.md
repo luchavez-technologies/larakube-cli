@@ -1,6 +1,6 @@
 # Plan: proxying Cluster Tools through Cloudflare safely
 
-**Status:** 📝 PLANNED, not started.
+**Status:** Stage A ✅ (`20d4328`: Traefik trusts Cloudflare's ranges on DNS-challenge clusters). Stages B and C not started.
 **Builds on:** `tls:init` (DNS challenge) and `cloud:proxy` (apps), both shipped.
 
 ## Why
