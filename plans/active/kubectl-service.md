@@ -4,7 +4,7 @@
 `Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
 `~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
 copies). Stage 2b ✅ (`forKubeconfig()`; only `Kubectl` sets KUBECONFIG for a
-kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 892 string-built kubectl commands (`KubectlTest`); remove teardown, Flow, Sign and Paste converted.
+kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress, paused: ratchet at 836 string-built kubectl commands (`KubectlTest`), down from 892.
 
 
 Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned
@@ -128,6 +128,26 @@ moves onto it and stops parsing command lines.
    lookup only matched a legacy `''` instance, so `LIVEKIT_URL` never came
    from the registry). Transport strings are unchanged, so the 48 test files
    that fake them still pass; new tests use `FakeToolRegistry::install()`.
+
+   **Stage 4 so far:** `Kubectl::arg()` quotes only when the shell needs it
+   (and `name='value'` for `name=value`), so typed calls read like the
+   commands they replace and existing test fakes still match;
+   `Kubectl::fromPrefix()` lets a helper that still receives `string
+   $kubectl` make typed calls; `apply()`/`putSecret()`/`putConfigMap()` take
+   `serverSide`. Converted: remove teardown (`deleteResources()`), Flow, Sign
+   and Paste teardown, `readClusterSecretKey()`, `RunsKubectlSteps`
+   (`kubectlStep()`), VPN middleware, namespace removal, volume sizing,
+   registry probes, `SyncsClusterSecrets`, `InteractsWithPlex`, local Traefik
+   and shared-service reconcile.
+   Next, in order: the remaining traits by count (`ManagesCompanions`,
+   `InteractsWithVpn`, `ReconcilesPenpotFlags`, `InteractsWithScopedRbac`,
+   ...), then each tool's commands. Follow-ups:
+   - `SharedClusterService::presenceProbe()` returns an argument fragment
+     ("deployment -l ... -n ..."); make it an argument list so its two
+     callers can use `raw()`.
+   - `SecretData` / `ConfigMapData`: one place for manifest JSON <-> values
+     (base64 for Secrets); `putSecret(SecretData)`, `getSecret(): ?SecretData`
+     replace the inline JSON in `putSecret()` and callers' own decoding.
 
 ## Rules
 - Never put a secret value in argv: `putSecret()` and `exec(..., stdin:)` only.
