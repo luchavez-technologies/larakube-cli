@@ -2,6 +2,7 @@
 
 namespace App\Commands\Tool;
 
+use App\Data\ResourceRef;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
@@ -183,6 +184,34 @@ abstract class AbstractToolRemoveCommand extends Command
 
     /** The tool this command tears down. */
     abstract protected function tool(): ClusterTool;
+
+    /**
+     * Delete $refs (missing ones are fine) behind a spinner, reporting
+     * kubectl's error; false on failure so teardown() can say so.
+     *
+     * @param  list<ResourceRef>  $refs
+     */
+    protected function deleteResources(string $label, array $refs): bool
+    {
+        if ($refs === []) {
+            return true;
+        }
+
+        $result = null;
+        $this->withSpin($label, function () use (&$result, $refs): bool {
+            $result = $this->cluster()->delete(...$refs);
+
+            return $result->ok;
+        });
+
+        if ($result === null || ! $result->ok) {
+            $this->laraKubeError(trim($result->error ?? '') ?: "{$label} failed.");
+
+            return false;
+        }
+
+        return true;
+    }
 
     /** The cluster this removal targets, the same one $kubectl points at. */
     protected function cluster(): Kubectl

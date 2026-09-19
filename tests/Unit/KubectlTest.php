@@ -209,3 +209,20 @@ test('only Kubectl sets KUBECONFIG for a kubectl command', function (): void {
 
     expect($handBuilt)->toBeEmpty();
 });
+
+test('string-built kubectl commands only ever decrease (KubectlService Stage 4)', function (): void {
+    // Lower this as tools move onto typed Kubectl calls; never raise it.
+    $ceiling = 892;
+
+    $count = 0;
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
+    foreach ($files as $file) {
+        if (! str_ends_with((string) $file, '.php') || str_ends_with((string) $file, 'Services/Kubectl.php')) {
+            continue;
+        }
+
+        $count += preg_match_all('/\{\$(kubectl|kube|kc)\}|\$(kubectl|kube|kc)\s*\.\s*\' |->prefix\(\)\s*\./', (string) file_get_contents((string) $file));
+    }
+
+    expect($count)->toBeLessThanOrEqual($ceiling, "{$count} string-built kubectl commands; new code should use typed Kubectl calls.");
+});

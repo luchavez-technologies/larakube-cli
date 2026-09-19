@@ -11,27 +11,24 @@ use Illuminate\Support\Facades\Process;
  * @param  list<string>  $liveDeployments
  * @param  array{manifest: ?string, secret: ?array, commands: list<string>}|null  $seen
  */
-function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeployments = []): void
+function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeployments = [], bool $rolloutFails = false): void
 {
     $seen = ['manifest' => null, 'secret' => null, 'commands' => []];
 
-    Process::fake(function ($process) use (&$seen, $secret, $liveDeployments) {
+    Process::fake(function ($process) use (&$seen, $secret, $liveDeployments, $rolloutFails) {
         $cmd = (string) $process->command;
         $seen['commands'][] = $cmd;
 
         if (str_contains($cmd, "'apply' '-f' '-'")) {
-            $object = json_decode((string) $process->input, true);
+            $input = (string) $process->input;
+            $object = json_decode($input, true);
             if (($object['kind'] ?? null) === 'Secret') {
                 $seen['secret'] = $object;
+            } elseif (str_contains($input, 'kind: Deployment')) {
+                $seen['manifest'] = $input;
             }
 
             return Process::result(output: 'configured');
-        }
-
-        if (preg_match('/apply -f (\S+)/', $cmd, $m) === 1 && str_contains($m[1], 'larakube-flow')) {
-            $seen['manifest'] = (string) file_get_contents(trim($m[1], "'\""));
-
-            return Process::result(output: 'applied');
         }
 
         if (preg_match("#'get' 'deployment/([a-z0-9-]+)'#", $cmd, $m) === 1) {
@@ -45,7 +42,8 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
         return match (true) {
             str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode(['services' => ['postgres' => ['enabled' => true]]])),
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
-            str_contains($cmd, 'rollout status') => Process::result(output: 'successfully rolled out'),
+            str_contains($cmd, "'rollout' 'status'") && $rolloutFails => Process::result(errorOutput: 'deployment exceeded its progress deadline', exitCode: 1),
+            str_contains($cmd, "'rollout' 'status'") => Process::result(output: 'successfully rolled out'),
             default => Process::result(output: ''),
         };
     });
@@ -120,6 +118,15 @@ test('flow:init deploys each engine locally at its default host using Plex Commo
     expect($seen['manifest'])->toContain("name: flow-{$engine}-")
         ->toContain('postgres.larakube-plex.svc.cluster.local');
 })->with([['n8n', 'n8n'], ['windmill', 'Windmill']]);
+
+test('flow:init stops, instead of reporting it live, when the rollout fails', function (): void {
+    fakeFlowInitCluster($seen, rolloutFails: true);
+
+    runFlowInit()
+        ->expectsOutputToContain('deployment exceeded its progress deadline')
+        ->doesntExpectOutputToContain('stack is live')
+        ->assertExitCode(1);
+});
 
 // flow:remove's own coverage lives in ToolRemoveCommandTest.php (shared
 // AbstractToolRemoveCommand behavior tested once across tools, including

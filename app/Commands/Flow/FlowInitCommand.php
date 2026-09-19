@@ -20,13 +20,11 @@ use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class FlowInitCommand extends Command
 {
@@ -99,30 +97,25 @@ class FlowInitCommand extends Command
             }
 
             if ($engine === 'windmill') {
-                $this->withSpin('Creating Windmill DB roles (windmill_user, windmill_admin) in the Commons...', function () use ($driver, $kubectl, $dbName): void {
-                    $sql = implode("\n", [
+                $this->withSpin('Creating Windmill DB roles (windmill_user, windmill_admin) in the Commons...', fn () => $cluster->exec(
+                    $this->plexNamespace(),
+                    'deploy/'.$driver->value,
+                    ['sh', '-c', $driver->commonsAdminClient()],
+                    stdin: implode("\n", [
                         "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'windmill_admin') THEN CREATE ROLE windmill_admin; END IF; END \$\$;",
                         "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'windmill_user') THEN CREATE ROLE windmill_user; END IF; END \$\$;",
                         // Windmill requires these two role names; they're shared by
                         // every instance, and granted to this instance's own role.
                         "GRANT windmill_user TO {$dbName};",
                         "GRANT windmill_admin TO {$dbName};",
-                    ]);
-                    $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-                    $tmp = $temporaryDirectory->path().'/windmill-roles.sql';
-                    file_put_contents($tmp, $sql);
-                    Process::run(
-                        $kubectl.' exec -i -n '.escapeshellarg($this->plexNamespace()).' deploy/'.$driver->value.' -- '
-                        .'sh -c '.escapeshellarg($driver->commonsAdminClient()).' < '.escapeshellarg($tmp),
-                    );
-                    $temporaryDirectory->delete();
-                });
+                    ]),
+                )->ok);
             }
         }
 
-        $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
-            "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
-        ));
+        $this->withSpin("Ensuring namespace {$ns}...", fn () => $cluster->apply((string) json_encode([
+            'apiVersion' => 'v1', 'kind' => 'Namespace', 'metadata' => ['name' => $ns],
+        ]))->ok);
 
         $this->withSpin('Syncing secrets...', fn () => $cluster->putSecret($ns, $names->secret(), [
             'encryption-key' => $encryptionKey,
@@ -143,20 +136,25 @@ class FlowInitCommand extends Command
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-flow.yaml');
-        file_put_contents($tmp, $manifest);
-
         $engineName = $this->engineLabel($engine);
-        $deployName = 'deploy/'.$names->deployment();
 
-        $this->withSpin("Applying Flow ({$engineName}) manifests...", fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
-        $temporaryDirectory->delete();
+        foreach ([
+            "Applying Flow ({$engineName}) manifests..." => fn () => $cluster->apply($manifest),
+            "Waiting for Flow ({$engineName})..." => fn () => $cluster->rolloutStatus($ns, $names->deployment()),
+        ] as $label => $step) {
+            $result = null;
+            $this->withSpin($label, function () use ($step, &$result): bool {
+                $result = $step();
 
-        $this->withSpin("Waiting for Flow ({$engineName})...", fn () => $this->runStreaming(
-            "{$kubectl} rollout status {$deployName} -n {$ns} --timeout=120s",
-            130,
-        ));
+                return $result->ok;
+            });
+
+            if (! $result->ok) {
+                $this->laraKubeError(trim($result->error) ?: "{$label} failed.");
+
+                return 1;
+            }
+        }
 
         $this->registerDeployedTool(ClusterTool::FLOW, $kubectl, $host, extra: ['engine' => $engine]);
 

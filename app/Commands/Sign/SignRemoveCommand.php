@@ -3,10 +3,10 @@
 namespace App\Commands\Sign;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ResourceRef;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
-use Illuminate\Support\Facades\Process;
 
 class SignRemoveCommand extends AbstractToolRemoveCommand
 {
@@ -17,9 +17,7 @@ class SignRemoveCommand extends AbstractToolRemoveCommand
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get secret {$this->names($kubectl)->secret()} -n {$namespace} --ignore-not-found",
-        )->output()) === '';
+        return ! $this->cluster()->exists(new ResourceRef('Secret', $this->names($kubectl)->secret(), $namespace));
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
@@ -27,12 +25,15 @@ class SignRemoveCommand extends AbstractToolRemoveCommand
         $names = $this->names($kubectl);
         $deployment = $names->deployment();
 
-        return $this->removeResources(
-            'Removing Documenso resources...',
-            "{$kubectl} delete deployment/{$deployment} service/{$deployment} ingress/{$deployment} "
-            .'secret/'.$names->secret().' secret/'.$names->secret(SecretKind::SMTP).' secret/'.$names->secret(SecretKind::OIDC).' '
-            .'secret/'.$names->name('signing-cert')." -n {$namespace} --ignore-not-found",
-        );
+        return $this->deleteResources('Removing Documenso resources...', [
+            new ResourceRef('Deployment', $deployment, $namespace),
+            new ResourceRef('Service', $deployment, $namespace),
+            new ResourceRef('Ingress', $deployment, $namespace),
+            new ResourceRef('Secret', $names->secret(), $namespace),
+            new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $namespace),
+            new ResourceRef('Secret', $names->secret(SecretKind::OIDC), $namespace),
+            new ResourceRef('Secret', $names->name('signing-cert'), $namespace),
+        ]);
     }
 
     private function names(string $kubectl): ToolInstance

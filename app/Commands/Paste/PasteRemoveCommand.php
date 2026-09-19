@@ -3,6 +3,8 @@
 namespace App\Commands\Paste;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ResourceRef;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 
 class PasteRemoveCommand extends AbstractToolRemoveCommand
@@ -14,14 +16,14 @@ class PasteRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $instance = $this->resolveInstance($kubectl);
-        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
+        $names = ToolInstance::forInstance(ClusterTool::PASTE, (string) $this->resolveInstance($kubectl));
+        $deployment = $names->deployment();
 
-        return $this->removeResources(
-            'Removing Yopass resources...',
-            "{$kubectl} delete deployment/paste-yopass{$suffix} service/paste-yopass{$suffix} "
-            ."ingress/paste-yopass{$suffix} secret/paste-yopass-secrets{$suffix} "
-            ."-n {$namespace} --ignore-not-found",
-        );
+        return $this->deleteResources('Removing Yopass resources...', [
+            new ResourceRef('Deployment', $deployment, $namespace),
+            new ResourceRef('Service', $deployment, $namespace),
+            new ResourceRef('Ingress', $deployment, $namespace),
+            new ResourceRef('Secret', $names->secret(), $namespace),
+        ]);
     }
 }

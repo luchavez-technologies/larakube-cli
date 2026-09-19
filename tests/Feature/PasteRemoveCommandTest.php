@@ -3,8 +3,7 @@
 use Illuminate\Support\Facades\Process;
 
 test('paste:remove deletes Yopass resources', function (): void {
-    Process::fake([...registeredToolRemoveFakes('paste:remove'),
-        '*delete *' => Process::result(output: 'deleted'),
+    Process::fake([...registeredToolRemoveFakes('paste:remove', 'paste-example-com', 'paste.example.com'),
         '*' => Process::result(output: ''),
     ]);
 
@@ -12,7 +11,7 @@ test('paste:remove deletes Yopass resources', function (): void {
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Yopass resources...');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete deployment/paste-yopass service/paste-yopass ingress/paste-yopass secret/paste-yopass-secrets'));
+    Process::assertRan(fn ($process) => str_contains($process->command, "'delete' 'deployment/paste-yopass-paste-example-com' 'service/paste-yopass-paste-example-com' 'ingress/paste-yopass-paste-example-com' 'secret/paste-yopass-secrets-paste-example-com'"));
 });
 
 test('paste:remove --domain removes only that instance, never the other one', function (): void {
@@ -26,7 +25,7 @@ test('paste:remove --domain removes only that instance, never the other one', fu
 
     $this->artisan('paste:remove local --domain=paste.check.example.com --force')->assertExitCode(0);
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'deployment/paste-yopass-paste-check-example-com '));
+    Process::assertRan(fn ($process) => str_contains($process->command, "'deployment/paste-yopass-paste-check-example-com'"));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete') && str_contains($process->command, 'paste-yopass-paste-example-com'));
 });
 

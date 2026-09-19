@@ -86,11 +86,11 @@ class FlowRemoveCommand extends AbstractToolRemoveCommand
             }
         }
 
-        $ok = $this->deleteStep('Removing Flow resources...', $workloads);
+        $ok = $this->deleteResources('Removing Flow resources...', $workloads);
 
         // A volume can only go once its pod has: the Deployments are deleted first.
         if ($this->option('purge')) {
-            $ok = $this->deleteStep('Removing Flow data volumes and keys...', $data) && $ok;
+            $ok = $this->deleteResources('Removing Flow data volumes and keys...', $data) && $ok;
         }
 
         return $ok;
@@ -118,28 +118,5 @@ class FlowRemoveCommand extends AbstractToolRemoveCommand
             fn (FlowTool $engine) => ToolInstance::forInstance(ClusterTool::FLOW, $instance, $engine->value),
             FlowTool::cases(),
         );
-    }
-
-    /** @param  list<ResourceRef>  $refs */
-    private function deleteStep(string $label, array $refs): bool
-    {
-        if ($refs === []) {
-            return true;
-        }
-
-        $result = null;
-        $this->withSpin($label, function () use (&$result, $refs): bool {
-            $result = $this->cluster()->delete(...$refs);
-
-            return $result->ok;
-        });
-
-        if ($result === null || ! $result->ok) {
-            $this->laraKubeError(trim($result->error ?? '') ?: "{$label} failed.");
-
-            return false;
-        }
-
-        return true;
     }
 }
