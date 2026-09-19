@@ -82,15 +82,43 @@ final class FakeKubectl
         return $this->calls;
     }
 
-    /** @return list<string> */
+    /**
+     * Split like the shell: words are separated by whitespace, and adjacent
+     * bare and single-quoted pieces join into one word (jsonpath='{...}').
+     *
+     * @return list<string>
+     */
     public static function shellWords(string $args): array
     {
-        preg_match_all("/'((?:[^']|'\\\\'')*)'|([^\\s']+)/", $args, $tokens, PREG_SET_ORDER);
+        $words = [];
+        $word = null;
+        $length = strlen($args);
 
-        return array_map(
-            fn (array $t) => isset($t[2]) && $t[2] !== '' ? $t[2] : str_replace("'\\''", "'", $t[1]),
-            $tokens,
-        );
+        for ($i = 0; $i < $length; $i++) {
+            $char = $args[$i];
+
+            if ($char === "'") {
+                $end = strpos($args, "'", $i + 1);
+                $end = $end === false ? $length : $end;
+                $word = ($word ?? '').substr($args, $i + 1, $end - $i - 1);
+                $i = $end;
+            } elseif ($char === '\\' && $i + 1 < $length) {
+                $word = ($word ?? '').$args[++$i];
+            } elseif (ctype_space($char)) {
+                if ($word !== null) {
+                    $words[] = $word;
+                    $word = null;
+                }
+            } else {
+                $word = ($word ?? '').$char;
+            }
+        }
+
+        if ($word !== null) {
+            $words[] = $word;
+        }
+
+        return $words;
     }
 
     private function handle(PendingProcess $process)

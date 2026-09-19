@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\InstanceData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Services\ToolRegistry;
 use Illuminate\Support\Facades\Process;
 
@@ -232,10 +233,7 @@ trait InteractsWithToolRegistry
             return $this->clusterDeploymentNamesCache[$key];
         }
 
-        $out = trim(Process::run(
-            "{$kubectl} get deployment -n ".escapeshellarg($namespace)
-            .' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.name}{"\n"}{end}'),
-        )->output());
+        $out = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', '-n', $namespace, '-o', 'jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}'])->output);
 
         return $this->clusterDeploymentNamesCache[$key] = $out === '' ? [] : array_values(array_filter(array_map('trim', explode("\n", $out))));
     }
@@ -269,7 +267,7 @@ trait InteractsWithToolRegistry
         $prefix = $tool->service()?->hostPrefix() ?? $tool->value;
 
         foreach ($namespaces as $ns) {
-            $hostsStr = trim(Process::run("{$kubectl} get ingress -n {$ns} -o jsonpath='{.items[*].spec.rules[*].host}' 2>/dev/null")->output());
+            $hostsStr = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'ingress', '-n', $ns, '-o', 'jsonpath={.items[*].spec.rules[*].host}'])->output);
             if ($hostsStr === '') {
                 continue;
             }

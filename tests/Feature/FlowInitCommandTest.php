@@ -35,7 +35,7 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
             return Process::result(output: in_array($m[1], $liveDeployments, true) ? "deployment/{$m[1]}" : '');
         }
 
-        if (preg_match('#get secret flow-n8n-secrets-flow-example-com .*jsonpath=\{\.data\.([a-z-]+)\}#', $cmd, $m) === 1) {
+        if (preg_match("#get secret flow-n8n-secrets-flow-example-com .*jsonpath='?\\{\\.data\\.([a-z-]+)\\}#", $cmd, $m) === 1) {
             return Process::result(output: isset($secret[$m[1]]) ? base64_encode($secret[$m[1]]) : '');
         }
 

@@ -2,8 +2,8 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
 use Closure;
-use Illuminate\Support\Facades\Process;
 
 /**
  * Keeps a PersistentVolumeClaim's declared size from fighting the cluster.
@@ -80,17 +80,15 @@ trait InteractsWithVolumeSizing
      */
     protected function liveVolumeSizes(string $kubectl, string $namespace): array
     {
-        $result = Process::run(
-            "{$kubectl} get pvc -n {$namespace} -o jsonpath='{range .items[*]}{.metadata.name}={.spec.resources.requests.storage}{\"\\n\"}{end}'",
-        );
+        $result = Kubectl::fromPrefix($kubectl)->raw(['get', 'pvc', '-n', $namespace, '-o', 'jsonpath={range .items[*]}{.metadata.name}={.spec.resources.requests.storage}{"\n"}{end}']);
 
-        if (! $result->successful()) {
+        if (! $result->ok) {
             return [];
         }
 
         $sizes = [];
 
-        foreach (explode("\n", trim($result->output())) as $line) {
+        foreach (explode("\n", trim($result->output)) as $line) {
             $line = trim($line);
 
             if ($line === '' || ! str_contains($line, '=')) {
@@ -146,25 +144,21 @@ trait InteractsWithVolumeSizing
             return false;
         }
 
-        $result = Process::run(
-            "{$kubectl} get storageclass {$storageClass} -o jsonpath='{.allowVolumeExpansion}'",
-        );
+        $result = Kubectl::fromPrefix($kubectl)->raw(['get', 'storageclass', $storageClass, '-o', 'jsonpath={.allowVolumeExpansion}']);
 
-        return $result->successful() && trim($result->output()) === 'true';
+        return $result->ok && trim($result->output) === 'true';
     }
 
     /** The cluster's default StorageClass name, or null when none is marked default. */
     protected function defaultStorageClass(string $kubectl): ?string
     {
-        $result = Process::run(
-            "{$kubectl} get storageclass -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\\.kubernetes\\.io/is-default-class==\"true\")]}{.metadata.name}{\"\\n\"}{end}'",
-        );
+        $result = Kubectl::fromPrefix($kubectl)->raw(['get', 'storageclass', '-o', 'jsonpath={range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}']);
 
-        if (! $result->successful()) {
+        if (! $result->ok) {
             return null;
         }
 
-        $name = trim(strtok(trim($result->output()), "\n") ?: '');
+        $name = trim(strtok(trim($result->output), "\n") ?: '');
 
         return $name === '' ? null : $name;
     }

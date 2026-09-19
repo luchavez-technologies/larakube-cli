@@ -193,24 +193,7 @@ abstract class AbstractToolRemoveCommand extends Command
      */
     protected function deleteResources(string $label, array $refs): bool
     {
-        if ($refs === []) {
-            return true;
-        }
-
-        $result = null;
-        $this->withSpin($label, function () use (&$result, $refs): bool {
-            $result = $this->cluster()->delete(...$refs);
-
-            return $result->ok;
-        });
-
-        if ($result === null || ! $result->ok) {
-            $this->laraKubeError(trim($result->error ?? '') ?: "{$label} failed.");
-
-            return false;
-        }
-
-        return true;
+        return $refs === [] || $this->kubectlStep($label, fn () => $this->cluster()->delete(...$refs));
     }
 
     /** The cluster this removal targets, the same one $kubectl points at. */

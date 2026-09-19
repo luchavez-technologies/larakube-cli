@@ -3,8 +3,10 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use App\Data\KubectlResult;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
+use Closure;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
@@ -12,7 +14,6 @@ use Illuminate\Support\Sleep;
 use function Laravel\Prompts\select;
 
 use RuntimeException;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 
 /**
@@ -225,6 +226,31 @@ trait DeploysClusterTool
     }
 
     /**
+     * Run one typed kubectl call behind a spinner. On failure, kubectl's own
+     * error is shown and false returned, so the caller never reports success
+     * over a failed step.
+     *
+     * @param  Closure(): KubectlResult  $call
+     */
+    protected function kubectlStep(string $label, Closure $call): bool
+    {
+        $result = null;
+        $this->withSpin($label, function () use ($call, &$result): bool {
+            $result = $call();
+
+            return $result->ok;
+        });
+
+        if ($result === null || ! $result->ok) {
+            $this->laraKubeError(trim($result->error ?? '') ?: "{$label} failed.");
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Create (or idempotently re-apply) the Traefik ipAllowList Middleware a
      * tool's `--vpn-only` ingress annotation references — BEFORE that
      * ingress is ever applied. Without this, `{tool}:init --vpn-only` sets
@@ -248,14 +274,10 @@ trait DeploysClusterTool
             'namespace' => $target['namespace'],
         ])->render();
 
-        $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-vpn-middleware-'.$target['name'].'.yaml');
-        file_put_contents($tmp, $manifest);
-
-        $ok = $this->applyResource("Ensuring VPN-only Middleware for {$tool->getLabel()}...", "{$kubectl} apply -f {$tmp}");
-        $temporaryDirectory->delete();
-
-        return $ok;
+        return $this->kubectlStep(
+            "Ensuring VPN-only Middleware for {$tool->getLabel()}...",
+            fn () => Kubectl::fromPrefix($kubectl)->apply($manifest),
+        );
     }
 
     /**
@@ -387,9 +409,8 @@ trait DeploysClusterTool
     protected function removeNamespace(string $label, string $kubectl, string $namespace): bool
     {
         return (bool) $this->withSpin($label, function () use ($kubectl, $namespace): bool {
-            $accepted = Process::timeout(60)->run(
-                "{$kubectl} delete namespace {$namespace} --ignore-not-found --wait=false",
-            )->successful();
+            $cluster = Kubectl::fromPrefix($kubectl);
+            $accepted = $cluster->raw(['delete', 'namespace', $namespace, '--ignore-not-found', '--wait=false'])->ok;
 
             if (! $accepted) {
                 return false;
@@ -399,9 +420,7 @@ trait DeploysClusterTool
             // deletion proceeds regardless of whether we are still watching.
             $deadline = now()->addMinutes(5);
             while (now()->lessThan($deadline)) {
-                $exists = trim(Process::timeout(30)->run(
-                    "{$kubectl} get namespace {$namespace} --no-headers --ignore-not-found",
-                )->output());
+                $exists = trim($cluster->raw(['get', 'namespace', $namespace, '--no-headers', '--ignore-not-found'])->output);
 
                 if ($exists === '') {
                     return true;

@@ -12,7 +12,7 @@ function dataShowFakes(array $deployments): void
         // Empty registry: the fallback is the only path to "installed".
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
         '*get deployment data-directus*' => Process::result(output: ''),
-        "*get deployment -n 'larakube-shared'*" => Process::result(output: implode("\n", $deployments)),
+        '*get deployment -n larakube-shared *' => Process::result(output: implode("\n", $deployments)),
         '*data-secrets-data-test*admin-email*' => Process::result(output: base64_encode('admin@example.com')),
         '*data-secrets-data-test*admin-password*' => Process::result(output: base64_encode('s3cret-pass')),
         '*' => Process::result(output: ''),

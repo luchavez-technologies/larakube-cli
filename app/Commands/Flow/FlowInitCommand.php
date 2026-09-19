@@ -138,22 +138,9 @@ class FlowInitCommand extends Command
 
         $engineName = $this->engineLabel($engine);
 
-        foreach ([
-            "Applying Flow ({$engineName}) manifests..." => fn () => $cluster->apply($manifest),
-            "Waiting for Flow ({$engineName})..." => fn () => $cluster->rolloutStatus($ns, $names->deployment()),
-        ] as $label => $step) {
-            $result = null;
-            $this->withSpin($label, function () use ($step, &$result): bool {
-                $result = $step();
-
-                return $result->ok;
-            });
-
-            if (! $result->ok) {
-                $this->laraKubeError(trim($result->error) ?: "{$label} failed.");
-
-                return 1;
-            }
+        if (! $this->kubectlStep("Applying Flow ({$engineName}) manifests...", fn () => $cluster->apply($manifest))
+            || ! $this->kubectlStep("Waiting for Flow ({$engineName})...", fn () => $cluster->rolloutStatus($ns, $names->deployment()))) {
+            return 1;
         }
 
         $this->registerDeployedTool(ClusterTool::FLOW, $kubectl, $host, extra: ['engine' => $engine]);

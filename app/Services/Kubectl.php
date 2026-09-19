@@ -40,7 +40,16 @@ final readonly class Kubectl
      */
     public static function arg(string $value): string
     {
-        return preg_match('~^[A-Za-z0-9_./:=,@%+-]+$~', $value) === 1 ? $value : escapeshellarg($value);
+        if (preg_match('~^[A-Za-z0-9_./:=,@%+-]+$~', $value) === 1) {
+            return $value;
+        }
+
+        // `name=value`: quote just the value (jsonpath='{...}'); still one word.
+        if (preg_match('~^([A-Za-z0-9_./:,@%+-]+=)(.*)$~s', $value, $m) === 1) {
+            return $m[1].escapeshellarg($m[2]);
+        }
+
+        return escapeshellarg($value);
     }
 
     /**
@@ -176,8 +185,9 @@ final readonly class Kubectl
     /** One decoded value from a Secret, or null when the Secret or key is missing. */
     public function secretValue(string $namespace, string $name, string $key): ?string
     {
-        // A dot in a key is a jsonpath separator unless escaped.
-        $path = str_replace('.', '\.', $key);
+        // A dot in a key is a jsonpath separator unless escaped; idempotent for
+        // callers that already escaped it.
+        $path = str_replace('.', '\.', str_replace('\.', '.', $key));
         $encoded = trim($this->run(['get', 'secret', $name, '-n', $namespace, '-o', "jsonpath={.data.{$path}}"])->output);
 
         return $encoded !== '' ? (string) base64_decode($encoded) : null;

@@ -147,10 +147,9 @@ test('sign:init --vpn-only names the Traefik Middleware for its instance, never 
         $cmd = $process->command;
 
         if (str_contains($cmd, 'apply -f')) {
-            preg_match('/apply -f (\'[^\']*\'|"[^"]*"|\S+)/', $cmd, $m);
-            $path = trim($m[1] ?? '', '\'"');
-            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-vpn-middleware-')) {
-                $appliedVpnMiddlewareManifest = ['path' => $path, 'content' => file_get_contents($path)];
+            // The Middleware arrives on stdin, not as a file.
+            if (str_contains((string) $process->input, 'kind: Middleware')) {
+                $appliedVpnMiddlewareManifest = ['content' => (string) $process->input];
             }
 
             return Process::result(output: 'applied');
