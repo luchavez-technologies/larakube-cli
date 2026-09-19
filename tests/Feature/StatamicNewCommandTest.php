@@ -117,7 +117,7 @@ test('statamic:new command has --fast option', function (): void {
  * A statamic:new instance with its options bound, and the site dir the fake
  * installer "creates" (with $composer and a bun.lock) when `statamic new` runs.
  *
- * @return array{0: App\Commands\Statamic\StatamicNewCommand, 1: string, 2: Spatie\TemporaryDirectory\TemporaryDirectory}
+ * @return array{0: App\Commands\Statamic\StatamicNewCommand, 1: string, 2: TemporaryDirectory}
  */
 function statamicInstaller(array $options = [], ?string $kit = null, ?array $superUser = null, array $composer = ['require' => ['php' => '^8.2']]): array
 {
@@ -219,3 +219,14 @@ test('a starter kit must be named vendor/kit', function (): void {
         $directory->delete();
     }
 })->throws(InvalidArgumentException::class, 'use vendor/kit');
+
+test('the installer runs in a terminal session without crashing', function (): void {
+    // Tests have no TTY, so the interactive path went unexercised and called a
+    // method that doesn't exist on Laravel's Process.
+    [$command, , $directory] = statamicInstaller();
+
+    (new ReflectionMethod($command, 'runInstaller'))->invoke($command, 'docker run --rm -it builder statamic new site', true);
+
+    Illuminate\Support\Facades\Process::assertRan(fn ($process) => str_contains((string) $process->command, 'statamic new site'));
+    $directory->delete();
+});

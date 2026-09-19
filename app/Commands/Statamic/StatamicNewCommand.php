@@ -34,6 +34,7 @@ use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 use Random\RandomException;
+use Symfony\Component\Process\Process as SymfonyProcess;
 
 class StatamicNewCommand extends Command
 {
@@ -398,7 +399,7 @@ class StatamicNewCommand extends Command
     /** Run the installer in the terminal when there is one, so paid-kit prompts reach the user. */
     protected function runInstaller(string $command, bool $interactive): void
     {
-        Process::forever()->tty($interactive && Process::isTtySupported())->run($command, function (string $type, string $output): void {
+        Process::forever()->tty($interactive && SymfonyProcess::isTtySupported())->run($command, function (string $type, string $output): void {
             $this->output->write($output);
         });
     }
