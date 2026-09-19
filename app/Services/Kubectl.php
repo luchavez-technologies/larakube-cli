@@ -138,9 +138,16 @@ final readonly class Kubectl
     }
 
     /** Apply a manifest, sent on stdin. */
-    public function apply(string $yaml, ?string $namespace = null): KubectlResult
+    /**
+     * $serverSide: server-side apply as field manager `larakube`. It keeps no
+     * last-applied annotation, which overflows (256 KB) on large objects such
+     * as a certificate bundle.
+     */
+    public function apply(string $yaml, ?string $namespace = null, bool $serverSide = false): KubectlResult
     {
-        return $this->run(['apply', ...$this->ns($namespace), '-f', '-'], $yaml);
+        $mode = $serverSide ? ['--server-side', '--field-manager=larakube', '--force-conflicts'] : [];
+
+        return $this->run(['apply', ...$mode, ...$this->ns($namespace), '-f', '-'], $yaml);
     }
 
     /** Delete resources, one call per namespace. Missing ones are not an error. */
@@ -199,9 +206,9 @@ final readonly class Kubectl
      * @param  array<string, string>  $data
      * @param  array<string, string>  $labels
      */
-    public function putSecret(string $namespace, string $name, array $data, array $labels = []): KubectlResult
+    public function putSecret(string $namespace, string $name, array $data, array $labels = [], bool $serverSide = false): KubectlResult
     {
-        return $this->apply((string) json_encode([
+        return $this->apply(serverSide: $serverSide, yaml: (string) json_encode([
             'apiVersion' => 'v1',
             'kind' => 'Secret',
             'metadata' => array_filter(['name' => $name, 'namespace' => $namespace, 'labels' => $labels ?: null]),
@@ -214,9 +221,9 @@ final readonly class Kubectl
      * @param  array<string, string>  $data
      * @param  array<string, string>  $labels
      */
-    public function putConfigMap(string $namespace, string $name, array $data, array $labels = []): KubectlResult
+    public function putConfigMap(string $namespace, string $name, array $data, array $labels = [], bool $serverSide = false): KubectlResult
     {
-        return $this->apply((string) json_encode([
+        return $this->apply(serverSide: $serverSide, yaml: (string) json_encode([
             'apiVersion' => 'v1',
             'kind' => 'ConfigMap',
             'metadata' => array_filter(['name' => $name, 'namespace' => $namespace, 'labels' => $labels ?: null]),

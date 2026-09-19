@@ -65,7 +65,7 @@ test('up reconciles an installed Forgejo by applying only its instance Ingress',
         '*get deployment -l larakube-tool=git*' => Process::result(output: 'git-forgejo-git-example-test   1/1   1   1   5d'),
         '*create namespace*' => Process::result(output: 'namespace/larakube-shared configured'),
         'kubectl apply -f *' => function (PendingProcess $process) use (&$applied) {
-            $applied[] = file_get_contents(substr($process->command, strlen('kubectl apply -f ')));
+            $applied[] = (string) $process->input;
 
             return Process::result(output: 'applied');
         },

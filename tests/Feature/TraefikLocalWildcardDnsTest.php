@@ -38,9 +38,9 @@ function traefikLocalDnsFakes(string $corefile = 'import /etc/coredns/custom/*.s
     return [
         '*get configmap coredns*' => Process::result(output: $corefile),
         '*get service traefik*' => Process::result(output: $clusterIp),
-        '*create configmap coredns-custom*' => Process::result(output: 'configmap/coredns-custom created'),
-        '*rollout restart deployment coredns*' => Process::result(output: 'restarted'),
-        '*rollout status deployment coredns*' => Process::result(output: 'rolled out'),
+        '*apply -f -*' => Process::result(output: 'configmap/coredns-custom configured'),
+        '*rollout restart deployment/coredns*' => Process::result(output: 'restarted'),
+        '*rollout status deployment/coredns*' => Process::result(output: 'rolled out'),
     ];
 }
 
@@ -51,15 +51,21 @@ test('the wildcard DNS override points the local TLD at Traefik and rolls CoreDN
 
     expect($command->applyDns('test'))->toBeTrue();
 
-    Process::assertRan(fn ($process): bool => str_contains($process->command, 'create configmap coredns-custom -n kube-system')
+    Process::assertRan(function ($process): bool {
+        $configMap = json_decode((string) $process->input, true);
+
         // The key must be <tld>.server — that suffix is what CoreDNS's
         // `import /etc/coredns/custom/*.server` actually picks up.
-        && str_contains($process->command, 'test.server=test:53 {')
-        && str_contains($process->command, 'answer "{{ .Name }} 60 IN A 10.43.0.9"'));
+        return str_contains($process->command, 'apply -f -')
+            && ($configMap['metadata']['name'] ?? null) === 'coredns-custom'
+            && ($configMap['metadata']['namespace'] ?? null) === 'kube-system'
+            && str_starts_with($configMap['data']['test.server'] ?? '', 'test:53 {')
+            && str_contains($configMap['data']['test.server'], 'answer "{{ .Name }} 60 IN A 10.43.0.9"');
+    });
 
     // Without the roll, CoreDNS keeps serving the old config until its own
     // reload interval elapses, so setup would report success prematurely.
-    Process::assertRan(fn ($process): bool => str_contains($process->command, 'rollout restart deployment coredns -n kube-system'));
+    Process::assertRan(fn ($process): bool => str_contains($process->command, 'rollout restart deployment/coredns -n kube-system'));
 });
 
 test('a cluster whose CoreDNS imports no custom config is skipped, not failed', function (): void {
