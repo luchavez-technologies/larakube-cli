@@ -22,6 +22,7 @@ class CloudflareConnector extends Connector
 
     protected function defaultAuth(): ?TokenAuthenticator
     {
-        return new TokenAuthenticator($this->token);
+        // Public endpoints (the IP ranges) take no token.
+        return $this->token !== '' ? new TokenAuthenticator($this->token) : null;
     }
 }

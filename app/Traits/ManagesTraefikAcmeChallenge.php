@@ -5,9 +5,11 @@ namespace App\Traits;
 use App\Http\Integrations\Cloudflare\CloudflareConnector;
 use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\DeleteDnsRecordRequest;
+use App\Http\Integrations\Cloudflare\Requests\GetIpRangesRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Process;
 use JsonException;
+use Throwable;
 
 /**
  * Which Let's Encrypt challenge a cloud cluster's Traefik uses, and what the
@@ -48,6 +50,34 @@ trait ManagesTraefikAcmeChallenge
         )->output();
 
         return preg_match('/acme\.email=([^"\s,\]]+)/', $args, $m) === 1 ? $m[1] : null;
+    }
+
+    /**
+     * The Cloudflare edge ranges Traefik should trust for forwarded headers,
+     * so apps see the visitor's IP instead of Cloudflare's. Fetched fresh
+     * (Cloudflare changes them now and then); if that fails, the ranges the
+     * running Traefik already trusts, never none while hosts may be proxied.
+     *
+     * @return list<string>
+     */
+    protected function cloudflareTrustedRanges(string $kubectl): array
+    {
+        try {
+            $response = CloudflareConnector::make('')->send(GetIpRangesRequest::make());
+            $body = $response->json();
+            $ranges = [...($body['result']['ipv4_cidrs'] ?? []), ...($body['result']['ipv6_cidrs'] ?? [])];
+            if ($response->successful() && ($body['success'] ?? false) === true && $ranges !== []) {
+                return array_values($ranges);
+            }
+        } catch (Throwable) {
+            // Fall through to what's already live.
+        }
+
+        $args = Process::run(
+            "{$kubectl} get deployment traefik -n traefik -o jsonpath='{.spec.template.spec.containers[0].args}' --ignore-not-found",
+        )->output();
+
+        return preg_match('/forwardedHeaders\.trustedIPs=([^"\s\]]+)/', $args, $m) === 1 ? explode(',', $m[1]) : [];
     }
 
     /**

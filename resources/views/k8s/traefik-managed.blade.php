@@ -138,6 +138,13 @@ spec:
             - --accesslog
             - --entrypoints.web.Address=:80
             - --entrypoints.websecure.Address=:443
+@if(! empty($trustedIps))
+            {{-- Cloudflare's edge: honor its X-Forwarded-For so apps see the
+                 visitor. ipAllowList (--vpn-only) still matches the real
+                 connection address, so this can't fake a VPN IP. --}}
+            - --entrypoints.web.forwardedHeaders.trustedIPs={{ implode(',', $trustedIps) }}
+            - --entrypoints.websecure.forwardedHeaders.trustedIPs={{ implode(',', $trustedIps) }}
+@endif
             - --entrypoints.websecure.http.tls=true
             - --providers.kubernetesingress
             - --providers.kubernetesingress.ingressendpoint.publishedservice=traefik/traefik

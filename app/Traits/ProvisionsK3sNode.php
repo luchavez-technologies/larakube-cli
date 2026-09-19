@@ -455,7 +455,10 @@ BASH;
             // Let's Encrypt account, or drop ACME when they have no email set.
             'email' => $this->liveTraefikAcmeEmail($kubectl) ?? $this->getEmail(),
             'ip' => $ip,
-            'dnsChallenge' => $dnsChallenge ?? $this->traefikUsesDnsChallenge($kubectl),
+            'dnsChallenge' => $useDns = $dnsChallenge ?? $this->traefikUsesDnsChallenge($kubectl),
+            // A Cloudflare cluster may have proxied hosts: trust Cloudflare's
+            // edge for X-Forwarded-For so apps see the visitor's IP.
+            'trustedIps' => $useDns ? $this->cloudflareTrustedRanges($kubectl) : [],
         ])->render());
         $ok = $this->applyAndVerifyRollout($kubectl, $tmpInstall, $namespace, 'traefik', extraApplyFlags: '--validate=false');
         $temporaryDirectory->delete();
