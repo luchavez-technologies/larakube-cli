@@ -6,6 +6,7 @@ use App\Enums\ClusterTool;
 use App\Http\Integrations\Cloudflare\CloudflareConnector;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Services\Kubectl;
+use App\Services\ToolRegistry;
 use Closure;
 use Illuminate\Support\Arr;
 use RuntimeException;
@@ -24,6 +25,12 @@ trait ChecksCloudflareProxy
 
     /** A default-on --proxied that couldn't work: the host stays DNS-only this run. */
     protected bool $proxyDowngraded = false;
+
+    /** The registry's remembered proxy choice for this host (tool:proxy / a past --proxied), used when --proxied isn't given. */
+    protected ?bool $recordedProxy = null;
+
+    /** What this run rendered, so registration can remember it. */
+    protected ?bool $lastProxied = null;
 
     /** Why $tool can never be proxied, or null. */
     public static function proxyRefusal(ClusterTool $tool, bool $vpnOnly): ?string
@@ -45,13 +52,25 @@ trait ChecksCloudflareProxy
      */
     protected function guardRequestedProxy(ClusterTool $tool, string $env, ?string $kubectl, string $host): void
     {
-        if ($env === 'local' || ! $this->hasOption('proxied') || ! filter_var($this->option('proxied'), FILTER_VALIDATE_BOOLEAN)) {
+        if ($env === 'local' || ! $this->hasOption('proxied')) {
             return;
         }
 
-        // Asked for, or on by default (Link, Data)? A default that can't work
-        // must not block the install: the host stays DNS-only and says why.
+        // Without --proxied on the command line, a re-run keeps what the host
+        // was set to (tool:proxy / tool:unproxy), never silently undoing it.
         $explicit = $this->input->hasParameterOption('--proxied');
+        if (! $explicit && $kubectl !== null) {
+            $recorded = ToolRegistry::on($kubectl)->entryForHost($tool, $host)['proxied'] ?? null;
+            $this->recordedProxy = is_bool($recorded) ? $recorded : null;
+        }
+
+        $requested = $this->recordedProxy ?? filter_var($this->option('proxied'), FILTER_VALIDATE_BOOLEAN);
+        if (! $requested) {
+            return;
+        }
+
+        // Asked for explicitly, or on by default / remembered? Only an explicit
+        // request blocks; otherwise the host stays DNS-only this run and says why.
         $vpnOnly = $this->hasOption('vpn-only') && (bool) $this->option('vpn-only');
 
         $reason = self::proxyRefusal($tool, $vpnOnly);

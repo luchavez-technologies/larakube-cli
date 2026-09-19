@@ -44,6 +44,8 @@ class InstanceData extends Data
          * cause the wrong engine's resources to be deleted or preserved.
          */
         public ?string $engine = null,
+        /** Behind Cloudflare's proxy (tool:proxy, or --proxied); null when never set. */
+        public ?bool $proxied = null,
         /** ISO-8601 timestamp. */
         public ?string $installedAt = null,
         /** ISO-8601 timestamp. */

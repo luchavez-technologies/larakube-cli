@@ -5,7 +5,10 @@ Stage B ✅ (`ChecksCloudflareProxy`): every tool's `--proxied` runs the checks
 where its host is resolved (`resolveToolHost()` / `resolveInstanceAwareHost()`),
 before anything deploys; `cloud:proxy` shares them and gains the host-depth
 check. Explicit `--proxied` refuses; a default-on proxy (Link, Data) falls
-back to DNS-only with a warning. Stage C not started.
+back to DNS-only with a warning. Stage C ✅: `tool:proxy` / `tool:unproxy`
+annotate the instance's Ingresses and record `proxied` in the registry;
+`{tool}:init` without `--proxied` keeps the recorded choice. Unverified live:
+`plans/active/tool-proxy-testing.md`.
 **Builds on:** `tls:init` (DNS challenge) and `cloud:proxy` (apps), both shipped.
 
 ## Why

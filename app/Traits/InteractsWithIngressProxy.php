@@ -37,9 +37,14 @@ trait InteractsWithIngressProxy
     public function resolveProxied(bool $isLocal): bool
     {
         if ($isLocal || $this->proxyDowngraded) {
-            return false;
+            return $this->lastProxied = false;
         }
 
-        return filter_var($this->option('proxied'), FILTER_VALIDATE_BOOLEAN);
+        // A remembered choice applies only when --proxied wasn't given this run.
+        if ($this->recordedProxy !== null && ! $this->input->hasParameterOption('--proxied')) {
+            return $this->lastProxied = $this->recordedProxy;
+        }
+
+        return $this->lastProxied = filter_var($this->option('proxied'), FILTER_VALIDATE_BOOLEAN);
     }
 }

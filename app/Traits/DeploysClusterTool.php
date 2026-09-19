@@ -274,6 +274,12 @@ trait DeploysClusterTool
         $instance ??= $host !== null ? $tool->instanceSlugFromHost($host) : null;
         $metadata = $host !== null ? ['host' => $host] : [];
 
+        // Remember the proxy choice this install rendered, so a re-run without
+        // --proxied keeps it.
+        if (property_exists($this, 'lastProxied') && $this->lastProxied !== null) {
+            $metadata['proxied'] = $this->lastProxied;
+        }
+
         $registered = $this->registerTool($kubectl, $tool, array_merge($metadata, $extra), $instance);
 
         // Issue the local cert HERE, from the tool-install path, because this
