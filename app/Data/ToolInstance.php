@@ -4,6 +4,7 @@ namespace App\Data;
 
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
+use App\Services\ToolRegistry;
 use Illuminate\Support\Facades\Process;
 use LogicException;
 
@@ -59,15 +60,10 @@ final readonly class ToolInstance
      */
     public static function registered(string $kubectl, ClusterTool $tool): array
     {
-        $encoded = trim(Process::run(
-            "{$kubectl} get secret larakube-tools-registry -n larakube-shared -o jsonpath=".escapeshellarg('{.data.registry\.json}'),
-        )->output());
-        $rows = json_decode((string) base64_decode($encoded), true);
-
         $instances = [];
-        foreach (is_array($rows) ? $rows : [] as $row) {
+        foreach (ToolRegistry::on($kubectl)->entries($tool) as $row) {
             $slug = (string) ($row['instance'] ?? '');
-            if (($row['tool'] ?? null) === $tool->value && $slug !== '') {
+            if ($slug !== '') {
                 $instances[] = new self($tool, (string) ($row['host'] ?? ''), $slug, null);
             }
         }

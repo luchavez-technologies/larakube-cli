@@ -5,181 +5,101 @@ namespace App\Traits;
 use App\Data\InstanceData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
-use Illuminate\Support\Carbon;
+use App\Services\ToolRegistry;
 use Illuminate\Support\Facades\Process;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
+/**
+ * Commands' view of the tool registry. The data lives in ToolRegistry; this
+ * keeps what talks to the user (messages, ambiguity errors) and the live
+ * cluster probes.
+ */
 trait InteractsWithToolRegistry
 {
     use ReadsClusterSecrets;
 
-    /**
-     * Per-run memo of the tool registry, keyed by the kubectl prefix (so two
-     * contexts don't share a cache). A single command resolves the registry
-     * many times — e.g. `mail:wire` fired the same `get secret
-     * larakube-tools-registry` read 25× — and the registry can't change under it
-     * except through saveToolRegistry(), which clears this. Only the read is
-     * memoized; live-cluster probes stay live.
-     *
-     * @var array<string, list<array<string, mixed>>>
-     */
-    private array $registeredToolsCache = [];
+    /** One registry per cluster for the run, so a command reads it once. @var array<string, ToolRegistry> */
+    private array $toolRegistries = [];
 
     /** @var array<string, list<string>> */
     private array $clusterDeploymentNamesCache = [];
 
-    /**
-     * One flat, self-describing list across every tool and every instance —
-     * each entry carries its own `tool` field rather than being nested under
-     * a tool-name key, so "all instances of X" is a filter, not a lookup.
-     *
-     * @return list<array<string, mixed>>
-     */
-    protected function getRegisteredTools(string $kubectl): array
+    protected function toolRegistry(string $kubectl): ToolRegistry
     {
-        if (array_key_exists($kubectl, $this->registeredToolsCache)) {
-            return $this->registeredToolsCache[$kubectl];
-        }
-
-        $json = $this->readClusterSecretKey($kubectl, 'larakube-shared', 'larakube-tools-registry', 'registry.json');
-
-        $decoded = $json === null ? [] : json_decode($json, true);
-
-        return $this->registeredToolsCache[$kubectl] = is_array($decoded) ? array_values($decoded) : [];
+        return $this->toolRegistries[$kubectl] ??= ToolRegistry::on($kubectl);
     }
 
-    /**
-     * Every instance identifier of $tool currently registered.
-     *
-     * @return list<string>
-     */
+    /** @return list<array<string, mixed>> */
+    protected function getRegisteredTools(string $kubectl): array
+    {
+        return $this->toolRegistry($kubectl)->rows();
+    }
+
+    /** @return list<string> */
     protected function getToolInstances(string $kubectl, ClusterTool $tool): array
     {
-        $entries = array_filter($this->getRegisteredTools($kubectl), fn ($e) => ($e['tool'] ?? null) === $tool->value);
-
-        return array_column($entries, 'instance');
+        return $this->toolRegistry($kubectl)->instanceSlugs($tool);
     }
 
     protected function findToolInstanceEntry(string $kubectl, ClusterTool $tool, ?string $instance = null): ?array
     {
-        return $this->resolveMatchingEntry($this->getRegisteredTools($kubectl), $tool, $instance);
+        return $this->toolRegistry($kubectl)->entry($tool, $instance);
     }
 
-    /** DATA's lookup path — its real identity is the host, not an operator-typed instance name. */
-    protected function findToolInstanceEntryByHost(string $kubectl, ClusterTool $tool, string $host): ?array
-    {
-        foreach ($this->getRegisteredTools($kubectl) as $entry) {
-            if (($entry['tool'] ?? null) === $tool->value && ($entry['host'] ?? null) === $host) {
-                return $entry;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Every instance identifier registered for the host a --domain/--host
-     * target refers to. Host identity wins over slug derivation (idempotency
-     * standard — a target that maps to an existing entry must update THAT
-     * entry in place, never spawn a derived duplicate slug next to it):
-     * all registered entries whose host matches are returned, so a duplicate
-     * registration (same host under two instances, e.g. the DATA incident of
-     * 2026-08-09) is surfaced to removal commands as "remove everything
-     * serving this host". Only hosts with no registered entry at all derive
-     * a fresh slug.
-     *
-     * @return list<string>
-     */
+    /** @return list<string> */
     protected function resolveInstanceTargetsForDomain(string $kubectl, ClusterTool $tool, string $domain): array
     {
-        $domain = trim($domain);
-        if ($domain === '' || $domain === 'all') {
-            $matches = array_values(array_filter(
-                $this->getRegisteredTools($kubectl),
-                fn (array $e) => ($e['tool'] ?? null) === $tool->value,
-            ));
-            if ($matches !== []) {
-                return array_values(array_unique(array_map(
-                    fn (array $e) => (string) ($e['instance'] ?? ''),
-                    $matches,
-                )));
-            }
-
-            // Never registered at all, and no host given to derive a slug
-            // from: there is nothing real to return. Every actual instance
-            // identifier is a real, non-empty, host-derived slug
-            // (instanceSlugFromHost()) — a tool's FIRST instance is derived
-            // exactly the same way as its second, once its :init flow has
-            // resolved a host (see resolveInstanceAwareHost()). Callers
-            // reaching this branch are about to fail an isToolRegistered()
-            // check immediately afterward regardless of what's returned
-            // here, so '' — meaning "unknown," never a real identity — is
-            // honest, not a sentinel for "the default instance."
-            return [''];
-        }
-
-        $host = $this->normalizeTargetHost($domain);
-
-        $matches = array_values(array_filter(
-            $this->getRegisteredTools($kubectl),
-            fn (array $e) => ($e['tool'] ?? null) === $tool->value && ($e['host'] ?? null) === $host,
-        ));
-
-        $instances = array_values(array_unique(array_map(
-            fn (array $e) => (string) ($e['instance'] ?? ''),
-            $matches,
-        )));
-
-        if ($instances !== []) {
-            return $instances;
-        }
-
-        // The operator named a specific host and nothing is registered for
-        // it yet: derive a real slug via instanceSlugFromHost() — every
-        // host, including a tool's own conventional default one, always
-        // derives a real instance slug (ADR 0012, amended 2026-08-15; no
-        // bare/'main' escape hatch survives that amendment or this pass).
-        return [$tool->instanceSlugFromHost($host)];
+        return $this->toolRegistry($kubectl)->targetsForHost($tool, $domain);
     }
 
-    /**
-     * The single instance identifier a --domain/--host target refers to —
-     * the first entry of resolveInstanceTargetsForDomain() (registered
-     * entries first, then the derived slug). Callers that must act on every
-     * entry serving a host (e.g. teardown) use the plural variant, which
-     * deliberately still surfaces a stale '' entry so cleanup can find it.
-     *
-     * This singular resolver prefers a real, non-empty entry over a stale ''
-     * one when both are registered for the host, rather than blindly taking
-     * index 0 — '' is never a real identity (see
-     * resolveInstanceTargetsForDomain()'s no-match branch), just a registry
-     * entry that predates ADR 0012's amendment eliminating the bare/'main'
-     * sentinel. Confirmed live 2026-08-23: MAIL's own entry (registered
-     * 2026-07-22, before host-derived instances existed) recorded instance:
-     * '' and nothing had ever corrected it since — every caller of this
-     * singular resolver (secrets:wire, secrets:rotate, mail:init's own
-     * naming) kept resolving to that stale '' and targeting bare resource
-     * names against an install that had already been renamed to a real slug,
-     * with no way to recover short of a fully successful re-registration.
-     * Falls back to deriving a fresh slug if every match is stale.
-     */
     protected function resolveInstanceForDomain(string $kubectl, ClusterTool $tool, string $domain): string
     {
-        $targets = $this->resolveInstanceTargetsForDomain($kubectl, $tool, $domain);
-        $real = array_values(array_filter($targets, fn (string $instance) => $instance !== ''));
-        if ($real !== []) {
-            return $real[0];
-        }
+        return $this->toolRegistry($kubectl)->instanceForHost($tool, $domain);
+    }
 
-        // Every match found (if any) was a stale '' entry — as good as no
-        // match. Derive a fresh slug the same way the plural resolver's own
-        // no-match branch does, rather than propagating the stale value.
-        $host = trim($domain);
-        if ($host === '' || $host === 'all') {
-            return '';
-        }
+    protected function isToolRegistered(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
+    {
+        return $this->toolRegistry($kubectl)->has($tool, $instance);
+    }
 
-        return $tool->instanceSlugFromHost($this->normalizeTargetHost($host));
+    protected function registerTool(string $kubectl, ClusterTool $tool, array $metadata = [], ?string $instance = null): bool
+    {
+        return $this->toolRegistry($kubectl)->register($tool, $metadata, $instance);
+    }
+
+    protected function getToolInstanceData(string $kubectl, ClusterTool $tool, ?string $instance = null): ?InstanceData
+    {
+        return $this->toolRegistry($kubectl)->instance($tool, $instance);
+    }
+
+    /** @return list<InstanceData> */
+    protected function getAllToolInstanceData(string $kubectl, ClusterTool $tool): array
+    {
+        return $this->toolRegistry($kubectl)->instances($tool);
+    }
+
+    protected function getToolHost(string $kubectl, ClusterTool $tool, ?string $instance = null): ?string
+    {
+        return $this->toolRegistry($kubectl)->host($tool, $instance);
+    }
+
+    protected function getToolAliasHosts(string $kubectl, ClusterTool $tool, ?string $instance = null): array
+    {
+        return $this->toolRegistry($kubectl)->aliases($tool, $instance);
+    }
+
+    protected function addToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, ?string $instance = null): bool
+    {
+        return $this->toolRegistry($kubectl)->addAlias($tool, $aliasHost, $instance);
+    }
+
+    protected function removeToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, ?string $instance = null): bool
+    {
+        return $this->toolRegistry($kubectl)->removeAlias($tool, $aliasHost, $instance);
+    }
+
+    protected function unregisterTool(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
+    {
+        return $this->toolRegistry($kubectl)->unregister($tool, $instance);
     }
 
     /**
@@ -234,55 +154,6 @@ trait InteractsWithToolRegistry
         return ToolInstance::normalizeHost($domain);
     }
 
-    protected function isToolRegistered(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
-    {
-        return $this->findToolInstanceEntry($kubectl, $tool, $instance) !== null;
-    }
-
-    /**
-     * Record (or update) a tool instance in the cluster registry.
-     *
-     * Self-healing on every touch: when an existing row is matched (exactly,
-     * or via resolveMatchingIndex()'s sole-entry fallback), its stored
-     * `instance` value is stamped to the current $instance every time —
-     * not just merged metadata. This is what lets a row carrying a stale
-     * pre-migration value (an old '' /'main') correct itself the next time
-     * anything registers/updates that tool, with no separate migration step.
-     */
-    protected function registerTool(string $kubectl, ClusterTool $tool, array $metadata = [], ?string $instance = null): bool
-    {
-        $list = $this->getRegisteredTools($kubectl);
-        // Never let an absent/empty value clobber a known one.
-        $metadata = array_filter($metadata, fn ($v) => $v !== null && $v !== '');
-        $now = Carbon::now()->toIso8601String();
-
-        $index = $this->resolveMatchingIndex($list, $tool, $instance, selfHeal: true);
-
-        if ($index !== null) {
-            // Only stamp 'instance' when the caller actually gave one — a
-            // null $instance means "no explicit preference, found via the
-            // sole-entry fallback," not "clear this row's real slug back
-            // to unknown."
-            $instanceUpdate = $instance !== null ? ['instance' => $instance] : [];
-            $list[$index] = array_merge($list[$index], $metadata, $instanceUpdate, ['updatedAt' => $now]);
-        } else {
-            $list[] = array_merge(
-                ['tool' => $tool->value, 'instance' => $instance, 'aliases' => [], 'installedAt' => $now],
-                $metadata,
-                ['updatedAt' => $now],
-            );
-        }
-
-        return $this->saveToolRegistry($kubectl, $list);
-    }
-
-    protected function getToolInstanceData(string $kubectl, ClusterTool $tool, ?string $instance = null): ?InstanceData
-    {
-        $entry = $this->findToolInstanceEntry($kubectl, $tool, $instance);
-
-        return $entry === null ? null : InstanceData::from($entry);
-    }
-
     /**
      * Explain why $tool can't be targeted: nothing installed, no instance at
      * the --domain given (naming the hosts that are registered), or registered
@@ -310,98 +181,6 @@ trait InteractsWithToolRegistry
         }
 
         $this->line('  <fg=gray>Installed at:</> '.implode(', ', array_map(fn (string $host) => "<fg=blue>{$host}</>", $hosts)).' <fg=gray>(pass one as --domain=)</>');
-    }
-
-    /** @return list<InstanceData> */
-    protected function getAllToolInstanceData(string $kubectl, ClusterTool $tool): array
-    {
-        $entries = array_filter($this->getRegisteredTools($kubectl), fn ($e) => ($e['tool'] ?? null) === $tool->value);
-
-        return array_values(array_map(fn (array $e) => InstanceData::from($e), $entries));
-    }
-
-    protected function getToolHost(string $kubectl, ClusterTool $tool, ?string $instance = null): ?string
-    {
-        return $this->findToolInstanceEntry($kubectl, $tool, $instance)['host'] ?? null;
-    }
-
-    protected function getToolAliasHosts(string $kubectl, ClusterTool $tool, ?string $instance = null): array
-    {
-        return $this->findToolInstanceEntry($kubectl, $tool, $instance)['aliases'] ?? [];
-    }
-
-    protected function addToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, ?string $instance = null): bool
-    {
-        $list = $this->getRegisteredTools($kubectl);
-        $index = $this->resolveMatchingIndex($list, $tool, $instance);
-
-        if ($index === null) {
-            return false;
-        }
-
-        $existing = $list[$index]['aliases'] ?? [];
-        if (! in_array($aliasHost, $existing, true)) {
-            $existing[] = $aliasHost;
-        }
-        $list[$index]['aliases'] = array_values(array_unique($existing));
-
-        return $this->saveToolRegistry($kubectl, $list);
-    }
-
-    protected function removeToolAliasHost(string $kubectl, ClusterTool $tool, string $aliasHost, ?string $instance = null): bool
-    {
-        $list = $this->getRegisteredTools($kubectl);
-        $index = $this->resolveMatchingIndex($list, $tool, $instance);
-
-        if ($index === null) {
-            return true;
-        }
-
-        $existing = $list[$index]['aliases'] ?? [];
-        $list[$index]['aliases'] = array_values(array_filter($existing, fn ($h) => $h !== $aliasHost));
-
-        return $this->saveToolRegistry($kubectl, $list);
-    }
-
-    protected function unregisterTool(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
-    {
-        $list = $this->getRegisteredTools($kubectl);
-        $index = $this->resolveMatchingIndex($list, $tool, $instance);
-
-        if ($index === null) {
-            return true;
-        }
-
-        unset($list[$index]);
-
-        return $this->saveToolRegistry($kubectl, array_values($list));
-    }
-
-    /**
-     * Write via a temp file + `--from-file`, matching ConfigData::backupToCluster()'s
-     * established pattern rather than an inline `--from-literal=<escaped-json>` —
-     * avoids inline-shell-argument length/escaping concerns for what can now be
-     * a large blob (every tool's every instance in one list).
-     */
-    protected function saveToolRegistry(string $kubectl, array $registry): bool
-    {
-        Process::run("{$kubectl} create namespace larakube-shared --dry-run=client -o yaml | {$kubectl} apply -f -");
-
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmpFile = $temporaryDirectory->path().'/registry.json';
-        file_put_contents($tmpFile, json_encode(array_values($registry)));
-
-        $cmd = "{$kubectl} create secret generic larakube-tools-registry -n larakube-shared "
-            ."--from-file=registry.json={$tmpFile} "
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-
-        $result = Process::run($cmd)->successful();
-        $temporaryDirectory->delete();
-
-        // The registry just changed; drop the memo so the next read re-fetches.
-        $this->registeredToolsCache = [];
-
-        return $result;
     }
 
     /**
@@ -509,92 +288,5 @@ trait InteractsWithToolRegistry
         }
 
         return null;
-    }
-
-    /**
-     * The one place that decides "which registry row is $tool (at $instance,
-     * if given)" — every instance identifier is a real, non-empty, host-
-     * derived slug now (ClusterTool::instanceSlugFromHost()); there is no
-     * '' /null/'main' sentinel value to recognize as "the default instance"
-     * anymore. `null` means "no explicit preference" at the CALL site, not
-     * a stored value: it resolves to the tool's sole entry when there's
-     * exactly one (true for every tool that hasn't deliberately grown a
-     * second instance), and refuses to guess when there are 2+ — same
-     * ambiguity-safe shape as resolveInstanceForTool() below.
-     *
-     * $selfHeal (default false) governs what happens when a NON-NULL
-     * $instance is given but matches nothing exactly: strict by default —
-     * an operator asking for a specific instance that doesn't exist should
-     * get "not found," not a silent match against an unrelated row. Only
-     * registerTool() opts into $selfHeal: true, where it deliberately means
-     * "there's exactly one existing row for this tool — even if its stored
-     * value is stale (a leftover '' /'main' from before this design, or an
-     * older slug that doesn't textually match a freshly re-derived one),
-     * that's still the same install, so correct it in place rather than
-     * spawn a duplicate." Every other caller (reads, alias mutation,
-     * unregistration) stays strict.
-     *
-     * @param  list<array<string, mixed>>  $entries
-     * @return array<string, mixed>|null
-     */
-    private function resolveMatchingEntry(array $entries, ClusterTool $tool, ?string $instance, bool $selfHeal = false): ?array
-    {
-        $index = $this->resolveMatchingIndex($entries, $tool, $instance, $selfHeal);
-
-        return $index === null ? null : $entries[$index];
-    }
-
-    /** Index variant of resolveMatchingEntry() — for callers that mutate or remove the matched row in place. */
-    private function resolveMatchingIndex(array $entries, ClusterTool $tool, ?string $instance, bool $selfHeal = false): ?int
-    {
-        $forToolIndexes = [];
-        foreach ($entries as $i => $e) {
-            if (($e['tool'] ?? null) === $tool->value) {
-                $forToolIndexes[] = $i;
-            }
-        }
-
-        if ($instance !== null) {
-            foreach ($forToolIndexes as $i) {
-                if (($entries[$i]['instance'] ?? null) === $instance) {
-                    return $i;
-                }
-            }
-
-            if (! $selfHeal) {
-                return null;
-            }
-
-            // Self-heal ONLY a legacy sentinel. The sole row for a tool is not
-            // automatically "the same install": a row carrying a real,
-            // different, host-derived slug is a DIFFERENT instance, and
-            // overwriting it silently deletes that instance's registration.
-            //
-            // Confirmed live: `tool:list --refresh` wrote three PocketBase
-            // instances in a loop and reported "3 rows written", but each write
-            // healed onto the previous one — only the last survived. The same
-            // path is how a cluster's data rows disappeared while all three
-            // Deployments kept running.
-            if (count($forToolIndexes) === 1) {
-                $stored = $entries[$forToolIndexes[0]]['instance'] ?? null;
-
-                return $this->isLegacyInstanceSentinel($stored) ? $forToolIndexes[0] : null;
-            }
-
-            return null;
-        }
-
-        return count($forToolIndexes) === 1 ? $forToolIndexes[0] : null;
-    }
-
-    /**
-     * A pre-ADR-0012 instance value: '' / null / 'main'. Every instance written
-     * since is a real host-derived slug (ClusterTool::instanceSlugFromHost()),
-     * so anything else identifies a specific install and must not be healed
-     * over.
-     */
-    private function isLegacyInstanceSentinel(?string $instance): bool
-    {
-        return $instance === null || $instance === '' || $instance === 'main';
     }
 }

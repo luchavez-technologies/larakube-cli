@@ -22,13 +22,13 @@ use App\Contracts\RequiresPhpExtensions;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Services\Kubectl;
+use App\Services\ToolRegistry;
 use App\Traits\DerivesHostsFromServices;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithMeet;
 use App\Traits\ProvidesCommandOptions;
 use App\Traits\ProvidesSelectOptions;
 use BackedEnum;
-use Illuminate\Support\Facades\Process;
 
 enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents, HasCommandOptions, HasComposerDependencies, HasDependencies, HasEnvironmentVariables, HasHiddenComponents, HasHosts, HasJsDependencies, HasKubernetesFiles, HasLabel, HasLifecycleHooks, HasPodName, HasPromptableHosts, HasReloadCommand, HasSelectOptions, RequiresPhpExtensions
 {
@@ -594,26 +594,9 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
         ];
 
         // Prefer the host Meet is actually serving over the local-dev guess.
-        $host = trim(Process::run(
-            "{$kubectl} get secret larakube-tools-registry -n {$ns} -o jsonpath=".escapeshellarg('{.data.registry\.json}'),
-        )->output());
-
-        if ($host !== '') {
-            $decoded = json_decode((string) base64_decode($host), true);
-            $meetHost = null;
-
-            if (is_array($decoded)) {
-                foreach ($decoded as $entry) {
-                    if (($entry['tool'] ?? null) === 'meet' && ($entry['instance'] ?? '') === '') {
-                        $meetHost = $entry['host'] ?? null;
-                        break;
-                    }
-                }
-            }
-
-            if (is_string($meetHost) && $meetHost !== '') {
-                $values['LIVEKIT_URL'] = "wss://{$meetHost}";
-            }
+        $meetHost = ToolRegistry::on($kubectl)->host(ClusterTool::MEET);
+        if ($meetHost !== null && $meetHost !== '') {
+            $values['LIVEKIT_URL'] = "wss://{$meetHost}";
         }
 
         return $values;

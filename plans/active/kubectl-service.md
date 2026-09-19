@@ -4,7 +4,7 @@
 `Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
 `~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
 copies). Stage 2b ✅ (`forKubeconfig()`; only `Kubectl` sets KUBECONFIG for a
-kubectl command, test-enforced). Stage 3 ✅. Stages 4 and 5 not started.
+kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress.
 
 
 Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned
@@ -119,6 +119,15 @@ moves onto it and stops parsing command lines.
    messages (`reportToolNotInstalled()`, the `:remove` picker) stay in
    command traits: the service never talks to the user. Callers move over
    trait method by trait method; the trait is deleted when empty.
+
+   **Stage 5 result:** `ToolRegistry::on($cluster)` owns every registry read
+   and write (rows, sole-row resolution, host → instance, register with
+   legacy-only self-heal, aliases, unregister); `InteractsWithToolRegistry`
+   keeps one-line delegates plus what talks to the user and the live probes.
+   `ToolInstance::registered()` and the Meet lookup read through it (the Meet
+   lookup only matched a legacy `''` instance, so `LIVEKIT_URL` never came
+   from the registry). Transport strings are unchanged, so the 48 test files
+   that fake them still pass; new tests use `FakeToolRegistry::install()`.
 
 ## Rules
 - Never put a secret value in argv: `putSecret()` and `exec(..., stdin:)` only.

@@ -1,42 +1,12 @@
 <?php
 
 use App\Enums\ClusterTool;
-use App\Traits\InteractsWithToolRegistry;
+use Tests\Support\FakeToolRegistry;
 
-/**
- * Registry writes go through a temp file + kubectl; capture the payload so the
- * assertions are about what would actually be stored.
- */
-function registryHolder(array $initial): object
+/** An in-memory registry, so the assertions are about exactly what is stored. */
+function registryHolder(array $initial): FakeToolRegistry
 {
-    return new class($initial)
-    {
-        use InteractsWithToolRegistry;
-
-        public array $stored;
-
-        public function __construct(array $initial)
-        {
-            $this->stored = $initial;
-        }
-
-        public function register(ClusterTool $tool, array $metadata, ?string $instance): bool
-        {
-            return $this->registerTool('kubectl', $tool, $metadata, $instance);
-        }
-
-        protected function getRegisteredTools(string $kubectl): array
-        {
-            return $this->stored;
-        }
-
-        protected function saveToolRegistry(string $kubectl, array $registry): bool
-        {
-            $this->stored = array_values($registry);
-
-            return true;
-        }
-    };
+    return FakeToolRegistry::install($initial);
 }
 
 test('registering several instances of one tool keeps every one of them', function (): void {

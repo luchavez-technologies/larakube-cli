@@ -106,3 +106,17 @@ test('when Meet is installed the project gets its own consumer key', function ()
         // The deployed host wins over the local-dev guess.
         ->and($values['LIVEKIT_URL'])->toBe('wss://meet.example.com');
 });
+
+test('the deployed Meet host is found under its real, host-derived instance', function (): void {
+    Process::fake([
+        '*part-of=meet*' => Process::result(output: 'meet-livekit 1/1'),
+        '*get secret meet-keys*' => Process::result(output: base64_encode(json_encode([]))),
+        '*create secret*' => Process::result(output: 'applied'),
+        '*apply -f *' => Process::result(output: 'applied'),
+    ]);
+    Tests\Support\FakeToolRegistry::install([['tool' => 'meet', 'instance' => 'meet-example-com', 'host' => 'meet.example.com']]);
+
+    $values = (new ReflectionMethod(LaravelFeature::MEET, 'resolveMeetCredentials'))->invoke(LaravelFeature::MEET, meetFeatureConfig());
+
+    expect($values['LIVEKIT_URL'])->toBe('wss://meet.example.com');
+});

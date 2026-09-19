@@ -153,6 +153,8 @@ abstract class TestCase extends BaseTestCase
 
     protected function tearDown(): void
     {
+        Support\FakeToolRegistry::uninstall();
+
         if (class_exists(Mockery::class)) {
             Mockery::close();
         }
