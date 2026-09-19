@@ -749,6 +749,11 @@ kind: Deployment
 metadata:
   name: {{ $grafanaName }}
   namespace: larakube-shared
+@unless($noPlex ?? false)
+  annotations:
+    {{-- Restart when monitor-secrets changes (an OpenBao password rotation). --}}
+    reloader.stakater.com/auto: "true"
+@endunless
 spec:
   replicas: 1
   selector:

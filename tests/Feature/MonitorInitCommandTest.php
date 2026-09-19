@@ -380,3 +380,25 @@ test('monitoring shared blade view conditionally renders optional components bas
         ->toContain('grafana/tempo:2.10.7')
         ->toContain('mountPath: /var/lib/grafana/dashboards/');
 });
+
+test('Grafana restarts when its rotated Commons password changes, and only when it uses one', function (): void {
+    $render = fn (bool $noPlex) => view('k8s.monitoring.shared', [
+        'host' => 'grafana.dev.test',
+        'instance' => 'grafana-dev-test',
+        'grafanaPassword' => 'secret123',
+        'dbPassword' => 'db-secret123',
+        'plexNamespace' => 'larakube-plex',
+        'isLocal' => false,
+        'vpnOnly' => false,
+        'withLogs' => false,
+        'withTraces' => false,
+        'noPlex' => $noPlex,
+    ])->render();
+
+    $grafana = fn (string $manifest) => collect(explode("\n---\n", $manifest))
+        ->first(fn (string $doc) => str_contains($doc, 'kind: Deployment') && str_contains($doc, 'name: monitor-grafana-grafana-dev-test'));
+
+    expect(Symfony\Component\Yaml\Yaml::parse($grafana($render(false)))['metadata']['annotations'])
+        ->toBe(['reloader.stakater.com/auto' => 'true'])
+        ->and(Symfony\Component\Yaml\Yaml::parse($grafana($render(true)))['metadata'])->not->toHaveKey('annotations');
+});
