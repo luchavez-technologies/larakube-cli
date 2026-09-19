@@ -220,3 +220,27 @@ test('notes:init errors instead of guessing when multiple instances are already 
         '--no-interaction' => true,
     ])->run();
 })->throws(RuntimeException::class, 'pass --domain=<host>');
+
+test('notes:init unattended with no login provider refuses with the fix, instead of crashing on a prompt', function (): void {
+    $spec = notesCommonsSpec(null);
+    Process::fake(function ($process) use ($spec) {
+        $cmd = (string) $process->command;
+
+        return match (true) {
+            str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode($spec)),
+            str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
+            str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
+            // No saved OIDC credentials, and no Zitadel on the cluster.
+            default => Process::result(output: ''),
+        };
+    });
+
+    $this->artisan(NotesInitCommand::class, [
+        'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
+        '--no-interaction' => true,
+    ])
+        ->expectsOutputToContain('Outline needs a login provider')
+        ->assertExitCode(1);
+});

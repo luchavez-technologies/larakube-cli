@@ -45,7 +45,7 @@ function toolNamingHarnessPending(): array
 {
     return [
         'dns' => 'not a per-host tool: needs a Cloudflare token and manages zones',
-        'notes' => 'notes:init crashes non-interactively (select() without a default returns null)',
+        'notes' => 'Outline needs a login provider: without Zitadel, notes:init refuses unattended',
         'secrets' => 'OpenBao init talks to its HTTP API',
         'webmail' => 'needs Mail installed first',
     ];

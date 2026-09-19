@@ -254,7 +254,16 @@ class NotesInitCommand extends Command
             return $this->selfWireZitadel($kubectl, $ns, $env, $host, $instance, $oidcSecretName, $aliasHosts);
         }
 
-        // 3. External SSO — prompt for OIDC details.
+        // 3. External SSO — prompt for OIDC details. Unattended there is no one to
+        // ask, and the client secret must not travel as a flag.
+        if ($this->cannotPrompt()) {
+            $this->laraKubeError('Outline needs a login provider (OIDC), and none is set up.');
+            $this->line('  Run <fg=blue>larakube sso:init</> first (notes:init then wires Zitadel itself), or run');
+            $this->line('  <fg=blue>larakube notes:init</> interactively to enter an external provider.');
+
+            return false;
+        }
+
         $this->newLine();
         $this->line('  <fg=yellow>Outline requires an OIDC provider for login.</>');
         $this->line('  No Zitadel installation detected. You can:');
