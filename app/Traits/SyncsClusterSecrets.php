@@ -3,9 +3,8 @@
 namespace App\Traits;
 
 use App\Enums\SecretsBackend;
-use Illuminate\Support\Facades\Process;
+use App\Services\Kubectl;
 use Illuminate\Support\Sleep;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Reusable primitive for pushing secrets into the secrets manager and syncing
@@ -142,7 +141,8 @@ trait SyncsClusterSecrets
         }
 
         // Ensure target namespace exists
-        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        $cluster = Kubectl::fromPrefix($kubectl);
+        $cluster->apply((string) json_encode(['apiVersion' => 'v1', 'kind' => 'Namespace', 'metadata' => ['name' => $ns]]));
 
         $secretValues = $this->readOpenBaoKeys($kubectl, $environment, $prefix);
         if ($secretValues === null) {
@@ -153,17 +153,7 @@ trait SyncsClusterSecrets
             return true;
         }
 
-        $lines = ['apiVersion: v1', 'kind: Secret', 'metadata:', "  name: {$secretName}", "  namespace: {$ns}", 'type: Opaque', 'data:'];
-        foreach ($secretValues as $k => $v) {
-            $lines[] = "  {$k}: ".base64_encode($v);
-        }
-
-        $yaml = implode("\n", $lines);
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $temporaryDirectory->path().'/openbao-sync.yaml';
-        file_put_contents($tmp, $yaml);
-        $ok = Process::run("{$kubectl} apply -f ".escapeshellarg($tmp))->successful();
-        $temporaryDirectory->delete();
+        $ok = $cluster->putSecret($ns, $secretName, array_map('strval', $secretValues))->ok;
 
         // Apply ESO SecretStore & ExternalSecret CRDs if ESO is present
         $authName = "{$secretName}-openbao-auth";
@@ -178,11 +168,7 @@ trait SyncsClusterSecrets
             'hostAPI' => "http://openbao-backend.{$secretsNs}.svc.cluster.local:8200",
         ])->render();
 
-        $esoTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmpEso = $esoTemporaryDirectory->path().'/eso-sync.yaml';
-        file_put_contents($tmpEso, $esoManifest);
-        Process::run("{$kubectl} apply -f ".escapeshellarg($tmpEso));
-        $esoTemporaryDirectory->delete();
+        $cluster->apply($esoManifest);
 
         return $ok;
     }
@@ -192,7 +178,7 @@ trait SyncsClusterSecrets
      */
     protected function restartSecretConsumers(string $kubectl, string $ns, string $deployment): bool
     {
-        return Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns}")->successful();
+        return Kubectl::fromPrefix($kubectl)->rolloutRestart($ns, $deployment)->ok;
     }
 
     // ──────────────────────────────────────────────
@@ -291,11 +277,9 @@ trait SyncsClusterSecrets
     protected function readDatabaseRootPassword(string $kubectl, string $driver): ?string
     {
         $envVar = $driver === 'postgres' ? 'POSTGRES_PASSWORD' : 'MYSQL_ROOT_PASSWORD';
-        $result = Process::run(
-            "{$kubectl} exec deploy/{$driver} -n larakube-plex -- sh -c ".escapeshellarg("echo \${$envVar}"),
-        );
+        $result = Kubectl::fromPrefix($kubectl)->raw(['exec', "deploy/{$driver}", '-n', 'larakube-plex', '--', 'sh', '-c', "echo \${$envVar}"]);
 
-        $password = trim($result->output());
+        $password = trim($result->output);
 
         return $password !== '' ? $password : null;
     }
@@ -310,9 +294,7 @@ trait SyncsClusterSecrets
             return $dbConfig;
         }
 
-        $raw = Process::run(
-            "{$kubectl} get configmap plex-commons -n larakube-plex -o jsonpath=".escapeshellarg('{.data.commons\.json}'),
-        )->output();
+        $raw = Kubectl::fromPrefix($kubectl)->raw(['get', 'configmap', 'plex-commons', '-n', 'larakube-plex', '-o', 'jsonpath={.data.commons\.json}'])->output;
 
         $decoded = json_decode(trim($raw), true);
         $services = is_array($decoded) ? ($decoded['services'] ?? []) : [];
@@ -324,7 +306,7 @@ trait SyncsClusterSecrets
         }
 
         foreach (['postgres', 'mysql', 'mariadb'] as $engine) {
-            $check = trim(Process::run("{$kubectl} get deployment {$engine} -n larakube-plex --no-headers --ignore-not-found")->output());
+            $check = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', $engine, '-n', 'larakube-plex', '--no-headers', '--ignore-not-found'])->output);
             if ($check !== '') {
                 return 'plex-'.$engine;
             }
@@ -593,9 +575,7 @@ trait SyncsClusterSecrets
         // Read the CA cert from OpenBao's own pod — its mounted ServiceAccount
         // trust bundle is the one it needs to validate the K8s API server's TLS
         // cert when it calls TokenReview, and it's always present at this path.
-        $caCert = trim(Process::run(
-            "{$kubectl} exec deploy/openbao-backend -n {$ns} -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt",
-        )->output());
+        $caCert = trim(Kubectl::fromPrefix($kubectl)->raw(['exec', 'deploy/openbao-backend', '-n', $ns, '--', 'cat', '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'])->output);
 
         if ($caCert === '') {
             return false;
@@ -724,9 +704,7 @@ trait SyncsClusterSecrets
     /** Read an ExternalSecret's status.refreshTime, or null if it doesn't exist yet / has never synced. */
     protected function externalSecretRefreshTime(string $kubectl, string $namespace, string $name): ?string
     {
-        $refreshTime = trim(Process::run(
-            "{$kubectl} get externalsecret {$name} -n {$namespace} -o jsonpath='{.status.refreshTime}'",
-        )->output());
+        $refreshTime = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'externalsecret', $name, '-n', $namespace, '-o', 'jsonpath={.status.refreshTime}'])->output);
 
         return $refreshTime !== '' ? $refreshTime : null;
     }
@@ -749,10 +727,7 @@ trait SyncsClusterSecrets
      */
     protected function forceExternalSecretReconcile(string $kubectl, string $namespace, string $name): void
     {
-        Process::run(
-            "{$kubectl} annotate externalsecret {$name} -n ".escapeshellarg($namespace).
-            ' force-sync='.escapeshellarg((string) time()).' --overwrite',
-        );
+        Kubectl::fromPrefix($kubectl)->raw(['annotate', 'externalsecret', $name, '-n', $namespace, 'force-sync='.time(), '--overwrite']);
     }
 
     /**
@@ -777,13 +752,9 @@ trait SyncsClusterSecrets
         $deadline = now()->addSeconds($timeoutSeconds);
 
         while (now()->lt($deadline)) {
-            $status = trim(Process::run(
-                "{$kubectl} get externalsecret {$name} -n {$namespace} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'",
-            )->output());
-
-            $reason = trim(Process::run(
-                "{$kubectl} get externalsecret {$name} -n {$namespace} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].reason}'",
-            )->output());
+            $cluster = Kubectl::fromPrefix($kubectl);
+            $status = trim($cluster->raw(['get', 'externalsecret', $name, '-n', $namespace, '-o', 'jsonpath={.status.conditions[?(@.type=="Ready")].status}'])->output);
+            $reason = trim($cluster->raw(['get', 'externalsecret', $name, '-n', $namespace, '-o', 'jsonpath={.status.conditions[?(@.type=="Ready")].reason}'])->output);
 
             $refreshTimeNow = $this->externalSecretRefreshTime($kubectl, $namespace, $name);
 

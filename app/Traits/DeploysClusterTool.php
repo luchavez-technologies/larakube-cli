@@ -3,10 +3,8 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
-use App\Data\KubectlResult;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
-use Closure;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
@@ -42,7 +40,7 @@ use Symfony\Component\Process\Exception\ProcessTimedOutException;
  */
 trait DeploysClusterTool
 {
-    use InteractsWithProjectConfig, InteractsWithToolRegistry, ResolvesEnvironmentContext;
+    use InteractsWithProjectConfig, InteractsWithToolRegistry, ResolvesEnvironmentContext, RunsKubectlSteps;
     use InteractsWithTraefik, ManagesLocalCa;
 
     /**
@@ -223,31 +221,6 @@ trait DeploysClusterTool
         $this->laraKubeError("'{$tool->value}' doesn't have a --vpn-only ingress mode.");
 
         return false;
-    }
-
-    /**
-     * Run one typed kubectl call behind a spinner. On failure, kubectl's own
-     * error is shown and false returned, so the caller never reports success
-     * over a failed step.
-     *
-     * @param  Closure(): KubectlResult  $call
-     */
-    protected function kubectlStep(string $label, Closure $call): bool
-    {
-        $result = null;
-        $this->withSpin($label, function () use ($call, &$result): bool {
-            $result = $call();
-
-            return $result->ok;
-        });
-
-        if ($result === null || ! $result->ok) {
-            $this->laraKubeError(trim($result->error ?? '') ?: "{$label} failed.");
-
-            return false;
-        }
-
-        return true;
     }
 
     /**

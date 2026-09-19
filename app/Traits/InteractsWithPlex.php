@@ -29,6 +29,8 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 trait InteractsWithPlex
 {
+    use RunsKubectlSteps;
+
     /**
      * Kube-context the plex commands operate against — the environment's OWN
      * context, set by the command (so we never switch the global context). Null
@@ -151,10 +153,11 @@ trait InteractsWithPlex
     public function ensurePlexServiceRunning(string $service, string $kubectl, string $namespace = 'larakube-plex'): bool
     {
         $deployName = "plex-{$service}";
-        $replicas = trim((string) Process::run("{$kubectl} get deployment/{$deployName} -n {$namespace} -o jsonpath='{.spec.replicas}' 2>/dev/null")->output());
+        $cluster = Kubectl::fromPrefix($kubectl);
+        $replicas = trim($cluster->raw(['get', "deployment/{$deployName}", '-n', $namespace, '-o', 'jsonpath={.spec.replicas}'])->output);
 
         if ($replicas === '0') {
-            Process::run("{$kubectl} scale deployment/{$deployName} --replicas=1 -n {$namespace}");
+            $cluster->raw(['scale', "deployment/{$deployName}", '--replicas=1', '-n', $namespace]);
 
             return true;
         }
@@ -173,19 +176,16 @@ trait InteractsWithPlex
      */
     public function releaseSelfHostedPvc(string $kubectl, string $namespace, string $pvc, string $deployment): bool
     {
-        Process::run($kubectl.' delete pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' --wait=false');
+        $cluster = Kubectl::fromPrefix($kubectl);
+        $cluster->raw(['delete', 'pvc', $pvc, '-n', $namespace, '--wait=false']);
 
-        $stillThere = trim(Process::run(
-            $kubectl.' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' -o name',
-        )->output()) !== '';
+        $stillThere = trim($cluster->raw(['get', 'pvc', $pvc, '-n', $namespace, '-o', 'name'])->output) !== '';
 
         if ($stillThere) {
-            Process::run($kubectl.' scale deployment/'.escapeshellarg($deployment).' --replicas=0 -n '.escapeshellarg($namespace));
+            $cluster->raw(['scale', "deployment/{$deployment}", '--replicas=0', '-n', $namespace]);
 
             for ($i = 0; $i < 10; $i++) {
-                $stillThere = trim(Process::run(
-                    $kubectl.' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' -o name',
-                )->output()) !== '';
+                $stillThere = trim($cluster->raw(['get', 'pvc', $pvc, '-n', $namespace, '-o', 'name'])->output) !== '';
 
                 if (! $stillThere) {
                     break;
@@ -451,17 +451,10 @@ trait InteractsWithPlex
             return false;
         }
 
-        $kubectl = $plex->kubectl();
-        $ns = PlexService::NAMESPACE;
-        $applied = $this->withSpin($label, fn () => Process::run(
-            "{$kubectl} apply -n {$ns} -f ".escapeshellarg($tmp),
-            function (string $type, string $output): void {
-                echo $output;
-            },
-        )->successful());
+        $manifest = (string) file_get_contents($tmp);
         $temporaryDirectory->delete();
 
-        return (bool) $applied;
+        return $this->kubectlStep($label, fn () => Kubectl::fromPrefix($plex->kubectl())->apply($manifest, PlexService::NAMESPACE));
     }
 
     /**
@@ -881,20 +874,10 @@ trait InteractsWithPlex
 
         $services = $this->enabledCommonsServices($spec);
 
-        $pgPassword = trim(Process::run(
-            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath='{.data.POSTGRES_PASSWORD}'",
-        )->output());
-        $pgPassword = $pgPassword !== '' ? base64_decode($pgPassword) : '(unknown)';
-
-        $s3Access = trim(Process::run(
-            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath='{.data.S3_ACCESS_KEY}'",
-        )->output());
-        $s3Access = $s3Access !== '' ? base64_decode($s3Access) : '(unknown)';
-
-        $s3Secret = trim(Process::run(
-            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath='{.data.S3_SECRET_KEY}'",
-        )->output());
-        $s3Secret = $s3Secret !== '' ? base64_decode($s3Secret) : '(unknown)';
+        $cluster = Kubectl::fromPrefix($kubectl);
+        $pgPassword = $cluster->secretValue($ns, 'plex-admin', 'POSTGRES_PASSWORD') ?? '(unknown)';
+        $s3Access = $cluster->secretValue($ns, 'plex-admin', 'S3_ACCESS_KEY') ?? '(unknown)';
+        $s3Secret = $cluster->secretValue($ns, 'plex-admin', 'S3_SECRET_KEY') ?? '(unknown)';
 
         $s3Backend = null;
         foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
@@ -925,9 +908,7 @@ trait InteractsWithPlex
         // the two paths are mutually exclusive, and an earlier version printed
         // both, so mixing the `postgres` username with STALWART_STORE_PASSWORD
         // (the 'stalwart' role's password) failed authentication.
-        $openBaoBootstrapped = trim(Process::run(
-            "{$kubectl} get secret openbao-bootstrap -n larakube-secrets --no-headers 2>/dev/null",
-        )->output()) !== '';
+        $openBaoBootstrapped = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'secret', 'openbao-bootstrap', '-n', 'larakube-secrets', '--no-headers'])->output) !== '';
 
         $this->newLine();
 

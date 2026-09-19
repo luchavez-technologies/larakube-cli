@@ -546,7 +546,7 @@ test('forceExternalSecretReconcile annotates the ExternalSecret to nudge ESO int
     syncsClusterSecrets()->forceReconcile($this->kubectl, 'luchtech-local', 'laravel-secrets-db');
 
     Process::assertRan(fn ($process) => str_contains($process->command, "{$this->kubectl} annotate externalsecret laravel-secrets-db")
-        && str_contains($process->command, "-n 'luchtech-local'")
+        && str_contains($process->command, '-n luchtech-local')
         && str_contains($process->command, 'force-sync=')
         && str_contains($process->command, '--overwrite'));
 });
