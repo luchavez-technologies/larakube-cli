@@ -192,3 +192,32 @@ test('mail:wire --domain targets that host\'s instance, even pasted as a URL', f
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/flow-n8n-flow-example-com')
         && str_contains($process->command, 'secret/flow-n8n-smtp-flow-example-com'));
 });
+
+function mailWireRegistryFakes(array $rows): array
+{
+    return [
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode($rows))),
+        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@example.com')),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*get deployment flow-*' => Process::result(output: '', exitCode: 1),
+        '*' => Process::result(output: ''),
+    ];
+}
+
+test('mail:wire --domain for a host with no instance names the hosts that have one', function (): void {
+    Process::fake(mailWireRegistryFakes([
+        ['tool' => 'flow', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n'],
+    ]));
+
+    $this->artisan('mail:wire production --tool=flow --domain=typo.example.com')
+        ->expectsOutputToContain('has no instance at typo.example.com')
+        ->expectsOutputToContain('flow.example.com');
+});
+
+test('mail:wire for a tool with no instance at all says how to install it', function (): void {
+    Process::fake(mailWireRegistryFakes([]));
+
+    $this->artisan('mail:wire production --tool=flow --domain=flow.example.com')
+        ->expectsOutputToContain('is not installed. Run `larakube flow:init production` first.');
+});

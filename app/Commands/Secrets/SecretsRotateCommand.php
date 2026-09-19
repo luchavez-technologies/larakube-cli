@@ -168,7 +168,7 @@ class SecretsRotateCommand extends Command
             $targetInst = $resolveInstance($tool);
             $resolved = $resolve($tool, $targetInst);
             if ($resolved === null) {
-                $this->laraKubeError("{$tool->getLabel()} is not installed at this instance.");
+                $this->reportToolNotInstalled($kubectl, $tool, (string) $this->argument('environment'));
 
                 return [];
             }

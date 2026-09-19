@@ -283,6 +283,35 @@ trait InteractsWithToolRegistry
         return $entry === null ? null : InstanceData::from($entry);
     }
 
+    /**
+     * Explain why $tool can't be targeted: nothing installed, no instance at
+     * the --domain given (naming the hosts that are registered), or registered
+     * but its Deployment isn't on the cluster.
+     */
+    protected function reportToolNotInstalled(string $kubectl, ClusterTool $tool, string $env, ?string $label = null): void
+    {
+        $label ??= $tool->getLabel();
+        $domain = $this->hasOption('domain') ? ToolInstance::normalizeHost((string) ($this->option('domain') ?? '')) : '';
+        $hosts = array_values(array_unique(array_filter(array_map(
+            fn (InstanceData $instance) => (string) $instance->host,
+            $this->getAllToolInstanceData($kubectl, $tool),
+        ))));
+
+        if ($hosts === []) {
+            $this->laraKubeError("{$label} is not installed. Run `larakube {$tool->initCommand()}".($env !== '' ? " {$env}" : '').'` first.');
+
+            return;
+        }
+
+        if ($domain !== '' && ! in_array($domain, $hosts, true)) {
+            $this->laraKubeError("{$label} has no instance at {$domain}.");
+        } else {
+            $this->laraKubeError("{$label} is registered, but its Deployment isn't on the cluster. Run `larakube tool:list".($env !== '' ? " {$env}" : '').' --refresh` to check.');
+        }
+
+        $this->line('  <fg=gray>Installed at:</> '.implode(', ', array_map(fn (string $host) => "<fg=blue>{$host}</>", $hosts)).' <fg=gray>(pass one as --domain=)</>');
+    }
+
     /** @return list<InstanceData> */
     protected function getAllToolInstanceData(string $kubectl, ClusterTool $tool): array
     {

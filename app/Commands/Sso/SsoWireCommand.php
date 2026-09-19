@@ -109,7 +109,7 @@ class SsoWireCommand extends Command
 
         if (! $this->deploymentExists($kubectl, $schema['namespace'], $schema['deployment'])) {
             $label = $engine ? "{$tool->productName($engine)} ({$engine})" : $tool->getLabel();
-            $this->laraKubeError("{$label} is not installed.");
+            $this->reportToolNotInstalled($kubectl, $tool, (string) $this->argument('environment'), $label);
 
             return 1;
         }

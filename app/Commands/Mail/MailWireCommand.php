@@ -170,7 +170,7 @@ class MailWireCommand extends Command
             }
 
             if (! $this->isToolInstalledForMail($kubectl, $tool)) {
-                $this->laraKubeError("{$tool->getLabel()} is not installed.");
+                $this->reportToolNotInstalled($kubectl, $tool, (string) $this->argument('environment'));
 
                 return [];
             }
