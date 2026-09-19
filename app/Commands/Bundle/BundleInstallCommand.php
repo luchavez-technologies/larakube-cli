@@ -2,6 +2,7 @@
 
 namespace App\Commands\Bundle;
 
+use App\Services\Kubectl;
 use App\Traits\GeneratesBundleSecrets;
 use App\Traits\GeneratesOfflineCertificates;
 use App\Traits\InteractsWithProjectConfig;
@@ -199,7 +200,7 @@ class BundleInstallCommand extends Command
         $ns = escapeshellarg($namespace);
 
         // Extract existing secrets from the cluster (for idempotent updates)
-        $existingSecretsJson = Process::run("kubectl get secret laravel-secrets -n {$ns} -o json")->output();
+        $existingSecretsJson = Process::run(Kubectl::current()->prefix()." get secret laravel-secrets -n {$ns} -o json")->output();
         $existingSecrets = [];
         if ($existingSecretsJson !== '') {
             $parsed = json_decode($existingSecretsJson, true);
@@ -383,26 +384,26 @@ class BundleInstallCommand extends Command
 
         $this->laraKubeInfo('Waiting for Kubernetes API to be ready...');
         for ($wait = 0; $wait < 60; $wait++) {
-            if (Process::run('kubectl get nodes')->successful()) {
+            if (Process::run(Kubectl::current()->prefix().' get nodes')->successful()) {
                 break;
             }
             Sleep::sleep(2);
         }
 
         // Ensure namespace exists before we create secrets
-        Process::run("kubectl create namespace {$ns} --dry-run=client -o yaml | kubectl apply -f -");
+        Process::run(Kubectl::current()->prefix()." create namespace {$ns} --dry-run=client -o yaml | kubectl apply -f -");
 
         // Traefik expects the TLSStore in its own namespace for the default certificate
-        Process::run('kubectl create namespace traefik --dry-run=client -o yaml | kubectl apply -f -');
+        Process::run(Kubectl::current()->prefix().' create namespace traefik --dry-run=client -o yaml | kubectl apply -f -');
 
         $certsTemporaryDirectory = TemporaryDirectory::make();
         $tmpCertsYml = $certsTemporaryDirectory->path('traefik-certs.yml');
         file_put_contents($tmpCertsYml, view('traefik.dev-certs')->render());
-        Process::run("kubectl create configmap traefik-config -n traefik --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply -f -");
+        Process::run(Kubectl::current()->prefix()." create configmap traefik-config -n traefik --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply -f -");
 
         $tmpTlsCrt = escapeshellarg($certs['tls_crt']);
         $tmpTlsKey = escapeshellarg($certs['tls_key']);
-        Process::run("kubectl create secret generic traefik-certificates -n traefik --from-file=local-dev.pem={$tmpTlsCrt} --from-file=local-dev-key.pem={$tmpTlsKey} --dry-run=client -o yaml | kubectl apply -f -");
+        Process::run(Kubectl::current()->prefix()." create secret generic traefik-certificates -n traefik --from-file=local-dev.pem={$tmpTlsCrt} --from-file=local-dev-key.pem={$tmpTlsKey} --dry-run=client -o yaml | kubectl apply -f -");
 
         $certsTemporaryDirectory->delete();
 
@@ -411,14 +412,14 @@ class BundleInstallCommand extends Command
         $installTemporaryDirectory = TemporaryDirectory::make();
         $tmpInstall = $installTemporaryDirectory->path('traefik-install.yaml');
         file_put_contents($tmpInstall, view('k8s.traefik-install')->render());
-        $this->runStreaming("kubectl apply -f {$tmpInstall}");
+        $this->runStreaming(Kubectl::current()->prefix()." apply -f {$tmpInstall}");
         $installTemporaryDirectory->delete();
 
         if ($public !== '') {
-            Process::run("kubectl create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run(Kubectl::current()->prefix()." create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
         }
         if ($secret !== '') {
-            Process::run("kubectl create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run(Kubectl::current()->prefix()." create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
         }
 
         // 8. Apply manifests
@@ -476,7 +477,7 @@ class BundleInstallCommand extends Command
 
         // 9. Wait for rollout
         $this->laraKubeInfo('Waiting for rollout...');
-        $this->runStreaming('kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s', 190);
+        $this->runStreaming(Kubectl::current()->prefix().' rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s', 190);
 
         // 10. Activate Cloudflare Tunnel (if bundled and token was provided)
         if ($tunnelToken !== null && $tunnelToken !== '') {

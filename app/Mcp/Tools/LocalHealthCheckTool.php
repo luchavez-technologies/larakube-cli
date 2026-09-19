@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Data\GlobalConfigData;
+use App\Services\Kubectl;
 use App\Traits\ResolvesContainerRuntime;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
@@ -35,7 +36,7 @@ class LocalHealthCheckTool extends Tool
         }
 
         // 2. Check Kubernetes
-        if (Process::run('kubectl get nodes')->successful()) {
+        if (Process::run(Kubectl::current()->prefix().' get nodes')->successful()) {
             $report[] = '- ✅ **Kubernetes:** Cluster is reachable via kubectl.';
         } else {
             $report[] = "- ❌ **Kubernetes:** Cluster is NOT reachable. Try 'larakube cluster:setup'.";

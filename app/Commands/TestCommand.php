@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Enums\DatabaseDriver;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -149,7 +150,7 @@ class TestCommand extends Command
         );
 
         $command = sprintf(
-            'kubectl exec -it -n %s -c php %s -- env %s sh -c %s',
+            Kubectl::current()->prefix().' exec -it -n %s -c php %s -- env %s sh -c %s',
             escapeshellarg($namespace),
             escapeshellarg($podName),
             $envFragment,
@@ -193,7 +194,7 @@ class TestCommand extends Command
         $this->laraKubeInfo("Ensuring testing database '{$testDbName}' exists on {$driver->getLabel()}...");
 
         $exec = sprintf(
-            'kubectl exec -n %s %s -- sh -c %s',
+            Kubectl::current()->prefix().' exec -n %s %s -- sh -c %s',
             escapeshellarg($namespace),
             escapeshellarg($dbPodName),
             escapeshellarg($provisionCommand),
@@ -260,7 +261,7 @@ class TestCommand extends Command
         }
 
         foreach ($labels as $label) {
-            $podName = trim(Process::run("kubectl get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
+            $podName = trim(Process::run(Kubectl::current()->prefix()." get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
             if ($podName !== '') {
                 return $podName;
             }

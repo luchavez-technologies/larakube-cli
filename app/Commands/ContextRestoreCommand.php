@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Services\Kubectl;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
 
@@ -70,7 +71,7 @@ class ContextRestoreCommand extends Command
         @chmod($config, 0600);
 
         $this->laraKubeInfo('✅ Restored '.basename($choice).' → ~/.kube/config');
-        $current = trim(Process::run('kubectl config current-context')->output());
+        $current = trim(Process::run(Kubectl::current()->prefix().' config current-context')->output());
         if ($current !== '') {
             $this->line('  <fg=gray>Current context:</> <fg=cyan>'.$current.'</>');
         }

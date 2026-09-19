@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithSslTrust;
@@ -107,7 +108,7 @@ class ConsoleCommand extends Command
             }
         }
 
-        $exists = Process::run('kubectl get namespace larakube-system --no-headers')->successful();
+        $exists = Process::run(Kubectl::current()->prefix().' get namespace larakube-system --no-headers')->successful();
 
         if (! $exists || $this->option('update')) {
             $label = $this->option('update') ? 'Updating LaraKube Console...' : 'The LaraKube Console is not installed. Would you like to install it now?';
@@ -132,7 +133,7 @@ class ConsoleCommand extends Command
                     $temporaryDirectory = TemporaryDirectory::make();
                     $tmp = $temporaryDirectory->path('larakube-dashboard.yaml');
                     file_put_contents($tmp, $manifest);
-                    $this->runStreaming("kubectl apply -f {$tmp}");
+                    $this->runStreaming(Kubectl::current()->prefix()." apply -f {$tmp}");
                     $temporaryDirectory->delete();
                 });
 
@@ -162,7 +163,7 @@ class ConsoleCommand extends Command
         }
 
         $this->withSpin('Removing LaraKube Console resources...', function (): void {
-            $this->runStreaming('kubectl delete namespace larakube-system --wait=false');
+            $this->runStreaming(Kubectl::current()->prefix().' delete namespace larakube-system --wait=false');
         });
 
         $this->laraKubeInfo('✅ LaraKube Console removal initiated.');

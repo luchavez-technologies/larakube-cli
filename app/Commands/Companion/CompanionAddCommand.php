@@ -4,6 +4,7 @@ namespace App\Commands\Companion;
 
 use App\Data\GlobalConfigData;
 use App\Enums\CompanionDriver;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -26,7 +27,7 @@ class CompanionAddCommand extends Command
     {
         $this->renderHeader();
 
-        if (! Process::run('kubectl get namespace larakube-system --no-headers')->successful()) {
+        if (! Process::run(Kubectl::current()->prefix().' get namespace larakube-system --no-headers')->successful()) {
             $this->error('  The larakube-system namespace does not exist yet.');
             $this->line('  Run <fg=yellow>larakube cluster:setup</> or <fg=yellow>larakube up</> first.');
 

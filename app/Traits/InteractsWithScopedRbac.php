@@ -315,12 +315,12 @@ YAML;
     /** kubectl client >= 1.24 — needed for bound-token Secrets / `create token`. */
     public function kubectlSupportsTokens(): bool
     {
-        $json = Process::run('kubectl version --client -o json')->output();
+        $json = Process::run(Kubectl::current()->prefix().' version --client -o json')->output();
         if ($json !== '' && preg_match('/"minor":\s*"(\d+)/', $json, $m)) {
             return (int) $m[1] >= 24;
         }
 
-        $plain = Process::run('kubectl version --client')->output();
+        $plain = Process::run(Kubectl::current()->prefix().' version --client')->output();
         if ($plain !== '' && preg_match('/v1\.(\d+)/', $plain, $m)) {
             return (int) $m[1] >= 24;
         }

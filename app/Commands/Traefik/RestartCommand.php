@@ -2,6 +2,7 @@
 
 namespace App\Commands\Traefik;
 
+use App\Services\Kubectl;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
@@ -29,7 +30,7 @@ class RestartCommand extends Command
         $this->laraKubeInfo('Restarting Traefik Ingress Controller...');
 
         $this->withSpin('Executing rollout restart...', function () {
-            Process::run('kubectl rollout restart deployment/traefik -n traefik');
+            Process::run(Kubectl::current()->prefix().' rollout restart deployment/traefik -n traefik');
 
             return true;
         });

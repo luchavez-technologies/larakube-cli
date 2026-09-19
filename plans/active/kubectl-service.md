@@ -3,7 +3,7 @@
 **Status:** Stage 1 ✅ (`App\Services\Kubectl`, `App\Data\KubectlResult`,
 `Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
 `~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
-copies). Stages 3–5 not started.
+copies). Stage 3 ✅. Stages 2b, 4, 5 not started.
 
 Stage 2 notes: prefixes against a *different* kubeconfig (scoped deploy
 kubeconfigs in `InteractsWithRemoteDeploy`, context merges in `cluster:setup`,
@@ -86,9 +86,28 @@ moves onto it and stops parsing command lines.
    keep that logic and delegate the string. The only intended change is the
    quoting; tests that pinned the unquoted string are updated to the quoted
    one. A test fails if any `*Kubectl()` builder method reappears.
+2b. **Kubeconfig-path handles.** `Kubectl::forKubeconfig(string $path, ?string
+   $context = null)` for the prefixes that point at a *different* kubeconfig on
+   purpose (scoped deploy kubeconfigs in `InteractsWithRemoteDeploy`, context
+   merges in `cluster:setup`, `context:import`, `cloud:create`,
+   `ProvisionsK3sNode`, `PrunesKubeContext`, `ContextRemoveCommand`), so every
+   kubectl prefix in the CLI comes from `Kubectl`.
 3. **Context audit of the 138 bare strings.** Classify each as local-intended
    (keep, but through `Kubectl::forContext(null)` so it's explicit) or cloud
    (must pin). Fix every cloud one found; each fix gets a test.
+   **Stage 3 result:** 128 local / current-server strings go through
+   `Kubectl::current()` (prefix is exactly `kubectl`, following the shell's
+   KUBECONFIG, which `bundle:install` on a k3s host needs). Four commands took
+   an environment and ignored it: `stop`, `start`, `about` and `snapshot:list`
+   ran on the current context; they now use the environment's saved cluster
+   and refuse a cloud environment without one. A test forbids command strings
+   that start with a bare `kubectl`.
+   Follow-ups found, not fixed here:
+   - `snapshot:*` use namespace `<app>` while apps live in `<app>-<env>`;
+     `snapshot:create`/`clone` take no environment and a non-environment
+     positional (breaks the one-positional rule). Needs its own redesign.
+   - `up <env>` deploys to the current context by design (it warns on a
+     local/remote mismatch only for `local` and `production`).
 4. **Typed calls, tool by tool,** as each tool goes through `ToolInstance`
    Stage 2. `raw()` usage must only shrink (a test counts it).
 5. **`ToolRegistry` service.** `InteractsWithToolRegistry` is 600 lines and 21

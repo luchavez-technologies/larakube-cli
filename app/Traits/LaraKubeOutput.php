@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\State;
 use Exception;
 use Illuminate\Console\Command;
@@ -202,7 +203,7 @@ trait LaraKubeOutput
      */
     protected function getTraefikRoutedHosts(): ?array
     {
-        $result = Process::run('kubectl exec -n traefik deployment/traefik -- wget -qO- http://localhost:8080/api/http/routers');
+        $result = Process::run(Kubectl::current()->prefix().' exec -n traefik deployment/traefik -- wget -qO- http://localhost:8080/api/http/routers');
 
         if (! $result->successful()) {
             return null;

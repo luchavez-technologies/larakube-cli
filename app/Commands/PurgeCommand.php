@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Services\Kubectl;
 use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
@@ -110,11 +111,11 @@ class PurgeCommand extends Command
             // Delete all discovered environments (Dynamic)
             foreach ($this->getAvailableEnvironments() as $env) {
                 $namespace = "{$appName}-{$env}";
-                Process::run("kubectl delete namespace {$namespace}");
+                Process::run(Kubectl::current()->prefix()." delete namespace {$namespace}");
             }
 
             // Delete cluster-scoped volumes
-            Process::run("kubectl delete pv -l larakube-project={$appName}");
+            Process::run(Kubectl::current()->prefix()." delete pv -l larakube-project={$appName}");
 
             return true;
         });

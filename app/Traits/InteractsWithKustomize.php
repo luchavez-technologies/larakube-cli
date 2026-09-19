@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -48,7 +49,7 @@ trait InteractsWithKustomize
 
         return $bin !== null
             ? escapeshellarg($bin).' build '.escapeshellarg($path)
-            : 'kubectl kustomize '.escapeshellarg($path);
+            : Kubectl::current()->prefix().' kustomize '.escapeshellarg($path);
     }
 
     /** Apply an overlay dir, using the same kustomize the build path resolves to. */
@@ -58,7 +59,7 @@ trait InteractsWithKustomize
 
         return $bin !== null
             ? escapeshellarg($bin).' build '.escapeshellarg($path).' | kubectl apply -f -'
-            : 'kubectl apply -k '.escapeshellarg($path);
+            : Kubectl::current()->prefix().' apply -k '.escapeshellarg($path);
     }
 
     /**
@@ -86,7 +87,7 @@ trait InteractsWithKustomize
     /** Does kubectl's embedded kustomize build a representative multi-doc `patches:` overlay? */
     protected function embeddedKustomizeBuildsOurPatches(): bool
     {
-        return $this->kustomizeHandlesMultiDocPatches('kubectl kustomize');
+        return $this->kustomizeHandlesMultiDocPatches(Kubectl::current()->prefix().' kustomize');
     }
 
     /**

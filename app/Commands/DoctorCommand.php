@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\Traits\CheckPrerequisites;
 use App\Traits\DetectsWsl;
 use App\Traits\HasConsoleInteraction;
@@ -103,7 +104,7 @@ class DoctorCommand extends Command
         }
 
         // 3. Check Cluster Connectivity
-        $result = Process::run('kubectl cluster-info');
+        $result = Process::run(Kubectl::current()->prefix().' cluster-info');
         $check = $result->output().$result->errorOutput();
         if (str_contains($check, 'refused') || str_contains($check, 'error')) {
             $issues[] = [
@@ -116,7 +117,7 @@ class DoctorCommand extends Command
         }
 
         // 3. Check for failed pods
-        $pods = Process::run("kubectl get pods -n {$namespace} -o json")->output();
+        $pods = Process::run(Kubectl::current()->prefix()." get pods -n {$namespace} -o json")->output();
         if ($pods !== '') {
             $data = json_decode($pods, true);
             foreach ($data['items'] ?? [] as $pod) {
@@ -197,7 +198,7 @@ class DoctorCommand extends Command
             return $issues;
         }
 
-        $pods = Process::run('kubectl get pods -n traefik -o json')->output();
+        $pods = Process::run(Kubectl::current()->prefix().' get pods -n traefik -o json')->output();
         if ($pods !== '') {
             $data = json_decode($pods, true);
             foreach ($data['items'] ?? [] as $pod) {
@@ -213,7 +214,7 @@ class DoctorCommand extends Command
         }
 
         $errorCount = (int) trim(Process::run(
-            'kubectl logs -n traefik -l app=traefik --tail=200 --since=10m 2>/dev/null | grep -ci level=error',
+            Kubectl::current()->prefix().' logs -n traefik -l app=traefik --tail=200 --since=10m 2>/dev/null | grep -ci level=error',
         )->output());
 
         if ($errorCount > 0) {
@@ -337,7 +338,7 @@ class DoctorCommand extends Command
     protected function currentIngressIp(): string
     {
         $lbIp = trim(Process::run(
-            "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'",
+            Kubectl::current()->prefix()." get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'",
         )->output());
 
         if ($lbIp !== '') {
@@ -345,7 +346,7 @@ class DoctorCommand extends Command
         }
 
         return trim(Process::run(
-            "kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'",
+            Kubectl::current()->prefix()." get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'",
         )->output()) ?: '127.0.0.1';
     }
 }

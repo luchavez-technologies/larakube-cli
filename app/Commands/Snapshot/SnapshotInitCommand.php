@@ -2,6 +2,7 @@
 
 namespace App\Commands\Snapshot;
 
+use App\Services\Kubectl;
 use App\Traits\CheckPrerequisites;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
@@ -29,7 +30,7 @@ class SnapshotInitCommand extends Command
 
         $this->withSpin('Deploying VolumeSnapshot CRDs...', function (): void {
             // Apply snapshot CRDs
-            $cmd = 'kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.3/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml || true';
+            $cmd = Kubectl::current()->prefix().' apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.3/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml || true';
             Process::run($cmd);
         });
 

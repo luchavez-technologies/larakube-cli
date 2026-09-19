@@ -265,7 +265,7 @@ class CloudProvisionDoksCommand extends Command
 
         while ($attempt < $maxAttempts) {
             $ip = trim(Process::run(
-                'kubectl --context '.escapeshellarg($context)
+                Kubectl::forContext($context)->prefix()
                 .' get svc -n traefik traefik -o jsonpath=\'{.status.loadBalancer.ingress[0].ip}\'',
             )->output());
             if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP)) {

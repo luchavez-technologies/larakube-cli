@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
@@ -175,7 +176,7 @@ trait DeploysClusterTool
     /** @return list<string> */
     protected function kubeContextChoices(): array
     {
-        $lines = explode("\n", Process::run('kubectl config get-contexts -o name')->output());
+        $lines = explode("\n", Process::run(Kubectl::current()->prefix().' config get-contexts -o name')->output());
 
         return array_values(array_filter(array_map('trim', $lines)));
     }

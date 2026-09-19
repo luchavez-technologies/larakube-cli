@@ -2,6 +2,7 @@
 
 namespace App\Enums;
 
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -71,7 +72,7 @@ enum SharedClusterService: string
             // current kube-context is slow/unreachable this degrades to the
             // default engine instead of blocking (default Process timeout is 60s).
             self::FLOW => [
-                'engine' => trim(Process::timeout(10)->run('kubectl get deployment -l larakube-tool=flow,larakube-engine=windmill -n larakube-shared -o name --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
+                'engine' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l larakube-tool=flow,larakube-engine=windmill -n larakube-shared -o name --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
             ],
             self::DRIVE => ['engine' => 'ocis'],
             // The Matrix bridge is a wiring artifact, not part of Meet itself —
@@ -81,7 +82,7 @@ enum SharedClusterService: string
             self::MEET => [
                 // Label-based: meet-lk-jwt's Deployment name is instance-
                 // suffixed but its pod label stays stable.
-                'jwtWired' => trim(Process::timeout(10)->run('kubectl get deployment -l app=meet-lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
+                'jwtWired' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l app=meet-lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
             ],
             self::TASKS => [
                 'engine' => 'planka',

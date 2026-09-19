@@ -2,6 +2,7 @@
 
 namespace App\Commands\Snapshot;
 
+use App\Services\Kubectl;
 use App\Traits\CheckPrerequisites;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -73,7 +74,7 @@ YAML;
     protected function pvcExists(string $namespace, string $pvc): bool
     {
         return trim(Process::run(
-            'kubectl get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' --no-headers --ignore-not-found',
+            Kubectl::current()->prefix().' get pvc '.escapeshellarg($pvc).' -n '.escapeshellarg($namespace).' --no-headers --ignore-not-found',
         )->output()) !== '';
     }
 
@@ -83,7 +84,7 @@ YAML;
         $path = $directory->path("larakube-{$name}.yaml");
         file_put_contents($path, $yaml);
 
-        $applied = Process::run('kubectl apply -f '.escapeshellarg($path))->successful();
+        $applied = Process::run(Kubectl::current()->prefix().' apply -f '.escapeshellarg($path))->successful();
         $directory->delete();
 
         return $applied;

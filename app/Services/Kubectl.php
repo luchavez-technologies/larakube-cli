@@ -13,12 +13,24 @@ use stdClass;
  * One cluster, and the only way to talk to it: every call goes to the same
  * kubeconfig and context, and secret values travel on stdin, never in argv.
  *
- * `forContext(null)` is the current context and is meant for local work only;
- * a cloud environment always resolves to its own saved context or fails.
+ * `forContext(null)` is the current context of ~/.kube/config, for local work
+ * only; a cloud environment always resolves to its own saved context or fails.
+ * `current()` is plain `kubectl`, following the shell's own KUBECONFIG, for
+ * code whose target is by design "the cluster this machine points at".
  */
 final readonly class Kubectl
 {
-    private function __construct(public ?string $context) {}
+    private function __construct(public ?string $context, private bool $ambient = false) {}
+
+    /**
+     * Whatever cluster kubectl itself resolves to, KUBECONFIG included: local
+     * dev tooling, and commands run on the server they manage (bundle:install
+     * on a k3s host whose kubeconfig isn't ~/.kube/config).
+     */
+    public static function current(): self
+    {
+        return new self(null, ambient: true);
+    }
 
     public static function forContext(?string $context): self
     {
@@ -29,13 +41,13 @@ final readonly class Kubectl
      * The cluster an environment is bound to: a managed cluster's stored
      * context, or `larakube-<ip>` for a VPS. `local` is the current context.
      */
-    public static function forEnvironment(ConfigData $config, string $environment): self
+    public static function forEnvironment(?ConfigData $config, string $environment): self
     {
         if ($environment === 'local') {
             return new self(null);
         }
 
-        $cloud = $config->getCloud($environment);
+        $cloud = $config?->getCloud($environment);
         $context = $cloud?->context ?: ($cloud?->ip ? "larakube-{$cloud->ip}" : null);
 
         return $context !== null
@@ -43,7 +55,6 @@ final readonly class Kubectl
             : throw new LogicException("'{$environment}' has no saved cluster. Run `larakube cloud:configure {$environment}` first.");
     }
 
-    /** The command prefix, for callers not yet moved onto typed calls. */
     /**
      * Whether a context name follows a local-cluster convention (OrbStack,
      * Docker Desktop, minikube, kind, colima, or cluster:setup's native k3s).
@@ -62,8 +73,13 @@ final readonly class Kubectl
         return false;
     }
 
+    /** The command prefix, for callers not yet moved onto typed calls. */
     public function prefix(): string
     {
+        if ($this->ambient) {
+            return 'kubectl';
+        }
+
         $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
         return $this->context !== null ? $kubectl.' --context '.escapeshellarg($this->context) : $kubectl;

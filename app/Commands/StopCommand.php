@@ -32,16 +32,20 @@ class StopCommand extends Command
 
         $environment = $this->argument('environment');
         $namespace = $this->getNamespace($environment);
+        $config = $this->getProjectConfig();
+        if (($cluster = $this->environmentCluster($config, $environment)) === null) {
+            return 1;
+        }
+        $kubectl = $cluster->prefix();
 
         $this->laraKubeInfo("Pausing services in '{$environment}'...");
 
-        $this->withSpin('Scaling down application pods to zero...', function () use ($namespace) {
-            Process::run("kubectl scale deployment --all --replicas=0 -n {$namespace}");
+        $this->withSpin('Scaling down application pods to zero...', function () use ($kubectl, $namespace) {
+            Process::run("{$kubectl} scale deployment --all --replicas=0 -n {$namespace}");
 
             return true;
         });
 
-        $config = $this->getProjectConfig();
         if ($config && $config->getId()) {
             $this->logToConsole($config->getId(), 'stop', 'Services paused (scaled to zero)', ['environment' => $environment]);
         }

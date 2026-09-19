@@ -3,6 +3,7 @@
 namespace App\Commands\Traefik;
 
 use App\Data\GlobalConfigData;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithSslTrust;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
@@ -80,7 +81,7 @@ class DashboardCommand extends Command
         $this->info('  Press Ctrl+C to stop.');
         $this->line('');
 
-        passthru('kubectl port-forward -n traefik svc/traefik 8080:8080');
+        passthru(Kubectl::current()->prefix().' port-forward -n traefik svc/traefik 8080:8080');
 
         return 0;
     }

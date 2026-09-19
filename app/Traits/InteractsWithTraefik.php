@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
@@ -89,7 +90,7 @@ trait InteractsWithTraefik
     protected function applyLocalWildcardDns(string $tld): bool
     {
         $corefile = Process::run(
-            "kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}'",
+            Kubectl::current()->prefix()." get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}'",
         )->output();
 
         if (! str_contains($corefile, 'import /etc/coredns/custom/')) {
@@ -100,7 +101,7 @@ trait InteractsWithTraefik
         }
 
         $ip = trim(Process::run(
-            "kubectl get service traefik -n traefik -o jsonpath='{.spec.clusterIP}'",
+            Kubectl::current()->prefix()." get service traefik -n traefik -o jsonpath='{.spec.clusterIP}'",
         )->output());
 
         if ($ip === '' || $ip === 'None') {
@@ -126,7 +127,7 @@ trait InteractsWithTraefik
         COREDNS;
 
         $applied = Process::run(
-            'kubectl create configmap coredns-custom -n kube-system '
+            Kubectl::current()->prefix().' create configmap coredns-custom -n kube-system '
             .'--from-literal='.escapeshellarg("{$tld}.server={$server}").' '
             .'--dry-run=client -o yaml | kubectl apply -f -',
         )->successful();
@@ -140,8 +141,8 @@ trait InteractsWithTraefik
         // CoreDNS re-reads an imported file only on its own reload interval, so
         // roll it now — otherwise setup reports success while the override sits
         // inert for minutes.
-        Process::run('kubectl rollout restart deployment coredns -n kube-system');
-        Process::run('kubectl rollout status deployment coredns -n kube-system --timeout=60s');
+        Process::run(Kubectl::current()->prefix().' rollout restart deployment coredns -n kube-system');
+        Process::run(Kubectl::current()->prefix().' rollout status deployment coredns -n kube-system --timeout=60s');
 
         return true;
     }
@@ -201,7 +202,7 @@ trait InteractsWithTraefik
     protected function createTraefikInfrastructure(): void
     {
         $namespace = 'traefik';
-        Process::run("kubectl create namespace {$namespace} --dry-run=client -o yaml | kubectl apply -f -");
+        Process::run(Kubectl::current()->prefix()." create namespace {$namespace} --dry-run=client -o yaml | kubectl apply -f -");
 
         // Include every host the tools registry knows about, not just each
         // service's DEFAULT prefix — otherwise a second instance created with
@@ -342,7 +343,7 @@ trait InteractsWithTraefik
     {
         $probe = $service->presenceProbe();
 
-        return $probe === null || trim(Process::run("kubectl get {$probe} --no-headers")->output()) !== '';
+        return $probe === null || trim(Process::run(Kubectl::current()->prefix()." get {$probe} --no-headers")->output()) !== '';
     }
 
     /**
@@ -361,12 +362,12 @@ trait InteractsWithTraefik
     protected function applySharedService(SharedClusterService $service, string $host): void
     {
         $probe = $service->presenceProbe();
-        if ($probe !== null && trim(Process::run("kubectl get {$probe} --no-headers")->output()) === '') {
+        if ($probe !== null && trim(Process::run(Kubectl::current()->prefix()." get {$probe} --no-headers")->output()) === '') {
             return;
         }
 
         if ($service->namespace() !== null) {
-            Process::run('kubectl create namespace '.escapeshellarg($service->namespace()).' --dry-run=client -o yaml | kubectl apply -f -');
+            Process::run(Kubectl::current()->prefix().' create namespace '.escapeshellarg($service->namespace()).' --dry-run=client -o yaml | kubectl apply -f -');
         }
 
         $temporaryDirectory = TemporaryDirectory::make();
@@ -377,7 +378,7 @@ trait InteractsWithTraefik
         ], method_exists($service, 'templatePayload') ? $service->templatePayload() : []);
 
         file_put_contents($tmp, view($service->template(), $payload)->render());
-        Process::run("kubectl apply -f {$tmp}");
+        Process::run(Kubectl::current()->prefix()." apply -f {$tmp}");
         $temporaryDirectory->delete();
 
         $this->syncSharedServiceDeploymentEnv($service, $host);
@@ -401,7 +402,7 @@ trait InteractsWithTraefik
         $deployment = escapeshellarg($sync['deployment']);
         $namespace = escapeshellarg($sync['namespace']);
 
-        $exists = trim(Process::run("kubectl get deployment {$deployment} -n {$namespace} --no-headers")->output());
+        $exists = trim(Process::run(Kubectl::current()->prefix()." get deployment {$deployment} -n {$namespace} --no-headers")->output());
         if ($exists === '') {
             return;
         }
@@ -411,7 +412,7 @@ trait InteractsWithTraefik
             $pairs .= ' '.escapeshellarg("{$key}={$value}");
         }
 
-        Process::run("kubectl set env deployment {$deployment} -n {$namespace}{$pairs}");
+        Process::run(Kubectl::current()->prefix()." set env deployment {$deployment} -n {$namespace}{$pairs}");
     }
 
     /**
@@ -426,7 +427,7 @@ trait InteractsWithTraefik
         file_put_contents($tmpCertsYml, $this->buildTraefikCertsYml());
         // Server-side apply avoids storing base64 cert blobs in the
         // last-applied-configuration annotation (256 KB limit overflows with multiple certs).
-        Process::run("kubectl create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply --server-side --field-manager=larakube --force-conflicts -f -");
+        Process::run(Kubectl::current()->prefix()." create configmap traefik-config -n {$namespace} --from-file=traefik-certs.yml={$tmpCertsYml} --dry-run=client -o yaml | kubectl apply --server-side --field-manager=larakube --force-conflicts -f -");
         $temporaryDirectory->delete();
 
         // 2. Secret — all cert files from ~/.larakube/certificates/
@@ -438,12 +439,12 @@ trait InteractsWithTraefik
             $fromFiles .= ' --from-file='.escapeshellarg("{$appName}-dev-key.pem={$paths['key']}");
         }
 
-        Process::run("kubectl create secret generic traefik-certificates -n {$namespace}{$fromFiles} --dry-run=client -o yaml | kubectl apply --server-side --field-manager=larakube --force-conflicts -f -");
+        Process::run(Kubectl::current()->prefix()." create secret generic traefik-certificates -n {$namespace}{$fromFiles} --dry-run=client -o yaml | kubectl apply --server-side --field-manager=larakube --force-conflicts -f -");
 
         // 3. Restart Traefik to pick up changes (only if it exists)
-        $exists = Process::run("kubectl get deployment traefik -n {$namespace}")->output();
+        $exists = Process::run(Kubectl::current()->prefix()." get deployment traefik -n {$namespace}")->output();
         if ($exists !== '') {
-            Process::run("kubectl rollout restart deployment traefik -n {$namespace}");
+            Process::run(Kubectl::current()->prefix()." rollout restart deployment traefik -n {$namespace}");
         }
     }
 
@@ -482,27 +483,27 @@ trait InteractsWithTraefik
         // Note: kubectl does not support combining -l (label) and --field-selector
         // in the same call, so we use -l alone and trust the label accuracy.
         $output = trim(Process::run(
-            'kubectl get svc -A -l app.kubernetes.io/name=traefik,app.kubernetes.io/component=ingress-controller -o name',
+            Kubectl::current()->prefix().' get svc -A -l app.kubernetes.io/name=traefik,app.kubernetes.io/component=ingress-controller -o name',
         )->output());
 
         // 1b. Label-based: nginx-ingress variants
         if ($output === '') {
             $output = trim(Process::run(
-                'kubectl get svc -A -l app=ingress-nginx,app.kubernetes.io/name=ingress-nginx -o name',
+                Kubectl::current()->prefix().' get svc -A -l app=ingress-nginx,app.kubernetes.io/name=ingress-nginx -o name',
             )->output());
         }
 
         // 2. Name-based: a LoadBalancer named "traefik" anywhere (hand-rolled installs)
         if ($output === '') {
             $output = trim(Process::run(
-                'kubectl get svc -A --field-selector metadata.name=traefik,spec.type=LoadBalancer -o name',
+                Kubectl::current()->prefix().' get svc -A --field-selector metadata.name=traefik,spec.type=LoadBalancer -o name',
             )->output());
         }
 
         // 3. Last resort: any LoadBalancer in kube-system
         if ($output === '') {
             $output = trim(Process::run(
-                'kubectl get svc -n kube-system --field-selector spec.type=LoadBalancer -o name',
+                Kubectl::current()->prefix().' get svc -n kube-system --field-selector spec.type=LoadBalancer -o name',
             )->output());
         }
 
@@ -517,14 +518,14 @@ trait InteractsWithTraefik
         $this->laraKubeInfo('Destroying Traefik Ingress Controller...');
 
         $this->withSpin('Removing Traefik namespace and internal resources...', function () {
-            Process::timeout(120)->run('kubectl delete namespace traefik --wait=true');
+            Process::timeout(120)->run(Kubectl::current()->prefix().' delete namespace traefik --wait=true');
 
             return true;
         });
 
         $this->withSpin('Cleaning up cluster-scoped RBAC permissions...', function () {
-            Process::run('kubectl delete clusterrole traefik-ingress-controller');
-            Process::run('kubectl delete clusterrolebinding traefik-ingress-controller');
+            Process::run(Kubectl::current()->prefix().' delete clusterrole traefik-ingress-controller');
+            Process::run(Kubectl::current()->prefix().' delete clusterrolebinding traefik-ingress-controller');
 
             return true;
         });

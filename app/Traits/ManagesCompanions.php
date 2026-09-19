@@ -7,6 +7,7 @@ use App\Data\GlobalConfigData;
 use App\Enums\CacheDriver;
 use App\Enums\CompanionDriver;
 use App\Enums\DatabaseDriver;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
@@ -34,14 +35,14 @@ trait ManagesCompanions
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-companion-'.$companion->value.'.yaml');
         file_put_contents($tmp, $manifest);
-        Process::run('kubectl apply -f '.escapeshellarg($tmp));
+        Process::run(Kubectl::current()->prefix().' apply -f '.escapeshellarg($tmp));
         $temporaryDirectory->delete();
     }
 
     protected function removeCompanion(CompanionDriver $companion): void
     {
         foreach (['deployment', 'service', 'ingress'] as $kind) {
-            Process::run("kubectl delete {$kind} ".escapeshellarg($companion->value).' -n larakube-companions --ignore-not-found=true');
+            Process::run(Kubectl::current()->prefix()." delete {$kind} ".escapeshellarg($companion->value).' -n larakube-companions --ignore-not-found=true');
         }
     }
 
@@ -54,7 +55,7 @@ trait ManagesCompanions
      */
     protected function scaleCompanion(CompanionDriver $companion, int $replicas): void
     {
-        Process::run('kubectl scale deployment '.escapeshellarg($companion->value)." --replicas={$replicas} -n larakube-companions");
+        Process::run(Kubectl::current()->prefix().' scale deployment '.escapeshellarg($companion->value)." --replicas={$replicas} -n larakube-companions");
     }
 
     /**
@@ -83,14 +84,14 @@ trait ManagesCompanions
 
     protected function isCompanionInstalled(CompanionDriver $companion): bool
     {
-        $result = Process::run('kubectl get deployment '.escapeshellarg($companion->value).' -n larakube-companions --no-headers')->output();
+        $result = Process::run(Kubectl::current()->prefix().' get deployment '.escapeshellarg($companion->value).' -n larakube-companions --no-headers')->output();
 
         return trim($result) !== '';
     }
 
     protected function ensureCompanionNamespace(): void
     {
-        Process::run('kubectl create namespace larakube-companions --dry-run=client -o yaml | kubectl apply -f -');
+        Process::run(Kubectl::current()->prefix().' create namespace larakube-companions --dry-run=client -o yaml | kubectl apply -f -');
     }
 
     /**
@@ -370,7 +371,7 @@ trait ManagesCompanions
 
         $fqdn = "{$db->getPodName()}.{$appName}.svc.cluster.local";
 
-        $existing = trim(Process::run("kubectl get configmap phpmyadmin-hosts -n larakube-companions -o jsonpath='{.data.hosts}'")->output());
+        $existing = trim(Process::run(Kubectl::current()->prefix()." get configmap phpmyadmin-hosts -n larakube-companions -o jsonpath='{.data.hosts}'")->output());
 
         $hosts = $existing !== '' ? explode(',', $existing) : [];
         $hosts = array_values(array_unique(array_filter(array_map('trim', $hosts))));
@@ -394,10 +395,10 @@ trait ManagesCompanions
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-pma-hosts.yaml');
         file_put_contents($tmp, $yaml);
-        Process::run('kubectl apply -f '.escapeshellarg($tmp));
+        Process::run(Kubectl::current()->prefix().' apply -f '.escapeshellarg($tmp));
         $temporaryDirectory->delete();
 
-        Process::run('kubectl set env deployment/phpmyadmin PMA_HOSTS='.escapeshellarg($hostsStr).' -n larakube-companions');
-        Process::run('kubectl rollout restart deployment/phpmyadmin -n larakube-companions');
+        Process::run(Kubectl::current()->prefix().' set env deployment/phpmyadmin PMA_HOSTS='.escapeshellarg($hostsStr).' -n larakube-companions');
+        Process::run(Kubectl::current()->prefix().' rollout restart deployment/phpmyadmin -n larakube-companions');
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Commands\Bundle;
 
+use App\Services\Kubectl;
 use App\Traits\GeneratesBundleSecrets;
 use App\Traits\GeneratesOfflineCertificates;
 use App\Traits\InteractsWithProjectConfig;
@@ -116,7 +117,7 @@ class BundleUpdateCommand extends Command
         $ns = escapeshellarg($namespace);
 
         // Extract existing secrets from the cluster (for idempotent updates)
-        $existingSecretsJson = Process::run("kubectl get secret laravel-secrets -n {$ns} -o json")->output();
+        $existingSecretsJson = Process::run(Kubectl::current()->prefix()." get secret laravel-secrets -n {$ns} -o json")->output();
         $existingSecrets = [];
         if ($existingSecretsJson !== '') {
             $parsed = json_decode($existingSecretsJson, true);
@@ -193,17 +194,17 @@ class BundleUpdateCommand extends Command
 
         $this->laraKubeInfo('Waiting for Kubernetes API to be ready...');
         for ($wait = 0; $wait < 60; $wait++) {
-            if (Process::run('kubectl get nodes')->successful()) {
+            if (Process::run(Kubectl::current()->prefix().' get nodes')->successful()) {
                 break;
             }
             Sleep::sleep(2);
         }
 
         if ($public !== '') {
-            Process::run("kubectl create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run(Kubectl::current()->prefix()." create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
         }
         if ($secret !== '') {
-            Process::run("kubectl create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run(Kubectl::current()->prefix()." create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
         }
 
         // 8. Apply manifests
@@ -228,11 +229,11 @@ class BundleUpdateCommand extends Command
 
         // Force a rollout restart to use the newly imported image
         $this->laraKubeInfo('Triggering zero-downtime rolling update...');
-        $this->runStreaming('kubectl rollout restart deployment -l app=laravel -n '.escapeshellarg($namespace));
+        $this->runStreaming(Kubectl::current()->prefix().' rollout restart deployment -l app=laravel -n '.escapeshellarg($namespace));
 
         // 9. Wait for rollout
         $this->laraKubeInfo('Waiting for rollout...');
-        $this->runStreaming('kubectl rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s', 190);
+        $this->runStreaming(Kubectl::current()->prefix().' rollout status deploy/web -n '.escapeshellarg($namespace).' --timeout=180s', 190);
 
         $this->newLine();
         $this->laraKubeInfo('✅ Bundle successfully updated!');

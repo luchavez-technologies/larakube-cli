@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait DetectsWsl
@@ -129,7 +130,7 @@ trait DetectsWsl
             return false;
         }
 
-        $context = trim(Process::run('kubectl config current-context')->output());
+        $context = trim(Process::run(Kubectl::current()->prefix().' config current-context')->output());
 
         return $context === 'docker-desktop';
     }

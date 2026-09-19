@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
@@ -58,7 +59,7 @@ class SmokeCommand extends Command
 
                 // 🛡 PHASE 2: Cluster IP Bypass (Ensures app is healthy even if hosts are out of sync)
                 $this->line('  <fg=gray>[INFO]</> Retrying via internal cluster bridge...');
-                $externalIp = Process::run("kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'")->output();
+                $externalIp = Process::run(Kubectl::current()->prefix()." get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'")->output();
                 $externalIp = $externalIp !== '' ? $externalIp : '127.0.0.1';
 
                 // For a local cluster, localhost (127.0.0.1) is usually the correct bridge for the daemon

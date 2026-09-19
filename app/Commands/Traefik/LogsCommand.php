@@ -2,6 +2,7 @@
 
 namespace App\Commands\Traefik;
 
+use App\Services\Kubectl;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
 
@@ -27,7 +28,7 @@ class LogsCommand extends Command
         $this->renderHeader();
         $this->laraKubeInfo('Tailing Traefik Ingress logs...');
 
-        passthru('kubectl logs -f deployment/traefik -n traefik');
+        passthru(Kubectl::current()->prefix().' logs -f deployment/traefik -n traefik');
 
         return 0;
     }

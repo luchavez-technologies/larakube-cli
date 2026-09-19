@@ -145,3 +145,29 @@ test('only Kubectl builds the ~/.kube/config kubectl prefix', function (): void 
 
     expect($copies)->toBeEmpty();
 });
+
+test('no command string starts with a bare kubectl: Kubectl names the cluster', function (): void {
+    // Error messages that mention kubectl by name, not commands.
+    $messages = ['kubectl >= ', 'kubectl apply failed under', 'kubectl (https'];
+    $bare = [];
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
+
+    foreach ($files as $file) {
+        if (! str_ends_with((string) $file, '.php') || str_ends_with((string) $file, 'Services/Kubectl.php')) {
+            continue;
+        }
+
+        foreach (token_get_all((string) file_get_contents((string) $file)) as $token) {
+            if (! is_array($token) || ! in_array($token[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)) {
+                continue;
+            }
+
+            $text = ltrim($token[1], '\'"');
+            if (str_starts_with($text, 'kubectl ') && array_filter($messages, fn (string $m) => str_starts_with($text, $m)) === []) {
+                $bare[] = str_replace(app_path().'/', '', (string) $file).':'.$token[2];
+            }
+        }
+    }
+
+    expect($bare)->toBeEmpty();
+});

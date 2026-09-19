@@ -35,6 +35,10 @@ class StartCommand extends Command
 
         $environment = $this->argument('environment');
         $namespace = $this->getNamespace($environment);
+        if (($cluster = $this->environmentCluster($config, $environment)) === null) {
+            return 1;
+        }
+        $kubectl = $cluster->prefix();
 
         // Auto-resume required Plex Commons services if paused
         if ($config) {
@@ -49,7 +53,7 @@ class StartCommand extends Command
                 if ($driver instanceof PlexProvisionable) {
                     $service = $driver->commonsServiceName();
                     if ($service) {
-                        $this->ensurePlexServiceRunning($service, 'kubectl');
+                        $this->ensurePlexServiceRunning($service, $kubectl);
                     }
                 }
             }
@@ -59,8 +63,8 @@ class StartCommand extends Command
 
         // We scale all deployments to at least 1 (Default LaraKube state)
         // A more advanced version would read the blueprint to find exact replica counts.
-        $this->withSpin('Scaling up application pods...', function () use ($namespace) {
-            Process::run("kubectl scale deployment --all --replicas=1 -n {$namespace}");
+        $this->withSpin('Scaling up application pods...', function () use ($kubectl, $namespace) {
+            Process::run("{$kubectl} scale deployment --all --replicas=1 -n {$namespace}");
 
             return true;
         });

@@ -2,6 +2,7 @@
 
 namespace App\Commands\Preview;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithHosts;
@@ -57,7 +58,7 @@ class PreviewDownCommand extends Command
         // brought up, is a clean no-op instead of three kubectl errors.
         $this->laraKubeInfo('Removing the preview workload...');
         $this->runStreaming(
-            "kubectl delete deployment,service,ingress web-preview -n {$namespace} --ignore-not-found",
+            Kubectl::current()->prefix()." delete deployment,service,ingress web-preview -n {$namespace} --ignore-not-found",
         );
 
         // The /etc/hosts block preview:up wrote (absent on machines where

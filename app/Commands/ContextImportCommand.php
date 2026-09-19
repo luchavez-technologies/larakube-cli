@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
@@ -40,7 +41,7 @@ class ContextImportCommand extends Command
         $local = $home.'/.kube/config';
 
         // Which context are we importing? (Deterministic name → re-import is idempotent.)
-        $incoming = trim(Process::run('kubectl config view --kubeconfig='.escapeshellarg($file).' -o jsonpath='.escapeshellarg('{.current-context}'))->output());
+        $incoming = trim(Process::run(Kubectl::current()->prefix().' config view --kubeconfig='.escapeshellarg($file).' -o jsonpath='.escapeshellarg('{.current-context}'))->output());
 
         // When run inside a project, align the imported context's NAME to what this
         // project's matching env resolves to — so the teammate gets the same
@@ -107,7 +108,7 @@ class ContextImportCommand extends Command
         }
 
         // The credential's namespace tells us which env it's for.
-        $namespace = trim(Process::run('kubectl config view --kubeconfig='.escapeshellarg($file).' --minify -o jsonpath='.escapeshellarg('{.contexts[0].context.namespace}'))->output());
+        $namespace = trim(Process::run(Kubectl::current()->prefix().' config view --kubeconfig='.escapeshellarg($file).' --minify -o jsonpath='.escapeshellarg('{.contexts[0].context.namespace}'))->output());
         if ($namespace === '') {
             return null;
         }
@@ -126,7 +127,7 @@ class ContextImportCommand extends Command
         $this->importTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $tmp = $this->importTemporaryDirectory->path().'/kubeconfig';
         copy($file, $tmp);
-        $success = Process::run('kubectl config rename-context '.escapeshellarg($incoming).' '.escapeshellarg($target).' --kubeconfig='.escapeshellarg($tmp))->successful();
+        $success = Process::run(Kubectl::current()->prefix().' config rename-context '.escapeshellarg($incoming).' '.escapeshellarg($target).' --kubeconfig='.escapeshellarg($tmp))->successful();
         if (! $success) {
             $this->importTemporaryDirectory->delete();
 

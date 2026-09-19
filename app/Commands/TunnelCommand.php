@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Enums\DatabaseDriver;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -99,7 +100,7 @@ class TunnelCommand extends Command
             }
             $this->line('');
 
-            $kubectlCmds[] = "kubectl port-forward svc/{$tunnel['svc']} {$tunnel['localPort']}:{$tunnel['targetPort']} -n {$namespace}";
+            $kubectlCmds[] = Kubectl::current()->prefix()." port-forward svc/{$tunnel['svc']} {$tunnel['localPort']}:{$tunnel['targetPort']} -n {$namespace}";
         }
 
         $this->laraKubeInfo('Tunnels active. Press Ctrl+C to stop all.');
@@ -114,7 +115,7 @@ class TunnelCommand extends Command
     protected function getAvailableServices(string $namespace): array
     {
         $services = [];
-        $output = Process::run("kubectl get svc -n {$namespace} -o json")->output();
+        $output = Process::run(Kubectl::current()->prefix()." get svc -n {$namespace} -o json")->output();
         if ($output === '') {
             return [];
         }

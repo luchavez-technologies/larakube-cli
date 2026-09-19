@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -26,7 +27,7 @@ trait InteractsWithHosts
     {
         // Prefer the LoadBalancer IP when cloud assigns one.
         $lbIp = trim(Process::run(
-            "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'",
+            Kubectl::current()->prefix()." get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'",
         )->output());
         if ($lbIp !== '') {
             return $lbIp;
@@ -35,7 +36,7 @@ trait InteractsWithHosts
         // Fall back to the node's InternalIP — the canonical routable address
         // for WSL2 / bare-metal k3s where no cloud LoadBalancer IP exists.
         return trim(Process::run(
-            "kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'",
+            Kubectl::current()->prefix()." get nodes -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'",
         )->output()) ?: '127.0.0.1';
     }
 
@@ -188,7 +189,7 @@ trait InteractsWithHosts
             }
 
             $probe = $service->presenceProbe();
-            if ($probe !== null && trim(Process::run("kubectl get {$probe} --no-headers")->output()) === '') {
+            if ($probe !== null && trim(Process::run(Kubectl::current()->prefix()." get {$probe} --no-headers")->output()) === '') {
                 continue;
             }
 

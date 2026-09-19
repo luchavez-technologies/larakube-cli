@@ -3,6 +3,7 @@
 namespace App\Commands\Preview;
 
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithEnvironments;
@@ -98,7 +99,7 @@ class PreviewUpCommand extends Command
         }
 
         $this->withSpin("Ensuring namespace '{$namespace}' exists...", function () use ($namespace): void {
-            Process::run("kubectl create namespace {$namespace} --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run(Kubectl::current()->prefix()." create namespace {$namespace} --dry-run=client -o yaml | kubectl apply -f -");
         });
 
         // Whether a rollout has to be forced after the apply. The image tag is
@@ -107,7 +108,7 @@ class PreviewUpCommand extends Command
         // needs no such nudge, and restarting one immediately costs a second
         // full rollout for nothing.
         $existed = trim(Process::run(
-            "kubectl get deployment web-preview -n {$namespace} --ignore-not-found -o name",
+            Kubectl::current()->prefix()." get deployment web-preview -n {$namespace} --ignore-not-found -o name",
         )->output()) !== '';
 
         $this->ensureKustomizeReady();
@@ -115,10 +116,10 @@ class PreviewUpCommand extends Command
         $this->runStreaming($this->kustomizeApplyCommand($path));
 
         if ($existed) {
-            $this->runStreaming("kubectl rollout restart deployment/web-preview -n {$namespace}");
+            $this->runStreaming(Kubectl::current()->prefix()." rollout restart deployment/web-preview -n {$namespace}");
         }
 
-        $this->runStreaming("kubectl rollout status deployment/web-preview -n {$namespace} --timeout=120s");
+        $this->runStreaming(Kubectl::current()->prefix()." rollout status deployment/web-preview -n {$namespace} --timeout=120s");
 
         $this->renderReady($config, $host);
 

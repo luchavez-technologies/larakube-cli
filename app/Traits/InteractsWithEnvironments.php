@@ -2,8 +2,13 @@
 
 namespace App\Traits;
 
+use App\Data\ConfigData;
+use App\Services\Kubectl;
+
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
+
+use LogicException;
 
 trait InteractsWithEnvironments
 {
@@ -82,6 +87,22 @@ trait InteractsWithEnvironments
             options: $envs,
             default: $envs[0],
         );
+    }
+
+    /**
+     * The cluster $environment is bound to: the current context for local, the
+     * saved cluster for a cloud environment. Null (after saying why) when a
+     * cloud environment has none, never a fallback to the current context.
+     */
+    protected function environmentCluster(?ConfigData $config, string $environment): ?Kubectl
+    {
+        try {
+            return Kubectl::forEnvironment($config, $environment);
+        } catch (LogicException $e) {
+            $this->laraKubeError($e->getMessage());
+
+            return null;
+        }
     }
 
     /**

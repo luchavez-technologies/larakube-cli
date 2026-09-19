@@ -8,6 +8,7 @@ use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Traits\CollectsReminders;
 use App\Traits\DeploysMonitoringExporters;
 use App\Traits\DetectsWsl;
@@ -414,7 +415,7 @@ class UpCommand extends Command
 
         // 2. Ensure Namespace exists
         $this->withSpin("Ensuring namespace '$namespace' exists...", function () use ($namespace): void {
-            Process::run("kubectl create namespace $namespace --dry-run=client -o yaml | kubectl apply -f -");
+            Process::run(Kubectl::current()->prefix()." create namespace $namespace --dry-run=client -o yaml | kubectl apply -f -");
         });
 
         // 3. Handle .env injection
@@ -479,12 +480,12 @@ class UpCommand extends Command
 
                 // 1. Create Public ConfigMap
                 if (! empty($publicLiterals)) {
-                    Process::run("kubectl create configmap laravel-config -n $namespace $publicLiterals --dry-run=client -o yaml | kubectl apply -f -");
+                    Process::run(Kubectl::current()->prefix()." create configmap laravel-config -n $namespace $publicLiterals --dry-run=client -o yaml | kubectl apply -f -");
                 }
 
                 // 2. Create Sensitive Secret
                 if (! empty($secretLiterals)) {
-                    Process::run("kubectl create secret generic laravel-secrets -n $namespace $secretLiterals --dry-run=client -o yaml | kubectl apply -f -");
+                    Process::run(Kubectl::current()->prefix()." create secret generic laravel-secrets -n $namespace $secretLiterals --dry-run=client -o yaml | kubectl apply -f -");
                 }
 
                 // Persist locally and sync blueprint to cluster for resilience
@@ -512,10 +513,10 @@ class UpCommand extends Command
                 ];
 
                 foreach ($pvNames as $pvName) {
-                    $currentPath = Process::run("kubectl get pv {$pvName} -o jsonpath='{.spec.hostPath.path}'")->output();
+                    $currentPath = Process::run(Kubectl::current()->prefix()." get pv {$pvName} -o jsonpath='{.spec.hostPath.path}'")->output();
                     if ($currentPath !== '' && trim($currentPath) !== $config->getPath()) {
                         // Path mismatch! Delete the PV (data is safe because it's a hostPath)
-                        Process::run("kubectl delete pv {$pvName} --grace-period=0 --force");
+                        Process::run(Kubectl::current()->prefix()." delete pv {$pvName} --grace-period=0 --force");
                     }
                 }
 
@@ -531,14 +532,14 @@ class UpCommand extends Command
                     }
 
                     $pvName = "{$appName}-{$component->value}-pv";
-                    $currentPath = trim(Process::run("kubectl get pv {$pvName} -o jsonpath='{.spec.hostPath.path}'")->output());
+                    $currentPath = trim(Process::run(Kubectl::current()->prefix()." get pv {$pvName} -o jsonpath='{.spec.hostPath.path}'")->output());
 
                     if ($currentPath === '') {
                         continue; // no such PV — nothing to check
                     }
 
                     $expectedPath = "{$config->getPath()}/.infrastructure/volume_data/{$component->value}";
-                    $status = trim(Process::run("kubectl get pv {$pvName} -o jsonpath='{.status.phase}'")->output());
+                    $status = trim(Process::run(Kubectl::current()->prefix()." get pv {$pvName} -o jsonpath='{.status.phase}'")->output());
 
                     // Released: its old PVC was deleted (e.g. Plex join/leave
                     // tearing the self-hosted service down and back) but Retain
@@ -549,7 +550,7 @@ class UpCommand extends Command
                     // re-applying recreates an Available PV the new PVC binds
                     // to immediately.
                     if ($status === 'Released' || $currentPath !== $expectedPath) {
-                        Process::run("kubectl delete pv {$pvName} --grace-period=0 --force");
+                        Process::run(Kubectl::current()->prefix()." delete pv {$pvName} --grace-period=0 --force");
                     }
                 }
 
@@ -564,7 +565,7 @@ class UpCommand extends Command
         // replicas with nothing here to restore it. `!=` also matches objects
         // lacking the label, so every other workload scales as it did before.
         $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace): void {
-            Process::run("kubectl scale deployment --replicas=0 -l 'larakube-preview!=true' -n $namespace");
+            Process::run(Kubectl::current()->prefix()." scale deployment --replicas=0 -l 'larakube-preview!=true' -n $namespace");
         });
 
         $this->runStreaming($this->kustomizeApplyCommand($path));
@@ -578,7 +579,7 @@ class UpCommand extends Command
 
         // 5. Restart deployments to pick up new ConfigMap/Secret changes
         $this->laraKubeInfo('Restarting deployments to apply potential configuration changes...');
-        $this->runStreaming("kubectl rollout restart deployment -l 'larakube-preview!=true' -n $namespace");
+        $this->runStreaming(Kubectl::current()->prefix()." rollout restart deployment -l 'larakube-preview!=true' -n $namespace");
 
         // 6. Proactive HTTPS Trust Check
         if ($environment === 'local' && str_starts_with($config->getAppUrl(), 'https://') && ! $this->isSslTrusted()) {

@@ -143,7 +143,8 @@ class AboutCommand extends Command
         $this->newLine();
         $this->laraKubeInfo("Live Cluster Status ($environment)");
 
-        $output = Process::run("kubectl get pods -n {$namespace} -o json")->output();
+        $cluster = $this->environmentCluster($config, $environment);
+        $output = $cluster !== null ? Process::run("{$cluster->prefix()} get pods -n {$namespace} -o json")->output() : '';
         $pods = $output !== '' ? (json_decode($output, true)['items'] ?? []) : [];
 
         if (empty($pods)) {

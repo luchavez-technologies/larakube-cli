@@ -3,6 +3,7 @@
 namespace App\Commands\Snapshot;
 
 use App\Traits\CheckPrerequisites;
+use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
@@ -13,7 +14,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SnapshotListCommand extends Command
 {
-    use CheckPrerequisites, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
@@ -37,7 +38,11 @@ class SnapshotListCommand extends Command
 
         $this->laraKubeInfo("Fetching VolumeSnapshots in namespace '{$namespace}'...");
 
-        $cmd = "kubectl get volumesnapshot -n {$namespace} -o json 2>&1";
+        if (($cluster = $this->environmentCluster($config, (string) $this->argument('environment'))) === null) {
+            return 1;
+        }
+
+        $cmd = "{$cluster->prefix()} get volumesnapshot -n {$namespace} -o json 2>&1";
         $result = Process::run($cmd);
 
         $snapshots = [];

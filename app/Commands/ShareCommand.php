@@ -5,6 +5,7 @@ namespace App\Commands;
 use App\Data\GlobalConfigData;
 use App\Enums\LaravelFeature;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\InteractsWithProjectConfig;
@@ -87,7 +88,7 @@ class ShareCommand extends Command
             $temporaryDirectory = TemporaryDirectory::make();
             $tmp = $temporaryDirectory->path('larakube-share.yaml');
             file_put_contents($tmp, $manifest);
-            Process::run('kubectl apply -f '.escapeshellarg($tmp));
+            Process::run(Kubectl::current()->prefix().' apply -f '.escapeshellarg($tmp));
             $temporaryDirectory->delete();
 
             return true;
@@ -178,7 +179,7 @@ class ShareCommand extends Command
                 $temporaryDirectory = TemporaryDirectory::make();
                 $tmp = $temporaryDirectory->path("larakube-share-{$name}.yaml");
                 file_put_contents($tmp, $manifest);
-                Process::run('kubectl apply -f '.escapeshellarg($tmp));
+                Process::run(Kubectl::current()->prefix().' apply -f '.escapeshellarg($tmp));
                 $temporaryDirectory->delete();
             }
 
@@ -186,7 +187,7 @@ class ShareCommand extends Command
         });
 
         $this->withSpin('Waiting for tunnel pods to be ready...', function () use ($namespace) {
-            Process::timeout(100)->run("kubectl wait --for=condition=ready pod -l larakube.dev/role=share -n {$namespace} --timeout=90s");
+            Process::timeout(100)->run(Kubectl::current()->prefix()." wait --for=condition=ready pod -l larakube.dev/role=share -n {$namespace} --timeout=90s");
 
             return true;
         });
@@ -249,7 +250,7 @@ class ShareCommand extends Command
             $found = null;
 
             for ($i = 0; $i < $maxAttempts && $found === null; $i++) {
-                $result = Process::run('kubectl logs -l app='.escapeshellarg($podName)." -n {$namespace} --tail=30");
+                $result = Process::run(Kubectl::current()->prefix().' logs -l app='.escapeshellarg($podName)." -n {$namespace} --tail=30");
                 $logs = $result->output().$result->errorOutput();
 
                 if (preg_match($pattern, $logs, $m)) {
@@ -282,7 +283,7 @@ class ShareCommand extends Command
         // Storage: update AWS_URL on the web deployment so Storage::url() generates public links
         if (isset($urls['storage'])) {
             $storageUrl = rtrim($urls['storage'], '/');
-            Process::run('kubectl set env deployment/web AWS_URL='.escapeshellarg($storageUrl)." -n {$namespace}");
+            Process::run(Kubectl::current()->prefix().' set env deployment/web AWS_URL='.escapeshellarg($storageUrl)." -n {$namespace}");
             $restartNeeded[] = 'web';
         }
 
@@ -290,7 +291,7 @@ class ShareCommand extends Command
         // to connect via the public tunnel URL instead of the local .kube hostname
         if (isset($urls['hmr'])) {
             $hmrHost = preg_replace('#^https?://#', '', rtrim($urls['hmr'], '/'));
-            Process::run('kubectl set env deployment/node VITE_HMR_HOST='.escapeshellarg($hmrHost)." VITE_HMR_CLIENT_PORT=443 VITE_HMR_PROTOCOL=wss -n {$namespace}");
+            Process::run(Kubectl::current()->prefix().' set env deployment/node VITE_HMR_HOST='.escapeshellarg($hmrHost)." VITE_HMR_CLIENT_PORT=443 VITE_HMR_PROTOCOL=wss -n {$namespace}");
             $restartNeeded[] = 'node';
         }
 
@@ -301,14 +302,14 @@ class ShareCommand extends Command
         // vars need to change, same split as HMR's VITE_HMR_* above.
         if (isset($urls['reverb'])) {
             $reverbHost = preg_replace('#^https?://#', '', rtrim($urls['reverb'], '/'));
-            Process::run('kubectl set env deployment/node VITE_REVERB_HOST='.escapeshellarg($reverbHost)." VITE_REVERB_PORT=443 VITE_REVERB_SCHEME=https -n {$namespace}");
+            Process::run(Kubectl::current()->prefix().' set env deployment/node VITE_REVERB_HOST='.escapeshellarg($reverbHost)." VITE_REVERB_PORT=443 VITE_REVERB_SCHEME=https -n {$namespace}");
             $restartNeeded[] = 'node';
         }
 
         if (! empty($restartNeeded)) {
             $targets = implode(' ', array_map(fn ($d) => "deployment/{$d}", array_unique($restartNeeded)));
-            Process::run("kubectl rollout restart {$targets} -n {$namespace}");
-            Process::timeout(70)->run("kubectl rollout status {$targets} -n {$namespace} --timeout=60s");
+            Process::run(Kubectl::current()->prefix()." rollout restart {$targets} -n {$namespace}");
+            Process::timeout(70)->run(Kubectl::current()->prefix()." rollout status {$targets} -n {$namespace} --timeout=60s");
         }
     }
 
@@ -366,15 +367,15 @@ class ShareCommand extends Command
     {
         $this->withSpin('Stopping tunnels and restoring env...', function () use ($namespace) {
             // Remove all share pods (label-selector covers both B and A pods)
-            Process::run("kubectl delete deployment -l larakube.dev/role=share -n {$namespace} --ignore-not-found");
+            Process::run(Kubectl::current()->prefix()." delete deployment -l larakube.dev/role=share -n {$namespace} --ignore-not-found");
 
             // Remove deployment-level env overrides (no-op if they were never set)
-            Process::run("kubectl set env deployment/web AWS_URL- -n {$namespace}");
-            Process::run("kubectl set env deployment/node VITE_HMR_HOST- VITE_HMR_CLIENT_PORT- VITE_HMR_PROTOCOL- VITE_REVERB_HOST- VITE_REVERB_PORT- VITE_REVERB_SCHEME- -n {$namespace}");
+            Process::run(Kubectl::current()->prefix()." set env deployment/web AWS_URL- -n {$namespace}");
+            Process::run(Kubectl::current()->prefix()." set env deployment/node VITE_HMR_HOST- VITE_HMR_CLIENT_PORT- VITE_HMR_PROTOCOL- VITE_REVERB_HOST- VITE_REVERB_PORT- VITE_REVERB_SCHEME- -n {$namespace}");
 
             // Restart to pick up original ConfigMap values
-            Process::run("kubectl rollout restart deployment/web -n {$namespace}");
-            Process::run("kubectl rollout restart deployment/node -n {$namespace}");
+            Process::run(Kubectl::current()->prefix()." rollout restart deployment/web -n {$namespace}");
+            Process::run(Kubectl::current()->prefix()." rollout restart deployment/node -n {$namespace}");
 
             return true;
         });

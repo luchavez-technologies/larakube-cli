@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithDocker
@@ -216,7 +217,7 @@ trait InteractsWithDocker
      */
     protected function sideloadToActiveCluster(string $imageTag): void
     {
-        $context = trim(Process::run('kubectl config current-context')->output());
+        $context = trim(Process::run(Kubectl::current()->prefix().' config current-context')->output());
 
         if (! $this->resolveSideloadTarget($context)) {
             return; // Remote/registry-backed cluster — the image is pulled, not sideloaded.
@@ -237,7 +238,7 @@ trait InteractsWithDocker
      */
     protected function imageInActiveCluster(string $imageTag): ?bool
     {
-        $context = trim(Process::run('kubectl config current-context')->output());
+        $context = trim(Process::run(Kubectl::current()->prefix().' config current-context')->output());
 
         if (! $this->resolveSideloadTarget($context)) {
             return true; // Nothing to sideload into.
