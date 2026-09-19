@@ -4,7 +4,7 @@
 `Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
 `~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
 copies). Stage 2b ✅ (`forKubeconfig()`; only `Kubectl` sets KUBECONFIG for a
-kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 802 string-built kubectl commands (`KubectlTest`), down from 892.
+kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 792 string-built kubectl commands (`KubectlTest`), down from 892.
 
 
 Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned

@@ -252,10 +252,7 @@ test('env split routes secrets to the Secret and the rest to the ConfigMap', fun
 
     // APP_URL is a known secret here (passed in knownSecrets), so it's a secret;
     // DB_HOST is public; PASSWORD/KEY route to secret by heuristic.
-    expect($secret)->toContain('APP_URL=https://app.test')
-        ->toContain('DB_PASSWORD=s3cr3t')
-        ->toContain('APP_KEY=base64:xxx')
-        ->and($public)->toContain('DB_HOST=postgres.larakube-plex.svc.cluster.local')
-        ->and($public)->not->toContain('a comment')        // comments skipped
-        ->and($public)->not->toContain('NO_VALUE_LINE');   // non KEY=VALUE skipped
+    expect($secret)->toBe(['APP_URL' => 'https://app.test', 'DB_PASSWORD' => 's3cr3t', 'APP_KEY' => 'base64:xxx'])
+        // Comments and non KEY=VALUE lines are skipped.
+        ->and($public)->toBe(['DB_HOST' => 'postgres.larakube-plex.svc.cluster.local']);
 });

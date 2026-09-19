@@ -429,8 +429,8 @@ class UpCommand extends Command
         if (file_exists($envPath)) {
             $this->withSpin('Injecting configuration and blueprint...', function () use ($namespace, $envPath, $projectPath, $config, $environment): void {
                 $envLines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-                $publicLiterals = '';
-                $secretLiterals = '';
+                $public = [];
+                $secret = [];
 
                 $serviceConnectionNames = $environment === 'local'
                     ? $config->getServiceConnectionVariableNames($environment)
@@ -469,23 +469,19 @@ class UpCommand extends Command
                         continue;
                     }
 
-                    $literal = ' --from-literal='.escapeshellarg("$key=$value");
-
                     if ($isSecret) {
-                        $secretLiterals .= $literal;
+                        $secret[$key] = $value;
                     } else {
-                        $publicLiterals .= $literal;
+                        $public[$key] = $value;
                     }
                 }
 
-                // 1. Create Public ConfigMap
-                if (! empty($publicLiterals)) {
-                    Process::run(Kubectl::current()->prefix()." create configmap laravel-config -n $namespace $publicLiterals --dry-run=client -o yaml | kubectl apply -f -");
+                // Values go on stdin, never in argv.
+                if ($public !== []) {
+                    Kubectl::current()->putConfigMap($namespace, 'laravel-config', $public);
                 }
-
-                // 2. Create Sensitive Secret
-                if (! empty($secretLiterals)) {
-                    Process::run(Kubectl::current()->prefix()." create secret generic laravel-secrets -n $namespace $secretLiterals --dry-run=client -o yaml | kubectl apply -f -");
+                if ($secret !== []) {
+                    Kubectl::current()->putSecret($namespace, 'laravel-secrets', $secret);
                 }
 
                 // Persist locally and sync blueprint to cluster for resilience

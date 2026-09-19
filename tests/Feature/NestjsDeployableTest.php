@@ -211,8 +211,8 @@ test('connection URLs carrying credentials are pushed as secrets, whatever their
         'APP_URL=https://shop.example.com',
     ], []);
 
-    expect($secret)->toContain('DATABASE_URL')
-        ->and($public)->toContain('REDIS_URL')->toContain('APP_URL')->not->toContain('DATABASE_URL');
+    expect(array_keys($secret))->toBe(['DATABASE_URL'])
+        ->and(array_keys($public))->toBe(['REDIS_URL', 'APP_URL']);
 });
 
 test('the NestJS workflow builds Dockerfile.nestjs, checks the pushed runtime env, and rolls out its Deployment', function (): void {

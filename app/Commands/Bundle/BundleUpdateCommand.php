@@ -200,12 +200,7 @@ class BundleUpdateCommand extends Command
             Sleep::sleep(2);
         }
 
-        if ($public !== '') {
-            Process::run(Kubectl::current()->prefix()." create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
-        }
-        if ($secret !== '') {
-            Process::run(Kubectl::current()->prefix()." create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
-        }
+        $this->putLaravelEnv(Kubectl::current(), $namespace, $public, $secret);
 
         // 8. Apply manifests
         $this->laraKubeInfo('Applying Kubernetes manifests...');

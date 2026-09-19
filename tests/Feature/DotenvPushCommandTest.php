@@ -101,8 +101,10 @@ test('dotenv:push writes directly to the cluster Secret when OpenBao is absent',
         ->expectsOutputToContain('OpenBao not detected')
         ->expectsOutputToContain("Pushed .env.production to 'laravel-secrets'");
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic laravel-secrets')
-        && str_contains($process->command, 'DB_PASSWORD=super-secret'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f -')
+        && str_contains((string) $process->input, '"laravel-secrets"')
+        && str_contains((string) $process->input, base64_encode('super-secret')));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'super-secret'));
 });
 
 test('dotenv:push writes each secret key into OpenBao, scoped by app, when OpenBao is present', function (): void {

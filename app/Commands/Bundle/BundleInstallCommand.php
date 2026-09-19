@@ -415,12 +415,7 @@ class BundleInstallCommand extends Command
         $this->runStreaming(Kubectl::current()->prefix()." apply -f {$tmpInstall}");
         $installTemporaryDirectory->delete();
 
-        if ($public !== '') {
-            Process::run(Kubectl::current()->prefix()." create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | kubectl apply -f -");
-        }
-        if ($secret !== '') {
-            Process::run(Kubectl::current()->prefix()." create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | kubectl apply -f -");
-        }
+        $this->putLaravelEnv(Kubectl::current(), $namespace, $public, $secret);
 
         // 8. Apply manifests
         // Rewrite the ingress-patch hostname before applying — the bundle was built

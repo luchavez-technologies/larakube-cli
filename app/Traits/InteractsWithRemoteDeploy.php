@@ -223,18 +223,18 @@ trait InteractsWithRemoteDeploy
     }
 
     /**
-     * Split .env lines into ConfigMap (public) and Secret literals for
-     * `kubectl create`. A key is a secret if it's a known blueprint secret or
-     * looks like one (PASSWORD/SECRET/KEY/TOKEN). Pure.
+     * Split .env lines into ConfigMap (public) and Secret values. A key is a
+     * secret if it's a known blueprint secret or looks like one
+     * (PASSWORD/SECRET/KEY/TOKEN). Pure.
      *
      * @param  array<int, string>  $lines
      * @param  array<int, string>  $knownSecrets
-     * @return array{public: string, secret: string}
+     * @return array{public: array<string, string>, secret: array<string, string>}
      */
     public function splitEnvForK8s(array $lines, array $knownSecrets): array
     {
-        $public = '';
-        $secret = '';
+        $public = [];
+        $secret = [];
 
         foreach ($lines as $line) {
             $line = trim($line);
@@ -257,11 +257,10 @@ trait InteractsWithRemoteDeploy
                 // A connection URL with credentials in it (DATABASE_URL, REDIS_URL).
                 || preg_match('#^[a-z][a-z0-9+.-]*://[^/@\s]*:[^/@\s]+@#i', trim($value, " \t\"'")) === 1;
 
-            $literal = ' --from-literal='.escapeshellarg("{$key}={$value}");
             if ($isSecret) {
-                $secret .= $literal;
+                $secret[$key] = $value;
             } else {
-                $public .= $literal;
+                $public[$key] = $value;
             }
         }
 
@@ -712,15 +711,26 @@ trait InteractsWithRemoteDeploy
         // Drive kubectl either via the scoped kubeconfig (dogfood) or, as a
         // fallback, a named admin context.
         $kube = $kubeconfigPath !== null
-            ? Kubectl::forKubeconfig($kubeconfigPath)->prefix()
-            : Kubectl::forContext((string) $context)->prefix();
-        $ns = escapeshellarg($namespace);
+            ? Kubectl::forKubeconfig($kubeconfigPath)
+            : Kubectl::forContext((string) $context);
 
-        if ($public !== '') {
-            Process::run("{$kube} create configmap laravel-config -n {$ns} {$public} --dry-run=client -o yaml | {$kube} apply -f -");
+        $this->putLaravelEnv($kube, $namespace, $public, $secret);
+    }
+
+    /**
+     * Write the app's laravel-config ConfigMap and laravel-secrets Secret. The
+     * values travel on stdin, never in argv.
+     *
+     * @param  array<string, string>  $public
+     * @param  array<string, string>  $secret
+     */
+    protected function putLaravelEnv(Kubectl $kubectl, string $namespace, array $public, array $secret): void
+    {
+        if ($public !== []) {
+            $kubectl->putConfigMap($namespace, 'laravel-config', $public);
         }
-        if ($secret !== '') {
-            Process::run("{$kube} create secret generic laravel-secrets -n {$ns} {$secret} --dry-run=client -o yaml | {$kube} apply -f -");
+        if ($secret !== []) {
+            $kubectl->putSecret($namespace, 'laravel-secrets', $secret);
         }
     }
 
