@@ -1,0 +1,133 @@
+<?php
+
+use App\Data\CloudData;
+use App\Data\ConfigData;
+use App\Data\ResourceRef;
+use App\Services\Kubectl;
+use Illuminate\Process\PendingProcess;
+use Illuminate\Support\Facades\Process;
+use Tests\Support\FakeKubectl;
+
+test('every call is pinned to ~/.kube/config and the handle\'s context', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+
+    Kubectl::forContext('larakube-203.0.113.10')->exists(new ResourceRef('Deployment', 'web', 'apps'));
+
+    Process::assertRan(fn (PendingProcess $p) => str_starts_with($p->command, 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'larakube-203.0.113.10' 'get' 'deployment/web'"));
+});
+
+test('an environment resolves to its managed context, or larakube-<ip> for a VPS, and local to the current context', function (): void {
+    $config = ConfigData::from(['name' => 'demo']);
+    $config->setEnvironments(['local', 'production', 'staging', 'preview']);
+    $config->setCloud('production', new CloudData(ip: '203.0.113.10', user: 'deploy'));
+    $config->setCloud('staging', new CloudData(context: 'do-sfo3-staging'));
+
+    expect(Kubectl::forEnvironment($config, 'production')->context)->toBe('larakube-203.0.113.10')
+        ->and(Kubectl::forEnvironment($config, 'staging')->context)->toBe('do-sfo3-staging')
+        ->and(Kubectl::forEnvironment($config, 'local')->context)->toBeNull();
+});
+
+test('a cloud environment with no saved cluster refuses instead of falling back to the current context', function (): void {
+    $config = ConfigData::from(['name' => 'demo']);
+    $config->setEnvironments(['local', 'preview']);
+
+    Kubectl::forEnvironment($config, 'preview');
+})->throws(LogicException::class, "'preview' has no saved cluster");
+
+test('secret values travel on stdin, never in argv', function (): void {
+    $kube = FakeKubectl::install();
+
+    Kubectl::forContext('ctx')->putSecret('apps', 'web-secrets', ['password' => 's3cr3t value', 'token' => "multi\nline"]);
+
+    Process::assertNotRan(fn (PendingProcess $p) => str_contains($p->command, 's3cr3t'));
+    expect($kube->secretValue('apps', 'web-secrets', 'password'))->toBe('s3cr3t value')
+        ->and($kube->secretValue('apps', 'web-secrets', 'token'))->toBe("multi\nline");
+});
+
+test('secretValue reads back a key, including one with a dot in it', function (): void {
+    FakeKubectl::install()->with([
+        'kind' => 'Secret',
+        'metadata' => ['name' => 'app', 'namespace' => 'apps'],
+        'data' => ['registry.json' => base64_encode('[]'), 'password' => base64_encode('pw')],
+    ]);
+
+    $kubectl = Kubectl::forContext('ctx');
+
+    expect($kubectl->secretValue('apps', 'app', 'registry.json'))->toBe('[]')
+        ->and($kubectl->secretValue('apps', 'app', 'password'))->toBe('pw')
+        ->and($kubectl->secretValue('apps', 'app', 'missing'))->toBeNull()
+        ->and($kubectl->secretValue('apps', 'nope', 'password'))->toBeNull();
+});
+
+test('delete groups resources by namespace and tolerates missing ones', function (): void {
+    $kube = FakeKubectl::install()
+        ->with(['kind' => 'Deployment', 'metadata' => ['name' => 'web', 'namespace' => 'apps']])
+        ->with(['kind' => 'Secret', 'metadata' => ['name' => 'web', 'namespace' => 'apps']])
+        ->with(['kind' => 'Secret', 'metadata' => ['name' => 'sso-app-web', 'namespace' => 'sso']]);
+
+    $result = Kubectl::forContext('ctx')->delete(
+        new ResourceRef('Deployment', 'web', 'apps'),
+        new ResourceRef('Secret', 'web', 'apps'),
+        new ResourceRef('Secret', 'sso-app-web', 'sso'),
+    );
+
+    expect($result->ok)->toBeTrue()
+        ->and($kube->has(new ResourceRef('Deployment', 'web', 'apps')))->toBeFalse()
+        ->and($kube->has(new ResourceRef('Secret', 'sso-app-web', 'sso')))->toBeFalse()
+        ->and(array_filter($kube->calls(), fn ($args) => $args[0] === 'delete'))->toHaveCount(2);
+
+    foreach (array_filter($kube->calls(), fn ($args) => $args[0] === 'delete') as $args) {
+        expect($args)->toContain('--ignore-not-found');
+    }
+});
+
+test('apply, get, exists and list see the same objects', function (): void {
+    FakeKubectl::install();
+    $kubectl = Kubectl::forContext('ctx');
+
+    $kubectl->apply(<<<'YAML'
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: web
+          namespace: apps
+          labels:
+            larakube-tool: sign
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: worker
+          namespace: apps
+        YAML);
+
+    $web = new ResourceRef('Deployment', 'web', 'apps');
+
+    expect($kubectl->exists($web))->toBeTrue()
+        ->and($kubectl->get($web)['metadata']['name'])->toBe('web')
+        ->and($kubectl->exists(new ResourceRef('Deployment', 'nope', 'apps')))->toBeFalse()
+        ->and($kubectl->get(new ResourceRef('Deployment', 'nope', 'apps')))->toBeNull()
+        ->and(array_column(array_column($kubectl->list('deployment', 'apps', ['larakube-tool' => 'sign']), 'metadata'), 'name'))->toBe(['web'])
+        ->and($kubectl->list('deployment', 'apps'))->toHaveCount(2);
+});
+
+test('exec passes stdin through and targets the named pod', function (): void {
+    $kube = FakeKubectl::install();
+
+    Kubectl::forContext('ctx')->exec('larakube-plex', 'deploy/postgres', ['psql', '-U', 'postgres'], stdin: 'select 1;', container: 'postgres');
+
+    expect($kube->execs())->toBe([[
+        'namespace' => 'larakube-plex',
+        'target' => 'deploy/postgres',
+        'command' => ['psql', '-U', 'postgres'],
+        'stdin' => 'select 1;',
+    ]]);
+});
+
+test('arguments are shell-quoted, so a hostile value can\'t break out', function (): void {
+    FakeKubectl::install();
+
+    Kubectl::forContext('ctx')->exists(new ResourceRef('Secret', "x'; rm -rf / #", 'apps'));
+
+    Process::assertRan(fn (PendingProcess $p) => str_contains($p->command, "'secret/x'\\''; rm -rf / #'"));
+});

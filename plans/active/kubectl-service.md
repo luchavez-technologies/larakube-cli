@@ -1,6 +1,12 @@
 # Plan: `KubectlService`, one way to talk to a cluster
 
-**Status:** 📝 PLANNED, not started.
+**Status:** Stage 1 ✅ (`App\Services\Kubectl`, `App\Data\KubectlResult`,
+`Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stages 2–4 not started.
+
+Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned
+kubeconfig, shell-quoted `--context`); `FakeKubectl` is an in-memory cluster
+behind `Process::fake()` that parses Kubectl's quoted argument lists, so no
+container binding is needed and old string-based fakes keep working alongside.
 **Pairs with:** `plans/active/tool-instance-naming.md`. `ToolInstance` decides
 *what* a resource is called; `KubectlService` decides *where* a command goes
 and *how* it's sent. Land this before `ToolInstance` Stage 2, whose generic
