@@ -151,10 +151,7 @@ class DesignInitCommand extends Command
                     $this->registerStaticRole($kubectl, $dbName);
                     $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
-                        Process::run(
-                            "{$kubectl} patch secret {$dbSecretName} -n {$ns} --type=json "
-                            .'-p=\'[{"op":"replace","path":"/data/password","value":"'.base64_encode($realPassword).'"}]\'',
-                        );
+                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, $dbSecretName, ['password' => $realPassword]);
                     }
                 } else {
                     $this->pushClusterSecret($kubectl, "DESIGN_DB_PASSWORD_{$dbName}", $dbPassword, $clusterEnv);

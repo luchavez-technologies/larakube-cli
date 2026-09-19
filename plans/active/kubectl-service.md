@@ -4,7 +4,7 @@
 `Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
 `~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
 copies). Stage 2b ✅ (`forKubeconfig()`; only `Kubectl` sets KUBECONFIG for a
-kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress, paused: ratchet at 836 string-built kubectl commands (`KubectlTest`), down from 892.
+kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 802 string-built kubectl commands (`KubectlTest`), down from 892.
 
 
 Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned
@@ -138,10 +138,15 @@ moves onto it and stops parsing command lines.
    and Paste teardown, `readClusterSecretKey()`, `RunsKubectlSteps`
    (`kubectlStep()`), VPN middleware, namespace removal, volume sizing,
    registry probes, `SyncsClusterSecrets`, `InteractsWithPlex`, local Traefik
-   and shared-service reconcile.
-   Next, in order: the remaining traits by count (`ManagesCompanions`,
-   `InteractsWithVpn`, `ReconcilesPenpotFlags`, `InteractsWithScopedRbac`,
-   ...), then each tool's commands. Follow-ups:
+   and shared-service reconcile, `ManagesCompanions`, `InteractsWithVpn`.
+   `patchSecret()` (merge patch on stdin) replaced all 17 hand-built
+   `patch secret` calls, several of which put tokens and passwords in argv;
+   a guard test keeps it that way. `secretValue()` decodes strictly (invalid
+   base64 is null).
+   Next, in order: the remaining traits by count (`ReconcilesPenpotFlags`,
+   `InteractsWithScopedRbac`, ...), then each tool's commands. Also still in
+   argv: `create secret generic ... --from-literal` (about 140 sites);
+   move them to `putSecret()`. Follow-ups:
    - `SharedClusterService::presenceProbe()` returns an argument fragment
      ("deployment -l ... -n ..."); make it an argument list so its two
      callers can use `raw()`.

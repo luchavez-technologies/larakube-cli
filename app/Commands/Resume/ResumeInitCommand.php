@@ -129,10 +129,7 @@ class ResumeInitCommand extends Command
 
                     $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
-                        Process::run(
-                            "{$kubectl} patch secret resume-reactive-secrets -n {$ns} --type=json "
-                            .'-p=\'[{"op":"replace","path":"/data/db-password","value":"'.base64_encode($realPassword).'"}]\'',
-                        );
+                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'resume-reactive-secrets', ['db-password' => $realPassword]);
                     }
                 } else {
                     $this->pushClusterSecret($kubectl, 'RESUME_DB_PASSWORD', $dbPassword, $clusterEnv);

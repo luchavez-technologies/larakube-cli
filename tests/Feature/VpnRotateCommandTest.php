@@ -51,8 +51,9 @@ test('vpn:rotate mints a new PAT and setup key and stores both', function (): vo
         ->expectsOutputToContain('credentials rotated');
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
-        && str_contains($p->command, 'pat')
-        && str_contains($p->command, 'setup-key'));
+        && str_contains((string) $p->input, '"setup-key"'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
+        && str_contains((string) $p->input, '"pat"'));
 });
 
 test('vpn:rotate mints the setup key with the NEW pat, proving it works before storing', function (): void {

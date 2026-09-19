@@ -45,7 +45,7 @@ test('vpn:password changes the password in the embedded IdP and records it in vp
 
     // Both halves, or the stored copy silently rots.
     Process::assertRan(fn ($process) => str_contains($process->command, 'patch secret vpn-management-secrets')
-        && str_contains($process->command, 'admin-password'));
+        && str_contains((string) $process->input, '"admin-password"'));
 });
 
 test('vpn:password never puts the new password in the container process list', function (): void {

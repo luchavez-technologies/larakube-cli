@@ -11,7 +11,6 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsClusterSecrets;
-use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -130,12 +129,7 @@ class VpnRotateCommand extends Command
         // The setup key is Secret-only; the PAT writes through to OpenBao first
         // when a KV sync owns it, or ESO would put the old value back within 60s.
         $patched = $this->withSpin('Storing the new credentials...', function () use ($kubectl, $ns, $newPat, $newKey, $env): bool {
-            $ok = Process::run(
-                "{$kubectl} patch secret ".$this->vpnName('vpn-management-secrets', $kubectl)." -n {$ns} --type=merge -p "
-                .escapeshellarg((string) json_encode(['data' => [
-                    'setup-key' => base64_encode($newKey),
-                ]], JSON_THROW_ON_ERROR)),
-            )->successful();
+            $ok = Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->vpnName('vpn-management-secrets', $kubectl), ['setup-key' => $newKey])->ok;
 
             return $this->persistVpnPat($kubectl, $newPat, $env) && $ok;
         });

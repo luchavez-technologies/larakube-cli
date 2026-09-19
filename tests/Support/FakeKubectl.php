@@ -138,6 +138,7 @@ final class FakeKubectl
             'delete' => $this->delete($args, (string) $namespace),
             'get' => $this->get($args, (string) $namespace),
             'exec' => $this->exec($args, (string) $namespace, $process->input !== null ? (string) $process->input : null),
+            'patch' => $this->patch($args, (string) $namespace, (string) $process->input),
             default => Process::result(output: ''),
         };
     }
@@ -155,6 +156,21 @@ final class FakeKubectl
         }
 
         return self::shellWords($m[1]);
+    }
+
+    /** `patch KIND NAME --type=merge --patch-file=/dev/stdin`: a merge patch on an object that must exist. */
+    private function patch(array $args, string $namespace, string $patch)
+    {
+        $ref = new ResourceRef($args[1] ?? '', $args[2] ?? '', $namespace);
+        $object = $this->object($ref);
+
+        if ($object === null) {
+            return Process::result(errorOutput: "Error from server (NotFound): {$args[1]} \"{$args[2]}\" not found", exitCode: 1);
+        }
+
+        $this->objects[$this->refKey($ref)] = array_replace_recursive($object, (array) json_decode($patch, true));
+
+        return Process::result(output: "{$args[1]}/{$args[2]} patched");
     }
 
     private function apply(string $manifest, ?string $namespace)

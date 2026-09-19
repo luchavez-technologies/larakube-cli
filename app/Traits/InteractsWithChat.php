@@ -52,11 +52,7 @@ trait InteractsWithChat
      */
     protected function storeChatSecret(string $kubectl, string $ns, string $key, string $value): bool
     {
-        $patch = json_encode(['data' => [$key => base64_encode($value)]]);
-
-        return Process::run(
-            "{$kubectl} patch secret chat-secrets -n {$ns} --type=merge -p ".escapeshellarg((string) $patch),
-        )->successful();
+        return Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'chat-secrets', [$key => $value])->ok;
     }
 
     /**

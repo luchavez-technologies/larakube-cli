@@ -141,10 +141,7 @@ class RecordInitCommand extends Command
                     // on Zitadel: worked once, desynced on next restart.
                     $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
-                        Process::run(
-                            "{$kubectl} patch secret record-secrets -n {$ns} --type=json "
-                            .'-p=\'[{"op":"replace","path":"/data/db-password","value":"'.base64_encode($realPassword).'"}]\'',
-                        );
+                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'record-secrets', ['db-password' => $realPassword]);
                     }
                 } else {
                     $this->pushClusterSecret($kubectl, 'RECORD_DB_PASSWORD', $dbPassword, $clusterEnv);

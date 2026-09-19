@@ -46,7 +46,7 @@ test('applyDesignPenpotFlags patches the Secret and rolls out a restart when the
     );
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'patch secret design-oidc')
-        && str_contains($process->command, 'PENPOT_FLAGS'));
+        && str_contains((string) $process->input, '"PENPOT_FLAGS"'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/design-penpot-backend'));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/design-penpot-backend'));
 });

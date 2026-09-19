@@ -433,13 +433,7 @@ class PlexInitCommand extends Command
             return;
         }
 
-        Process::run(
-            "{$kubectl} patch secret plex-admin -n {$ns} --type merge -p ".
-            escapeshellarg((string) json_encode(['data' => [
-                'S3_ACCESS_KEY' => base64_encode($access),
-                'S3_SECRET_KEY' => base64_encode($secret),
-            ]])),
-        );
+        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'plex-admin', ['S3_ACCESS_KEY' => $access, 'S3_SECRET_KEY' => $secret]);
     }
 
     /**
@@ -490,15 +484,12 @@ class PlexInitCommand extends Command
             )->output()) !== '';
 
             if (! $present) {
-                $patch[$key] = base64_encode($generate());
+                $patch[$key] = $generate();
             }
         }
 
         if (! empty($patch)) {
-            Process::run(
-                "{$kubectl} patch secret plex-admin -n {$ns} --type merge -p ".
-                escapeshellarg((string) json_encode(['data' => $patch])),
-            );
+            Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'plex-admin', $patch);
         }
     }
 

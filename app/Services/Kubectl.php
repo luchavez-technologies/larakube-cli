@@ -197,7 +197,9 @@ final readonly class Kubectl
         $path = str_replace('.', '\.', str_replace('\.', '.', $key));
         $encoded = trim($this->run(['get', 'secret', $name, '-n', $namespace, '-o', "jsonpath={.data.{$path}}"])->output);
 
-        return $encoded !== '' ? (string) base64_decode($encoded) : null;
+        $decoded = $encoded !== '' ? base64_decode($encoded, true) : false;
+
+        return $decoded !== false ? $decoded : null;
     }
 
     /**
@@ -215,6 +217,20 @@ final readonly class Kubectl
             'type' => 'Opaque',
             'data' => array_map(fn (string $value) => base64_encode($value), $data),
         ]));
+    }
+
+    /**
+     * Set some keys on an existing Secret, leaving its other keys alone. Fails
+     * when the Secret doesn't exist. The values go on stdin, never in argv.
+     *
+     * @param  array<string, string>  $data
+     */
+    public function patchSecret(string $namespace, string $name, array $data): KubectlResult
+    {
+        return $this->run(
+            ['patch', 'secret', $name, '-n', $namespace, '--type=merge', '--patch-file=/dev/stdin'],
+            (string) json_encode(['data' => array_map(fn (string $value) => base64_encode($value), $data)]),
+        );
     }
 
     /**
@@ -260,9 +276,9 @@ final readonly class Kubectl
      *
      * @param  list<string>  $args
      */
-    public function raw(array $args, ?string $stdin = null): KubectlResult
+    public function raw(array $args, ?string $stdin = null, ?int $timeoutSeconds = null): KubectlResult
     {
-        return $this->run($args, $stdin);
+        return $this->run($args, $stdin, $timeoutSeconds);
     }
 
     /** @param  list<string>  $args */

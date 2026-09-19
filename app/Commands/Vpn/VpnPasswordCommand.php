@@ -95,13 +95,9 @@ class VpnPasswordCommand extends Command
         // stored copy in step is the whole point of this command — a hand-rolled
         // `netbird-mgmt admin user change-password` leaves it stale, and then
         // vpn:init prints a password that no longer works.
-        $patched = $this->withSpin('Recording it in vpn-secrets...', fn () => Process::run(
-            "{$kubectl} patch secret ".$this->vpnName('vpn-management-secrets', $kubectl)." -n {$ns} --type=merge -p "
-            .escapeshellarg((string) json_encode(['data' => [
-                'admin-email' => base64_encode($email),
-                'admin-password' => base64_encode($password),
-            ]], JSON_THROW_ON_ERROR)),
-        )->successful());
+        $patched = $this->withSpin('Recording it in vpn-secrets...', fn () => Kubectl::fromPrefix($kubectl)->patchSecret(
+            $ns, $this->vpnName('vpn-management-secrets', $kubectl), ['admin-email' => $email, 'admin-password' => $password],
+        )->ok);
 
         if (! $patched) {
             $this->laraKubeWarn('Password changed, but vpn-secrets could not be updated — the stored copy is now stale. Re-run this command once kubectl access is working.');

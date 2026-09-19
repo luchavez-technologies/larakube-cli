@@ -95,11 +95,8 @@ trait InteractsWithMail
     {
         $instance ??= $this->resolveMailInstance($kubectl);
         $secret = $instance === '' ? 'mail-secrets' : "mail-secrets-{$instance}";
-        $patch = json_encode(['data' => [$key => base64_encode($value)]]);
 
-        return Process::run(
-            "{$kubectl} patch secret {$secret} -n {$ns} --type=merge -p ".escapeshellarg((string) $patch),
-        )->successful();
+        return Kubectl::fromPrefix($kubectl)->patchSecret($ns, $secret, [$key => $value])->ok;
     }
 
     /** Read-only Stalwart host for the given environment. */

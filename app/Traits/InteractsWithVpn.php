@@ -27,9 +27,7 @@ use App\Http\Integrations\Netbird\Requests\UpdateIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateSetupKeyRequest;
 use App\Services\Kubectl;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Throwable;
 
 trait InteractsWithVpn
@@ -104,11 +102,7 @@ trait InteractsWithVpn
             $this->pushClusterSecret($kubectl, $kvKey, $pat, $env === 'local' ? 'local' : 'production');
         }
 
-        return Process::run(
-            "{$kubectl} patch secret ".$this->vpnName('vpn-management-secrets', $kubectl)
-            ." -n {$this->vpnNamespace()} --type=merge -p "
-            .escapeshellarg((string) json_encode(['data' => ['pat' => base64_encode($pat)]], JSON_THROW_ON_ERROR)),
-        )->successful();
+        return Kubectl::fromPrefix($kubectl)->patchSecret($this->vpnNamespace(), $this->vpnName('vpn-management-secrets', $kubectl), ['pat' => $pat])->ok;
     }
 
     /** `vpn-management` → `vpn-management-vpn-luchtech-dev`, per the naming convention. */
@@ -144,9 +138,8 @@ trait InteractsWithVpn
     protected function isVpnInstalled(string $kubectl, string $ns): bool
     {
         $deployment = $this->vpnName('vpn-management', $kubectl);
-        $out = Process::run("{$kubectl} get deployment {$deployment} -n {$ns} --no-headers")->output();
 
-        return trim($out) !== '';
+        return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', $deployment, '-n', $ns, '--no-headers'])->output) !== '';
     }
 
     /**
@@ -157,17 +150,9 @@ trait InteractsWithVpn
      */
     protected function fetchVpnSetupKey(string $kubectl, string $ns): ?string
     {
-        $encoded = trim(Process::run(
-            "{$kubectl} get secret ".$this->vpnName('vpn-management-secrets', $kubectl)." -n {$ns} -o jsonpath='{.data.setup-key}'",
-        )->output());
+        $key = Kubectl::fromPrefix($kubectl)->secretValue($ns, $this->vpnName('vpn-management-secrets', $kubectl), 'setup-key');
 
-        if ($encoded === '') {
-            return null;
-        }
-
-        $key = base64_decode($encoded, true);
-
-        return $key !== false && $key !== '' ? $key : null;
+        return $key !== null && $key !== '' ? $key : null;
     }
 
     /**
@@ -179,17 +164,9 @@ trait InteractsWithVpn
      */
     protected function fetchVpnPat(string $kubectl, string $ns): ?string
     {
-        $encoded = trim(Process::run(
-            "{$kubectl} get secret ".$this->vpnName('vpn-management-secrets', $kubectl)." -n {$ns} -o jsonpath='{.data.pat}'",
-        )->output());
+        $pat = Kubectl::fromPrefix($kubectl)->secretValue($ns, $this->vpnName('vpn-management-secrets', $kubectl), 'pat');
 
-        if ($encoded === '') {
-            return null;
-        }
-
-        $pat = base64_decode($encoded, true);
-
-        return $pat !== false && $pat !== '' ? $pat : null;
+        return $pat !== null && $pat !== '' ? $pat : null;
     }
 
     /**
@@ -271,9 +248,7 @@ trait InteractsWithVpn
      */
     protected function vpnSingleAccountState(string $kubectl, string $ns): ?array
     {
-        $logs = Process::timeout(30)->run(
-            "{$kubectl} logs deploy/".$this->vpnName('vpn-management', $kubectl)." -n {$ns} --tail=2000",
-        )->output();
+        $logs = Kubectl::fromPrefix($kubectl)->raw(['logs', 'deploy/'.$this->vpnName('vpn-management', $kubectl), '-n', $ns, '--tail=2000'], timeoutSeconds: 30)->output;
 
         if (preg_match_all('/single account mode (enabled|disabled), accounts number (\d+)/i', $logs, $matches, PREG_SET_ORDER) === 0) {
             return null;
@@ -590,7 +565,7 @@ trait InteractsWithVpn
      */
     protected function vpnOnlyHosts(string $kubectl): array
     {
-        $raw = Process::run("{$kubectl} get ingress -A -o json")->output();
+        $raw = Kubectl::fromPrefix($kubectl)->raw(['get', 'ingress', '-A', '-o', 'json'])->output;
 
         try {
             $payload = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
@@ -701,10 +676,9 @@ trait InteractsWithVpn
     {
         $app = $this->vpnName('vpn-client', $kubectl);
 
-        $name = Process::run(
-            "{$kubectl} get pods -n {$ns} -l app={$app} --field-selector=status.phase=Running "
-            ."-o jsonpath='{.items[0].metadata.name}'",
-        )->output();
+        $name = Kubectl::fromPrefix($kubectl)->raw(
+            ['get', 'pods', '-n', $ns, '-l', "app={$app}", '--field-selector=status.phase=Running', '-o', 'jsonpath={.items[0].metadata.name}'],
+        )->output;
 
         $name = trim($name, " '\n\r\t");
 
@@ -905,12 +879,7 @@ trait InteractsWithVpn
             'instance' => $this->vpnInstance($kubectl),
         ])->render();
 
-        $directory = TemporaryDirectory::make();
-        $path = $directory->path('larakube-vpn-resolver.yaml');
-        file_put_contents($path, $manifest);
-
-        $applied = Process::run("{$kubectl} apply -f {$path}")->successful();
-        $directory->delete();
+        $applied = Kubectl::fromPrefix($kubectl)->apply($manifest)->ok;
 
         // Deliberately no rollout restart. CoreDNS's `reload` picks the new
         // Corefile up on its own, and restarting would re-enrol the NetBird

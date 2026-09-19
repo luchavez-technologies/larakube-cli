@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -112,10 +113,7 @@ trait ReconcilesPenpotFlags
 
         $secretExists = trim(Process::run("{$kubectl} get secret {$oidcSecretName} -n {$ns} --ignore-not-found")->output()) !== '';
         if ($secretExists) {
-            Process::run(
-                "{$kubectl} patch secret {$oidcSecretName} -n {$ns} --type=merge -p="
-                .escapeshellarg(json_encode(['data' => ['PENPOT_FLAGS' => base64_encode($value)]])),
-            );
+            Kubectl::fromPrefix($kubectl)->patchSecret($ns, $oidcSecretName, ['PENPOT_FLAGS' => $value]);
         } else {
             Process::run(
                 "{$kubectl} create secret generic {$oidcSecretName} -n {$ns} "

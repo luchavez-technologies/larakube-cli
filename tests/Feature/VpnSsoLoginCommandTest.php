@@ -65,8 +65,8 @@ test('vpn:sso-login creates a domained account and stores its token', function (
 
     // And the CLI is wired in without anyone visiting the dashboard.
     Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
-        && str_contains($p->command, 'pat')
-        && str_contains($p->command, 'owner-pat'));
+        && str_contains((string) $p->input, '"owner-pat"')
+        && ! str_contains($p->command, 'owner-pat'));
 });
 
 test('vpn:sso-login refuses to call an account without a domain a success', function (): void {

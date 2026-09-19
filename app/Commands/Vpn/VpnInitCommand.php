@@ -614,10 +614,7 @@ class VpnInitCommand extends Command
 
             $this->registerSecret($plain);
 
-            Process::run(
-                "{$kubectl} patch secret {$secret} -n {$ns} --type=merge -p "
-                .escapeshellarg((string) json_encode(['data' => ['setup-key' => base64_encode($plain)]], JSON_THROW_ON_ERROR)),
-            );
+            Kubectl::fromPrefix($kubectl)->patchSecret($ns, $secret, ['setup-key' => $plain]);
 
             // The client only reads NB_SETUP_KEY at startup, so a fresh key in the
             // Secret means nothing until the pod restarts.

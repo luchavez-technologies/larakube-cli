@@ -401,12 +401,7 @@ trait InteractsWithSecrets
         }
 
         if ($isNew) {
-            Process::run("{$kubectl} patch secret openbao-bootstrap -n {$ns} --type merge -p ".escapeshellarg(json_encode([
-                'data' => [
-                    'admin-username' => base64_encode($username),
-                    'admin-password' => base64_encode($password),
-                ],
-            ])));
+            Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'openbao-bootstrap', ['admin-username' => $username, 'admin-password' => $password]);
         }
 
         return [$username, $password, $isNew];

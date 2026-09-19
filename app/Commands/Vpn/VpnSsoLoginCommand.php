@@ -14,7 +14,6 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsClusterSecrets;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
 use Throwable;
@@ -245,13 +244,7 @@ class VpnSsoLoginCommand extends Command
 
                 // owner-pat too: this user owns the account, and NetBird reserves
                 // deleting an account to its owner.
-                Process::run(
-                    "{$kubectl} patch secret ".$this->vpnName('vpn-management-secrets', $kubectl)." -n {$ns} --type=merge -p "
-                    .escapeshellarg((string) json_encode(['data' => [
-                        'pat' => base64_encode($pat),
-                        'owner-pat' => base64_encode($pat),
-                    ]], JSON_THROW_ON_ERROR)),
-                );
+                Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->vpnName('vpn-management-secrets', $kubectl), ['pat' => $pat, 'owner-pat' => $pat]);
             } catch (Throwable) {
                 // Best-effort: the account exists either way, which is the point.
             }

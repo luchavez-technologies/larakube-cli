@@ -155,10 +155,7 @@ class SsoInitCommand extends Command
                     // restart later, confirmed live 2026-08-02.
                     $realPassword = $this->readStaticRolePassword($kubectl, 'zitadel');
                     if ($realPassword !== null) {
-                        Process::run(
-                            "{$kubectl} patch secret sso-secrets -n {$ns} --type=json "
-                            .'-p=\'[{"op":"replace","path":"/data/db-password","value":"'.base64_encode($realPassword).'"}]\'',
-                        );
+                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'sso-secrets', ['db-password' => $realPassword]);
                     }
                 } else {
                     $this->pushClusterSecret($kubectl, 'ZITADEL_DB_PASSWORD', $dbPassword, 'production');
@@ -307,10 +304,7 @@ class SsoInitCommand extends Command
             return false;
         }
 
-        Process::run(
-            "{$kubectl} patch secret sso-secrets -n {$ns} --type=json "
-            .'-p=\'[{"op":"add","path":"/data/machine-pat","value":"'.base64_encode($pat).'"}]\'',
-        );
+        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'sso-secrets', ['machine-pat' => $pat]);
 
         if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
             $this->pushClusterSecret($kubectl, 'ZITADEL_MACHINE_PAT', $pat, 'production');

@@ -42,7 +42,7 @@ test('vpn:setup-key stores the key and re-enrols the gateway', function (): void
         ->expectsOutputToContain('Gateway re-enrolled');
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
-        && str_contains($p->command, 'setup-key'));
+        && str_contains((string) $p->input, '"setup-key"'));
 
     // Without removing config.json the daemon restarts onto its OLD account,
     // which looks like the command silently did nothing.
@@ -94,8 +94,9 @@ test('vpn:setup-key adopts a PAT alongside the key so both point at one account'
         ->assertExitCode(0);
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
-        && str_contains($p->command, 'setup-key')
-        && str_contains($p->command, 'pat'));
+        && str_contains((string) $p->input, '"setup-key"'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
+        && str_contains((string) $p->input, '"pat"'));
 });
 
 test('vpn:setup-key can adopt only a PAT, without touching the gateway', function (): void {
@@ -145,5 +146,5 @@ test('vpn:setup-key writes the PAT through to OpenBao, not just the Secret', fun
     // The Secret still gets it too, for immediate effect and for clusters with
     // no OpenBao at all.
     Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
-        && str_contains($p->command, 'pat'));
+        && str_contains((string) $p->input, '"pat"'));
 });

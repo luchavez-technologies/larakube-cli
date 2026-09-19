@@ -212,7 +212,7 @@ test('only Kubectl sets KUBECONFIG for a kubectl command', function (): void {
 
 test('string-built kubectl commands only ever decrease (KubectlService Stage 4)', function (): void {
     // Lower this as tools move onto typed Kubectl calls; never raise it.
-    $ceiling = 836;
+    $ceiling = 802;
 
     $count = 0;
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
@@ -225,4 +225,37 @@ test('string-built kubectl commands only ever decrease (KubectlService Stage 4)'
     }
 
     expect($count)->toBeLessThanOrEqual($ceiling, "{$count} string-built kubectl commands; new code should use typed Kubectl calls.");
+});
+
+test('patchSecret sets keys on stdin and keeps the Secret\'s other keys', function (): void {
+    $kube = FakeKubectl::install()->with([
+        'kind' => 'Secret',
+        'metadata' => ['name' => 'app', 'namespace' => 'apps'],
+        'data' => ['keep' => base64_encode('kept'), 'pat' => base64_encode('old')],
+    ]);
+
+    $result = Kubectl::forContext('ctx')->patchSecret('apps', 'app', ['pat' => 'n3w-t0ken']);
+
+    expect($result->ok)->toBeTrue()
+        ->and($kube->secretValue('apps', 'app', 'pat'))->toBe('n3w-t0ken')
+        ->and($kube->secretValue('apps', 'app', 'keep'))->toBe('kept');
+    Process::assertNotRan(fn (PendingProcess $p) => str_contains($p->command, 'n3w-t0ken') || str_contains($p->command, base64_encode('n3w-t0ken')));
+});
+
+test('patchSecret fails when the Secret does not exist', function (): void {
+    FakeKubectl::install();
+
+    expect(Kubectl::forContext('ctx')->patchSecret('apps', 'missing', ['k' => 'v'])->ok)->toBeFalse();
+});
+
+test('Secrets are only ever patched through patchSecret(), which keeps values out of argv', function (): void {
+    $offenders = [];
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path())) as $file) {
+        if (str_ends_with((string) $file, '.php') && ! str_ends_with((string) $file, 'Services/Kubectl.php')
+            && preg_match('/patch secret /', (string) file_get_contents((string) $file)) === 1) {
+            $offenders[] = str_replace(app_path().'/', '', (string) $file);
+        }
+    }
+
+    expect($offenders)->toBe([]);
 });

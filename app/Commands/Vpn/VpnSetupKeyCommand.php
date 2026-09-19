@@ -97,10 +97,7 @@ class VpnSetupKeyCommand extends Command
             $ok = true;
 
             if ($key !== '') {
-                $ok = Process::run(
-                    "{$kubectl} patch secret ".$this->vpnName('vpn-management-secrets', $kubectl)." -n {$ns} --type=merge -p "
-                    .escapeshellarg((string) json_encode(['data' => ['setup-key' => base64_encode($key)]], JSON_THROW_ON_ERROR)),
-                )->successful();
+                $ok = Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->vpnName('vpn-management-secrets', $kubectl), ['setup-key' => $key])->ok;
             }
 
             if ($newPat !== '') {

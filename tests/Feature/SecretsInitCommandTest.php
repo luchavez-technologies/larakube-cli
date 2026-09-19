@@ -154,8 +154,8 @@ test('secrets:init creates a new userpass admin and prints the credentials once'
         ->expectsOutputToContain('admin');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'patch secret openbao-bootstrap')
-        && str_contains($process->command, 'admin-username')
-        && str_contains($process->command, 'admin-password'));
+        && str_contains((string) $process->input, '"admin-username"')
+        && str_contains((string) $process->input, '"admin-password"'));
 });
 
 test('secrets:init reuses an existing userpass admin instead of rotating it, and does not reprint credentials', function (): void {

@@ -153,10 +153,7 @@ class SignInitCommand extends Command
 
                     $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
-                        Process::run(
-                            "{$kubectl} patch secret {$secret} -n {$ns} --type=json "
-                            .'-p=\'[{"op":"replace","path":"/data/db-password","value":"'.base64_encode($realPassword).'"}]\'',
-                        );
+                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, $secret, ['db-password' => $realPassword]);
                     }
                 } else {
                     $this->pushClusterSecret($kubectl, 'SIGN_DB_PASSWORD', $dbPassword, $clusterEnv);
