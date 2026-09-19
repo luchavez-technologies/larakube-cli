@@ -136,7 +136,8 @@ stringData:
       allow_unsafe_locale: true
       args:
         user: "{{ $dbUser ?? 'chat_matrix' }}"
-        password: "{{ $dbPassword }}"
+        {{-- No password here: libpq reads PGPASSWORD (from chat-secrets), which
+             OpenBao rotates. A copy baked into this file went stale on rotation. --}}
         database: "{{ $dbName ?? 'chat_matrix' }}"
         host: "{{ $dbHost ?? ($noPlex ? 'chat-synapse-db' : 'postgres.'.$plexNamespace.'.svc.cluster.local') }}"
         port: 5432
@@ -371,6 +372,9 @@ metadata:
   labels:
     app: chat-synapse
     app.kubernetes.io/part-of: chat
+  annotations:
+    {{-- Restart when chat-secrets changes (an OpenBao password rotation). --}}
+    reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
   strategy:
@@ -400,8 +404,13 @@ spec:
       containers:
         - name: synapse
           image: matrixdotorg/synapse:v1.159.0
-@if($s3Bucket ?? null)
           env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: chat-secrets
+                  key: db-password
+@if($s3Bucket ?? null)
             - name: PYTHONPATH
               value: "/data/site-packages"
 @endif

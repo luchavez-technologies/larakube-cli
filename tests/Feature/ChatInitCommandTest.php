@@ -223,3 +223,34 @@ test('chat:init --vpn-only aborts when the Middleware apply fails', function ():
 // happy-path resource-set regression test) and the failure-path test moved
 // there below — kept together per-command instead of split across the
 // init and remove test files.
+
+test('Synapse takes its database password from chat-secrets, so an OpenBao rotation reaches it', function (): void {
+    // It used to be baked into homeserver.yaml: OpenBao rotated chat_matrix's
+    // password, chat-secrets followed, the config file didn't, and Synapse
+    // lost the database once its open connections recycled.
+    $manifests = [];
+    Process::fake(function ($process) use (&$manifests) {
+        $cmd = (string) $process->command;
+        if (preg_match('/apply -f (\S+)/', $cmd, $m) === 1 && is_file(trim($m[1], "'\""))) {
+            $manifests[] = (string) file_get_contents(trim($m[1], "'\""));
+        }
+
+        return match (true) {
+            str_contains($cmd, 'get configmap plex-commons') => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true], 'seaweedfs' => ['enabled' => true]]])),
+            str_contains($cmd, 'get secret plex-admin') => Process::result(output: base64_encode('test-cred')),
+            str_contains($cmd, 'get secret chat-secrets') && str_contains($cmd, 'db-password') => Process::result(output: base64_encode('rotated-by-openbao')),
+            default => Process::result(output: ''),
+        };
+    });
+
+    $this->artisan('chat:init local --no-interaction')->assertExitCode(0);
+
+    $manifest = implode("\n---\n", $manifests);
+    $homeserver = (string) preg_replace('/^.*?homeserver\.yaml: \|\n(.*?)\n---.*$/s', '$1', $manifest);
+
+    expect($manifest)->toContain("- name: PGPASSWORD\n              valueFrom:\n                secretKeyRef:\n                  name: chat-secrets\n                  key: db-password")
+        ->toContain('reloader.stakater.com/auto: "true"')
+        ->not->toContain('rotated-by-openbao')
+        ->and($homeserver)->toContain('user: "chat_matrix"')
+        ->not->toMatch('/args:.*password:/s');
+});
