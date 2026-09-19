@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
+use App\Enums\FrontendStack;
 use App\Enums\LaravelFeature;
 use App\Enums\PackageManager;
 use App\Enums\PhpVersion;
@@ -449,6 +450,12 @@ class StatamicNewCommand extends Command
         if ($packageManager !== $config->getPackageManager()) {
             $config->setPackageManager($packageManager);
             $this->laraKubeInfo("Using {$packageManager->value}, the package manager this site ships with.");
+        }
+
+        // Statamic templates (Antlers/Blade) build their assets with Vite, so the
+        // local dev server pod is what gives the site HMR.
+        if ($config->getFrontend() === null && (file_exists("$projectDir/vite.config.js") || file_exists("$projectDir/vite.config.ts"))) {
+            $config->setFrontend(FrontendStack::VITE);
         }
 
         $required = self::requiredPhpVersion("$projectDir/composer.json");

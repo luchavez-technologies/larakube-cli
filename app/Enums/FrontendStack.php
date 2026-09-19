@@ -27,6 +27,7 @@ enum FrontendStack: string implements HasCommandOptions, HasKubernetesFiles, Has
             self::VUE => 'Vue',
             self::SVELTE => 'Svelte',
             self::LIVEWIRE => 'Livewire',
+            self::VITE => 'Blade/Antlers + Vite',
         };
     }
 
@@ -53,9 +54,10 @@ enum FrontendStack: string implements HasCommandOptions, HasKubernetesFiles, Has
         };
     }
 
+    /** The matching `laravel new` starter flag; plain Vite has none (it's the default app). */
     public function getOptionFlag(): string
     {
-        return "--$this->value";
+        return $this === self::VITE ? '' : "--$this->value";
     }
 
     public function requiresNodePod(): bool
@@ -147,4 +149,6 @@ enum FrontendStack: string implements HasCommandOptions, HasKubernetesFiles, Has
     case VUE = 'vue';
     case SVELTE = 'svelte';
     case LIVEWIRE = 'livewire';
+    /** Server-rendered templates (Blade, Antlers) with Vite-built assets: still needs the dev server for HMR. */
+    case VITE = 'vite';
 }

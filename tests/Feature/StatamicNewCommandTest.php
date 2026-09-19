@@ -138,6 +138,7 @@ function statamicInstaller(array $options = [], ?string $kit = null, ?array $sup
             @mkdir("{$base}/site", 0777, true);
             file_put_contents("{$base}/site/composer.json", json_encode($composer));
             file_put_contents("{$base}/site/bun.lock", '');
+            file_put_contents("{$base}/site/vite.config.js", 'export default {}');
         }
 
         return Illuminate\Support\Facades\Process::result(output: '');
@@ -188,7 +189,7 @@ test('the super user password reaches the container as an environment variable, 
     $directory->delete();
 });
 
-test('a starter kit\'s package manager and PHP floor are adopted after install', function (): void {
+test('a starter kit\'s package manager, PHP floor and Vite front end are adopted after install', function (): void {
     [$command, $base, $directory] = statamicInstaller(composer: ['require' => ['php' => '^8.5']]);
     $config = statamicConfig();
 
@@ -196,7 +197,10 @@ test('a starter kit\'s package manager and PHP floor are adopted after install',
     (new ReflectionMethod($command, 'adoptProjectRequirements'))->invoke($command, $config, "{$base}/site");
 
     expect($config->getPackageManager())->toBe(App\Enums\PackageManager::BUN)
-        ->and($config->phpVersion)->toBe(App\Enums\PhpVersion::PHP_8_5);
+        ->and($config->phpVersion)->toBe(App\Enums\PhpVersion::PHP_8_5)
+        // A Vite-built site gets the local dev server pod, i.e. HMR.
+        ->and($config->getFrontend())->toBe(App\Enums\FrontendStack::VITE)
+        ->and($config->getFrontend()->requiresNodePod())->toBeTrue();
     $directory->delete();
 });
 
