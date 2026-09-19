@@ -1,6 +1,6 @@
 # Sign: Commons Headless-Shell + Signing Certificate Fix — Handoff for Claude Code
 
-**Status (2026-09-19):** ✅ built, uncommitted, not yet verified live.
+**Status (2026-09-19):** ✅ done, verified live (`230400b`).
 Walkthrough: `plans/active/sign-fresh-install-testing.md`.
 
 **Built differently from this spec:**

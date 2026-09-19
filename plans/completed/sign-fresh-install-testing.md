@@ -1,6 +1,11 @@
 # Test Plan: Sign as a fresh install (headless Chrome + ToolInstance names)
 
-**Status:** ⛔ NOT STARTED
+**Status:** ✅ PASSED on production (2026-09-19). Fresh install on
+per-instance names; `mail:wire` + `sso:wire` wrote the ToolInstance-named
+Secrets; a two-signer document reached Completed; headless Chrome reachable
+from Documenso over CDP (Chrome 151.0.7922.109); signing certificate loaded.
+Found along the way: a Commons re-apply stripped the Postgres/Redis exporters
+(fixed + safeguarded in `230400b`, exporters restored by `plex:init`).
 **Plan:** `plans/active/sign-headless-shell-and-signing-cert.md`
 
 Production has no Sign now (removed with `--purge`), so this is a true fresh
