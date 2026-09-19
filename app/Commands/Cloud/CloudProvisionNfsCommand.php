@@ -3,6 +3,7 @@
 namespace App\Commands\Cloud;
 
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
@@ -46,7 +47,7 @@ class CloudProvisionNfsCommand extends Command
             return 1;
         }
 
-        $ctx = $this->kubectl().' --context '.escapeshellarg($context).' ';
+        $ctx = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context).' ';
         $this->line("  <fg=gray>Target context:</> <fg=cyan>{$context}</>");
         $this->newLine();
 
@@ -119,7 +120,7 @@ class CloudProvisionNfsCommand extends Command
     /** Sanity checks before touching the cluster. */
     protected function preflight(string $context): bool
     {
-        $ctx = $this->kubectl().' --context '.escapeshellarg($context).' ';
+        $ctx = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context).' ';
 
         // NFS only earns its keep across multiple nodes — a single node uses RWO directly.
         $nodes = trim(Process::run("{$ctx}get nodes -o name")->output());
@@ -169,7 +170,7 @@ class CloudProvisionNfsCommand extends Command
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-'.str_replace('.', '-', $view).'.yaml');
         file_put_contents($tmp, view($view, $data)->render());
-        $code = $this->runStreaming($this->kubectl().' --context '.escapeshellarg($context).' apply -f '.escapeshellarg($tmp).' --request-timeout=60s');
+        $code = $this->runStreaming(Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context).' apply -f '.escapeshellarg($tmp).' --request-timeout=60s');
         $temporaryDirectory->delete();
 
         if ($code !== 0) {
@@ -184,7 +185,7 @@ class CloudProvisionNfsCommand extends Command
     /** Wait for a deployment to roll out; on timeout, surface the pod's Events. */
     protected function waitForRollout(string $context, string $deploy, int $timeout, string $selector): bool
     {
-        $ctx = $this->kubectl().' --context '.escapeshellarg($context).' ';
+        $ctx = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context).' ';
         $code = $this->runStreaming("{$ctx}rollout status deploy/{$deploy} -n nfs --timeout={$timeout}s", $timeout + 10);
 
         if ($code !== 0) {
@@ -201,7 +202,7 @@ class CloudProvisionNfsCommand extends Command
     /** Provision a throwaway RWX PVC and confirm it Binds — proves the class works. */
     protected function smokeTest(string $context): bool
     {
-        $ctx = $this->kubectl().' --context '.escapeshellarg($context).' ';
+        $ctx = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context).' ';
         $sc = ConfigData::NFS_STORAGE_CLASS;
         $this->laraKubeInfo('Verifying the StorageClass with a test PVC...');
 
@@ -253,7 +254,7 @@ YAML;
     /** Print the Events section of the pods matching a selector. */
     protected function printEvents(string $context, string $selector): void
     {
-        $ctx = $this->kubectl().' --context '.escapeshellarg($context).' ';
+        $ctx = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context).' ';
         $describe = Process::run("{$ctx}-n nfs describe pod -l ".escapeshellarg($selector))->output();
         $pos = strpos($describe, 'Events:');
         $this->line($pos !== false ? '  '.str_replace("\n", "\n  ", trim(substr($describe, $pos))) : '  (no events found)');

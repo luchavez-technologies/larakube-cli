@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -22,15 +23,6 @@ trait InteractsWithBulwark
     protected function bulwarkNamespace(): string
     {
         return ClusterTool::WEBMAIL->namespace();
-    }
-
-    /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */
-    protected function bulwarkKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /**
@@ -70,7 +62,7 @@ trait InteractsWithBulwark
     /** Resolve Bulwark's access details for status output. */
     protected function bulwarkAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->bulwarkKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->bulwarkNamespace();
 
         if (! $this->isBulwarkInstalled($kubectl, $ns)) {

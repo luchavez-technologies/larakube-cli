@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithMonitoring
@@ -16,15 +17,6 @@ trait InteractsWithMonitoring
     protected function monitoringNamespace(): string
     {
         return 'larakube-shared';
-    }
-
-    /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
-    protected function monitoringKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /** Grafana Deployment present? A cheap "is monitoring installed" probe. */
@@ -77,7 +69,7 @@ trait InteractsWithMonitoring
      */
     protected function monitoringAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->monitoringKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->monitoringNamespace();
 
         if (! $this->isMonitoringInstalled($kubectl, $ns)) {

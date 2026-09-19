@@ -4,6 +4,7 @@ namespace App\Commands\Drive\Office;
 
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -62,7 +63,7 @@ class OfficeInitCommand extends Command
 
         $env = $this->resolveToolEnvironment(ClusterTool::DRIVE);
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->officeKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = 'larakube-shared';
 
         if (! $this->driveIsInstalled($kubectl, $ns)) {
@@ -157,14 +158,5 @@ class OfficeInitCommand extends Command
         return trim(Process::run(
             "{$kubectl} get deployment drive-ocis -n {$ns} -o name --ignore-not-found",
         )->output()) !== '';
-    }
-
-    protected function officeKubectl(?string $context): string
-    {
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== null && $context !== ''
-            ? $kubectl.' --context '.escapeshellarg($context)
-            : $kubectl;
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Commands\Backup;
 
 use App\Exceptions\MissingFlagException;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
@@ -50,7 +51,7 @@ class BackupInitCommand extends Command
         // production` silently configured whatever kubectl happened to point
         // at — and a backup of the wrong cluster reports success.
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->backupKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->backupNamespace();
 
         $endpoint = (string) ($this->option('endpoint') ?: ($this->cannotPrompt() ? '' : text(

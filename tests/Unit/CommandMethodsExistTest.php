@@ -85,5 +85,5 @@ test('no command calls a method it does not have', function (): void {
 
     sort($missing);
 
-    expect($missing)->toBe([]);
+    expect($missing)->toBeEmpty();
 });

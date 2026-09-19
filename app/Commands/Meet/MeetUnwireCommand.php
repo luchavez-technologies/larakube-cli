@@ -3,6 +3,7 @@
 namespace App\Commands\Meet;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMeet;
@@ -41,7 +42,7 @@ class MeetUnwireCommand extends Command
         $env = (string) $this->argument('environment');
 
         $context = $this->resolveMeetContext($env);
-        $kubectl = $this->meetKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->meetNamespace();
 
         if ($this->resolveMeetWireTarget($kubectl, 'unwire') === null) {

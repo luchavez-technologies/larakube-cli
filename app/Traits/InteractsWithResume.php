@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithResume
@@ -15,14 +16,6 @@ trait InteractsWithResume
     protected function resumeNamespace(): string
     {
         return ClusterTool::RESUME->namespace();
-    }
-
-    protected function resumeKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     protected function isResumeInstalled(string $kubectl, string $ns): bool
@@ -50,7 +43,7 @@ trait InteractsWithResume
 
     protected function resumeAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->resumeKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->resumeNamespace();
 
         if (! $this->isResumeInstalled($kubectl, $ns)) {

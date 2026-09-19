@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -20,15 +21,6 @@ trait InteractsWithDesk
     protected function deskNamespace(): string
     {
         return ClusterTool::DESK->namespace();
-    }
-
-    /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */
-    protected function deskKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /** FreeScout Deployment present? */
@@ -60,7 +52,7 @@ trait InteractsWithDesk
     /** Resolve FreeScout's access details for status output. */
     protected function deskAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->deskKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->deskNamespace();
 
         if (! $this->isDeskInstalled($kubectl, $ns)) {

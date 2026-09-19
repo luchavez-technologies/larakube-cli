@@ -1,7 +1,14 @@
 # Plan: `KubectlService`, one way to talk to a cluster
 
 **Status:** Stage 1 ✅ (`App\Services\Kubectl`, `App\Data\KubectlResult`,
-`Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stages 2–4 not started.
+`Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
+`~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
+copies). Stages 3–5 not started.
+
+Stage 2 notes: prefixes against a *different* kubeconfig (scoped deploy
+kubeconfigs in `InteractsWithRemoteDeploy`, context merges in `cluster:setup`,
+`context:import`, `cloud:create`, `ProvisionsK3sNode`) are still hand-built;
+`Kubectl` needs a kubeconfig-path constructor before they can move.
 
 Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned
 kubeconfig, shell-quoted `--context`); `FakeKubectl` is an in-memory cluster
@@ -69,14 +76,33 @@ moves onto it and stops parsing command lines.
 1. **Service + fake.** `Kubectl`, result object, `FakeKubectl`, unit tests
    (context pinning, secrets never in argv, delete grouping, cloud env without
    a context refuses). No callers change.
-2. **Prefix builders.** The ~30 per-tool `*Kubectl()` methods and the shared
-   builders return / use a `Kubectl` handle; their string callers keep working
-   through `raw()` for now. Delete each builder once it has no callers.
+2. **Prefix builders.** 31 of the per-tool `*Kubectl()` methods are
+   byte-identical copies that build `--context=<ctx>` **unquoted** (a context
+   name with a space or shell character breaks out of the command). Every
+   call site becomes `Kubectl::forContext($context)->prefix()` and the copy is
+   deleted; `contextKubectl()`, `remoteKubectl()`, `rbacKubectl()`,
+   `kubectlPinned()` and `kubectl()` go the same way. Builders that also
+   *resolve* a context (`environmentKubectl()`, `PlexService::kubectl()`)
+   keep that logic and delegate the string. The only intended change is the
+   quoting; tests that pinned the unquoted string are updated to the quoted
+   one. A test fails if any `*Kubectl()` builder method reappears.
 3. **Context audit of the 138 bare strings.** Classify each as local-intended
    (keep, but through `Kubectl::forContext(null)` so it's explicit) or cloud
    (must pin). Fix every cloud one found; each fix gets a test.
 4. **Typed calls, tool by tool,** as each tool goes through `ToolInstance`
    Stage 2. `raw()` usage must only shrink (a test counts it).
+5. **`ToolRegistry` service.** `InteractsWithToolRegistry` is 600 lines and 21
+   methods that each take a kubectl string, composed into 22 files;
+   `ToolInstance::registered()` reads the registry a second, separate way,
+   and every test fakes it as a base64 blob in a Secret. Replace the data
+   half with `App\Services\ToolRegistry::on(Kubectl $cluster)`:
+   `instances($tool)`, `forHost($tool, $host)`, `hosts($tool)`,
+   `register(...)`, `unregister(...)`, backed by `Kubectl::secretValue()` /
+   `putSecret()`, plus an in-memory `FakeToolRegistry` over `FakeKubectl`.
+   `ToolInstance::registered()` reads through it. Prompts, pickers and
+   messages (`reportToolNotInstalled()`, the `:remove` picker) stay in
+   command traits: the service never talks to the user. Callers move over
+   trait method by trait method; the trait is deleted when empty.
 
 ## Rules
 - Never put a secret value in argv: `putSecret()` and `exec(..., stdin:)` only.

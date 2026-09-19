@@ -4,6 +4,7 @@ namespace App\Commands\Plex;
 
 use App\Contracts\HasPromptableHosts;
 use App\Data\GlobalConfigData;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithHosts;
@@ -79,7 +80,7 @@ class PlexInitCommand extends Command
             return 1;
         }
 
-        $context = $this->plexContext ?: trim(Process::run($this->kubectl().' config current-context')->output());
+        $context = $this->plexContext ?: trim(Process::run(Kubectl::forContext(null)->prefix().' config current-context')->output());
         $this->line("  <fg=gray>Target context:</> <fg=cyan>{$context}</>");
         $this->newLine();
 

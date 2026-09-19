@@ -6,6 +6,7 @@ use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -83,7 +84,7 @@ class GitInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->gitKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->gitNamespace();
         $noPlex = (bool) $this->option('no-plex');
 

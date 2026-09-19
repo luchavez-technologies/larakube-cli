@@ -3,6 +3,7 @@
 namespace App\Commands\Data;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithClusterContext;
@@ -33,7 +34,7 @@ class DataWireCommand extends Command
 
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->dataKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         // Pick from what is REGISTERED, rather than prompting for a hostname.
         // This command points a project at an install that already exists, so
         // a free-typed host could only ever produce a URL to nothing — and the

@@ -3,6 +3,7 @@
 namespace App\Commands\Cloud;
 
 use App\Data\CloudData;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\InteractsWithServerHardening;
@@ -81,7 +82,7 @@ class CloudHardenCommand extends Command
         // Context is deterministically "larakube-{ip}" (ProvisionsK3sNode names
         // every VPS that way), so no extra prompt is needed to find it.
         $vpnContext = "larakube-{$ip}";
-        $vpnKubectl = $this->vpnKubectl($vpnContext);
+        $vpnKubectl = Kubectl::forContext($vpnContext)->prefix();
         $vpnNamespace = $this->vpnNamespace();
         // The VPN host is looked up by environment name — can only offer the
         // join when one was given.
@@ -283,7 +284,7 @@ class CloudHardenCommand extends Command
     /** Update a kube-context's cluster server URL — the official kubectl-native way to edit it. */
     protected function rewriteClusterServer(string $clusterName, string $newIp, int $port): bool
     {
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+        $kubectl = Kubectl::forContext(null)->prefix();
 
         return Process::run("{$kubectl} config set-cluster ".escapeshellarg($clusterName).' --server='.escapeshellarg("https://{$newIp}:{$port}"))->successful();
     }

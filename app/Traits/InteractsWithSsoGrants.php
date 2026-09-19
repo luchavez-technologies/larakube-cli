@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
@@ -39,7 +40,7 @@ trait InteractsWithSsoGrants
             : null;
 
         $context = $this->resolveToolContext($env, $explicitContext);
-        $kubectl = $this->ssoKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($kubectl, $ssoNs)) {

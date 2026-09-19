@@ -2,6 +2,7 @@
 
 namespace App\Commands\Cluster;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
@@ -45,7 +46,7 @@ class ClusterUsersCommand extends Command
 
             $namespace = $config->getNamespace($env);
             $context = $this->environmentContextOrCurrent($config, $env);
-            $kubectl = $this->contextKubectl($context);
+            $kubectl = Kubectl::forContext($context)->prefix();
 
             $this->line('  <fg=gray>Environment:</> <fg=cyan>'.$env.'</>  <fg=gray>·</> <fg=cyan>'.$namespace.'</>  <fg=gray>·</> <fg=cyan>'.($context ?? 'current context').'</>');
             $this->laraKubeNewLine();
@@ -63,7 +64,7 @@ class ClusterUsersCommand extends Command
         }
         $this->line('  <fg=gray>Context:</> <fg=cyan>'.$context.'</>');
         $this->laraKubeNewLine();
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         if ($arg === '') {
             return $this->listUsers($kubectl);

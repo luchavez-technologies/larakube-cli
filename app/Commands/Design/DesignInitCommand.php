@@ -6,6 +6,7 @@ use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -52,7 +53,7 @@ class DesignInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->designKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::DESIGN, ClusterTool::DESIGN, $env, $kubectl);
 

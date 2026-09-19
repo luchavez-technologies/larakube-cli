@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 use App\Enums\DeploymentStrategy;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -155,7 +156,7 @@ trait GuardsSharedStorage
     protected function nfsStorageClassPresent(string $context): bool
     {
         return Process::run(
-            $this->contextKubectl($context).' get storageclass '.escapeshellarg(ConfigData::NFS_STORAGE_CLASS).' -o name',
+            Kubectl::forContext($context)->prefix().' get storageclass '.escapeshellarg(ConfigData::NFS_STORAGE_CLASS).' -o name',
         )->successful();
     }
 

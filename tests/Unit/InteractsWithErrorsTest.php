@@ -16,11 +16,6 @@ function errorsReader(): object
             return $this->resolveErrorsHostReadOnly($env, $config);
         }
 
-        public function kubectlFor(?string $context): string
-        {
-            return $this->errorsKubectl($context);
-        }
-
         public function installed(string $kubectl, string $ns): bool
         {
             return $this->isErrorsInstalled($kubectl, $ns);
@@ -54,15 +49,6 @@ test('cloud Errors host is null when none is configured for the env', function (
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(errorsReader()->host('production', $config))->toBeNull();
-});
-
-test('errorsKubectl scopes to a context only when one is given', function (): void {
-    $reader = errorsReader();
-    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-    expect($reader->kubectlFor('do-sfo3'))->toBe("{$kubectl} --context=do-sfo3")
-        ->and($reader->kubectlFor(''))->toBe($kubectl)
-        ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
 test('isErrorsInstalled reflects whether the glitchtip-web Deployment exists', function (): void {

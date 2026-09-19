@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithInsights
@@ -15,15 +16,6 @@ trait InteractsWithInsights
     protected function insightsNamespace(): string
     {
         return 'larakube-shared';
-    }
-
-    /** Build the kubectl command. */
-    protected function insightsKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /** Insights (metabase) Deployment present? */
@@ -59,7 +51,7 @@ trait InteractsWithInsights
     /** Resolve Insights access details. */
     protected function insightsAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->insightsKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->insightsNamespace();
 
         if (! $this->isInsightsInstalled($kubectl, $ns)) {

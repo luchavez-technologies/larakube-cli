@@ -16,11 +16,6 @@ function uptimeReader(): object
             return $this->resolveUptimeHostReadOnly($env, $config);
         }
 
-        public function kubectlFor(?string $context): string
-        {
-            return $this->uptimeKubectl($context);
-        }
-
         public function installed(string $kubectl, string $ns): bool
         {
             return $this->isUptimeInstalled($kubectl, $ns);
@@ -49,15 +44,6 @@ test('cloud Uptime host is null when none is configured for the env', function (
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(uptimeReader()->host('production', $config))->toBeNull();
-});
-
-test('uptimeKubectl scopes to a context only when one is given', function (): void {
-    $reader = uptimeReader();
-    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-    expect($reader->kubectlFor('do-sfo3'))->toBe("{$kubectl} --context=do-sfo3")
-        ->and($reader->kubectlFor(''))->toBe($kubectl)
-        ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
 test('isUptimeInstalled reflects whether the uptime-kuma Deployment exists', function (): void {

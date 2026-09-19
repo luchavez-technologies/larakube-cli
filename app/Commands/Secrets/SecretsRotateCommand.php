@@ -3,6 +3,7 @@
 namespace App\Commands\Secrets;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RefusesUnshippedTools;
@@ -40,7 +41,7 @@ class SecretsRotateCommand extends Command
 
         $env = $this->resolveToolEnvironment(ClusterTool::SECRETS);
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->secretsKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         if (! $this->secretsBackendAvailable($kubectl)) {
             $this->laraKubeWarn('OpenBao is not deployed. Run `larakube secrets:init` first.');

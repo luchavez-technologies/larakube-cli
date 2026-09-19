@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithCrm
@@ -15,14 +16,6 @@ trait InteractsWithCrm
     protected function crmNamespace(): string
     {
         return ClusterTool::CRM->namespace();
-    }
-
-    protected function crmKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     protected function isCrmInstalled(string $kubectl, string $ns, ?string $instance = null): bool
@@ -53,7 +46,7 @@ trait InteractsWithCrm
 
     protected function crmAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->crmKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->crmNamespace();
 
         if (! $this->isCrmInstalled($kubectl, $ns)) {

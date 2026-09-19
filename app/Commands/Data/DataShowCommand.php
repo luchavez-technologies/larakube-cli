@@ -4,6 +4,7 @@ namespace App\Commands\Data;
 
 use App\Commands\Tool\AbstractToolShowCommand;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithData;
 
 class DataShowCommand extends AbstractToolShowCommand
@@ -36,7 +37,7 @@ class DataShowCommand extends AbstractToolShowCommand
     protected function afterTable(?string $host, string $env, string $instance = ''): void
     {
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->dataKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->dataNamespace();
 
         $adminEmail = $this->readDataSecret($kubectl, $ns, 'admin-email', $instance);

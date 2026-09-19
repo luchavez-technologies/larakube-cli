@@ -223,7 +223,7 @@ test('the environment argument selects the cluster, not whatever kubectl points 
         ->assertExitCode(0);
 
     // Every kubectl call must carry the resolved context.
-    Process::assertRan(fn ($job) => str_contains($job->command, '--context=some-cluster')
+    Process::assertRan(fn ($job) => str_contains($job->command, "--context 'some-cluster'")
         && str_contains($job->command, 'larakube-backup-config'));
 });
 

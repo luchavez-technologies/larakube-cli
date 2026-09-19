@@ -3,6 +3,7 @@
 namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBulwark;
 use App\Traits\InteractsWithClusterContext;
@@ -52,7 +53,7 @@ class MailCreateCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
-        $kubectl = $this->mailKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
@@ -243,7 +244,7 @@ class MailCreateCommand extends Command
      */
     protected function maybeCreateSsoIdentity(string $env, string $email, string $displayName, string $password, ?string $mailDomain = null): void
     {
-        $ssoKubectl = $this->ssoKubectl($this->resolveToolContext($env));
+        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env))->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {

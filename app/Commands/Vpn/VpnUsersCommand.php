@@ -2,6 +2,7 @@
 
 namespace App\Commands\Vpn;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
@@ -26,7 +27,7 @@ class VpnUsersCommand extends Command
 
         $env = (string) $this->argument('environment');
         $config = $this->getProjectConfig();
-        $kubectl = $this->vpnKubectl($this->resolveVpnContext($env, $config));
+        $kubectl = Kubectl::forContext($this->resolveVpnContext($env, $config))->prefix();
         $ns = $this->vpnNamespace();
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {

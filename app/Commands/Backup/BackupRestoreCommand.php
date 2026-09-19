@@ -2,6 +2,7 @@
 
 namespace App\Commands\Backup;
 
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBackup;
@@ -52,10 +53,10 @@ class BackupRestoreCommand extends Command
     {
         $this->renderHeader();
 
-        $kubectl = $this->backupKubectl($this->resolveToolContext(
+        $kubectl = Kubectl::forContext($this->resolveToolContext(
             (string) $this->argument('environment'),
             (string) $this->option('context') ?: null,
-        ));
+        ))->prefix();
         $config = $this->resolveRestoreConfig($kubectl);
 
         if ($config === null) {

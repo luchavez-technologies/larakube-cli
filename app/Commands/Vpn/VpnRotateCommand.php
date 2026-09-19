@@ -5,6 +5,7 @@ namespace App\Commands\Vpn;
 use App\Http\Integrations\Netbird\NetbirdConnector;
 use App\Http\Integrations\Netbird\Requests\CreatePersonalAccessTokenRequest;
 use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
@@ -36,7 +37,7 @@ class VpnRotateCommand extends Command
 
         $env = (string) $this->argument('environment');
         $config = $this->getProjectConfig();
-        $kubectl = $this->vpnKubectl($this->resolveVpnContext($env, $config));
+        $kubectl = Kubectl::forContext($this->resolveVpnContext($env, $config))->prefix();
         $ns = $this->vpnNamespace();
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {

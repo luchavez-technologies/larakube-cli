@@ -16,14 +16,6 @@ trait InteractsWithDashboard
         return 'larakube-shared';
     }
 
-    protected function dashboardKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
-    }
-
     protected function isDashboardInstalled(string $kubectl, string $ns, ?string $instance = null): bool
     {
         $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';

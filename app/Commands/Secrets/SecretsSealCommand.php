@@ -2,6 +2,7 @@
 
 namespace App\Commands\Secrets;
 
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithSecrets;
@@ -25,7 +26,7 @@ class SecretsSealCommand extends Command
 
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->secretsKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->secretsNamespace();
 
         if (! $this->isOpenBaoBootstrapped($kubectl, $ns)) {

@@ -5,6 +5,7 @@ namespace App\Commands\Analytics;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithAnalytics;
@@ -51,7 +52,7 @@ class AnalyticsInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->analyticsKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::ANALYTICS, ClusterTool::ANALYTICS, $env, $kubectl);
         $ns = $this->analyticsNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');

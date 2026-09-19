@@ -3,6 +3,7 @@
 namespace App\Commands\Secrets;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PicksRegisteredTool;
@@ -53,7 +54,7 @@ class SecretsWireCommand extends Command
 
         $env = $this->resolveToolEnvironment(ClusterTool::SECRETS);
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->secretsKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $rotationPeriod = (string) ($this->option('rotation-period') ?: '168h');
 
         if (! $this->secretsBackendAvailable($kubectl)) {

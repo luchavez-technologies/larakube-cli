@@ -2,6 +2,7 @@
 
 namespace App\Commands\Backup;
 
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
@@ -50,7 +51,7 @@ class BackupScheduleCommand extends Command
 
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->backupKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->backupNamespace();
 
         // Scheduling a job that has nowhere to upload would fail nightly and

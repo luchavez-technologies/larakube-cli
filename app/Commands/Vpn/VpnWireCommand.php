@@ -3,6 +3,7 @@
 namespace App\Commands\Vpn;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVpn;
@@ -31,7 +32,7 @@ class VpnWireCommand extends Command
 
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->vpnWireKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         // kubectl first: the picker reads the cluster registry, so it cannot
         // run before there is a cluster to read.
@@ -131,14 +132,5 @@ class VpnWireCommand extends Command
             only: $only,
             domain: (string) ($this->option('domain') ?: '') ?: null,
         );
-    }
-
-    /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */
-    protected function vpnWireKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 }

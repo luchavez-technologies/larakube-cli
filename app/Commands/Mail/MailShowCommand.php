@@ -3,6 +3,7 @@
 namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBulwark;
 use App\Traits\InteractsWithClusterContext;
@@ -45,7 +46,7 @@ class MailShowCommand extends Command
         // plexKubectl(), which needs this or it inspects the wrong cluster.
         $this->plexContext = $context;
 
-        $kubectl = $this->mailKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
@@ -231,7 +232,7 @@ class MailShowCommand extends Command
      */
     protected function ssoStatusLine(string $env, string $email): ?string
     {
-        $ssoKubectl = $this->ssoKubectl($this->resolveToolContext($env));
+        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env))->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {

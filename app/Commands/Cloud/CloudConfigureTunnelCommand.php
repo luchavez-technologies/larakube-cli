@@ -4,6 +4,7 @@ namespace App\Commands\Cloud;
 
 use App\Data\TunnelData;
 use App\Enums\TunnelProvider;
+use App\Services\Kubectl;
 use App\Traits\ConfiguresCloudEnvironment;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
@@ -57,7 +58,7 @@ class CloudConfigureTunnelCommand extends Command
         }
 
         [$config, $context] = $this->resolveEnvironmentContext($config, $environment, $projectPath);
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $namespace = $this->getNamespace($environment, $config->getName());
 
         if ($this->option('remove')) {

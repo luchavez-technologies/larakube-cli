@@ -5,6 +5,7 @@ namespace App\Commands\Cloud;
 use App\Data\ConfigData;
 use App\Http\Integrations\Cloudflare\CloudflareConnector;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
+use App\Services\Kubectl;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithCloudflareApi;
 use App\Traits\InteractsWithDnsZones;
@@ -68,7 +69,7 @@ class CloudProxyCommand extends Command
         }
 
         [$config, $context] = $this->resolveEnvironmentContext($config, $env, $projectPath);
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         if (! $this->certificatesSurviveProxy($config, $env, $kubectl)) {
             return 1;

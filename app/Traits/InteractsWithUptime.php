@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithUptime
@@ -72,15 +73,6 @@ trait InteractsWithUptime
         return 'larakube-shared';
     }
 
-    /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
-    protected function uptimeKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
-    }
-
     /** Uptime Kuma Deployment present? A cheap "is uptime installed" probe. */
     protected function isUptimeInstalled(string $kubectl, string $ns): bool
     {
@@ -113,7 +105,7 @@ trait InteractsWithUptime
      */
     protected function uptimeAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->uptimeKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->uptimeNamespace();
 
         if (! $this->isUptimeInstalled($kubectl, $ns)) {

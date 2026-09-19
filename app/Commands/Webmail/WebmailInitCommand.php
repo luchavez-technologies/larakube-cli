@@ -5,6 +5,7 @@ namespace App\Commands\Webmail;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBulwark;
@@ -56,7 +57,7 @@ class WebmailInitCommand extends Command
             : null;
 
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->bulwarkKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->bulwarkNamespace();
         $host = $this->resolveToolHost(SharedClusterService::WEBMAIL, ClusterTool::WEBMAIL, $env, $kubectl);
         // Every tool's instance identifier is a real, host-derived slug now

@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
@@ -46,7 +47,7 @@ class DotenvAuditCommand extends Command
             $this->line('  <fg=gray>Environment:</> <fg=cyan>'.$env.'</>  <fg=gray>·</> <fg=cyan>'.$namespace.'</>  <fg=gray>·</> <fg=cyan>'.($context ?? 'current context').'</>');
             $this->laraKubeNewLine();
 
-            return $this->audit($this->contextKubectl($context), $namespace, $known);
+            return $this->audit(Kubectl::forContext($context)->prefix(), $namespace, $known);
         }
 
         // Standalone (outside a project, or an explicit literal namespace) — pick
@@ -68,7 +69,7 @@ class DotenvAuditCommand extends Command
         $this->line('  <fg=gray>Context:</> <fg=cyan>'.$context.'</>');
         $this->laraKubeNewLine();
 
-        return $this->audit($this->contextKubectl($context), $arg, null);
+        return $this->audit(Kubectl::forContext($context)->prefix(), $arg, null);
     }
 
     /**

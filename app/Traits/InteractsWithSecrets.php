@@ -10,6 +10,7 @@ use App\Enums\SharedClusterService;
 use App\Http\Integrations\OpenBao\OpenBaoConnector;
 use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -30,15 +31,6 @@ trait InteractsWithSecrets
     protected function secretsNamespace(): string
     {
         return ClusterTool::SECRETS->namespace();
-    }
-
-    /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
-    protected function secretsKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /** OpenBao secrets backend Deployment present? */
@@ -73,7 +65,7 @@ trait InteractsWithSecrets
      */
     protected function secretsAccess(string $environment, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->secretsKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->secretsNamespace();
 
         if (! $this->isSecretsInstalled($kubectl, $ns)) {

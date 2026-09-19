@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
@@ -121,7 +122,7 @@ YAML;
     public function createTokenCommand(string $context, string $namespace, ?string $sa = null, ?int $durationSeconds = null): string
     {
         $sa ??= $this->deployerName();
-        $cmd = $this->rbacKubectl($context)
+        $cmd = Kubectl::forContext($context)->prefix()
             .' -n '.escapeshellarg($namespace)
             .' create token '.escapeshellarg($sa);
 
@@ -158,14 +159,14 @@ YAML;
     /** Read the cluster API server URL from the admin context (CA inlined). Pure. */
     public function clusterServerCommand(string $context): string
     {
-        return $this->rbacKubectl($context).' config view --minify --flatten'
+        return Kubectl::forContext($context)->prefix().' config view --minify --flatten'
             .' -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}');
     }
 
     /** Read the cluster CA (base64) from the admin context. Pure. */
     public function clusterCaDataCommand(string $context): string
     {
-        return $this->rbacKubectl($context).' config view --minify --flatten'
+        return Kubectl::forContext($context)->prefix().' config view --minify --flatten'
             .' -o jsonpath='.escapeshellarg('{.clusters[0].cluster.certificate-authority-data}');
     }
 
@@ -218,7 +219,7 @@ YAML;
         $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $file = $temporaryDirectory->path().'/rbac.yaml';
         file_put_contents($file, $this->scopedRbacManifest($namespace, $app, $env));
-        $result = Process::run($this->rbacKubectl($adminContext).' apply -f '.escapeshellarg($file));
+        $result = Process::run(Kubectl::forContext($adminContext)->prefix().' apply -f '.escapeshellarg($file));
         $temporaryDirectory->delete();
 
         return $result->successful();
@@ -235,7 +236,7 @@ YAML;
     {
         $sa ??= $this->deployerName();
         $secretName = $sa.'-token';
-        $ctx = $this->rbacKubectl($adminContext);
+        $ctx = Kubectl::forContext($adminContext)->prefix();
         $ns = escapeshellarg($namespace);
         $secret = escapeshellarg($secretName);
 
@@ -286,7 +287,7 @@ YAML;
      */
     public function pollSecretToken(string $adminContext, string $namespace, string $secretName): ?string
     {
-        $base = $this->rbacKubectl($adminContext).' -n '.escapeshellarg($namespace)
+        $base = Kubectl::forContext($adminContext)->prefix().' -n '.escapeshellarg($namespace)
             .' get secret '.escapeshellarg($secretName).' -o jsonpath=';
 
         for ($i = 0; $i < 15; $i++) {
@@ -304,7 +305,7 @@ YAML;
     public function readSecretCaData(string $adminContext, string $namespace, string $secretName): string
     {
         $ca = trim(Process::run(
-            $this->rbacKubectl($adminContext).' -n '.escapeshellarg($namespace)
+            Kubectl::forContext($adminContext)->prefix().' -n '.escapeshellarg($namespace)
             .' get secret '.escapeshellarg($secretName).' -o jsonpath='.escapeshellarg('{.data.ca\.crt}'),
         )->output());
 
@@ -325,16 +326,5 @@ YAML;
         }
 
         return true; // can't determine → don't block.
-    }
-
-    /**
-     * `kubectl --context X`, pinned to ~/.kube/config — that's where LaraKube
-     * always merges contexts, but a bare `kubectl` follows the shell's own
-     * $KUBECONFIG when one is set. This trait composes no other trait, so it
-     * builds its own pinned prefix rather than depending on one.
-     */
-    protected function rbacKubectl(string $context): string
-    {
-        return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl --context '.escapeshellarg($context);
     }
 }

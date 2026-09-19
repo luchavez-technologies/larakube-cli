@@ -25,6 +25,7 @@ use App\Http\Integrations\Netbird\Requests\ListUsersRequest;
 use App\Http\Integrations\Netbird\Requests\SaveNameserverGroupRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateIdentityProviderRequest;
 use App\Http\Integrations\Netbird\Requests\UpdateSetupKeyRequest;
+use App\Services\Kubectl;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
@@ -121,15 +122,6 @@ trait InteractsWithVpn
     protected function vpnNamespace(): string
     {
         return ClusterTool::VPN->namespace();
-    }
-
-    /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
-    protected function vpnKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /**
@@ -541,7 +533,7 @@ trait InteractsWithVpn
      */
     protected function vpnAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->vpnKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->vpnNamespace();
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {

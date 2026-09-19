@@ -16,14 +16,6 @@ trait InteractsWithData
         return ClusterTool::DATA->namespace();
     }
 
-    protected function dataKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
-    }
-
     protected function readDataSecret(string $kubectl, string $ns, string $key, string $instance = ''): ?string
     {
         $secretName = $instance !== '' ? "data-secrets-{$instance}" : 'data-secrets';

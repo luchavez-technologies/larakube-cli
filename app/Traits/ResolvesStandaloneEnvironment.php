@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
+
 use function Laravel\Prompts\select;
 
 trait ResolvesStandaloneEnvironment
@@ -21,7 +23,7 @@ trait ResolvesStandaloneEnvironment
 
         // 1. If context is provided, use it directly
         if ($explicitContext !== '') {
-            return [$explicitEnv ?: null, $this->contextKubectl($explicitContext)];
+            return [$explicitEnv ?: null, Kubectl::forContext($explicitContext)->prefix()];
         }
 
         // 2. If environment is provided and we're in a project, map to context
@@ -29,7 +31,7 @@ trait ResolvesStandaloneEnvironment
             if ($config) {
                 $context = $this->environmentContextOrCurrent($config, $explicitEnv);
 
-                return [$explicitEnv, $this->contextKubectl($context)];
+                return [$explicitEnv, Kubectl::forContext($context)->prefix()];
             }
         }
 
@@ -37,7 +39,7 @@ trait ResolvesStandaloneEnvironment
         if ($this->option('no-interaction') ?? false) {
             $context = $config ? $this->environmentContextOrCurrent($config, 'local') : null;
 
-            return [$config ? 'local' : null, $this->contextKubectl($context)];
+            return [$config ? 'local' : null, Kubectl::forContext($context)->prefix()];
         }
 
         if ($config) {
@@ -49,7 +51,7 @@ trait ResolvesStandaloneEnvironment
             );
             $context = $this->environmentContextOrCurrent($config, $env);
 
-            return [$env, $this->contextKubectl($context)];
+            return [$env, Kubectl::forContext($context)->prefix()];
         }
 
         // 4. Standalone Mode (No project) - Prompt for k8s context directly
@@ -57,7 +59,7 @@ trait ResolvesStandaloneEnvironment
         if (empty($contexts)) {
             $this->laraKubeError('No Kubernetes contexts found. Is kubectl installed and configured?');
 
-            return [null, $this->contextKubectl(null)];
+            return [null, Kubectl::forContext(null)->prefix()];
         }
 
         $currentContext = $this->currentKubeContext();
@@ -68,6 +70,6 @@ trait ResolvesStandaloneEnvironment
             default: in_array($currentContext, $contexts, true) ? $currentContext : null,
         );
 
-        return [null, $this->contextKubectl($context)];
+        return [null, Kubectl::forContext($context)->prefix()];
     }
 }

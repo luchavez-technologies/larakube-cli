@@ -7,6 +7,7 @@ use App\Data\GlobalConfigData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
@@ -17,14 +18,6 @@ trait InteractsWithSign
     protected function signNamespace(): string
     {
         return ClusterTool::SIGN->namespace();
-    }
-
-    protected function signKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     protected function isSignInstalled(string $kubectl, string $ns): bool
@@ -92,7 +85,7 @@ trait InteractsWithSign
 
     protected function signAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->signKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->signNamespace();
 
         if (! $this->isSignInstalled($kubectl, $ns)) {

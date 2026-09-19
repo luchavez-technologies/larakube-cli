@@ -5,6 +5,7 @@ namespace App\Commands\Sso;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
@@ -41,7 +42,7 @@ class SsoUnwireCommand extends Command
 
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->ssoKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ssoNs = $this->ssoNamespace();
 
         $selection = $this->resolveTool($kubectl);

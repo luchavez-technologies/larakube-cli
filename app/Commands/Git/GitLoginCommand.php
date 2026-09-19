@@ -3,6 +3,7 @@
 namespace App\Commands\Git;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
@@ -71,7 +72,7 @@ class GitLoginCommand extends Command
         }
 
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         $hosts = array_values(array_unique(array_filter(array_map(
             fn (array $entry) => ($entry['tool'] ?? null) === ClusterTool::GIT->value ? ($entry['host'] ?? null) : null,

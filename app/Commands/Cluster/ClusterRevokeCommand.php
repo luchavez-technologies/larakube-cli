@@ -2,6 +2,7 @@
 
 namespace App\Commands\Cluster;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithTeammateRbac;
@@ -45,7 +46,7 @@ class ClusterRevokeCommand extends Command
         if ($namespace === null || $context === null) {
             return 1;
         }
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = escapeshellarg($namespace);
         $this->line('  <fg=gray>Cluster:</> <fg=cyan>'.$context.'</>');
         $this->laraKubeNewLine();
@@ -102,7 +103,7 @@ class ClusterRevokeCommand extends Command
             if ($namespace === null || $context === null) {
                 return 1;
             }
-            $kubectl = $this->contextKubectl($context);
+            $kubectl = Kubectl::forContext($context)->prefix();
 
             $this->laraKubeWarn("This removes '{$name}'s access to '{$namespace}' on '{$context}' (their other apps, if any, keep working).");
             if (! $this->option('force') && ! confirm("Revoke {$name}'s access to '{$namespace}'?", false)) {
@@ -123,7 +124,7 @@ class ClusterRevokeCommand extends Command
 
             return 1;
         }
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         // Full off-board — every binding (by label, across namespaces) + identity on this cluster.
         $this->laraKubeWarn("This OFF-BOARDS '{$name}' on '{$context}' — all their RoleBindings, the ServiceAccount, and token. Their kubeconfig for this cluster becomes inert.");
@@ -163,7 +164,7 @@ class ClusterRevokeCommand extends Command
 
             return 1;
         }
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         $this->laraKubeWarn("This removes '{$name}'s cluster-wide grant on '{$context}' (their per-namespace access, if any, keeps working).");
         if (! $this->option('force') && ! confirm("Revoke {$name}'s cluster-wide grant?", false)) {

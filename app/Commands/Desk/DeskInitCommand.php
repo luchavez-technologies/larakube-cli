@@ -5,6 +5,7 @@ namespace App\Commands\Desk;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -54,7 +55,7 @@ class DeskInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->deskKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::DESK, ClusterTool::DESK, $env, $kubectl);
 
         $ns = $this->deskNamespace();

@@ -3,6 +3,7 @@
 namespace App\Commands\Dns;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithClusterIdentity;
@@ -41,7 +42,7 @@ class DnsListCommand extends Command
 
         $env = $this->resolveToolEnvironment(ClusterTool::DNS);
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         $zones = $this->installedDnsZones($kubectl);
 

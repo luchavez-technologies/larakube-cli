@@ -4,6 +4,7 @@ namespace App\Commands\Vpn;
 
 use App\Commands\Tool\AbstractToolShowCommand;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithVpn;
 
 class VpnShowCommand extends AbstractToolShowCommand
@@ -37,7 +38,7 @@ class VpnShowCommand extends AbstractToolShowCommand
             return;
         }
 
-        $kubectl = $this->vpnKubectl($this->resolveVpnContext($env, $this->getProjectConfig()));
+        $kubectl = Kubectl::forContext($this->resolveVpnContext($env, $this->getProjectConfig()))->prefix();
         $ns = $this->vpnNamespace();
 
         // Ahead of the credential countdown deliberately: a dead PAT returns

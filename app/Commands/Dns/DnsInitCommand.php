@@ -4,6 +4,7 @@ namespace App\Commands\Dns;
 
 use App\Enums\ClusterTool;
 use App\Exceptions\MissingFlagException;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithCloudflareApi;
@@ -83,7 +84,7 @@ class DnsInitCommand extends Command
         }
 
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = 'larakube-shared';
 
         $token = $this->resolveToken($kubectl, $ns);

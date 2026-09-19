@@ -3,6 +3,7 @@
 namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
@@ -40,7 +41,7 @@ class MailSyncSsoCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
-        $mailKubectl = $this->mailKubectl($context);
+        $mailKubectl = Kubectl::forContext($context)->prefix();
         $mailNs = $this->mailNamespace();
 
         if (! $this->isMailInstalled($mailKubectl, $mailNs)) {
@@ -49,7 +50,7 @@ class MailSyncSsoCommand extends Command
             return 1;
         }
 
-        $ssoKubectl = $this->ssoKubectl($context);
+        $ssoKubectl = Kubectl::forContext($context)->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {

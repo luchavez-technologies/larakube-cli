@@ -4,6 +4,7 @@ namespace App\Commands\Dashboard;
 
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -49,7 +50,7 @@ class DashboardInitCommand extends Command
         $env = $this->resolveToolEnvironment(ClusterTool::DASHBOARD);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->dashboardKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::DASHBOARD, ClusterTool::DASHBOARD, $env, $kubectl);
         // Every tool's instance identifier is a real, host-derived slug now,
         // Dashboard included — it will never have a SECOND instance (one K8s

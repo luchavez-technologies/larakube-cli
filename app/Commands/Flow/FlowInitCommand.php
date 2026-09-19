@@ -56,7 +56,7 @@ class FlowInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->flowKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::FLOW, ClusterTool::FLOW, $env, $kubectl, '', $this->engineLabel($engine));
 
         $names = ToolInstance::forHost(ClusterTool::FLOW, $host, $engine);

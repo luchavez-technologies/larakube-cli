@@ -8,6 +8,7 @@ use App\Http\Integrations\Netbird\Requests\ListUsersRequest;
 use App\Http\Integrations\NetbirdIdp\NetbirdIdpConnector;
 use App\Http\Integrations\NetbirdIdp\Requests\DeviceCodeRequest;
 use App\Http\Integrations\NetbirdIdp\Requests\DeviceTokenRequest;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
@@ -56,7 +57,7 @@ class VpnSsoLoginCommand extends Command
 
         $env = (string) $this->argument('environment');
         $config = $this->getProjectConfig();
-        $kubectl = $this->vpnKubectl($this->resolveVpnContext($env, $config));
+        $kubectl = Kubectl::forContext($this->resolveVpnContext($env, $config))->prefix();
         $ns = $this->vpnNamespace();
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {

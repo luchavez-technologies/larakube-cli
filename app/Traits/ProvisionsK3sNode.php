@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 
@@ -334,7 +335,7 @@ BASH;
      */
     protected function traefikInstalledOnContext(string $contextName): bool
     {
-        return Process::run($this->kubectlPinned($contextName).' get deployment -n traefik traefik')->successful();
+        return Process::run(Kubectl::forContext($contextName)->prefix().' get deployment -n traefik traefik')->successful();
     }
 
     /**
@@ -345,7 +346,7 @@ BASH;
     protected function resolveTraefikIngressIp(string $context): ?string
     {
         $args = Process::run(
-            $this->kubectlPinned($context).' get deployment traefik -n traefik '
+            Kubectl::forContext($context)->prefix().' get deployment traefik -n traefik '
             ."-o jsonpath='{.spec.template.spec.containers[0].args}' --ignore-not-found",
         )->output();
 
@@ -358,21 +359,6 @@ BASH;
         }
 
         return null;
-    }
-
-    /**
-     * `kubectl --context X` on its own follows the shell's own $KUBECONFIG when
-     * one is set (e.g. k3s's own setup docs suggest exporting
-     * /etc/rancher/k3s/k3s.yaml) — but syncKubeconfig() only ever merges
-     * contexts into ~/.kube/config, so a bare call here would look for
-     * "larakube-<ip>" in a file that never has it, and fail as if the context
-     * didn't exist. Same fix as InteractsWithClusterContext::kubectl() /
-     * ContextRemoveCommand / PrunesKubeContext, applied locally since this
-     * trait doesn't compose that one.
-     */
-    protected function kubectlPinned(string $contextName): string
-    {
-        return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl --context '.escapeshellarg($contextName);
     }
 
     /**
@@ -405,7 +391,7 @@ BASH;
 
         $this->laraKubeInfo('Deploying Traefik (Single-Node Hero) to remote cluster...');
 
-        $kubectl = $this->kubectlPinned($contextName);
+        $kubectl = Kubectl::forContext($contextName)->prefix();
         $namespace = 'traefik';
         $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
 

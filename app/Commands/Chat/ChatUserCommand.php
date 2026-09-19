@@ -3,6 +3,7 @@
 namespace App\Commands\Chat;
 
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMatrixApi;
@@ -50,7 +51,7 @@ class ChatUserCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
-        $kubectl = $this->chatKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->chatNamespace();
 
         if (! $this->isChatInstalled($kubectl, $ns)) {

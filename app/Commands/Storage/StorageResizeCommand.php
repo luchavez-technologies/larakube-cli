@@ -2,6 +2,7 @@
 
 namespace App\Commands\Storage;
 
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVolumeSizing;
@@ -43,7 +44,7 @@ class StorageResizeCommand extends Command
 
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         $claim = (string) ($this->option('pvc') ?: '');
         $namespace = (string) ($this->option('namespace') ?: '');

@@ -4,6 +4,7 @@ namespace App\Commands\Uptime;
 
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -49,7 +50,7 @@ class UptimeInitCommand extends Command
     {
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->uptimeKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->uptimeNamespace();
 
         $host = $this->resolveToolHost(SharedClusterService::UPTIME_KUMA, ClusterTool::UPTIME, $env, $kubectl);

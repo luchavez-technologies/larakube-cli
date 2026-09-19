@@ -16,11 +16,6 @@ function gitReader(): object
             return $this->resolveGitHostReadOnly($env, $config);
         }
 
-        public function kubectlFor(?string $context): string
-        {
-            return $this->gitKubectl($context);
-        }
-
         public function installed(string $kubectl, string $ns, ?string $instance = null): bool
         {
             return $this->isGitInstalled($kubectl, $ns, $instance);
@@ -73,15 +68,6 @@ test('cloud Git host is null when none is configured for the env', function (): 
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(gitReader()->host('production', $config))->toBeNull();
-});
-
-test('gitKubectl scopes to a context only when one is given', function (): void {
-    $reader = gitReader();
-    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-    expect($reader->kubectlFor('do-sfo3'))->toBe("{$kubectl} --context=do-sfo3")
-        ->and($reader->kubectlFor(''))->toBe($kubectl)
-        ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
 test('isGitInstalled probes the exact instance Deployment, or the git tool label without one', function (): void {

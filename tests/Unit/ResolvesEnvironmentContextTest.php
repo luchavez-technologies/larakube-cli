@@ -12,7 +12,7 @@
  * The prompt/persist paths (promptCloudTarget() and friends) still involve
  * real Prompts I/O and stay out of scope here.
  *
- * Every kubectl call is pinned to ~/.kube/config (contextKubectl()) — a bare
+ * Every kubectl call is pinned to ~/.kube/config (Kubectl::prefix()) — a bare
  * `kubectl` would otherwise follow the shell's own $KUBECONFIG if one is set.
  */
 
@@ -54,15 +54,6 @@ function envContextKubectl(): string
 
 test('environmentContextName matches the name cloud:init creates', function (): void {
     expect(envContext()->environmentContextName('159.223.43.95'))->toBe('larakube-159.223.43.95');
-});
-
-test('contextKubectl scopes kubectl to a context, or stays plain when null/empty', function (): void {
-    $e = envContext();
-    $kubectl = envContextKubectl();
-
-    expect($e->contextKubectl('larakube-159.223.43.95'))->toBe("{$kubectl} --context 'larakube-159.223.43.95'")
-        ->and($e->contextKubectl(null))->toBe($kubectl)
-        ->and($e->contextKubectl(''))->toBe($kubectl);
 });
 
 test('environmentContextReachable is true when cluster-info succeeds and false when it fails', function (): void {

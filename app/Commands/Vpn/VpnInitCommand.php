@@ -13,6 +13,7 @@ use App\Http\Integrations\Netbird\Requests\CreateSetupKeyRequest;
 use App\Http\Integrations\Netbird\Requests\ListSetupKeysRequest;
 use App\Http\Integrations\Netbird\Requests\ListUsersRequest;
 use App\Http\Integrations\Netbird\Requests\SetupOwnerRequest;
+use App\Services\Kubectl;
 use App\State;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
@@ -62,7 +63,7 @@ class VpnInitCommand extends Command
         $ns = $this->vpnNamespace();
         $config = $this->getProjectConfig();
         $env = $this->resolveEnvironment($config);
-        $kubectl = $this->vpnKubectl($this->resolveVpnContext($env, $config));
+        $kubectl = Kubectl::forContext($this->resolveVpnContext($env, $config))->prefix();
 
         $host = $this->resolveToolHost(SharedClusterService::VPN, ClusterTool::VPN, $env, $kubectl);
 

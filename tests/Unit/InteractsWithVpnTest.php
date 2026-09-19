@@ -16,11 +16,6 @@ function vpnReader(): object
             return $this->resolveVpnHostReadOnly($env, $config);
         }
 
-        public function kubectlFor(?string $context): string
-        {
-            return $this->vpnKubectl($context);
-        }
-
         public function installed(string $kubectl, string $ns): bool
         {
             return $this->isVpnInstalled($kubectl, $ns);
@@ -54,15 +49,6 @@ test('cloud VPN host is null when none is configured for the env', function (): 
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(vpnReader()->host('production', $config))->toBeNull();
-});
-
-test('vpnKubectl scopes to a context only when one is given', function (): void {
-    $reader = vpnReader();
-    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-    expect($reader->kubectlFor('do-sfo3'))->toBe("{$kubectl} --context=do-sfo3")
-        ->and($reader->kubectlFor(''))->toBe($kubectl)
-        ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
 test('isVpnInstalled reflects whether the vpn-management Deployment exists', function (): void {

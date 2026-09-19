@@ -2,6 +2,7 @@
 
 namespace App\Commands\Backup;
 
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
@@ -44,7 +45,7 @@ class BackupRunCommand extends Command
         // See BackupInitCommand: a backup taken against the wrong cluster is
         // the worst possible outcome, because it looks exactly like a good one.
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->backupKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->backupNamespace();
 
         $config = $this->readBackupConfig($kubectl, $ns);

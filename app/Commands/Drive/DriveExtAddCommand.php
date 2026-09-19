@@ -3,6 +3,7 @@
 namespace App\Commands\Drive;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithOcisExtensions;
@@ -31,7 +32,7 @@ class DriveExtAddCommand extends Command
 
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = ClusterTool::DRIVE->namespace();
 
         $this->ensureOcisWebAssetAppsPath($kubectl, $ns);

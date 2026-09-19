@@ -21,6 +21,7 @@ use App\Contracts\HasSelectOptions;
 use App\Contracts\RequiresPhpExtensions;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Services\Kubectl;
 use App\Traits\DerivesHostsFromServices;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithMeet;
@@ -575,7 +576,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
      */
     protected function resolveMeetCredentials(?ConfigData $context): array
     {
-        $kubectl = $this->meetKubectl();
+        $kubectl = Kubectl::forContext(null)->prefix();
         $ns = $this->meetNamespace();
 
         if (! $this->isMeetInstalled($kubectl, $ns)) {

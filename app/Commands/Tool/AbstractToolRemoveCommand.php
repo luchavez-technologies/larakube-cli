@@ -102,7 +102,7 @@ abstract class AbstractToolRemoveCommand extends Command
         // contextKubectl() pins KUBECONFIG to ~/.kube/config — every tool's own
         // *Kubectl() helper did this, and a bare `kubectl` would silently follow
         // an ambient $KUBECONFIG to a different cluster than the one we resolved.
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $this->cluster = Kubectl::forContext(($context ?? '') !== '' ? $context : null);
         $namespace = $tool->namespace();
         $isPurging = (bool) $this->option('purge');

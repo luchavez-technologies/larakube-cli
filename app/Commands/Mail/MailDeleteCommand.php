@@ -4,6 +4,7 @@ namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
 use App\Exceptions\MissingFlagException;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
@@ -47,7 +48,7 @@ class MailDeleteCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
-        $kubectl = $this->mailKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
@@ -121,7 +122,7 @@ class MailDeleteCommand extends Command
      */
     protected function maybeRemoveSsoIdentity(string $env, string $email): void
     {
-        $ssoKubectl = $this->ssoKubectl($this->resolveToolContext($env));
+        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env))->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {

@@ -3,6 +3,7 @@
 namespace App\Commands\Vpn;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVpn;
@@ -32,7 +33,7 @@ class VpnUnwireCommand extends Command
 
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->vpnWireKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         $selection = $this->resolveTool($kubectl);
         if ($selection === null) {
@@ -228,13 +229,5 @@ class VpnUnwireCommand extends Command
         }
 
         return array_values(array_unique($hosts));
-    }
-
-    protected function vpnWireKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 }

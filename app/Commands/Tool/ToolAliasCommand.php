@@ -3,6 +3,7 @@
 namespace App\Commands\Tool;
 
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSso;
@@ -49,7 +50,7 @@ class ToolAliasCommand extends Command
         $targetDomain = (string) ($this->option('domain') ?: '');
 
         $context = (string) ($this->option('context') ?: null);
-        $kubectl = $this->ssoKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         // Host identity wins: a --domain that matches an already-registered
         // entry targets THAT instance in place (registry is the source of

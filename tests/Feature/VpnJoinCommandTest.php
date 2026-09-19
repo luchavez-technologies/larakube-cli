@@ -90,7 +90,7 @@ test('vpn:join targets the CHOSEN environment\'s own saved context, never the am
     $config->setHost('production', 'vpn', 'vpn.example.com');
     $config->saveToFile($dir);
 
-    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl --context=larakube-203.0.113.10';
+    $kubectl = App\Services\Kubectl::forContext('larakube-203.0.113.10')->prefix();
 
     try {
         Process::fake([

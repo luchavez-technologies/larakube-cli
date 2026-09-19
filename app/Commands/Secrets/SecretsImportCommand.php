@@ -4,6 +4,7 @@ namespace App\Commands\Secrets;
 
 use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSecrets;
@@ -73,7 +74,7 @@ class SecretsImportCommand extends Command
 
         $env = $this->resolveToolEnvironment(ClusterTool::SECRETS);
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = $this->secretsKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->secretsNamespace();
 
         // ── 2. Init + unseal OpenBao if needed ────────────────────────────────

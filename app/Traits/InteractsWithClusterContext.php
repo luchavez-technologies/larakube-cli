@@ -10,21 +10,6 @@ use function Laravel\Prompts\confirm;
 trait InteractsWithClusterContext
 {
     /**
-     * Every kubectl call in this trait pins KUBECONFIG explicitly to
-     * ~/.kube/config — that's where LaraKube always merges contexts
-     * (syncKubeconfig(), mergeKubeconfig(), ContextImportCommand, …), but a
-     * bare `kubectl` follows the shell's own $KUBECONFIG when one is set
-     * (e.g. k3s's own setup docs suggest exporting /etc/rancher/k3s/k3s.yaml)
-     * — which would silently read/write a completely different file, making
-     * LaraKube's own contexts invisible to its own pickers. Same fix already
-     * applied in PrunesKubeContext/ContextRemoveCommand for the same reason.
-     */
-    protected function kubectl(): string
-    {
-        return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-    }
-
-    /**
      * Determine if there is an active and reachable Kubernetes cluster.
      */
     protected function hasActiveCluster(): bool
@@ -34,7 +19,7 @@ trait InteractsWithClusterContext
         }
 
         // A short timeout prevents the CLI from hanging if the cluster is unreachable.
-        return Process::run($this->kubectl().' cluster-info --request-timeout=2s')->successful();
+        return Process::run(Kubectl::forContext(null)->prefix().' cluster-info --request-timeout=2s')->successful();
     }
 
     /**
@@ -112,7 +97,7 @@ trait InteractsWithClusterContext
 
         // Fallback: if the API server is on localhost or 127.0.0.1 it's local
         // regardless of what the context is named (e.g. raw k3s "default").
-        $server = trim(Process::run($this->kubectl().' config view --minify -o jsonpath=\'{.clusters[0].cluster.server}\'')->output());
+        $server = trim(Process::run(Kubectl::forContext(null)->prefix().' config view --minify -o jsonpath=\'{.clusters[0].cluster.server}\'')->output());
 
         return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
     }
@@ -158,7 +143,7 @@ trait InteractsWithClusterContext
      */
     protected function switchClusterContext(string $name): bool
     {
-        return Process::run($this->kubectl().' config use-context '.escapeshellarg($name))->successful();
+        return Process::run(Kubectl::forContext(null)->prefix().' config use-context '.escapeshellarg($name))->successful();
     }
 
     /**
@@ -232,7 +217,7 @@ trait InteractsWithClusterContext
      */
     protected function kubectlCurrentContext(): string
     {
-        return trim(Process::run($this->kubectl().' config current-context')->output());
+        return trim(Process::run(Kubectl::forContext(null)->prefix().' config current-context')->output());
     }
 
     /**
@@ -243,7 +228,7 @@ trait InteractsWithClusterContext
      */
     protected function kubectlContextNames(): array
     {
-        $lines = explode("\n", Process::run($this->kubectl().' config get-contexts -o name')->output());
+        $lines = explode("\n", Process::run(Kubectl::forContext(null)->prefix().' config get-contexts -o name')->output());
 
         return array_values(array_filter(array_map('trim', $lines)));
     }

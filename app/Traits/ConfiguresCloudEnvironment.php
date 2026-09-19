@@ -9,6 +9,7 @@ use App\Data\RegistryData;
 use App\Enums\AppFramework;
 use App\Enums\ClusterTool;
 use App\Enums\RegistryProvider;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -40,7 +41,6 @@ trait ConfiguresCloudEnvironment
     // (§ below) is indistinguishable from one created via `env`. EnsuresRealHosts
     // is the same local/placeholder-host guard `cloud:deploy` uses.
     use EnsuresRealHosts, GathersEnvironmentData, InteractsWithVpn, ResolvesEnvironmentContext;
-
     use GeneratesProjectInfrastructure, InteractsWithScopedRbac;
     use StreamsProcessOutput;
 
@@ -583,7 +583,7 @@ trait ConfiguresCloudEnvironment
             return null;
         }
 
-        $vpnKubectl = $this->contextKubectl($context);
+        $vpnKubectl = Kubectl::forContext($context)->prefix();
         $vpnNamespace = $this->vpnNamespace();
         if (! $this->isVpnInstalled($vpnKubectl, $vpnNamespace)) {
             return null;
@@ -707,7 +707,7 @@ trait ConfiguresCloudEnvironment
         }
 
         $namespace = $config->getName().'-'.$environment;
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = escapeshellarg($namespace);
 
         Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
@@ -775,7 +775,7 @@ trait ConfiguresCloudEnvironment
         }
 
         $namespace = $config->getName().'-'.$environment;
-        $kubectl = $this->contextKubectl($adminContext);
+        $kubectl = Kubectl::forContext($adminContext)->prefix();
         $ns = escapeshellarg($namespace);
 
         Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
@@ -911,7 +911,7 @@ trait ConfiguresCloudEnvironment
             return null;
         }
 
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $secret = 'git-secrets-'.ClusterTool::GIT->instanceSlugFromHost($registryHost);
         $username = $this->readClusterSecretKey($kubectl, ClusterTool::GIT->namespace(), $secret, 'username');
         $token = $this->readClusterSecretKey($kubectl, ClusterTool::GIT->namespace(), $secret, 'registry-token');
@@ -1077,7 +1077,7 @@ trait ConfiguresCloudEnvironment
 
         if ($context !== '') {
             $kubeconfig = trim(Process::run(
-                $this->contextKubectl($context).' config view --minify --raw',
+                Kubectl::forContext($context)->prefix().' config view --minify --raw',
             )->output());
             $kubeconfigB64 = base64_encode($kubeconfig);
 

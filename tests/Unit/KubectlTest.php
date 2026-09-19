@@ -128,3 +128,20 @@ test('arguments are shell-quoted, so a hostile value can\'t break out', function
 
     Process::assertRan(fn (PendingProcess $p) => str_contains($p->command, "'secret/x'\\''; rm -rf / #'"));
 });
+
+test('only Kubectl builds the ~/.kube/config kubectl prefix', function (): void {
+    $copies = [];
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
+
+    foreach ($files as $file) {
+        if (! str_ends_with((string) $file, '.php') || str_ends_with((string) $file, 'Services/Kubectl.php')) {
+            continue;
+        }
+
+        if (preg_match("/escapeshellarg\\(home_path\\('\\.kube\\/config'\\)\\)\\s*\\.\\s*' kubectl'/", (string) file_get_contents((string) $file)) === 1) {
+            $copies[] = str_replace(app_path().'/', '', (string) $file);
+        }
+    }
+
+    expect($copies)->toBeEmpty();
+});

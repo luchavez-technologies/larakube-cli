@@ -38,15 +38,6 @@ trait InteractsWithMeet
         return 'larakube-shared';
     }
 
-    /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */
-    protected function meetKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
-    }
-
     /**
      * Is the shared LiveKit deployed? Label-based, not an exact deployment
      * name — the Deployment itself is instance-suffixed now (a real,

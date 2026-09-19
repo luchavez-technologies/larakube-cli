@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithRecord
@@ -15,14 +16,6 @@ trait InteractsWithRecord
     protected function recordNamespace(): string
     {
         return ClusterTool::RECORD->namespace();
-    }
-
-    protected function recordKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     protected function isRecordInstalled(string $kubectl, string $ns): bool
@@ -50,7 +43,7 @@ trait InteractsWithRecord
 
     protected function recordAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->recordKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->recordNamespace();
 
         if (! $this->isRecordInstalled($kubectl, $ns)) {

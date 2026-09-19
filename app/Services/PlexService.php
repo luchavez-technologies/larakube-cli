@@ -39,11 +39,7 @@ final class PlexService
     /** A `kubectl` prefix scoped to this service's context (the current context when null). */
     public function kubectl(): string
     {
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $this->context !== null && $this->context !== ''
-            ? $kubectl.' --context '.escapeshellarg($this->context)
-            : $kubectl;
+        return Kubectl::forContext($this->context)->prefix();
     }
 
     /** Whether this context's API server is reachable. */

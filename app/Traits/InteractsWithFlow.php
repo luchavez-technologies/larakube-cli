@@ -16,12 +16,6 @@ trait InteractsWithFlow
         return ClusterTool::FLOW->namespace();
     }
 
-    /** Build the kubectl command, optionally scoped to a specific context. */
-    protected function flowKubectl(?string $context = null): string
-    {
-        return Kubectl::forContext(($context ?? '') !== '' ? $context : null)->prefix();
-    }
-
     /**
      * The engine already serving $host, other than $engine, or null. A host
      * is one instance, so it runs one engine at a time.

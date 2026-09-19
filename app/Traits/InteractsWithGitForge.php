@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithGitForge
@@ -16,15 +17,6 @@ trait InteractsWithGitForge
     protected function gitNamespace(): string
     {
         return ClusterTool::GIT->namespace();
-    }
-
-    /** Build the kubectl command, optionally scoped to a specific context, pinned to ~/.kube/config. */
-    protected function gitKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /**
@@ -64,7 +56,7 @@ trait InteractsWithGitForge
      */
     protected function gitAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->gitKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->gitNamespace();
 
         $host = $this->resolveGitHostReadOnly($env, $config);
@@ -96,7 +88,7 @@ trait InteractsWithGitForge
             return;
         }
 
-        $kubectl = $this->gitKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $sharedNs = $this->gitNamespace();
         $secret = 'git-secrets-'.ClusterTool::GIT->instanceSlugFromHost($registryHost);
 

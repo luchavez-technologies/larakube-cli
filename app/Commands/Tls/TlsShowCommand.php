@@ -2,6 +2,7 @@
 
 namespace App\Commands\Tls;
 
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithCloudflareApi;
 use App\Traits\LaraKubeOutput;
@@ -41,7 +42,7 @@ class TlsShowCommand extends Command
             return 1;
         }
 
-        $kubectl = $this->kubectlPinned($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ingresses = $this->clusterIngresses($kubectl);
         $hosts = $this->letsEncryptHosts($ingresses);
         $proxied = $this->proxiedHosts($ingresses);

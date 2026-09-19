@@ -4,6 +4,7 @@ namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
 use App\Enums\RelayProvider;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithStalwartApi;
@@ -48,7 +49,7 @@ class MailRelayCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
-        $kubectl = $this->mailKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {

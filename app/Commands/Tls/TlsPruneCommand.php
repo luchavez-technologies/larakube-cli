@@ -2,6 +2,7 @@
 
 namespace App\Commands\Tls;
 
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
@@ -51,7 +52,7 @@ class TlsPruneCommand extends Command
             return 1;
         }
 
-        $kubectl = $this->kubectlPinned($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         if (! $this->traefikInstalledOnContext($context)) {
             $this->laraKubeError("Traefik isn't installed on this cluster.");

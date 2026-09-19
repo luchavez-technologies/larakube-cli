@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -38,15 +39,6 @@ trait InteractsWithMail
     protected function mailNamespace(): string
     {
         return 'larakube-shared';
-    }
-
-    /** Build the kubectl command, optionally scoped to a context, pinned to ~/.kube/config. */
-    protected function mailKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     /**
@@ -151,7 +143,7 @@ trait InteractsWithMail
     /** Resolve Stalwart's access details for status output. */
     protected function mailAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->mailKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {

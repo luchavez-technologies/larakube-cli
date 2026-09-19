@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -69,10 +70,8 @@ trait PromotesIngressDns
      */
     protected function traefikLoadBalancerIp(?string $context = null): ?string
     {
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-        $ctx = $context !== null && $context !== '' ? ' --context '.escapeshellarg($context) : '';
         $ip = trim(Process::run(
-            $kubectl.$ctx.' get svc -n traefik traefik -o jsonpath='.escapeshellarg('{.status.loadBalancer.ingress[0].ip}'),
+            Kubectl::forContext($context)->prefix().' get svc -n traefik traefik -o jsonpath='.escapeshellarg('{.status.loadBalancer.ingress[0].ip}'),
         )->output());
 
         return ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP)) ? $ip : null;

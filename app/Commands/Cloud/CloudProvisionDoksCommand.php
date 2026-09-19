@@ -5,6 +5,7 @@ namespace App\Commands\Cloud;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ManagedProvider;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGlobalConfig;
@@ -221,7 +222,7 @@ class CloudProvisionDoksCommand extends Command
     /** Is Traefik already installed on this cluster? Keeps provision reruns safe. */
     private function traefikInstalled(string $context): bool
     {
-        return Process::run($this->kubectl().' --context '.escapeshellarg($context).' get deployment -n traefik traefik')->successful();
+        return Process::run(Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context).' get deployment -n traefik traefik')->successful();
     }
 
     /**
@@ -249,7 +250,7 @@ class CloudProvisionDoksCommand extends Command
         $tmp = $temporaryDirectory->path('larakube-traefik-managed.yaml');
         file_put_contents($tmp, $manifest);
 
-        $kubectl = $this->kubectl().' --context '.escapeshellarg($context);
+        $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
         $ok = $this->applyAndVerifyRollout($kubectl, $tmp, 'traefik', 'traefik', extraApplyFlags: '--validate=false');
 
         $temporaryDirectory->delete();

@@ -3,6 +3,7 @@
 namespace App\Commands\Dashboard;
 
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\InteractsWithSso;
@@ -65,7 +66,7 @@ class DashboardTrustCommand extends Command
         }
 
         $context = $this->resolveToolContext($environment, $this->option('context'));
-        $kubectl = $this->ssoKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($kubectl, $ssoNs)) {
@@ -206,7 +207,7 @@ class DashboardTrustCommand extends Command
      */
     protected function waitForApiServer(?string $context, int $maxAttempts = 24, int $delay = 5): bool
     {
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl'.($context ? " --context={$context}" : '');
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             if (Process::timeout(10)->run("{$kubectl} get --raw=/livez")->successful()) {

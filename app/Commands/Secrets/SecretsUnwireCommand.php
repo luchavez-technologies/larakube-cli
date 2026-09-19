@@ -4,6 +4,7 @@ namespace App\Commands\Secrets;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSecrets;
@@ -50,7 +51,7 @@ class SecretsUnwireCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
-        $kubectl = $this->secretsKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $secNs = $this->secretsNamespace();
 
         if (! $this->secretsBackendAvailable($kubectl)) {

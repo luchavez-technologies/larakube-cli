@@ -8,6 +8,7 @@ use App\Enums\DatabaseDriver;
 use App\Enums\RenderDriver;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -51,7 +52,7 @@ class SignInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->signKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::SIGN, ClusterTool::SIGN, $env, $kubectl);
         $names = ToolInstance::forHost(ClusterTool::SIGN, $host);
 

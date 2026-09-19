@@ -5,6 +5,7 @@ namespace App\Commands\Paste;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -58,7 +59,7 @@ class PasteInitCommand extends Command
         $env = $this->resolveToolEnvironment(ClusterTool::PASTE);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->pasteKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::PASTE, ClusterTool::PASTE, $env, $kubectl);
         // Every Commons resource is named per instance (see
         // ClusterTool::commonsRedisTenants()/commonsBuckets()), so instances

@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsEnvSources;
@@ -52,7 +53,7 @@ class DotenvCommand extends Command
 
         $namespace = $config->getNamespace($env);
         $context = $this->option('context') ?: $this->environmentContextOrCurrent($config, $env);
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         $envFile = $config->getPath().($env === 'local' ? '/.env' : '/.env.'.$env);
         if (! is_file($envFile)) {

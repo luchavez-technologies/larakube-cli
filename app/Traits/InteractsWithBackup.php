@@ -39,14 +39,6 @@ trait InteractsWithBackup
         return 'larakube-shared';
     }
 
-    protected function backupKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
-    }
-
     /**
      * Volumes whose contents cannot be rebuilt from anything else, discovered
      * live: every Deployment across every `larakube-*` namespace that

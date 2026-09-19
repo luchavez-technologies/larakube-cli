@@ -2,6 +2,7 @@
 
 namespace App\Commands\Cluster;
 
+use App\Services\Kubectl;
 use App\State;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithProjectConfig;
@@ -184,7 +185,7 @@ class ClusterGrantCommand extends Command
         }
 
         $listed = trim(Process::run(
-            $this->contextKubectl($adminContext).' get namespace -o name',
+            Kubectl::forContext($adminContext)->prefix().' get namespace -o name',
         )->output());
 
         $available = array_values(array_filter(array_map(
@@ -212,7 +213,7 @@ class ClusterGrantCommand extends Command
         $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $file = $temporaryDirectory->path().'/grant.yaml';
         file_put_contents($file, $manifest);
-        $result = Process::run($this->contextKubectl($adminContext).' apply -f '.escapeshellarg($file));
+        $result = Process::run(Kubectl::forContext($adminContext)->prefix().' apply -f '.escapeshellarg($file));
         $temporaryDirectory->delete();
 
         $output = explode("\n", trim($result->output().$result->errorOutput()));
@@ -255,7 +256,7 @@ class ClusterGrantCommand extends Command
         $clusterWide = (bool) $this->option('cluster');
         $role = $this->resolveAccessRole($clusterWide);
         $accessNs = $this->accessNamespace();
-        $ctx = $this->contextKubectl($adminContext);
+        $ctx = Kubectl::forContext($adminContext)->prefix();
 
         if ($clusterWide && ! $this->confirmClusterScope($name, $role, $adminContext)) {
             return 1;

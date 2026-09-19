@@ -4,6 +4,7 @@ namespace App\Commands\Tool;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RefusesUnshippedTools;
@@ -64,7 +65,7 @@ abstract class AbstractToolShowCommand extends Command
 
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         // Pins KUBECONFIG to ~/.kube/config, same as every tool's own helper.
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         $domain = (string) ($this->option('domain') ?: '');
 

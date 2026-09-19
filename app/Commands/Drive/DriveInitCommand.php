@@ -5,6 +5,7 @@ namespace App\Commands\Drive;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -52,7 +53,7 @@ class DriveInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->driveKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::DRIVE, $env, $kubectl);
 
         $ns = $this->driveNamespace();
@@ -202,15 +203,6 @@ class DriveInitCommand extends Command
         }
 
         return array_values(array_unique($extensions));
-    }
-
-    protected function driveKubectl(?string $context): string
-    {
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== null && $context !== ''
-            ? $kubectl.' --context '.escapeshellarg($context)
-            : $kubectl;
     }
 
     protected function driveNamespace(): string

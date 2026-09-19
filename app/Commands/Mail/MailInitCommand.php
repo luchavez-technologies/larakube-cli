@@ -7,6 +7,7 @@ use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -91,7 +92,7 @@ class MailInitCommand extends Command
         // and both configureStalwartStore() and printPlexHint() silently no-op.
         $this->plexContext = $context;
 
-        $kubectl = $this->mailKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->mailNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 

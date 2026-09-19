@@ -16,11 +16,6 @@ function vaultReader(): object
             return $this->resolveVaultHostReadOnly($env, $config);
         }
 
-        public function kubectlFor(?string $context): string
-        {
-            return $this->vaultKubectl($context);
-        }
-
         public function installed(string $kubectl, string $ns): bool
         {
             return $this->isVaultInstalled($kubectl, $ns);
@@ -54,15 +49,6 @@ test('cloud Vault host is null when none is configured for the env', function ()
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(vaultReader()->host('production', $config))->toBeNull();
-});
-
-test('vaultKubectl scopes to a context only when one is given', function (): void {
-    $reader = vaultReader();
-    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-    expect($reader->kubectlFor('do-sfo3'))->toBe("{$kubectl} --context=do-sfo3")
-        ->and($reader->kubectlFor(''))->toBe($kubectl)
-        ->and($reader->kubectlFor(null))->toBe($kubectl);
 });
 
 test('isVaultInstalled reflects whether the vaultwarden Deployment exists', function (): void {

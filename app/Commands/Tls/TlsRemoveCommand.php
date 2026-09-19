@@ -2,6 +2,7 @@
 
 namespace App\Commands\Tls;
 
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
@@ -44,7 +45,7 @@ class TlsRemoveCommand extends Command
             return 1;
         }
 
-        $kubectl = $this->kubectlPinned($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
 
         if (! $this->traefikUsesDnsChallenge($kubectl)) {
             $this->laraKubeInfo("Let's Encrypt on '{$env}' already uses the HTTP challenge. Nothing to change.");

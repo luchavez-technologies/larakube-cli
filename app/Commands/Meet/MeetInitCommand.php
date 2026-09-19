@@ -4,6 +4,7 @@ namespace App\Commands\Meet;
 
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -44,7 +45,7 @@ class MeetInitCommand extends Command
     {
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->meetKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::MEET, ClusterTool::MEET, $env, $kubectl);
         // Every tool's instance identifier is a real, host-derived slug now —
         // Meet included, even though its hostPort-bound RTC ports make a

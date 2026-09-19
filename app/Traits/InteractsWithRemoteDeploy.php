@@ -7,6 +7,7 @@ use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\LaravelFeature;
 use App\Enums\RegistryProvider;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
@@ -30,16 +31,6 @@ trait InteractsWithRemoteDeploy
     public function remoteContextName(string $ip): string
     {
         return 'larakube-'.$ip;
-    }
-
-    /**
-     * `kubectl --context X`, pinned to ~/.kube/config — that's where LaraKube
-     * always merges contexts, but a bare `kubectl` follows the shell's own
-     * $KUBECONFIG when one is set.
-     */
-    public function remoteKubectl(string $context): string
-    {
-        return 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl --context '.escapeshellarg($context);
     }
 
     /** SSH base command for a host (no remote command appended yet). Pure. */
@@ -181,7 +172,7 @@ trait InteractsWithRemoteDeploy
     {
         return $this->kustomizeBuildCommand($overlayPath)
             .' | sed '.escapeshellarg('s|image: '.$fromImage.'|image: '.$toImage.'|g')
-            .' | '.$this->remoteKubectl($context).' apply -f -';
+            .' | '.Kubectl::forContext($context)->prefix().' apply -f -';
     }
 
     /**
@@ -388,7 +379,7 @@ trait InteractsWithRemoteDeploy
     /** Is the env's context present and reachable (without touching the global one)? */
     protected function remoteContextReachable(string $context): bool
     {
-        return Process::run($this->remoteKubectl($context).' cluster-info --request-timeout=5s')->successful();
+        return Process::run(Kubectl::forContext($context)->prefix().' cluster-info --request-timeout=5s')->successful();
     }
 
     /**
@@ -413,7 +404,7 @@ trait InteractsWithRemoteDeploy
     protected function detectNodePlatformViaKubectl(string $context): ?string
     {
         $raw = trim(Process::run(
-            $this->remoteKubectl($context)
+            Kubectl::forContext($context)->prefix()
             .' get nodes -o '.escapeshellarg('jsonpath={.items[*].status.nodeInfo.architecture}'),
         )->output());
         if ($raw === '') {
@@ -527,7 +518,7 @@ trait InteractsWithRemoteDeploy
         }
 
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
-        $kubectl = $this->remoteKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = escapeshellarg($namespace);
         Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
@@ -624,7 +615,7 @@ trait InteractsWithRemoteDeploy
         $digestTemporaryDirectory->delete();
 
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
-        $kubectl = $this->remoteKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = escapeshellarg($namespace);
         Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
@@ -688,7 +679,7 @@ trait InteractsWithRemoteDeploy
             return;
         }
 
-        $kubectl = $this->remoteKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = escapeshellarg($namespace);
         Process::run(
             "{$kubectl} create secret docker-registry ghcr-login -n {$ns}"
@@ -722,7 +713,7 @@ trait InteractsWithRemoteDeploy
         // fallback, a named admin context.
         $kube = $kubeconfigPath !== null
             ? 'KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl'
-            : $this->remoteKubectl((string) $context);
+            : Kubectl::forContext((string) $context)->prefix();
         $ns = escapeshellarg($namespace);
 
         if ($public !== '') {
@@ -828,7 +819,7 @@ trait InteractsWithRemoteDeploy
         }
 
         // Deploy monitoring exporters if monitoring is active on this cluster.
-        $this->ensureMonitoringExporters($config, $namespace, $this->remoteKubectl($adminContext));
+        $this->ensureMonitoringExporters($config, $namespace, Kubectl::forContext($adminContext)->prefix());
 
         $this->laraKubeInfo("✅ Deployed '{$name}' to '{$environment}' (namespace-scoped, ns: {$namespace}).");
 

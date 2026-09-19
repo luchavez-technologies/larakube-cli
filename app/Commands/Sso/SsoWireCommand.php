@@ -8,6 +8,7 @@ use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
 use App\Http\Integrations\Zitadel\Requests\GetProjectAppRequest;
 use App\Http\Integrations\Zitadel\ZitadelConnector;
+use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
@@ -56,7 +57,7 @@ class SsoWireCommand extends Command
             : null;
 
         $context = $this->resolveToolContext($env, $this->option('context'));
-        $kubectl = $this->ssoKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ssoNs = $this->ssoNamespace();
 
         $selection = $this->resolveTool($kubectl);

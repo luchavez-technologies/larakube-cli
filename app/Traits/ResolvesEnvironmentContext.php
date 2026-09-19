@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Enums\DeploymentStrategy;
 use App\Enums\ManagedProvider;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
@@ -31,16 +32,6 @@ trait ResolvesEnvironmentContext
     public function environmentContextName(string $ip): string
     {
         return 'larakube-'.$ip;
-    }
-
-    /** A `kubectl` prefix scoped to a context (or plain kubectl when null), pinned to ~/.kube/config. */
-    public function contextKubectl(?string $context): string
-    {
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== null && $context !== ''
-            ? $kubectl.' --context '.escapeshellarg($context)
-            : $kubectl;
     }
 
     /**
@@ -104,13 +95,13 @@ trait ResolvesEnvironmentContext
     /** `kubectl` scoped to an env's context (plain kubectl for local / no target). */
     protected function environmentKubectl(ConfigData $config, string $environment): string
     {
-        return $this->contextKubectl($this->environmentContextOrCurrent($config, $environment));
+        return Kubectl::forContext($this->environmentContextOrCurrent($config, $environment))->prefix();
     }
 
     /** Is the env's context present + reachable, without touching the global one? */
     protected function environmentContextReachable(?string $context): bool
     {
-        return Process::run($this->contextKubectl($context).' cluster-info --request-timeout=5s')->successful();
+        return Process::run(Kubectl::forContext($context)->prefix().' cluster-info --request-timeout=5s')->successful();
     }
 
     /**
@@ -382,7 +373,7 @@ trait ResolvesEnvironmentContext
     protected function clusterNodeCount(string $context): int
     {
         $out = trim(Process::run(
-            $this->contextKubectl($context).' get nodes -o jsonpath='.escapeshellarg('{.items[*].metadata.name}'),
+            Kubectl::forContext($context)->prefix().' get nodes -o jsonpath='.escapeshellarg('{.items[*].metadata.name}'),
         )->output());
 
         return $out === '' ? 0 : count(preg_split('/\s+/', $out) ?: []);
@@ -396,7 +387,7 @@ trait ResolvesEnvironmentContext
      */
     protected function availableKubeContexts(): array
     {
-        $lines = explode("\n", Process::run($this->contextKubectl(null).' config get-contexts -o name')->output());
+        $lines = explode("\n", Process::run(Kubectl::forContext(null)->prefix().' config get-contexts -o name')->output());
 
         return array_values(array_filter(array_map('trim', $lines)));
     }
@@ -404,6 +395,6 @@ trait ResolvesEnvironmentContext
     /** The kubeconfig's currently active context, or '' when there isn't one. */
     protected function currentKubeContext(): string
     {
-        return trim(Process::run($this->contextKubectl(null).' config current-context')->output());
+        return trim(Process::run(Kubectl::forContext(null)->prefix().' config current-context')->output());
     }
 }

@@ -5,6 +5,7 @@ namespace App\Commands\Secrets;
 use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -45,7 +46,7 @@ class SecretsInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = $this->secretsKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->secretsNamespace();
 
         $host = $this->resolveSecretsHost($env, $kubectl);

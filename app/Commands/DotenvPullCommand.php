@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\LaraKubeOutput;
@@ -54,7 +55,7 @@ class DotenvPullCommand extends Command
 
         $namespace = $config->getNamespace($env);
         $context = $this->option('context') ?: $this->environmentContextOrCurrent($config, $env);
-        $kubectl = $this->contextKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $app = (string) ($this->option('app') ?: $config->getName());
 
         $this->line('  <fg=gray>Environment:</> <fg=cyan>'.$env.'</>  <fg=gray>·</> <fg=cyan>'.$namespace.'</>  <fg=gray>·</> <fg=cyan>app='.$app.'</>');

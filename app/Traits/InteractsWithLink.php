@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithLink
@@ -15,14 +16,6 @@ trait InteractsWithLink
     protected function linkNamespace(): string
     {
         return ClusterTool::LINK->namespace();
-    }
-
-    protected function linkKubectl(?string $context = null): string
-    {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
     }
 
     protected function isLinkInstalled(string $kubectl, string $ns): bool
@@ -50,7 +43,7 @@ trait InteractsWithLink
 
     protected function linkAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
     {
-        $kubectl = $this->linkKubectl($context);
+        $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->linkNamespace();
 
         if (! $this->isLinkInstalled($kubectl, $ns)) {
