@@ -1,6 +1,21 @@
 # Plan: `snapshot:rollback` — restore a snapshot onto an existing volume
 
 **Status:** designed, not built. The command exists and refuses with exit 1.
+
+**Found during KubectlService Stage 3 (not fixed; the whole family needs a redesign):**
+- Only works where a CSI driver supports snapshots (DOKS, managed clusters).
+  `local-path` (k3s, OrbStack) doesn't; `backup:*` is what protects those.
+  Commands should say so instead of failing obscurely.
+- `snapshot:init` applies one of the three VolumeSnapshot CRDs and no
+  snapshot-controller, swallows failures (`|| true`), yet reports "CRDs and
+  CSI controller initialized". Pinned to external-snapshotter v6.3.3; latest
+  is v8.6.0 (checked 2026-09-19).
+- `snapshot:create`/`clone`/`list` use namespace `<app>`; apps live in
+  `<app>-<env>`, so they never find an app's PVCs. `create`/`clone` take no
+  environment and a non-environment positional (breaks the one-positional
+  rule): `snapshot:create {environment} --pvc= --name=`,
+  `snapshot:clone {environment} --snapshot= --pvc= --size=`.
+- `snapshot:list` now resolves its environment's cluster (Stage 3).
 **Why it refuses:** see `SnapshotRollbackCommand`'s class docblock and commit `a5f4ebc`.
 
 ## The constraint everything follows from
