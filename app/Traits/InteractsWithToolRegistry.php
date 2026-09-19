@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Data\InstanceData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Process;
@@ -227,20 +228,10 @@ trait InteractsWithToolRegistry
         return null;
     }
 
-    /**
-     * Normalize a --domain option before registry matching. Falls back to a
-     * trivial lowercase/trim when the consuming command doesn't bring
-     * ResolvesToolHost (whose sanitizeDomainInput() strips pasted schemes,
-     * paths and ports) — registry hosts are stored bare, so the fallback is
-     * enough for matching; the thorough variant never hurts when present.
-     */
+    /** Normalize a --domain option before registry matching; registry hosts are stored bare. */
     protected function normalizeTargetHost(string $domain): string
     {
-        if (method_exists($this, 'sanitizeDomainInput')) {
-            return $this->sanitizeDomainInput($domain);
-        }
-
-        return strtolower(trim($domain));
+        return ToolInstance::normalizeHost($domain);
     }
 
     protected function isToolRegistered(string $kubectl, ClusterTool $tool, ?string $instance = null): bool

@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 
@@ -30,6 +31,8 @@ use RuntimeException;
  */
 trait ResolvesToolHost
 {
+    use RequiresFlagsWhenNonInteractive;
+
     /**
      * @param  bool  $deferRegistration  True for tools whose real instance is
      *                                   derived from the host AFTER this call returns (CRM, DATA —
@@ -173,11 +176,7 @@ trait ResolvesToolHost
      */
     protected function sanitizeDomainInput(string $domain): string
     {
-        $domain = strtolower(trim($domain));
-        $domain = (string) preg_replace('#^[a-z]+://#', '', $domain);
-        $domain = (string) preg_replace('#[/:].*$#', '', $domain);
-
-        return trim($domain, ". \t");
+        return ToolInstance::normalizeHost($domain);
     }
 
     protected function resolveProjectConfig(): ?ConfigData

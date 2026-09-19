@@ -25,6 +25,8 @@ use function Laravel\Prompts\text;
  */
 trait ResolvesEnvironmentContext
 {
+    use InteractsWithProjectConfig;
+
     /** The kube-context cloud:init creates for a host. Pure. */
     public function environmentContextName(string $ip): string
     {

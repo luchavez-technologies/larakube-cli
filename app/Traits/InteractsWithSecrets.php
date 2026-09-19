@@ -21,6 +21,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 trait InteractsWithSecrets
 {
     use PortForwardsToCluster, ReadsClusterSecrets;
+    use RequiresFlagsWhenNonInteractive;
 
     /** Status + body of the last failed secrets API call, for diagnostics. */
     protected ?string $lastSecretsBackendError = null;

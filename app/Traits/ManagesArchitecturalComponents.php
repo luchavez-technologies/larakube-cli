@@ -23,6 +23,7 @@ use function Laravel\Prompts\select;
  */
 trait ManagesArchitecturalComponents
 {
+    use GathersEnvironmentData;
     use GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput;
 
     protected function addDatabase(DatabaseDriver $engine, ConfigData $config, bool $skipConfirm = false): void

@@ -17,6 +17,8 @@ use App\Enums\AppFramework;
  */
 trait InteractsWithArchitecturalEngine
 {
+    use InteractsWithDocker;
+
     /**
      * Surgically install a single component and its dependencies.
      */

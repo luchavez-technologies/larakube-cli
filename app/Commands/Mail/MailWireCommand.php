@@ -25,6 +25,7 @@ use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MailWireCommand extends Command
 {
@@ -361,7 +362,7 @@ class MailWireCommand extends Command
         }
 
         if ($tool->configuresViaConfigFile($engine)) {
-            return $this->wireSynapseSmtp($kubectl, $tool, $endpoint, $sender, $appPassword, $env);
+            return $this->wireSynapseSmtp($kubectl, $tool, $endpoint, $sender, $appPassword);
         }
         $deployment = $schema['deployment'];
         $ns = $schema['namespace'];
@@ -507,7 +508,7 @@ class MailWireCommand extends Command
         // interchangeable even where both existed.
         $explicit = (string) ($this->option('domain') ?: '');
         if ($explicit !== '') {
-            return $this->resolveInstanceForDomain($kubectl, $tool, $this->sanitizeDomainInput($explicit));
+            return $this->resolveInstanceForDomain($kubectl, $tool, $this->normalizeTargetHost($explicit));
         }
 
         // The picker now resolves a concrete instance, so an interactive run no
@@ -535,5 +536,77 @@ class MailWireCommand extends Command
         $parts = explode('.', $host);
 
         return count($parts) >= 2 ? implode('.', array_slice($parts, -2)) : $host;
+    }
+
+    /**
+     * Synapse reads mail settings from homeserver.yaml, not env: store them in
+     * chat-smtp (so chat:init re-renders the email: block) and re-render the
+     * config, keeping any OIDC/MAS wiring. Mirror of MailUnwireCommand's
+     * unwireSynapseSmtp(). Credentials travel on stdin, never argv.
+     */
+    protected function wireSynapseSmtp(string $kubectl, ClusterTool $tool, array $endpoint, string $sender, string $appPassword): bool
+    {
+        $schema = $tool->smtpEnv('matrix');
+        if ($schema === null) {
+            return false;
+        }
+
+        $ns = $schema['namespace'];
+        $smtp = [
+            'host' => (string) $endpoint['host'],
+            'port' => (string) $endpoint['port'],
+            'user' => $sender,
+            'password' => $appPassword,
+            'from' => $sender,
+        ];
+        $ok = true;
+
+        $this->withSpin('Wiring Matrix (Synapse) mail via homeserver.yaml...', function () use ($kubectl, $ns, $smtp, &$ok): void {
+            $secret = Process::input((string) json_encode([
+                'apiVersion' => 'v1',
+                'kind' => 'Secret',
+                'metadata' => ['name' => 'chat-smtp', 'namespace' => $ns],
+                'type' => 'Opaque',
+                'data' => array_map('base64_encode', $smtp),
+            ]))->run("{$kubectl} apply -f -");
+            if (! $secret->successful()) {
+                $ok = false;
+
+                return;
+            }
+
+            $raw = Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output();
+            if (trim($raw) === '') {
+                $ok = false;
+
+                return;
+            }
+
+            $homeserver = $this->renderSynapseConfig(
+                (string) base64_decode(trim($raw)),
+                $smtp,
+                $this->readChatWiredOidc($kubectl, $ns),
+                $this->readChatWiredMas($kubectl, $ns),
+            );
+
+            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+            $tmp = $temporaryDirectory->path().'/homeserver.yaml';
+            file_put_contents($tmp, $homeserver);
+            $result = Process::run(
+                "{$kubectl} create secret generic chat-synapse-config -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
+            );
+            $temporaryDirectory->delete();
+
+            $ok = $result->successful();
+            if ($ok) {
+                Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+            }
+        });
+
+        if (! $ok) {
+            $this->laraKubeError('Failed to wire Synapse mail via homeserver.yaml.');
+        }
+
+        return $ok;
     }
 }

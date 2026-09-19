@@ -23,6 +23,16 @@ final readonly class ToolInstance
         public ?string $engine,
     ) {}
 
+    /** A host as typed or pasted (scheme, path, port, stray dots) reduced to the bare host. */
+    public static function normalizeHost(string $host): string
+    {
+        $host = strtolower(trim($host));
+        $host = (string) preg_replace('#^[a-z]+://#', '', $host);
+        $host = (string) preg_replace('#[/:].*$#', '', $host);
+
+        return trim($host, ". \t");
+    }
+
     public static function forHost(ClusterTool $tool, string $host, ?string $engine = null): self
     {
         return new self($tool, $host, $tool->instanceSlugFromHost($host), $engine);

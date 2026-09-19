@@ -136,7 +136,7 @@ class MailUnwireCommand extends Command
         // Explicit --domain wins; otherwise the instance the picker resolved,
         // so unwire targets the row you actually selected.
         $domain = (string) ($this->option('domain') ?: '');
-        $host = $domain !== '' ? $this->sanitizeDomainInput($domain) : (string) $this->pickedHost;
+        $host = $domain !== '' ? $this->normalizeTargetHost($domain) : (string) $this->pickedHost;
 
         return $host !== '' ? $this->resolveInstanceForDomain($kubectl, $tool, $host) : '';
     }

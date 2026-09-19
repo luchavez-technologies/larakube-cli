@@ -28,6 +28,7 @@ use function Laravel\Prompts\text;
  */
 trait GathersEnvironmentData
 {
+    use PromptsForHosts;
     use ReadsCommandOptions;
 
     /**

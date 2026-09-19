@@ -67,17 +67,4 @@ trait InteractsWithRecord
             'host' => $host,
         ];
     }
-
-    protected function resolveRecordHost(string $env): string
-    {
-        $service = SharedClusterService::RECORD;
-
-        if ($env === 'local') {
-            return $service->hostFor(GlobalConfigData::load()->getLocalTld());
-        }
-
-        $domain = $this->resolveHostDomain($env, 'Sendrec');
-
-        return $service->hostFor($domain);
-    }
 }

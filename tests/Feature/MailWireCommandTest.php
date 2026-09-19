@@ -172,3 +172,23 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
     // The never-existing unsuffixed name must never be targeted.
     Process::assertNotRan(fn ($process) => preg_match('#deployment/crm-twenty(-worker)?(\s|$)#', $process->command) === 1);
 });
+
+test('mail:wire --domain targets that host\'s instance, even pasted as a URL', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ['tool' => 'flow', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n'],
+        ]))),
+        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@example.com')),
+        '*get deployment flow-n8n-flow-example-com*' => Process::result(output: 'flow-n8n-flow-example-com   1/1   1   1   1d'),
+        '*get deployment flow-windmill-*' => Process::result(output: '', exitCode: 1),
+        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('mail:wire local --tool=flow --domain=https://Flow.Example.com/')
+        ->expectsOutputToContain('Wired to Stalwart');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/flow-n8n-flow-example-com')
+        && str_contains($process->command, 'secret/flow-n8n-smtp-flow-example-com'));
+});

@@ -23,6 +23,8 @@ trait GeneratesProjectInfrastructure
     // trait in as well — 22 of them did not, so the call was a latent
     // "method does not exist" fatal (hit first by nextjs:new).
     use InteractsWithArchitecturalEngine;
+
+    use InteractsWithDocker;
     use InteractsWithHosts, InteractsWithProjectConfig, LaraKubeOutput;
     use ManagesLocalCa;
     use ResolvesStaticScripts;

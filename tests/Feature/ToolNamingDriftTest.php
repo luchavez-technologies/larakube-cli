@@ -20,6 +20,7 @@ function toolNamingKnownDrift(): array
         'chat' => $refusesDomain,
         'meet' => $refusesDomain,
         'design' => 'init hand-builds design-backend/-secrets/-oidc names remove never deletes',
+        'desk' => $refusesDomain,
         'drive' => $refusesDomain,
         'errors' => $refusesDomain,
         'git' => $refusesDomain,
@@ -43,7 +44,6 @@ function toolNamingKnownDrift(): array
 function toolNamingHarnessPending(): array
 {
     return [
-        'desk' => 'desk:init calls flagOrPrompt(), which DeskInitCommand does not have',
         'dns' => 'not a per-host tool: needs a Cloudflare token and manages zones',
         'notes' => 'notes:init crashes non-interactively (select() without a default returns null)',
         'secrets' => 'OpenBao init talks to its HTTP API',

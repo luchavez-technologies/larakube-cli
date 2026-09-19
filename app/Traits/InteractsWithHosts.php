@@ -119,7 +119,7 @@ trait InteractsWithHosts
         // If running inside a container, we usually can't update the host's /etc/hosts
         // without mapping it, which is risky. We'll skip it and warn the user.
         if (getenv('LARAKUBE_HOST_PROJECT_PATH') && ! is_writable('/etc/hosts')) {
-            $this->warning('Running inside LaraKube daemon: skipping /etc/hosts sync.');
+            $this->warn('Running inside LaraKube daemon: skipping /etc/hosts sync.');
             $this->line('  👉 Please ensure your host machine has these mappings:');
             $this->line("     $newEntry");
             $this->line('');

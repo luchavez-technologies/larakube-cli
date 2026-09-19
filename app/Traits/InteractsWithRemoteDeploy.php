@@ -24,6 +24,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 trait InteractsWithRemoteDeploy
 {
     use DeploysMonitoringExporters, InteractsWithGitForge, InteractsWithKustomize, ResolvesContainerRuntime, StreamsProcessOutput;
+    use InteractsWithScopedRbac, ResolvesEnvironmentContext;
 
     /** The kube-context cloud:init creates for a host. Pure. */
     public function remoteContextName(string $ip): string
