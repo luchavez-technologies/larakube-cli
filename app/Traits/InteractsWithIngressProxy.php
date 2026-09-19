@@ -15,6 +15,8 @@ namespace App\Traits;
  */
 trait InteractsWithIngressProxy
 {
+    use ChecksCloudflareProxy;
+
     /**
      * `--proxied` signature fragment for tools that default to DNS-only.
      */
@@ -34,7 +36,7 @@ trait InteractsWithIngressProxy
      */
     public function resolveProxied(bool $isLocal): bool
     {
-        if ($isLocal) {
+        if ($isLocal || $this->proxyDowngraded) {
             return false;
         }
 

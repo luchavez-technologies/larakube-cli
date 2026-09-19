@@ -1,6 +1,11 @@
 # Plan: proxying Cluster Tools through Cloudflare safely
 
-**Status:** Stage A ✅ (`20d4328`: Traefik trusts Cloudflare's ranges on DNS-challenge clusters). Stages B and C not started.
+**Status:** Stage A ✅ (`20d4328`: Traefik trusts Cloudflare's ranges on DNS-challenge clusters).
+Stage B ✅ (`ChecksCloudflareProxy`): every tool's `--proxied` runs the checks
+where its host is resolved (`resolveToolHost()` / `resolveInstanceAwareHost()`),
+before anything deploys; `cloud:proxy` shares them and gains the host-depth
+check. Explicit `--proxied` refuses; a default-on proxy (Link, Data) falls
+back to DNS-only with a warning. Stage C not started.
 **Builds on:** `tls:init` (DNS challenge) and `cloud:proxy` (apps), both shipped.
 
 ## Why

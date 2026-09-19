@@ -60,41 +60,15 @@ trait ResolvesToolHost
         ?string $labelOverride = null,
         bool $deferRegistration = false,
     ): string {
-        $domain = (string) ($this->option('domain') ?? '');
-        if ($domain !== '') {
-            return $this->hostFromDomainOption($service, $domain, $instance);
+        $host = $this->resolveToolHostChoice($service, $tool, $env, $kubectl, $instance, $labelOverride, $deferRegistration);
+
+        // Every tool with --proxied resolves its host here first, so this is
+        // where an impossible --proxied stops, before anything is deployed.
+        if (method_exists($this, 'guardRequestedProxy')) {
+            $this->guardRequestedProxy($tool, $env, $kubectl, $host);
         }
 
-        if ($env === 'local') {
-            return $service->hostFor(GlobalConfigData::load()->getLocalTld(), $instance);
-        }
-
-        // The CLUSTER is the compass for shared tools. A tool is cluster
-        // infrastructure, not a property of any one Laravel app — the same
-        // cluster serves many projects, and the tool must be resolvable from a
-        // machine that has never cloned any of them. So a host recorded by a
-        // previous deploy wins over anything in a project file.
-        if ($kubectl !== null && method_exists($this, 'getToolHost')) {
-            $recorded = $this->getToolHost($kubectl, $tool, $instance);
-            if ($recorded !== null && $recorded !== '') {
-                return $recorded;
-            }
-
-            // Rows are keyed by the host-derived slug, which is unknown until
-            // the host is. With no instance asked for, a single recorded host
-            // for the tool is that answer.
-            if ($instance === '' && ($single = $this->singleRecordedToolHost($kubectl, $tool)) !== null) {
-                return $single;
-            }
-        }
-
-        $config = $this->resolveProjectConfig();
-
-        if ($this->option('no-interaction')) {
-            return $this->resolveNonInteractiveHost($service, $tool, $env, $config, $kubectl, $instance);
-        }
-
-        return $this->promptForCloudHost($service, $env, $config, $tool, $kubectl, $instance, $labelOverride, $deferRegistration);
+        return $host;
     }
 
     /** The one host recorded for a tool, or null when there are none or several. */
@@ -304,6 +278,69 @@ trait ResolvesToolHost
         string $env,
         string $kubectl,
         ?string $labelOverride = null,
+    ): array {
+        [$host, $instance] = $this->resolveInstanceAwareHostChoice($service, $tool, $env, $kubectl, $labelOverride);
+
+        if (method_exists($this, 'guardRequestedProxy')) {
+            $this->guardRequestedProxy($tool, $env, $kubectl, $host);
+        }
+
+        return [$host, $instance];
+    }
+
+    private function resolveToolHostChoice(
+        SharedClusterService $service,
+        ClusterTool $tool,
+        string $env,
+        ?string $kubectl,
+        string $instance,
+        ?string $labelOverride,
+        bool $deferRegistration,
+    ): string {
+        $domain = (string) ($this->option('domain') ?? '');
+        if ($domain !== '') {
+            return $this->hostFromDomainOption($service, $domain, $instance);
+        }
+
+        if ($env === 'local') {
+            return $service->hostFor(GlobalConfigData::load()->getLocalTld(), $instance);
+        }
+
+        // The CLUSTER is the compass for shared tools. A tool is cluster
+        // infrastructure, not a property of any one Laravel app — the same
+        // cluster serves many projects, and the tool must be resolvable from a
+        // machine that has never cloned any of them. So a host recorded by a
+        // previous deploy wins over anything in a project file.
+        if ($kubectl !== null && method_exists($this, 'getToolHost')) {
+            $recorded = $this->getToolHost($kubectl, $tool, $instance);
+            if ($recorded !== null && $recorded !== '') {
+                return $recorded;
+            }
+
+            // Rows are keyed by the host-derived slug, which is unknown until
+            // the host is. With no instance asked for, a single recorded host
+            // for the tool is that answer.
+            if ($instance === '' && ($single = $this->singleRecordedToolHost($kubectl, $tool)) !== null) {
+                return $single;
+            }
+        }
+
+        $config = $this->resolveProjectConfig();
+
+        if ($this->option('no-interaction')) {
+            return $this->resolveNonInteractiveHost($service, $tool, $env, $config, $kubectl, $instance);
+        }
+
+        return $this->promptForCloudHost($service, $env, $config, $tool, $kubectl, $instance, $labelOverride, $deferRegistration);
+    }
+
+    /** @return array{0: string, 1: string} */
+    private function resolveInstanceAwareHostChoice(
+        SharedClusterService $service,
+        ClusterTool $tool,
+        string $env,
+        string $kubectl,
+        ?string $labelOverride,
     ): array {
         $domainOption = trim((string) ($this->option('domain') ?? ''));
 
