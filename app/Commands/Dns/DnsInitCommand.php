@@ -130,11 +130,7 @@ class DnsInitCommand extends Command
             return 0;
         }
 
-        $this->withSpin("Syncing the Cloudflare token for {$groupSlug}...", fn () => Process::run(
-            "{$kubectl} create secret generic cloudflare-token-{$groupSlug} -n {$ns} "
-            .'--from-literal=token='.escapeshellarg($token).' '
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-        ));
+        $this->withSpin("Syncing the Cloudflare token for {$groupSlug}...", fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, "cloudflare-token-{$groupSlug}", ['token' => $token]));
 
         $manifest = view('k8s.dns.zone', [
             'namespace' => $ns,

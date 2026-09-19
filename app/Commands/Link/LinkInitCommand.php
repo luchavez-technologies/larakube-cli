@@ -89,11 +89,7 @@ class LinkInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $jwtSecret): void {
-            $cmd = "{$kubectl} create secret generic link-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=jwt-secret='.escapeshellarg($jwtSecret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'link-secrets', ['db-password' => $dbPassword, 'jwt-secret' => $jwtSecret]);
         });
 
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::LINK, ClusterTool::LINK->instanceSlugFromHost($host));

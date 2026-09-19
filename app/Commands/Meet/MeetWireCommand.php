@@ -177,11 +177,7 @@ class MeetWireCommand extends Command
         $ok = true;
 
         $this->withSpin('Pointing Synapse at the Meet bridge...', function () use ($kubectl, $ns, $jwtUrl, &$ok): void {
-            Process::run(
-                "{$kubectl} create secret generic chat-meet -n {$ns} "
-                .'--from-literal=jwt-url='.escapeshellarg($jwtUrl).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'chat-meet', ['jwt-url' => $jwtUrl]);
 
             $raw = Process::run(
                 "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",

@@ -205,7 +205,7 @@ final readonly class Kubectl
     /**
      * Create or update a Secret. The values go in the manifest on stdin.
      *
-     * @param  array<string, string>  $data
+     * @param  array<string, string|null>  $data  null is stored as an empty value
      * @param  array<string, string>  $labels
      */
     public function putSecret(string $namespace, string $name, array $data, array $labels = [], bool $serverSide = false): KubectlResult
@@ -215,7 +215,7 @@ final readonly class Kubectl
             'kind' => 'Secret',
             'metadata' => array_filter(['name' => $name, 'namespace' => $namespace, 'labels' => $labels ?: null]),
             'type' => 'Opaque',
-            'data' => array_map(fn (string $value) => base64_encode($value), $data),
+            'data' => array_map(fn ($value) => base64_encode((string) $value), $data),
         ]));
     }
 
@@ -223,13 +223,13 @@ final readonly class Kubectl
      * Set some keys on an existing Secret, leaving its other keys alone. Fails
      * when the Secret doesn't exist. The values go on stdin, never in argv.
      *
-     * @param  array<string, string>  $data
+     * @param  array<string, string|null>  $data
      */
     public function patchSecret(string $namespace, string $name, array $data): KubectlResult
     {
         return $this->run(
             ['patch', 'secret', $name, '-n', $namespace, '--type=merge', '--patch-file=/dev/stdin'],
-            (string) json_encode(['data' => array_map(fn (string $value) => base64_encode($value), $data)]),
+            (string) json_encode(['data' => array_map(fn ($value) => base64_encode((string) $value), $data)]),
         );
     }
 

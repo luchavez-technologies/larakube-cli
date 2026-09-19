@@ -91,13 +91,7 @@ class InsightsInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $encryptionKey, $adminEmail): void {
-            Process::run(
-                "{$kubectl} create secret generic insights-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=encryption-key='.escapeshellarg($encryptionKey).' '
-                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'insights-secrets', ['db-password' => $dbPassword, 'encryption-key' => $encryptionKey, 'admin-email' => $adminEmail]);
         });
 
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::INSIGHTS, ClusterTool::INSIGHTS->instanceSlugFromHost($host));

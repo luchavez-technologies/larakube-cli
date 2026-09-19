@@ -124,11 +124,7 @@ class RecordInitCommand extends Command
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $jwtSecret, $clusterEnv): void {
-            $cmd = "{$kubectl} create secret generic record-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=jwt-secret='.escapeshellarg($jwtSecret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'record-secrets', ['db-password' => $dbPassword, 'jwt-secret' => $jwtSecret]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 if ($this->databaseEngineMounted($kubectl)) {

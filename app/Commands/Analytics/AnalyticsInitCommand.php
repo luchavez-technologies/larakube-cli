@@ -81,12 +81,7 @@ class AnalyticsInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $appSecret): void {
-            Process::run(
-                "{$kubectl} create secret generic analytics-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=app-secret='.escapeshellarg($appSecret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'analytics-secrets', ['db-password' => $dbPassword, 'app-secret' => $appSecret]);
         });
 
         $manifest = view('k8s.analytics.shared', [

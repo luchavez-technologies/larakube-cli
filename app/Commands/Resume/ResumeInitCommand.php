@@ -117,11 +117,7 @@ class ResumeInitCommand extends Command
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $authSecret, $clusterEnv): void {
-            $cmd = "{$kubectl} create secret generic resume-reactive-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=auth-secret='.escapeshellarg($authSecret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'resume-reactive-secrets', ['db-password' => $dbPassword, 'auth-secret' => $authSecret]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 if ($this->databaseEngineMounted($kubectl)) {

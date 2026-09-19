@@ -157,13 +157,7 @@ class NotesInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $secretKey, $utilsSecret): void {
-            Process::run(
-                "{$kubectl} create secret generic {$secretName} -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=secret-key='.escapeshellarg($secretKey).' '
-                .'--from-literal=utils-secret='.escapeshellarg($utilsSecret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['db-password' => $dbPassword, 'secret-key' => $secretKey, 'utils-secret' => $utilsSecret]);
         });
 
         // Outline requires at least one authentication provider to start.

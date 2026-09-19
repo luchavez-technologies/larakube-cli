@@ -173,11 +173,7 @@ class PasteInitCommand extends Command
             }
 
             $this->withSpin('Syncing S3 file-storage credentials...', function () use ($kubectl, $ns, $instance, $s3Creds): void {
-                $cmd = "{$kubectl} create secret generic paste-yopass-secrets-{$instance} -n {$ns} "
-                    .'--from-literal=s3-access-key='.escapeshellarg($s3Creds['access']).' '
-                    .'--from-literal=s3-secret-key='.escapeshellarg($s3Creds['secret']).' '
-                    ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-                Process::run($cmd);
+                Kubectl::fromPrefix($kubectl)->putSecret($ns, "paste-yopass-secrets-{$instance}", ['s3-access-key' => $s3Creds['access'], 's3-secret-key' => $s3Creds['secret']]);
             });
 
             return [

@@ -264,3 +264,23 @@ function registeredToolRemoveFakes(string $removeCommand, string $instance = '',
         '*create secret generic larakube-tools-registry*' => Illuminate\Support\Facades\Process::result(),
     ];
 }
+
+/**
+ * The Secret a process applied on stdin (Kubectl::putSecret()), with its values
+ * decoded, or null when the process applied something else.
+ *
+ * @return array{name: string, namespace: string, data: array<string, string>}|null
+ */
+function appliedSecret(Illuminate\Process\PendingProcess $process): ?array
+{
+    $manifest = json_decode((string) $process->input, true);
+    if (! is_array($manifest) || ($manifest['kind'] ?? null) !== 'Secret') {
+        return null;
+    }
+
+    return [
+        'name' => (string) $manifest['metadata']['name'],
+        'namespace' => (string) ($manifest['metadata']['namespace'] ?? ''),
+        'data' => array_map(fn ($value) => (string) base64_decode((string) $value), $manifest['data'] ?? []),
+    ];
+}

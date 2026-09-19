@@ -10,7 +10,6 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\password;
@@ -103,16 +102,14 @@ class BackupInitCommand extends Command
         $passphrase = $existing['passphrase'] ?? Str::random(40);
         $isNew = ($existing['passphrase'] ?? '') === '';
 
-        $ok = $this->withSpin('Storing backup destination...', fn () => Process::run(
-            "{$kubectl} create secret generic larakube-backup-config -n {$ns} "
-            .'--from-literal=endpoint='.escapeshellarg($endpoint).' '
-            .'--from-literal=bucket='.escapeshellarg($bucket).' '
-            .'--from-literal=access-key='.escapeshellarg($accessKey).' '
-            .'--from-literal=secret-key='.escapeshellarg($secretKey).' '
-            .'--from-literal=region='.escapeshellarg((string) $this->option('region')).' '
-            .'--from-literal=passphrase='.escapeshellarg($passphrase).' '
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-        )->successful());
+        $ok = $this->withSpin('Storing backup destination...', fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, 'larakube-backup-config', [
+            'endpoint' => $endpoint,
+            'bucket' => $bucket,
+            'access-key' => $accessKey,
+            'secret-key' => $secretKey,
+            'region' => (string) $this->option('region'),
+            'passphrase' => $passphrase,
+        ])->ok);
 
         if (! $ok) {
             $this->laraKubeError('Failed to write the backup config Secret.');

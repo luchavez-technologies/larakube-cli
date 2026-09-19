@@ -140,11 +140,7 @@ class DesignInitCommand extends Command
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbSecretName, $dbName, $dbPassword, $secretKey, $clusterEnv): void {
-            $cmd = "{$kubectl} create secret generic {$dbSecretName} -n {$ns} "
-                .'--from-literal=password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=secret-key='.escapeshellarg($secretKey).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $dbSecretName, ['password' => $dbPassword, 'secret-key' => $secretKey]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 if ($this->databaseEngineMounted($kubectl)) {

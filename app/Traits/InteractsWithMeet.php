@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -127,11 +128,7 @@ trait InteractsWithMeet
         ksort($registry);
         $json = (string) json_encode($registry, JSON_UNESCAPED_SLASHES);
 
-        Process::run(
-            "{$kubectl} create secret generic meet-keys -n {$ns} "
-            .'--from-literal=consumers.json='.escapeshellarg($json).' '
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-        );
+        Kubectl::fromPrefix($kubectl)->putSecret($ns, 'meet-keys', ['consumers.json' => $json]);
 
         return $registry;
     }

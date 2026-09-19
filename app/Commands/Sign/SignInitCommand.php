@@ -137,15 +137,7 @@ class SignInitCommand extends Command
         $secret = $names->secret();
         $clusterEnv = $env === 'local' ? 'dev' : $env;
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secret, $dbName, $dbPassword, $nextauthSecret, $encryptionKey, $encryptionSecondaryKey, $s3Creds, $clusterEnv): void {
-            $cmd = "{$kubectl} create secret generic {$secret} -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=nextauth-secret='.escapeshellarg($nextauthSecret).' '
-                .'--from-literal=encryption-key='.escapeshellarg($encryptionKey).' '
-                .'--from-literal=encryption-secondary-key='.escapeshellarg($encryptionSecondaryKey).' '
-                .'--from-literal=s3-access-key='.escapeshellarg($s3Creds['access']).' '
-                .'--from-literal=s3-secret-key='.escapeshellarg($s3Creds['secret']).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secret, ['db-password' => $dbPassword, 'nextauth-secret' => $nextauthSecret, 'encryption-key' => $encryptionKey, 'encryption-secondary-key' => $encryptionSecondaryKey, 's3-access-key' => $s3Creds['access'], 's3-secret-key' => $s3Creds['secret']]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 if ($this->databaseEngineMounted($kubectl)) {

@@ -278,12 +278,7 @@ class MailWireCommand extends Command
         // Cache only a VERIFIED pair.
         $env = (string) $this->argument('environment');
         $this->withSpin('Caching sender credentials...', function () use ($kubectl, $ns, $sender, $appPassword, $env): void {
-            Process::run(
-                "{$kubectl} create secret generic mail-sender -n {$ns} "
-                .'--from-literal=sender='.escapeshellarg($sender).' '
-                .'--from-literal=app-password='.escapeshellarg($appPassword).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'mail-sender', ['sender' => $sender, 'app-password' => $appPassword]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 $this->pushClusterSecret($kubectl, 'STALWART_MAIL_SENDER', $sender, $env);

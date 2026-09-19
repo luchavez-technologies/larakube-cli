@@ -86,12 +86,7 @@ class OfficeInitCommand extends Command
         $wopiSecret = $this->readClusterSecretKey($kubectl, $ns, 'drive-office-secrets', 'wopi-secret')
             ?? Str::random(48);
 
-        $this->withSpin('Syncing Collabora secrets...', fn () => Process::run(
-            "{$kubectl} create secret generic drive-office-secrets -n {$ns} "
-            .'--from-literal=code-admin-password='.escapeshellarg($adminPassword).' '
-            .'--from-literal=wopi-secret='.escapeshellarg($wopiSecret).' '
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-        ));
+        $this->withSpin('Syncing Collabora secrets...', fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, 'drive-office-secrets', ['code-admin-password' => $adminPassword, 'wopi-secret' => $wopiSecret]));
 
         // Issue the local cert BEFORE the ingress exists, so the very first
         // browser hit on office.{host} is already served a trusted certificate.

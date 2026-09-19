@@ -101,12 +101,7 @@ class WebmailInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $sessionSecret, $adminPassword, $env): void {
-            Process::run(
-                "{$kubectl} create secret generic {$secretName} -n {$ns} "
-                .'--from-literal=WEBMAIL_SESSION_SECRET='.escapeshellarg($sessionSecret).' '
-                .'--from-literal=WEBMAIL_ADMIN_PASSWORD='.escapeshellarg($adminPassword).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['WEBMAIL_SESSION_SECRET' => $sessionSecret, 'WEBMAIL_ADMIN_PASSWORD' => $adminPassword]);
 
             if ($this->secretsBackendAvailable($kubectl)) {
                 $clusterEnv = $env === 'local' ? 'dev' : $env;

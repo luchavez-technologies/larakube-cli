@@ -86,11 +86,7 @@ class TasksInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey): void {
-            $cmd = "{$kubectl} create secret generic tasks-planka-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=secret-key='.escapeshellarg($secretKey).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'tasks-planka-secrets', ['db-password' => $dbPassword, 'secret-key' => $secretKey]);
         });
 
         $manifest = view('k8s.tasks.shared', [

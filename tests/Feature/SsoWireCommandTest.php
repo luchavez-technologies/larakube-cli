@@ -102,6 +102,7 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
                 ])),
             ),
             '*create secret generic*' => Process::result(output: 'secret created'),
+            '*apply -f -*' => Process::result(output: 'applied'),
             '*apply -f*' => Process::result(output: 'ingress applied'),
             '*set env deployment/dashboard-headlamp*' => Process::result(output: 'deployment.apps/dashboard-headlamp env updated'),
             '*rollout restart*' => Process::result(output: 'deployment.apps/dashboard-headlamp restarted'),
@@ -141,6 +142,7 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
@@ -192,6 +194,7 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
@@ -235,6 +238,7 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
@@ -273,6 +277,7 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-drive*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
     ]);
@@ -326,9 +331,9 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
 
     // No client secret is stored for the public client, so nothing stale leaks
     // onto the deployment when applyToolEnv rewrites the secret.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic sso-app-drive')
-        && str_contains($process->command, '--from-literal=client-secret=')
-        && ! str_contains($process->command, '--from-literal=client-secret=\'cid-drive'));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'sso-app-drive')
+        && array_key_exists('client-secret', appliedSecret($process)['data'])
+        && appliedSecret($process)['data']['client-secret'] !== 'cid-drive');
 });
 
 test('sso:wire re-registers a Drive app whose Zitadel registration is stale (confidential, wrong redirect URI)', function (): void {
@@ -345,6 +350,7 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
         '*sso-app-drive*client-secret*' => Process::result(output: base64_encode('secret-stale')),
         '*sso-app-drive*app-id*' => Process::result(output: base64_encode('app-stale')),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
     ]);
@@ -402,6 +408,7 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
         '*sso-app-drive*client-secret*' => Process::result(output: base64_encode('')),
         '*sso-app-drive*app-id*' => Process::result(output: base64_encode('app-live')),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
     ]);
@@ -454,6 +461,7 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-drive*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
     ]);
@@ -547,6 +555,7 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-drive*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
     ]);
@@ -607,6 +616,7 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-dashboard*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/dashboard-headlamp*' => Process::result(output: 'deployment.apps/dashboard-headlamp env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/dashboard-headlamp restarted'),
     ]);
@@ -647,6 +657,7 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
@@ -794,6 +805,7 @@ test('sso:wire gates Outline behind Zitadel roles — the actual tool from the l
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-notes*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/notes-outline*' => Process::result(output: 'deployment.apps/notes-outline env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/notes-outline restarted'),
     ]);
@@ -840,6 +852,7 @@ test('sso:wire reuses an already-registered OIDC client', function (): void {
         '*sso-app-monitor*client-secret*' => Process::result(output: base64_encode('cached-secret')),
         '*sso-app-monitor*app-id*' => Process::result(output: base64_encode('cached-appid')),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
     ]);
@@ -882,6 +895,7 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-secrets*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-tok')),
         '*bao auth list*' => Process::result(output: '{}'),
         '*bao auth enable oidc*' => Process::result(),
@@ -966,8 +980,9 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
     // its own storage (`bao auth enable oidc` above), so this CLI path is
     // what must record the openbao-oidc marker itself — without it, tool:list
     // reports a working SSO login as unwired.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic openbao-oidc -n larakube-secrets')
-        && str_contains($process->command, '--from-literal=client-id='));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'openbao-oidc')
+        && appliedSecret($process)['namespace'] === 'larakube-secrets'
+        && array_key_exists('client-id', appliedSecret($process)['data']));
 });
 
 test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0001)', function (): void {
@@ -988,6 +1003,7 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-link*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/link-kutt*' => Process::result(output: 'deployment.apps/link-kutt env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/link-kutt restarted'),
     ]);
@@ -1049,6 +1065,7 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-data*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/data-directus*' => Process::result(output: 'deployment.apps/data-directus env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/data-directus restarted'),
     ]);
@@ -1085,6 +1102,7 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-data*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment*' => Process::result(output: 'env updated'),
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
@@ -1161,6 +1179,7 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-data*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/data-directus*' => Process::result(output: 'deployment.apps/data-directus env updated'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/data-directus restarted'),
     ]);
@@ -1200,6 +1219,7 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
         '*get secret design-oidc*' => Process::result(output: ''),
         '*get secret design-smtp*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/design-penpot-backend*' => Process::result(output: 'deployment.apps/design-penpot-backend env updated'),
         '*set env deployment/design-penpot-frontend*' => Process::result(output: 'deployment.apps/design-penpot-frontend env updated'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -1246,6 +1266,7 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-git*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         // Forgejo's `admin auth list` is a tab-separated table (ID, Name,
         // Type, Enabled) — the legacy source holds the display label.
         '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n".'1'."\t"."Login with SSO\t".'OpenID Connect'."\t".'true'),
@@ -1300,6 +1321,7 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-git*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n"),
         '*admin auth add-oauth*' => Process::result(output: 'source created'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/forgejo restarted'),
@@ -1335,9 +1357,9 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
     // `{tool}-oidc` Secret, so this CLI-OIDC path must write `forgejo-oidc`
     // like every env-var-wired tool's applyToolEnv() does — otherwise a
     // freshly-wired Forgejo shows X on tool:list forever.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic forgejo-oidc -n larakube-shared')
-        && str_contains($process->command, '--from-literal=client-id=')
-        && str_contains($process->command, 'cid-git'));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'forgejo-oidc')
+        && appliedSecret($process)['namespace'] === 'larakube-shared'
+        && (appliedSecret($process)['data']['client-id'] ?? null) === 'cid-git');
 });
 
 test('sso:wire registers NetBird as a Zitadel identity provider via its own REST API', function (): void {
@@ -1352,6 +1374,7 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*vpn-management-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
     ]);
 
     Saloon::fake([
@@ -1438,6 +1461,7 @@ test('sso:wire re-wiring NetBird updates the existing identity provider via PUT,
         '*sso-app-vpn*client-secret*' => Process::result(output: base64_encode('csecret-vpn')),
         '*vpn-management-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
     ]);
 
     Saloon::fake([
@@ -1500,6 +1524,7 @@ test('plain sso:wire lists each registered instance by its host', function (): v
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-git*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
+        '*apply -f -*' => Process::result(output: 'applied'),
         '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n"),
         '*admin auth add-oauth*' => Process::result(output: 'source created'),
         '*rollout restart*' => Process::result(output: 'deployment.apps/forgejo restarted'),

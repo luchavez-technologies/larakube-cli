@@ -99,16 +99,7 @@ class DriveInitCommand extends Command
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $clusterEnv, $adminPassword, $machineAuth, $jwtSecret, $transferSecret, $systemUserApiKey, $serviceAccountSecret, $rekeyKey): void {
-            $cmd = "{$kubectl} create secret generic drive-secrets -n {$ns} "
-                .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
-                .'--from-literal=machine-auth-api-key='.escapeshellarg($machineAuth).' '
-                .'--from-literal=jwt-secret='.escapeshellarg($jwtSecret).' '
-                .'--from-literal=transfer-secret='.escapeshellarg($transferSecret).' '
-                .'--from-literal=system-user-api-key='.escapeshellarg($systemUserApiKey).' '
-                .'--from-literal=service-account-secret='.escapeshellarg($serviceAccountSecret).' '
-                .'--from-literal=rekey-key='.escapeshellarg($rekeyKey).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'drive-secrets', ['admin-password' => $adminPassword, 'machine-auth-api-key' => $machineAuth, 'jwt-secret' => $jwtSecret, 'transfer-secret' => $transferSecret, 'system-user-api-key' => $systemUserApiKey, 'service-account-secret' => $serviceAccountSecret, 'rekey-key' => $rekeyKey]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 $this->pushClusterSecret($kubectl, 'DRIVE_ADMIN_PASSWORD', $adminPassword, $clusterEnv);

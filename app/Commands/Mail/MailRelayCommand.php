@@ -114,14 +114,7 @@ class MailRelayCommand extends Command
         ));
 
         $this->withSpin('Caching relay credentials...', function () use ($kubectl, $ns, $provider, $username, $apiKey, $region): void {
-            Process::run(
-                "{$kubectl} create secret generic mail-relay -n {$ns} "
-                .'--from-literal=provider='.escapeshellarg($provider->value).' '
-                .'--from-literal=username='.escapeshellarg($username).' '
-                .'--from-literal=password='.escapeshellarg($apiKey).' '
-                .'--from-literal=region='.escapeshellarg($region).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'mail-relay', ['provider' => $provider->value, 'username' => $username, 'password' => $apiKey, 'region' => $region]);
         });
 
         $relayHost = $provider->defaultHost($region ?: null);

@@ -263,14 +263,7 @@ class SsoWireCommand extends Command
                 return 1;
             }
 
-            Process::run(
-                "{$kubectl} create secret generic {$appSecret} -n {$ssoNs} "
-                .'--from-literal=project-id='.escapeshellarg($registered['projectId']).' '
-                .'--from-literal=app-id='.escapeshellarg($registered['appId']).' '
-                .'--from-literal=client-id='.escapeshellarg($registered['clientId']).' '
-                .'--from-literal=client-secret='.escapeshellarg($registered['clientSecret']).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ssoNs, $appSecret, ['project-id' => $registered['projectId'], 'app-id' => $registered['appId'], 'client-id' => $registered['clientId'], 'client-secret' => $registered['clientSecret']]);
 
             // A public SPA client has no secret to vault.
             if (! $publicClient && $this->secretsBackendAvailable($kubectl)) {
@@ -621,12 +614,7 @@ class SsoWireCommand extends Command
             // DB, so this CLI path was the only wiring that never wrote it,
             // and tool:list permanently reported a wired Forgejo as unwired.
             // Record the registration the same way, idempotently.
-            Process::run(
-                "{$kubectl} create secret generic {$schema['secret']} -n {$ns} "
-                .'--from-literal=client-id='.escapeshellarg($clientId).' '
-                .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $schema['secret'], ['client-id' => $clientId, 'client-secret' => $clientSecret]);
 
             // Forgejo/Forgejo caches login sources in memory (a periodic
             // background sync, not an immediate reload) — update-oauth/
@@ -882,14 +870,7 @@ class SsoWireCommand extends Command
             return null;
         }
 
-        Process::run(
-            "{$kubectl} create secret generic sso-app-proxy -n {$ssoNs} "
-            .'--from-literal=project-id='.escapeshellarg($registered['projectId']).' '
-            .'--from-literal=app-id='.escapeshellarg($registered['appId']).' '
-            .'--from-literal=client-id='.escapeshellarg($registered['clientId']).' '
-            .'--from-literal=client-secret='.escapeshellarg($registered['clientSecret']).' '
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-        );
+        Kubectl::fromPrefix($kubectl)->putSecret($ssoNs, 'sso-app-proxy', ['project-id' => $registered['projectId'], 'app-id' => $registered['appId'], 'client-id' => $registered['clientId'], 'client-secret' => $registered['clientSecret']]);
 
         if ($this->secretsBackendAvailable($kubectl)) {
             $clusterEnv = $env === 'local' ? 'dev' : $env;
@@ -1435,12 +1416,7 @@ class SsoWireCommand extends Command
             // oidc` above), so this CLI path is what must record the marker
             // secret — every env-var-wired tool gets one from applyToolEnv().
             // Without it, tool:list reports a login that works as unwired.
-            Process::run(
-                "{$kubectl} create secret generic openbao-oidc -n {$ns} "
-                .'--from-literal=client-id='.escapeshellarg($clientId).' '
-                .'--from-literal=client-secret='.escapeshellarg($clientSecret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'openbao-oidc', ['client-id' => $clientId, 'client-secret' => $clientSecret]);
         }
 
         return $ok;

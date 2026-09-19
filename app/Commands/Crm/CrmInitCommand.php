@@ -134,17 +134,7 @@ class CrmInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $accessTokenSecret, $loginTokenSecret, $refreshTokenSecret, $fileTokenSecret, $encryptionKey, $s3Key, $s3Secret): void {
-            $cmd = "{$kubectl} create secret generic {$secretName} -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=access-token-secret='.escapeshellarg($accessTokenSecret).' '
-                .'--from-literal=login-token-secret='.escapeshellarg($loginTokenSecret).' '
-                .'--from-literal=refresh-token-secret='.escapeshellarg($refreshTokenSecret).' '
-                .'--from-literal=file-token-secret='.escapeshellarg($fileTokenSecret).' '
-                .'--from-literal=encryption-key='.escapeshellarg($encryptionKey).' '
-                .'--from-literal=s3-key='.escapeshellarg($s3Key).' '
-                .'--from-literal=s3-secret='.escapeshellarg($s3Secret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['db-password' => $dbPassword, 'access-token-secret' => $accessTokenSecret, 'login-token-secret' => $loginTokenSecret, 'refresh-token-secret' => $refreshTokenSecret, 'file-token-secret' => $fileTokenSecret, 'encryption-key' => $encryptionKey, 's3-key' => $s3Key, 's3-secret' => $s3Secret]);
         });
 
         $manifest = view('k8s.crm.shared', [

@@ -86,13 +86,7 @@ class CloudConfigureTunnelCommand extends Command
 
         // 1. Idempotent K8s Secret
         $this->withSpin('Storing tunnel token as K8s Secret...', function () use ($kubectl, $namespace, $token) {
-            Process::run(
-                $kubectl.' create secret generic larakube-tunnel-secret'
-                .' -n '.escapeshellarg($namespace)
-                .' --from-literal=TOKEN='.escapeshellarg($token)
-                .' --dry-run=client -o yaml'
-                .' | '.$kubectl.' apply -f -',
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($namespace, 'larakube-tunnel-secret', ['TOKEN' => $token]);
 
             return true;
         });

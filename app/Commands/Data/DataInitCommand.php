@@ -148,16 +148,7 @@ class DataInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $secret, $key, $dbPassword, $adminEmail, $adminPassword, $s3Key, $s3Secret): void {
-            $cmd = "{$kubectl} create secret generic {$secretName} -n {$ns} "
-                .'--from-literal=secret='.escapeshellarg($secret).' '
-                .'--from-literal=key='.escapeshellarg($key).' '
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
-                .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
-                .'--from-literal=s3-key='.escapeshellarg($s3Key).' '
-                .'--from-literal=s3-secret='.escapeshellarg($s3Secret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['secret' => $secret, 'key' => $key, 'db-password' => $dbPassword, 'admin-email' => $adminEmail, 'admin-password' => $adminPassword, 's3-key' => $s3Key, 's3-secret' => $s3Secret]);
         });
 
         // Store to OpenBao vault if available

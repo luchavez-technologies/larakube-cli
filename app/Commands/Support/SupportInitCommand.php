@@ -98,12 +98,7 @@ class SupportInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKeyBase, $adminEmail): void {
-            $cmd = "{$kubectl} create secret generic support-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=secret-key-base='.escapeshellarg($secretKeyBase).' '
-                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -";
-            Process::run($cmd);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'support-secrets', ['db-password' => $dbPassword, 'secret-key-base' => $secretKeyBase, 'admin-email' => $adminEmail]);
         });
 
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::SUPPORT, ClusterTool::SUPPORT->instanceSlugFromHost($host));

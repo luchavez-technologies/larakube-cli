@@ -26,7 +26,6 @@ function dnsFakes(string $clusterId = 'abc12345', array $overrides = []): array
         [
             '*get configmap larakube-cluster*' => Process::result(output: $clusterId),
             '*create namespace larakube-shared*' => Process::result(output: 'created'),
-            '*create secret generic cloudflare-token-*' => Process::result(output: 'created'),
             '*apply -f -*' => Process::result(output: 'applied'),
             '*get deployments*' => Process::result(output: ''),
         ],
@@ -230,13 +229,16 @@ test('dns:init refuses to deploy when it cannot establish a cluster identity', f
 });
 
 test('the token secret is named after the resolved group', function (): void {
-    $secretCmd = null;
+    $secret = null;
 
     Process::fake(dnsFakes('abc12345', [
-        '*create secret generic cloudflare-token-*' => function ($process) use (&$secretCmd) {
-            $secretCmd = is_string($process->command) ? $process->command : implode(' ', (array) $process->command);
+        '*apply -f -*' => function ($process) use (&$secret) {
+            $manifest = json_decode((string) $process->input, true);
+            if (($manifest['kind'] ?? null) === 'Secret') {
+                $secret = $manifest;
+            }
 
-            return Process::result(output: 'created');
+            return Process::result(output: 'applied');
         },
     ]));
     dnsZonesSaloonFake(['other.co.uk']);
@@ -244,8 +246,9 @@ test('the token secret is named after the resolved group', function (): void {
     $this->artisan('dns:init prod --context=ctx --zone=other.co.uk --cloudflare-token=second-account-token --no-interaction --force')
         ->assertExitCode(0);
 
-    expect($secretCmd)->toContain('cloudflare-token-other-co-uk')
-        ->and($secretCmd)->toContain('second-account-token');
+    expect($secret['metadata']['name'])->toBe('cloudflare-token-other-co-uk')
+        ->and(base64_decode($secret['data']['token']))->toBe('second-account-token');
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'second-account-token'));
 });
 
 test('dns:remove is a no-op when the cluster manages nothing', function (): void {

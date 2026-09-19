@@ -132,14 +132,7 @@ class SsoInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $masterkey, $adminPassword, $adminEmail): void {
-            Process::run(
-                "{$kubectl} create secret generic sso-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=masterkey='.escapeshellarg($masterkey).' '
-                .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
-                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'sso-secrets', ['db-password' => $dbPassword, 'masterkey' => $masterkey, 'admin-password' => $adminPassword, 'admin-email' => $adminEmail]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 $this->pushClusterSecret($kubectl, 'ZITADEL_ADMIN_EMAIL', $adminEmail, 'production');

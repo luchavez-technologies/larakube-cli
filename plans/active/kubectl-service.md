@@ -4,7 +4,7 @@
 `Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
 `~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
 copies). Stage 2b ✅ (`forKubeconfig()`; only `Kubectl` sets KUBECONFIG for a
-kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 792 string-built kubectl commands (`KubectlTest`), down from 892.
+kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 726 string-built kubectl commands (`KubectlTest`), down from 892.
 
 
 Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned
@@ -145,8 +145,14 @@ moves onto it and stops parsing command lines.
    base64 is null).
    Next, in order: the remaining traits by count (`ReconcilesPenpotFlags`,
    `InteractsWithScopedRbac`, ...), then each tool's commands. Also still in
-   argv: `create secret generic ... --from-literal` (about 140 sites);
-   move them to `putSecret()`. Follow-ups:
+   argv: the `create secret generic` sites the bulk conversion skipped
+   (`--from-file`, loops that build literals, Synapse config); move them to
+   `putSecret()`, then add a guard test like the `patch secret` one.
+   - Stray processes: 186 tests run at least one command no fake matches.
+     Laravel then runs it for real; the PATH stubs (`kubectl` etc. exit 0)
+     keep that harmless, but those calls are invisible to assertions. Turning
+     on `Process::preventStrayProcesses()` in `TestCase` lists them; fix the
+     fakes file by file, then leave it on. Follow-ups:
    - `SharedClusterService::presenceProbe()` returns an argument fragment
      ("deployment -l ... -n ..."); make it an argument list so its two
      callers can use `raw()`.

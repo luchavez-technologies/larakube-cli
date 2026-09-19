@@ -123,13 +123,7 @@ class ChatInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $registrationSecret, $turnSecret): void {
-            Process::run(
-                "{$kubectl} create secret generic chat-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=registration-secret='.escapeshellarg($registrationSecret).' '
-                .'--from-literal=turn-secret='.escapeshellarg($turnSecret).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'chat-secrets', ['db-password' => $dbPassword, 'registration-secret' => $registrationSecret, 'turn-secret' => $turnSecret]);
         });
 
         // homeserver.yaml moved from ConfigMap to Secret

@@ -115,11 +115,7 @@ trait ReconcilesPenpotFlags
         if ($secretExists) {
             Kubectl::fromPrefix($kubectl)->patchSecret($ns, $oidcSecretName, ['PENPOT_FLAGS' => $value]);
         } else {
-            Process::run(
-                "{$kubectl} create secret generic {$oidcSecretName} -n {$ns} "
-                .'--from-literal=PENPOT_FLAGS='.escapeshellarg($value).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $oidcSecretName, ['PENPOT_FLAGS' => $value]);
         }
 
         if (! $changed) {

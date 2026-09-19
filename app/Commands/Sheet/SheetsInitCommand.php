@@ -100,15 +100,7 @@ class SheetsInitCommand extends Command
         $dbUrl = "postgresql://{$dbName}:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/{$dbName}";
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey, $storage, $dbUrl): void {
-            Process::run(
-                "{$kubectl} create secret generic sheet-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=secret-key='.escapeshellarg($secretKey).' '
-                .'--from-literal=s3-access-key='.escapeshellarg($storage['access']).' '
-                .'--from-literal=s3-secret-key='.escapeshellarg($storage['secret']).' '
-                .'--from-literal=database-url='.escapeshellarg($dbUrl).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'sheet-secrets', ['db-password' => $dbPassword, 'secret-key' => $secretKey, 's3-access-key' => $storage['access'], 's3-secret-key' => $storage['secret'], 'database-url' => $dbUrl]);
         });
 
         $manifest = view('k8s.sheet.teable', [

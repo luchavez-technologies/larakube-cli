@@ -89,13 +89,7 @@ class DeskInitCommand extends Command
         ));
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $adminPassword, $adminEmail): void {
-            Process::run(
-                "{$kubectl} create secret generic desk-secrets -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                .'--from-literal=admin-password='.escapeshellarg($adminPassword).' '
-                .'--from-literal=admin-email='.escapeshellarg($adminEmail).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'desk-secrets', ['db-password' => $dbPassword, 'admin-password' => $adminPassword, 'admin-email' => $adminEmail]);
         });
 
         $manifest = view('k8s.desk.freescout', [

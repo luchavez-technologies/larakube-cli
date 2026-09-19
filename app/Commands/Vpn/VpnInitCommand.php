@@ -125,11 +125,7 @@ class VpnInitCommand extends Command
             }
 
             $this->registerSecret($dbPassword);
-            $this->withSpin('Syncing store credentials...', fn () => Process::run(
-                "{$kubectl} create secret generic {$storeSecret} -n {$ns} "
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            ));
+            $this->withSpin('Syncing store credentials...', fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, $storeSecret, ['db-password' => $dbPassword]));
         }
 
         $manifest = view('k8s.vpn.shared', [

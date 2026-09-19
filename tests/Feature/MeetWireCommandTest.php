@@ -70,7 +70,7 @@ test('meet:wire deploys the bridge and points Synapse at it', function (): void 
 
     // The wiring must be recorded so a later chat:init re-render does not
     // silently drop calling.
-    Process::assertRan(fn ($job) => str_contains($job->command, 'create secret generic chat-meet'));
+    Process::assertRan(fn ($job) => (appliedSecret($job)['name'] ?? null) === 'chat-meet');
     Process::assertRan(fn ($job) => str_contains($job->command, 'rollout restart deployment/chat-synapse'));
 });
 
