@@ -28,7 +28,7 @@ function commandMethodSources(ReflectionClass $class): array
     return $files;
 }
 
-/** @return array<string, list<string>> method => the files calling it (comments stripped, guarded calls skipped) */
+/** @return array<string, list<string>> method => the files calling it (comments and string contents stripped, guarded calls skipped) */
 function commandMethodCalls(string $file): array
 {
     static $cache = [];
@@ -36,22 +36,28 @@ function commandMethodCalls(string $file): array
     return $cache[$file] ??= (function () use ($file): array {
         $source = (string) file_get_contents($file);
         $code = '';
+        $calls = '';
         foreach (token_get_all($source) as $token) {
+            $text = is_array($token) ? $token[1] : $token;
             if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
                 continue;
             }
-            $code .= is_array($token) ? $token[1] : $token;
-        }
-
-        preg_match_all('/\$this->([A-Za-z_]\w*)\s*\(/', $code, $m);
-        $calls = [];
-        foreach (array_unique($m[1]) as $method) {
-            if (preg_match('/method_exists\(\s*\$this\s*,\s*[\'"]'.$method.'[\'"]\s*\)/', $code) !== 1) {
-                $calls[$method][] = basename($file);
+            $code .= $text;
+            // String contents can hold PHP written elsewhere; guards are read from $code.
+            if (! is_array($token) || ! in_array($token[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE, T_INLINE_HTML], true)) {
+                $calls .= $text;
             }
         }
 
-        return $calls;
+        preg_match_all('/\$this->([A-Za-z_]\w*)\s*\(/', $calls, $m);
+        $found = [];
+        foreach (array_unique($m[1]) as $method) {
+            if (preg_match('/method_exists\(\s*\$this\s*,\s*[\'"]'.$method.'[\'"]\s*\)/', $code) !== 1) {
+                $found[$method][] = basename($file);
+            }
+        }
+
+        return $found;
     })();
 }
 
@@ -85,5 +91,5 @@ test('no command calls a method it does not have', function (): void {
 
     sort($missing);
 
-    expect($missing)->toBeEmpty();
+    expect($missing)->toBeEmpty(implode("\n", $missing));
 });

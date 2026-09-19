@@ -236,12 +236,12 @@ final readonly class Kubectl
      *
      * @param  list<string>  $command
      */
-    public function exec(string $namespace, string $target, array $command, ?string $stdin = null, ?string $container = null): KubectlResult
+    public function exec(string $namespace, string $target, array $command, ?string $stdin = null, ?string $container = null, ?int $timeoutSeconds = null): KubectlResult
     {
         return $this->run([
             'exec', ...($stdin !== null ? ['-i'] : []), '-n', $namespace, $target,
             ...($container !== null ? ['-c', $container] : []), '--', ...$command,
-        ], $stdin);
+        ], $stdin, $timeoutSeconds);
     }
 
     public function rolloutStatus(string $namespace, string $deployment, int $timeoutSeconds = 120): KubectlResult

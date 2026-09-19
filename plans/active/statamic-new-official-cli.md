@@ -1,12 +1,22 @@
 # Plan: `statamic:new` on the official Statamic CLI, with starter kits, storage choice and a super user
 
-**Status:** Milestone 1 built, unverified live (walkthrough:
-`plans/active/statamic-new-testing.md`): official CLI, starter kits and their
-flags, Bun/PHP adoption from the installed site, super user (files mode, strong
-password). Milestone 2, database mode, not started: the Commons database is
-allocated at scaffold (`joinPlexCommons()`), but the builder container can't
-reach it, so the Eloquent driver setup, content import and database users run
-in the app pod after the first `up` (or over a port-forward).
+**Status:** Milestones 1 and 2 built, unverified live (walkthrough:
+`plans/active/statamic-new-testing.md`). Statamic 6 (the skeleton requires
+`statamic/cms ^6.0`; Bedrock targets 6).
+- Milestone 1: official CLI, starter kits and their flags, Bun/PHP/Vite
+  adoption from the installed site (Vite gives the local dev server pod),
+  super user.
+- Milestone 2: `--content=database` (default) or `files`. Database mode edits
+  the documented user settings at scaffold (all-or-nothing; a kit that changed
+  those files keeps file users), then after the first `up` runs Statamic's
+  `install:eloquent-driver --all --import`, `auth:migration`, `migrate` and
+  creates the super user in the web pod (password on stdin).
+  `statamic:database {environment}` re-runs those steps, and creates
+  production's own super user.
+- Open: production content. The import only runs where the repositories are
+  first moved (local); a production database starts empty of content. Decide
+  how production gets its first content (a one-time import command, or an
+  import on first deploy) before relying on it.
 
 ## Why
 - `statamic:new` runs `composer create-project statamic/statamic`, which can't

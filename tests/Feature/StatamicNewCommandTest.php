@@ -234,3 +234,22 @@ test('the installer runs in a terminal session without crashing', function (): v
     Illuminate\Support\Facades\Process::assertRan(fn ($process) => str_contains((string) $process->command, 'statamic new site'));
     $directory->delete();
 });
+
+test('content lives in the database by default, and --content only accepts database or files', function (): void {
+    [$command, , $directory] = statamicInstaller(['--fast' => true]);
+    $resolve = new ReflectionMethod($command, 'resolveContentStorage');
+
+    expect($resolve->invoke($command))->toBe('database');
+
+    [$files, , $second] = statamicInstaller(['--content' => 'files']);
+    expect($resolve->invoke($files))->toBe('files');
+
+    [$bad, , $third] = statamicInstaller(['--content' => 'mongo']);
+    try {
+        $resolve->invoke($bad);
+    } finally {
+        foreach ([$directory, $second, $third] as $d) {
+            $d->delete();
+        }
+    }
+})->throws(InvalidArgumentException::class, '--content must be');

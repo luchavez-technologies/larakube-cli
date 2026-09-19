@@ -19,9 +19,11 @@ use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
+use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesStatamicDatabase;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -39,7 +41,7 @@ use Symfony\Component\Process\Process as SymfonyProcess;
 
 class StatamicNewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithEnvironments, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ManagesStatamicDatabase, SyncsClusterSecrets;
 
     /** The Statamic CLI release line the scaffold installs. */
     private const string STATAMIC_CLI = 'statamic/cli:^3.6';
@@ -57,7 +59,8 @@ class StatamicNewCommand extends Command
                             {--with-config : Keep the kit\'s starter-kit.yaml, for developing the kit itself}
                             {--without-dependencies : Install the kit without its Composer dependencies}
                             {--email= : Super user email; unattended runs read the password from LARAKUBE_STATAMIC_PASSWORD}
-                            {--no-user : Don\'t create a super user}';
+                            {--no-user : Don\'t create a super user}
+                            {--content= : Where content and users live: "database" (default; each environment has its own) or "files" (committed with the site)}';
 
     /**
      * The console command description.
@@ -65,6 +68,12 @@ class StatamicNewCommand extends Command
     protected $description = 'Scaffold a new Statamic CMS project with Kubernetes infrastructure';
 
     private ?string $starterKit = null;
+
+    /** "database" or "files". */
+    private string $contentStorage = 'database';
+
+    /** Whether users (not just content) ended up in the database. */
+    private bool $usersInDatabase = false;
 
     /** @var array{email: string, password: string}|null */
     private ?array $superUser = null;
@@ -253,6 +262,8 @@ class StatamicNewCommand extends Command
         }
 
         // 7. The Control Panel login, asked now so the site is usable the moment it's up.
+        $this->contentStorage = $this->resolveContentStorage();
+        $this->usersInDatabase = $this->contentStorage === 'database';
         $this->superUser = $this->resolveSuperUser();
 
         $this->laraKubeInfo("Scaffolding Statamic: $appName...");
@@ -267,6 +278,10 @@ class StatamicNewCommand extends Command
         }
 
         $this->adoptProjectRequirements($config, $projectDir);
+
+        if ($this->contentStorage === 'database') {
+            $this->prepareDatabaseUsers($config, $projectDir);
+        }
 
         // 8. Generate K8s manifests
         $this->withSpin('Orchestrating Statamic infrastructure manifests...', function () use ($config): void {
@@ -283,13 +298,24 @@ class StatamicNewCommand extends Command
         if (confirm('Would you like to start your Statamic application now with `larakube up`?', true)) {
             chdir($projectDir);
 
-            return $this->call('up');
+            $exit = $this->call('up');
+            if ($exit !== 0 || $this->contentStorage !== 'database') {
+                return $exit;
+            }
+
+            return $this->setUpStatamicDatabase($config, 'local', $this->usersInDatabase ? $this->superUser : null) ? 0 : 1;
+        }
+
+        if ($this->contentStorage === 'database') {
+            $this->line('  <fg=gray>Then move content and users into the database:</>');
+            $this->line("  <fg=yellow>cd $appName && larakube up && larakube statamic:database</>");
+            $this->newLine();
         }
 
         $this->line('  <fg=gray>To start your Statamic application:</>');
         $this->line("  <fg=yellow>cd $appName && larakube up</>");
         $this->newLine();
-        if ($this->superUser === null) {
+        if ($this->superUser === null && $this->contentStorage === 'files') {
             $this->line('  <fg=gray>To create your first super user, run:</>');
             $this->line('  <fg=yellow>larakube art make:statamic-user</>');
             $this->newLine();
@@ -363,7 +389,8 @@ class StatamicNewCommand extends Command
             return;
         }
 
-        if ($this->superUser !== null) {
+        // Database users can only be created once the site's database is up.
+        if ($this->superUser !== null && ! $this->usersInDatabase) {
             $this->createSuperUser("$baseDir/$appName", $image);
         }
 
@@ -465,6 +492,49 @@ class StatamicNewCommand extends Command
         }
     }
 
+    /** --content, or (interactively) ask. Database by default: every environment keeps its own content and users. */
+    protected function resolveContentStorage(): string
+    {
+        $choice = strtolower(trim((string) $this->option('content')));
+        if ($choice === '' && ! $this->option('fast') && ! $this->option('no-interaction')) {
+            $choice = select(
+                label: 'Where should content and users live?',
+                options: [
+                    'database' => 'Database: edited in each environment, production keeps its own',
+                    'files' => 'Files: committed with the site and deployed with it (Statamic\'s default)',
+                ],
+                default: 'database',
+            );
+        }
+
+        $choice = $choice === '' ? 'database' : $choice;
+        if (! in_array($choice, ['database', 'files'], true)) {
+            throw new InvalidArgumentException("--content must be \"database\" or \"files\", not \"{$choice}\".");
+        }
+
+        return $choice;
+    }
+
+    /**
+     * Point users at the database. When a starter kit changed the files the
+     * documented steps edit, users stay in files (content still moves) and the
+     * super user is created as a file user instead.
+     */
+    protected function prepareDatabaseUsers(ConfigData $config, string $projectDir): void
+    {
+        $failed = $this->useDatabaseUsers($projectDir);
+        if ($failed === []) {
+            return;
+        }
+
+        $this->usersInDatabase = false;
+        $this->laraKubeWarn('Users stay in files: '.implode(', ', $failed).' differ from Statamic\'s defaults. Content still moves to the database.');
+
+        if ($this->superUser !== null) {
+            $this->createSuperUser($projectDir, $config->getPhpImage(true));
+        }
+    }
+
     /** --starter-kit, or (interactively) ask; blank means the plain Statamic site. */
     protected function resolveStarterKit(): ?string
     {
@@ -519,7 +589,9 @@ class StatamicNewCommand extends Command
         }
 
         if (! $unattended) {
-            $this->laraKubeLine('  <fg=gray>Users are saved with the site and deployed with it, so this is also your production login.</>');
+            $this->laraKubeLine($this->usersInDatabase
+                ? '  <fg=gray>This login is for your local site; production gets its own (`larakube statamic:database production`).</>'
+                : '  <fg=gray>Users are saved with the site and deployed with it, so this is also your production login.</>');
             $password = password(
                 label: 'Super user password',
                 required: true,
