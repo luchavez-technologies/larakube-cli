@@ -3,8 +3,11 @@
 namespace App\Commands\Flow;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ResourceRef;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
-use Illuminate\Support\Facades\Process;
+use App\Enums\FlowTool;
+use App\Enums\SecretKind;
 
 class FlowRemoveCommand extends AbstractToolRemoveCommand
 {
@@ -13,34 +16,130 @@ class FlowRemoveCommand extends AbstractToolRemoveCommand
         return ClusterTool::FLOW;
     }
 
-    /**
-     * A `--no-plex` Flow install keeps its state in the flow-storage PVC and
-     * never leases a Commons tenant; the absence of flow-secrets is how the old
-     * removeFlow() detected that, preserved here verbatim.
-     */
-    protected function usesBundledStorage(string $kubectl, string $namespace): bool
+    /** The engine whose Deployment serves this instance. */
+    protected function instanceEngine(string $kubectl, ?string $instance): ?string
     {
-        return trim(Process::run("{$kubectl} get secret flow-secrets -n {$namespace}")->output()) === '';
+        foreach ($this->installedNames($instance) as $names) {
+            if ($this->cluster()->exists(new ResourceRef('Deployment', $names->deployment(), $names->namespace()))) {
+                return $names->engine;
+            }
+        }
+
+        return null;
     }
 
+    /** `flow:init --no-plex` labels its Deployment; that install leased no Commons tenant. */
+    protected function usesBundledStorage(string $kubectl, string $namespace): bool
+    {
+        foreach ($this->installedNames($this->resolveInstance($kubectl)) as $names) {
+            $deployment = $this->cluster()->get(new ResourceRef('Deployment', $names->deployment(), $names->namespace()));
+            if ($deployment !== null) {
+                return ($deployment['metadata']['labels']['larakube-storage'] ?? null) === 'bundled';
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Only this instance's resources, for both engines (a host runs one, and
+     * the rest are absent). The Secret holding the encryption key and the
+     * data volumes stay unless --purge: without that key, every credential
+     * saved in n8n is unreadable, even with its database intact.
+     */
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        // Both engines are deleted regardless of which one is installed — the
-        // engine can be switched between installs, so a teardown that only
-        // removed the currently-configured engine used to strand the other.
-        $ok = $this->removeResources(
-            'Removing Flow resources...',
-            "{$kubectl} delete deployment/flow-n8n deployment/flow-windmill "
-            .'service/flow-n8n service/flow-windmill '
-            .'ingress/flow-n8n ingress/flow-windmill '
-            .'pvc/flow-storage pvc/flow-windmill-storage '
-            ."secret/flow-secrets -n {$namespace} --ignore-not-found",
-        );
+        $instance = $this->resolveInstance($kubectl);
+        $workloads = [];
+        $data = [];
 
-        // Best-effort: the vpn-only middleware only exists when --vpn-only was
-        // used, so its absence isn't a failure worth aborting on.
-        Process::run("{$kubectl} delete middleware/flow-vpn-only -n {$namespace} --ignore-not-found 2>/dev/null");
+        foreach ($this->installedNames($instance) as $names) {
+            $deployment = $names->deployment();
+            $ns = $names->namespace();
+
+            array_push(
+                $workloads,
+                new ResourceRef('Deployment', $deployment, $ns),
+                new ResourceRef('Service', $deployment, $ns),
+                new ResourceRef('Ingress', $deployment, $ns),
+                new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $ns),
+            );
+
+            if ($names->engine === FlowTool::WINDMILL->value) {
+                array_push(
+                    $workloads,
+                    new ResourceRef('Deployment', $names->name('db'), $ns),
+                    new ResourceRef('Service', $names->name('db'), $ns),
+                );
+                $data[] = new ResourceRef('PersistentVolumeClaim', $names->volume('db-storage'), $ns);
+            } else {
+                $data[] = new ResourceRef('PersistentVolumeClaim', $names->volume(), $ns);
+            }
+
+            $data[] = new ResourceRef('Secret', $names->secret(), $ns);
+        }
+
+        if ($instance !== null && $instance !== '') {
+            $middleware = ToolInstance::forInstance(ClusterTool::FLOW, $instance)->vpnMiddleware();
+            if ($middleware !== null) {
+                $workloads[] = $middleware;
+            }
+        }
+
+        $ok = $this->deleteStep('Removing Flow resources...', $workloads);
+
+        // A volume can only go once its pod has: the Deployments are deleted first.
+        if ($this->option('purge')) {
+            $ok = $this->deleteStep('Removing Flow data volumes and keys...', $data) && $ok;
+        }
 
         return $ok;
+    }
+
+    protected function teardownWarning(string $env): array
+    {
+        $lines = parent::teardownWarning($env);
+
+        $lines[] = $this->option('purge')
+            ? 'Flow data volumes and the n8n encryption key WILL BE DESTROYED.'
+            : 'Flow data volumes and the n8n encryption key WILL BE PRESERVED.';
+
+        return $lines;
+    }
+
+    /** @return list<ToolInstance> one per engine; none without an instance */
+    private function installedNames(?string $instance): array
+    {
+        if ($instance === null || $instance === '') {
+            return [];
+        }
+
+        return array_map(
+            fn (FlowTool $engine) => ToolInstance::forInstance(ClusterTool::FLOW, $instance, $engine->value),
+            FlowTool::cases(),
+        );
+    }
+
+    /** @param  list<ResourceRef>  $refs */
+    private function deleteStep(string $label, array $refs): bool
+    {
+        if ($refs === []) {
+            return true;
+        }
+
+        $result = null;
+        $this->withSpin($label, function () use (&$result, $refs): bool {
+            $result = $this->cluster()->delete(...$refs);
+
+            return $result->ok;
+        });
+
+        if ($result === null || ! $result->ok) {
+            $this->laraKubeError(trim($result->error ?? '') ?: "{$label} failed.");
+
+            return false;
+        }
+
+        return true;
     }
 }

@@ -5,6 +5,7 @@ namespace App\Commands\Tool;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\DeregistersSsoApp;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Process;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
+use LogicException;
 use RuntimeException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
@@ -52,6 +54,8 @@ abstract class AbstractToolRemoveCommand extends Command
 
     /** @var list<string|null>|null */
     private ?array $resolvedTargets = null;
+
+    private ?Kubectl $cluster = null;
 
     public function __construct()
     {
@@ -99,6 +103,7 @@ abstract class AbstractToolRemoveCommand extends Command
         // *Kubectl() helper did this, and a bare `kubectl` would silently follow
         // an ambient $KUBECONFIG to a different cluster than the one we resolved.
         $kubectl = $this->contextKubectl($context);
+        $this->cluster = Kubectl::forContext(($context ?? '') !== '' ? $context : null);
         $namespace = $tool->namespace();
         $isPurging = (bool) $this->option('purge');
 
@@ -178,6 +183,12 @@ abstract class AbstractToolRemoveCommand extends Command
 
     /** The tool this command tears down. */
     abstract protected function tool(): ClusterTool;
+
+    /** The cluster this removal targets, the same one $kubectl points at. */
+    protected function cluster(): Kubectl
+    {
+        return $this->cluster ?? throw new LogicException('cluster() is only available once handle() has resolved the context.');
+    }
 
     /**
      * Which instance(s) to remove, read from the tool registry.
@@ -286,8 +297,9 @@ abstract class AbstractToolRemoveCommand extends Command
     protected function dropCommonsTenants(string $kubectl, ?string $instance = null): bool
     {
         $tool = $this->tool();
-        $databases = $tool->commonsDatabases($instance);
-        $buckets = $tool->commonsBuckets($instance);
+        $engine = $this->instanceEngine($kubectl, $instance);
+        $databases = $tool->commonsDatabases($instance, $engine);
+        $buckets = $tool->commonsBuckets($instance, $engine);
 
         $redisTenants = $tool->commonsRedisTenants($instance);
 
@@ -396,6 +408,15 @@ abstract class AbstractToolRemoveCommand extends Command
         $this->unregisterTenant($bucket);
 
         return $ok;
+    }
+
+    /**
+     * The engine $instance runs, for tools with more than one, read from the
+     * live cluster. null means unknown, so every engine's tenants are covered.
+     */
+    protected function instanceEngine(string $kubectl, ?string $instance): ?string
+    {
+        return null;
     }
 
     /**

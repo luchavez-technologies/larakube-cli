@@ -2,75 +2,22 @@
 
 namespace App\Enums;
 
-use App\Contracts\ClusterToolVendor;
-use App\Contracts\HasCommonsDatabases;
-use App\Contracts\HasDeploymentBaseName;
-use App\Contracts\HasSmtpWiring;
-use App\Contracts\HasVpnWiring;
+use App\Tools\N8n;
+use App\Tools\Windmill;
 
-/** The vendor enum backing ClusterTool::FLOW — 'Workflow Automation'. */
-enum FlowTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasSmtpWiring, HasVpnWiring
+/**
+ * The FLOW engines, as the keys `--engine=` and the tool registry store.
+ * Everything an engine knows lives on its class in app/Tools.
+ */
+enum FlowTool: string
 {
-    public function getLabel(): string
+    public function tool(): N8n|Windmill
     {
         return match ($this) {
-            self::N8N => 'n8n',
-            self::WINDMILL => 'Windmill',
+            self::N8N => new N8n,
+            self::WINDMILL => new Windmill,
         };
     }
-
-    public function vpnMiddlewareTarget(?string $instance = null): ?array
-    {
-        $name = ($instance === null || $instance === '') ? 'flow-vpn-only' : "flow-vpn-only-{$instance}";
-
-        return [
-            'name' => $name,
-            'namespace' => 'larakube-shared',
-        ];
-    }
-
-    public function baseDeploymentName(): string
-    {
-        return match ($this) {
-            self::N8N => 'flow-n8n',
-            self::WINDMILL => 'flow-windmill',
-        };
-    }
-
-    public function smtpEnv(?string $instance = null): ?array
-    {
-        return match ($this) {
-            self::N8N => [
-                'deployment' => 'flow-n8n',
-                'secret' => 'flow-n8n-smtp',
-                'static' => [
-                    'N8N_EMAIL_MODE' => 'smtp',
-                    'N8N_SMTP_SSL' => 'true',
-                    'N8N_SMTP_STARTTLS' => 'false',
-                ],
-                'vars' => [
-                    'host' => 'N8N_SMTP_HOST',
-                    'port' => 'N8N_SMTP_PORT',
-                    'user' => 'N8N_SMTP_USER',
-                    'password' => 'N8N_SMTP_PASS',
-                    'from' => 'N8N_SMTP_SENDER',
-                ],
-            ],
-            // Windmill has no SMTP schema of its own yet (deliberately
-            // deferred). Returning null for a KNOWN windmill engine is
-            // correct — mail:wire on a Windmill-only install must refuse
-            // rather than try to patch a nonexistent flow-n8n Deployment.
-            self::WINDMILL => null,
-        };
-    }
-
-    public function commonsDatabaseList(): array
-    {
-        return match ($this) {
-            self::N8N => ['n8n'],
-            self::WINDMILL => ['windmill'],
-        };
-    }
-    case N8N = 'n8n';
-    case WINDMILL = 'windmill';
+    case N8N = N8n::ENGINE;
+    case WINDMILL = Windmill::ENGINE;
 }

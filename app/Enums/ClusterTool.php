@@ -53,15 +53,15 @@ enum ClusterTool: string implements HasWorkloadComponents
 {
     /**
      * The vendor backing this category — an enum case for a multi-vendor
-     * category (DATA, FLOW, GIT, CHAT, DESIGN, TASKS, DESK), a plain class
-     * instance for a single-vendor one (the other 22 categories). Total
+     * category (DATA, GIT, CHAT, DESIGN, TASKS, DESK), the engine's class in
+     * app/Tools for FLOW, a plain class instance for a single-vendor one. Total
      * over all 29 cases — every category has exactly one vendor.
      */
     public function vendor(?string $engine = null): ClusterToolVendor
     {
         return match ($this) {
             self::DATA => DataTool::tryFrom((string) $engine) ?? DataTool::DIRECTUS,
-            self::FLOW => FlowTool::tryFrom((string) $engine) ?? FlowTool::N8N,
+            self::FLOW => (FlowTool::tryFrom((string) $engine) ?? FlowTool::N8N)->tool(),
             self::GIT => GitForgeTool::FORGEJO,
             self::CHAT => ChatTool::MATRIX,
             self::DESIGN => DesignTool::PENPOT,
@@ -998,7 +998,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      * This method instead answers "does this tool's :remove command have
      * real per-instance teardown logic TODAY" — and defaults `false`, because
      * most tools' teardown() hardcodes fixed resource names and completely
-     * ignores $instance/--domain. Only DATA, NOTES, CRM and DESIGN currently
+     * ignores $instance/--domain. Only the tools listed below currently
      * resolve --domain to a specific registered instance before tearing it
      * down; every other tool would silently ignore --domain and delete the
      * one real installation no matter what host was passed, which is the
@@ -1007,7 +1007,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function hasInstanceAwareRemoval(): bool
     {
         return match ($this) {
-            self::DATA, self::NOTES, self::CRM, self::DESIGN, self::PASTE, self::SIGN => true,
+            self::DATA, self::NOTES, self::CRM, self::DESIGN, self::PASTE, self::SIGN, self::FLOW => true,
             default => false,
         };
     }
@@ -1419,14 +1419,11 @@ enum ClusterTool: string implements HasWorkloadComponents
     /** @return list<string> */
     private function commonsDatabaseList(?string $engine = null): array
     {
-        // FLOW with no resolved engine must report BOTH n8n and windmill
-        // tenants — teardown calls this with no $engine to drop whichever
-        // engine's tenant DB exists, guaranteeing a clean slate after an
-        // engine switch (see FlowInitCommand::removeFlow()). This has to
-        // run before the generic vendor() dispatch below, which would
-        // otherwise default a null $engine to N8N's list alone.
+        // FLOW with no resolved engine reports BOTH engines' tenants, so a
+        // caller that can't tell which engine an instance ran still covers
+        // it. Must run before vendor(), which defaults a null engine to n8n.
         if ($this === self::FLOW && $engine === null) {
-            return array_merge(...array_map(fn (FlowTool $c) => $c->commonsDatabaseList(), FlowTool::cases()));
+            return array_merge(...array_map(fn (FlowTool $c) => $c->tool()->commonsDatabaseList(), FlowTool::cases()));
         }
 
         $vendor = $this->vendor($engine);

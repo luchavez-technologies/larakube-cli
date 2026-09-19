@@ -1,12 +1,12 @@
 @php
-    $svcName = ($engine ?? 'n8n') === 'windmill' ? 'flow-windmill' : 'flow-n8n';
-    $svcPort = ($engine ?? 'n8n') === 'windmill' ? 8000 : 5678;
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, $engine ?? 'n8n');
+    $servicePort ??= ($names->engine === 'windmill' ? 8000 : 5678);
 @endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ $svcName }}
-  namespace: larakube-shared
+  name: {{ $names->deployment() }}
+  namespace: {{ $names->namespace() }}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -17,7 +17,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-flow-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->namespace() }}-{{ $names->vpnMiddleware()->name }}@kubernetescrd
 @endif
 spec:
   rules:
@@ -28,9 +28,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ $svcName }}
+                name: {{ $names->deployment() }}
                 port:
-                  number: {{ $svcPort }}
+                  number: {{ $servicePort }}
   tls:
     - hosts:
         - {{ $host }}

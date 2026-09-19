@@ -22,7 +22,6 @@ function toolNamingKnownDrift(): array
         'design' => 'init hand-builds design-backend/-secrets/-oidc names remove never deletes',
         'drive' => $refusesDomain,
         'errors' => $refusesDomain,
-        'flow' => $refusesDomain,
         'git' => $refusesDomain,
         'insights' => $refusesDomain,
         'link' => $refusesDomain,

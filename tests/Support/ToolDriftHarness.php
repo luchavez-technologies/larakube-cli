@@ -212,6 +212,23 @@ final class ToolDriftHarness
     {
         $command = (string) (is_array($process->command) ? implode(' ', $process->command) : $process->command);
 
+        // App\Services\Kubectl quotes every argument; read it as plain words.
+        if (preg_match("/ kubectl(?: --context '(?:[^']|'\\\\'')*')? ('.*)$/s", $command, $m) === 1) {
+            preg_match_all("/'((?:[^']|'\\\\'')*)'/", $m[1], $tokens);
+            $command = 'kubectl '.implode(' ', array_map(fn (string $t) => str_replace("'\\''", "'", $t), $tokens[1]));
+
+            if (preg_match('#^kubectl get ([a-z]+)/(\S+) -n (\S+) -o (name|json)#', $command, $g) === 1) {
+                $ref = new ResourceRef($g[1], $g[2], $g[3]);
+                if (! isset($this->live[strtolower($ref->key())])) {
+                    return Process::result(output: '');
+                }
+
+                return Process::result(output: $g[4] === 'name'
+                    ? "{$g[1]}/{$g[2]}"
+                    : (string) json_encode(['kind' => $g[1], 'metadata' => ['name' => $g[2], 'namespace' => $g[3]]]));
+            }
+        }
+
         if (str_contains($command, 'larakube-tools-registry')) {
             if (preg_match('/registry\\.json=([^ ]+)/', $command, $m) === 1 && str_contains($command, 'create secret')) {
                 $this->toolRows = json_decode((string) file_get_contents(trim($m[1], "'\"")), true) ?: [];

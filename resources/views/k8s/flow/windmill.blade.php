@@ -1,42 +1,49 @@
-@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, 'windmill')->database())
+@php
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, 'windmill');
+    $tool = \App\Enums\ClusterTool::FLOW->vendor('windmill');
+    $dbName ??= $names->database();
+    $deployment = $names->deployment();
+    $bundledDb = $names->name('db');
+    $bundledDbVolume = $names->volume('db-storage');
+@endphp
 @if($noPlex)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: flow-windmill-db-storage
-  namespace: larakube-shared
+  name: {{ $bundledDbVolume }}
+  namespace: {{ $names->namespace() }}
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ $volumeSize('flow-windmill-db-storage', '5Gi', true) }}
+      storage: {{ $volumeSize($bundledDbVolume, '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flow-windmill-db
-  namespace: larakube-shared
+  name: {{ $bundledDb }}
+  namespace: {{ $names->namespace() }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: flow-windmill-db
+      app: {{ $bundledDb }}
   template:
     metadata:
       labels:
-        app: flow-windmill-db
+        app: {{ $bundledDb }}
     spec:
       containers:
         - name: postgres
-          image: postgres:15-alpine
+          image: {{ $tool->image('postgres') }}
           env:
             - name: POSTGRES_USER
               value: windmill
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: flow-secrets
+                  name: {{ $names->secret() }}
                   key: db-password
             - name: POSTGRES_DB
               value: windmill
@@ -48,16 +55,16 @@ spec:
       volumes:
         - name: storage
           persistentVolumeClaim:
-            claimName: flow-windmill-db-storage
+            claimName: {{ $bundledDbVolume }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: flow-windmill-db
-  namespace: larakube-shared
+  name: {{ $bundledDb }}
+  namespace: {{ $names->namespace() }}
 spec:
   selector:
-    app: flow-windmill-db
+    app: {{ $bundledDb }}
   ports:
     - protocol: TCP
       port: 5432
@@ -67,34 +74,39 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flow-windmill
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: flow-windmill
+    app: {{ $deployment }}
+    larakube-tool: flow
+    larakube-engine: windmill
+@if($noPlex)
+    larakube-storage: bundled
+@endif
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: flow-windmill
+      app: {{ $deployment }}
   template:
     metadata:
       labels:
-        app: flow-windmill
+        app: {{ $deployment }}
     spec:
       containers:
         - name: windmill-server
-          image: ghcr.io/windmill-labs/windmill:1.770.0
+          image: {{ $tool->image('windmill') }}
           env:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: flow-secrets
+                  name: {{ $names->secret() }}
                   key: db-password
 @if($noPlex)
             - name: DATABASE_URL
-              value: postgres://windmill:$(DB_PASSWORD)@flow-windmill-db:5432/windmill
+              value: postgres://windmill:$(DB_PASSWORD)@{{ $bundledDb }}:5432/windmill
 @else
             - name: DATABASE_URL
               value: postgres://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}
@@ -113,16 +125,16 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 10
         - name: windmill-worker
-          image: ghcr.io/windmill-labs/windmill:1.770.0
+          image: {{ $tool->image('windmill') }}
           env:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: flow-secrets
+                  name: {{ $names->secret() }}
                   key: db-password
 @if($noPlex)
             - name: DATABASE_URL
-              value: postgres://windmill:$(DB_PASSWORD)@flow-windmill-db:5432/windmill
+              value: postgres://windmill:$(DB_PASSWORD)@{{ $bundledDb }}:5432/windmill
 @else
             - name: DATABASE_URL
               value: postgres://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}
@@ -132,18 +144,18 @@ spec:
             - name: WORKER_GROUP
               value: default
         - name: windmill-lsp
-          image: ghcr.io/windmill-labs/windmill-lsp:1.134.1
+          image: {{ $tool->image('lsp') }}
           ports:
             - containerPort: 3001
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: flow-windmill
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
 spec:
   selector:
-    app: flow-windmill
+    app: {{ $deployment }}
   ports:
     - protocol: TCP
       port: 8000
@@ -155,4 +167,4 @@ spec:
       name: lsp
   type: ClusterIP
 ---
-@include('k8s.flow.ingress', ['serviceName' => 'flow-windmill', 'servicePort' => 8000])
+@include('k8s.flow.ingress', ['names' => $names, 'servicePort' => 8000])

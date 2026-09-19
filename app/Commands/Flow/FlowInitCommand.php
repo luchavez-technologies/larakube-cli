@@ -5,7 +5,9 @@ namespace App\Commands\Flow;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\FlowTool;
 use App\Enums\SharedClusterService;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -21,7 +23,6 @@ use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
@@ -58,25 +59,20 @@ class FlowInitCommand extends Command
         $kubectl = $this->flowKubectl($context);
         $host = $this->resolveToolHost(SharedClusterService::FLOW, ClusterTool::FLOW, $env, $kubectl, '', $this->engineLabel($engine));
 
-        $ns = $this->flowNamespace();
+        $names = ToolInstance::forHost(ClusterTool::FLOW, $host, $engine);
+        $ns = $names->namespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
+        $cluster = Kubectl::forContext(($context ?? '') !== '' ? $context : null);
 
-        // n8n and windmill are distinct products grouped under "flow" — they
-        // coexist, not replace each other. If the other engine is already here,
-        // just flag the scope overlap rather than blocking or overwriting.
-        $other = $engine === 'windmill' ? 'n8n' : 'windmill';
-        $otherInstalled = trim(Process::run(
-            "{$kubectl} get deployment flow-{$other} -n {$ns} --no-headers --ignore-not-found",
-        )->output()) !== '';
-        if ($otherInstalled && ! $this->option('force') && ! $this->cannotPrompt()
-            && ! confirm("{$this->engineLabel($other)} is already installed under 'flow'. {$this->engineLabel($engine)} overlaps in scope — install it alongside?", default: true)) {
-            $this->laraKubeInfo('Aborted — no changes made.');
+        $other = $this->otherFlowEngineOnHost($cluster, $host, $engine);
+        if ($other !== null) {
+            $this->laraKubeError("{$host} already runs {$other->tool()->getLabel()}. A host runs one engine: remove it first with `larakube flow:remove {$env} --domain={$host}`, or pick another --domain.");
 
-            return 0;
+            return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::FLOW, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::FLOW, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -88,10 +84,12 @@ class FlowInitCommand extends Command
             }
         }
 
-        $dbPassword = $this->readFlowDbPassword($kubectl, $ns) ?? Str::random(24);
-        $encryptionKey = $this->readFlowEncryptionKey($kubectl, $ns) ?? Str::random(32);
+        // Reused on every re-run: a new encryption key would make every
+        // credential saved in n8n undecryptable.
+        $dbPassword = $cluster->secretValue($ns, $names->secret(), 'db-password') ?? Str::random(24);
+        $encryptionKey = $cluster->secretValue($ns, $names->secret(), 'encryption-key') ?? Str::random(32);
 
-        $dbName = ToolInstance::forHost(ClusterTool::FLOW, $host, $engine)->database();
+        $dbName = $names->database();
 
         if (! $noPlex) {
             $driver = DatabaseDriver::POSTGRESQL;
@@ -126,18 +124,15 @@ class FlowInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $encryptionKey, $dbPassword): void {
-            Process::run(
-                "{$kubectl} create secret generic flow-secrets -n {$ns} "
-                .'--from-literal=encryption-key='.escapeshellarg($encryptionKey).' '
-                .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
-            );
-        });
+        $this->withSpin('Syncing secrets...', fn () => $cluster->putSecret($ns, $names->secret(), [
+            'encryption-key' => $encryptionKey,
+            'db-password' => $dbPassword,
+        ], ['larakube-tool' => 'flow']));
 
         $manifest = view("k8s.flow.{$engine}", [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'engine' => $engine,
+            'names' => $names,
             'host' => $host,
             'dbName' => $dbName,
             'dbPassword' => $dbPassword,
@@ -152,8 +147,8 @@ class FlowInitCommand extends Command
         $tmp = $temporaryDirectory->path('larakube-flow.yaml');
         file_put_contents($tmp, $manifest);
 
-        $engineName = $engine === 'windmill' ? 'Windmill' : 'n8n';
-        $deployName = $engine === 'windmill' ? 'deploy/flow-windmill' : 'deploy/flow-n8n';
+        $engineName = $this->engineLabel($engine);
+        $deployName = 'deploy/'.$names->deployment();
 
         $this->withSpin("Applying Flow ({$engineName}) manifests...", fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
         $temporaryDirectory->delete();
@@ -163,7 +158,7 @@ class FlowInitCommand extends Command
             130,
         ));
 
-        $this->registerDeployedTool(ClusterTool::FLOW, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::FLOW, $kubectl, $host, extra: ['engine' => $engine]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Flow ({$engineName}) stack is live.");
@@ -177,7 +172,7 @@ class FlowInitCommand extends Command
 
     protected function engineLabel(string $engine): string
     {
-        return $engine === 'windmill' ? 'Windmill' : 'n8n';
+        return FlowTool::from($engine)->tool()->getLabel();
     }
 
     protected function resolveEnvironment(): string

@@ -71,7 +71,7 @@ enum SharedClusterService: string
             // current kube-context is slow/unreachable this degrades to the
             // default engine instead of blocking (default Process timeout is 60s).
             self::FLOW => [
-                'engine' => trim(Process::timeout(10)->run('kubectl get deployment flow-windmill -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
+                'engine' => trim(Process::timeout(10)->run('kubectl get deployment -l larakube-tool=flow,larakube-engine=windmill -n larakube-shared -o name --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
             ],
             self::DRIVE => ['engine' => 'ocis'],
             // The Matrix bridge is a wiring artifact, not part of Meet itself —
@@ -225,7 +225,7 @@ enum SharedClusterService: string
             self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
             self::SECRETS => 'deployment openbao-backend -n larakube-secrets',
             self::FORGEJO => 'deployment -l larakube-tool=git -n larakube-shared',
-            self::FLOW => 'deployment -l "app in (flow-n8n, flow-windmill)" -n larakube-shared',
+            self::FLOW => 'deployment -l larakube-tool=flow -n larakube-shared',
             self::SHEET => 'deployment sheet-teable -n larakube-shared',
             self::DRIVE => 'deployment drive-ocis -n larakube-shared',
             self::INSIGHTS => 'deployment insights-metabase -n larakube-shared',

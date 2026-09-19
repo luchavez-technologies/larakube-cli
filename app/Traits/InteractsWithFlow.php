@@ -2,15 +2,14 @@
 
 namespace App\Traits;
 
-use App\Data\ConfigData;
-use App\Data\GlobalConfigData;
+use App\Data\ResourceRef;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
-use Illuminate\Support\Facades\Process;
+use App\Enums\FlowTool;
+use App\Services\Kubectl;
 
 trait InteractsWithFlow
 {
-    use ReadsClusterSecrets, ResolvesEnvironmentContext;
-
     /** The namespace the flow stack lives in. */
     protected function flowNamespace(): string
     {
@@ -20,68 +19,26 @@ trait InteractsWithFlow
     /** Build the kubectl command, optionally scoped to a specific context. */
     protected function flowKubectl(?string $context = null): string
     {
-        $context = (string) ($context ?? '');
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-
-        return $context !== '' ? "{$kubectl} --context={$context}" : $kubectl;
-    }
-
-    /** Flow (n8n) Deployment present? */
-    protected function isFlowInstalled(string $kubectl, string $ns): bool
-    {
-        $out = Process::run("{$kubectl} get deployment flow-n8n -n {$ns} --no-headers")->output();
-
-        return trim($out) !== '';
-    }
-
-    /** Read flow encryption key. */
-    protected function readFlowEncryptionKey(string $kubectl, string $ns): ?string
-    {
-        return $this->readClusterSecretKey($kubectl, $ns, 'flow-secrets', 'encryption-key');
-    }
-
-    /** Read flow database password. */
-    protected function readFlowDbPassword(string $kubectl, string $ns): ?string
-    {
-        return $this->readClusterSecretKey($kubectl, $ns, 'flow-secrets', 'db-password');
+        return Kubectl::forContext(($context ?? '') !== '' ? $context : null)->prefix();
     }
 
     /**
-     * Read-only Flow host for an env. Each engine has its own host (stored under
-     * `flow-{engine}`); without an explicit engine, prefer whichever is recorded
-     * (n8n first for back-compat) so flow:show still resolves.
+     * The engine already serving $host, other than $engine, or null. A host
+     * is one instance, so it runs one engine at a time.
      */
-    protected function resolveFlowHostReadOnly(string $env, ?ConfigData $config, ?string $engine = null): ?string
+    protected function otherFlowEngineOnHost(Kubectl $kubectl, string $host, string $engine): ?FlowTool
     {
-        $engines = $engine !== null ? [$engine] : ['n8n', 'windmill'];
+        foreach (FlowTool::cases() as $candidate) {
+            if ($candidate->value === $engine) {
+                continue;
+            }
 
-        if ($env === 'local') {
-            return $engines[0].'.'.GlobalConfigData::load()->getLocalTld();
-        }
-
-        foreach ($engines as $candidate) {
-            $host = $config?->getEnvironment($env)?->hosts["flow-{$candidate}"] ?? null;
-            if ($host !== null && $host !== '') {
-                return $host;
+            $names = ToolInstance::forHost(ClusterTool::FLOW, $host, $candidate->value);
+            if ($kubectl->exists(new ResourceRef('Deployment', $names->deployment(), $names->namespace()))) {
+                return $candidate;
             }
         }
 
         return null;
-    }
-
-    /** Resolve Flow's access details. */
-    protected function flowAccess(string $env, ?ConfigData $config, ?string $context = null): ?array
-    {
-        $kubectl = $this->flowKubectl($context);
-        $ns = $this->flowNamespace();
-
-        if (! $this->isFlowInstalled($kubectl, $ns)) {
-            return null;
-        }
-
-        return [
-            'host' => $this->resolveFlowHostReadOnly($env, $config),
-            'label' => 'n8n',
-        ];
     }
 }

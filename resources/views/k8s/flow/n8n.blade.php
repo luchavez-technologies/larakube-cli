@@ -1,45 +1,53 @@
-@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, 'n8n')->database())
-@if($noPlex)
+@php
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, 'n8n');
+    $tool = \App\Enums\ClusterTool::FLOW->vendor('n8n');
+    $dbName ??= $names->database();
+    $deployment = $names->deployment();
+@endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: flow-storage
-  namespace: larakube-shared
+  name: {{ $names->volume() }}
+  namespace: {{ $names->namespace() }}
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ $volumeSize('flow-storage', '5Gi', true) }}
+      storage: {{ $volumeSize($names->volume(), '5Gi', true) }}
 ---
-@endif
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flow-n8n
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: flow-n8n
+    app: {{ $deployment }}
+    larakube-tool: flow
+    larakube-engine: n8n
+@if($noPlex)
+    larakube-storage: bundled
+@endif
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: flow-n8n
+      app: {{ $deployment }}
   template:
     metadata:
       labels:
-        app: flow-n8n
+        app: {{ $deployment }}
     spec:
       containers:
         - name: n8n
-          image: docker.n8n.io/n8nio/n8n:2.29.8
+          image: {{ $tool->image('n8n') }}
           env:
             - name: N8N_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: flow-secrets
+                  name: {{ $names->secret() }}
                   key: encryption-key
             # Public URL, so generated webhook/chat/editor links use the real
             # host behind Traefik instead of localhost:5678.
@@ -70,7 +78,7 @@ spec:
             - name: DB_POSTGRESDB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: flow-secrets
+                  name: {{ $names->secret() }}
                   key: db-password
 @endif
           ports:
@@ -92,30 +100,28 @@ spec:
               port: 5678
             initialDelaySeconds: 15
             periodSeconds: 10
+          # Community nodes, binary data and (with --no-plex) the SQLite
+          # database live here, so it is a volume on every install.
           volumeMounts:
             - name: storage
               mountPath: /home/node/.n8n
       volumes:
         - name: storage
-@if($noPlex)
           persistentVolumeClaim:
-            claimName: flow-storage
-@else
-          emptyDir: {}
-@endif
+            claimName: {{ $names->volume() }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: flow-n8n
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
 spec:
   selector:
-    app: flow-n8n
+    app: {{ $deployment }}
   ports:
     - protocol: TCP
       port: 5678
       targetPort: 5678
   type: ClusterIP
 ---
-@include('k8s.flow.ingress')
+@include('k8s.flow.ingress', ['names' => $names, 'servicePort' => 5678])
