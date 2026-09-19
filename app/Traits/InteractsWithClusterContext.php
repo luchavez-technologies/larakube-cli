@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -130,21 +131,7 @@ trait InteractsWithClusterContext
      */
     protected function isLocalContextName(string $context): bool
     {
-        $context = strtolower(trim($context));
-
-        if ($context === '') {
-            return false;
-        }
-
-        $localKeywords = ['minikube', 'docker-desktop', 'orbstack', 'kind', 'colima', 'k3s-larakube'];
-
-        foreach ($localKeywords as $keyword) {
-            if (str_contains($context, $keyword)) {
-                return true;
-            }
-        }
-
-        return false;
+        return Kubectl::isLocalContextName($context);
     }
 
     /**

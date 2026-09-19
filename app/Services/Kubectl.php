@@ -44,6 +44,24 @@ final readonly class Kubectl
     }
 
     /** The command prefix, for callers not yet moved onto typed calls. */
+    /**
+     * Whether a context name follows a local-cluster convention (OrbStack,
+     * Docker Desktop, minikube, kind, colima, or cluster:setup's native k3s).
+     * Remote k3s is named "larakube-<ip>", so it stays non-local.
+     */
+    public static function isLocalContextName(string $context): bool
+    {
+        $context = strtolower(trim($context));
+
+        foreach (['minikube', 'docker-desktop', 'orbstack', 'kind', 'colima', 'k3s-larakube'] as $keyword) {
+            if ($context !== '' && str_contains($context, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function prefix(): string
     {
         $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';

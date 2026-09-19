@@ -6,6 +6,7 @@ use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use App\Services\PlexService;
 use Illuminate\Process\FakeInvokedProcess;
 use Illuminate\Process\InvokedProcess;
@@ -474,9 +475,9 @@ trait InteractsWithPlex
      */
     protected function targetsLocalCluster(): bool
     {
-        $context = $this->plexContext ?: trim(Process::run($this->kubectl().' config current-context')->output());
+        $context = $this->plexContext ?: trim(Process::run($this->plexKubectl().' config current-context')->output());
 
-        if ($this->isLocalContextName($context)) {
+        if (Kubectl::isLocalContextName($context)) {
             return true;
         }
 

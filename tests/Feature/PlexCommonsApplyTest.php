@@ -97,3 +97,15 @@ test('with monitoring installed, the Commons keeps the Postgres and Redis export
 
     expect($manifest)->toContain('postgres-exporter')->toContain('redis-exporter');
 });
+
+test('every command that applies the Commons can tell whether the cluster is local', function (string $command): void {
+    Process::fake(['*config current-context*' => Process::result(output: 'orbstack'), '*' => Process::result(output: '')]);
+
+    $method = new ReflectionMethod($command, 'targetsLocalCluster');
+
+    expect($method->invoke(app($command)))->toBeTrue();
+})->with([
+    App\Commands\Plex\PlexRemoveCommand::class,
+    App\Commands\Plex\PlexInitCommand::class,
+    App\Commands\Plex\PlexResourcesCommand::class,
+]);

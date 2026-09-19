@@ -74,11 +74,8 @@ test('delete groups resources by namespace and tolerates missing ones', function
     expect($result->ok)->toBeTrue()
         ->and($kube->has(new ResourceRef('Deployment', 'web', 'apps')))->toBeFalse()
         ->and($kube->has(new ResourceRef('Secret', 'sso-app-web', 'sso')))->toBeFalse()
-        ->and(array_filter($kube->calls(), fn ($args) => $args[0] === 'delete'))->toHaveCount(2);
-
-    foreach (array_filter($kube->calls(), fn ($args) => $args[0] === 'delete') as $args) {
-        expect($args)->toContain('--ignore-not-found');
-    }
+        ->and(array_filter($kube->calls(), fn ($args) => $args[0] === 'delete'))->toHaveCount(2)
+        ->and(array_filter($kube->calls(), fn ($args) => $args[0] === 'delete'))->each->toContain('--ignore-not-found');
 });
 
 test('apply, get, exists and list see the same objects', function (): void {
