@@ -140,6 +140,13 @@ class ChatInitCommand extends Command
         // Re-hydrate any wired mail / SSO values so a re-run does not erase them.
         $smtp = $this->readChatWiredSmtp($kubectl, $ns);
         $oidc = $this->readChatWiredOidc($kubectl, $ns);
+        // Once switched to MAS (recorded by activateMasAuthMode(), or
+        // `chat:use-mas`), classic SSO is gone for good: a leftover chat-oidc
+        // Secret must never switch Synapse back, or every MAS-issued session
+        // (Element X) starts failing.
+        if ($this->readChatAuthMode($kubectl, $ns) === 'mas') {
+            $oidc = null;
+        }
         // MAS-delegated auth is active only when classic oidc_providers:
         // ISN'T — this is the whole safety invariant for the one already-
         // live install this repo has (chat.luchtech.dev) that still has
@@ -527,48 +534,6 @@ class ChatInitCommand extends Command
         }
 
         return true;
-    }
-
-    /**
-     * Live-patch Synapse's homeserver.yaml to matrix_authentication_service:
-     * mode and restart it — the ONLY caller is deployChat() above, and only
-     * when it has already established that classic OIDC isn't occupying
-     * that slot (fresh install, or one already migrated off it by hand). No
-     * separate "cutover" command exists for this: it's always safe to call,
-     * because whenever it's unsafe (classic OIDC still active with real
-     * users), the caller never reaches this method in the first place.
-     */
-    protected function activateMasAuthMode(string $kubectl, string $ns, string $host): void
-    {
-        $mas = $this->readChatWiredMas($kubectl, $ns, $host);
-        if ($mas === null) {
-            return;
-        }
-
-        $smtp = $this->readChatWiredSmtp($kubectl, $ns);
-        $raw = trim(Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output());
-        if ($raw === '') {
-            return;
-        }
-
-        $homeserver = $this->renderSynapseConfig((string) base64_decode($raw), $smtp, null, $mas);
-
-        $meetJwtUrl = $this->readChatWiredMeet($kubectl, $ns);
-        $homeserver = $this->renderSynapseCalling($homeserver, $meetJwtUrl, $mas['public_issuer']);
-
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $temporaryDirectory->path().'/homeserver.yaml';
-        file_put_contents($tmp, $homeserver);
-        $applied = Process::run(
-            "{$kubectl} create secret generic chat-synapse-config -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
-        )->successful();
-        $temporaryDirectory->delete();
-
-        if ($applied) {
-            $this->withSpin('Activating Matrix Authentication Service auth...', fn () => $this->runStreaming(
-                "{$kubectl} rollout restart deployment/chat-synapse -n {$ns}",
-            ));
-        }
     }
 
     /**

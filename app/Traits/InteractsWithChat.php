@@ -8,13 +8,14 @@ use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Helpers for the Team Chat tool (Matrix / Synapse + Element Web).
  */
 trait InteractsWithChat
 {
-    use InteractsWithToolRegistry, ReadsClusterSecrets, ResolvesEnvironmentContext;
+    use InteractsWithToolRegistry, ReadsClusterSecrets, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     /** The namespace the chat stack lives in. */
     protected function chatNamespace(): string
@@ -414,5 +415,60 @@ trait InteractsWithChat
             'host' => $this->resolveChatHostReadOnly($env, $config),
             'label' => $label,
         ];
+    }
+
+    /**
+     * Live-patch Synapse's homeserver.yaml to matrix_authentication_service:
+     * mode, record that choice (so chat:init never reverts it), and restart it.
+     * Called by chat:init on a fresh install and by `chat:use-mas` to switch
+     * an install off classic SSO.
+     */
+    protected function activateMasAuthMode(string $kubectl, string $ns, ?string $host): bool
+    {
+        $mas = $this->readChatWiredMas($kubectl, $ns, $host);
+        if ($mas === null) {
+            return false;
+        }
+
+        $smtp = $this->readChatWiredSmtp($kubectl, $ns);
+        $raw = trim(Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output());
+        if ($raw === '') {
+            return false;
+        }
+
+        $homeserver = $this->renderSynapseConfig((string) base64_decode($raw), $smtp, null, $mas);
+
+        $meetJwtUrl = $this->readChatWiredMeet($kubectl, $ns);
+        $homeserver = $this->renderSynapseCalling($homeserver, $meetJwtUrl, $mas['public_issuer']);
+
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/homeserver.yaml';
+        file_put_contents($tmp, $homeserver);
+        $applied = Process::run(
+            "{$kubectl} create secret generic chat-synapse-config -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
+        )->successful();
+        $temporaryDirectory->delete();
+
+        if ($applied) {
+            $this->recordChatAuthMode($kubectl, $ns, 'mas');
+            $this->withSpin('Activating Matrix Authentication Service auth...', fn () => $this->runStreaming(
+                "{$kubectl} rollout restart deployment/chat-synapse -n {$ns}",
+            ));
+        }
+
+        return $applied;
+    }
+
+    /** The recorded sign-in mode ("mas"), or null while Chat still uses classic SSO. */
+    protected function readChatAuthMode(string $kubectl, string $ns): ?string
+    {
+        $mode = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'configmap', 'chat-auth-mode', '-n', $ns, '-o', 'jsonpath={.data.mode}', '--ignore-not-found'])->output);
+
+        return $mode !== '' ? $mode : null;
+    }
+
+    protected function recordChatAuthMode(string $kubectl, string $ns, string $mode): void
+    {
+        Kubectl::fromPrefix($kubectl)->putConfigMap($ns, 'chat-auth-mode', ['mode' => $mode], ['app.kubernetes.io/part-of' => 'chat']);
     }
 }
