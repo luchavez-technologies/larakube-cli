@@ -23,17 +23,44 @@ function monitoringExporters(): object
     };
 }
 
-test('isMonitoringActive reflects whether the prometheus Deployment exists', function (): void {
-    Process::fake(['kubectl get deployment prometheus -n larakube-shared --no-headers' => 'prometheus   1/1   1   1   5d']);
-    expect(monitoringExporters()->active())->toBeTrue();
+function monitoringExportersRegistry(string $instance = 'monitor-example-com'): string
+{
+    return base64_encode((string) json_encode([['tool' => 'monitor', 'instance' => $instance, 'host' => 'monitor.example.com']]));
+}
 
-    Process::fake(['kubectl get deployment prometheus -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 1)]);
+test('isMonitoringActive finds the registered instance\'s Prometheus by its ToolInstance name', function (): void {
+    // The bare `prometheus` name it used to probe no longer exists (ADR 0021),
+    // so it answered "not installed" and a Commons re-apply stripped the
+    // Postgres/Redis exporters, restarting both.
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: monitoringExportersRegistry()),
+        '*get deployment monitor-prometheus-monitor-example-com *' => Process::result(output: 'deployment.apps/monitor-prometheus-monitor-example-com'),
+        '*' => Process::result(output: ''),
+    ]);
+    expect(monitoringExporters()->active())->toBeTrue();
+});
+
+test('isMonitoringActive is false when the registered instance\'s Prometheus is gone', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: monitoringExportersRegistry()),
+        '*' => Process::result(output: ''),
+    ]);
+
+    expect(monitoringExporters()->active())->toBeFalse();
+});
+
+test('isMonitoringActive is false when no Monitor instance is registered', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+
     expect(monitoringExporters()->active())->toBeFalse();
 });
 
 test('isMonitoringActive scopes to the given kubectl prefix', function (): void {
-    Process::fake(['kubectl --context=do-sfo3 get deployment prometheus -n larakube-shared --no-headers' => 'prometheus   1/1   1   1   5d']);
+    Process::fake([
+        'kubectl --context=do-sfo3 get secret larakube-tools-registry*' => Process::result(output: monitoringExportersRegistry()),
+        'kubectl --context=do-sfo3 get deployment monitor-prometheus-monitor-example-com *' => Process::result(output: 'deployment.apps/x'),
+        '*' => Process::result(output: ''),
+    ]);
 
     expect(monitoringExporters()->active('kubectl --context=do-sfo3'))->toBeTrue();
-    Process::assertRan('kubectl --context=do-sfo3 get deployment prometheus -n larakube-shared --no-headers');
 });

@@ -25,8 +25,8 @@ test('two hosts never share a name', function (): void {
     $b = ToolInstance::forHost(ClusterTool::PASTE, 'b.example.com');
 
     expect($a->deployment())->not->toBe($b->deployment())
-        ->and(array_intersect($a->commonsRedisTenants(), $b->commonsRedisTenants()))->toBe([])
-        ->and(array_intersect($a->commonsBuckets(), $b->commonsBuckets()))->toBe([]);
+        ->and(array_intersect($a->commonsRedisTenants(), $b->commonsRedisTenants()))->toBeEmpty()
+        ->and(array_intersect($a->commonsBuckets(), $b->commonsBuckets()))->toBeEmpty();
 });
 
 test('an unknown component is an error, not a guessed name', function (): void {

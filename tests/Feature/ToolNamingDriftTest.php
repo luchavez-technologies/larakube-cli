@@ -31,7 +31,6 @@ function toolNamingKnownDrift(): array
         'passwords' => $refusesDomain,
         'record' => $refusesDomain,
         'sheets' => $refusesDomain,
-        'sign' => $refusesDomain,
         'sso' => $refusesDomain,
         'support' => $refusesDomain,
         'tasks' => $refusesDomain,
@@ -76,5 +75,5 @@ test('init and remove agree on every name', function (ClusterTool $tool): void {
         return;
     }
 
-    expect($result['problems'])->toBe([]);
+    expect($result['problems'])->toBeEmpty();
 })->with(fn () => array_map(fn (ClusterTool $tool) => [$tool], ClusterTool::shippedCases()));

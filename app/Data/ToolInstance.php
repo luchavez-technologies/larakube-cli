@@ -4,6 +4,7 @@ namespace App\Data;
 
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
+use Illuminate\Support\Facades\Process;
 use LogicException;
 
 /**
@@ -25,6 +26,60 @@ final readonly class ToolInstance
     public static function forHost(ClusterTool $tool, string $host, ?string $engine = null): self
     {
         return new self($tool, $host, $tool->instanceSlugFromHost($host), $engine);
+    }
+
+    /**
+     * For code that only has a registered instance slug (vendor definitions,
+     * teardown). Names depend on the instance alone, never the host.
+     */
+    public static function forInstance(ClusterTool $tool, string $instance, ?string $engine = null): self
+    {
+        if ($instance === '') {
+            throw new LogicException("{$tool->value}: an instance is always a host-derived slug, never empty.");
+        }
+
+        return new self($tool, '', $instance, $engine);
+    }
+
+    /**
+     * Every registered instance of $tool on the cluster $kubectl points at,
+     * read from the tool registry (the source of truth for instances).
+     *
+     * @return list<self>
+     */
+    public static function registered(string $kubectl, ClusterTool $tool): array
+    {
+        $encoded = trim(Process::run(
+            "{$kubectl} get secret larakube-tools-registry -n larakube-shared -o jsonpath=".escapeshellarg('{.data.registry\.json}'),
+        )->output());
+        $rows = json_decode((string) base64_decode($encoded), true);
+
+        $instances = [];
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            $slug = (string) ($row['instance'] ?? '');
+            if (($row['tool'] ?? null) === $tool->value && $slug !== '') {
+                $instances[] = new self($tool, (string) ($row['host'] ?? ''), $slug, null);
+            }
+        }
+
+        return $instances;
+    }
+
+    /** Whether one of $tool's registered instances runs $component's Deployment. */
+    public static function componentDeployed(string $kubectl, ClusterTool $tool, ?string $component = null): bool
+    {
+        foreach (self::registered($kubectl, $tool) as $instance) {
+            $deployment = $instance->deployment($component);
+            $found = trim(Process::run(
+                "{$kubectl} get deployment {$deployment} -n {$instance->namespace()} -o name --ignore-not-found",
+            )->output());
+
+            if ($found !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function namespace(): string

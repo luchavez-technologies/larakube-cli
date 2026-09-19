@@ -82,7 +82,7 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret sign-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get secret sign-documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment sign-documenso*' => Process::result(output: 'sign-documenso'),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -114,7 +114,7 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
         && str_contains($request->resolveEndpoint(), '/v1/database/rotate-role/sign_documenso'));
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret sign-secrets-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret sign-documenso-secrets-db'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/sign-documenso'));
 });
 
@@ -330,7 +330,7 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret sign-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get secret sign-documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment sign-documenso*' => Process::result(output: 'sign-documenso'),
         '*get deployment record-sendrec*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),

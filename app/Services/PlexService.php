@@ -4,8 +4,11 @@ namespace App\Services;
 
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
+use App\Data\ToolInstance;
 use App\Enums\CacheDriver;
+use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\RenderDriver;
 use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use Illuminate\Contracts\Process\ProcessResult;
@@ -93,6 +96,8 @@ final class PlexService
             'seaweedfs' => ['image' => StorageDriver::SEAWEEDFS->getDockerImage(),    'port' => StorageDriver::SEAWEEDFS->port(),      'storage' => '10Gi', 'memory' => '512Mi'],
             'minio' => ['image' => StorageDriver::MINIO->getDockerImage(),        'port' => StorageDriver::MINIO->port(),          'storage' => '10Gi', 'memory' => '512Mi'],
             'garage' => ['image' => StorageDriver::GARAGE->getDockerImage(),       'port' => StorageDriver::GARAGE->port(),         'storage' => '10Gi', 'memory' => '512Mi'],
+            // Stateless, like Redis: no storage key.
+            'headless-shell' => ['image' => RenderDriver::HEADLESS_CHROME->getDockerImage(), 'port' => RenderDriver::HEADLESS_CHROME->port(), 'memory' => '1Gi'],
         ];
 
         // See plans/active/commons-connection-pooling.md. Pooling is an
@@ -159,6 +164,7 @@ final class PlexService
             CacheDriver::cases(),
             SearchDriver::cases(),
             StorageDriver::cases(),
+            RenderDriver::cases(),
         );
 
         $catalog = [];
@@ -200,6 +206,20 @@ final class PlexService
     }
 
     // ── Shared credentials ───────────────────────────────────────────────────
+
+    /**
+     * A Commons service's ClusterIP. Only headless Chrome needs it: its
+     * DevTools server rejects any Host header that isn't an IP address or
+     * `localhost`, so the service's DNS name can't be used there.
+     */
+    public function serviceClusterIp(string $service): ?string
+    {
+        $ip = trim(Process::run(
+            $this->kubectl()." get service {$service} -n ".self::NAMESPACE.' -o jsonpath='.escapeshellarg('{.spec.clusterIP}'),
+        )->output());
+
+        return filter_var($ip, FILTER_VALIDATE_IP) !== false ? $ip : null;
+    }
 
     /**
      * Read the shared Commons S3 credentials from the plex-admin Secret.
@@ -595,36 +615,63 @@ final class PlexService
     // ── Commons lifecycle ────────────────────────────────────────────────────
 
     /**
-     * Render the Commons manifest from a spec and apply it (the spec ConfigMap
-     * plus the enabled services' workloads). Disabled services aren't rendered,
-     * and `kubectl apply` won't prune them, so removing a service means deleting
-     * its resources explicitly.
-     *
-     * $targetsLocalCluster is resolved lazily, after the monitoring probe, so the
-     * cluster sees the same command order as before this moved here.
+     * The Commons manifest for $spec. The only place it's rendered, so every
+     * apply agrees on what the cluster should run.
      *
      * @param  array<string, mixed>  $spec
-     * @param  callable(): bool  $targetsLocalCluster
-     * @param  (callable(string, string): void)|null  $output
      */
-    public function applyCommonsManifest(array $spec, callable $targetsLocalCluster, ?callable $output = null): void
+    public function renderCommonsManifest(array $spec, bool $isLocal): string
     {
         $json = (string) json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        $kubectl = $this->kubectl();
-        $hasMonitoring = trim(Process::run("{$kubectl} get deployment prometheus -n larakube-shared --no-headers --ignore-not-found")->output()) !== '';
 
-        $manifest = view('k8s.plex.commons', [
+        return view('k8s.plex.commons', [
             'spec' => $spec,
             'specJsonIndented' => preg_replace('/^/m', '    ', $json),
-            'isLocal' => $targetsLocalCluster(),
-            'withMonitoring' => $hasMonitoring,
+            'isLocal' => $isLocal,
+            // Rendering without the exporters while monitoring IS installed
+            // removes them from the live Postgres/Redis, restarting both.
+            'withMonitoring' => ToolInstance::componentDeployed($this->kubectl(), ClusterTool::MONITOR, 'prometheus'),
         ])->render();
+    }
 
-        $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-plex-commons.yaml');
-        file_put_contents($tmp, $manifest);
-        Process::run("{$kubectl} apply -n ".self::NAMESPACE.' -f '.escapeshellarg($tmp), $output);
-        $temporaryDirectory->delete();
+    /**
+     * Stateful Commons services whose running pod applying $manifestPath would
+     * replace, found by a server-side dry run against what's live. Services
+     * not yet deployed never count: creating one restarts nothing.
+     *
+     * @return list<string>
+     */
+    public function restartsCausedBy(string $manifestPath): array
+    {
+        $kubectl = $this->kubectl();
+        $dryRun = Process::run("{$kubectl} apply --dry-run=server -o json -n ".self::NAMESPACE.' -f '.escapeshellarg($manifestPath));
+        $rendered = json_decode($dryRun->output(), true);
+        if (! $dryRun->successful() || ! is_array($rendered)) {
+            return [];
+        }
+
+        $stateful = array_keys(array_filter(
+            $this->commonsServiceCatalog(),
+            fn (array $entry) => ! $entry['driver'] instanceof RenderDriver,
+        ));
+
+        $restarts = [];
+        foreach ($rendered['items'] ?? [$rendered] as $object) {
+            $name = $object['metadata']['name'] ?? '';
+            if (($object['kind'] ?? '') !== 'Deployment' || ! in_array($name, $stateful, true)) {
+                continue;
+            }
+
+            $live = json_decode(Process::run(
+                "{$kubectl} get deployment {$name} -n ".self::NAMESPACE.' -o json --ignore-not-found',
+            )->output(), true);
+
+            if (is_array($live) && ($live['spec']['template'] ?? null) != ($object['spec']['template'] ?? null)) {
+                $restarts[] = $name;
+            }
+        }
+
+        return $restarts;
     }
 
     // ── Pure naming and SQL ──────────────────────────────────────────────────

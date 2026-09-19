@@ -2,7 +2,6 @@
 
 namespace App\Commands\Plex;
 
-use App\Data\ConfigData;
 use App\Enums\DatabaseDriver;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithPlex;
@@ -11,13 +10,10 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
 use App\Traits\StreamsProcessOutput;
 
-use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\table;
-use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexResourcesCommand extends Command
 {
@@ -131,24 +127,12 @@ class PlexResourcesCommand extends Command
             }
         }
 
-        $manifest = view('k8s.plex.commons', [
-            'spec' => $spec,
-            'specJsonIndented' => $this->indentedSpecJson($spec),
-            'isLocal' => $this->targetsLocalCluster(),
-        ])->render();
+        if (! $this->applyCommons($spec, "Applying updated Commons manifests for '{$service}'...")) {
+            return 1;
+        }
 
         $ns = $this->plexNamespace();
         $kubectl = $this->plexKubectl();
-
-        $this->withSpin("Applying updated Commons manifests for '{$service}'...", function () use ($manifest, $ns, $kubectl) {
-            $temporaryDirectory = TemporaryDirectory::make();
-            $tmp = $temporaryDirectory->path('larakube-plex-commons.yaml');
-            file_put_contents($tmp, $manifest);
-            $this->runStreaming("{$kubectl} apply -n {$ns} -f {$tmp}");
-            $temporaryDirectory->delete();
-
-            return true;
-        });
 
         // Plain `apply` never prunes — disabling the pooler drops it from the
         // rendered manifest, but its Deployment/Services would otherwise sit
@@ -195,81 +179,5 @@ class PlexResourcesCommand extends Command
         }
 
         table(['Service', 'Memory Limit', 'Storage', 'Pooler'], $rows);
-    }
-
-    /**
-     * Toggle/tune the PgBouncer sub-key for a poolable service. Enabling is a
-     * real cutover, not a resource tweak — plans/active/commons-connection-pooling.md
-     * flags transaction mode (the only mode wired here) as breaking session
-     * state (SET, LISTEN/NOTIFY, temp tables, session-level prepared
-     * statements) for anything that relies on it, so this asks explicitly
-     * rather than treating it like a memory-limit bump.
-     */
-    protected function promptPoolerConfig(string $service, array $current): array
-    {
-        $pooler = $current['pooler'] ?? ['enabled' => false, 'mode' => 'transaction', 'poolSize' => 20, 'maxClients' => 400];
-
-        if (! $pooler['enabled']) {
-            $this->laraKubeWarn('Transaction-mode pooling breaks session state for anything that relies on it: SET, advisory locks, LISTEN/NOTIFY, temp tables, session-level prepared statements.');
-            $this->line('  Audit every tenant on this Commons for LISTEN/NOTIFY use before enabling — Windmill is the most likely one to rely on it.');
-            $this->newLine();
-
-            if (! confirm("Enable the connection pooler for '{$service}'?", default: false)) {
-                return $current;
-            }
-            $pooler['enabled'] = true;
-        } elseif (! confirm("Pooler is on for '{$service}'. Keep it enabled?", default: true)) {
-            $pooler['enabled'] = false;
-
-            return [...$current, 'pooler' => $pooler];
-        }
-
-        $pooler['mode'] = select(
-            label: 'Pool mode',
-            options: ['transaction' => 'Transaction (default — most connection savings)', 'session' => 'Session (safer for LISTEN/NOTIFY, temp tables — pools far less)'],
-            default: $pooler['mode'],
-        );
-
-        $poolSize = text(label: 'Default pool size (server connections per tenant)', placeholder: (string) $pooler['poolSize'], default: '', required: false);
-        if ($poolSize !== '' && ctype_digit($poolSize)) {
-            $pooler['poolSize'] = (int) $poolSize;
-        }
-
-        $maxClients = text(label: 'Max client connections', placeholder: (string) $pooler['maxClients'], default: '', required: false);
-        if ($maxClients !== '' && ctype_digit($maxClients)) {
-            $pooler['maxClients'] = (int) $maxClients;
-        }
-
-        return [...$current, 'pooler' => $pooler];
-    }
-
-    protected function promptQuantity(string $label, string $current, string $hint): string
-    {
-        while (true) {
-            $val = text(
-                label: $label,
-                placeholder: 'leave blank to keep current ('.$current.')',
-                default: '',
-                required: false,
-                hint: $hint,
-            );
-
-            if ($val === '') {
-                return '';
-            }
-
-            if (ConfigData::isValidQuantity($val)) {
-                return $val;
-            }
-
-            $this->laraKubeError("Invalid Kubernetes quantity: {$val}. Use formats like 512Mi, 1Gi, 10Gi.");
-        }
-    }
-
-    protected function indentedSpecJson(array $spec): string
-    {
-        $json = (string) json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-
-        return preg_replace('/^/m', '    ', $json);
     }
 }

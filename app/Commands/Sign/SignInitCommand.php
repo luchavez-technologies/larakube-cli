@@ -2,8 +2,10 @@
 
 namespace App\Commands\Sign;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\RenderDriver;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
 use App\Traits\ConfirmsDestructiveAction;
@@ -51,17 +53,14 @@ class SignInitCommand extends Command
         $this->plexContext = $context;
         $kubectl = $this->signKubectl($context);
         $host = $this->resolveToolHost(SharedClusterService::SIGN, ClusterTool::SIGN, $env, $kubectl);
+        $names = ToolInstance::forHost(ClusterTool::SIGN, $host);
 
-        $ns = $this->signNamespace();
+        $ns = $names->namespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SIGN, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SIGN, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
-            return 1;
-        }
-
-        if (! $this->ensureCommons(['postgres'])) {
             return 1;
         }
 
@@ -79,7 +78,18 @@ class SignInitCommand extends Command
             }
         }
         $s3Service ??= 'seaweedfs';
-        if (! $this->ensureCommons([$s3Service])) {
+
+        // Headless Chrome renders each document's certificate page when it's
+        // sealed. The Documenso image ships no browser, so without it every
+        // document stays pending forever.
+        if (! $this->ensureCommons(['postgres', $s3Service, RenderDriver::HEADLESS_CHROME->value])) {
+            return 1;
+        }
+
+        $browserIp = $this->commonsServiceClusterIp(RenderDriver::HEADLESS_CHROME->value);
+        if ($browserIp === null) {
+            $this->laraKubeError('Could not find the Commons headless Chrome service. Re-run `larakube plex:init`.');
+
             return 1;
         }
 
@@ -90,7 +100,7 @@ class SignInitCommand extends Command
             return 1;
         }
         $s3Driver = StorageDriver::from($s3Service);
-        $s3Bucket = 'sign-storage';
+        $s3Bucket = $names->bucket();
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;
         }
@@ -103,12 +113,12 @@ class SignInitCommand extends Command
         // document upload/view fail to resolve — must be the public endpoint.
         $s3Endpoint = $this->resolveCommonsS3Endpoints($s3Driver, 'Documenso')['public'];
 
-        $dbPassword = $this->readSignSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-        $nextauthSecret = $this->readSignSecret($kubectl, $ns, 'nextauth-secret') ?? bin2hex(random_bytes(32));
-        $encryptionKey = $this->readSignSecret($kubectl, $ns, 'encryption-key') ?? bin2hex(random_bytes(32));
-        $encryptionSecondaryKey = $this->readSignSecret($kubectl, $ns, 'encryption-secondary-key') ?? bin2hex(random_bytes(32));
+        $dbPassword = $this->readSignSecret($kubectl, $names, 'db-password') ?? Str::random(24);
+        $nextauthSecret = $this->readSignSecret($kubectl, $names, 'nextauth-secret') ?? bin2hex(random_bytes(32));
+        $encryptionKey = $this->readSignSecret($kubectl, $names, 'encryption-key') ?? bin2hex(random_bytes(32));
+        $encryptionSecondaryKey = $this->readSignSecret($kubectl, $names, 'encryption-secondary-key') ?? bin2hex(random_bytes(32));
 
-        $dbName = 'sign_documenso';
+        $dbName = $names->database();
         // Once OpenBao's database secrets engine already owns this static
         // role, defer to ITS current password instead of re-affirming a
         // locally-cached one that may predate OpenBao's own rotation — see
@@ -123,13 +133,16 @@ class SignInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
+        $secret = $names->secret();
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $nextauthSecret, $encryptionKey, $encryptionSecondaryKey, $clusterEnv): void {
-            $cmd = "{$kubectl} create secret generic sign-secrets -n {$ns} "
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secret, $dbName, $dbPassword, $nextauthSecret, $encryptionKey, $encryptionSecondaryKey, $s3Creds, $clusterEnv): void {
+            $cmd = "{$kubectl} create secret generic {$secret} -n {$ns} "
                 .'--from-literal=db-password='.escapeshellarg($dbPassword).' '
                 .'--from-literal=nextauth-secret='.escapeshellarg($nextauthSecret).' '
                 .'--from-literal=encryption-key='.escapeshellarg($encryptionKey).' '
                 .'--from-literal=encryption-secondary-key='.escapeshellarg($encryptionSecondaryKey).' '
+                .'--from-literal=s3-access-key='.escapeshellarg($s3Creds['access']).' '
+                .'--from-literal=s3-secret-key='.escapeshellarg($s3Creds['secret']).' '
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -";
             Process::run($cmd);
 
@@ -140,7 +153,7 @@ class SignInitCommand extends Command
                     $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
                         Process::run(
-                            "{$kubectl} patch secret sign-secrets -n {$ns} --type=json "
+                            "{$kubectl} patch secret {$secret} -n {$ns} --type=json "
                             .'-p=\'[{"op":"replace","path":"/data/db-password","value":"'.base64_encode($realPassword).'"}]\'',
                         );
                     }
@@ -153,16 +166,21 @@ class SignInitCommand extends Command
             }
         });
 
+        if (! $this->withSpin('Ensuring the document signing certificate...', fn () => $this->ensureSignSigningCert($kubectl, $names))) {
+            $this->laraKubeError('Could not create the document signing certificate. Is `openssl` installed?');
+
+            return 1;
+        }
+
         $manifest = view('k8s.sign.shared', [
+            'names' => $names,
             'host' => $host,
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             's3Endpoint' => $s3Endpoint,
-            's3Bucket' => $s3Bucket,
-            's3AccessKey' => $s3Creds['access'],
-            's3SecretKey' => $s3Creds['secret'],
+            'browserlessUrl' => "http://{$browserIp}:".RenderDriver::HEADLESS_CHROME->port(),
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
@@ -171,7 +189,7 @@ class SignInitCommand extends Command
 
         $rolledOut = $this->withSpin(
             'Applying Documenso manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'sign-documenso', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180),
         );
         $temporaryDirectory->delete();
 
@@ -179,7 +197,7 @@ class SignInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::SIGN, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::SIGN, $kubectl, $host, $names->instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Documenso signature stack is live.');

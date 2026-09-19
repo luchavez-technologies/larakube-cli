@@ -259,15 +259,15 @@ test('the confirmation names the host of the registered instance being removed',
 
 test('removing a tool also removes its secrets:wire database-password sync', function (): void {
     Process::fake([...registeredToolRemoveFakes('sign:remove', 'sign-example-com', 'sign.example.com'),
-        '*get secret sign-secrets*' => Process::result(output: 'secret/sign-secrets'),
+        '*get secret sign-documenso-secrets*' => Process::result(output: 'secret/sign-documenso-secrets-sign-example-com'),
         '*' => Process::result(output: ''),
     ]);
 
     $this->artisan('sign:remove local --force')->assertExitCode(0);
 
     // Both objects secrets:wire creates, for this instance's DB secret.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete externalsecret,vaultdynamicsecret.generators.external-secrets.io sign-secrets-sign-example-com-db'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'secret/sign-signing-cert'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete externalsecret,vaultdynamicsecret.generators.external-secrets.io sign-documenso-secrets-sign-example-com-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'secret/sign-documenso-signing-cert-sign-example-com'));
 });
 
 test('removing an SSO-wired tool deletes its Zitadel app, then the Secret recording it', function (): void {

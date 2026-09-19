@@ -1007,7 +1007,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function hasInstanceAwareRemoval(): bool
     {
         return match ($this) {
-            self::DATA, self::NOTES, self::CRM, self::DESIGN, self::PASTE => true,
+            self::DATA, self::NOTES, self::CRM, self::DESIGN, self::PASTE, self::SIGN => true,
             default => false,
         };
     }

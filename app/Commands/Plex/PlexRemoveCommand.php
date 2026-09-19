@@ -116,11 +116,9 @@ class PlexRemoveCommand extends Command
         // 2. Disable it in the spec and re-apply the Commons manifest (updates the
         //    plex-commons ConfigMap; the remaining services are re-applied as-is).
         $spec['services'][$service]['enabled'] = false;
-        $this->withSpin('Updating the Commons spec...', function () use ($spec) {
-            $this->applyCommonsManifest($spec);
-
-            return true;
-        });
+        if (! $this->applyCommons($spec, 'Updating the Commons spec...')) {
+            return 1;
+        }
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Removed '{$service}' from the Commons.");

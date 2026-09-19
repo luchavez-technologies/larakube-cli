@@ -1,5 +1,22 @@
 # Sign: Commons Headless-Shell + Signing Certificate Fix — Handoff for Claude Code
 
+**Status (2026-09-19):** ✅ built, uncommitted, not yet verified live.
+Walkthrough: `plans/active/sign-fresh-install-testing.md`.
+
+**Built differently from this spec:**
+- Every Sign name comes from `ToolInstance` (ADR 0021): Deployment/Service/
+  Ingress `sign-documenso-<instance>`, Secrets `sign-documenso-{secrets,smtp,
+  oidc,signing-cert}-<instance>`, database `sign_documenso_<instance>`, bucket
+  `sign-storage-<instance>`. Production's old Sign was removed first, so
+  nothing migrates.
+- Image pinned to `docker.io/chromedp/headless-shell:151.0.7922.109`.
+- The P12 passphrase and certificate go to kubectl as files, never argv, and
+  `-legacy` is only passed to OpenSSL 3 (LibreSSL rejects it).
+- The S3 keys moved from literal env values into the credentials Secret.
+- `sign:remove` is name-driven and Sign joins `hasInstanceAwareRemoval()`;
+  `SharedClusterService::SIGN` probes by the `larakube-tool=sign` label.
+
+
 Repo: `~/Codes/Ideas/laravel-k8s/cli` (the LaraKube CLI, Laravel Zero). Grounded
 against the actual current code as of this write-up — file paths, method
 names, and line numbers below are real, not guessed. `ensureCommons()` already

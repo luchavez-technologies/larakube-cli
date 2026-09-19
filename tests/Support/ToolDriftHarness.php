@@ -242,9 +242,14 @@ final class ToolDriftHarness
             return Process::result(output: '');
         }
 
+        if (str_contains($command, '{.spec.clusterIP}')) {
+            return Process::result(output: '10.43.0.99');
+        }
+
         if (str_contains($command, 'plex-commons')) {
             return Process::result(output: (string) json_encode(['version' => 1, 'services' => [
                 'postgres' => ['enabled' => true], 'redis' => ['enabled' => true], 'seaweedfs' => ['enabled' => true],
+                'headless-shell' => ['enabled' => true],
             ]]));
         }
 

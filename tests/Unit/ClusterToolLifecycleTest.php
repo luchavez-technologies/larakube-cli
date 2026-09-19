@@ -207,14 +207,14 @@ test('supportsMultipleInstances() pins the 2026-08 multi-instance capability aud
 test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance teardown', function (): void {
     // Deliberately narrower than supportsMultipleInstances() above: that
     // method's `true` default means "no known architectural blocker", not
-    // "already built". Only DATA, NOTES, CRM, DESIGN and PASTE actually resolve
+    // "already built". Only DATA, NOTES, CRM, DESIGN, PASTE and SIGN actually resolve
     // --domain to a specific registered instance before tearing it down
     // today — every other tool's teardown() hardcodes fixed resource names
     // and would silently ignore --domain, deleting the one real installation
     // regardless of what host was passed. A tool moving in or out of this
     // list means its :remove command grew (or lost) real per-instance
     // teardown — a deliberate capability change, not drift.
-    $expectedTrue = [ClusterTool::DATA, ClusterTool::NOTES, ClusterTool::CRM, ClusterTool::DESIGN, ClusterTool::PASTE];
+    $expectedTrue = [ClusterTool::DATA, ClusterTool::NOTES, ClusterTool::CRM, ClusterTool::DESIGN, ClusterTool::PASTE, ClusterTool::SIGN];
 
     foreach (ClusterTool::cases() as $tool) {
         $expected = in_array($tool, $expectedTrue, true);

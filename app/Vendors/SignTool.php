@@ -12,6 +12,9 @@ use App\Contracts\HasOidcWiring;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 
 /** The single vendor backing the SIGN category — 'Document Signing'. Only Documenso. */
 final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
@@ -23,10 +26,8 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'sign-vpn-only' : "sign-vpn-only-{$instance}";
-
         return [
-            'name' => $name,
+            'name' => $this->name($instance, 'vpn-only'),
             'namespace' => 'larakube-shared',
         ];
     }
@@ -39,8 +40,8 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => 'sign-documenso',
-            'secret' => 'sign-smtp',
+            'deployment' => ClusterTool::SIGN->deploymentName($instance),
+            'secret' => $this->name($instance, SecretKind::SMTP->value),
             'static' => [
                 'NEXT_PRIVATE_SMTP_TRANSPORT' => 'smtp-auth',
                 // mail:wire targets Stalwart's submissions port 465 (implicit
@@ -61,8 +62,8 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
     public function oidcEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => 'sign-documenso',
-            'secret' => 'sign-oidc',
+            'deployment' => ClusterTool::SIGN->deploymentName($instance),
+            'secret' => $this->name($instance, SecretKind::OIDC->value),
             'static' => [
                 'NEXT_PUBLIC_DISABLE_OIDC_SIGNIN' => 'false',
                 // v2 has no NEXT_PRIVATE_OIDC_ALLOW_SIGNUP; the real control
@@ -86,7 +87,9 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
 
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'sign-secrets', 'key' => 'db-password'];
+        // ClusterTool::dbSecretRef() appends the instance, giving
+        // ToolInstance::secret(): sign-documenso-secrets-<instance>.
+        return ['secret' => 'sign-documenso-'.SecretKind::CREDENTIALS->value, 'key' => 'db-password'];
     }
 
     public function commonsDatabaseList(): array
@@ -102,5 +105,16 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
     public function clusterSecretDbKey(string $tenant): string
     {
         return 'SIGN_DB_PASSWORD';
+    }
+
+    /**
+     * Every Sign name comes from ToolInstance (ADR 0021). Without an instance
+     * there is nothing installed to name, so callers get the bare stem.
+     */
+    private function name(?string $instance, string $token): string
+    {
+        return ($instance === null || $instance === '')
+            ? "sign-documenso-{$token}"
+            : ToolInstance::forInstance(ClusterTool::SIGN, $instance)->name($token);
     }
 }

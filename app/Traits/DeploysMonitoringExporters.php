@@ -3,6 +3,8 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
@@ -10,9 +12,7 @@ trait DeploysMonitoringExporters
 {
     protected function isMonitoringActive(string $kubectl = 'kubectl'): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get deployment prometheus -n larakube-shared --no-headers",
-        )->output()) !== '';
+        return ToolInstance::componentDeployed($kubectl, ClusterTool::MONITOR, 'prometheus');
     }
 
     protected function ensureMonitoringExporters(

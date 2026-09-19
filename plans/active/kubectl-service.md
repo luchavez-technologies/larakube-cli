@@ -78,6 +78,16 @@ moves onto it and stops parsing command lines.
   must be identical, proven by the existing tests passing unchanged in Stage 1–2.
 - Local vs cloud stays explicit at construction; no helper guesses.
 
+## Sibling: `ContainerRuntime`
+Same shape for Docker/Podman, after `Kubectl` Stage 1 so both share one design.
+Smaller: `ResolvesContainerRuntime` already centralizes detection
+(`containerRuntime()`, `runtimeIsPodman()`); only 9 `"docker "` and 3
+`"podman "` literals remain (`InteractsWithRemoteDeploy`, `DetectsWsl`,
+`ResolvesContainerRuntime`, `UpCommand`, `SetupCommand`). Promote the trait to a
+class with `build()`, `push()`, `run()` and `login()` (password on stdin), plus a
+fake for tests. The install/configure helpers (`installRootlessPodman()`,
+`ensureDockerInstalled()`, …) stay where they are.
+
 ## Open questions
 - Keep `Process` underneath (so existing `Process::fake()` tests keep working
   during the migration), or talk to the API server directly? Recommendation:

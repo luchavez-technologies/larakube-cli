@@ -15,6 +15,8 @@ use Illuminate\Support\Sleep;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 
+use Spatie\TemporaryDirectory\TemporaryDirectory;
+
 /**
  * Shared helpers for the Plex feature — the multi-tenant "Commons" (shared
  * Postgres/Redis/Meili) that several LaraKube projects join.
@@ -422,15 +424,43 @@ trait InteractsWithPlex
      *
      * @param  array<string, mixed>  $spec
      */
-    protected function applyCommonsManifest(array $spec): void
+    protected function applyCommonsManifest(array $spec): bool
     {
-        $this->plex()->applyCommonsManifest(
-            $spec,
-            fn (): bool => $this->targetsLocalCluster(),
+        return $this->applyCommons($spec, 'Applying Commons manifests...');
+    }
+
+    /**
+     * Render and apply the Commons. Every Commons apply goes through here, so
+     * none can silently restart a stateful service: when the apply would
+     * replace a running Postgres/Redis/storage pod, it says which and asks.
+     *
+     * @param  array<string, mixed>  $spec
+     */
+    protected function applyCommons(array $spec, string $label): bool
+    {
+        $plex = $this->plex();
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path('larakube-plex-commons.yaml');
+        file_put_contents($tmp, $plex->renderCommonsManifest($spec, $this->targetsLocalCluster()));
+
+        $restarts = $plex->restartsCausedBy($tmp);
+        if ($restarts !== [] && ! $this->confirmCommonsRestarts($restarts)) {
+            $temporaryDirectory->delete();
+
+            return false;
+        }
+
+        $kubectl = $plex->kubectl();
+        $ns = PlexService::NAMESPACE;
+        $applied = $this->withSpin($label, fn () => Process::run(
+            "{$kubectl} apply -n {$ns} -f ".escapeshellarg($tmp),
             function (string $type, string $output): void {
                 echo $output;
             },
-        );
+        )->successful());
+        $temporaryDirectory->delete();
+
+        return (bool) $applied;
     }
 
     /**
@@ -640,6 +670,12 @@ trait InteractsWithPlex
     protected function readCommonsS3Credentials(): ?array
     {
         return $this->plex()->s3Credentials();
+    }
+
+    /** A Commons service's ClusterIP (see PlexService::serviceClusterIp()). */
+    protected function commonsServiceClusterIp(string $service): ?string
+    {
+        return $this->plex()->serviceClusterIp($service);
     }
 
     /**
@@ -1039,5 +1075,26 @@ trait InteractsWithPlex
             $this->line('     <fg=gray>Rotate the store password later with</> <fg=blue>larakube plex:rotate {env} --only=db</><fg=gray>.</>');
             $this->newLine();
         }
+    }
+
+    /** @param  list<string>  $restarts */
+    private function confirmCommonsRestarts(array $restarts): bool
+    {
+        $this->laraKubeWarn('This change restarts running Commons service(s): '.implode(', ', $restarts).'.');
+        $this->laraKubeLine('  Every tool using them is briefly unavailable while they restart.');
+        if (in_array('redis', $restarts, true)) {
+            $this->laraKubeLine('  Redis keeps its data in memory only: sessions, caches and queued jobs are lost.');
+        }
+
+        $interactive = ! ($this->hasOption('no-interaction') && $this->option('no-interaction'))
+            && ! app()->runningUnitTests() && stream_isatty(STDIN);
+
+        if (! $interactive) {
+            $this->laraKubeError('Not restarting them without confirmation. Re-run interactively to confirm.');
+
+            return false;
+        }
+
+        return confirm('Restart them now?', false);
     }
 }

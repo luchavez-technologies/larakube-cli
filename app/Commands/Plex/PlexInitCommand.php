@@ -21,7 +21,6 @@ use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexInitCommand extends Command
 {
@@ -108,21 +107,9 @@ class PlexInitCommand extends Command
         $this->ensureCommonsSecret();
 
         // 4. Render + apply the Commons manifest (spec ConfigMap + services).
-        $manifest = view('k8s.plex.commons', [
-            'spec' => $spec,
-            'specJsonIndented' => $this->indentedSpecJson($spec),
-            'isLocal' => $this->targetsLocalCluster(),
-        ])->render();
-
-        $this->withSpin('Applying Commons manifests...', function () use ($manifest, $ns, $kubectl) {
-            $temporaryDirectory = TemporaryDirectory::make();
-            $tmp = $temporaryDirectory->path('larakube-plex-commons.yaml');
-            file_put_contents($tmp, $manifest);
-            $this->runStreaming("{$kubectl} apply -n {$ns} -f {$tmp}");
-            $temporaryDirectory->delete();
-
-            return true;
-        });
+        if (! $this->applyCommons($spec, 'Applying Commons manifests...')) {
+            return 1;
+        }
 
         // 5. Tenant registry — create once, declaratively (so later `apply`s don't
         //    warn about a missing last-applied-configuration), never overwrite.
@@ -512,16 +499,6 @@ class PlexInitCommand extends Command
                 escapeshellarg((string) json_encode(['data' => $patch])),
             );
         }
-    }
-
-    /**
-     * Pretty-print the spec as JSON, indented for a YAML block scalar.
-     */
-    protected function indentedSpecJson(array $spec): string
-    {
-        $json = (string) json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-
-        return preg_replace('/^/m', '    ', $json);
     }
 
     /**

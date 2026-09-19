@@ -238,7 +238,7 @@ enum SharedClusterService: string
             self::ANALYTICS => 'deployment analytics-umami -n larakube-shared',
             self::TASKS => 'deployment tasks-planka -n larakube-shared',
 
-            self::SIGN => 'deployment sign-documenso -n larakube-shared',
+            self::SIGN => 'deployment -l larakube-tool=sign -n larakube-shared',
             self::SUPPORT => 'deployment support-chatwoot -n larakube-shared',
             self::LINK => 'deployment link-kutt -n larakube-shared',
             // CRM's real deployments are always instance-suffixed

@@ -1037,3 +1037,77 @@ spec:
         - {{ $spec['services']['garage']['host'] }}
 @endif
 @endif
+@if(($spec['services']['headless-shell']['enabled'] ?? false))
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headless-shell
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: headless-shell
+  template:
+    metadata:
+      labels:
+        app: headless-shell
+    spec:
+      containers:
+        - name: headless-shell
+          image: {{ $spec['services']['headless-shell']['image'] }}
+          {{-- No args: the image runs Chromium on 127.0.0.1:9223 and proxies
+               it to 0.0.0.0:9222 itself. Passing --remote-debugging-* fights
+               that entrypoint. --}}
+          ports:
+            - name: cdp
+              containerPort: {{ $spec['services']['headless-shell']['port'] }}
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              memory: "{{ $spec['services']['headless-shell']['memory'] }}"
+              cpu: 500m
+          readinessProbe:
+            httpGet:
+              path: /json/version
+              port: {{ $spec['services']['headless-shell']['port'] }}
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /json/version
+              port: {{ $spec['services']['headless-shell']['port'] }}
+            initialDelaySeconds: 5
+            periodSeconds: 20
+      volumes:
+        {{-- /dev/shm defaults to 64Mi; Chromium crashes (SIGBUS) without more. --}}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: headless-shell
+  labels:
+    larakube.io/managed-by: larakube
+    larakube.io/component: plex
+spec:
+  type: ClusterIP
+  selector:
+    app: headless-shell
+  ports:
+    - name: cdp
+      protocol: TCP
+      port: {{ $spec['services']['headless-shell']['port'] }}
+      targetPort: {{ $spec['services']['headless-shell']['port'] }}
+@endif

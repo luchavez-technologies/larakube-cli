@@ -231,3 +231,24 @@ test('PgBouncer auth_type is scram-sha-256, matching Postgres 17s default passwo
         ->toContain('value: "scram-sha-256"')
         ->not->toContain('value: "md5"');
 });
+
+test('headless Chrome is an opt-in Commons service, pinned and given enough /dev/shm', function (): void {
+    $helper = plexHelper();
+
+    expect($helper->defaultCommonsSpec()['services']['headless-shell']['enabled'])->toBeFalse()
+        ->and(plexManifest($helper->defaultCommonsSpec()))->not->toContain('name: headless-shell')
+        ->and($helper->commonsServiceCatalog())->toHaveKey('headless-shell');
+
+    $spec = $helper->normalizeCommonsSpec(['services' => ['postgres' => ['enabled' => true], 'headless-shell' => ['enabled' => true]]]);
+    $manifest = plexManifest($spec);
+
+    expect($manifest)
+        ->toContain('name: headless-shell')
+        ->toContain('image: '.App\Enums\RenderDriver::HEADLESS_CHROME->getDockerImage())
+        ->toContain('path: /json/version')
+        ->toContain('medium: Memory')
+        ->not->toContain(':latest')
+        // The live Deployment was created with this selector; changing it
+        // would make every re-apply fail (selectors are immutable).
+        ->toContain("matchLabels:\n      app: headless-shell");
+});

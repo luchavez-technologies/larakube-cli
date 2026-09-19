@@ -23,6 +23,7 @@ function signCommonsSpec(?string $s3Host): array
         'services' => [
             'postgres' => ['enabled' => true],
             'seaweedfs' => $seaweedfs,
+            'headless-shell' => ['enabled' => true],
         ],
     ];
 }
@@ -47,6 +48,7 @@ function fakeSignInitProcess(?string $s3Host, ?string &$appliedManifest, int $ap
         return match (true) {
             str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode($spec)),
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'get service headless-shell') => Process::result(output: '10.43.0.99'),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
             str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "sign-documenso" successfully rolled out'),
@@ -127,7 +129,7 @@ test('sign:init returns a failing exit code and does not claim success when kube
         ->doesntExpectOutputToContain('Documenso signature stack is live');
 });
 
-test('sign:init --vpn-only names the Traefik Middleware sign-vpn-only, never sign-vpn-only-main', function (): void {
+test('sign:init --vpn-only names the Traefik Middleware for its instance, never the main sentinel', function (): void {
     // Regression guard (2026-08-15): ensureVpnMiddleware()'s $instance
     // default used to be the literal string 'main', which SignTool's
     // vpnMiddlewareTarget() recognized as "no instance" and correctly
@@ -157,6 +159,7 @@ test('sign:init --vpn-only names the Traefik Middleware sign-vpn-only, never sig
         return match (true) {
             str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode(signCommonsSpec('files.example.com'))),
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'get service headless-shell') => Process::result(output: '10.43.0.99'),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
             str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "sign-documenso" successfully rolled out'),
@@ -170,9 +173,76 @@ test('sign:init --vpn-only names the Traefik Middleware sign-vpn-only, never sig
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
-    expect($appliedVpnMiddlewareManifest)->not->toBeNull()
-        ->and($appliedVpnMiddlewareManifest['path'])->toContain('sign-vpn-only.yaml')
-        ->and($appliedVpnMiddlewareManifest['path'])->not->toContain('sign-vpn-only-main')
-        ->and($appliedVpnMiddlewareManifest['content'])->toContain('name: sign-vpn-only')
-        ->and($appliedVpnMiddlewareManifest['content'])->not->toContain('sign-vpn-only-main');
+    // Named for this instance (ADR 0021), never the removed 'main' sentinel,
+    // and the same name the Ingress references.
+    $name = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube')->vpnMiddleware()->name;
+
+    expect($name)->toBe('sign-documenso-vpn-only-sign-kube')
+        ->and($appliedVpnMiddlewareManifest)->not->toBeNull()
+        ->and($appliedVpnMiddlewareManifest['content'])->toContain("name: {$name}")
+        ->and($appliedVpnMiddlewareManifest['content'])->not->toContain('-main');
+});
+
+test('sign:init wires Documenso to the Commons headless Chrome by ClusterIP and mounts its signing certificate', function (): void {
+    $appliedManifest = null;
+    fakeSignInitProcess('files.example.com', $appliedManifest);
+
+    $this->artisan(SignInitCommand::class, ['environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
+
+    $names = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube');
+
+    // Without a browser every document stays pending; by IP because Chrome's
+    // DevTools server rejects any other Host header.
+    expect($appliedManifest)
+        ->toContain('value: "http://10.43.0.99:9222"')
+        ->toContain('NEXT_PUBLIC_USE_INTERNAL_URL_BROWSERLESS')
+        ->toContain("value: \"http://{$names->deployment()}.larakube-shared.svc.cluster.local\"")
+        ->toContain('secretName: '.$names->name('signing-cert'))
+        ->toContain('value: "/app/certs/cert.p12"')
+        ->toContain('larakube-tool: sign');
+
+    // S3 keys come from the credentials Secret, never literal env values.
+    expect($appliedManifest)->not->toContain('s3-secret"')
+        ->and($appliedManifest)->toContain('key: s3-secret-key');
+
+    // The certificate and passphrase travel in files, never in argv.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic '.$names->name('signing-cert'))
+        && str_contains($process->command, '--from-file=passphrase='));
+});
+
+test('sign:init keeps an existing signing certificate, so signed documents keep verifying', function (): void {
+    $appliedManifest = null;
+    $names = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube');
+
+    Process::fake(function ($process) use ($names, &$appliedManifest) {
+        $cmd = $process->command;
+
+        return match (true) {
+            str_contains($cmd, 'get secret '.$names->name('signing-cert')) => Process::result(output: base64_encode('existing-passphrase')),
+            str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode(signCommonsSpec('files.example.com'))),
+            str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'get service headless-shell') => Process::result(output: '10.43.0.99'),
+            str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
+            str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
+            default => Process::result(output: ''),
+        };
+    });
+
+    $this->artisan(SignInitCommand::class, ['environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'openssl'));
+});
+
+test('sign:init stops when the Commons has no headless Chrome to point Documenso at', function (): void {
+    Process::fake(fn ($process) => match (true) {
+        str_contains($process->command, 'get configmap plex-commons') => Process::result(output: json_encode(signCommonsSpec('files.example.com'))),
+        str_contains($process->command, 'get service headless-shell') => Process::result(output: ''),
+        default => Process::result(output: ''),
+    });
+
+    $this->artisan(SignInitCommand::class, ['environment' => 'local', '--no-interaction' => true])
+        ->expectsOutputToContain('Could not find the Commons headless Chrome service')
+        ->assertExitCode(1);
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'apply -f') && str_contains($process->command, 'larakube-sign-documenso'));
 });
