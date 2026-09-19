@@ -30,6 +30,10 @@ Accept the `larakube up` prompt (or `cd bedrock-demo && larakube up`). Open the
 printed URL: Bedrock's home page renders. Open `/cp` and sign in with the super
 user from step 1.
 
+HMR: `kubectl get pods -n bedrock-demo-local` shows a `node` pod next to the web
+pod (the Vite dev server). Change a colour in `resources/css/site.css`; the page
+updates without a reload.
+
 ## 3. The image builds with Bun
 ```bash
 cd bedrock-demo && larakube build
@@ -44,4 +48,4 @@ larakube statamic:new plain-demo --fast --email=you@example.com
 Interactively this asks for the password; `/cp` login works after `up`.
 
 ## Result
-- [ ] 1 scaffold  - [ ] 2 site + login  - [ ] 3 build  - [ ] 4 plain site
+- [ ] 1 scaffold  - [ ] 2 site + login + HMR  - [ ] 3 build  - [ ] 4 plain site
