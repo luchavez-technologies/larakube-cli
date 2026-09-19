@@ -1,6 +1,12 @@
 # Plan: `statamic:new` on the official Statamic CLI, with starter kits, storage choice and a super user
 
-**Status:** 📝 PLANNED, not started.
+**Status:** Milestone 1 built, unverified live (walkthrough:
+`plans/active/statamic-new-testing.md`): official CLI, starter kits and their
+flags, Bun/PHP adoption from the installed site, super user (files mode, strong
+password). Milestone 2, database mode, not started: the Commons database is
+allocated at scaffold (`joinPlexCommons()`), but the builder container can't
+reach it, so the Eloquent driver setup, content import and database users run
+in the app pod after the first `up` (or over a port-forward).
 
 ## Why
 - `statamic:new` runs `composer create-project statamic/statamic`, which can't

@@ -31,16 +31,7 @@ test('a framework with no extra needs adds nothing', function (): void {
     expect($config->getAllPhpExtensions())->toBeEmpty();
 });
 
-test('the scaffold container installs the extensions before composer runs', function (): void {
-    // The generated Dockerfile does not exist yet at create-project time, so the
-    // bare serversideup image would boot Statamic without gd and throw.
-    $source = (string) file_get_contents(base_path('app/Commands/Statamic/StatamicNewCommand.php'));
-
-    expect($source)->toContain('install-php-extensions ')
-        ->and($source)->toContain('$config->getAllPhpExtensions()')
-        // The prefix IS the ordering: extensions land before composer boots the app.
-        ->and($source)->toContain('{$extensionCommand}composer create-project statamic/statamic');
-});
+// Extension-before-installer ordering is exercised in StatamicNewCommandTest.
 
 test('statamic:new sets a server variation', function (): void {
     // Without one, manifest views deref null on getServerVariation()->value and

@@ -24,9 +24,11 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
+use function Laravel\Prompts\password;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
@@ -37,18 +39,33 @@ class StatamicNewCommand extends Command
 {
     use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
 
+    /** The Statamic CLI release line the scaffold installs. */
+    private const string STATAMIC_CLI = 'statamic/cli:^3.6';
+
     /**
      * The name and signature of the console command.
      */
     protected $signature = 'statamic:new
                             {name? : The name of the Statamic site}
                             {--fast : Skip wizard and use ideal defaults}
-                            {--no-plex : Skip Plex Commons auto-provisioning and use self-hosted databases}';
+                            {--no-plex : Skip Plex Commons auto-provisioning and use self-hosted databases}
+                            {--starter-kit= : A Statamic starter kit to install, as vendor/kit (e.g. jasonbaciulis/bedrock)}
+                            {--pro : Enable Statamic Pro}
+                            {--license= : License key for a paid starter kit (required when unattended)}
+                            {--with-config : Keep the kit\'s starter-kit.yaml, for developing the kit itself}
+                            {--without-dependencies : Install the kit without its Composer dependencies}
+                            {--email= : Super user email; unattended runs read the password from LARAKUBE_STATAMIC_PASSWORD}
+                            {--no-user : Don\'t create a super user}';
 
     /**
      * The console command description.
      */
     protected $description = 'Scaffold a new Statamic CMS project with Kubernetes infrastructure';
+
+    private ?string $starterKit = null;
+
+    /** @var array{email: string, password: string}|null */
+    private ?array $superUser = null;
 
     /**
      * Execute the console command.
@@ -79,16 +96,19 @@ class StatamicNewCommand extends Command
         $appName = Str::slug($inputName);
         $projectDir = "$projectPath/$appName";
 
-        // 1. PHP Version
+        $this->starterKit = $this->resolveStarterKit();
+
+        // 1. PHP Version. A starter kit may require newer; that is read back from
+        // its composer.json after install.
         $version = $this->option('fast')
-            ? PhpVersion::PHP_8_4->value
+            ? PhpVersion::PHP_8_5->value
             : select(
                 label: 'Which PHP version would you like to use?',
                 options: collect(PhpVersion::cases())
                     ->filter(fn ($v) => (float) $v->value >= 8.2)
                     ->mapWithKeys(fn ($v) => [$v->value => $v->getLabel()])
                     ->all(),
-                default: PhpVersion::PHP_8_4->value,
+                default: PhpVersion::PHP_8_5->value,
             );
         $phpVersion = PhpVersion::from($version);
 
@@ -230,9 +250,12 @@ class StatamicNewCommand extends Command
             $config->setScoutDriver($scoutDriver);
         }
 
+        // 7. The Control Panel login, asked now so the site is usable the moment it's up.
+        $this->superUser = $this->resolveSuperUser();
+
         $this->laraKubeInfo("Scaffolding Statamic: $appName...");
 
-        // 7. Run composer create-project inside Docker
+        // 8. The official Statamic CLI, inside the builder image
         $this->runStatamicNew($appName, $config, $projectPath);
 
         if (! is_dir($projectDir)) {
@@ -240,6 +263,8 @@ class StatamicNewCommand extends Command
 
             return 1;
         }
+
+        $this->adoptProjectRequirements($config, $projectDir);
 
         // 8. Generate K8s manifests
         $this->withSpin('Orchestrating Statamic infrastructure manifests...', function () use ($config): void {
@@ -262,9 +287,11 @@ class StatamicNewCommand extends Command
         $this->line('  <fg=gray>To start your Statamic application:</>');
         $this->line("  <fg=yellow>cd $appName && larakube up</>");
         $this->newLine();
-        $this->line('  <fg=gray>To create your first super user, run:</>');
-        $this->line('  <fg=yellow>larakube art make:statamic-user</>');
-        $this->newLine();
+        if ($this->superUser === null) {
+            $this->line('  <fg=gray>To create your first super user, run:</>');
+            $this->line('  <fg=yellow>larakube art make:statamic-user</>');
+            $this->newLine();
+        }
         $this->line('  <fg=gray>Ready to deploy? Create a cloud environment first:</>');
         $this->line('  <fg=yellow>larakube env production</> <fg=gray>(or</> <fg=yellow>larakube cloud:configure</><fg=gray>)</>');
         $this->renderStarPrompt();
@@ -272,44 +299,228 @@ class StatamicNewCommand extends Command
         return 0;
     }
 
+    /** The lowest supported PHP version satisfying composer.json's `php` constraint floor, or null. */
+    public static function requiredPhpVersion(string $composerJson): ?PhpVersion
+    {
+        $require = json_decode((string) @file_get_contents($composerJson), true)['require']['php'] ?? null;
+        if (! is_string($require) || preg_match('/(\d+)\.(\d+)/', $require, $m) !== 1) {
+            return null;
+        }
+
+        return PhpVersion::tryFrom("{$m[1]}.{$m[2]}");
+    }
+
+    /** Why $password is too weak for a login that ships to production, or null. */
+    public static function weakPasswordReason(string $password, string $email): ?string
+    {
+        $local = strtolower((string) strstr($email, '@', true));
+
+        return match (true) {
+            strlen($password) < 12 => 'Use at least 12 characters.',
+            in_array(strtolower($password), ['password1234', '123456789012', 'qwertyuiop12', 'letmein12345', 'administrator'], true) => 'That password is too common.',
+            $local !== '' && str_contains(strtolower($password), $local) => "Don't include your email name in the password.",
+            count(array_unique(str_split($password))) < 6 => 'Use more varied characters.',
+            default => null,
+        };
+    }
+
     /**
-     * Scaffold a Statamic project using `composer create-project statamic/statamic`
-     * inside an SSU Docker container (mirrors NewCommand::runLaravelNew pattern).
+     * Scaffold with the official Statamic CLI (`statamic new`) inside the builder
+     * image, so starter kits install the way Statamic documents them. Node and
+     * Bun are added first: a kit's post-install hook may run either.
      */
     protected function runStatamicNew(string $appName, ConfigData $config, string $baseDir): void
     {
-        $uid = $this->hostUid();
-        $gid = $this->hostGid();
         $image = $config->getPhpImage(true); // CLI image
+        $runtime = $this->containerRuntime();
 
         $this->laraKubeInfo("Pulling builder image: $image...");
         Process::forever()->run($this->pullImageCommand($image));
 
-        $runtime = $this->containerRuntime();
-
-        // `composer create-project` ends with `artisan package:discover`, which
-        // BOOTS Statamic — and Intervention's GD driver checkHealth() throws if
-        // gd is absent. The image only gains extensions via the generated
-        // Dockerfile, which does not exist yet, so install them here too.
+        // `statamic new` ends by booting the app, and Intervention's GD driver
+        // throws when gd is absent; the generated Dockerfile doesn't exist yet.
         $extensions = $config->getAllPhpExtensions();
-        $extensionCommand = $extensions === []
-            ? ''
-            : 'install-php-extensions '.implode(' ', $extensions).' && ';
+        $setup = implode(' && ', array_filter([
+            $extensions === [] ? null : 'install-php-extensions '.implode(' ', $extensions),
+            $this->getNodeInstallationCommand($image),
+            'npm install -g bun',
+            'composer config -g bin-dir /usr/local/bin',
+            'composer global require '.self::STATAMIC_CLI,
+            $this->statamicNewCommand($appName),
+        ]));
 
-        $cmd = "$runtime run --rm -it -v $baseDir:/var/www/html"
-            .' -e COMPOSER_CACHE_DIR=/dev/null'
-            .' -e COMPOSER_ALLOW_SUPERUSER=1'
-            .' -e SHOW_WELCOME_MESSAGE=false'
-            ." --user root $image"
-            ." sh -c '{$extensionCommand}composer create-project statamic/statamic $appName --prefer-dist --no-interaction'";
+        $interactive = stream_isatty(STDIN) && stream_isatty(STDOUT);
+        $this->runInstaller(
+            "$runtime run --rm ".($interactive ? '-it ' : '')."-v $baseDir:/var/www/html"
+            .' -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false'
+            ." --user root $image sh -c ".escapeshellarg($setup),
+            $interactive,
+        );
 
-        passthru($cmd);
-
-        // Chown back to host user
-        if (is_dir("$baseDir/$appName")) {
-            $this->runStreaming(
-                "$runtime run --rm -v $baseDir:/var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R {$this->containerChownSpec($uid, $gid)} /var/www/html/$appName",
-            );
+        if (! is_dir("$baseDir/$appName")) {
+            return;
         }
+
+        if ($this->superUser !== null) {
+            $this->createSuperUser("$baseDir/$appName", $image);
+        }
+
+        $this->runStreaming(
+            "$runtime run --rm -v $baseDir:/var/www/html --user root -e SHOW_WELCOME_MESSAGE=false $image chown -R {$this->containerChownSpec($this->hostUid(), $this->hostGid())} /var/www/html/$appName",
+        );
+    }
+
+    /** `statamic new` with the kit and the official flags this command forwards. */
+    protected function statamicNewCommand(string $appName): string
+    {
+        $parts = ['statamic', 'new', $appName];
+        if ($this->starterKit !== null) {
+            $parts[] = $this->starterKit;
+        }
+
+        foreach (['pro', 'with-config', 'without-dependencies'] as $flag) {
+            if ($this->option($flag)) {
+                $parts[] = "--{$flag}";
+            }
+        }
+
+        if (($license = (string) $this->option('license')) !== '') {
+            $parts[] = '--license='.$license;
+        }
+
+        // Our wizard already asked everything; the CLI must not ask again.
+        $parts[] = '--no-interaction';
+        $parts[] = '--no-ascii-art';
+
+        return implode(' ', array_map(fn (string $part) => preg_match('~^[A-Za-z0-9_./:=@-]+$~', $part) === 1 ? $part : escapeshellarg($part), $parts));
+    }
+
+    /** Run the installer in the terminal when there is one, so paid-kit prompts reach the user. */
+    protected function runInstaller(string $command, bool $interactive): void
+    {
+        Process::forever()->tty($interactive && Process::isTtySupported())->run($command, function (string $type, string $output): void {
+            $this->output->write($output);
+        });
+    }
+
+    /**
+     * Create the super user with Statamic's own API inside the builder image. The
+     * credentials reach the container as environment variables, never argv.
+     */
+    protected function createSuperUser(string $projectDir, string $image): void
+    {
+        $script = '.larakube-super-user.php';
+        file_put_contents("$projectDir/$script", <<<'PHP'
+            <?php
+            require __DIR__.'/vendor/autoload.php';
+            $app = require __DIR__.'/bootstrap/app.php';
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            $email = (string) getenv('LARAKUBE_SU_EMAIL');
+            $user = Statamic\Facades\User::findByEmail($email) ?? Statamic\Facades\User::make()->email($email);
+            $user->password((string) getenv('LARAKUBE_SU_PASSWORD'))->makeSuper()->save();
+            PHP);
+
+        $result = Process::env([
+            'LARAKUBE_SU_EMAIL' => $this->superUser['email'],
+            'LARAKUBE_SU_PASSWORD' => $this->superUser['password'],
+        ])->run(
+            "{$this->containerRuntime()} run --rm -v $projectDir:/var/www/html -w /var/www/html"
+            ." -e LARAKUBE_SU_EMAIL -e LARAKUBE_SU_PASSWORD -e SHOW_WELCOME_MESSAGE=false --user root $image php $script",
+        );
+        @unlink("$projectDir/$script");
+
+        if ($result->successful()) {
+            $this->laraKubeInfo("Super user {$this->superUser['email']} created.");
+        } else {
+            $this->laraKubeWarn('Could not create the super user; run `larakube art make:statamic-user` once the site is up.');
+            $this->superUser = null;
+        }
+    }
+
+    /**
+     * Take the package manager and PHP version the installed site actually
+     * needs: a starter kit may bring its own lockfile (Bedrock uses Bun) and a
+     * higher PHP floor than the wizard's choice.
+     */
+    protected function adoptProjectRequirements(ConfigData $config, string $projectDir): void
+    {
+        $packageManager = PackageManager::detect($projectDir);
+        if ($packageManager !== $config->getPackageManager()) {
+            $config->setPackageManager($packageManager);
+            $this->laraKubeInfo("Using {$packageManager->value}, the package manager this site ships with.");
+        }
+
+        $required = self::requiredPhpVersion("$projectDir/composer.json");
+        if ($required !== null && version_compare($required->value, $config->phpVersion->value, '>')) {
+            $config->phpVersion = $required;
+            $this->laraKubeInfo("Using PHP {$required->value}, which this site requires.");
+        }
+    }
+
+    /** --starter-kit, or (interactively) ask; blank means the plain Statamic site. */
+    protected function resolveStarterKit(): ?string
+    {
+        $kit = trim((string) $this->option('starter-kit'));
+        if ($kit === '' && ! $this->option('fast') && ! $this->option('no-interaction')) {
+            $kit = trim(text(
+                label: 'Starter kit to install (vendor/kit), or leave blank for none',
+                placeholder: 'jasonbaciulis/bedrock',
+                hint: 'Browse kits at statamic.com/starter-kits',
+            ));
+        }
+
+        if ($kit !== '' && preg_match('~^[a-z0-9_.-]+/[a-z0-9_.-]+$~i', $kit) !== 1) {
+            throw new InvalidArgumentException("'{$kit}' isn't a starter kit name; use vendor/kit.");
+        }
+
+        return $kit === '' ? null : $kit;
+    }
+
+    /**
+     * The Control Panel super user, or null to skip. The user file is committed
+     * with the site, so this becomes a production login: a weak password is refused.
+     *
+     * @return array{email: string, password: string}|null
+     */
+    protected function resolveSuperUser(): ?array
+    {
+        if ($this->option('no-user')) {
+            return null;
+        }
+
+        $unattended = (bool) $this->option('no-interaction');
+        $email = trim((string) $this->option('email'));
+
+        if ($email === '' && $unattended) {
+            return null;
+        }
+
+        if ($email === '') {
+            $email = trim(text(
+                label: 'Super user email (your Control Panel login)',
+                required: true,
+                validate: fn (string $value) => filter_var($value, FILTER_VALIDATE_EMAIL) ? null : 'Enter a valid email address.',
+            ));
+        }
+
+        $password = $unattended ? (string) getenv('LARAKUBE_STATAMIC_PASSWORD') : '';
+        if ($password === '' && $unattended) {
+            $this->laraKubeWarn('No LARAKUBE_STATAMIC_PASSWORD set; skipping the super user.');
+
+            return null;
+        }
+
+        if (! $unattended) {
+            $this->laraKubeLine('  <fg=gray>Users are saved with the site and deployed with it, so this is also your production login.</>');
+            $password = password(
+                label: 'Super user password',
+                required: true,
+                validate: fn (string $value) => self::weakPasswordReason($value, $email),
+            );
+        } elseif (($reason = self::weakPasswordReason($password, $email)) !== null) {
+            throw new InvalidArgumentException("LARAKUBE_STATAMIC_PASSWORD: {$reason}");
+        }
+
+        return ['email' => $email, 'password' => $password];
     }
 }

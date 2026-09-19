@@ -110,3 +110,112 @@ test('statamic:new command has --fast option', function (): void {
     expect($commands)->toHaveKey('statamic:new')
         ->and($commands['statamic:new']->getDefinition()->hasOption('fast'))->toBeTrue();
 });
+
+// ── Scaffolding with the official Statamic CLI ──────────────────────────────
+
+/**
+ * A statamic:new instance with its options bound, and the site dir the fake
+ * installer "creates" (with $composer and a bun.lock) when `statamic new` runs.
+ *
+ * @return array{0: App\Commands\Statamic\StatamicNewCommand, 1: string, 2: Spatie\TemporaryDirectory\TemporaryDirectory}
+ */
+function statamicInstaller(array $options = [], ?string $kit = null, ?array $superUser = null, array $composer = ['require' => ['php' => '^8.2']]): array
+{
+    $command = app(App\Commands\Statamic\StatamicNewCommand::class);
+    $input = new Symfony\Component\Console\Input\ArrayInput($options, $command->getDefinition());
+    $command->setInput($input);
+    $command->setOutput(new Illuminate\Console\OutputStyle($input, new Symfony\Component\Console\Output\BufferedOutput));
+
+    foreach (['starterKit' => $kit, 'superUser' => $superUser] as $property => $value) {
+        (new ReflectionProperty($command, $property))->setValue($command, $value);
+    }
+
+    $directory = TemporaryDirectory::make();
+    $base = $directory->path();
+
+    Illuminate\Support\Facades\Process::fake(function ($process) use ($base, $composer) {
+        if (str_contains((string) $process->command, 'statamic new site')) {
+            @mkdir("{$base}/site", 0777, true);
+            file_put_contents("{$base}/site/composer.json", json_encode($composer));
+            file_put_contents("{$base}/site/bun.lock", '');
+        }
+
+        return Illuminate\Support\Facades\Process::result(output: '');
+    });
+
+    return [$command, $base, $directory];
+}
+
+function statamicConfig(): App\Data\ConfigData
+{
+    $config = new App\Data\ConfigData(name: 'site');
+    $config->framework = AppFramework::STATAMIC;
+    $config->serverVariation = App\Enums\ServerVariation::FPM_NGINX;
+    $config->phpVersion = App\Enums\PhpVersion::PHP_8_4;
+    $config->setPackageManager(App\Enums\PackageManager::NPM);
+
+    return $config;
+}
+
+test('statamic:new installs the official CLI and passes the kit and its flags, after the PHP extensions', function (): void {
+    [$command, $base, $directory] = statamicInstaller(['--pro' => true, '--license' => 'KIT-KEY'], 'jasonbaciulis/bedrock');
+
+    (new ReflectionMethod($command, 'runStatamicNew'))->invoke($command, 'site', statamicConfig(), $base);
+
+    Illuminate\Support\Facades\Process::assertRan(function ($process): bool {
+        $cmd = (string) $process->command;
+        $extensions = strpos($cmd, 'install-php-extensions gd exif');
+        $cli = strpos($cmd, 'composer global require statamic/cli:^3.6');
+        $new = strpos($cmd, 'statamic new site jasonbaciulis/bedrock --pro --license=KIT-KEY --no-interaction --no-ascii-art');
+
+        return $extensions !== false && $cli !== false && $new !== false
+            && $extensions < $cli && $cli < $new
+            && str_contains($cmd, 'npm install -g bun');
+    });
+    $directory->delete();
+});
+
+test('the super user password reaches the container as an environment variable, never argv', function (): void {
+    [$command, $base, $directory] = statamicInstaller(superUser: ['email' => 'owner@example.com', 'password' => 'Tr0ub4dour&3-horse']);
+
+    (new ReflectionMethod($command, 'runStatamicNew'))->invoke($command, 'site', statamicConfig(), $base);
+
+    Illuminate\Support\Facades\Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'Tr0ub4dour'));
+    Illuminate\Support\Facades\Process::assertRan(fn ($process) => str_contains((string) $process->command, 'php .larakube-super-user.php')
+        && ($process->environment['LARAKUBE_SU_PASSWORD'] ?? null) === 'Tr0ub4dour&3-horse'
+        && ($process->environment['LARAKUBE_SU_EMAIL'] ?? null) === 'owner@example.com');
+    expect(file_exists("{$base}/site/.larakube-super-user.php"))->toBeFalse();
+    $directory->delete();
+});
+
+test('a starter kit\'s package manager and PHP floor are adopted after install', function (): void {
+    [$command, $base, $directory] = statamicInstaller(composer: ['require' => ['php' => '^8.5']]);
+    $config = statamicConfig();
+
+    (new ReflectionMethod($command, 'runStatamicNew'))->invoke($command, 'site', $config, $base);
+    (new ReflectionMethod($command, 'adoptProjectRequirements'))->invoke($command, $config, "{$base}/site");
+
+    expect($config->getPackageManager())->toBe(App\Enums\PackageManager::BUN)
+        ->and($config->phpVersion)->toBe(App\Enums\PhpVersion::PHP_8_5);
+    $directory->delete();
+});
+
+test('a weak super user password is refused, because it ships to production', function (string $password, ?string $reason): void {
+    expect(App\Commands\Statamic\StatamicNewCommand::weakPasswordReason($password, 'owner@example.com'))->toBe($reason);
+})->with([
+    ['short', 'Use at least 12 characters.'],
+    ['password1234', 'That password is too common.'],
+    ['owner-secret-99', "Don't include your email name in the password."],
+    ['aaaaaaaaaaab', 'Use more varied characters.'],
+    ['Tr0ub4dour&3-horse', null],
+]);
+
+test('a starter kit must be named vendor/kit', function (): void {
+    [$command, , $directory] = statamicInstaller(['--starter-kit' => 'bedrock; rm -rf /']);
+
+    try {
+        (new ReflectionMethod($command, 'resolveStarterKit'))->invoke($command);
+    } finally {
+        $directory->delete();
+    }
+})->throws(InvalidArgumentException::class, 'use vendor/kit');
