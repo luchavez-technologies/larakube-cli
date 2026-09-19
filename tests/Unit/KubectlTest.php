@@ -13,7 +13,7 @@ test('every call is pinned to ~/.kube/config and the handle\'s context', functio
 
     Kubectl::forContext('larakube-203.0.113.10')->exists(new ResourceRef('Deployment', 'web', 'apps'));
 
-    Process::assertRan(fn (PendingProcess $p) => str_starts_with($p->command, 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'larakube-203.0.113.10' 'get' 'deployment/web'"));
+    Process::assertRan(fn (PendingProcess $p) => str_starts_with($p->command, 'KUBECONFIG='.escapeshellarg(home_path('.kube/config'))." kubectl --context 'larakube-203.0.113.10' get deployment/web"));
 });
 
 test('an environment resolves to its managed context, or larakube-<ip> for a VPS, and local to the current context', function (): void {

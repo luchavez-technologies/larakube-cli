@@ -82,6 +82,17 @@ final class FakeKubectl
         return $this->calls;
     }
 
+    /** @return list<string> */
+    public static function shellWords(string $args): array
+    {
+        preg_match_all("/'((?:[^']|'\\\\'')*)'|([^\\s']+)/", $args, $tokens, PREG_SET_ORDER);
+
+        return array_map(
+            fn (array $t) => isset($t[2]) && $t[2] !== '' ? $t[2] : str_replace("'\\''", "'", $t[1]),
+            $tokens,
+        );
+    }
+
     private function handle(PendingProcess $process)
     {
         $command = is_array($process->command) ? implode(' ', $process->command) : (string) $process->command;
@@ -105,19 +116,17 @@ final class FakeKubectl
 
     /**
      * The arguments after `kubectl` (and its `--context`), or null when the
-     * command isn't a Kubectl call. Kubectl single-quotes every argument.
+     * command isn't a Kubectl call. Arguments are bare or single-quoted.
      *
      * @return list<string>|null
      */
     private function kubectlArgs(string $command): ?array
     {
-        if (preg_match("/ kubectl(?: --context '(?:[^']|'\\\\'')*')? (.*)$/s", $command, $m) !== 1) {
+        if (preg_match("/(?:^| )kubectl(?: --context '(?:[^']|'\\\\'')*')? (.*)$/s", $command, $m) !== 1) {
             return null;
         }
 
-        preg_match_all("/'((?:[^']|'\\\\'')*)'/", $m[1], $tokens);
-
-        return array_map(fn (string $token) => str_replace("'\\''", "'", $token), $tokens[1]);
+        return self::shellWords($m[1]);
     }
 
     private function apply(string $manifest, ?string $namespace)

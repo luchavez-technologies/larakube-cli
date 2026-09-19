@@ -39,19 +39,19 @@ function flowRemoveFakes(array $extra = [], bool $bundled = false): array
     $deployment = 'flow-n8n-flow-example-com';
 
     return [...registeredToolRemoveFakes('flow:remove', 'flow-example-com', 'flow.example.com'),
-        "*'deployment/{$deployment}'*'json'*" => Process::result(output: json_encode([
+        "*get deployment/{$deployment} *-o json*" => Process::result(output: json_encode([
             'kind' => 'Deployment',
             'metadata' => ['name' => $deployment, 'labels' => $bundled ? ['larakube-storage' => 'bundled'] : []],
         ])),
-        "*'deployment/{$deployment}'*'name'*" => Process::result(output: "deployment/{$deployment}"),
-        "*'get' 'deployment/*" => Process::result(output: ''),
+        "*get deployment/{$deployment} *-o name*" => Process::result(output: "deployment/{$deployment}"),
+        '*get deployment/*' => Process::result(output: ''),
         ...$extra,
         '*' => Process::result(output: ''),
     ];
 }
 
 test('flow:remove keeps the database, the encryption key and the data volume by default', function (): void {
-    Process::fake(flowRemoveFakes(["*'delete'*" => Process::result(output: 'deleted')]));
+    Process::fake(flowRemoveFakes(['* delete *' => Process::result(output: 'deleted')]));
 
     $this->artisan('flow:remove local --force')
         ->assertExitCode(0)
@@ -59,8 +59,8 @@ test('flow:remove keeps the database, the encryption key and the data volume by 
         ->expectsOutputToContain('Removing Flow resources...')
         ->expectsOutputToContain('Persistent data (Plex Commons DB + S3 buckets) was preserved.');
 
-    Process::assertRan(fn ($p) => str_contains($p->command, "'delete' 'deployment/flow-n8n-flow-example-com' 'service/flow-n8n-flow-example-com' 'ingress/flow-n8n-flow-example-com' 'secret/flow-n8n-smtp-flow-example-com'")
-        && str_contains($p->command, "'middleware/flow-vpn-only-flow-example-com'"));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'delete deployment/flow-n8n-flow-example-com service/flow-n8n-flow-example-com ingress/flow-n8n-flow-example-com secret/flow-n8n-smtp-flow-example-com')
+        && str_contains($p->command, 'middleware/flow-vpn-only-flow-example-com'));
     Process::assertNotRan(fn ($p) => str_contains($p->command, 'secret/flow-n8n-secrets-')
         || str_contains($p->command, 'persistentvolumeclaim/'));
 });
@@ -68,7 +68,7 @@ test('flow:remove keeps the database, the encryption key and the data volume by 
 test('flow:remove --purge drops only the engine it ran, and its key and volume', function (): void {
     Process::fake(flowRemoveFakes([
         '*exec *' => Process::result(output: 'dropped'),
-        "*'delete'*" => Process::result(output: 'deleted'),
+        '* delete *' => Process::result(output: 'deleted'),
     ]));
 
     $this->artisan('flow:remove local --force --purge')
@@ -77,12 +77,12 @@ test('flow:remove --purge drops only the engine it ran, and its key and volume',
         ->doesntExpectOutputToContain("Dropping database 'windmill")
         ->expectsOutputToContain('Removing Flow data volumes and keys...');
 
-    Process::assertRan(fn ($p) => str_contains($p->command, "'persistentvolumeclaim/flow-n8n-storage-flow-example-com'")
-        && str_contains($p->command, "'secret/flow-n8n-secrets-flow-example-com'"));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'persistentvolumeclaim/flow-n8n-storage-flow-example-com')
+        && str_contains($p->command, 'secret/flow-n8n-secrets-flow-example-com'));
 });
 
 test('flow:remove --purge leaves the Commons alone for a --no-plex install', function (): void {
-    Process::fake(flowRemoveFakes(["*'delete'*" => Process::result(output: 'deleted')], bundled: true));
+    Process::fake(flowRemoveFakes(['* delete *' => Process::result(output: 'deleted')], bundled: true));
 
     $this->artisan('flow:remove local --force --purge')
         ->assertExitCode(0)
@@ -90,13 +90,13 @@ test('flow:remove --purge leaves the Commons alone for a --no-plex install', fun
 });
 
 test('flow:remove --domain removes only that host\'s instance', function (): void {
-    Process::fake(flowRemoveFakes(["*'delete'*" => Process::result(output: 'deleted')]));
+    Process::fake(flowRemoveFakes(['* delete *' => Process::result(output: 'deleted')]));
 
     $this->artisan('flow:remove local --force --domain=flow.example.com')->assertExitCode(0);
 
     // Every name a delete touches belongs to flow.example.com's instance.
-    Process::assertNotRan(fn ($p) => str_contains($p->command, "'delete'")
-        && preg_match_all("#'[a-z]+/([a-z0-9-]+)'#", $p->command, $m) > 0
+    Process::assertNotRan(fn ($p) => str_contains($p->command, ' delete ')
+        && preg_match_all('#\b(?:deployment|service|ingress|secret|persistentvolumeclaim|middleware)/([a-z0-9-]+)#', $p->command, $m) > 0
         && collect($m[1])->contains(fn (string $name) => ! str_ends_with($name, '-flow-example-com')));
 });
 
@@ -113,7 +113,7 @@ test('a failed database drop does not delete the OpenBao static role for a still
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
         '*exec *' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
-        "*'delete'*" => Process::result(output: 'deleted'),
+        '* delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]));
 
@@ -188,7 +188,7 @@ test('a failed delete exits non-zero instead of reporting success', function ():
     // The bug this guards: every tool's remove path used to discard the step
     // result and print "removed" regardless of what kubectl actually did.
     Process::fake(flowRemoveFakes([
-        "*'delete'*" => Process::result(output: '', errorOutput: 'forbidden', exitCode: 1),
+        '* delete *' => Process::result(output: '', errorOutput: 'forbidden', exitCode: 1),
     ]));
 
     $this->artisan('flow:remove local --force')

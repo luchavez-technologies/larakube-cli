@@ -19,7 +19,7 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
         $cmd = (string) $process->command;
         $seen['commands'][] = $cmd;
 
-        if (str_contains($cmd, "'apply' '-f' '-'")) {
+        if (str_contains($cmd, ' apply -f -')) {
             $input = (string) $process->input;
             $object = json_decode($input, true);
             if (($object['kind'] ?? null) === 'Secret') {
@@ -31,19 +31,19 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
             return Process::result(output: 'configured');
         }
 
-        if (preg_match("#'get' 'deployment/([a-z0-9-]+)'#", $cmd, $m) === 1) {
+        if (preg_match('#get deployment/([a-z0-9-]+) #', $cmd, $m) === 1) {
             return Process::result(output: in_array($m[1], $liveDeployments, true) ? "deployment/{$m[1]}" : '');
         }
 
-        if (preg_match("#'get' 'secret' 'flow-n8n-secrets-flow-example-com'.*jsonpath=\\{\\.data\\.([a-z-]+)\\}#", $cmd, $m) === 1) {
+        if (preg_match('#get secret flow-n8n-secrets-flow-example-com .*jsonpath=\{\.data\.([a-z-]+)\}#', $cmd, $m) === 1) {
             return Process::result(output: isset($secret[$m[1]]) ? base64_encode($secret[$m[1]]) : '');
         }
 
         return match (true) {
             str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode(['services' => ['postgres' => ['enabled' => true]]])),
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
-            str_contains($cmd, "'rollout' 'status'") && $rolloutFails => Process::result(errorOutput: 'deployment exceeded its progress deadline', exitCode: 1),
-            str_contains($cmd, "'rollout' 'status'") => Process::result(output: 'successfully rolled out'),
+            str_contains($cmd, ' rollout status ') && $rolloutFails => Process::result(errorOutput: 'deployment exceeded its progress deadline', exitCode: 1),
+            str_contains($cmd, ' rollout status ') => Process::result(output: 'successfully rolled out'),
             default => Process::result(output: ''),
         };
     });

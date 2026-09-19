@@ -21,7 +21,27 @@ use stdClass;
 final readonly class Kubectl
 {
     /** @param  list<string>|null  $kubeconfigs  null = ~/.kube/config */
-    private function __construct(public ?string $context, private bool $ambient = false, private ?array $kubeconfigs = null) {}
+    private function __construct(public ?string $context, private bool $ambient = false, private ?array $kubeconfigs = null, private ?string $rawPrefix = null) {}
+
+    /**
+     * A handle for a prefix string a caller already built, so a shared helper
+     * that still receives `string $kubectl` can make typed calls. Goes away
+     * once every caller passes a handle (Stage 4).
+     */
+    public static function fromPrefix(string $prefix): self
+    {
+        return new self(null, rawPrefix: $prefix);
+    }
+
+    /**
+     * One shell argument: left as-is when it holds only characters the shell
+     * never interprets, single-quoted otherwise. As safe as always quoting,
+     * and the command reads the way people (and test fakes) write it.
+     */
+    public static function arg(string $value): string
+    {
+        return preg_match('~^[A-Za-z0-9_./:=,@%+-]+$~', $value) === 1 ? $value : escapeshellarg($value);
+    }
 
     /**
      * An explicit kubeconfig file (a scoped deploy credential, k3s's own
@@ -94,6 +114,10 @@ final readonly class Kubectl
     /** The command prefix, for callers not yet moved onto typed calls. */
     public function prefix(): string
     {
+        if ($this->rawPrefix !== null) {
+            return $this->rawPrefix;
+        }
+
         if ($this->ambient) {
             return 'kubectl';
         }
@@ -227,7 +251,7 @@ final readonly class Kubectl
     /** @param  list<string>  $args */
     private function run(array $args, ?string $stdin = null, ?int $timeout = null): KubectlResult
     {
-        $command = $this->prefix().' '.implode(' ', array_map('escapeshellarg', $args));
+        $command = $this->prefix().' '.implode(' ', array_map(self::arg(...), $args));
         $process = $timeout !== null ? Process::timeout($timeout) : Process::timeout(120);
         $result = ($stdin !== null ? $process->input($stdin) : $process)->run($command);
 

@@ -213,9 +213,8 @@ final class ToolDriftHarness
         $command = (string) (is_array($process->command) ? implode(' ', $process->command) : $process->command);
 
         // App\Services\Kubectl quotes every argument; read it as plain words.
-        if (preg_match("/ kubectl(?: --context '(?:[^']|'\\\\'')*')? ('.*)$/s", $command, $m) === 1) {
-            preg_match_all("/'((?:[^']|'\\\\'')*)'/", $m[1], $tokens);
-            $command = 'kubectl '.implode(' ', array_map(fn (string $t) => str_replace("'\\''", "'", $t), $tokens[1]));
+        if (preg_match("/ kubectl(?: --context '(?:[^']|'\\\\'')*')? (.*)$/s", $command, $m) === 1) {
+            $command = 'kubectl '.implode(' ', FakeKubectl::shellWords($m[1]));
 
             if (preg_match('#^kubectl get ([a-z]+)/(\S+) -n (\S+) -o (name|json)#', $command, $g) === 1) {
                 $ref = new ResourceRef($g[1], $g[2], $g[3]);
