@@ -3,12 +3,9 @@
 **Status:** Stage 1 ✅ (`App\Services\Kubectl`, `App\Data\KubectlResult`,
 `Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
 `~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
-copies). Stage 3 ✅. Stages 2b, 4, 5 not started.
+copies). Stage 2b ✅ (`forKubeconfig()`; only `Kubectl` sets KUBECONFIG for a
+kubectl command, test-enforced). Stage 3 ✅. Stages 4 and 5 not started.
 
-Stage 2 notes: prefixes against a *different* kubeconfig (scoped deploy
-kubeconfigs in `InteractsWithRemoteDeploy`, context merges in `cluster:setup`,
-`context:import`, `cloud:create`, `ProvisionsK3sNode`) are still hand-built;
-`Kubectl` needs a kubeconfig-path constructor before they can move.
 
 Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned
 kubeconfig, shell-quoted `--context`); `FakeKubectl` is an in-memory cluster

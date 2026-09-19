@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Services\Kubectl;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
@@ -64,7 +65,7 @@ class ContextRemoveCommand extends Command
         // k3s's own setup docs suggest exporting /etc/rancher/k3s/k3s.yaml) — which
         // would silently operate on a completely different file. Same fix already
         // applied in PrunesKubeContext for the local-cluster teardown path.
-        $kc = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl config';
+        $kc = Kubectl::forContext(null)->prefix().' config';
 
         $t = escapeshellarg($target);
         $result = Process::run("{$kc} delete-context {$t}");

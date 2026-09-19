@@ -5,6 +5,7 @@ namespace App\Commands\Cloud;
 use App\Data\ConfigData;
 use App\Data\StackData;
 use App\Enums\ManagedProvider;
+use App\Services\Kubectl;
 use App\State;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithEnvironments;
@@ -669,7 +670,7 @@ class CloudCreateCommand extends Command
         file_put_contents($tmp, $rawYaml);
 
         if (file_exists($local) && filesize($local) > 0) {
-            $merged = Process::run('KUBECONFIG='.escapeshellarg($tmp).':'.escapeshellarg($local).' kubectl config view --flatten')->output();
+            $merged = Process::run(Kubectl::forKubeconfig([$tmp, $local])->prefix().' config view --flatten')->output();
             if ($merged !== '') {
                 file_put_contents($local, $merged);
             } else {

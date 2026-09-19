@@ -41,7 +41,7 @@ class ContextImportCommand extends Command
         $local = $home.'/.kube/config';
 
         // Which context are we importing? (Deterministic name → re-import is idempotent.)
-        $incoming = trim(Process::run(Kubectl::current()->prefix().' config view --kubeconfig='.escapeshellarg($file).' -o jsonpath='.escapeshellarg('{.current-context}'))->output());
+        $incoming = trim(Process::run(Kubectl::forKubeconfig($file)->prefix().' config view -o jsonpath='.escapeshellarg('{.current-context}'))->output());
 
         // When run inside a project, align the imported context's NAME to what this
         // project's matching env resolves to — so the teammate gets the same
@@ -59,7 +59,7 @@ class ContextImportCommand extends Command
 
             // Merge with kubectl's own flatten engine — same-named entries are
             // overwritten (so re-importing the same file is a no-op refresh).
-            $merged = Process::run('KUBECONFIG='.escapeshellarg($local).':'.escapeshellarg($source).' kubectl config view --flatten')->output();
+            $merged = Process::run(Kubectl::forKubeconfig([$local, $source])->prefix().' config view --flatten')->output();
             if (trim($merged) === '') {
                 $this->laraKubeError('Failed to merge the kubeconfig. Is kubectl installed?');
                 $this->cleanupTemp($source, $file);
@@ -77,7 +77,7 @@ class ContextImportCommand extends Command
         $this->cleanupTemp($source, $file);
 
         if ($incoming !== '') {
-            Process::run('KUBECONFIG='.escapeshellarg($local).' kubectl config use-context '.escapeshellarg($incoming));
+            Process::run(Kubectl::forKubeconfig($local)->prefix().' config use-context '.escapeshellarg($incoming));
             $this->laraKubeInfo("✅ Imported — you're now on context '{$incoming}'.");
         } else {
             $this->laraKubeInfo('✅ Kubeconfig imported.');
@@ -108,7 +108,7 @@ class ContextImportCommand extends Command
         }
 
         // The credential's namespace tells us which env it's for.
-        $namespace = trim(Process::run(Kubectl::current()->prefix().' config view --kubeconfig='.escapeshellarg($file).' --minify -o jsonpath='.escapeshellarg('{.contexts[0].context.namespace}'))->output());
+        $namespace = trim(Process::run(Kubectl::forKubeconfig($file)->prefix().' config view --minify -o jsonpath='.escapeshellarg('{.contexts[0].context.namespace}'))->output());
         if ($namespace === '') {
             return null;
         }
@@ -127,7 +127,7 @@ class ContextImportCommand extends Command
         $this->importTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $tmp = $this->importTemporaryDirectory->path().'/kubeconfig';
         copy($file, $tmp);
-        $success = Process::run(Kubectl::current()->prefix().' config rename-context '.escapeshellarg($incoming).' '.escapeshellarg($target).' --kubeconfig='.escapeshellarg($tmp))->successful();
+        $success = Process::run(Kubectl::forKubeconfig($tmp)->prefix().' config rename-context '.escapeshellarg($incoming).' '.escapeshellarg($target))->successful();
         if (! $success) {
             $this->importTemporaryDirectory->delete();
 

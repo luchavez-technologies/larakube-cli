@@ -279,7 +279,7 @@ BASH;
         // --- 🛡 SECURE MERGE ENGINE ---
         // We use the KUBECONFIG env var trick to let kubectl handle the YAML merging logic safely
         if (file_exists($localKubeConfig)) {
-            $mergeCmd = "KUBECONFIG={$localKubeConfig}:{$tmpRemoteConfig} kubectl config view --flatten";
+            $mergeCmd = Kubectl::forKubeconfig([$localKubeConfig, $tmpRemoteConfig])->prefix().' config view --flatten';
             $mergedContent = Process::run($mergeCmd)->output();
 
             // A bare "not empty" check isn't enough — kubectl can still emit a

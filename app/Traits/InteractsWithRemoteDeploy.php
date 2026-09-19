@@ -183,7 +183,7 @@ trait InteractsWithRemoteDeploy
      */
     public function applyWithImageRewriteUsingKubeconfig(string $kubeconfigPath, string $overlayPath, string $fromImage, string $toImage): string
     {
-        $kc = 'KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl';
+        $kc = Kubectl::forKubeconfig($kubeconfigPath)->prefix();
 
         return $this->kustomizeBuildCommand($overlayPath)
             .' | sed '.escapeshellarg('s|image: '.$fromImage.'|image: '.$toImage.'|g')
@@ -712,7 +712,7 @@ trait InteractsWithRemoteDeploy
         // Drive kubectl either via the scoped kubeconfig (dogfood) or, as a
         // fallback, a named admin context.
         $kube = $kubeconfigPath !== null
-            ? 'KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl'
+            ? Kubectl::forKubeconfig($kubeconfigPath)->prefix()
             : Kubectl::forContext((string) $context)->prefix();
         $ns = escapeshellarg($namespace);
 
@@ -813,7 +813,7 @@ trait InteractsWithRemoteDeploy
             // 7. Wait for the web rollout (scoped). Bounded a bit past the command's
             // own --timeout=180s so kubectl's own timeout fires first.
             $workload = ($config->framework ?? AppFramework::LARAVEL)->workloadName($config->getName());
-            $this->runStreaming('KUBECONFIG='.escapeshellarg($kubeconfigPath).' kubectl rollout status deploy/'.escapeshellarg($workload).' -n '.escapeshellarg($namespace).' --timeout=180s', 190);
+            $this->runStreaming(Kubectl::forKubeconfig($kubeconfigPath)->prefix().' rollout status deploy/'.escapeshellarg($workload).' -n '.escapeshellarg($namespace).' --timeout=180s', 190);
         } finally {
             $kubeconfigTemporaryDirectory->delete();
         }

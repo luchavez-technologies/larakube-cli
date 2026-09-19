@@ -171,3 +171,41 @@ test('no command string starts with a bare kubectl: Kubectl names the cluster', 
 
     expect($bare)->toBeEmpty();
 });
+
+test('an explicit kubeconfig, or several merged in order, are each shell-quoted', function (): void {
+    expect(Kubectl::forKubeconfig('/tmp/scoped config')->prefix())
+        ->toBe("KUBECONFIG='/tmp/scoped config' kubectl")
+        ->and(Kubectl::forKubeconfig(['/home/me/.kube/config', '/tmp/new'])->prefix())
+        ->toBe("KUBECONFIG='/home/me/.kube/config':'/tmp/new' kubectl")
+        ->and(Kubectl::forKubeconfig('/tmp/k3s.yaml', 'k3s-larakube')->prefix())
+        ->toBe("KUBECONFIG='/tmp/k3s.yaml' kubectl --context 'k3s-larakube'")
+        ->and(Kubectl::current()->prefix())->toBe('kubectl');
+});
+
+test('forKubeconfig refuses an empty path list', function (): void {
+    Kubectl::forKubeconfig(['', '']);
+})->throws(LogicException::class);
+
+test('only Kubectl sets KUBECONFIG for a kubectl command', function (): void {
+    $handBuilt = [];
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
+
+    foreach ($files as $file) {
+        if (! str_ends_with((string) $file, '.php') || str_ends_with((string) $file, 'Services/Kubectl.php')) {
+            continue;
+        }
+
+        $source = (string) file_get_contents((string) $file);
+        $lines = explode("\n", $source);
+
+        foreach (token_get_all($source) as $token) {
+            // The prefix is usually split across strings ('KUBECONFIG='.$path.' kubectl'), so check its line.
+            if (is_array($token) && in_array($token[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)
+                && str_starts_with(ltrim($token[1], '\'"'), 'KUBECONFIG=') && str_contains($lines[$token[2] - 1], 'kubectl')) {
+                $handBuilt[] = str_replace(app_path().'/', '', (string) $file).':'.$token[2];
+            }
+        }
+    }
+
+    expect($handBuilt)->toBeEmpty();
+});

@@ -20,7 +20,25 @@ use stdClass;
  */
 final readonly class Kubectl
 {
-    private function __construct(public ?string $context, private bool $ambient = false) {}
+    /** @param  list<string>|null  $kubeconfigs  null = ~/.kube/config */
+    private function __construct(public ?string $context, private bool $ambient = false, private ?array $kubeconfigs = null) {}
+
+    /**
+     * An explicit kubeconfig file (a scoped deploy credential, k3s's own
+     * file), or several merged in order, as KUBECONFIG itself allows
+     * (`config view --flatten` over a list is how kubeconfigs are merged).
+     *
+     * @param  string|list<string>  $kubeconfig
+     */
+    public static function forKubeconfig(string|array $kubeconfig, ?string $context = null): self
+    {
+        $paths = array_values(array_filter((array) $kubeconfig, fn (string $path) => $path !== ''));
+        if ($paths === []) {
+            throw new LogicException('forKubeconfig() needs at least one kubeconfig path.');
+        }
+
+        return new self($context !== null && $context !== '' ? $context : null, kubeconfigs: $paths);
+    }
 
     /**
      * Whatever cluster kubectl itself resolves to, KUBECONFIG included: local
@@ -80,7 +98,8 @@ final readonly class Kubectl
             return 'kubectl';
         }
 
-        $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+        $kubeconfig = implode(':', array_map('escapeshellarg', $this->kubeconfigs ?? [home_path('.kube/config')]));
+        $kubectl = 'KUBECONFIG='.$kubeconfig.' kubectl';
 
         return $this->context !== null ? $kubectl.' --context '.escapeshellarg($this->context) : $kubectl;
     }

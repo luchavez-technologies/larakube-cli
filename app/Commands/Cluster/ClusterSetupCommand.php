@@ -2,6 +2,7 @@
 
 namespace App\Commands\Cluster;
 
+use App\Services\Kubectl;
 use App\Traits\DetectsWsl;
 use App\Traits\InstallsK3s;
 use App\Traits\InteractsWithKustomize;
@@ -354,8 +355,8 @@ class ClusterSetupCommand extends Command
 
         // List the existing config first so its other contexts survive the merge;
         // --flatten inlines the cert data into a single self-contained file.
-        $kubeconfigEnv = file_exists($kubeConfig) ? $kubeConfig.':'.$tmp : $tmp;
-        $merged = Process::run('KUBECONFIG='.escapeshellarg($kubeconfigEnv).' kubectl config view --flatten')->output();
+        $kubeconfigs = file_exists($kubeConfig) ? [$kubeConfig, $tmp] : [$tmp];
+        $merged = Process::run(Kubectl::forKubeconfig($kubeconfigs)->prefix().' config view --flatten')->output();
 
         $temporaryDirectory->delete();
 
@@ -370,11 +371,11 @@ class ClusterSetupCommand extends Command
 
         // Target ~/.kube/config explicitly — a bare `kubectl` would use $KUBECONFIG
         // (often k3s's own file), where this context doesn't exist.
-        Process::run('KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config use-context '.escapeshellarg($contextName));
+        Process::run(Kubectl::forKubeconfig($kubeConfig)->prefix().' config use-context '.escapeshellarg($contextName));
 
         // Verify the context actually landed — the flatten/merge can silently no-op.
         $contexts = array_filter(explode("\n", trim(Process::run(
-            'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config get-contexts -o name',
+            Kubectl::forKubeconfig($kubeConfig)->prefix().' config get-contexts -o name',
         )->output())));
         if (! in_array($contextName, $contexts, true)) {
             $this->laraKubeWarn("Merge did not produce the '{$contextName}' context in ~/.kube/config.");

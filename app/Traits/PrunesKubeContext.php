@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 trait PrunesKubeContext
@@ -34,7 +35,7 @@ trait PrunesKubeContext
         // Target ~/.kube/config explicitly — that's where cluster:setup merges these
         // entries, and where the stale one lives (a shell $KUBECONFIG could point
         // elsewhere). Mirrors mergeK3sKubeconfig().
-        $kc = 'KUBECONFIG='.escapeshellarg($kubeConfig).' kubectl config';
+        $kc = Kubectl::forKubeconfig($kubeConfig)->prefix().' config';
         $current = trim(Process::run($kc.' current-context')->output());
 
         foreach ($contexts as $ctx) {
