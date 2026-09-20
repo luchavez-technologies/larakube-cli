@@ -4,7 +4,7 @@ namespace App\Traits;
 
 use App\Enums\ClusterTool;
 use App\Exceptions\MissingFlagException;
-use Illuminate\Support\Facades\Process;
+use App\Services\Kubectl;
 
 /**
  * Resolve which engine a tool's instance is actually running, for the
@@ -93,8 +93,6 @@ trait ResolvesToolEngine
 
     private function engineDeploymentExists(string $kubectl, ClusterTool $tool, ?string $instance, string $engine): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get deployment {$tool->deploymentName($instance, $engine)} -n {$tool->namespace()} --no-headers --ignore-not-found",
-        )->output()) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($tool->namespace(), $tool->deploymentName($instance, $engine));
     }
 }

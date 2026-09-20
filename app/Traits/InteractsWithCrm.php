@@ -7,7 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithCrm
 {
@@ -21,9 +20,8 @@ trait InteractsWithCrm
     protected function isCrmInstalled(string $kubectl, string $ns, ?string $instance = null): bool
     {
         $dep = ClusterTool::CRM->deploymentName($instance);
-        $out = Process::run("{$kubectl} get deployment {$dep} -n {$ns} --no-headers --ignore-not-found")->output();
 
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, $dep);
     }
 
     protected function readCrmSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string

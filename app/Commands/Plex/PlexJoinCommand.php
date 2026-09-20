@@ -4,6 +4,7 @@ namespace App\Commands\Plex;
 
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
+use App\Services\Kubectl;
 use App\Services\PlexService;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
@@ -586,7 +587,7 @@ class PlexJoinCommand extends Command
             return false;
         }
 
-        if (trim(Process::run("{$kubectl} get deployment web -n {$namespace} --no-headers --ignore-not-found")->output()) !== '') {
+        if (Kubectl::fromPrefix($kubectl)->hasDeployment($namespace, 'web')) {
             $this->restartSecretConsumers($kubectl, $namespace, 'web');
         }
 

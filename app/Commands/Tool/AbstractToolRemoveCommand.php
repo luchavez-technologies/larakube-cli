@@ -460,9 +460,7 @@ abstract class AbstractToolRemoveCommand extends Command
     /** Shared helper for the common "does this Deployment exist" bundled-storage probe. */
     protected function deploymentExists(string $kubectl, string $namespace, string $deployment): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get deployment {$deployment} -n {$namespace} --no-headers --ignore-not-found",
-        )->output()) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($namespace, $deployment);
     }
 
     /**

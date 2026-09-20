@@ -22,9 +22,7 @@ trait InteractsWithErrors
     /** GlitchTip web Deployment present? A cheap "is GlitchTip installed" probe. */
     protected function isErrorsInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment glitchtip-web -n {$ns} --no-headers")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'glitchtip-web');
     }
 
     /** Decrypt and read the GlitchTip admin password from the larakube Secret. */

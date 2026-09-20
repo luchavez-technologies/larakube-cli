@@ -21,9 +21,7 @@ trait InteractsWithInsights
     /** Insights (metabase) Deployment present? */
     protected function isInsightsInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment insights-metabase -n {$ns} --no-headers")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'insights-metabase');
     }
 
     /** Read database password. */

@@ -6,7 +6,6 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithAnalytics
 {
@@ -19,9 +18,7 @@ trait InteractsWithAnalytics
 
     protected function isAnalyticsInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment analytics-umami -n {$ns} --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'analytics-umami');
     }
 
     protected function readAnalyticsSecret(string $kubectl, string $ns, string $key): ?string

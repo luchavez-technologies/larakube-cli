@@ -5,6 +5,7 @@ namespace App\Commands\Plex;
 use App\Enums\ClusterTool;
 use App\Enums\CommonsSecret;
 use App\Enums\DatabaseDriver;
+use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
@@ -400,7 +401,7 @@ class PlexRotateCommand extends Command
             return true;
         }
 
-        if (trim(Process::run("{$kubectl} get deployment {$deployment} -n {$namespace} --no-headers --ignore-not-found")->output()) !== '') {
+        if (Kubectl::fromPrefix($kubectl)->hasDeployment($namespace, $deployment)) {
             $this->restartSecretConsumers($kubectl, $namespace, $deployment);
             $this->line("  <fg=green>✔</> <fg=cyan>{$tenant}</> <fg=gray>rotated via OpenBao and restarted in </><fg=cyan>{$namespace}</><fg=gray>.</>");
 

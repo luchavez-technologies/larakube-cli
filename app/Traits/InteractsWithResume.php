@@ -7,7 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithResume
 {
@@ -20,9 +19,7 @@ trait InteractsWithResume
 
     protected function isResumeInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment resume-reactive -n {$ns} --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'resume-reactive');
     }
 
     protected function readResumeSecret(string $kubectl, string $ns, string $key): ?string

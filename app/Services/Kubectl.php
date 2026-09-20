@@ -171,6 +171,15 @@ final readonly class Kubectl
         return $this->run(['get', $ref->ref(), '-n', $ref->namespace, '-o', 'json', '--ignore-not-found'])->json();
     }
 
+    /**
+     * Whether a Deployment is present — the "is this tool installed?" probe.
+     * `--no-headers` rather than `-o name`: the shape every fake already uses.
+     */
+    public function hasDeployment(string $namespace, string $name): bool
+    {
+        return trim($this->run(['get', 'deployment', $name, '-n', $namespace, '--no-headers', '--ignore-not-found'])->output) !== '';
+    }
+
     public function exists(ResourceRef $ref): bool
     {
         return trim($this->run(['get', $ref->ref(), '-n', $ref->namespace, '-o', 'name', '--ignore-not-found'])->output) !== '';

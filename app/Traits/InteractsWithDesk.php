@@ -7,7 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 /**
  * Helpers for the FreeScout help-desk tool. Mirrors InteractsWithSheet — a
@@ -26,9 +25,7 @@ trait InteractsWithDesk
     /** FreeScout Deployment present? */
     protected function isDeskInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment desk-freescout -n {$ns} --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'desk-freescout');
     }
 
     /** Read a key from the desk-secrets secret. */

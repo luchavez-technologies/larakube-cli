@@ -52,10 +52,10 @@ test('cloud Errors host is null when none is configured for the env', function (
 });
 
 test('isErrorsInstalled reflects whether the glitchtip-web Deployment exists', function (): void {
-    Process::fake(['kubectl get deployment glitchtip-web -n larakube-shared --no-headers' => 'glitchtip-web   1/1   1   1   5d']);
+    Process::fake(['kubectl get deployment glitchtip-web -n larakube-shared --no-headers --ignore-not-found' => 'glitchtip-web   1/1   1   1   5d']);
     expect(errorsReader()->installed('kubectl', 'larakube-shared'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment glitchtip-web -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['kubectl get deployment glitchtip-web -n larakube-shared --no-headers --ignore-not-found' => Process::result(output: '', exitCode: 1)]);
     expect(errorsReader()->installed('kubectl', 'larakube-shared'))->toBeFalse();
 });
 
@@ -74,11 +74,11 @@ test('readErrorsAdminPassword decodes the admin secret, null when absent', funct
 test('errorsAccess is null when glitchtip is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    Process::fake(["{$kubectl} get deployment glitchtip-web -n larakube-shared --no-headers" => Process::result(output: '', exitCode: 1)]);
+    Process::fake(["{$kubectl} get deployment glitchtip-web -n larakube-shared --no-headers --ignore-not-found" => Process::result(output: '', exitCode: 1)]);
     expect(errorsReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        "{$kubectl} get deployment glitchtip-web -n larakube-shared --no-headers" => 'glitchtip-web   1/1   1   1   5d',
+        "{$kubectl} get deployment glitchtip-web -n larakube-shared --no-headers --ignore-not-found" => 'glitchtip-web   1/1   1   1   5d',
         "{$kubectl} get secret errors-secrets -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t-adm1n'),
     ]);
     $access = errorsReader()->access('local', null);

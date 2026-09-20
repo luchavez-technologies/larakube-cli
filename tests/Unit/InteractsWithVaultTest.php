@@ -52,10 +52,10 @@ test('cloud Vault host is null when none is configured for the env', function ()
 });
 
 test('isVaultInstalled reflects whether the vaultwarden Deployment exists', function (): void {
-    Process::fake(['kubectl get deployment vaultwarden -n larakube-vault --no-headers' => 'vaultwarden   1/1   1   1   5d']);
+    Process::fake(['kubectl get deployment vaultwarden -n larakube-vault --no-headers --ignore-not-found' => 'vaultwarden   1/1   1   1   5d']);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment vaultwarden -n larakube-vault --no-headers' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['kubectl get deployment vaultwarden -n larakube-vault --no-headers --ignore-not-found' => Process::result(output: '', exitCode: 1)]);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeFalse();
 });
 
@@ -74,11 +74,11 @@ test('readVaultAdminToken decodes the admin secret, null when absent', function 
 test('vaultAccess is null when vault is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    Process::fake(["{$kubectl} get deployment vaultwarden -n larakube-vault --no-headers" => Process::result(output: '', exitCode: 1)]);
+    Process::fake(["{$kubectl} get deployment vaultwarden -n larakube-vault --no-headers --ignore-not-found" => Process::result(output: '', exitCode: 1)]);
     expect(vaultReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        "{$kubectl} get deployment vaultwarden -n larakube-vault --no-headers" => 'vaultwarden   1/1   1   1   5d',
+        "{$kubectl} get deployment vaultwarden -n larakube-vault --no-headers --ignore-not-found" => 'vaultwarden   1/1   1   1   5d',
         "{$kubectl} get secret vault-secrets -n larakube-vault -o jsonpath='{.data.admin-token}'" => base64_encode('s3cr3t-adm1n'),
     ]);
     $access = vaultReader()->access('local', null);

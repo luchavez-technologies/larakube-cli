@@ -212,7 +212,7 @@ test('only Kubectl sets KUBECONFIG for a kubectl command', function (): void {
 
 test('string-built kubectl commands only ever decrease (KubectlService Stage 4)', function (): void {
     // Lower this as tools move onto typed Kubectl calls; never raise it.
-    $ceiling = 671;
+    $ceiling = 643;
 
     $count = 0;
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));

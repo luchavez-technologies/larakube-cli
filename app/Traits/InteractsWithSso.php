@@ -44,9 +44,7 @@ trait InteractsWithSso
     /** Zitadel Deployment present? */
     protected function isSsoInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment sso-zitadel -n {$ns} --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'sso-zitadel');
     }
 
     /** Read a key from the sso-secrets secret. */

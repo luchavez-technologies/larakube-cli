@@ -7,7 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithSheet
 {
@@ -22,9 +21,7 @@ trait InteractsWithSheet
     /** Sheet Deployment present? */
     protected function isSheetInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment sheet-teable -n {$ns} --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'sheet-teable');
     }
 
     /** Read database password. */

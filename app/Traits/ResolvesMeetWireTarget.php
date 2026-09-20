@@ -4,7 +4,7 @@ namespace App\Traits;
 
 use App\Enums\ClusterTool;
 use App\Exceptions\MissingFlagException;
-use Illuminate\Support\Facades\Process;
+use App\Services\Kubectl;
 
 use function Laravel\Prompts\select;
 
@@ -31,9 +31,7 @@ trait ResolvesMeetWireTarget
         $installed = array_values(array_filter(
             ClusterTool::shippedCases(),
             fn (ClusterTool $t) => $t->hasMeetWire()
-                && trim(Process::run(
-                    "{$kubectl} get deployment {$t->deploymentName()} -n {$t->namespace()} --no-headers --ignore-not-found",
-                )->output()) !== '',
+                && Kubectl::fromPrefix($kubectl)->hasDeployment($t->namespace(), $t->deploymentName()),
         ));
 
         $slug = $this->option('tool');

@@ -281,9 +281,7 @@ class DataInitCommand extends Command
 
     protected function deploymentExists(string $kubectl, string $namespace, string $deployment): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get deployment {$deployment} -n {$namespace} --no-headers --ignore-not-found",
-        )->output()) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($namespace, $deployment);
     }
 
     protected function resolveEnvironment(): string

@@ -7,7 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithDesign
 {
@@ -21,9 +20,8 @@ trait InteractsWithDesign
     protected function isDesignInstalled(string $kubectl, string $ns, ?string $instance = null): bool
     {
         $deployment = ClusterTool::DESIGN->deploymentName($instance);
-        $out = Process::run("{$kubectl} get deployment {$deployment} -n {$ns} --no-headers --ignore-not-found")->output();
 
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, $deployment);
     }
 
     protected function readDesignSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string

@@ -276,8 +276,6 @@ class SecretsRotateCommand extends Command
 
     protected function deploymentExists(string $kubectl, string $ns, string $deployment): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get deployment {$deployment} -n {$ns} --no-headers --ignore-not-found",
-        )->output()) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, $deployment);
     }
 }

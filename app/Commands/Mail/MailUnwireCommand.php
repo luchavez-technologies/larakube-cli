@@ -154,7 +154,7 @@ class MailUnwireCommand extends Command
             return false;
         }
 
-        return trim(Process::run("{$kubectl} get deployment {$schema['deployment']} -n {$schema['namespace']} --no-headers --ignore-not-found")->output()) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($schema['namespace'], $schema['deployment']);
     }
 
     protected function unwireTargets(string $kubectl, array $targets, string $env): int

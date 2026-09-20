@@ -7,7 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithVault
 {
@@ -22,9 +21,7 @@ trait InteractsWithVault
     /** Vaultwarden Deployment present? A cheap "is Vaultwarden installed" probe. */
     protected function isVaultInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment vaultwarden -n {$ns} --no-headers")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'vaultwarden');
     }
 
     /** The existing Vaultwarden admin token, or null when the secret isn't there. */

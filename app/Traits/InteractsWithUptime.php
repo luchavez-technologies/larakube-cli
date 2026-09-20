@@ -6,7 +6,6 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithUptime
 {
@@ -76,9 +75,7 @@ trait InteractsWithUptime
     /** Uptime Kuma Deployment present? A cheap "is uptime installed" probe. */
     protected function isUptimeInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment uptime-kuma -n {$ns} --no-headers")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'uptime-kuma');
     }
 
     /**

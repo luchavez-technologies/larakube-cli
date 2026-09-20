@@ -7,7 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithLink
 {
@@ -20,9 +19,7 @@ trait InteractsWithLink
 
     protected function isLinkInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment link-kutt -n {$ns} --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'link-kutt');
     }
 
     protected function readLinkSecret(string $kubectl, string $ns, string $key): ?string
