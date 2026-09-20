@@ -140,7 +140,7 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
     {
         $ns = ($instance === null || $instance === '') ? 'larakube-shared' : "larakube-shared-{$instance}";
         $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
-        $decodedPass = Kubectl::fromPrefix($kubectl)->secretValue($ns, "monitor-secrets-{$instanceName}", 'password') ?? '<unknown>';
+        $decodedPass = Kubectl::fromPrefix($kubectl)->secretValue($ns, 'monitor-secrets', 'password') ?? '<unknown>';
         $lokiName = "monitor-loki-{$instanceName}";
         $promName = "monitor-prometheus-{$instanceName}";
 

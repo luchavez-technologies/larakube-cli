@@ -7,7 +7,8 @@
     $lokiConfigMapName = "monitor-loki-config-{$instance}";
     $promtailName = "monitor-promtail-{$instance}";
     $promtailConfigMapName = "monitor-promtail-config-{$instance}";
-    $secretName = "monitor-secrets-{$instance}";
+    $secretName = 'monitor-secrets';
+    $dbName = 'grafana';
 @endphp
 ---
 # ── Prometheus RBAC ──────────────────────────────────────────────────────────
@@ -806,9 +807,9 @@ spec:
             - name: GF_DATABASE_HOST
               value: "postgres.{{ $plexNamespace }}.svc.cluster.local:5432"
             - name: GF_DATABASE_NAME
-              value: grafana
+              value: "{{ $dbName }}"
             - name: GF_DATABASE_USER
-              value: grafana
+              value: "{{ $dbName }}"
             - name: GF_DATABASE_SSL_MODE
               value: disable
             - name: GF_DATABASE_PASSWORD

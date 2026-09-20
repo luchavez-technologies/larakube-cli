@@ -23,6 +23,7 @@ use App\Contracts\HasWorkloadComponents;
 use App\Contracts\UsesCliOidc;
 use App\Contracts\UsesForwardAuth;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
 use App\Vendors\AnalyticsTool;
 use App\Vendors\CrmTool;
 use App\Vendors\DashboardTool;
@@ -1314,23 +1315,19 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /**
-     * Whether this tool's own manifests name its Secret `{base}-{instance}`.
-     *
-     * Not every tool has adopted that yet: the ones below write a fixed name,
-     * so suffixing here would point OpenBao's sync and the rotation
-     * ExternalSecret at a Secret that doesn't exist — a Merge-policy
-     * ExternalSecret can't create one, so those values reach nothing. Flip a
-     * tool over here when its templates adopt the suffix, never before.
-     * `plans/active/tool-instance-naming.md` replaces this list with one
-     * source for every resource name (ADR 0021).
+     * Which naming generation this tool's manifests write. A tool moves up a
+     * generation in the same change that migrates its manifests AND its live
+     * resources, never before: rotation and the OpenBao sync derive names
+     * from here, and a Merge-policy ExternalSecret can't create a Secret that
+     * doesn't exist, so a name nothing deploys reaches nothing.
      */
-    public function instanceSuffixedSecrets(): bool
+    public function resourceNaming(): ResourceNaming
     {
         return match ($this) {
-            self::CHAT, self::PASSWORDS, self::SSO,
-            self::LINK, self::RECORD, self::SHEETS, self::RESUME,
-            self::TASKS, self::SUPPORT, self::ANALYTICS => false,
-            default => true,
+            self::CHAT, self::MONITOR, self::PASSWORDS, self::SSO, self::LINK, self::RECORD,
+            self::SHEETS, self::RESUME, self::TASKS, self::SUPPORT,
+            self::ANALYTICS => ResourceNaming::AS_SHIPPED,
+            default => ResourceNaming::INSTANCE_SUFFIXED,
         };
     }
 
@@ -1414,12 +1411,18 @@ enum ClusterTool: string implements HasWorkloadComponents
         return null;
     }
 
-    /** `{base}-{instance}`, or `$base` for a tool whose manifests don't suffix. */
-    public function instanceSecretName(string $base, ?string $instance): string
+    /** The Secret this tool's manifests write, in whichever generation it is on. */
+    public function instanceSecretName(string $shippedName, ?string $instance): string
     {
-        return $instance === null || $instance === '' || ! $this->instanceSuffixedSecrets()
-            ? $base
-            : "{$base}-{$instance}";
+        if ($instance === null || $instance === '') {
+            return $shippedName;
+        }
+
+        return match ($this->resourceNaming()) {
+            ResourceNaming::TOOL_INSTANCE => ToolInstance::forInstance($this, $instance)->secret(),
+            ResourceNaming::INSTANCE_SUFFIXED => "{$shippedName}-{$instance}",
+            ResourceNaming::AS_SHIPPED => $shippedName,
+        };
     }
 
     /**

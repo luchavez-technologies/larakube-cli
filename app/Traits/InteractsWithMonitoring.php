@@ -32,14 +32,10 @@ trait InteractsWithMonitoring
         return str_contains($allDeployments, 'monitor-grafana');
     }
 
-    /**
-     * Grafana's credentials Secret, named the way monitoring's manifests write
-     * it — including their fallback instance when no host is known, or a read
-     * would look for a name nothing deploys.
-     */
+    /** Grafana's credentials Secret, as monitoring's manifests name it. */
     protected function monitorSecretName(?string $instance): string
     {
-        return ClusterTool::MONITOR->instanceSecretName('monitor-secrets', $instance ?: 'monitor');
+        return ClusterTool::MONITOR->instanceSecretName('monitor-secrets', $instance);
     }
 
     /** The existing Grafana admin password, or null when the secret isn't there. */
