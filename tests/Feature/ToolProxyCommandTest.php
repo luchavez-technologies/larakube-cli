@@ -88,7 +88,7 @@ test('tool:proxy runs the same checks as --proxied and changes nothing when they
     $this->artisan('tool:proxy production --domain=flow.example.com --context=ctx')->assertExitCode(1);
 
     expect($annotations)->toBe([])
-        ->and($registry->writes)->toBe([]);
+        ->and($registry->writes)->toBeEmpty();
 });
 
 test('a VPN-only instance is never proxied', function (): void {
