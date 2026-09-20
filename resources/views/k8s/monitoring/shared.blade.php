@@ -10,6 +10,17 @@
     $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MONITOR, $instance);
     $secretName = $tool->secret();
     $dbName = $tool->database();
+    // Identity for discovery and teardown. Names are for humans; labels are
+    // how anything finds these again — a component named after its upstream
+    // (`prometheus`) is ambiguous by name alone.
+    $labels = function (string $component) use ($tool) {
+        $out = '';
+        foreach ($tool->labels($component) as $key => $value) {
+            $out .= "\n    {$key}: {$value}";
+        }
+
+        return $out;
+    };
 @endphp
 ---
 # ── Prometheus RBAC ──────────────────────────────────────────────────────────
@@ -47,6 +58,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ $prometheusConfigMapName }}
+  labels:{!! $labels('prometheus') !!}
   namespace: larakube-shared
 data:
   prometheus.yml: |
@@ -110,6 +122,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $prometheusName }}
+  labels:{!! $labels('prometheus') !!}
   namespace: larakube-shared
 spec:
   replicas: 1
@@ -123,6 +136,9 @@ spec:
       labels:
         app: {{ $prometheusName }}
         instance: {{ $instance }}
+@foreach($tool->labels('prometheus') as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       serviceAccountName: prometheus
       containers:
@@ -171,6 +187,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ $prometheusName }}
+  labels:{!! $labels('prometheus') !!}
   namespace: larakube-shared
 spec:
   selector:
@@ -187,6 +204,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ $lokiConfigMapName }}
+  labels:{!! $labels('loki') !!}
   namespace: larakube-shared
 data:
   loki.yaml: |
@@ -240,6 +258,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $lokiName }}
+  labels:{!! $labels('loki') !!}
   namespace: larakube-shared
 spec:
   replicas: 1
@@ -250,6 +269,9 @@ spec:
     metadata:
       labels:
         app: {{ $lokiName }}
+@foreach($tool->labels('loki') as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "3100"
@@ -291,6 +313,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ $lokiName }}
+  labels:{!! $labels('loki') !!}
   namespace: larakube-shared
 spec:
   selector:
@@ -472,6 +495,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ $promtailConfigMapName }}
+  labels:{!! $labels('promtail') !!}
   namespace: larakube-shared
 data:
   promtail.yaml: |
@@ -511,6 +535,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ $promtailName }}
+  labels:{!! $labels('promtail') !!}
   namespace: larakube-shared
 spec:
   selector:
@@ -520,6 +545,9 @@ spec:
     metadata:
       labels:
         app: {{ $promtailName }}
+@foreach($tool->labels('promtail') as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       serviceAccountName: promtail
       tolerations:
@@ -664,6 +692,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: {{ $secretName }}
+  labels:{!! $labels('grafana') !!}
   namespace: larakube-shared
 type: Opaque
 data:
@@ -751,6 +780,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $grafanaName }}
+  labels:{!! $labels('grafana') !!}
   namespace: larakube-shared
 @unless($noPlex ?? false)
   annotations:
@@ -767,6 +797,9 @@ spec:
       labels:
         app: {{ $grafanaName }}
         instance: {{ $instance }}
+@foreach($tool->labels('grafana') as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: grafana
@@ -862,6 +895,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ $grafanaName }}
+  labels:{!! $labels('grafana') !!}
   namespace: larakube-shared
 spec:
   selector:

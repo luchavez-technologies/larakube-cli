@@ -219,7 +219,10 @@ enum SharedClusterService: string
             // (like Mailpit) instead of vestigial install-gated indirection.
             self::MAILPIT, self::TRAEFIK_DASHBOARD => null,
             self::CONSOLE => 'namespace larakube-system',
-            self::GRAFANA => 'deployment prometheus -n larakube-shared',
+            // By label, not name: monitoring's Deployments are per-instance
+            // (prometheus-{instance}), and `prometheus` alone would also match
+            // an unrelated Prometheus someone installed.
+            self::GRAFANA => 'deployment -l larakube.io/tool=monitor -n larakube-shared',
             self::UPTIME_KUMA => 'deployment uptime-kuma -n larakube-shared',
             self::VAULT => 'deployment vaultwarden -n larakube-vault',
             self::VPN => 'deployment vpn-management -n larakube-vpn',

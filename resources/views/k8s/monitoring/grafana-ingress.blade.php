@@ -2,12 +2,17 @@
     $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor');
     $ingressName = "grafana-{$instance}";
     $serviceName = "grafana-{$instance}";
+    $labels = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MONITOR, $instance)->labels('grafana');
 @endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $ingressName }}
   namespace: larakube-shared
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"

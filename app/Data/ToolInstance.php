@@ -129,6 +129,36 @@ final readonly class ToolInstance
         return $this->name($kind->value, $component);
     }
 
+    /**
+     * What every resource of this instance is labelled with. Identity lives
+     * here, not in the name: a name only has to read well, while discovery
+     * (backup, presence probes, teardown) selects on these — so a component
+     * named after its upstream can't be confused with that upstream's own
+     * Deployments.
+     *
+     * @return array<string, string>
+     */
+    public function labels(?string $component = null): array
+    {
+        return [
+            'larakube.io/managed-by' => 'larakube',
+            'larakube.io/tool' => $this->tool->value,
+            'larakube.io/component' => $component ?? $this->primaryComponentKey(),
+            'larakube.io/instance' => $this->instance,
+        ];
+    }
+
+    /** The label selector matching every resource of this instance. */
+    public function selector(?string $component = null): string
+    {
+        $labels = array_intersect_key(
+            $this->labels($component),
+            array_flip(['larakube.io/tool', 'larakube.io/instance'] + ($component !== null ? [2 => 'larakube.io/component'] : [])),
+        );
+
+        return implode(',', array_map(fn (string $k, string $v) => "{$k}={$v}", array_keys($labels), $labels));
+    }
+
     public function configMap(string $key, ?string $component = null): string
     {
         return $this->name($key, $component);
@@ -201,5 +231,10 @@ final readonly class ToolInstance
         $ref = $this->tool->dbSecretRef($this->instance, $this->engine);
 
         return $ref === null ? null : new ResourceRef('Secret', $ref['secret'], $ref['namespace']);
+    }
+
+    private function primaryComponentKey(): string
+    {
+        return $this->tool->primaryComponent($this->instance, $this->engine)->key;
     }
 }
