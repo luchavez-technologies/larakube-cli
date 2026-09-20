@@ -13,7 +13,7 @@ only — these four were in its table and were never fixed), memory
 ExternalSecret, nudges reconcile, **waits for a real sync before restarting**, and sets
 `reloader.stakater.com/auto=true` so later rotations restart the pod.
 
-Supporting components are current: ESO **v0.16.2** (well past the v0.11.0 caching bug),
+Supporting components are current: ESO **v2.11.0** in the repo, v0.16.2 on the cluster until `secrets:init` runs (both well past the v0.11.0 caching bug),
 Reloader **v1.0.69** running with 13 deployments annotated, OpenBao 2.6.1.
 
 ## The failure is state drift

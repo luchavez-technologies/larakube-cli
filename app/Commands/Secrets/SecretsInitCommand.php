@@ -94,14 +94,11 @@ class SecretsInitCommand extends Command
             'namespace' => $ns,
         ])->render();
 
-        // ESO v0.16.0 dropped the v1alpha1 CRD API version entirely — a CRD
-        // whose status.storedVersions still lists v1alpha1 (only possible on
-        // an install old enough to predate v1beta1) would reject the new CRD
-        // schema outright. This CLI has only ever written v1beta1/v1 objects,
-        // so this should always be a no-op in practice, but it's the exact
-        // guard ESO's own upgrade docs prescribe before applying a newer CRD
-        // bundle over live objects — cheap insurance against corrupting the
-        // ~20 tools' worth of already-live ExternalSecrets across a cluster.
+        // A CRD apply is rejected when status.storedVersions names a version
+        // the new schema no longer lists. ESO's bundle keeps v1beta1 (unserved)
+        // but dropped v1alpha1, so an install old enough to still have
+        // v1alpha1 stored has to be pruned first. Cheap insurance before
+        // applying a newer CRD bundle over ~20 tools' live ExternalSecrets.
         $this->pruneStaleStoredCrdVersions($kubectl);
 
         $temporaryDirectory = TemporaryDirectory::make();
@@ -115,9 +112,9 @@ class SecretsInitCommand extends Command
         // --timeout flag, or a rejected apply / stuck rollout prints ✔ and
         // this command claims success regardless (confirmed live on
         // Documenso, 2026-08-05).
-        // --server-side is required as of ESO's CRD bundle growing past the
-        // ~262KB last-applied-configuration annotation limit client-side
-        // apply enforces — confirmed needed for v0.16.2's bundle.
+        // --server-side is required: ESO's CRD bundle is far past the ~262KB
+        // last-applied-configuration annotation limit client-side apply
+        // enforces.
         // --force-conflicts: every existing install applied these resources
         // client-side (plain `kubectl apply -f`) before this change, so the
         // first server-side apply here is switching field-ownership
@@ -139,7 +136,7 @@ class SecretsInitCommand extends Command
             return 1;
         }
 
-        // v0.16.2 added a webhook + cert-controller alongside the main
+        // ESO ships a webhook + cert-controller alongside the main
         // reconciler (see eso.blade.php's header comment for why the webhook
         // isn't optional: its ValidatingWebhookConfiguration defaults to
         // failurePolicy: Fail, which would reject every ExternalSecret/

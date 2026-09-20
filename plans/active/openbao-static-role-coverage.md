@@ -141,7 +141,20 @@ Fixing this took four layered changes, not one:
 
 **Verified fixed:** a fresh `secrets:rotate --tool=mail --force` after all four fixes landed produced a password that authenticates successfully via the real network-path test, and Stalwart's pod is `1/1 Running`, 0 restarts.
 
-**Still pending, not urgent:** the plan's originally-approved scope was a two-hop upgrade all the way to latest stable (v2.9.0 as of this writing) — only hop 1 (v0.16.2) has landed. Hop 2 is optional now that the actual fix (`GeneratorState`) is already in place at v0.16.2, but was the user's explicit choice for "a lasting solution," so it's still worth finishing rather than declaring done at the first version that happened to work.
+**Hop 2 is in the code, not yet on the cluster:** the vendored bundle and CRDs
+are now ESO **v2.11.0**. Hop 1 (v0.16.2) is what made this possible — it serves
+both `v1beta1` and `v1`, and every manifest this CLI writes is already `v1`, so
+nothing had to be rewritten. The v2 bundle still lists `v1beta1` in the CRDs
+(unserved), so applying it over live objects is accepted even though the four
+core CRDs still name `v1beta1` in `status.storedVersions`.
+
+Apply with `larakube secrets:init production`, then check the three ESO
+Deployments come back Ready and the tools' ExternalSecrets still report
+`SecretSynced`.
+
+Optional hygiene afterwards, by hand (no migration code in the CLI): rewrite the
+live objects so `status.storedVersions` drops to `["v1"]` — otherwise a future
+bundle that finally removes `v1beta1` would reject the CRD apply.
 
 ---
 
