@@ -142,6 +142,6 @@ class MeetInitCommand extends Command
     {
         // Label-based: the bridge's Deployment name is instance-suffixed but
         // its pod label stays stable (app: meet-lk-jwt).
-        return trim(Process::run("{$kubectl} get deployment -l app=meet-lk-jwt -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app=meet-lk-jwt');
     }
 }

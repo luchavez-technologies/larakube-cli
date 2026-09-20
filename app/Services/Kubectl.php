@@ -180,6 +180,12 @@ final readonly class Kubectl
         return trim($this->run(['get', 'deployment', $name, '-n', $namespace, '--no-headers', '--ignore-not-found'])->output) !== '';
     }
 
+    /** Whether any Deployment in $namespace carries this label selector. */
+    public function hasDeploymentLabelled(string $namespace, string $selector): bool
+    {
+        return trim($this->run(['get', 'deployment', '-n', $namespace, '-l', $selector, '--no-headers', '--ignore-not-found'])->output) !== '';
+    }
+
     public function exists(ResourceRef $ref): bool
     {
         return trim($this->run(['get', $ref->ref(), '-n', $ref->namespace, '-o', 'name', '--ignore-not-found'])->output) !== '';

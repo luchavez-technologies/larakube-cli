@@ -17,7 +17,6 @@ use Illuminate\Support\Str;
 use function Laravel\Prompts\select;
 
 use Saloon\Exceptions\Request\FatalRequestException;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait InteractsWithSecrets
 {
@@ -36,9 +35,7 @@ trait InteractsWithSecrets
     /** OpenBao secrets backend Deployment present? */
     protected function isSecretsInstalled(string $kubectl, string $ns): bool
     {
-        $openbao = Process::run("{$kubectl} get deployment openbao-backend -n {$ns} --no-headers")->output();
-
-        return trim($openbao) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'openbao-backend');
     }
 
     /** True when openbao-bootstrap secret exists. */
@@ -238,11 +235,7 @@ trait InteractsWithSecrets
                     '  unseal-key: '.base64_encode($unsealKey),
                 ]);
 
-                $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-                $tmp = $temporaryDirectory->path().'/openbao-bootstrap.yaml';
-                file_put_contents($tmp, $yaml);
-                Process::run("{$kubectl} apply -f {$tmp}");
-                $temporaryDirectory->delete();
+                Kubectl::fromPrefix($kubectl)->apply($yaml);
             });
 
             $this->withSpin('Unsealing OpenBao...', function () use ($kubectl, $unsealKey): void {
@@ -444,10 +437,7 @@ trait InteractsWithSecrets
         if ($kubectl && $namespace) {
             $detected = [];
             foreach (SecretsBackend::cases() as $backend) {
-                $out = trim(Process::run(
-                    "{$kubectl} get deployment {$backend->getDeploymentName()} -n {$namespace} --no-headers --ignore-not-found",
-                )->output());
-                if ($out !== '') {
+                if (Kubectl::fromPrefix($kubectl)->hasDeployment($namespace, $backend->getDeploymentName())) {
                     $detected[] = $backend;
                 }
             }

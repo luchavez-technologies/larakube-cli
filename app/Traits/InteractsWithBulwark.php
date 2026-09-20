@@ -7,7 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 /**
  * Helpers for the Bulwark webmail tool — a JMAP client for Stalwart. Mirrors
@@ -34,9 +33,7 @@ trait InteractsWithBulwark
      */
     protected function isBulwarkInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment -n {$ns} -l app.kubernetes.io/part-of=webmail --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app.kubernetes.io/part-of=webmail');
     }
 
     /** Read a key from the webmail-secrets secret (optionally instance-suffixed). */

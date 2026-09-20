@@ -2,8 +2,8 @@
 
 namespace App\Traits;
 
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Process;
 use Throwable;
 
 trait InteractsWithOcisExtensions
@@ -124,12 +124,12 @@ trait InteractsWithOcisExtensions
      */
     protected function getInstalledOcisExtensions(string $kubectl, string $ns = 'larakube-shared'): array
     {
-        $res = Process::run("{$kubectl} exec -n {$ns} deploy/drive-ocis -- ls -1 /var/lib/ocis/web/apps 2>/dev/null");
-        if ($res->exitCode() !== 0) {
+        $res = Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/drive-ocis', ['ls', '-1', '/var/lib/ocis/web/apps']);
+        if (! $res->ok) {
             return [];
         }
 
-        $lines = array_map('trim', explode("\n", (string) $res->output()));
+        $lines = array_map('trim', explode("\n", $res->output));
 
         return array_values(array_filter($lines, fn ($line) => $line !== '' && ! str_contains($line, 'No such file')));
     }
@@ -139,16 +139,17 @@ trait InteractsWithOcisExtensions
      */
     protected function ensureOcisWebAssetAppsPath(string $kubectl, string $ns = 'larakube-shared'): bool
     {
-        $res = Process::run("{$kubectl} get deployment drive-ocis -n {$ns} -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"WEB_ASSET_APPS_PATH\")].value}' 2>/dev/null");
-        $current = trim((string) $res->output());
+        $kube = Kubectl::fromPrefix($kubectl);
+        $current = trim($kube->raw([
+            'get', 'deployment', 'drive-ocis', '-n', $ns,
+            '-o', 'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="WEB_ASSET_APPS_PATH")].value}',
+        ])->output);
 
         if ($current === '/var/lib/ocis/web/apps') {
             return true;
         }
 
-        $setRes = Process::run("{$kubectl} set env deployment/drive-ocis -n {$ns} WEB_ASSET_APPS_PATH=/var/lib/ocis/web/apps");
-
-        return $setRes->exitCode() === 0;
+        return $kube->raw(['set', 'env', 'deployment/drive-ocis', '-n', $ns, 'WEB_ASSET_APPS_PATH=/var/lib/ocis/web/apps'])->ok;
     }
 
     /**
@@ -195,9 +196,7 @@ trait InteractsWithOcisExtensions
             ."mkdir -p \"/var/lib/ocis/web/apps/{$folder}\" && tar -xzf \"\$TMP_FILE\" -C \"/var/lib/ocis/web/apps/{$folder}\"; "
             .'fi && rm -f "$TMP_FILE"';
 
-        $res = Process::run("{$kubectl} exec -i -n {$ns} deploy/drive-ocis -- sh -c ".escapeshellarg($script));
-
-        return $res->exitCode() === 0;
+        return Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/drive-ocis', ['sh', '-c', $script])->ok;
     }
 
     /**
@@ -208,8 +207,8 @@ trait InteractsWithOcisExtensions
         $parts = explode('.', $extension);
         $folder = end($parts);
 
-        $res = Process::run("{$kubectl} exec -n {$ns} deploy/drive-ocis -- rm -rf /var/lib/ocis/web/apps/{$extension} /var/lib/ocis/web/apps/{$folder}");
-
-        return $res->exitCode() === 0;
+        return Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/drive-ocis', [
+            'rm', '-rf', "/var/lib/ocis/web/apps/{$extension}", "/var/lib/ocis/web/apps/{$folder}",
+        ])->ok;
     }
 }

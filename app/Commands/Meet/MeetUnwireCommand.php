@@ -55,9 +55,7 @@ class MeetUnwireCommand extends Command
         // instance-suffixed but its pod label stays stable (app: meet-lk-jwt),
         // matching the Mail rename's precedent for the same reason: this
         // check has no resolved $instance in hand.
-        $bridgeExists = trim(Process::run(
-            "{$kubectl} get deployment -l app=meet-lk-jwt -n {$ns} --no-headers --ignore-not-found",
-        )->output()) !== '';
+        $bridgeExists = Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app=meet-lk-jwt');
 
         if (! isset($registry['chat']) && ! $bridgeExists) {
             $this->laraKubeInfo('Team Chat is not wired to Meet — nothing to do.');

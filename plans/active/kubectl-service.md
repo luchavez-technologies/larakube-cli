@@ -4,7 +4,7 @@
 `Tests\Support\FakeKubectl`, `tests/Unit/KubectlTest.php`). Stage 2 ✅ (every
 `~/.kube/config` prefix is `Kubectl::forContext()->prefix()`; a test forbids
 copies). Stage 2b ✅ (`forKubeconfig()`; only `Kubectl` sets KUBECONFIG for a
-kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 643 string-built kubectl commands (`KubectlTest`), down from 892.
+kubectl command, test-enforced). Stage 3 ✅. Stage 5 ✅ (`App\Services\ToolRegistry`, `FakeToolRegistry`). Stage 4 in progress: ratchet at 618 string-built kubectl commands (`KubectlTest`), down from 892.
 
 
 Stage 1 notes: the prefix is byte-identical to `contextKubectl()` (pinned
@@ -143,8 +143,11 @@ moves onto it and stops parsing command lines.
    `patch secret` calls, several of which put tokens and passwords in argv;
    a guard test keeps it that way. `secretValue()` decodes strictly (invalid
    base64 is null).
-   Next, in order: the remaining traits by count (`ReconcilesPenpotFlags`,
-   `InteractsWithScopedRbac`, ...), then each tool's commands. Also still in
+   Shared helpers are done: scoped RBAC, chat, Traefik ACME, backup, context
+   pruning, secrets, oCIS extensions, cluster context, supported drivers, and
+   the 35 "is it installed?" probes behind `hasDeployment()` /
+   `hasDeploymentLabelled()`. Next: each tool's commands, biggest first
+   (`SsoWireCommand`, `ChatInitCommand`, `VpnInitCommand`, `MonitorInitCommand`). Also still in
    argv: none. Every `--from-literal` and `patch secret` now goes through
    `putSecret()`/`patchSecret()`, and a guard test fails on either string.
    The `create secret --from-file` sites left (Synapse/MAS config, certs,
@@ -161,6 +164,14 @@ moves onto it and stops parsing command lines.
    - `SecretData` / `ConfigMapData`: one place for manifest JSON <-> values
      (base64 for Secrets); `putSecret(SecretData)`, `getSecret(): ?SecretData`
      replace the inline JSON in `putSecret()` and callers' own decoding.
+
+## Later: a fluent read builder
+`raw()` still carries 47 calls, 26 of them `get`. A builder for the read path
+(`$kubectl->get('deployment', $name)->in($ns)->ignoreNotFound()->json()`) would
+replace those argument arrays. Deliberately NOT a fluent flag API over every
+verb: a chain that can express any flag is freeform command building again, and
+the guard tests could no longer tell a safe call from one putting a token in
+argv. Intent-named verbs stay the primary API.
 
 ## Rules
 - Never put a secret value in argv: `putSecret()` and `exec(..., stdin:)` only.

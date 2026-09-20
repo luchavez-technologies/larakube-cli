@@ -3,7 +3,6 @@
 namespace App\Traits;
 
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 /**
@@ -48,7 +47,7 @@ trait InteractsWithMeet
      */
     protected function isMeetInstalled(string $kubectl, string $ns): bool
     {
-        return trim(Process::run("{$kubectl} get deployment -n {$ns} -l app.kubernetes.io/part-of=meet --no-headers --ignore-not-found")->output()) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app.kubernetes.io/part-of=meet');
     }
 
     /**

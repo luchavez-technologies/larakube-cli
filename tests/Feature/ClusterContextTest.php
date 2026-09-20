@@ -157,10 +157,10 @@ namespace Tests\Feature {
 
     test('switchClusterContext reflects whether kubectl config use-context succeeded', function (): void {
         $kubectl = fakeKubectl();
-        Process::fake(["{$kubectl} config use-context 'k3s-larakube'" => Process::result(exitCode: 0)]);
+        Process::fake(["{$kubectl} config use-context k3s-larakube" => Process::result(exitCode: 0)]);
         expect(clusterContext()->testSwitchClusterContext('k3s-larakube'))->toBeTrue();
 
-        Process::fake(["{$kubectl} config use-context 'missing-ctx'" => Process::result(exitCode: 1)]);
+        Process::fake(["{$kubectl} config use-context missing-ctx" => Process::result(exitCode: 1)]);
         expect(clusterContext()->testSwitchClusterContext('missing-ctx'))->toBeFalse();
     });
 }

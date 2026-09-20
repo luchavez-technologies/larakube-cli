@@ -7,7 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 /**
  * Helpers for the Stalwart mail server tool.
@@ -49,9 +48,7 @@ trait InteractsWithMail
      */
     protected function isMailInstalled(string $kubectl, string $ns): bool
     {
-        $out = Process::run("{$kubectl} get deployment -n {$ns} -l app=mail-stalwart --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app=mail-stalwart');
     }
 
     /**

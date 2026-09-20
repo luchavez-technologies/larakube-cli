@@ -8,6 +8,7 @@ use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 
 trait SupportedDriversTrait
 {
@@ -158,9 +159,9 @@ trait SupportedDriversTrait
             return $supported[0];
         }
 
-        $raw = \Illuminate\Support\Facades\Process::run(
-            "{$kubectl} get configmap plex-commons -n {$plexNamespace} -o jsonpath=".escapeshellarg('{.data.commons\.json}'),
-        )->output();
+        $raw = Kubectl::fromPrefix($kubectl)->raw(
+            ['get', 'configmap', 'plex-commons', '-n', $plexNamespace, '-o', 'jsonpath={.data.commons\.json}'],
+        )->output;
         $decoded = json_decode(trim($raw), true);
         $services = is_array($decoded) ? ($decoded['services'] ?? []) : [];
 
@@ -169,8 +170,7 @@ trait SupportedDriversTrait
             $name = $driver->value;
             $isEnabled = ($services[$name]['enabled'] ?? false) === true;
             if (! $isEnabled && in_array($name, ['postgres', 'mysql', 'mariadb'], true)) {
-                $check = trim(\Illuminate\Support\Facades\Process::run("{$kubectl} get deployment {$name} -n {$plexNamespace} --no-headers --ignore-not-found")->output());
-                $isEnabled = $check !== '';
+                $isEnabled = Kubectl::fromPrefix($kubectl)->hasDeployment($plexNamespace, $name);
             }
             if ($isEnabled) {
                 $active[] = $driver;
@@ -223,8 +223,7 @@ trait SupportedDriversTrait
         foreach ($supported as $driver) {
             $name = $driver->value;
             if (in_array($name, ['redis', 'valkey'], true)) {
-                $check = trim(\Illuminate\Support\Facades\Process::run("{$kubectl} get deployment {$name} -n {$plexNamespace} --no-headers --ignore-not-found")->output());
-                if ($check !== '') {
+                if (Kubectl::fromPrefix($kubectl)->hasDeployment($plexNamespace, $name)) {
                     $active[] = $driver;
                 }
             }
@@ -276,8 +275,7 @@ trait SupportedDriversTrait
         foreach ($supported as $driver) {
             $name = $driver->value;
             if (in_array($name, ['seaweedfs', 'minio', 'garage'], true)) {
-                $check = trim(\Illuminate\Support\Facades\Process::run("{$kubectl} get deployment {$name} -n {$plexNamespace} --no-headers --ignore-not-found")->output());
-                if ($check !== '') {
+                if (Kubectl::fromPrefix($kubectl)->hasDeployment($plexNamespace, $name)) {
                     $active[] = $driver;
                 }
             }
@@ -325,8 +323,7 @@ trait SupportedDriversTrait
             return $supported[0];
         }
 
-        $check = trim(\Illuminate\Support\Facades\Process::run("{$kubectl} get deployment meilisearch -n {$plexNamespace} --no-headers --ignore-not-found")->output());
-        if ($check !== '' && in_array(SearchDriver::MEILISEARCH, $supported, true)) {
+        if (Kubectl::fromPrefix($kubectl)->hasDeployment($plexNamespace, 'meilisearch') && in_array(SearchDriver::MEILISEARCH, $supported, true)) {
             return SearchDriver::MEILISEARCH;
         }
 

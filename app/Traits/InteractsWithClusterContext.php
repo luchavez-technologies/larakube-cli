@@ -19,7 +19,7 @@ trait InteractsWithClusterContext
         }
 
         // A short timeout prevents the CLI from hanging if the cluster is unreachable.
-        return Process::run(Kubectl::forContext(null)->prefix().' cluster-info --request-timeout=2s')->successful();
+        return Kubectl::forContext(null)->raw(['cluster-info', '--request-timeout=2s'])->ok;
     }
 
     /**
@@ -97,7 +97,7 @@ trait InteractsWithClusterContext
 
         // Fallback: if the API server is on localhost or 127.0.0.1 it's local
         // regardless of what the context is named (e.g. raw k3s "default").
-        $server = trim(Process::run(Kubectl::forContext(null)->prefix().' config view --minify -o jsonpath=\'{.clusters[0].cluster.server}\'')->output());
+        $server = trim(Kubectl::forContext(null)->raw(['config', 'view', '--minify', '-o', 'jsonpath={.clusters[0].cluster.server}'])->output);
 
         return str_contains($server, '127.0.0.1') || str_contains($server, 'localhost');
     }
@@ -143,7 +143,7 @@ trait InteractsWithClusterContext
      */
     protected function switchClusterContext(string $name): bool
     {
-        return Process::run(Kubectl::forContext(null)->prefix().' config use-context '.escapeshellarg($name))->successful();
+        return Kubectl::forContext(null)->raw(['config', 'use-context', $name])->ok;
     }
 
     /**
@@ -217,7 +217,7 @@ trait InteractsWithClusterContext
      */
     protected function kubectlCurrentContext(): string
     {
-        return trim(Process::run(Kubectl::forContext(null)->prefix().' config current-context')->output());
+        return trim(Kubectl::forContext(null)->raw(['config', 'current-context'])->output);
     }
 
     /**
@@ -228,7 +228,7 @@ trait InteractsWithClusterContext
      */
     protected function kubectlContextNames(): array
     {
-        $lines = explode("\n", Process::run(Kubectl::forContext(null)->prefix().' config get-contexts -o name')->output());
+        $lines = explode("\n", Kubectl::forContext(null)->raw(['config', 'get-contexts', '-o', 'name'])->output);
 
         return array_values(array_filter(array_map('trim', $lines)));
     }
