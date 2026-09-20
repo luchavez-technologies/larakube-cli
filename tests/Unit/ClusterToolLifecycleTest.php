@@ -277,3 +277,44 @@ test('vpnMiddlewareTarget() never produces a -main suffix for the default (no-in
         expect($target['name'])->not->toEndWith('-main');
     }
 });
+
+test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifests write', function (): void {
+    // The two halves have to agree: an ExternalSecret with creationPolicy=Merge
+    // cannot create its target, so a suffix the tool's templates don't use
+    // leaves the synced values reaching nothing. Live names as deployed.
+    $names = [];
+    foreach ([ClusterTool::CHAT, ClusterTool::MONITOR, ClusterTool::PASSWORDS, ClusterTool::SSO, ClusterTool::GIT, ClusterTool::NOTES, ClusterTool::MAIL, ClusterTool::SIGN, ClusterTool::DATA, ClusterTool::VPN] as $tool) {
+        $names[$tool->value] = [
+            $tool->openbaoSyncConfig('inst')['secret'] ?? null,
+            $tool->dbSecretRef('inst')['secret'] ?? null,
+        ];
+    }
+
+    expect($names)->toBe([
+        // Fixed names — templates never adopted the instance suffix.
+        'chat' => ['chat-secrets', 'chat-secrets'],
+        'monitor' => ['monitor-secrets', 'monitor-secrets'],
+        'passwords' => ['vault-secrets', 'vault-secrets'],
+        'sso' => [null, 'sso-secrets'],
+        // Instance-suffixed, the way their manifests name them.
+        'git' => ['forgejo-inst', 'forgejo-inst'],
+        'notes' => ['notes-secrets-inst', 'notes-secrets-inst'],
+        'mail' => ['stalwart-inst', 'stalwart-inst'],
+        'sign' => [null, 'sign-documenso-secrets-inst'],
+        'data' => [null, 'data-secrets-inst'],
+        'vpn' => ['vpn-management-secrets-inst', 'vpn-management-store-inst'],
+    ]);
+});
+
+test('without an instance every tool keeps its base Secret name', function (): void {
+    $dangling = [];
+    foreach (ClusterTool::cases() as $tool) {
+        foreach (array_filter([$tool->openbaoSyncConfig(null)['secret'] ?? null, $tool->dbSecretRef(null)['secret'] ?? null]) as $name) {
+            if (str_ends_with($name, '-')) {
+                $dangling[] = "{$tool->value}: {$name}";
+            }
+        }
+    }
+
+    expect($dangling)->toBeEmpty();
+});

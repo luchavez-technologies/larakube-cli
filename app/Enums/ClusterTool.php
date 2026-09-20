@@ -1305,17 +1305,33 @@ enum ClusterTool: string implements HasWorkloadComponents
         $vendor = $this->vendor();
         if ($vendor instanceof HasOpenbaoSync) {
             $config = ['namespace' => $this->namespace()] + $vendor->openbaoSyncConfig($instance);
-
-            if ($instance === null || $instance === '') {
-                return $config;
-            }
-
-            $config['secret'] = "{$config['secret']}-{$instance}";
+            $config['secret'] = $this->instanceSecretName($config['secret'], $instance);
 
             return $config;
         }
 
         return null;
+    }
+
+    /**
+     * Whether this tool's own manifests name its Secret `{base}-{instance}`.
+     *
+     * Not every tool has adopted that yet: the ones below write a fixed name,
+     * so suffixing here would point OpenBao's sync and the rotation
+     * ExternalSecret at a Secret that doesn't exist — a Merge-policy
+     * ExternalSecret can't create one, so those values reach nothing. Flip a
+     * tool over here when its templates adopt the suffix, never before.
+     * `plans/active/tool-instance-naming.md` replaces this list with one
+     * source for every resource name (ADR 0021).
+     */
+    public function instanceSuffixedSecrets(): bool
+    {
+        return match ($this) {
+            self::CHAT, self::MONITOR, self::PASSWORDS, self::SSO,
+            self::LINK, self::RECORD, self::SHEETS, self::RESUME,
+            self::TASKS, self::SUPPORT, self::ANALYTICS => false,
+            default => true,
+        };
     }
 
     /**
@@ -1340,11 +1356,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             }
 
             $ref = ['namespace' => $this->namespace()] + $ref;
-            if ($instance === null || $instance === '') {
-                return $ref;
-            }
-
-            $ref['secret'] = "{$ref['secret']}-{$instance}";
+            $ref['secret'] = $this->instanceSecretName($ref['secret'], $instance);
 
             return $ref;
         }
@@ -1400,6 +1412,14 @@ enum ClusterTool: string implements HasWorkloadComponents
         }
 
         return null;
+    }
+
+    /** `{base}-{instance}`, or `$base` for a tool whose manifests don't suffix. */
+    private function instanceSecretName(string $base, ?string $instance): string
+    {
+        return $instance === null || $instance === '' || ! $this->instanceSuffixedSecrets()
+            ? $base
+            : "{$base}-{$instance}";
     }
 
     /**
