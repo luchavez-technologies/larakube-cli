@@ -1327,7 +1327,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function instanceSuffixedSecrets(): bool
     {
         return match ($this) {
-            self::CHAT, self::MONITOR, self::PASSWORDS, self::SSO,
+            self::CHAT, self::PASSWORDS, self::SSO,
             self::LINK, self::RECORD, self::SHEETS, self::RESUME,
             self::TASKS, self::SUPPORT, self::ANALYTICS => false,
             default => true,
@@ -1415,7 +1415,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /** `{base}-{instance}`, or `$base` for a tool whose manifests don't suffix. */
-    private function instanceSecretName(string $base, ?string $instance): string
+    public function instanceSecretName(string $base, ?string $instance): string
     {
         return $instance === null || $instance === '' || ! $this->instanceSuffixedSecrets()
             ? $base

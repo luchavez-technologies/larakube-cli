@@ -86,7 +86,7 @@ class MonitorInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $password = $this->resolveGrafanaPassword($kubectl, $ns);
+        $password = $this->resolveGrafanaPassword($kubectl, $ns, $instance);
 
         // Grafana's own database (dashboards created/edited via the UI, not
         // the dashboards-as-code provisioned into the 'LaraKube' folder) was
@@ -104,7 +104,7 @@ class MonitorInitCommand extends Command
         $dbPassword = null;
 
         if (! $noPlex) {
-            $dbPassword = $this->readGrafanaDbPassword($kubectl, $ns) ?? Str::random(24);
+            $dbPassword = $this->readGrafanaDbPassword($kubectl, $ns, $instance) ?? Str::random(24);
 
             if (! $this->ensureCommons(['postgres'])) {
                 return 1;
@@ -469,8 +469,8 @@ class MonitorInitCommand extends Command
      * Return the existing Grafana admin password (stable across re-runs)
      * or generate a fresh one for first install.
      */
-    protected function resolveGrafanaPassword(string $kubectl, string $ns): string
+    protected function resolveGrafanaPassword(string $kubectl, string $ns, ?string $instance = null): string
     {
-        return $this->readGrafanaPassword($kubectl, $ns) ?? bin2hex(random_bytes(12));
+        return $this->readGrafanaPassword($kubectl, $ns, $instance) ?? bin2hex(random_bytes(12));
     }
 }

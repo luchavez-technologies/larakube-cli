@@ -60,13 +60,14 @@ test('isMonitoringInstalled reflects whether the grafana Deployment exists', fun
 });
 
 test('readGrafanaPassword decodes the admin secret, null when absent', function (): void {
+    // No instance: the manifests' own fallback, monitor-secrets-monitor.
     Process::fake([
-        "kubectl get secret monitor-secrets -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t'),
+        "kubectl get secret monitor-secrets-monitor -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t'),
     ]);
     expect(monitoringReader()->grafanaPassword('kubectl', 'larakube-shared'))->toBe('s3cr3t');
 
     Process::fake([
-        "kubectl get secret monitor-secrets -n larakube-shared -o jsonpath='{.data.password}'" => Process::result(output: '', exitCode: 1),
+        "kubectl get secret monitor-secrets-monitor -n larakube-shared -o jsonpath='{.data.password}'" => Process::result(output: '', exitCode: 1),
     ]);
     expect(monitoringReader()->grafanaPassword('kubectl', 'larakube-shared'))->toBeNull();
 });
@@ -79,7 +80,7 @@ test('monitoringAccess is null when monitoring is not installed, populated when 
 
     Process::fake([
         "{$kubectl} get deployment grafana -n larakube-shared --no-headers" => 'grafana   1/1   1   1   5d',
-        "{$kubectl} get secret monitor-secrets -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t'),
+        "{$kubectl} get secret monitor-secrets-grafana-kube -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t'),
     ]);
     $access = monitoringReader()->access('local', null);
 

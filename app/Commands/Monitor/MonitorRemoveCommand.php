@@ -50,7 +50,7 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
             'Removing Promtail RBAC...' => "serviceaccount promtail -n {$namespace}",
             'Removing Tempo...' => "deployment,svc,configmap,pvc tempo tempo-config tempo-storage -n {$namespace}",
             'Removing kube-state-metrics...' => "deployment,svc,serviceaccount kube-state-metrics -n {$namespace}",
-            'Removing Grafana...' => "deployment,svc,ingress,secret,configmap,pvc {$grafanaName} grafana monitor-secrets grafana-datasources grafana-dashboard-provider grafana-dashboards grafana-storage -n {$namespace}",
+            'Removing Grafana...' => "deployment,svc,ingress,secret,configmap,pvc {$grafanaName} grafana monitor-secrets-{$instance} grafana-datasources grafana-dashboard-provider grafana-dashboards grafana-storage -n {$namespace}",
             'Removing monitoring RBAC...' => 'clusterrole,clusterrolebinding larakube-prometheus larakube-promtail larakube-kube-state-metrics',
         ];
 

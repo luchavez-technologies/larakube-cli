@@ -7,6 +7,7 @@
     $lokiConfigMapName = "monitor-loki-config-{$instance}";
     $promtailName = "monitor-promtail-{$instance}";
     $promtailConfigMapName = "monitor-promtail-config-{$instance}";
+    $secretName = "monitor-secrets-{$instance}";
 @endphp
 ---
 # ── Prometheus RBAC ──────────────────────────────────────────────────────────
@@ -660,7 +661,7 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: monitor-secrets
+  name: {{ $secretName }}
   namespace: larakube-shared
 type: Opaque
 data:
@@ -751,7 +752,7 @@ metadata:
   namespace: larakube-shared
 @unless($noPlex ?? false)
   annotations:
-    {{-- Restart when monitor-secrets changes (an OpenBao password rotation). --}}
+    {{-- Restart when the credentials Secret changes (an OpenBao rotation). --}}
     reloader.stakater.com/auto: "true"
 @endunless
 spec:
@@ -774,7 +775,7 @@ spec:
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: monitor-secrets
+                  name: {{ $secretName }}
                   key: password
             - name: GF_SERVER_ROOT_URL
               value: "https://{{ $host }}"
@@ -813,7 +814,7 @@ spec:
             - name: GF_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: monitor-secrets
+                  name: {{ $secretName }}
                   key: db-password
 @endunless
           volumeMounts:

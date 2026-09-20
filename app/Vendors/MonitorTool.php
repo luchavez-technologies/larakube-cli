@@ -16,7 +16,7 @@ use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
-use Illuminate\Support\Facades\Process;
+use App\Services\Kubectl;
 
 /** The single vendor backing the MONITOR category — Grafana, Prometheus and Loki. */
 final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
@@ -139,12 +139,8 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
     public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
         $ns = ($instance === null || $instance === '') ? 'larakube-shared' : "larakube-shared-{$instance}";
-        $passVal = trim(Process::run(
-            "{$kubectl} get secret monitor-secrets -n {$ns} -o jsonpath='{.data.password}' --ignore-not-found",
-        )->output());
-        $decodedPass = $passVal !== '' ? (base64_decode($passVal, true) ?: '<unknown>') : '<unknown>';
-
         $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
+        $decodedPass = Kubectl::fromPrefix($kubectl)->secretValue($ns, "monitor-secrets-{$instanceName}", 'password') ?? '<unknown>';
         $lokiName = "monitor-loki-{$instanceName}";
         $promName = "monitor-prometheus-{$instanceName}";
 

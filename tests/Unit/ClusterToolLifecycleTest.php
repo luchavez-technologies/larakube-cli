@@ -291,12 +291,13 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
     }
 
     expect($names)->toBe([
-        // Fixed names — templates never adopted the instance suffix.
+        // Fixed names — templates haven't adopted the instance suffix yet.
         'chat' => ['chat-secrets', 'chat-secrets'],
-        'monitor' => ['monitor-secrets', 'monitor-secrets'],
+        'monitor' => ['monitor-secrets-inst', 'monitor-secrets-inst'],
         'passwords' => ['vault-secrets', 'vault-secrets'],
         'sso' => [null, 'sso-secrets'],
-        // Instance-suffixed, the way their manifests name them.
+        // Instance-suffixed, the way their manifests name them (monitor moved
+        // over first; chat, passwords and sso follow).
         'git' => ['forgejo-inst', 'forgejo-inst'],
         'notes' => ['notes-secrets-inst', 'notes-secrets-inst'],
         'mail' => ['stalwart-inst', 'stalwart-inst'],

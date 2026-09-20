@@ -32,16 +32,26 @@ trait InteractsWithMonitoring
         return str_contains($allDeployments, 'monitor-grafana');
     }
 
-    /** The existing Grafana admin password, or null when the secret isn't there. */
-    protected function readGrafanaPassword(string $kubectl, string $ns): ?string
+    /**
+     * Grafana's credentials Secret, named the way monitoring's manifests write
+     * it — including their fallback instance when no host is known, or a read
+     * would look for a name nothing deploys.
+     */
+    protected function monitorSecretName(?string $instance): string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'monitor-secrets', 'password');
+        return ClusterTool::MONITOR->instanceSecretName('monitor-secrets', $instance ?: 'monitor');
+    }
+
+    /** The existing Grafana admin password, or null when the secret isn't there. */
+    protected function readGrafanaPassword(string $kubectl, string $ns, ?string $instance = null): ?string
+    {
+        return $this->readClusterSecretKey($kubectl, $ns, $this->monitorSecretName($instance), 'password');
     }
 
     /** Grafana's Commons Postgres tenant password — read-or-generate, like the admin password above. */
-    protected function readGrafanaDbPassword(string $kubectl, string $ns): ?string
+    protected function readGrafanaDbPassword(string $kubectl, string $ns, ?string $instance = null): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'monitor-secrets', 'db-password');
+        return $this->readClusterSecretKey($kubectl, $ns, $this->monitorSecretName($instance), 'db-password');
     }
 
     /**
@@ -83,7 +93,7 @@ trait InteractsWithMonitoring
 
         return [
             'host' => $host,
-            'password' => $this->readGrafanaPassword($kubectl, $ns),
+            'password' => $this->readGrafanaPassword($kubectl, $ns, $instance),
             'prometheus' => "{$promName}.{$ns}.svc.cluster.local:9090",
             'loki' => "{$lokiName}.{$ns}.svc.cluster.local:3100",
         ];
