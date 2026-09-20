@@ -34,6 +34,11 @@ final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
         return 'support-chatwoot';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'chatwoot';
+    }
+
     public function smtpEnv(?string $instance = null): ?array
     {
         return [

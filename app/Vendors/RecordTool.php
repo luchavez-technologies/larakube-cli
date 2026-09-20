@@ -37,6 +37,11 @@ final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasC
         return 'record-sendrec';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'sendrec';
+    }
+
     public function smtpEnv(?string $instance = null): ?array
     {
         return [

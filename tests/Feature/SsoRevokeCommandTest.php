@@ -188,7 +188,7 @@ test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project,
     // Confirms the sweep actually reached every RBAC-gated tool's project,
     // not just the two the old code hardcoded.
     expect($searchedNames)->toContain('openbao-backend')
-        ->and($searchedNames)->toContain('monitor-grafana')
+        ->and($searchedNames)->toContain('grafana')
         ->and($searchedNames)->toContain('dashboard-headlamp')
         ->and($searchedNames)->toContain('link-kutt')
         ->and($searchedNames)->toContain('notes-outline')

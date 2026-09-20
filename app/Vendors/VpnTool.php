@@ -26,6 +26,11 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
         return 'vpn-management';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'management';
+    }
+
     public function components(?string $instance = null, ?string $engine = null): array
     {
         // Null-safe like ChatTool's: ClusterTool's forDeployment()'s reverse

@@ -3,6 +3,7 @@
 namespace App\Commands\Monitor;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
@@ -35,14 +36,14 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
     protected function teardown(string $kubectl, string $namespace): bool
     {
         $instance = $this->resolveInstance($kubectl) ?? 'monitor';
-        $grafanaName = "monitor-grafana-{$instance}";
-        $secretName = ClusterTool::MONITOR->instanceSecretName('monitor-secrets', $instance);
-        $prometheusName = "monitor-prometheus-{$instance}";
-        $prometheusConfigMapName = "monitor-prometheus-config-{$instance}";
-        $lokiDeployment = "monitor-loki-{$instance}";
-        $lokiConfigMap = "monitor-loki-config-{$instance}";
-        $promtailDaemonset = "monitor-promtail-{$instance}";
-        $promtailConfigMap = "monitor-promtail-config-{$instance}";
+        $grafanaName = "grafana-{$instance}";
+        $secretName = ToolInstance::forInstance(ClusterTool::MONITOR, $instance)->secret();
+        $prometheusName = "prometheus-{$instance}";
+        $prometheusConfigMapName = "prometheus-config-{$instance}";
+        $lokiDeployment = "loki-{$instance}";
+        $lokiConfigMap = "loki-config-{$instance}";
+        $promtailDaemonset = "promtail-{$instance}";
+        $promtailConfigMap = "promtail-config-{$instance}";
 
         $steps = [
             'Removing Prometheus...' => "deployment,svc,configmap,pvc,serviceaccount {$prometheusName} prometheus {$prometheusConfigMapName} prometheus-config prometheus-storage -n {$namespace}",

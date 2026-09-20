@@ -38,6 +38,11 @@ final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeployment
         return 'flow-n8n';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'n8n';
+    }
+
     public function commonsDatabaseList(): array
     {
         return ['n8n'];

@@ -37,6 +37,11 @@ final class InsightTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
         return 'insights-metabase';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'metabase';
+    }
+
     public function whiteLabel(): array
     {
         return ['app_name_key' => 'MB_SITE_NAME', 'logo_url_key' => 'MB_APPLICATION_LOGO_URL'];

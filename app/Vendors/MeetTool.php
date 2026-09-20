@@ -21,6 +21,11 @@ final class MeetTool implements ClusterToolVendor, HasDeploymentBaseName, HasWor
         return 'meet-livekit';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'livekit';
+    }
+
     /**
      * lk-jwt is LiveKit's token service — meet/lk-jwt.blade.php threads the
      * same instance suffix as livekit itself, so it belongs to this tool

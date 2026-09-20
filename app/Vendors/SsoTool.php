@@ -40,6 +40,11 @@ final class SsoTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         return 'sso-zitadel';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'zitadel';
+    }
+
     public function dbSecretRef(): ?array
     {
         return [

@@ -53,7 +53,7 @@ test('sso:unwire --domain= targets a specific instance instead of always the def
 test('sso:unwire delegates to sso:wire --remove', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*sso-app-monitor*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*sso-app-monitor*app-id*' => Process::result(output: base64_encode('app-1')),

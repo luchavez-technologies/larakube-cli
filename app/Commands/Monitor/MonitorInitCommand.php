@@ -2,6 +2,7 @@
 
 namespace App\Commands\Monitor;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -65,12 +66,12 @@ class MonitorInitCommand extends Command
 
         $host = $this->resolveToolHost(SharedClusterService::GRAFANA, ClusterTool::MONITOR, $env, $kubectl);
         $instance = ClusterTool::MONITOR->instanceSlugFromHost($host);
-        $grafanaDeployment = "monitor-grafana-{$instance}";
-        $prometheusDeployment = "monitor-prometheus-{$instance}";
-        $lokiDeployment = "monitor-loki-{$instance}";
-        $lokiConfigMap = "monitor-loki-config-{$instance}";
-        $promtailDaemonset = "monitor-promtail-{$instance}";
-        $promtailConfigMap = "monitor-promtail-config-{$instance}";
+        $grafanaDeployment = "grafana-{$instance}";
+        $prometheusDeployment = "prometheus-{$instance}";
+        $lokiDeployment = "loki-{$instance}";
+        $lokiConfigMap = "loki-config-{$instance}";
+        $promtailDaemonset = "promtail-{$instance}";
+        $promtailConfigMap = "promtail-config-{$instance}";
 
         [$withLogs, $withTraces] = $this->resolveMonitoringComponents();
 
@@ -122,9 +123,10 @@ class MonitorInitCommand extends Command
             // GitInitCommand — `{tool}:init` must never call
             // registerStaticRole()/isOpenBaoBootstrapped() to INITIATE
             // rotation, only to avoid clobbering it if already active.
-            $dbPassword = $this->resolveManagedDbPassword($kubectl, 'grafana', $dbPassword);
+            $tenant = ToolInstance::forInstance(ClusterTool::MONITOR, $instance)->database();
+            $dbPassword = $this->resolveManagedDbPassword($kubectl, $tenant, $dbPassword);
 
-            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'grafana', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $tenant, $dbPassword)) {
                 return 1;
             }
         }
@@ -354,10 +356,10 @@ class MonitorInitCommand extends Command
      */
     protected function reconcileMonitoringComponents(string $kubectl, string $ns, bool $withLogs, bool $withTraces, string $instance): array
     {
-        $grafanaPresent = Process::run("{$kubectl} get deployment/monitor-grafana-{$instance} -n {$ns} --no-headers")->successful()
+        $grafanaPresent = Process::run("{$kubectl} get deployment/grafana-{$instance} -n {$ns} --no-headers")->successful()
             || Process::run("{$kubectl} get deployment/grafana -n {$ns} --no-headers")->successful();
 
-        $lokiDeployment = "monitor-loki-{$instance}";
+        $lokiDeployment = "loki-{$instance}";
         $lokiPresent = Process::run("{$kubectl} get deployment/{$lokiDeployment} -n {$ns} --no-headers")->successful();
         $tempoPresent = Process::run("{$kubectl} get deployment/tempo -n {$ns} --no-headers")->successful();
 

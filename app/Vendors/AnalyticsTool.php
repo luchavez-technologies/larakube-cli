@@ -32,6 +32,11 @@ final class AnalyticsTool implements ClusterToolVendor, HasCommonsDatabases, Has
         return 'analytics-umami';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'umami';
+    }
+
     public function dbSecretRef(): ?array
     {
         return ['secret' => 'analytics-secrets', 'key' => 'db-password'];

@@ -28,7 +28,7 @@ test('reads the registry Secret and parses its list', function (): void {
 test('a missing Secret reads as an empty registry', function (): void {
     Process::fake(['*' => Process::result(output: '', exitCode: 1)]);
 
-    expect(ToolRegistry::on('kubectl')->rows())->toBe([]);
+    expect(ToolRegistry::on('kubectl')->rows())->toBeEmpty();
 });
 
 test('no instance given means the tool\'s sole row, never a guess between several', function (): void {

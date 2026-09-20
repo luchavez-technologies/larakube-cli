@@ -28,4 +28,9 @@ final class UptimeTool implements ClusterToolVendor, HasDeploymentBaseName, HasV
     {
         return 'uptime-kuma';
     }
+
+    public function canonicalComponentName(): string
+    {
+        return 'kuma';
+    }
 }

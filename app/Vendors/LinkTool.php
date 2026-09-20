@@ -25,6 +25,11 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommo
         return 'link-kutt';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'kutt';
+    }
+
     public function smtpEnv(?string $instance = null): ?array
     {
         $name = ($instance === null || $instance === '') ? 'link-kutt' : "link-kutt-{$instance}";

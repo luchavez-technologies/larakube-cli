@@ -1,7 +1,7 @@
 @php
     $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor');
-    $ingressName = "monitor-grafana-{$instance}";
-    $serviceName = "monitor-grafana-{$instance}";
+    $ingressName = "grafana-{$instance}";
+    $serviceName = "grafana-{$instance}";
 @endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress

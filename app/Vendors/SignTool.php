@@ -37,6 +37,11 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
         return 'sign-documenso';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'documenso';
+    }
+
     public function smtpEnv(?string $instance = null): ?array
     {
         return [

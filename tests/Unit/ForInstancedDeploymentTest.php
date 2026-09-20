@@ -34,8 +34,8 @@ test('components added to close the enum gaps are now discoverable', function ()
     // These follow the convention exactly but were invisible because
     // components() never declared them.
     foreach ([
-        'monitor-loki-monitor-luchtech-dev' => [ClusterTool::MONITOR, 'monitor-luchtech-dev'],
-        'monitor-prometheus-monitor-luchtech-dev' => [ClusterTool::MONITOR, 'monitor-luchtech-dev'],
+        'loki-monitor-luchtech-dev' => [ClusterTool::MONITOR, 'monitor-luchtech-dev'],
+        'prometheus-monitor-luchtech-dev' => [ClusterTool::MONITOR, 'monitor-luchtech-dev'],
         'meet-lk-jwt-meet-luchtech-dev' => [ClusterTool::MEET, 'meet-luchtech-dev'],
     ] as $deployment => [$tool, $instance]) {
         $hit = ClusterTool::forInstancedDeployment($deployment);

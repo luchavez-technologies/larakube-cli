@@ -28,4 +28,9 @@ final class WebmailTool implements ClusterToolVendor, HasDeploymentBaseName, Has
     {
         return 'webmail-bulwark';
     }
+
+    public function canonicalComponentName(): string
+    {
+        return 'bulwark';
+    }
 }

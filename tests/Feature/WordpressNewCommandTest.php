@@ -207,7 +207,7 @@ test('the env roll-up gives Bedrock the URL and environment keys it refuses to b
         ->and($local['WP_SITEURL'])->toBe($config->getAppUrl('local').'/wp')
         ->and($config->getAllPublicEnvironmentVariables('staging')['WP_ENV'])->toBe('staging')
         ->and($config->getAllPublicEnvironmentVariables('production')['WP_ENV'])->toBe('production')
-        ->and(array_intersect_key(wordpressManifestConfig(AppFramework::LARAVEL)->getAllPublicEnvironmentVariables('local'), $bedrockKeys))->toBe([]);
+        ->and(array_intersect_key(wordpressManifestConfig(AppFramework::LARAVEL)->getAllPublicEnvironmentVariables('local'), $bedrockKeys))->toBeEmpty();
 });
 
 test('WordPress keeps its uploads on the volume and gets none of Laravel\'s storage mounts', function (): void {

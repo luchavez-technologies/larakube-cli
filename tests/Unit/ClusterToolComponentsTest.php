@@ -35,7 +35,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         'analytics' => 'analytics-umami', 'crm' => 'crm-twenty',
         'desk' => 'desk-freescout', 'drive' => 'drive-ocis', 'errors' => 'glitchtip-web',
         'flow' => 'flow-n8n', 'insights' => 'insights-metabase',
-        'link' => 'link-kutt', 'mail' => 'mail-stalwart', 'monitor' => 'monitor-grafana',
+        'link' => 'link-kutt', 'mail' => 'mail-stalwart', 'monitor' => 'grafana',
         'notes' => 'notes-outline', 'passwords' => 'passwords-vaultwarden', 'record' => 'record-sendrec',
         'secrets' => 'openbao-backend', 'sheets' => 'sheet-teable', 'sign' => 'sign-documenso',
         'sso' => 'sso-zitadel', 'support' => 'support-chatwoot', 'tasks' => 'tasks-planka',

@@ -138,13 +138,13 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
 test('sso:wire registers a new OIDC client and wires it to Grafana', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
     Saloon::fake([
@@ -180,7 +180,7 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
     // live Deployment name (2026-08-20, replacing the earlier "LaraKube
     // RBAC: {brand}" scheme) — no separate naming convention to keep in sync.
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
-        && str_starts_with($request->body()->get('name'), 'monitor-grafana'));
+        && str_starts_with($request->body()->get('name'), 'grafana'));
 });
 
 test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, never as a literal env override', function (): void {
@@ -190,13 +190,13 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
     // monitor:init re-apply, exactly the bug this test guards against.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
     Saloon::fake([
@@ -234,13 +234,13 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
     // `kubectl set env deployment/X KEY-`.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
     Saloon::fake([
@@ -653,13 +653,13 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
 test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssertion', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-monitor*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
     Saloon::fake([
@@ -692,7 +692,7 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
 test('sso:wire aborts before registering an OIDC client if role-gating setup fails', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
@@ -846,15 +846,15 @@ test('sso:wire gates Outline behind Zitadel roles — the actual tool from the l
 test('sso:wire reuses an already-registered OIDC client', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*sso-app-monitor*client-id*' => Process::result(output: base64_encode('cached-cid')),
         '*sso-app-monitor*client-secret*' => Process::result(output: base64_encode('cached-secret')),
         '*sso-app-monitor*app-id*' => Process::result(output: base64_encode('cached-appid')),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
     // Keyed on the APP id, not the client id. Zitadel's app endpoint 404s on a
@@ -1145,13 +1145,13 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
 test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment*grafana*' => Process::result(output: 'monitor-grafana-grafana-dev-test   1/1   1   1   10d'),
+        '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*sso-app-monitor*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*sso-app-monitor*app-id*' => Process::result(output: base64_encode('app-1')),
         '*delete secret sso-app-monitor*' => Process::result(output: 'secret deleted'),
-        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/monitor-grafana env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/monitor-grafana restarted'),
+        '*set env deployment/*grafana*' => Process::result(output: 'deployment.apps/grafana env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/grafana restarted'),
     ]);
 
     Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);

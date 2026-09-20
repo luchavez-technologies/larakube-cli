@@ -134,11 +134,11 @@ test('monitor:init --no-logs removes a previously deployed log aggregation stack
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*get deployment/grafana*' => Process::result(output: 'grafana 1/1', exitCode: 0),
-        '*get deployment/monitor-loki*' => Process::result(output: 'loki 1/1', exitCode: 0),
+        '*get deployment/loki*' => Process::result(output: 'loki 1/1', exitCode: 0),
         '*get deployment/tempo*' => Process::result(output: '', exitCode: 1),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
-        '*delete deployment,svc,configmap,pvc monitor-loki*' => Process::result(output: 'deleted'),
-        '*delete daemonset,configmap monitor-promtail*' => Process::result(output: 'deleted'),
+        '*delete deployment,svc,configmap,pvc loki*' => Process::result(output: 'deleted'),
+        '*delete daemonset,configmap promtail*' => Process::result(output: 'deleted'),
         '*delete serviceaccount promtail*' => Process::result(output: 'deleted'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -161,8 +161,8 @@ test('monitor:init --no-logs removes a previously deployed log aggregation stack
         ->expectsOutputToContain('Waiting for Grafana after restart...')
         ->expectsOutputToContain('Log aggregation (Loki + Promtail) removed');
 
-    Process::assertRan(fn ($p) => str_contains($p->command, 'delete deployment,svc,configmap,pvc monitor-loki'));
-    Process::assertRan(fn ($p) => str_contains($p->command, 'delete daemonset,configmap monitor-promtail'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'delete deployment,svc,configmap,pvc loki'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'delete daemonset,configmap promtail'));
     Process::assertRan(fn ($p) => str_contains($p->command, 'rollout restart'));
     Process::assertNotRan('*delete deployment,svc,configmap,pvc tempo*');
 });
@@ -178,7 +178,7 @@ test('monitor:init --no-traces removes a previously deployed tempo stack and res
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*get deployment/grafana*' => Process::result(output: 'grafana 1/1', exitCode: 0),
-        '*get deployment/monitor-loki*' => Process::result(output: '', exitCode: 1),
+        '*get deployment/loki*' => Process::result(output: '', exitCode: 1),
         '*get deployment/tempo*' => Process::result(output: 'tempo 1/1', exitCode: 0),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
         '*delete deployment,svc,configmap,pvc tempo*' => Process::result(output: 'deleted'),
@@ -211,7 +211,7 @@ test('monitor:init re-running with matching flags is a no-op — no deletions, n
         '*create configmap*' => Process::result(output: 'configmap created'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*get deployment/grafana*' => Process::result(output: 'grafana 1/1', exitCode: 0),
-        '*get deployment/monitor-loki*' => Process::result(output: 'loki 1/1', exitCode: 0),
+        '*get deployment/loki*' => Process::result(output: 'loki 1/1', exitCode: 0),
         '*get deployment/tempo*' => Process::result(output: 'tempo 1/1', exitCode: 0),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -251,7 +251,7 @@ test('monitor:init allocates a real Commons Postgres database for Grafana instea
 
     $this->artisan('monitor:init local --no-logs')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Allocating database 'grafana' in the Commons");
+        ->expectsOutputToContain("Allocating database 'grafana_grafana_kube' in the Commons");
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'exec -i -n')
         && str_contains($p->command, 'larakube-plex')
@@ -337,17 +337,17 @@ test('monitoring shared blade view conditionally renders optional components bas
         'withTraces' => false,
     ])->render();
 
-    expect($metricsOnlyManifest)->toContain('app: monitor-prometheus-grafana-dev-test')
+    expect($metricsOnlyManifest)->toContain('app: prometheus-grafana-dev-test')
         ->toContain('app: kube-state-metrics')
-        ->toContain('app: monitor-grafana-grafana-dev-test')
+        ->toContain('app: grafana-grafana-dev-test')
         ->toContain('name: grafana-dashboard-provider')
         // Grafana's own DB must be Commons Postgres, not left on ephemeral
         // SQLite — see monitor:init's dedicated allocation test.
         ->toContain('GF_DATABASE_TYPE')
         ->toContain('value: postgres')
         ->toContain('db-password')
-        ->not->toContain('app: monitor-loki')
-        ->not->toContain('app: monitor-promtail')
+        ->not->toContain('app: loki')
+        ->not->toContain('app: promtail')
         ->not->toContain('app: tempo')
         ->not->toContain('name: Loki')
         ->not->toContain('name: Tempo')
@@ -365,11 +365,11 @@ test('monitoring shared blade view conditionally renders optional components bas
         'withTraces' => true,
     ])->render();
 
-    expect($fullManifest)->toContain('app: monitor-prometheus-grafana-dev-test')
+    expect($fullManifest)->toContain('app: prometheus-grafana-dev-test')
         ->toContain('app: kube-state-metrics')
-        ->toContain('app: monitor-grafana-grafana-dev-test')
-        ->toContain('app: monitor-loki-grafana-dev-test')
-        ->toContain('app: monitor-promtail-grafana-dev-test')
+        ->toContain('app: grafana-grafana-dev-test')
+        ->toContain('app: loki-grafana-dev-test')
+        ->toContain('app: promtail-grafana-dev-test')
         ->toContain('app: tempo')
         ->toContain('name: Loki')
         ->toContain('name: Tempo')
@@ -396,7 +396,7 @@ test('Grafana restarts when its rotated Commons password changes, and only when 
     ])->render();
 
     $grafana = fn (string $manifest) => collect(explode("\n---\n", $manifest))
-        ->first(fn (string $doc) => str_contains($doc, 'kind: Deployment') && str_contains($doc, 'name: monitor-grafana-grafana-dev-test'));
+        ->first(fn (string $doc) => str_contains($doc, 'kind: Deployment') && str_contains($doc, 'name: grafana-grafana-dev-test'));
 
     expect(Symfony\Component\Yaml\Yaml::parse($grafana($render(false)))['metadata']['annotations'])
         ->toBe(['reloader.stakater.com/auto' => 'true'])

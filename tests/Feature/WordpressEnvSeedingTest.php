@@ -93,11 +93,8 @@ test('a fresh Bedrock project gets a .env with its URLs and eight generated salt
         ->and($env['WP_SITEURL'])->toBe($config->getAppUrl('local').'/wp')
         ->and($env['WP_ENV'])->toBe('development')
         ->and(array_keys($salts))->toEqualCanonicalizing(WORDPRESS_ENV_SEEDING_SALTS)
-        ->and(array_unique($salts))->toHaveCount(8);
-
-    foreach ($salts as $salt) {
-        expect($salt)->toMatch('/^[0-9a-f]{64}$/');
-    }
+        ->and(array_unique($salts))->toHaveCount(8)
+        ->and($salts)->each->toMatch('/^[0-9a-f]{64}$/');
 
     $dir->delete();
 });
@@ -137,7 +134,7 @@ test('a cloud env file stops sharing salts with .env, and keeps its own afterwar
     $host->seed($config);
 
     expect($production)->toHaveCount(8)
-        ->and(array_intersect_assoc($production, $local))->toBe([])
+        ->and(array_intersect_assoc($production, $local))->toBeEmpty()
         ->and(wordpressEnvSeedingSalts($host->env($dir->path().'/.env')))->toBe($local)
         ->and(wordpressEnvSeedingSalts($host->env($dir->path().'/.env.production')))->toBe($production);
 

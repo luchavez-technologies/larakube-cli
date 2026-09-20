@@ -50,6 +50,11 @@ enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
         return 'tasks-planka';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'planka';
+    }
+
     public function smtpEnv(?string $instance = null): ?array
     {
         return [

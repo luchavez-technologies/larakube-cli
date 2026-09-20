@@ -51,6 +51,11 @@ final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommo
         return 'notes-outline';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'outline';
+    }
+
     public function smtpEnv(?string $instance = null): ?array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";

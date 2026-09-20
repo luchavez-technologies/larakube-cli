@@ -30,6 +30,11 @@ enum DeskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
         return 'desk-freescout';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'freescout';
+    }
+
     public function commonsDatabaseList(): array
     {
         return ['freescout'];

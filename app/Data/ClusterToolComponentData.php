@@ -65,4 +65,20 @@ class ClusterToolComponentData extends Data
             );
         }
     }
+
+    /** The same component under a different Deployment name (a naming migration). */
+    public function renamed(string $deployment): self
+    {
+        return new self(
+            key: $this->key,
+            role: $this->role,
+            deployment: $deployment,
+            container: $this->container,
+            resources: $this->resources,
+            bundledOnly: $this->bundledOnly,
+            sharesPrimarySecret: $this->sharesPrimarySecret,
+            backupVolume: $this->backupVolume,
+            backupPaths: $this->backupPaths,
+        );
+    }
 }

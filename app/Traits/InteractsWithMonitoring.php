@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -29,13 +30,13 @@ trait InteractsWithMonitoring
 
         $allDeployments = Process::run("{$kubectl} get deployment -n {$ns} -o jsonpath='{.items[*].metadata.name}'")->output();
 
-        return str_contains($allDeployments, 'monitor-grafana');
+        return str_contains($allDeployments, 'grafana');
     }
 
     /** Grafana's credentials Secret, as monitoring's manifests name it. */
     protected function monitorSecretName(?string $instance): string
     {
-        return ClusterTool::MONITOR->instanceSecretName('monitor-secrets', $instance);
+        return ToolInstance::forInstance(ClusterTool::MONITOR, $instance ?: 'monitor')->secret();
     }
 
     /** The existing Grafana admin password, or null when the secret isn't there. */
@@ -84,8 +85,8 @@ trait InteractsWithMonitoring
 
         $host = $this->resolveGrafanaHostReadOnly($env, $config);
         $instance = $host !== null ? ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor';
-        $lokiName = "monitor-loki-{$instance}";
-        $promName = "monitor-prometheus-{$instance}";
+        $lokiName = "loki-{$instance}";
+        $promName = "prometheus-{$instance}";
 
         return [
             'host' => $host,

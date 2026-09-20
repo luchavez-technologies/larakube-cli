@@ -38,6 +38,11 @@ final class Windmill implements ClusterToolVendor, HasCommonsDatabases, HasDeplo
         return 'flow-windmill';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'windmill';
+    }
+
     public function commonsDatabaseList(): array
     {
         return ['windmill'];

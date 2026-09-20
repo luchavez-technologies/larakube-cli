@@ -15,6 +15,8 @@ use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 use App\Services\Kubectl;
 
@@ -28,7 +30,12 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
 
     public function baseDeploymentName(): string
     {
-        return 'monitor-grafana';
+        return 'grafana';
+    }
+
+    public function canonicalComponentName(): string
+    {
+        return 'grafana';
     }
 
     /**
@@ -65,7 +72,7 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
         $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
 
         return [
-            'deployment' => "monitor-grafana-{$instanceName}",
+            'deployment' => "grafana-{$instanceName}",
             'secret' => 'grafana-smtp',
             'static' => [
                 'GF_SMTP_ENABLED' => 'true',
@@ -84,7 +91,7 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
         $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
 
         return [
-            'deployment' => "monitor-grafana-{$instanceName}",
+            'deployment' => "grafana-{$instanceName}",
             'secret' => 'grafana-oidc',
             'static' => [
                 'GF_AUTH_GENERIC_OAUTH_ENABLED' => 'true',
@@ -140,9 +147,10 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
     {
         $ns = ($instance === null || $instance === '') ? 'larakube-shared' : "larakube-shared-{$instance}";
         $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
-        $decodedPass = Kubectl::fromPrefix($kubectl)->secretValue($ns, 'monitor-secrets', 'password') ?? '<unknown>';
-        $lokiName = "monitor-loki-{$instanceName}";
-        $promName = "monitor-prometheus-{$instanceName}";
+        $secret = ToolInstance::forInstance(ClusterTool::MONITOR, $instanceName)->secret();
+        $decodedPass = Kubectl::fromPrefix($kubectl)->secretValue($ns, $secret, 'password') ?? '<unknown>';
+        $lokiName = "loki-{$instanceName}";
+        $promName = "prometheus-{$instanceName}";
 
         return [
             ['Grafana Login', "admin / {$decodedPass}"],
@@ -166,7 +174,7 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
     {
         $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
 
-        return "deployment/monitor-grafana-{$instanceName} -n larakube-shared";
+        return "deployment/grafana-{$instanceName} -n larakube-shared";
     }
 
     /**
@@ -193,17 +201,17 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
             new ClusterToolComponentData(
                 key: 'grafana',
                 role: ClusterToolComponentRole::PRIMARY,
-                deployment: $name('monitor-grafana'),
+                deployment: $name('grafana'),
             ),
             new ClusterToolComponentData(
                 key: 'prometheus',
                 role: ClusterToolComponentRole::WORKER,
-                deployment: $name('monitor-prometheus'),
+                deployment: $name('prometheus'),
             ),
             new ClusterToolComponentData(
                 key: 'loki',
                 role: ClusterToolComponentRole::WORKER,
-                deployment: $name('monitor-loki'),
+                deployment: $name('loki'),
             ),
         ];
     }

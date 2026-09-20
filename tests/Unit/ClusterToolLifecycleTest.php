@@ -293,10 +293,11 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
     expect($names)->toBe([
         // Fixed names — templates haven't adopted the instance suffix yet.
         'chat' => ['chat-secrets', 'chat-secrets'],
-        'monitor' => ['monitor-secrets', 'monitor-secrets'],
+        'monitor' => ['grafana-secrets-inst', 'grafana-secrets-inst'],
         'passwords' => ['vault-secrets', 'vault-secrets'],
         'sso' => [null, 'sso-secrets'],
-        // Instance-suffixed, the way their manifests name them.
+        // Canonical ({component}-{token}-{instance}) once a tool has migrated,
+        // otherwise the shape its manifests still write.
         'git' => ['forgejo-inst', 'forgejo-inst'],
         'notes' => ['notes-secrets-inst', 'notes-secrets-inst'],
         'mail' => ['stalwart-inst', 'stalwart-inst'],

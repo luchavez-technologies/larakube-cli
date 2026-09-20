@@ -17,4 +17,9 @@ final class DnsTool implements ClusterToolVendor, HasDeploymentBaseName
     {
         return 'external-dns';
     }
+
+    public function canonicalComponentName(): string
+    {
+        return 'external-dns';
+    }
 }

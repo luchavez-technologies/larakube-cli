@@ -88,7 +88,7 @@ test('with monitoring installed, the Commons keeps the Postgres and Redis export
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ['tool' => 'monitor', 'instance' => 'monitor-example-com', 'host' => 'monitor.example.com'],
         ]))),
-        '*get deployment monitor-prometheus-monitor-example-com *' => Process::result(output: 'deployment.apps/monitor-prometheus-monitor-example-com'),
+        '*get deployment prometheus-monitor-example-com *' => Process::result(output: 'deployment.apps/prometheus-monitor-example-com'),
         '*' => Process::result(output: ''),
     ]);
 

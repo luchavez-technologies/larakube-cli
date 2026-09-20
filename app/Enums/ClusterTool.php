@@ -415,6 +415,15 @@ enum ClusterTool: string implements HasWorkloadComponents
                         continue;
                     }
 
+                    // What follows has to look like an instance: those are
+                    // host-derived (ADR 0012), so always several segments.
+                    // Without this, a component named after its upstream
+                    // (`prometheus`, `redis`) would claim any third-party
+                    // Deployment sharing the name (`prometheus-server`).
+                    if (! str_contains(substr($deploymentName, strlen($component->deployment) + 1), '-')) {
+                        continue;
+                    }
+
                     if ($best === null || strlen($component->deployment) > strlen($best['component']->deployment)) {
                         $best = ['tool' => $tool, 'component' => $component];
                     }
@@ -1215,14 +1224,25 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         $vendor = $this->vendor($engine);
         if ($vendor instanceof HasWorkloadComponents) {
-            return $vendor->components($instance, $engine);
+            $components = $vendor->components($instance, $engine);
+
+            // A migrated tool names every component after itself: the keys are
+            // already the component names, so the vendor's legacy strings are
+            // only what the cluster still has until it is renamed.
+            return $this->resourceNaming() === ResourceNaming::CANONICAL
+                ? array_map(fn (ClusterToolComponentData $c) => $c->renamed(
+                    $instance === null || $instance === '' ? $c->key : "{$c->key}-{$instance}",
+                ), $components)
+                : $components;
         }
 
         if (! $vendor instanceof HasDeploymentBaseName) {
             throw new LogicException("{$this->value} vendor implements neither HasWorkloadComponents nor HasDeploymentBaseName.");
         }
 
-        $base = $vendor->baseDeploymentName();
+        $base = $this->resourceNaming() === ResourceNaming::CANONICAL
+            ? $vendor->canonicalComponentName()
+            : $vendor->baseDeploymentName();
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
         return [
@@ -1324,7 +1344,8 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function resourceNaming(): ResourceNaming
     {
         return match ($this) {
-            self::CHAT, self::MONITOR, self::PASSWORDS, self::SSO, self::LINK, self::RECORD,
+            self::MONITOR => ResourceNaming::CANONICAL,
+            self::CHAT, self::PASSWORDS, self::SSO, self::LINK, self::RECORD,
             self::SHEETS, self::RESUME, self::TASKS, self::SUPPORT,
             self::ANALYTICS => ResourceNaming::AS_SHIPPED,
             default => ResourceNaming::INSTANCE_SUFFIXED,
@@ -1419,7 +1440,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         }
 
         return match ($this->resourceNaming()) {
-            ResourceNaming::TOOL_INSTANCE => ToolInstance::forInstance($this, $instance)->secret(),
+            ResourceNaming::CANONICAL => ToolInstance::forInstance($this, $instance)->secret(),
             ResourceNaming::INSTANCE_SUFFIXED => "{$shippedName}-{$instance}",
             ResourceNaming::AS_SHIPPED => $shippedName,
         };

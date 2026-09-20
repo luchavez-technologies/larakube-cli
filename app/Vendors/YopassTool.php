@@ -50,6 +50,11 @@ final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
         return 'paste-yopass';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'yopass';
+    }
+
     /** Base Redis tenant name; each instance gets its own via the enum's commonsRedisTenants(). */
     public function commonsRedisKeys(): array
     {

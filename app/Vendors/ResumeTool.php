@@ -55,6 +55,11 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
         return 'resume-reactive';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'reactive';
+    }
+
     public function smtpEnv(?string $instance = null): ?array
     {
         return [

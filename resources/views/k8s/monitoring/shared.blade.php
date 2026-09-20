@@ -1,14 +1,15 @@
 @php
     $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor');
-    $grafanaName = "monitor-grafana-{$instance}";
-    $prometheusName = "monitor-prometheus-{$instance}";
-    $prometheusConfigMapName = "monitor-prometheus-config-{$instance}";
-    $lokiName = "monitor-loki-{$instance}";
-    $lokiConfigMapName = "monitor-loki-config-{$instance}";
-    $promtailName = "monitor-promtail-{$instance}";
-    $promtailConfigMapName = "monitor-promtail-config-{$instance}";
-    $secretName = 'monitor-secrets';
-    $dbName = 'grafana';
+    $grafanaName = "grafana-{$instance}";
+    $prometheusName = "prometheus-{$instance}";
+    $prometheusConfigMapName = "prometheus-config-{$instance}";
+    $lokiName = "loki-{$instance}";
+    $lokiConfigMapName = "loki-config-{$instance}";
+    $promtailName = "promtail-{$instance}";
+    $promtailConfigMapName = "promtail-config-{$instance}";
+    $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MONITOR, $instance);
+    $secretName = $tool->secret();
+    $dbName = $tool->database();
 @endphp
 ---
 # ── Prometheus RBAC ──────────────────────────────────────────────────────────

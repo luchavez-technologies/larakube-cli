@@ -46,6 +46,11 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return 'sheet-teable';
     }
 
+    public function canonicalComponentName(): string
+    {
+        return 'teable';
+    }
+
     public function smtpEnv(?string $instance = null): ?array
     {
         return [

@@ -31,6 +31,14 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         };
     }
 
+    public function canonicalComponentName(): string
+    {
+        return match ($this) {
+            self::POCKETBASE => 'pocketbase',
+            self::DIRECTUS => 'directus',
+        };
+    }
+
     public function smtpEnv(?string $instance = null): ?array
     {
         return match ($this) {

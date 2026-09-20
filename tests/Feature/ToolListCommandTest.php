@@ -238,7 +238,7 @@ function toolListRefreshFakes(string $registryJson = ''): void
         '*get secret larakube-tools-registry*' => Process::result(output: $registryJson),
         '*get deployment -n larakube-shared *' => Process::result(output: implode("\n", [
             'notes-outline-notes-luchtech-dev',   // conforms
-            'monitor-loki-monitor-luchtech-dev',  // conforms (was an enum gap)
+            'loki-monitor-luchtech-dev',  // conforms (was an enum gap)
             'external-dns-luchtech-dev',          // conforms, but DNS is headless
             'drive-ocis',                         // no suffix -> skipped
             'kube-state-metrics',                 // not a tool at all
