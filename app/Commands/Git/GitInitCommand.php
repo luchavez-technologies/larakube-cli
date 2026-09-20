@@ -192,7 +192,14 @@ class GitInitCommand extends Command
         // 40 hex chars: first 16 are the runner identifier, last 24 the secret.
         // Read-or-generate: a fresh secret on every re-run would orphan the
         // previously registered runner.
-        $runnerSecret = $this->readForgejoSecret($kubectl, $ns, $instance, 'runner-secret') ?? bin2hex(random_bytes(20));
+        // The first apply below writes 'pending' into this key, so a re-run
+        // reads that placeholder back — treat it as absent, exactly like the
+        // registry token does, or the runner is never rendered and its
+        // registration is attempted with the literal string 'pending'.
+        $runnerSecret = $this->readForgejoSecret($kubectl, $ns, $instance, 'runner-secret');
+        $runnerSecret = ($runnerSecret === null || $runnerSecret === '' || $runnerSecret === 'pending')
+            ? bin2hex(random_bytes(20))
+            : $runnerSecret;
         $oauthJwtSecret = $this->readForgejoSecret($kubectl, $ns, $instance, 'oauth-jwt-secret')
             ?? rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 
