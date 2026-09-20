@@ -287,7 +287,13 @@ class SecretsWireCommand extends Command
         });
 
         if (! $registered) {
+            // OpenBao's own words: the API response is the only thing that says
+            // whether this was a sealed backend, a missing database config, or
+            // a role Postgres doesn't have.
             $this->laraKubeError("Could not register the static role for {$tool->getLabel()}.");
+            if ($this->lastSecretsBackendError !== null) {
+                $this->laraKubeLine("  {$this->lastSecretsBackendError}");
+            }
 
             return false;
         }
