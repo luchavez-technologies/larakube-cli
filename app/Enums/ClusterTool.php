@@ -675,7 +675,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         if ($vendor instanceof HasSmtpWiring) {
             $schema = $vendor->smtpEnv($instance);
 
-            return $schema === null ? null : ['namespace' => $this->namespace(), 'also_patch' => $this->alsoPatchDeployments($instance, $engine)] + $schema;
+            return $schema === null ? null : $this->wiringSchema($schema, SecretKind::SMTP, $instance, $engine);
         }
 
         return null;
@@ -1101,7 +1101,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         if ($vendor instanceof HasOidcWiring) {
             $schema = $vendor->oidcEnv($instance);
 
-            return $schema === null ? null : ['namespace' => $this->namespace(), 'also_patch' => $this->alsoPatchDeployments($instance, $engine)] + $schema;
+            return $schema === null ? null : $this->wiringSchema($schema, SecretKind::OIDC, $instance, $engine);
         }
 
         return null;
@@ -1448,6 +1448,31 @@ enum ClusterTool: string implements HasWorkloadComponents
             ResourceNaming::INSTANCE_SUFFIXED => "{$shippedName}-{$instance}",
             ResourceNaming::AS_SHIPPED => $shippedName,
         };
+    }
+
+    /**
+     * A vendor's wiring schema with this tool's namespace, the deployments
+     * that share the Secret, and — for a tool on the naming convention — the
+     * Secret and Deployment names ToolInstance gives, so `sso:wire` and
+     * `mail:wire` write `{component}-{kind}-{instance}` instead of the
+     * instance-less name the vendor shipped with.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private function wiringSchema(array $schema, SecretKind $kind, ?string $instance, ?string $engine): array
+    {
+        $schema = ['namespace' => $this->namespace(), 'also_patch' => $this->alsoPatchDeployments($instance, $engine)] + $schema;
+
+        if ($instance === null || $instance === '' || $this->resourceNaming() !== ResourceNaming::CANONICAL) {
+            return $schema;
+        }
+
+        $names = ToolInstance::forInstance($this, $instance, $engine);
+        $schema['secret'] = $names->secret($kind);
+        $schema['deployment'] = $names->deployment();
+
+        return $schema;
     }
 
     /**
