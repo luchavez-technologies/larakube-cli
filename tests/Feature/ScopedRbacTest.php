@@ -93,23 +93,24 @@ test('scoped kubeconfig embeds server, CA, token and pins the namespace', functi
 });
 
 test('server and CA extraction read from the minified admin context', function (): void {
-    $rbac = scopedRbac();
+    $kubectl = scopedRbacKubectl();
 
-    expect($rbac->clusterServerCommand('admin-ctx'))
-        ->toContain('--minify')
-        ->toContain('--flatten')
-        ->toContain('admin-ctx')
-        ->toContain('clusters[0].cluster.server')
-        ->and($rbac->clusterCaDataCommand('admin-ctx'))->toContain('certificate-authority-data');
+    Process::fake([
+        "{$kubectl} config view --minify --flatten -o jsonpath='{.clusters[0].cluster.server}'" => 'https://1.2.3.4:6443',
+        "{$kubectl} config view --minify --flatten -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'" => 'CA==',
+    ]);
+
+    expect(scopedRbac()->clusterServer('admin-ctx'))->toBe('https://1.2.3.4:6443')
+        ->and(scopedRbac()->clusterCaData('admin-ctx'))->toBe('CA==');
 });
 
 test('ensureScopedRbac reflects whether the apply succeeded', function (): void {
     $kubectl = scopedRbacKubectl();
 
-    Process::fake(["{$kubectl} apply -f *" => Process::result(exitCode: 0)]);
+    Process::fake(["{$kubectl} apply -f -" => Process::result(exitCode: 0)]);
     expect(scopedRbac()->ensureScopedRbac('admin-ctx', 'myapp-production', 'myapp', 'production'))->toBeTrue();
 
-    Process::fake(["{$kubectl} apply -f *" => Process::result(exitCode: 1)]);
+    Process::fake(["{$kubectl} apply -f -" => Process::result(exitCode: 1)]);
     expect(scopedRbac()->ensureScopedRbac('admin-ctx', 'myapp-production', 'myapp', 'production'))->toBeFalse();
 });
 
@@ -117,9 +118,9 @@ test('mintScopedKubeconfig assembles a kubeconfig once the bound token appears',
     $kubectl = scopedRbacKubectl();
 
     Process::fake([
-        "{$kubectl} apply -f *" => Process::result(exitCode: 0),
-        "{$kubectl} -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.token}'" => base64_encode('tok3n'),
-        "{$kubectl} -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.ca\\.crt}'" => base64_encode('CADATA'),
+        "{$kubectl} apply -f -" => Process::result(exitCode: 0),
+        "{$kubectl} -n myapp-production get secret deployer-token -o jsonpath='{.data.token}'" => base64_encode('tok3n'),
+        "{$kubectl} -n myapp-production get secret deployer-token -o jsonpath='{.data.ca\\.crt}'" => base64_encode('CADATA'),
         "{$kubectl} config view --minify --flatten -o jsonpath='{.clusters[0].cluster.server}'" => 'https://1.2.3.4:6443',
     ]);
 
@@ -132,7 +133,7 @@ test('mintScopedKubeconfig assembles a kubeconfig once the bound token appears',
 });
 
 test('mintScopedKubeconfig returns null when the Secret apply fails', function (): void {
-    Process::fake([scopedRbacKubectl().' apply -f *' => Process::result(exitCode: 1)]);
+    Process::fake([scopedRbacKubectl().' apply -f -' => Process::result(exitCode: 1)]);
 
     expect(scopedRbac()->mintScopedKubeconfig('admin-ctx', 'myapp-production'))->toBeNull();
 });
@@ -141,9 +142,9 @@ test('mintScopedKubeconfig falls back to the admin context CA when the Secret ha
     $kubectl = scopedRbacKubectl();
 
     Process::fake([
-        "{$kubectl} apply -f *" => Process::result(exitCode: 0),
-        "{$kubectl} -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.token}'" => base64_encode('tok3n'),
-        "{$kubectl} -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.ca\\.crt}'" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} apply -f -" => Process::result(exitCode: 0),
+        "{$kubectl} -n myapp-production get secret deployer-token -o jsonpath='{.data.token}'" => base64_encode('tok3n'),
+        "{$kubectl} -n myapp-production get secret deployer-token -o jsonpath='{.data.ca\\.crt}'" => Process::result(output: '', exitCode: 1),
         "{$kubectl} config view --minify --flatten -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'" => base64_encode('FALLBACK-CA'),
         "{$kubectl} config view --minify --flatten -o jsonpath='{.clusters[0].cluster.server}'" => 'https://1.2.3.4:6443',
     ]);
@@ -157,7 +158,7 @@ test('mintScopedKubeconfig falls back to the admin context CA when the Secret ha
 
 test('pollSecretToken decodes the token once it appears, null on timeout', function (): void {
     Process::fake([
-        scopedRbacKubectl()." -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.token}'" => base64_encode('tok3n'),
+        scopedRbacKubectl()." -n myapp-production get secret deployer-token -o jsonpath='{.data.token}'" => base64_encode('tok3n'),
     ]);
     expect(scopedRbac()->pollSecretToken('admin-ctx', 'myapp-production', 'deployer-token'))->toBe('tok3n');
 });
@@ -166,12 +167,12 @@ test('readSecretCaData prefers the Secret CA, falling back to the admin context 
     $kubectl = scopedRbacKubectl();
 
     Process::fake([
-        "{$kubectl} -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.ca\\.crt}'" => 'SECRETCA==',
+        "{$kubectl} -n myapp-production get secret deployer-token -o jsonpath='{.data.ca\\.crt}'" => 'SECRETCA==',
     ]);
     expect(scopedRbac()->readSecretCaData('admin-ctx', 'myapp-production', 'deployer-token'))->toBe('SECRETCA==');
 
     Process::fake([
-        "{$kubectl} -n 'myapp-production' get secret 'deployer-token' -o jsonpath='{.data.ca\\.crt}'" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} -n myapp-production get secret deployer-token -o jsonpath='{.data.ca\\.crt}'" => Process::result(output: '', exitCode: 1),
         "{$kubectl} config view --minify --flatten -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'" => 'FALLBACKCA==',
     ]);
     expect(scopedRbac()->readSecretCaData('admin-ctx', 'myapp-production', 'deployer-token'))->toBe('FALLBACKCA==');

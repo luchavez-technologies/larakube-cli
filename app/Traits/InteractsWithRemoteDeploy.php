@@ -772,8 +772,8 @@ trait InteractsWithRemoteDeploy
         }
 
         // 3. Read server + CA from the admin context to assemble a standalone kubeconfig.
-        $server = trim(Process::run($this->clusterServerCommand($adminContext))->output());
-        $caData = trim(Process::run($this->clusterCaDataCommand($adminContext))->output());
+        $server = $this->clusterServer($adminContext);
+        $caData = $this->clusterCaData($adminContext);
         if ($server === '' || $caData === '') {
             $this->laraKubeError('Could not read cluster server/CA from the admin context.');
 

@@ -6,8 +6,8 @@ use App\Http\Integrations\Cloudflare\CloudflareConnector;
 use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\DeleteDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\GetIpRangesRequest;
+use App\Services\Kubectl;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Process;
 use JsonException;
 use Throwable;
 
@@ -28,26 +28,19 @@ trait ManagesTraefikAcmeChallenge
 
     protected function traefikUsesDnsChallenge(string $kubectl): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get secret ".self::TRAEFIK_ACME_TOKEN_SECRET.' -n traefik -o name --ignore-not-found',
-        )->output()) !== '';
+        return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'secret', self::TRAEFIK_ACME_TOKEN_SECRET, '-n', 'traefik', '-o', 'name', '--ignore-not-found'])->output) !== '';
     }
 
     /** Managed clusters (DOKS) keep acme.json on a PVC; VPS clusters use a hostPath. */
     protected function traefikIsManaged(string $kubectl): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get pvc traefik-acme -n traefik -o name --ignore-not-found",
-        )->output()) !== '';
+        return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'pvc', 'traefik-acme', '-n', 'traefik', '-o', 'name', '--ignore-not-found'])->output) !== '';
     }
 
     /** The ACME email the running Traefik already uses, if any. */
     protected function liveTraefikAcmeEmail(string $kubectl): ?string
     {
-        $args = Process::run(
-            "{$kubectl} get deployment traefik -n traefik "
-            ."-o jsonpath='{.spec.template.spec.containers[0].args}' --ignore-not-found",
-        )->output();
+        $args = $this->liveTraefikArgs($kubectl);
 
         return preg_match('/acme\.email=([^"\s,\]]+)/', $args, $m) === 1 ? $m[1] : null;
     }
@@ -73,9 +66,7 @@ trait ManagesTraefikAcmeChallenge
             // Fall through to what's already live.
         }
 
-        $args = Process::run(
-            "{$kubectl} get deployment traefik -n traefik -o jsonpath='{.spec.template.spec.containers[0].args}' --ignore-not-found",
-        )->output();
+        $args = $this->liveTraefikArgs($kubectl);
 
         return preg_match('/forwardedHeaders\.trustedIPs=([^"\s\]]+)/', $args, $m) === 1 ? explode(',', $m[1]) : [];
     }
@@ -88,7 +79,7 @@ trait ManagesTraefikAcmeChallenge
      */
     protected function clusterIngresses(string $kubectl): array
     {
-        $json = json_decode(Process::run("{$kubectl} get ingress -A -o json")->output(), true);
+        $json = Kubectl::fromPrefix($kubectl)->raw(['get', 'ingress', '-A', '-o', 'json'])->json();
 
         return array_values(array_map(function (array $item): array {
             $annotations = $item['metadata']['annotations'] ?? [];
@@ -171,10 +162,9 @@ trait ManagesTraefikAcmeChallenge
      */
     protected function storedCertificateDomains(string $kubectl): array
     {
-        $output = Process::run(
-            "{$kubectl} exec -n traefik deploy/traefik -- sh -c "
-            .escapeshellarg('cat /acme/acme.json /data/acme.json 2>/dev/null | grep -o \'"main": *"[^"]*"\''),
-        )->output();
+        $output = Kubectl::fromPrefix($kubectl)->exec('traefik', 'deploy/traefik', [
+            'sh', '-c', 'cat /acme/acme.json /data/acme.json 2>/dev/null | grep -o \'"main": *"[^"]*"\'',
+        ])->output;
 
         preg_match_all('/"main":\s*"([^"]+)"/', $output, $matches);
 
@@ -211,5 +201,14 @@ trait ManagesTraefikAcmeChallenge
         $connector->send(DeleteDnsRecordRequest::make($zoneId, (string) $recordId));
 
         return true;
+    }
+
+    /** The running Traefik's container arguments, as the jsonpath array string. */
+    private function liveTraefikArgs(string $kubectl): string
+    {
+        return Kubectl::fromPrefix($kubectl)->raw([
+            'get', 'deployment', 'traefik', '-n', 'traefik',
+            '-o', 'jsonpath={.spec.template.spec.containers[0].args}', '--ignore-not-found',
+        ])->output;
     }
 }

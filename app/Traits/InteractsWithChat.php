@@ -7,8 +7,6 @@ use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Helpers for the Team Chat tool (Matrix / Synapse + Element Web).
@@ -26,7 +24,7 @@ trait InteractsWithChat
     /** Chat Deployment present (Synapse)? */
     protected function isChatInstalled(string $kubectl, string $ns): bool
     {
-        return trim(Process::run("{$kubectl} get deployment chat-synapse -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+        return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', 'chat-synapse', '-n', $ns, '--no-headers', '--ignore-not-found'])->output) !== '';
     }
 
     /** Which engine is installed? Always returns 'matrix' when present. */
@@ -66,13 +64,7 @@ trait InteractsWithChat
      */
     protected function readChatWiredSmtp(string $kubectl, string $ns): ?array
     {
-        $read = function (string $key) use ($kubectl, $ns): ?string {
-            $out = trim(Process::run(
-                "{$kubectl} get secret chat-smtp -n {$ns} -o jsonpath='{.data.{$key}}'",
-            )->output());
-
-            return $out !== '' ? (string) base64_decode($out) : null;
-        };
+        $read = fn (string $key): ?string => Kubectl::fromPrefix($kubectl)->secretValue($ns, 'chat-smtp', $key);
 
         $host = $read('host');
         if ($host === null) {
@@ -156,13 +148,7 @@ trait InteractsWithChat
      */
     protected function readChatWiredOidc(string $kubectl, string $ns): ?array
     {
-        $read = function (string $key) use ($kubectl, $ns): ?string {
-            $out = trim(Process::run(
-                "{$kubectl} get secret chat-oidc -n {$ns} -o jsonpath='{.data.{$key}}'",
-            )->output());
-
-            return $out !== '' ? (string) base64_decode($out) : null;
-        };
+        $read = fn (string $key): ?string => Kubectl::fromPrefix($kubectl)->secretValue($ns, 'chat-oidc', $key);
 
         $issuer = $read('issuer');
         if ($issuer === null) {
@@ -266,13 +252,7 @@ trait InteractsWithChat
         $secretName = "chat-mas-secrets-{$instance}";
         $serviceName = "chat-mas-{$instance}";
 
-        $read = function (string $key) use ($kubectl, $ns, $secretName): ?string {
-            $out = trim(Process::run(
-                "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath='{.data.{$key}}'",
-            )->output());
-
-            return $out !== '' ? (string) base64_decode($out) : null;
-        };
+        $read = fn (string $key): ?string => Kubectl::fromPrefix($kubectl)->secretValue($ns, $secretName, $key);
 
         $secret = $read('trust-secret');
         if ($secret === null) {
@@ -427,23 +407,17 @@ trait InteractsWithChat
         }
 
         $smtp = $this->readChatWiredSmtp($kubectl, $ns);
-        $raw = trim(Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output());
-        if ($raw === '') {
+        $raw = Kubectl::fromPrefix($kubectl)->secretValue($ns, 'chat-synapse-config', 'homeserver.yaml');
+        if ($raw === null || $raw === '') {
             return false;
         }
 
-        $homeserver = $this->renderSynapseConfig((string) base64_decode($raw), $smtp, null, $mas);
+        $homeserver = $this->renderSynapseConfig($raw, $smtp, null, $mas);
 
         $meetJwtUrl = $this->readChatWiredMeet($kubectl, $ns);
         $homeserver = $this->renderSynapseCalling($homeserver, $meetJwtUrl, $mas['public_issuer']);
 
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $temporaryDirectory->path().'/homeserver.yaml';
-        file_put_contents($tmp, $homeserver);
-        $applied = Process::run(
-            "{$kubectl} create secret generic chat-synapse-config -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
-        )->successful();
-        $temporaryDirectory->delete();
+        $applied = Kubectl::fromPrefix($kubectl)->putSecret($ns, 'chat-synapse-config', ['homeserver.yaml' => $homeserver])->ok;
 
         if ($applied) {
             $this->recordChatAuthMode($kubectl, $ns, 'mas');

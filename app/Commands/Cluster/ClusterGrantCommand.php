@@ -333,7 +333,7 @@ class ClusterGrantCommand extends Command
 
         // 3. Token + CA + server → a teammate kubeconfig.
         $token = $this->pollSecretToken($adminContext, $accessNs, $sa.'-token');
-        $server = trim(Process::run($this->clusterServerCommand($adminContext))->output());
+        $server = $this->clusterServer($adminContext);
         $ca = $this->readSecretCaData($adminContext, $accessNs, $sa.'-token');
 
         if ($token === null || $token === '' || $server === '' || $ca === '') {

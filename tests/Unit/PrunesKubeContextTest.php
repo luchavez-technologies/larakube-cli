@@ -58,9 +58,9 @@ test('pruneKubeContext deletes the context, cluster, and user entries', function
 
         pruneKubeContextHelper()->prune(['k3s-larakube']);
 
-        Process::assertRan("{$kc} delete-context 'k3s-larakube'");
-        Process::assertRan("{$kc} delete-cluster 'k3s-larakube'");
-        Process::assertRan("{$kc} delete-user 'k3s-larakube'");
+        Process::assertRan("{$kc} delete-context k3s-larakube");
+        Process::assertRan("{$kc} delete-cluster k3s-larakube");
+        Process::assertRan("{$kc} delete-user k3s-larakube");
     });
 });
 

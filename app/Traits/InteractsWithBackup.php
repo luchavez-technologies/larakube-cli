@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Services\Kubectl;
 use App\Http\Integrations\Cloudflare\CloudflareConnector;
 use App\Http\Integrations\Cloudflare\Requests\CreateR2BucketRequest;
 use Illuminate\Support\Arr;
@@ -105,9 +106,9 @@ trait InteractsWithBackup
      */
     protected function larakubeNamespaces(string $kubectl): array
     {
-        $out = trim(Process::timeout(30)->run(
-            "{$kubectl} get namespace -o jsonpath='{.items[*].metadata.name}'",
-        )->output());
+        $out = trim(Kubectl::fromPrefix($kubectl)->raw(
+            ['get', 'namespace', '-o', 'jsonpath={.items[*].metadata.name}'], timeoutSeconds: 30,
+        )->output);
 
         if ($out === '') {
             return [];
@@ -119,9 +120,9 @@ trait InteractsWithBackup
     /** @return list<string> */
     protected function namespaceDeploymentNames(string $kubectl, string $namespace): array
     {
-        $out = trim(Process::timeout(30)->run(
-            "{$kubectl} get deployment -n {$namespace} -o jsonpath='{.items[*].metadata.name}'",
-        )->output());
+        $out = trim(Kubectl::fromPrefix($kubectl)->raw(
+            ['get', 'deployment', '-n', $namespace, '-o', 'jsonpath={.items[*].metadata.name}'], timeoutSeconds: 30,
+        )->output);
 
         return $out === '' ? [] : explode(' ', $out);
     }
@@ -135,9 +136,9 @@ trait InteractsWithBackup
      */
     protected function commonsDatabaseDriver(string $kubectl, string $plexNamespace = 'larakube-plex'): ?DatabaseDriver
     {
-        $raw = Process::timeout(30)->run(
-            "{$kubectl} get configmap plex-commons -n {$plexNamespace} -o jsonpath=".escapeshellarg('{.data.commons\.json}'),
-        )->output();
+        $raw = Kubectl::fromPrefix($kubectl)->raw(
+            ['get', 'configmap', 'plex-commons', '-n', $plexNamespace, '-o', 'jsonpath={.data.commons\.json}'], timeoutSeconds: 30,
+        )->output;
 
         $decoded = json_decode(trim($raw), true);
         $services = is_array($decoded) ? ($decoded['services'] ?? []) : [];
@@ -176,10 +177,10 @@ trait InteractsWithBackup
 
         $service = $driver->commonsServiceName();
 
-        $out = Process::timeout(60)->run(
-            "{$kubectl} exec deploy/{$service} -n {$plexNamespace} -c {$service} -- "
-            .'sh -c '.escapeshellarg($driver->commonsListDatabasesCommand()),
-        )->output();
+        $out = Kubectl::fromPrefix($kubectl)->exec(
+            $plexNamespace, "deploy/{$service}", ['sh', '-c', $driver->commonsListDatabasesCommand()],
+            container: $service, timeoutSeconds: 60,
+        )->output;
 
         return array_values(array_filter(array_map('trim', explode("\n", $out))));
     }
@@ -457,11 +458,9 @@ trait InteractsWithBackup
      */
     protected function resolveVolumeClaim(string $kubectl, array $target): ?array
     {
-        $raw = Process::timeout(60)->run(
-            "{$kubectl} get deploy {$target['deployment']} -n {$target['namespace']} -o json",
-        )->output();
-
-        $spec = json_decode(trim($raw), true);
+        $spec = Kubectl::fromPrefix($kubectl)->raw(
+            ['get', 'deploy', $target['deployment'], '-n', $target['namespace'], '-o', 'json'], timeoutSeconds: 60,
+        )->json();
 
         if (! is_array($spec)) {
             return null;

@@ -3,7 +3,6 @@
 namespace App\Traits;
 
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 
 trait PrunesKubeContext
 {
@@ -35,19 +34,19 @@ trait PrunesKubeContext
         // Target ~/.kube/config explicitly — that's where cluster:setup merges these
         // entries, and where the stale one lives (a shell $KUBECONFIG could point
         // elsewhere). Mirrors mergeK3sKubeconfig().
-        $kc = Kubectl::forKubeconfig($kubeConfig)->prefix().' config';
-        $current = trim(Process::run($kc.' current-context')->output());
+        $kubectl = Kubectl::forKubeconfig($kubeConfig);
+        $current = trim($kubectl->raw(['config', 'current-context'])->output);
 
         foreach ($contexts as $ctx) {
-            Process::run($kc.' delete-context '.escapeshellarg($ctx));
-            Process::run($kc.' delete-cluster '.escapeshellarg($ctx));
-            Process::run($kc.' delete-user '.escapeshellarg($ctx));
+            foreach (['delete-context', 'delete-cluster', 'delete-user'] as $verb) {
+                $kubectl->raw(['config', $verb, $ctx]);
+            }
         }
 
         // A current-context naming a now-removed cluster makes k9s/kubectl fail to
         // connect; clear it so the next setup (or k9s) starts from a clean slate.
         if ($current !== '' && in_array($current, $contexts, true)) {
-            Process::run($kc.' unset current-context');
+            $kubectl->raw(['config', 'unset', 'current-context']);
         }
     }
 }

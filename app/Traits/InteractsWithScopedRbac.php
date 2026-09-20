@@ -3,9 +3,7 @@
 namespace App\Traits;
 
 use App\Services\Kubectl;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
  * Mint per-app per-environment, namespace-scoped deploy credentials.
@@ -156,18 +154,16 @@ type: kubernetes.io/service-account-token
 YAML;
     }
 
-    /** Read the cluster API server URL from the admin context (CA inlined). Pure. */
-    public function clusterServerCommand(string $context): string
+    /** The cluster API server URL, from the admin context's minified kubeconfig. */
+    public function clusterServer(string $context): string
     {
-        return Kubectl::forContext($context)->prefix().' config view --minify --flatten'
-            .' -o jsonpath='.escapeshellarg('{.clusters[0].cluster.server}');
+        return $this->clusterConfigValue($context, '{.clusters[0].cluster.server}');
     }
 
-    /** Read the cluster CA (base64) from the admin context. Pure. */
-    public function clusterCaDataCommand(string $context): string
+    /** The cluster CA (base64), from the admin context's minified kubeconfig. */
+    public function clusterCaData(string $context): string
     {
-        return Kubectl::forContext($context)->prefix().' config view --minify --flatten'
-            .' -o jsonpath='.escapeshellarg('{.clusters[0].cluster.certificate-authority-data}');
+        return $this->clusterConfigValue($context, '{.clusters[0].cluster.certificate-authority-data}');
     }
 
     /**
@@ -216,13 +212,7 @@ YAML;
      */
     public function ensureScopedRbac(string $adminContext, string $namespace, string $app, string $env): bool
     {
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $file = $temporaryDirectory->path().'/rbac.yaml';
-        file_put_contents($file, $this->scopedRbacManifest($namespace, $app, $env));
-        $result = Process::run(Kubectl::forContext($adminContext)->prefix().' apply -f '.escapeshellarg($file));
-        $temporaryDirectory->delete();
-
-        return $result->successful();
+        return Kubectl::forContext($adminContext)->apply($this->scopedRbacManifest($namespace, $app, $env))->ok;
     }
 
     /**
@@ -236,43 +226,24 @@ YAML;
     {
         $sa ??= $this->deployerName();
         $secretName = $sa.'-token';
-        $ctx = Kubectl::forContext($adminContext)->prefix();
-        $ns = escapeshellarg($namespace);
-        $secret = escapeshellarg($secretName);
 
         // 1. Apply the bound-token Secret (admin).
-        $tokenTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $file = $tokenTemporaryDirectory->path().'/token-secret.yaml';
-        file_put_contents($file, $this->tokenSecretManifest($namespace, $sa, $secretName));
-        $applied = Process::run($ctx.' apply -f '.escapeshellarg($file));
-        $tokenTemporaryDirectory->delete();
-        if (! $applied->successful()) {
+        if (! Kubectl::forContext($adminContext)->apply($this->tokenSecretManifest($namespace, $sa, $secretName))->ok) {
             return null;
         }
 
         // 2. Poll until k8s populates .data.token (controller fills it in async).
-        $token = '';
-        for ($i = 0; $i < 15; $i++) {
-            $b64 = trim(Process::run($ctx.' -n '.$ns.' get secret '.$secret.' -o jsonpath='.escapeshellarg('{.data.token}'))->output());
-            if ($b64 !== '') {
-                $token = (string) base64_decode($b64);
-                break;
-            }
-            Sleep::sleep(1);
-        }
-        if ($token === '') {
+        $token = $this->pollSecretToken($adminContext, $namespace, $secretName);
+        if ($token === null || $token === '') {
             return null;
         }
 
         // 3. CA — prefer the Secret's own ca.crt (already base64) for a
         //    self-contained config; fall back to the admin context's CA.
-        $caData = trim(Process::run($ctx.' -n '.$ns.' get secret '.$secret.' -o jsonpath='.escapeshellarg('{.data.ca\.crt}'))->output());
-        if ($caData === '') {
-            $caData = trim(Process::run($this->clusterCaDataCommand($adminContext))->output());
-        }
+        $caData = $this->readSecretCaData($adminContext, $namespace, $secretName);
 
         // 4. Server URL from the admin context.
-        $server = trim(Process::run($this->clusterServerCommand($adminContext))->output());
+        $server = $this->clusterServer($adminContext);
         if ($server === '' || $caData === '') {
             return null;
         }
@@ -287,11 +258,10 @@ YAML;
      */
     public function pollSecretToken(string $adminContext, string $namespace, string $secretName): ?string
     {
-        $base = Kubectl::forContext($adminContext)->prefix().' -n '.escapeshellarg($namespace)
-            .' get secret '.escapeshellarg($secretName).' -o jsonpath=';
+        $kubectl = Kubectl::forContext($adminContext);
 
         for ($i = 0; $i < 15; $i++) {
-            $b64 = trim(Process::run($base.escapeshellarg('{.data.token}'))->output());
+            $b64 = trim($kubectl->raw(['-n', $namespace, 'get', 'secret', $secretName, '-o', 'jsonpath={.data.token}'])->output);
             if ($b64 !== '') {
                 return (string) base64_decode($b64);
             }
@@ -304,27 +274,31 @@ YAML;
     /** The CA (base64) from a bound-token Secret, falling back to the admin context's CA. */
     public function readSecretCaData(string $adminContext, string $namespace, string $secretName): string
     {
-        $ca = trim(Process::run(
-            Kubectl::forContext($adminContext)->prefix().' -n '.escapeshellarg($namespace)
-            .' get secret '.escapeshellarg($secretName).' -o jsonpath='.escapeshellarg('{.data.ca\.crt}'),
-        )->output());
+        $ca = trim(Kubectl::forContext($adminContext)
+            ->raw(['-n', $namespace, 'get', 'secret', $secretName, '-o', 'jsonpath={.data.ca\.crt}'])->output);
 
-        return $ca !== '' ? $ca : trim(Process::run($this->clusterCaDataCommand($adminContext))->output());
+        return $ca !== '' ? $ca : $this->clusterCaData($adminContext);
     }
 
     /** kubectl client >= 1.24 — needed for bound-token Secrets / `create token`. */
     public function kubectlSupportsTokens(): bool
     {
-        $json = Process::run(Kubectl::current()->prefix().' version --client -o json')->output();
+        $json = Kubectl::current()->raw(['version', '--client', '-o', 'json'])->output;
         if ($json !== '' && preg_match('/"minor":\s*"(\d+)/', $json, $m)) {
             return (int) $m[1] >= 24;
         }
 
-        $plain = Process::run(Kubectl::current()->prefix().' version --client')->output();
+        $plain = Kubectl::current()->raw(['version', '--client'])->output;
         if ($plain !== '' && preg_match('/v1\.(\d+)/', $plain, $m)) {
             return (int) $m[1] >= 24;
         }
 
         return true; // can't determine → don't block.
+    }
+
+    /** One jsonpath value out of `config view --minify --flatten`. */
+    private function clusterConfigValue(string $context, string $jsonpath): string
+    {
+        return trim(Kubectl::forContext($context)->raw(['config', 'view', '--minify', '--flatten', '-o', "jsonpath={$jsonpath}"])->output);
     }
 }
