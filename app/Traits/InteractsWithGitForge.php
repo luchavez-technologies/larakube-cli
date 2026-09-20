@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -27,7 +28,7 @@ trait InteractsWithGitForge
     {
         $target = $instance !== null
             ? 'deployment '.ClusterTool::GIT->deploymentName($instance)
-            : 'deployment -l larakube-tool=git';
+            : 'deployment -l larakube.io/tool=git';
 
         return trim(Process::run("{$kubectl} get {$target} -n {$ns} --no-headers")->output()) !== '';
     }
@@ -90,7 +91,7 @@ trait InteractsWithGitForge
 
         $kubectl = Kubectl::forContext($context)->prefix();
         $sharedNs = $this->gitNamespace();
-        $secret = 'git-secrets-'.ClusterTool::GIT->instanceSlugFromHost($registryHost);
+        $secret = ToolInstance::forHost(ClusterTool::GIT, $registryHost)->secret();
 
         $username = trim((string) $this->readClusterSecretKey($kubectl, $sharedNs, $secret, 'username'));
         $token = trim((string) $this->readClusterSecretKey($kubectl, $sharedNs, $secret, 'registry-token'));

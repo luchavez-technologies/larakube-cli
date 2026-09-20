@@ -5,13 +5,24 @@
     $s3Host = preg_replace('#^https?://#', '', (string) ($s3Endpoint ?? ''));
 
     // Instance is always a real, host-derived slug — no bare/default form.
-    $secretsName = "git-secrets-{$instance}";
-    $dbSecretName = "forgejo-{$instance}";
-    $deploymentName = "git-forgejo-{$instance}";
-    $httpServiceName = "git-forgejo-http-{$instance}";
-    $sshServiceName = "git-forgejo-ssh-{$instance}";
-    $runnerDeploymentName = "git-forgejo-runner-{$instance}";
-    $runnerConfigMapName = "git-forgejo-runner-config-{$instance}";
+    // Every name comes from ToolInstance (ADR 0021).
+    $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::GIT, $instance);
+    $secretsName = $tool->secret();
+    // One Secret per component: rotation merges the DB password into it.
+    $dbSecretName = $secretsName;
+    $deploymentName = $tool->deployment('server');
+    $httpServiceName = $tool->name('http', 'server');
+    $sshServiceName = $tool->name('ssh', 'server');
+    $runnerDeploymentName = $tool->deployment('runner');
+    $runnerConfigMapName = $tool->configMap('config', 'runner');
+    $labels = function (string $component) use ($tool) {
+        $out = '';
+        foreach ($tool->labels($component) as $key => $value) {
+            $out .= "\n    {$key}: {$value}";
+        }
+
+        return $out;
+    };
     $buckets ??= ['forgejo-storage', 'forgejo-packages', 'forgejo-lfs'];
 @endphp
 apiVersion: v1
@@ -29,6 +40,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: {{ $secretsName }}
+  labels:{!! $labels('server') !!}
   namespace: larakube-shared
 type: Opaque
 data:
@@ -54,11 +66,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $deploymentName }}
+  labels:{!! $labels('server') !!}
   namespace: larakube-shared
-  {{-- The name is instance-suffixed, so "is Forgejo installed" probes select
-       on this label instead (SharedClusterService::FORGEJO). --}}
-  labels:
-    larakube-tool: git
 spec:
   replicas: 1
   strategy:
@@ -70,6 +79,9 @@ spec:
     metadata:
       labels:
         app: {{ $deploymentName }}
+@foreach($tool->labels('server') as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: forgejo
@@ -281,6 +293,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ $httpServiceName }}
+  labels:{!! $labels('server') !!}
   namespace: larakube-shared
 spec:
   selector:
@@ -295,6 +308,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ $sshServiceName }}
+  labels:{!! $labels('server') !!}
   namespace: larakube-shared
 spec:
   selector:
@@ -310,6 +324,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ $runnerConfigMapName }}
+  labels:{!! $labels('runner') !!}
   namespace: larakube-shared
 data:
   {{-- Jobs build images with the podman CLI as a REMOTE client of the Podman
@@ -338,6 +353,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $runnerDeploymentName }}
+  labels:{!! $labels('runner') !!}
   namespace: larakube-shared
 spec:
   replicas: 1
@@ -350,6 +366,9 @@ spec:
     metadata:
       labels:
         app: {{ $runnerDeploymentName }}
+@foreach($tool->labels('runner') as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
       {{-- The runner reads config.yml only at startup, and a ConfigMap change
            alone never restarts a pod — this checksum is what rolls it. --}}
       annotations:

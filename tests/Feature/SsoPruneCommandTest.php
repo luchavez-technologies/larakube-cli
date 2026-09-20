@@ -13,21 +13,21 @@ afterEach(function (): void {
 });
 
 /**
- * Five projects mirroring the live 2026-08-25 incident state on
- * larakube-159.89.205.239: the RBAC redesign renamed git's project
- * (`forgejo` → `git-forgejo`) and silently orphaned the original.
+ * Five projects mirroring a real incident: renaming git's project orphaned
+ * the original, which nothing referenced and nothing cleaned up. `forgejo` is
+ * what the tool's project is called now; `git-forgejo` is the leftover.
  */
 function ssoPruneProjects(): array
 {
     return [
         ['id' => 'p-zit', 'name' => 'ZITADEL'],
         ['id' => 'p-shared', 'name' => 'LaraKube Shared Tools'],
-        ['id' => 'p-live', 'name' => 'git-forgejo'],
+        ['id' => 'p-live', 'name' => 'forgejo'],
         // Registered multi-instance project — unreferenced by any sso-app
         // secret YET, but its instance sits in the tools registry, so the
         // per-instance rbacProjectName() must protect it.
         ['id' => 'p-notes', 'name' => 'notes-outline-notes-luchtech-dev'],
-        ['id' => 'p-stale', 'name' => 'forgejo'],
+        ['id' => 'p-stale', 'name' => 'git-forgejo'],
     ];
 }
 
@@ -73,7 +73,7 @@ function ssoPruneFakes(): void
 test('sso:prune deletes exactly the orphaned project when forced non-interactively', function (): void {
     ssoPruneFakes();
 
-    $this->artisan('sso:prune', ['--context' => 'ctx', '--project' => ['forgejo'], '--force' => true])
+    $this->artisan('sso:prune', ['--context' => 'ctx', '--project' => ['git-forgejo'], '--force' => true])
         ->assertExitCode(0);
 
     // Exactly one deletion — the stale project, not anything protected or
@@ -103,7 +103,8 @@ test('sso:prune accepts a project id as well as its name for --project=', functi
 test('sso:prune refuses --project= naming a wire-referenced or unknown project', function (): void {
     ssoPruneFakes();
 
-    $this->artisan('sso:prune', ['--context' => 'ctx', '--project' => ['git-forgejo'], '--force' => true])
+    // The live project, the one git's wiring points at.
+    $this->artisan('sso:prune', ['--context' => 'ctx', '--project' => ['forgejo'], '--force' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('is not a prunable project');
 
@@ -169,7 +170,7 @@ test('sso:prune refuses to run when the reference-set sweep itself fails', funct
 
     // An unreadable reference set is NOT an empty one — pruning blind could
     // delete a live project, so this must fail loudly before listing.
-    $this->artisan('sso:prune', ['--context' => 'ctx', '--project' => ['forgejo'], '--force' => true])
+    $this->artisan('sso:prune', ['--context' => 'ctx', '--project' => ['git-forgejo'], '--force' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('refusing to prune');
 

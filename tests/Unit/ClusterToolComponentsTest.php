@@ -63,7 +63,7 @@ test('GIT always requires a real instance — there is no bare/default deploymen
     // Unlike every other tool, GIT's server component was rebuilt with the
     // Postgres/OpenBao rename (2026-08-23) to have zero bare-name fallback:
     // the instance is always the host-derived slug, never null/''.
-    expect(ClusterTool::GIT->deploymentName('git-luchtech-dev'))->toBe('git-forgejo-git-luchtech-dev');
+    expect(ClusterTool::GIT->deploymentName('git-luchtech-dev'))->toBe('forgejo-git-luchtech-dev');
 });
 
 test('CHAT is the one tool where the PRIMARY component never gains an instance suffix', function (): void {
@@ -104,7 +104,7 @@ test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown
     expect($chatDeployments)->toBe(['chat-synapse', 'chat-web', 'chat-coturn', 'chat-synapse-db', 'chat-mas', 'chat-mas-db', 'chat-admin']);
 
     $gitDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::GIT->components('git-luchtech-dev'));
-    expect($gitDeployments)->toBe(['git-forgejo-git-luchtech-dev', 'git-forgejo-runner-git-luchtech-dev']);
+    expect($gitDeployments)->toBe(['forgejo-git-luchtech-dev', 'forgejo-runner-git-luchtech-dev']);
 
     $designDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::DESIGN->components());
     expect($designDeployments)->toBe(['design-penpot-backend', 'design-penpot-frontend', 'design-penpot-exporter']);

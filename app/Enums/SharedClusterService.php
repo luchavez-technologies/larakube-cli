@@ -228,7 +228,7 @@ enum SharedClusterService: string
             self::VPN => 'deployment vpn-management -n larakube-vpn',
             self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
             self::SECRETS => 'deployment openbao-backend -n larakube-secrets',
-            self::FORGEJO => 'deployment -l larakube-tool=git -n larakube-shared',
+            self::FORGEJO => 'deployment -l larakube.io/tool=git -n larakube-shared',
             self::FLOW => 'deployment -l larakube-tool=flow -n larakube-shared',
             self::SHEET => 'deployment sheet-teable -n larakube-shared',
             self::DRIVE => 'deployment drive-ocis -n larakube-shared',

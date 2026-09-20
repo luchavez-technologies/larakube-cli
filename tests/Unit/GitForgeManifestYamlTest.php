@@ -51,7 +51,7 @@ test('forgejo manifest renders valid multi-document YAML with public registratio
         }
         expect($parsed)->toBeArray()->and($parsed['kind'] ?? null)->not->toBeNull();
 
-        if (($parsed['kind'] ?? null) === 'Deployment' && ($parsed['metadata']['name'] ?? null) === 'git-forgejo-git-luchtech-dev') {
+        if (($parsed['kind'] ?? null) === 'Deployment' && ($parsed['metadata']['name'] ?? null) === 'forgejo-git-luchtech-dev') {
             $forgejoDeployment = $parsed;
         }
     }
@@ -90,17 +90,17 @@ test('runner config mounts the Podman socket into jobs and maps every label to t
         array_values(array_filter(array_map('trim', preg_split('/^---$/m', $rendered)), fn (string $doc) => $doc !== '')),
     );
 
-    $configMap = collect($documents)->firstWhere('metadata.name', 'git-forgejo-runner-config-git-example-com');
+    $configMap = collect($documents)->firstWhere('metadata.name', 'forgejo-runner-config-git-example-com');
     $runnerConfig = Yaml::parse($configMap['data']['config.yml']);
-    $forgejo = collect($documents)->first(fn (array $doc) => $doc['kind'] === 'Deployment' && $doc['metadata']['name'] === 'git-forgejo-git-example-com');
-    $runner = collect($documents)->firstWhere('metadata.name', 'git-forgejo-runner-git-example-com');
+    $forgejo = collect($documents)->first(fn (array $doc) => $doc['kind'] === 'Deployment' && $doc['metadata']['name'] === 'forgejo-git-example-com');
+    $runner = collect($documents)->firstWhere('metadata.name', 'forgejo-runner-git-example-com');
     $images = collect($runner['spec']['template']['spec']['containers'])->pluck('image');
 
     expect($runnerConfig['runner']['labels'])->toBe(['ubuntu-latest:docker://node:24-trixie', 'docker:docker://node:24-trixie'])
         ->and($runnerConfig['runner']['envs']['CONTAINER_HOST'])->toBe('unix:///var/run/docker.sock')
         ->and($runnerConfig['container']['docker_host'])->toBe('unix:///run/podman/podman.sock')
         ->and($runnerConfig['container']['network'])->toBe('host')
-        ->and($forgejo['metadata']['labels']['larakube-tool'])->toBe('git')
+        ->and($forgejo['metadata']['labels']['larakube.io/tool'])->toBe('git')
         ->and($images->all())->toContain('quay.io/podman/stable:v5.8.4', 'code.forgejo.org/forgejo/runner:13.1.0');
 });
 
@@ -126,7 +126,7 @@ test('changing the runner config changes the runner pod checksum, so the pod res
         $runner = collect(preg_split('/^---$/m', $rendered))
             ->map(fn (string $doc) => trim($doc))->filter()
             ->map(fn (string $doc) => Yaml::parse($doc))
-            ->firstWhere('metadata.name', 'git-forgejo-runner-git-example-com');
+            ->firstWhere('metadata.name', 'forgejo-runner-git-example-com');
 
         return $runner['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
     };

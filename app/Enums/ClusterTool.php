@@ -1226,13 +1226,11 @@ enum ClusterTool: string implements HasWorkloadComponents
         if ($vendor instanceof HasWorkloadComponents) {
             $components = $vendor->components($instance, $engine);
 
-            // A migrated tool names every component after itself: the keys are
-            // already the component names, so the vendor's legacy strings are
-            // only what the cluster still has until it is renamed.
+            // A migrated tool drops the category it used to repeat: what is
+            // left of the vendor's name IS the component (`git-forgejo-runner`
+            // -> `forgejo-runner`), and the instance identifies the install.
             return $this->resourceNaming() === ResourceNaming::CANONICAL
-                ? array_map(fn (ClusterToolComponentData $c) => $c->renamed(
-                    $instance === null || $instance === '' ? $c->key : "{$c->key}-{$instance}",
-                ), $components)
+                ? array_map(fn (ClusterToolComponentData $c) => $c->renamed($this->withoutCategory($c->deployment)), $components)
                 : $components;
         }
 
@@ -1344,7 +1342,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function resourceNaming(): ResourceNaming
     {
         return match ($this) {
-            self::MONITOR => ResourceNaming::CANONICAL,
+            self::MONITOR, self::GIT => ResourceNaming::CANONICAL,
             self::CHAT, self::PASSWORDS, self::SSO, self::LINK, self::RECORD,
             self::SHEETS, self::RESUME, self::TASKS, self::SUPPORT,
             self::ANALYTICS => ResourceNaming::AS_SHIPPED,
@@ -1430,6 +1428,12 @@ enum ClusterTool: string implements HasWorkloadComponents
         }
 
         return null;
+    }
+
+    /** `git-forgejo-runner-x` -> `forgejo-runner-x`: the category, dropped. */
+    public function withoutCategory(string $name): string
+    {
+        return str_starts_with($name, "{$this->value}-") ? substr($name, strlen($this->value) + 1) : $name;
     }
 
     /** The Secret this tool's manifests write, in whichever generation it is on. */

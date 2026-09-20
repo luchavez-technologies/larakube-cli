@@ -71,10 +71,10 @@ test('cloud Git host is null when none is configured for the env', function (): 
 });
 
 test('isGitInstalled probes the exact instance Deployment, or the git tool label without one', function (): void {
-    Process::fake(['kubectl get deployment git-forgejo-git-example-com -n larakube-shared --no-headers' => 'git-forgejo-git-example-com   1/1   1   1   5d']);
+    Process::fake(['kubectl get deployment forgejo-git-example-com -n larakube-shared --no-headers' => 'forgejo-git-example-com   1/1   1   1   5d']);
     expect(gitReader()->installed('kubectl', 'larakube-shared', 'git-example-com'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment -l larakube-tool=git -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 0)]);
+    Process::fake(['kubectl get deployment -l larakube.io/tool=git -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 0)]);
     expect(gitReader()->installed('kubectl', 'larakube-shared'))->toBeFalse();
 });
 
@@ -82,12 +82,12 @@ test('gitAccess probes the Deployment for the env host, and is null when it is a
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from(['hosts' => ['forgejo' => 'git.example.com']]);
-    $probe = "{$kubectl} get deployment git-forgejo-git-example-com -n larakube-shared --no-headers";
+    $probe = "{$kubectl} get deployment forgejo-git-example-com -n larakube-shared --no-headers";
 
     Process::fake([$probe => Process::result(output: '', exitCode: 1)]);
     expect(gitReader()->access('production', $config))->toBeNull();
 
-    Process::fake([$probe => 'git-forgejo-git-example-com   1/1   1   1   5d']);
+    Process::fake([$probe => 'forgejo-git-example-com   1/1   1   1   5d']);
     $access = gitReader()->access('production', $config);
 
     expect($access['host'])->toBe('git.example.com')
@@ -99,8 +99,8 @@ test('ensureForgejoPullSecret copies the registry token git:init minted for the 
     $create = "{$kubectl} create secret docker-registry forgejo-login -n 'demo-production' --docker-server='git.example.com' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local";
 
     Process::fake([
-        "{$kubectl} get secret git-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
-        "{$kubectl} get secret git-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok123'),
+        "{$kubectl} get secret forgejo-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
+        "{$kubectl} get secret forgejo-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok123'),
         "{$kubectl} delete secret forgejo-login -n 'demo-production' --ignore-not-found" => Process::result(output: 'deleted'),
         $create => Process::result(output: 'created'),
     ]);

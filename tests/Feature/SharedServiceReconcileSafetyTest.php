@@ -55,14 +55,14 @@ test('every probe-gated shared service reconciles an Ingress and nothing else', 
 });
 
 test('Forgejo is detected by its tool label, not the instance-suffixed Deployment name', function (): void {
-    expect(SharedClusterService::FORGEJO->presenceProbe())->toBe('deployment -l larakube-tool=git -n larakube-shared');
+    expect(SharedClusterService::FORGEJO->presenceProbe())->toBe('deployment -l larakube.io/tool=git -n larakube-shared');
 });
 
 test('up reconciles an installed Forgejo by applying only its instance Ingress', function (): void {
     $applied = [];
 
     Process::fake([
-        '*get deployment -l larakube-tool=git*' => Process::result(output: 'git-forgejo-git-example-test   1/1   1   1   5d'),
+        '*get deployment -l larakube.io/tool=git*' => Process::result(output: 'forgejo-git-example-test   1/1   1   1   5d'),
         '*create namespace*' => Process::result(output: 'namespace/larakube-shared configured'),
         'kubectl apply -f *' => function (PendingProcess $process) use (&$applied) {
             $applied[] = (string) $process->input;
@@ -79,13 +79,13 @@ test('up reconciles an installed Forgejo by applying only its instance Ingress',
     $ingress = Yaml::parse(trim($applied[0]));
 
     expect(reconcileSafetyKinds($applied[0]))->toBe(['Ingress'])
-        ->and($ingress['metadata']['name'])->toBe('git-forgejo-git-example-test')
-        ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('git-forgejo-http-git-example-test');
+        ->and($ingress['metadata']['name'])->toBe('forgejo-git-example-test')
+        ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('forgejo-http-git-example-test');
 });
 
 test('up skips Forgejo entirely when no labelled Deployment exists', function (): void {
     Process::fake([
-        '*get deployment -l larakube-tool=git*' => Process::result(output: ''),
+        '*get deployment -l larakube.io/tool=git*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
 

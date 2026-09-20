@@ -298,7 +298,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
         'sso' => [null, 'sso-secrets'],
         // Canonical ({component}-{token}-{instance}) once a tool has migrated,
         // otherwise the shape its manifests still write.
-        'git' => ['forgejo-inst', 'forgejo-inst'],
+        'git' => ['forgejo-secrets-inst', 'forgejo-secrets-inst'],
         'notes' => ['notes-secrets-inst', 'notes-secrets-inst'],
         'mail' => ['stalwart-inst', 'stalwart-inst'],
         'sign' => [null, 'sign-documenso-secrets-inst'],

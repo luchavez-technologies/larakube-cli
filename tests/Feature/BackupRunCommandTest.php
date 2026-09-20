@@ -34,7 +34,7 @@ function backupRunFakes(array $overrides = []): array
         // excluded, Synapse signing key included, etc.) still hold under the
         // new discovery mechanism, not the old hardcoded array.
         '*get namespace -o jsonpath*' => Process::result(output: 'larakube-shared larakube-vault larakube-secrets larakube-sso larakube-vpn larakube-plex'),
-        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'git-forgejo-git-luchtech-dev git-forgejo-runner-git-luchtech-dev drive-ocis stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana-monitor-luchtech-dev prometheus-server loki'),
+        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo-git-luchtech-dev forgejo-runner-git-luchtech-dev drive-ocis stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana-monitor-luchtech-dev prometheus-server loki'),
         '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'passwords-vaultwarden-vault-luchtech-dev'),
         '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
         '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),
@@ -109,7 +109,7 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
         // the temporary compatibility code this repo refuses elsewhere.
         ->and($names)->toContain('drive-ocis')
         ->and($names)->toContain('passwords-vaultwarden-vault-luchtech-dev')
-        ->and($names)->toContain('git-forgejo-git-luchtech-dev')
+        ->and($names)->toContain('forgejo-git-luchtech-dev')
         // Still the unmigrated Deployment name; it becomes
         // secrets-openbao-{instance} the moment SecretTool adopts the
         // convention, with no separate rename here.
@@ -147,7 +147,7 @@ test('archive names are the Deployment name, so they cannot collide', function (
     expect($names)->toContain('openbao-backend')
         ->and($names)->not->toContain('openbao')
         // A Deployment carrying an instance carries it into the archive name.
-        ->and($names)->toContain('git-forgejo-git-luchtech-dev')
+        ->and($names)->toContain('forgejo-git-luchtech-dev')
         ->and($names)->not->toContain('forgejo');
 
     // The whole point: no two targets can collide on a name.

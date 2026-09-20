@@ -2,6 +2,7 @@
 
 namespace App\Commands\Git;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -454,10 +455,10 @@ class GitInitCommand extends Command
         );
     }
 
-    /** Read any key from the git-secrets-{instance} secret; null when absent. */
+    /** Read any key from this instance's credentials Secret; null when absent. */
     protected function readForgejoSecret(string $kubectl, string $ns, string $instance, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, "git-secrets-{$instance}", $key);
+        return $this->readClusterSecretKey($kubectl, $ns, ToolInstance::forInstance(ClusterTool::GIT, $instance)->secret(), $key);
     }
 
     /** Parse admin password from existing secret */

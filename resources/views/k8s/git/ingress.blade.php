@@ -2,13 +2,18 @@
     // `up` reconciles this Ingress with only the host; git:init derives the
     // instance from the host the same way.
     $instance ??= \App\Enums\ClusterTool::GIT->instanceSlugFromHost($host);
-    $ingressName = "git-forgejo-{$instance}";
-    $httpServiceName = "git-forgejo-http-{$instance}";
+    $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::GIT, $instance);
+    $ingressName = $tool->deployment('server');
+    $httpServiceName = $tool->name('http', 'server');
 @endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $ingressName }}
+  labels:
+@foreach($tool->labels('server') as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure

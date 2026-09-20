@@ -27,7 +27,7 @@ test('git:remove deletes the same resource set as before the component refactor'
 
     $deleteCommand = null;
     Process::assertRan(function ($process) use (&$deleteCommand) {
-        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'deployment/git-forgejo-git-luchtech-dev')) {
+        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'deployment/forgejo-git-luchtech-dev')) {
             $deleteCommand = $process->command;
 
             return true;
@@ -43,13 +43,13 @@ test('git:remove deletes the same resource set as before the component refactor'
 
     sort($resources);
     $expected = [
-        'deployment/git-forgejo-git-luchtech-dev',
-        'deployment/git-forgejo-runner-git-luchtech-dev',
-        'service/git-forgejo-http-git-luchtech-dev',
-        'service/git-forgejo-ssh-git-luchtech-dev',
-        'ingress/git-forgejo-git-luchtech-dev',
+        'deployment/forgejo-git-luchtech-dev',
+        'deployment/forgejo-runner-git-luchtech-dev',
+        'service/forgejo-http-git-luchtech-dev',
+        'service/forgejo-ssh-git-luchtech-dev',
+        'ingress/forgejo-git-luchtech-dev',
         'pvc/forgejo-data',
-        'secret/git-secrets-git-luchtech-dev',
+        'secret/forgejo-secrets-git-luchtech-dev',
     ];
     sort($expected);
 

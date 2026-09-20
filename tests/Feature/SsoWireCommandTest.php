@@ -1262,7 +1262,7 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
     // with the source named `zitadel` anyway.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment git-forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
+        '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-git*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
@@ -1311,13 +1311,13 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
     // kept authorizing against the OLD client-id for a real, unknown
     // stretch of time after update-oauth reported success — a restart is
     // required to make the new client-id take effect immediately.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/git-forgejo'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/forgejo'));
 });
 
 test('sso:wire registers the Forgejo login source under the canonical `zitadel` name', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment git-forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
+        '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-git*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
@@ -1509,7 +1509,7 @@ test('sso:wire re-wiring NetBird updates the existing identity provider via PUT,
 test('plain sso:wire lists each registered instance by its host', function (): void {
     // Live DX bug 2026-08-24: the installed-filter probed oidcEnv()'s deployment
     // name without an instance, so git never appeared even while Forgejo ran as
-    // git-forgejo-git-luchtech-dev — and VPN vanished the same way on 2026-08-29.
+    // forgejo-git-luchtech-dev — and VPN vanished the same way on 2026-08-29.
     // The name is {category}-{component}-{instance} and the instance is not known
     // until a host is, which is what this picker exists to establish; CHAT, DATA
     // and GIT each grew a bespoke probe around that. The registry already records
@@ -1520,7 +1520,7 @@ test('plain sso:wire lists each registered instance by its host', function (): v
             ['tool' => 'git', 'instance' => 'git-luchtech-dev', 'host' => 'git.luchtech.dev'],
         ]))),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment git-forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
+        '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-git*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
