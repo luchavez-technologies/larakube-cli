@@ -60,7 +60,10 @@ test('secrets:init deploys openbao and external secrets operator, unsealing an a
     // switching an already-live install from client-side to server-side
     // ownership needs --force-conflicts or the first apply after upgrade
     // fails outright — see SecretsInitCommand::deploySecrets()'s comment.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'apply --server-side --force-conflicts -f'));
+    // Server-side, and the whole bundle (CRDs + OpenBao + ESO) on stdin.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'apply --server-side --field-manager=larakube --force-conflicts -f -')
+        && str_contains((string) $process->input, 'kind: CustomResourceDefinition')
+        && str_contains((string) $process->input, 'name: external-secrets'));
 
     // The three deployments the webhook's failurePolicy: Fail makes
     // mandatory, not optional, as of v0.16.2 — see eso.blade.php's header.

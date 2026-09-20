@@ -16,6 +16,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
+use App\Traits\RunsKubectlSteps;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
@@ -23,7 +24,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SecretsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, RunsKubectlSteps, StreamsProcessOutput;
 
     protected $signature = 'secrets:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the secrets manager host.}
@@ -101,32 +102,23 @@ class SecretsInitCommand extends Command
         // applying a newer CRD bundle over ~20 tools' live ExternalSecrets.
         $this->pruneStaleStoredCrdVersions($kubectl);
 
-        $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-openbao.yaml');
-        file_put_contents($tmp, $crdsManifest."\n---\n".$generatorCrdsManifest."\n---\n".$manifest."\n---\n".$esoManifest);
+        $bundle = $crdsManifest."\n---\n".$generatorCrdsManifest."\n---\n".$manifest."\n---\n".$esoManifest;
 
-        // Two resources to verify per apply (openbao-backend + external-
-        // secrets), so this can't use the single apply+rollout
-        // applyAndVerifyRollout() helper — every step checks its real exit
-        // code via an explicit ->timeout() exceeding its own kubectl
-        // --timeout flag, or a rejected apply / stuck rollout prints ✔ and
-        // this command claims success regardless (confirmed live on
-        // Documenso, 2026-08-05).
-        // --server-side is required: ESO's CRD bundle is far past the ~262KB
+        // Four resources to verify (openbao-backend + ESO's three), so this
+        // can't use the single apply+rollout applyAndVerifyRollout() helper;
+        // every step below checks its own exit code instead, or a rejected
+        // apply / stuck rollout prints ✔ and this command claims success.
+        // Server-side apply: the CRD bundle is far past the ~262KB
         // last-applied-configuration annotation limit client-side apply
-        // enforces.
-        // --force-conflicts: every existing install applied these resources
-        // client-side (plain `kubectl apply -f`) before this change, so the
-        // first server-side apply here is switching field-ownership
-        // strategy on already-live objects, not just bumping a version —
-        // without this flag that switch fails with a conflict instead of
-        // silently taking ownership.
-        $applied = $this->withSpin('Applying OpenBao & External Secrets Operator manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply --server-side --force-conflicts -f {$tmp} --request-timeout=60s")->successful());
-        $temporaryDirectory->delete();
-
-        if (! $applied) {
-            $this->laraKubeError('Could not apply the OpenBao/ESO manifest — see the output above.');
-
+        // enforces, and --force-conflicts (which apply() passes with it)
+        // takes field ownership from installs first applied client-side.
+        // kubectlStep(), not a bare spinner: a rejected apply names the exact
+        // object and reason — an immutable field on an upgraded bundle, say —
+        // and a spinner that swallows it leaves only "failed".
+        if (! $this->kubectlStep(
+            'Applying OpenBao & External Secrets Operator manifests...',
+            fn () => Kubectl::fromPrefix($kubectl)->apply($bundle, serverSide: true),
+        )) {
             return 1;
         }
 
