@@ -1471,6 +1471,8 @@ enum ClusterTool: string implements HasWorkloadComponents
         $names = ToolInstance::forInstance($this, $instance, $engine);
         $schema['secret'] = $names->secret($kind);
         $schema['deployment'] = $names->deployment();
+        // The wired Secret is discoverable like the tool's own resources.
+        $schema['labels'] = $names->labels();
 
         return $schema;
     }

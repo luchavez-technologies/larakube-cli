@@ -414,8 +414,9 @@ class MailWireCommand extends Command
 
         $ok = true;
         $label = $engine ? "{$tool->getLabel()} ({$engine})" : $tool->getLabel();
-        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $data, $deployment, $schema, $isPenpot, $penpotSuffix, &$ok): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secret, $data);
+        $labels = $schema['labels'] ?? [];
+        $this->withSpin("Wiring {$label}...", function () use ($kubectl, $ns, $secret, $data, $labels, $deployment, $schema, $isPenpot, $penpotSuffix, &$ok): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secret, $data, $labels);
 
             $set = Process::run("{$kubectl} set env deployment/{$deployment} --from=secret/{$secret} -n {$ns}");
             $ok = $set->successful();

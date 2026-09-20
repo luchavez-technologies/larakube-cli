@@ -1052,8 +1052,9 @@ class SsoWireCommand extends Command
         $ns = $schema['namespace'];
 
         $ok = true;
-        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $data, $deployment, $schema, $isPenpot, $penpotSuffix, $ssoOnlyOption, $unsetPairs, &$ok): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secret, $data);
+        $labels = $schema['labels'] ?? [];
+        $this->withSpin("Wiring {$deployment}...", function () use ($kubectl, $ns, $secret, $data, $labels, $deployment, $schema, $isPenpot, $penpotSuffix, $ssoOnlyOption, $unsetPairs, &$ok): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secret, $data, $labels);
 
             $set = Process::run("{$kubectl} set env deployment/{$deployment} --from=secret/{$secret} -n {$ns}");
             $ok = $set->successful();
