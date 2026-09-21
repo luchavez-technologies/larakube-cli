@@ -93,6 +93,13 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         return [$name];
     }
 
+    public function canonicalDatabaseList(?string $instance = null): array
+    {
+        $name = $instance !== null && $instance !== '' ? 'twenty_'.str_replace('-', '_', $instance) : 'twenty';
+
+        return [$name];
+    }
+
     public function commonsBucketList(): array
     {
         return ['crm-twenty-storage'];

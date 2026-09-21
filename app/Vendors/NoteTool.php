@@ -105,6 +105,11 @@ final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommo
         return ['outline'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['outline'];
+    }
+
     public function commonsBucketList(): array
     {
         return ['notes-storage'];

@@ -140,6 +140,14 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         };
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return match ($this) {
+            self::POCKETBASE => [],
+            self::DIRECTUS => ['directus'],
+        };
+    }
+
     public function commonsBucketList(): array
     {
         return match ($this) {

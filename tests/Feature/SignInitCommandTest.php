@@ -176,7 +176,7 @@ test('sign:init --vpn-only names the Traefik Middleware for its instance, never 
     // and the same name the Ingress references.
     $name = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube')->vpnMiddleware()->name;
 
-    expect($name)->toBe('sign-documenso-vpn-only-sign-kube')
+    expect($name)->toBe('documenso-vpn-only-sign-kube')
         ->and($appliedVpnMiddlewareManifest)->not->toBeNull()
         ->and($appliedVpnMiddlewareManifest['content'])->toContain("name: {$name}")
         ->and($appliedVpnMiddlewareManifest['content'])->not->toContain('-main');

@@ -82,8 +82,11 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret sign-documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
-        '*get deployment sign-documenso*' => Process::result(output: 'sign-documenso'),
+        '*get secret documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get deployment documenso*' => Process::result(output: 'documenso-sign-kube'),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'sign', 'instance' => 'sign-kube', 'host' => 'sign.kube'],
+        ]))),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -95,9 +98,9 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
         MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
         // kubernetesAuthEnabled()
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
-        // registerStaticRole() -> POST /v1/database/static-roles/sign_documenso
+        // registerStaticRole() -> POST /v1/database/static-roles/documenso
         MockResponse::make([]),
-        // rotateStaticRole() -> POST /v1/database/rotate-role/sign_documenso
+        // rotateStaticRole() -> POST /v1/database/rotate-role/documenso
         MockResponse::make([]),
     ]);
 
@@ -106,16 +109,16 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
         ->expectsOutputToContain("Document Signing (Documenso)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
-        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/sign_documenso')
-        && ($request->body()->get('username') ?? null) === 'sign_documenso'
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/documenso_sign_kube')
+        && ($request->body()->get('username') ?? null) === 'documenso_sign_kube'
         && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicNoBodyRequest
-        && str_contains($request->resolveEndpoint(), '/v1/database/rotate-role/sign_documenso'));
+        && str_contains($request->resolveEndpoint(), '/v1/database/rotate-role/documenso_sign_kube'));
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret sign-documenso-secrets-db'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/sign-documenso'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret documenso-secrets-sign-kube-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/documenso-sign-kube'));
 });
 
 test('secrets:wire --tool=link registers a static role for link_kutt and restarts link-kutt', function (): void {
@@ -308,7 +311,7 @@ test('secrets:wire rejects a tool with no wireable Commons database password', f
 test('secrets:wire rejects a tool that is not installed', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get deployment sign-documenso*' => Process::result(output: '', exitCode: 1),
+        '*get deployment documenso*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -330,8 +333,11 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret sign-documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
-        '*get deployment sign-documenso*' => Process::result(output: 'sign-documenso'),
+        '*get secret documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get deployment documenso*' => Process::result(output: 'documenso-sign-kube'),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'sign', 'instance' => 'sign-kube', 'host' => 'sign.kube'],
+        ]))),
         '*get deployment record-sendrec*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
@@ -351,7 +357,7 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
         ->assertExitCode(0)
         ->expectsOutputToContain("Document Signing (Documenso)'s DB password is now rotated by OpenBao every 168h");
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/sign-documenso'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/documenso-sign-kube'));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/record-sendrec'));
 });
 
@@ -438,7 +444,7 @@ test('secrets:wire --tool=data never trusts a stale registry engine hint over wh
 test('secrets:wire requires --tool or --all when it cannot prompt', function (): void {
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get deployment sign-documenso*' => Process::result(output: 'sign-documenso'),
+        '*get deployment documenso*' => Process::result(output: 'documenso'),
         '*get deployment record-sendrec*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),

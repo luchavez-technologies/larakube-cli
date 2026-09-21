@@ -106,6 +106,11 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return ['teable'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['teable'];
+    }
+
     public function commonsBucketList(): array
     {
         return ['sheet-public', 'sheet-private'];

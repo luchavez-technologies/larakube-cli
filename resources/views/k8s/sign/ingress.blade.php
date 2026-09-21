@@ -1,9 +1,16 @@
-@php($names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::SIGN, $host))
+@php
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::SIGN, $host);
+    $labels ??= $names->labels();
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $names->deployment() }}
   namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"

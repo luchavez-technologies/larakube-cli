@@ -208,6 +208,11 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
         return ['chat_matrix'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['synapse'];
+    }
+
     public function commonsBucketList(): array
     {
         return ['chat-media'];

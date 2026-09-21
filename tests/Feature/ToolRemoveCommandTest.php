@@ -299,15 +299,15 @@ test('the confirmation names the host of the registered instance being removed',
 
 test('removing a tool also removes its secrets:wire database-password sync', function (): void {
     Process::fake([...registeredToolRemoveFakes('sign:remove', 'sign-example-com', 'sign.example.com'),
-        '*get secret sign-documenso-secrets*' => Process::result(output: 'secret/sign-documenso-secrets-sign-example-com'),
+        '*get secret documenso-secrets*' => Process::result(output: 'secret/documenso-secrets-sign-example-com'),
         '*' => Process::result(output: ''),
     ]);
 
     $this->artisan('sign:remove local --force')->assertExitCode(0);
 
     // Both objects secrets:wire creates, for this instance's DB secret.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete externalsecret,vaultdynamicsecret.generators.external-secrets.io sign-documenso-secrets-sign-example-com-db'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'secret/sign-documenso-signing-cert-sign-example-com'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete externalsecret,vaultdynamicsecret.generators.external-secrets.io documenso-secrets-sign-example-com-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'secret/documenso-signing-cert-sign-example-com'));
 });
 
 test('removing an SSO-wired tool deletes its Zitadel app, then the Secret recording it', function (): void {
@@ -315,8 +315,8 @@ test('removing an SSO-wired tool deletes its Zitadel app, then the Secret record
         App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest::class => Saloon\Http\Faking\MockResponse::make([]),
     ]);
     Process::fake([...registeredToolRemoveFakes('sign:remove', 'sign-example-com', 'sign.example.com'),
-        '*get secret sign-documenso-sso-sign-example-com*project-id*' => Process::result(output: base64_encode('111')),
-        '*get secret sign-documenso-sso-sign-example-com*app-id*' => Process::result(output: base64_encode('222')),
+        '*get secret documenso-sso-sign-example-com*project-id*' => Process::result(output: base64_encode('111')),
+        '*get secret documenso-sso-sign-example-com*app-id*' => Process::result(output: base64_encode('222')),
         '*get secret sso-secrets*machine-pat*' => Process::result(output: base64_encode('pat')),
         '*' => Process::result(output: ''),
     ]);
@@ -325,19 +325,19 @@ test('removing an SSO-wired tool deletes its Zitadel app, then the Secret record
 
     Saloon\Laravel\Facades\Saloon::assertSent(fn ($request) => $request instanceof App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest
         && str_contains($request->resolveEndpoint(), '/projects/111/apps/222'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret sign-documenso-sso-sign-example-com'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret documenso-sso-sign-example-com'));
     Saloon\Http\Faking\MockClient::destroyGlobal();
 });
 
 test('if Zitadel can\'t be reached, removal keeps the Secret so the app can still be found', function (): void {
     Process::fake([...registeredToolRemoveFakes('sign:remove', 'sign-example-com', 'sign.example.com'),
-        '*get secret sign-documenso-sso-sign-example-com*project-id*' => Process::result(output: base64_encode('111')),
-        '*get secret sign-documenso-sso-sign-example-com*app-id*' => Process::result(output: base64_encode('222')),
+        '*get secret documenso-sso-sign-example-com*project-id*' => Process::result(output: base64_encode('111')),
+        '*get secret documenso-sso-sign-example-com*app-id*' => Process::result(output: base64_encode('222')),
         '*get secret sso-secrets*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
 
     $this->artisan('sign:remove local --force')->assertExitCode(0);
 
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete secret sign-documenso-sso'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete secret documenso-sso'));
 });

@@ -53,6 +53,11 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
         return ['grafana'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['grafana'];
+    }
+
     public function dbSecretRef(): ?array
     {
         return ['secret' => 'monitor-secrets', 'key' => 'db-password'];

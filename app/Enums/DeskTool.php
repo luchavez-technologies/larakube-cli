@@ -39,5 +39,10 @@ enum DeskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
     {
         return ['freescout'];
     }
+
+    public function canonicalDatabaseList(): array
+    {
+        return ['freescout'];
+    }
     case FREESCOUT = 'freescout';
 }

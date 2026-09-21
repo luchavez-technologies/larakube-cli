@@ -302,7 +302,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
         'git' => ['forgejo-secrets-inst', 'forgejo-secrets-inst'],
         'notes' => ['outline-secrets-inst', 'outline-secrets-inst'],
         'mail' => ['stalwart-inst', 'stalwart-inst'],
-        'sign' => [null, 'sign-documenso-secrets-inst'],
+        'sign' => [null, 'documenso-secrets-inst'],
         'data' => [null, 'data-secrets-inst'],
         'vpn' => ['vpn-management-secrets-inst', 'vpn-management-store-inst'],
     ]);
@@ -321,10 +321,10 @@ test('without an instance every tool keeps its base Secret name', function (): v
     expect($dangling)->toBeEmpty();
 });
 
-test('a migrated tool never keeps its category on a Commons bucket', function (): void {
-    // Buckets are resources like any other — the data they hold is copied
-    // across as part of the tool's migration, which is what makes the rename
-    // safe. No exemptions (ADR 0021).
+test('a migrated tool never keeps its category on a Commons tenant', function (): void {
+    // Buckets and databases are resources like any other — the data they hold
+    // is carried over as part of the tool's migration, which is what makes the
+    // rename safe. No exemptions (ADR 0021).
     $offenders = [];
 
     foreach (ClusterTool::cases() as $tool) {
@@ -335,6 +335,14 @@ test('a migrated tool never keeps its category on a Commons bucket', function ()
         foreach ($tool->commonsBuckets('inst') as $bucket) {
             if (str_starts_with($bucket, "{$tool->value}-")) {
                 $offenders[] = "{$tool->value}: {$bucket}";
+            }
+        }
+
+        // Postgres identifiers use underscores, so the category reads
+        // `sign_` rather than `sign-`.
+        foreach ($tool->commonsDatabases('inst') as $database) {
+            if (str_starts_with($database, "{$tool->value}_")) {
+                $offenders[] = "{$tool->value}: {$database}";
             }
         }
     }

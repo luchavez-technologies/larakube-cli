@@ -119,6 +119,11 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
         return ['vaultwarden'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['vaultwarden'];
+    }
+
     public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
         $ns = ($instance === null || $instance === '') ? 'larakube-vault' : "larakube-vault-{$instance}";

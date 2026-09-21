@@ -102,6 +102,11 @@ final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasC
         return ['record_sendrec'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['sendrec'];
+    }
+
     public function commonsBucketList(): array
     {
         return ['record-storage'];

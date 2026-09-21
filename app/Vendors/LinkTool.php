@@ -92,6 +92,11 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommo
         return ['link_kutt'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['kutt'];
+    }
+
     public function whiteLabel(): array
     {
         return ['app_name_key' => 'SITE_NAME'];

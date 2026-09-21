@@ -87,6 +87,11 @@ final class ErrorTool implements ClusterToolVendor, HasAdminEmailPrompt, HasComm
         return ['glitchtip'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['glitchtip'];
+    }
+
     public function commonsRedisKeys(): array
     {
         return ['glitchtip'];

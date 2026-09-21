@@ -1342,7 +1342,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function resourceNaming(): ResourceNaming
     {
         return match ($this) {
-            self::MONITOR, self::GIT, self::NOTES, self::FLOW => ResourceNaming::CANONICAL,
+            self::MONITOR, self::GIT, self::NOTES, self::FLOW, self::SIGN => ResourceNaming::CANONICAL,
             self::CHAT, self::PASSWORDS, self::SSO, self::LINK, self::RECORD,
             self::SHEETS, self::RESUME, self::TASKS, self::SUPPORT,
             self::ANALYTICS => ResourceNaming::AS_SHIPPED,
@@ -1498,12 +1498,19 @@ enum ClusterTool: string implements HasWorkloadComponents
         // caller that can't tell which engine an instance ran still covers
         // it. Must run before vendor(), which defaults a null engine to n8n.
         if ($this === self::FLOW && $engine === null) {
-            return array_merge(...array_map(fn (FlowTool $c) => $c->tool()->commonsDatabaseList(), FlowTool::cases()));
+            $canonical = $this->resourceNaming() === ResourceNaming::CANONICAL;
+
+            return array_merge(...array_map(
+                fn (FlowTool $c) => $canonical ? $c->tool()->canonicalDatabaseList() : $c->tool()->commonsDatabaseList(),
+                FlowTool::cases(),
+            ));
         }
 
         $vendor = $this->vendor($engine);
         if ($vendor instanceof HasCommonsDatabases) {
-            return $vendor->commonsDatabaseList();
+            return $this->resourceNaming() === ResourceNaming::CANONICAL
+                ? $vendor->canonicalDatabaseList()
+                : $vendor->commonsDatabaseList();
         }
 
         return [];

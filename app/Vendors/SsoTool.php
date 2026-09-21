@@ -58,6 +58,11 @@ final class SsoTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         return ['zitadel'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['zitadel'];
+    }
+
     /**
      * The forwardauth proxy (ADR 0006) is deliberately NOT instance-suffixed —
      * sso/proxy.blade.php hardcodes `sso-proxy`, because one cluster-wide

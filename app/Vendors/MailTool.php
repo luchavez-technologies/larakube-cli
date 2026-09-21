@@ -70,6 +70,11 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
         return ['stalwart'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['stalwart'];
+    }
+
     public function commonsBucketList(): array
     {
         return ['stalwart'];

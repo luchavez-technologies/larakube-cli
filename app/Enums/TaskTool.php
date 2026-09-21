@@ -77,5 +77,10 @@ enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
     {
         return ['tasks_planka'];
     }
+
+    public function canonicalDatabaseList(): array
+    {
+        return ['planka'];
+    }
     case PLANKA = 'planka';
 }

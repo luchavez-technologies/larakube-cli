@@ -5,6 +5,7 @@
     $oidcSecret = $names->secret(\App\Enums\SecretKind::OIDC);
     $certSecret = $names->name('signing-cert');
     $dbName = $names->database();
+    $labels = $names->labels();
 @endphp
 apiVersion: apps/v1
 kind: Deployment
@@ -14,6 +15,9 @@ metadata:
   labels:
     app: {{ $deployment }}
     larakube-tool: sign
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
@@ -26,6 +30,9 @@ spec:
       labels:
         app: {{ $deployment }}
         larakube-tool: sign
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: documenso
@@ -220,6 +227,10 @@ kind: Service
 metadata:
   name: {{ $deployment }}
   namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
     app: {{ $deployment }}
@@ -229,4 +240,4 @@ spec:
       targetPort: 3000
   type: ClusterIP
 ---
-@include('k8s.sign.ingress')
+@include('k8s.sign.ingress', ['labels' => $labels])

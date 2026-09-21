@@ -75,4 +75,9 @@ final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
     {
         return ['support_chatwoot'];
     }
+
+    public function canonicalDatabaseList(): array
+    {
+        return ['chatwoot'];
+    }
 }

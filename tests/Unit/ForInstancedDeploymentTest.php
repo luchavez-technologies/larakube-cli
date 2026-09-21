@@ -15,7 +15,7 @@ test('a bare component name is deliberately NOT matched', function (): void {
     // undiscovered until it is migrated. That absence IS the migration list.
     expect(ClusterTool::forInstancedDeployment('drive-ocis'))->toBeNull()
         ->and(ClusterTool::forInstancedDeployment('chat-synapse'))->toBeNull()
-        ->and(ClusterTool::forInstancedDeployment('sign-documenso'))->toBeNull()
+        ->and(ClusterTool::forInstancedDeployment('documenso'))->toBeNull()
         // ...even though the permissive lookup still maps them.
         ->and(ClusterTool::forDeployment('drive-ocis'))->not->toBeNull();
 });

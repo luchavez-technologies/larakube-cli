@@ -62,6 +62,11 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
         return [];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return [];
+    }
+
     public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
         $ns = ($instance === null || $instance === '') ? 'larakube-secrets' : "larakube-secrets-{$instance}";

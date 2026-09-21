@@ -95,6 +95,11 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
         return ['vpn_management'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['management'];
+    }
+
     /**
      * Deliberately its own Secret rather than the credentials one, which holds the
      * PAT, setup key and dashboard login, and secrets:wire's ExternalSecret owns

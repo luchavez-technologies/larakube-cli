@@ -46,4 +46,9 @@ final class AnalyticsTool implements ClusterToolVendor, HasCommonsDatabases, Has
     {
         return ['umami'];
     }
+
+    public function canonicalDatabaseList(): array
+    {
+        return ['umami'];
+    }
 }

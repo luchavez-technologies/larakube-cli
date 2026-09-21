@@ -48,6 +48,11 @@ final class Windmill implements ClusterToolVendor, HasCommonsDatabases, HasDeplo
         return ['windmill'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['windmill'];
+    }
+
     /** Shared by both engines: an instance is a host, whichever engine serves it. */
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {

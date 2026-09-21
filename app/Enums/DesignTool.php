@@ -132,6 +132,11 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
         return ['penpot'];
     }
 
+    public function canonicalDatabaseList(): array
+    {
+        return ['penpot'];
+    }
+
     public function commonsBucketList(): array
     {
         return ['design-assets'];

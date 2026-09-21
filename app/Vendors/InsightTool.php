@@ -51,4 +51,9 @@ final class InsightTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
     {
         return ['metabase'];
     }
+
+    public function canonicalDatabaseList(): array
+    {
+        return ['metabase'];
+    }
 }
