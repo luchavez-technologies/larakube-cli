@@ -110,6 +110,11 @@ final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommo
         return ['notes-storage'];
     }
 
+    public function canonicalBucketList(): array
+    {
+        return ['outline-storage'];
+    }
+
     public function commonsRedisKeys(): array
     {
         return ['outline'];

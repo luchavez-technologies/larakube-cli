@@ -213,6 +213,11 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
         return ['chat-media'];
     }
 
+    public function canonicalBucketList(): array
+    {
+        return ['synapse-media'];
+    }
+
     public function whiteLabel(): array
     {
         // Element Web takes brand/auth_header_logo_url directly in its own

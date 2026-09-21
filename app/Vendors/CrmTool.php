@@ -98,6 +98,11 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         return ['crm-twenty-storage'];
     }
 
+    public function canonicalBucketList(): array
+    {
+        return ['twenty-storage'];
+    }
+
     public function commonsRedisKeys(): array
     {
         return ['crm_twenty'];

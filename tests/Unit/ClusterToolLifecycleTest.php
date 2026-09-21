@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ClusterTool;
+use App\Enums\ResourceNaming;
 use App\Enums\SharedClusterService;
 
 /**
@@ -318,4 +319,25 @@ test('without an instance every tool keeps its base Secret name', function (): v
     }
 
     expect($dangling)->toBeEmpty();
+});
+
+test('a migrated tool never keeps its category on a Commons bucket', function (): void {
+    // Buckets are resources like any other — the data they hold is copied
+    // across as part of the tool's migration, which is what makes the rename
+    // safe. No exemptions (ADR 0021).
+    $offenders = [];
+
+    foreach (ClusterTool::cases() as $tool) {
+        if ($tool->resourceNaming() !== ResourceNaming::CANONICAL) {
+            continue;
+        }
+
+        foreach ($tool->commonsBuckets('inst') as $bucket) {
+            if (str_starts_with($bucket, "{$tool->value}-")) {
+                $offenders[] = "{$tool->value}: {$bucket}";
+            }
+        }
+    }
+
+    expect($offenders)->toBeEmpty();
 });

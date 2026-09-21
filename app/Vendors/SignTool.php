@@ -107,6 +107,11 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
         return ['sign-storage'];
     }
 
+    public function canonicalBucketList(): array
+    {
+        return ['documenso-storage'];
+    }
+
     public function clusterSecretDbKey(string $tenant): string
     {
         return 'SIGN_DB_PASSWORD';

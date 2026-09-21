@@ -152,6 +152,14 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         };
     }
 
+    public function canonicalBucketList(): array
+    {
+        return match ($this) {
+            self::POCKETBASE => [],
+            self::DIRECTUS => ['directus-storage'],
+        };
+    }
+
     public function ssoLicenseCaveat(): ?string
     {
         return match ($this) {

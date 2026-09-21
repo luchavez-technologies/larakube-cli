@@ -75,6 +75,11 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
         return ['stalwart'];
     }
 
+    public function canonicalBucketList(): array
+    {
+        return ['stalwart-storage'];
+    }
+
     public function commonsRedisKeys(): array
     {
         return ['stalwart'];

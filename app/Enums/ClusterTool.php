@@ -1514,7 +1514,9 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         $vendor = $this->vendor($engine);
         if ($vendor instanceof HasCommonsBuckets) {
-            return $vendor->commonsBucketList();
+            return $this->resourceNaming() === ResourceNaming::CANONICAL
+                ? $vendor->canonicalBucketList()
+                : $vendor->commonsBucketList();
         }
 
         return [];

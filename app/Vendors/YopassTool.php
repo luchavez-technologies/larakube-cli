@@ -71,4 +71,9 @@ final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
     {
         return ['paste-yopass'];
     }
+
+    public function canonicalBucketList(): array
+    {
+        return ['yopass-storage'];
+    }
 }

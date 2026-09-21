@@ -107,6 +107,11 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
         return ['reactive-resume-storage'];
     }
 
+    public function canonicalBucketList(): array
+    {
+        return ['reactive-storage'];
+    }
+
     public function commonsRedisKeys(): array
     {
         return ['reactiveresume'];

@@ -137,6 +137,11 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
         return ['design-assets'];
     }
 
+    public function canonicalBucketList(): array
+    {
+        return ['penpot-assets'];
+    }
+
     /**
      * Penpot's backend/exporter use the Commons Valkey for pub/sub and
      * WebSocket session coordination (not primary data — that's Postgres),

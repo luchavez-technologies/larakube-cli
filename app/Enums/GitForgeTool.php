@@ -133,6 +133,11 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         return ['forgejo-storage', 'forgejo-packages', 'forgejo-lfs'];
     }
 
+    public function canonicalBucketList(): array
+    {
+        return ['forgejo-storage', 'forgejo-packages', 'forgejo-lfs'];
+    }
+
     public function commonsRedisKeys(): array
     {
         return ['forgejo'];

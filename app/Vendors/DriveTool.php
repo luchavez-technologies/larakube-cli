@@ -146,4 +146,9 @@ final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWi
     {
         return ['drive-ocis'];
     }
+
+    public function canonicalBucketList(): array
+    {
+        return ['ocis-storage'];
+    }
 }
