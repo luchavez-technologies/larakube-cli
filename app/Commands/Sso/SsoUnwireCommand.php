@@ -73,7 +73,13 @@ class SsoUnwireCommand extends Command
             $pickedHost !== null => $pickedHost,
             default => $this->targetHost($tool, $env, $config, $kubectl),
         };
-        $instance = $toolHost !== null ? $this->resolveInstanceForDomain($kubectl, $tool, $toolHost) : '';
+        if ($toolHost === null) {
+            $this->laraKubeError("No host is configured for {$tool->getLabel()} in '{$env}' — there is nothing to unwire.");
+
+            return 1;
+        }
+
+        $instance = $this->resolveInstanceForDomain($kubectl, $tool, $toolHost);
 
         $engine = $this->resolveInstanceEngine($kubectl, $tool, $instance, $this->option('engine'));
         $schema = $tool->oidcEnv($engine, $instance);
@@ -96,11 +102,8 @@ class SsoUnwireCommand extends Command
             return 1;
         }
 
-        return $this->unwire(
-            $tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat, $toolHost,
-            // Same slug sso:wire used, so unwire targets the Secret it wrote.
-            $toolHost !== null ? $tool->instanceSlugFromHost($toolHost) : null,
-        );
+        // The same slug sso:wire used, so unwire targets the Secret it wrote.
+        return $this->unwire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat, $toolHost, $instance);
     }
 
     /** @return array{0: ClusterTool, 1: ?string}|null tool + the chosen instance's host */
@@ -135,7 +138,7 @@ class SsoUnwireCommand extends Command
         )->output()) !== '';
     }
 
-    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat, ?string $toolHost = null, ?string $instance = null): int
+    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat, ?string $toolHost, string $instance): int
     {
         if ($tool->usesForwardAuth()) {
             return $this->unwireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat);

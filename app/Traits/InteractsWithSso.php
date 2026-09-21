@@ -8,7 +8,6 @@ use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
-use LogicException;
 
 /**
  * Helpers for the Zitadel identity-provider tool. Mirrors InteractsWithDesk,
@@ -25,18 +24,13 @@ trait InteractsWithSso
      *
      * Always instance-suffixed, per ADR 0021: two instances of the same tool
      * are two distinct Zitadel clients, and an unsuffixed name means the second
-     * wire silently overwrites the first's client-id/secret. An empty instance
-     * is a caller that failed to resolve a host, so it throws rather than
-     * naming a Secret nothing else will look for.
+     * wire silently overwrites the first's client-id/secret.
+     *
+     * $component names the second OIDC client of a tool that has two (chat's
+     * Synapse and MAS).
      */
-    protected function ssoAppSecretName(ClusterTool $tool, ?string $instance, ?string $component = null): string
+    protected function ssoAppSecretName(ClusterTool $tool, string $instance, ?string $component = null): string
     {
-        if ($instance === null || $instance === '') {
-            throw new LogicException("{$tool->value}: an SSO app Secret needs a host-derived instance.");
-        }
-
-        // A tool with two OIDC clients (chat's Synapse and MAS) names the
-        // second after its component.
         $base = $component === null ? "sso-app-{$tool->value}" : "sso-app-{$tool->value}-{$component}";
 
         return "{$base}-{$instance}";

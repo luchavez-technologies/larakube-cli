@@ -17,9 +17,9 @@ function ssoAppNamer(): object
     {
         use InteractsWithSso;
 
-        public function name(ClusterTool $tool, ?string $instance): string
+        public function name(ClusterTool $tool, string $instance, ?string $component = null): string
         {
-            return $this->ssoAppSecretName($tool, $instance);
+            return $this->ssoAppSecretName($tool, $instance, $component);
         }
     };
 }
@@ -35,11 +35,9 @@ test('the Zitadel app Secret carries the instance so two instances cannot collid
         ->not->toBe($namer->name(ClusterTool::VPN, 'vpn-b-example-com'));
 });
 
-test('an empty instance is a failed host lookup, not a name', function (): void {
-    // Falling back to the bare name pointed a wire at a Secret no other command
-    // reads; the caller has to resolve a host first.
+test('a tool with two OIDC clients names the second after its component', function (): void {
     $namer = ssoAppNamer();
 
-    expect(fn () => $namer->name(ClusterTool::VPN, null))->toThrow(LogicException::class)
-        ->and(fn () => $namer->name(ClusterTool::VPN, ''))->toThrow(LogicException::class);
+    expect($namer->name(ClusterTool::CHAT, 'chat-luchtech-dev', 'mas'))
+        ->toBe('sso-app-chat-mas-chat-luchtech-dev');
 });

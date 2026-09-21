@@ -125,7 +125,7 @@ class SsoWireCommand extends Command
         return $this->wire($tool, $schema, $kubectl, $ssoNs, $ssoHost, $toolHost, $pat, $env, $engine, $instance);
     }
 
-    protected function wire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env, ?string $engine = null, ?string $instance = null): int
+    protected function wire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $toolHost, string $pat, string $env, ?string $engine, string $instance): int
     {
         // ForwardAuth tools have no native OIDC to configure — gating happens at
         // the ingress, so they never get a per-tool Zitadel app or env vars.
@@ -483,7 +483,7 @@ class SsoWireCommand extends Command
         return true;
     }
 
-    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat, ?string $instance = null): int
+    protected function unwire(ClusterTool $tool, array $schema, string $kubectl, string $ssoNs, string $ssoHost, string $pat, string $instance): int
     {
         if ($tool->usesForwardAuth()) {
             return $this->unwireForwardAuth($tool, $schema, $kubectl, $ssoNs, $ssoHost, $pat);
