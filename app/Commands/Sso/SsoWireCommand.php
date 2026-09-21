@@ -139,7 +139,13 @@ class SsoWireCommand extends Command
 
         $defaultProject = $tool->requiresRbacGating() ? $tool->rbacProjectName($instance) : 'LaraKube Shared Tools';
         $projectName = (string) ($this->option('project') ?: $defaultProject);
-        $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName);
+        // Only a role-gated tool owns its project outright; every other tool
+        // shares 'LaraKube Shared Tools', which must never be renamed after one
+        // of its members.
+        $ownedProject = $tool->requiresRbacGating()
+            ? $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id')
+            : null;
+        $projectId = $this->zitadelEnsureProject($ssoHost, $pat, $projectName, $ownedProject);
 
         if ($tool->requiresRbacGating()) {
             if ($projectId === null || ! $this->ensureRbacGating($ssoHost, $pat, $projectId, $tool, $instance !== null ? $toolHost : null)) {

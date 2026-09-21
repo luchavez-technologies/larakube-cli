@@ -27,6 +27,7 @@ use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use App\Http\Integrations\Zitadel\Requests\SetFlowTriggerActionsRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\UpdateProjectRequest;
+use App\Traits\InteractsWithZitadelApi;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
@@ -1387,6 +1388,9 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-vpn', 'clientId' => 'cid-vpn', 'clientSecret' => 'csecret-vpn']),
         GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'vpn-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        // The fixture's project still carries its un-instanced name, so the
+        // wire brings it up to date in place instead of making a second one.
+        UpdateProjectRequest::class => MockResponse::make(['details' => ['sequence' => '2']]),
         SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRoleRequest::class => MockResponse::make([]),
         // Empty list — first-time registration, so wireNetbirdOidc() must
@@ -1483,6 +1487,9 @@ test('sso:wire re-wiring NetBird updates the existing identity provider via PUT,
             ],
         ]]),
         GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'vpn-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        // The fixture's project still carries its un-instanced name, so the
+        // wire brings it up to date in place instead of making a second one.
+        UpdateProjectRequest::class => MockResponse::make(['details' => ['sequence' => '2']]),
         SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRoleRequest::class => MockResponse::make([]),
         // The 'zitadel' entry already exists from a previous wire — must PUT.
@@ -1593,4 +1600,47 @@ test('sso:wire says nothing is registered rather than nothing is installed', fun
     $this->artisan('sso:wire', ['--no-interaction' => false])
         ->assertExitCode(1)
         ->expectsOutputToContain('No OIDC-capable tools are registered');
+});
+
+test('sso:wire keeps the project it already owns, renaming it rather than creating a second one', function (): void {
+    // A project's name is derived from the tool's Deployment name, so it moves
+    // when the tool does. Creating a new project instead of renaming strands
+    // every user grant on the old one — a silent lockout of a role-gated tool
+    // that is otherwise healthy.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'monitor', 'instance' => 'monitor-example-com', 'host' => 'monitor.example.com'],
+        ]))),
+        '*grafana-sso-monitor-example-com*project-id*' => Process::result(output: base64_encode('proj-owned')),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Saloon::fake([
+        GetProjectRequest::class => MockResponse::make(['project' => [
+            'id' => 'proj-owned',
+            'name' => 'grafana',
+            'projectRoleAssertion' => true,
+            'projectRoleCheck' => true,
+        ]]),
+        UpdateProjectRequest::class => MockResponse::make(['details' => ['sequence' => '2']]),
+        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-NEW']),
+        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
+    ]);
+
+    $namer = new class
+    {
+        use InteractsWithZitadelApi;
+
+        public function ensure(?string $owned): ?string
+        {
+            return $this->zitadelEnsureProject('sso.kube', 'pat', 'grafana-monitor-example-com', $owned);
+        }
+    };
+
+    expect($namer->ensure('proj-owned'))->toBe('proj-owned');
+
+    Saloon::assertSent(UpdateProjectRequest::class);
+    Saloon::assertNotSent(CreateProjectRequest::class);
 });

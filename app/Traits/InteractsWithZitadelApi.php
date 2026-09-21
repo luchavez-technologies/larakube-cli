@@ -242,9 +242,35 @@ trait InteractsWithZitadelApi
      * to build against confidently at the time this was written, whereas v1
      * project/app endpoints are long-documented and unlikely to move.
      */
-    protected function zitadelEnsureProject(string $host, string $pat, string $name = 'LaraKube'): ?string
+    protected function zitadelEnsureProject(string $host, string $pat, string $name = 'LaraKube', ?string $ownedProjectId = null): ?string
     {
         $connector = ZitadelConnector::make($host, $pat);
+
+        // $ownedProjectId IS the project. A project's NAME is derived from the
+        // tool's Deployment name, so it is display, not identity: searching by
+        // it would miss the moment the tool's name changed and hand back a
+        // second, empty project, stranding every user grant on the first. Look
+        // up by name only to adopt a project nothing has recorded yet.
+        if ($ownedProjectId !== null && $ownedProjectId !== '') {
+            $get = $connector->send(GetProjectRequest::make($ownedProjectId));
+
+            if ($get->successful()) {
+                $project = $get->json('project', []);
+
+                if (($project['name'] ?? null) !== $name) {
+                    $connector->send(UpdateProjectRequest::make(
+                        $ownedProjectId,
+                        $name,
+                        $project['projectRoleAssertion'] ?? false,
+                        $project['projectRoleCheck'] ?? false,
+                        $project['hasProjectCheck'] ?? false,
+                    ));
+                }
+
+                return $ownedProjectId;
+            }
+        }
+
         $search = $connector->send(SearchProjectsRequest::make($name));
 
         if ($search->successful()) {
