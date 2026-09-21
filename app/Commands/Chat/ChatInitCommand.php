@@ -324,7 +324,7 @@ class ChatInitCommand extends Command
         $masConfigName = "chat-mas-config-{$instance}";
         $masDeploymentName = "chat-mas-{$instance}";
         $masDbDeploymentName = "chat-mas-db-{$instance}";
-        $ssoAppSecretName = "sso-app-chat-mas-{$instance}";
+        $ssoAppSecretName = $this->ssoAppSecretName(ClusterTool::CHAT, $instance, 'mas');
 
         // 1. MAS's own Postgres tenant.
         if (! $noPlex) {

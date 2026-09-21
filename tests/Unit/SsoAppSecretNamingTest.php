@@ -5,9 +5,7 @@
  *
  * It was `sso-app-{tool}` with no instance, so two instances of the same tool
  * were two distinct Zitadel clients writing to ONE Secret — the second wire
- * silently overwrote the first's client-id/secret. The live cluster still
- * carries both shapes side by side: `sso-app-notes` next to
- * `sso-app-notes-notes-luchtech-dev`.
+ * silently overwrote the first's client-id/secret.
  */
 
 use App\Enums\ClusterTool;
@@ -37,11 +35,11 @@ test('the Zitadel app Secret carries the instance so two instances cannot collid
         ->not->toBe($namer->name(ClusterTool::VPN, 'vpn-b-example-com'));
 });
 
-test('an unregistered tool still resolves to the bare name', function (): void {
-    // Empty instance is the real state during a first :init, before the tool
-    // registers itself — and it is what every existing cluster already has.
+test('an empty instance is a failed host lookup, not a name', function (): void {
+    // Falling back to the bare name pointed a wire at a Secret no other command
+    // reads; the caller has to resolve a host first.
     $namer = ssoAppNamer();
 
-    expect($namer->name(ClusterTool::VPN, null))->toBe('sso-app-vpn')
-        ->and($namer->name(ClusterTool::VPN, ''))->toBe('sso-app-vpn');
+    expect(fn () => $namer->name(ClusterTool::VPN, null))->toThrow(LogicException::class)
+        ->and(fn () => $namer->name(ClusterTool::VPN, ''))->toThrow(LogicException::class);
 });

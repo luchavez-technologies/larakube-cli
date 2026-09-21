@@ -349,7 +349,7 @@ class NotesInitCommand extends Command
             return false;
         }
 
-        $ssoAppSecret = "sso-app-notes-{$instance}";
+        $ssoAppSecret = $this->ssoAppSecretName(ClusterTool::NOTES, $instance);
 
         Kubectl::fromPrefix($kubectl)->putSecret($this->ssoNamespace(), $ssoAppSecret, [
             'project-id' => $registered['projectId'],

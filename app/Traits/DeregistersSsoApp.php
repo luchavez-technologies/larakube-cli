@@ -20,6 +20,16 @@ trait DeregistersSsoApp
     protected function deregisterSsoApp(ClusterTool $tool, ?string $instance, string $kubectl, string $env): void
     {
         $ssoNs = ClusterTool::SSO->namespace();
+
+        // The Secret is named after the instance, so without one there is no
+        // app to find. Say so instead of guessing at a name: an unwired tool
+        // is the common case, and a genuinely wired one leaves ids behind that
+        // `sso:prune` reports.
+        $instance ??= $this->resolveInstanceForDomain($kubectl, $tool, (string) $this->getToolHost($kubectl, $tool));
+        if ($instance === '') {
+            return;
+        }
+
         $appSecret = $this->ssoAppSecretName($tool, $instance);
         $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
         $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
