@@ -41,10 +41,13 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
 
     public function smtpEnv(?string $instance = null): ?array
     {
+        $names = ($instance === null || $instance === '') ? null : \App\Data\ToolInstance::forInstance(ClusterTool::DATA, $instance, $this->value);
+        $base = ClusterTool::DATA->deploymentName(engine: $this->value);
+
         return match ($this) {
             self::POCKETBASE => [
-                'deployment' => $instance ? "data-pocketbase-{$instance}" : 'data-pocketbase',
-                'secret' => $instance ? "data-smtp-{$instance}" : 'data-smtp',
+                'deployment' => $names?->deployment() ?? $base,
+                'secret' => $names?->secret(SecretKind::SMTP) ?? $base.'-'.SecretKind::SMTP->value,
                 'static' => [
                     'POCKETBASE_SMTP_ENABLED' => 'true',
                 ],
@@ -56,14 +59,9 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
                     'from' => 'POCKETBASE_SMTP_FROM',
                 ],
             ],
-            // Directus's schema is NOT instance-suffixed, unlike PocketBase's
-            // above. This is a pre-existing gap carried over unchanged, not a
-            // technical limitation — nobody has wired --instance naming into
-            // Directus's SMTP/OIDC secrets. A second named DATA instance
-            // running Directus would silently collide with the first today.
             self::DIRECTUS => [
-                'deployment' => 'data-directus',
-                'secret' => 'data-smtp',
+                'deployment' => $names?->deployment() ?? $base,
+                'secret' => $names?->secret(SecretKind::SMTP) ?? $base.'-'.SecretKind::SMTP->value,
                 'static' => [
                     'EMAIL_TRANSPORT' => 'smtp',
                 ],
@@ -78,13 +76,16 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         };
     }
 
-    /** @see self::smtpEnv() for the same PocketBase-suffixed/Directus-unsuffixed asymmetry. */
+    /** @see self::smtpEnv() for the same ToolInstance derivation. */
     public function oidcEnv(?string $instance = null): ?array
     {
+        $names = ($instance === null || $instance === '') ? null : \App\Data\ToolInstance::forInstance(ClusterTool::DATA, $instance, $this->value);
+        $base = ClusterTool::DATA->deploymentName(engine: $this->value);
+
         return match ($this) {
             self::POCKETBASE => [
-                'deployment' => $instance ? "data-pocketbase-{$instance}" : 'data-pocketbase',
-                'secret' => $instance ? "data-oidc-{$instance}" : 'data-oidc',
+                'deployment' => $names?->deployment() ?? $base,
+                'secret' => $names?->secret(SecretKind::OIDC) ?? $base.'-'.SecretKind::OIDC->value,
                 'static' => [
                     'POCKETBASE_OIDC_PROVIDERS' => 'zitadel',
                 ],
@@ -96,8 +97,8 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
                 'redirect_path' => '/api/oauth2-callback',
             ],
             self::DIRECTUS => [
-                'deployment' => 'data-directus',
-                'secret' => 'data-oidc',
+                'deployment' => $names?->deployment() ?? $base,
+                'secret' => $names?->secret(SecretKind::OIDC) ?? $base.'-'.SecretKind::OIDC->value,
                 'static' => [
                     'AUTH_PROVIDERS' => 'local,zitadel',
                     'AUTH_ZITADEL_DRIVER' => 'openid',
@@ -128,7 +129,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     {
         return match ($this) {
             self::POCKETBASE => null,
-            self::DIRECTUS => ['secret' => 'data-secrets', 'key' => 'db-password'],
+            self::DIRECTUS => ['secret' => 'directus-secrets', 'key' => 'db-password'],
         };
     }
 

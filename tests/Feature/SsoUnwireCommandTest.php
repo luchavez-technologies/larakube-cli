@@ -30,13 +30,13 @@ test('sso:unwire --domain= targets a specific instance instead of always the def
     // its 'deployment'/'secret' keys are instance-invariant literals.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment data-pocketbase-blog-example-com*' => Process::result(output: 'data-pocketbase-blog-example-com   1/1   1   1   10d'),
+        '*get deployment pocketbase-blog-example-com*' => Process::result(output: 'pocketbase-blog-example-com   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*data-directus-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*data-directus-sso*app-id*' => Process::result(output: base64_encode('app-1')),
         '*delete secret data-directus-sso*' => Process::result(output: 'secret deleted'),
-        '*delete secret data-oidc-blog-example-com*' => Process::result(output: 'secret deleted'),
-        '*set env deployment/data-pocketbase-blog-example-com*' => Process::result(output: 'env updated'),
+        '*delete secret pocketbase-oidc-blog-example-com*' => Process::result(output: 'secret deleted'),
+        '*set env deployment/pocketbase-blog-example-com*' => Process::result(output: 'env updated'),
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
 
@@ -46,8 +46,8 @@ test('sso:unwire --domain= targets a specific instance instead of always the def
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-pocketbase-blog-example-com'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret data-oidc-blog-example-com'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/pocketbase-blog-example-com'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret pocketbase-oidc-blog-example-com'));
 });
 
 test('sso:unwire delegates to sso:wire --remove', function (): void {

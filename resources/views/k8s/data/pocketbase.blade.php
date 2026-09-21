@@ -2,6 +2,10 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ $pvcName }}
+  labels:
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   namespace: {{ $namespace }}
 spec:
   accessModes: [ReadWriteOnce]
@@ -12,7 +16,11 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ $deployName }}-hooks
+  name: {{ $configMapName ?? "{$deployName}-hooks" }}
+  labels:
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   namespace: {{ $namespace }}
 data:
   onBootstrap.pb.js: |
@@ -60,6 +68,9 @@ metadata:
   namespace: {{ $namespace }}
   labels:
     app.kubernetes.io/name: {{ $deployName }}
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
     app.kubernetes.io/instance: {{ $instance }}
     app.kubernetes.io/component: data
 spec:
@@ -73,6 +84,9 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: {{ $deployName }}
+@foreach($labels ?? [] as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
         app.kubernetes.io/instance: {{ $instance }}
     spec:
       containers:
@@ -139,7 +153,7 @@ spec:
             claimName: {{ $pvcName }}
         - name: pb-hooks
           configMap:
-            name: {{ $deployName }}-hooks
+            name: {{ $configMapName ?? "{$deployName}-hooks" }}
 ---
 apiVersion: v1
 kind: Service
@@ -148,6 +162,9 @@ metadata:
   namespace: {{ $namespace }}
   labels:
     app.kubernetes.io/name: {{ $deployName }}
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   type: ClusterIP
   ports:
@@ -161,6 +178,10 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $deployName }}-ingress
+  labels:
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   namespace: {{ $namespace }}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure

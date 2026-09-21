@@ -24,7 +24,7 @@ test('a WORKER whose base name literally is a full match resolves via the exact 
 });
 
 test('resolves an instance-suffixed Deployment to its base component', function (): void {
-    $match = ClusterTool::forDeployment('data-pocketbase-blog-example-com');
+    $match = ClusterTool::forDeployment('pocketbase-blog-example-com');
     expect($match['tool'])->toBe(ClusterTool::DATA)
         ->and($match['component']->key)->toBe('app');
 });

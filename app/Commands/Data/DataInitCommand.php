@@ -2,8 +2,10 @@
 
 namespace App\Commands\Data;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
@@ -26,6 +28,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
+use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
@@ -94,23 +97,47 @@ class DataInitCommand extends Command
         $s3Key = $s3Creds['access'] ?? 'seaweedfs-access-key';
         $s3Secret = $s3Creds['secret'] ?? 'seaweedfs-secret-key';
 
-        $secretName = "data-secrets-{$instance}";
-        $smtpSecretName = "data-smtp-{$instance}";
-        $oidcSecretName = "data-oidc-{$instance}";
-        $deployName = ClusterTool::DATA->deploymentName($instance, $engine);
+        $names = ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine);
+        $secretName = $names->secret();
+        $smtpSecretName = $names->secret(SecretKind::SMTP);
+        $oidcSecretName = $names->secret(SecretKind::OIDC);
+        $deployName = $names->deployment();
+        $labels = $names->labels();
 
-        if (! $this->tearDownOtherEngineForInstance($kubectl, $ns, $instance, $engine)) {
-            return 1;
+        $otherEngine = $engine === 'pocketbase' ? 'directus' : 'pocketbase';
+        $otherNames = ToolInstance::forInstance(ClusterTool::DATA, $instance, $otherEngine);
+        if ($this->deploymentExists($kubectl, $ns, $otherNames->deployment())) {
+            $otherLabel = $otherEngine === 'pocketbase' ? 'PocketBase' : 'Directus';
+            if ($this->cannotPrompt()) {
+                $this->laraKubeError("Host '{$host}' is already in use by {$otherLabel}. Pass a different --domain or remove {$otherLabel} first with 'larakube data:remove --domain={$host}'.");
+
+                return 1;
+            }
+
+            $this->laraKubeWarn("Host '{$host}' is already in use by {$otherLabel}.");
+            $newHost = text(
+                label: "What host should {$engineLabel} use instead?",
+                placeholder: 'e.g. data2.example.com',
+                required: true,
+            );
+            $host = $this->sanitizeDomainInput($newHost);
+            $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::DATA, $host);
+            $names = ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine);
+            $secretName = $names->secret();
+            $smtpSecretName = $names->secret(SecretKind::SMTP);
+            $oidcSecretName = $names->secret(SecretKind::OIDC);
+            $deployName = $names->deployment();
+            $labels = $names->labels();
         }
 
-        $secret = $this->readDataSecret($kubectl, $ns, 'secret', $instance) ?? Str::uuid()->toString();
-        $key = $this->readDataSecret($kubectl, $ns, 'key', $instance) ?? Str::uuid()->toString();
-        $dbPassword = $this->readDataSecret($kubectl, $ns, 'db-password', $instance) ?? Str::random(24);
-        $adminPassword = $this->readDataSecret($kubectl, $ns, 'admin-password', $instance) ?? Str::random(24);
+        $secret = $this->readDataSecret($kubectl, $ns, 'secret', $instance, $engine) ?? Str::uuid()->toString();
+        $key = $this->readDataSecret($kubectl, $ns, 'key', $instance, $engine) ?? Str::uuid()->toString();
+        $dbPassword = $this->readDataSecret($kubectl, $ns, 'db-password', $instance, $engine) ?? Str::random(24);
+        $adminPassword = $this->readDataSecret($kubectl, $ns, 'admin-password', $instance, $engine) ?? Str::random(24);
 
         $parts = explode('.', $host);
         $domain = count($parts) > 2 ? implode('.', array_slice($parts, 1)) : $host;
-        $adminEmail = $this->readDataSecret($kubectl, $ns, 'admin-email', $instance) ?? $this->resolveAdminEmail($host, $engineLabel);
+        $adminEmail = $this->readDataSecret($kubectl, $ns, 'admin-email', $instance, $engine) ?? $this->resolveAdminEmail($host, $engineLabel);
 
         // PocketBase owns no Commons bucket — its storage is a PVC (embedded
         // SQLite + local disk), not S3 — so $bucket is only ever meaningful
@@ -141,14 +168,15 @@ class DataInitCommand extends Command
             $redisIndex = null;
         }
 
-        $pvcName = "data-pocketbase-pvc-{$instance}";
+        $pvcName = $names->volume();
+        $configMapName = $names->configMap('hooks');
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $secret, $key, $dbPassword, $adminEmail, $adminPassword, $s3Key, $s3Secret): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['secret' => $secret, 'key' => $key, 'db-password' => $dbPassword, 'admin-email' => $adminEmail, 'admin-password' => $adminPassword, 's3-key' => $s3Key, 's3-secret' => $s3Secret]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $secret, $key, $dbPassword, $adminEmail, $adminPassword, $s3Key, $s3Secret, $labels): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['secret' => $secret, 'key' => $key, 'db-password' => $dbPassword, 'admin-email' => $adminEmail, 'admin-password' => $adminPassword, 's3-key' => $s3Key, 's3-secret' => $s3Secret], $labels);
         });
 
         // Store to OpenBao vault if available
@@ -175,12 +203,14 @@ class DataInitCommand extends Command
             'engine' => $engine,
             'instance' => $instance,
             'deployName' => $deployName,
+            'labels' => $labels,
             'secretName' => $secretName,
             'smtpSecretName' => $smtpSecretName,
             'oidcSecretName' => $oidcSecretName,
             'dbName' => $dbName,
             'bucket' => $bucket,
             'pvcName' => $pvcName,
+            'configMapName' => $configMapName,
             'host' => $host,
             'aliasHosts' => $aliasHosts,
             'namespace' => $ns,
@@ -233,50 +263,6 @@ class DataInitCommand extends Command
         $this->newLine();
 
         return 0;
-    }
-
-    /**
-     * A "data" instance can only run one engine's Deployment at a time — two
-     * engines under the SAME instance name is a swap, not coexistence (that's
-     * what a different --domain is for — it derives a genuinely different
-     * instance, per ClusterTool::instanceSlugFromHost()). If the other engine is still
-     * deployed under this instance, its resources have to go before this
-     * engine's manifest is applied, or the two would collide on this
-     * instance's Service/Ingress names exactly like the incident that led to
-     * this whole instance-aware host-resolution pass. Confirmed the OTHER
-     * engine's resources for a DIFFERENT instance are never touched — this
-     * only ever targets $otherDeployName, which is instance-scoped.
-     */
-    protected function tearDownOtherEngineForInstance(string $kubectl, string $ns, string $instance, string $engine): bool
-    {
-        $otherEngine = $engine === 'pocketbase' ? 'directus' : 'pocketbase';
-        $otherDeployName = ClusterTool::DATA->deploymentName($instance, $otherEngine);
-
-        if (! $this->deploymentExists($kubectl, $ns, $otherDeployName)) {
-            return true;
-        }
-
-        $otherLabel = $otherEngine === 'pocketbase' ? 'PocketBase' : 'Directus';
-        $thisLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
-
-        if (! $this->confirmDestructive([
-            "Instance '{$instance}' currently runs {$otherLabel}, not {$thisLabel}.",
-            "Switching its engine will REMOVE {$otherLabel}'s Deployment, Service, and Ingress for this instance".
-            ($otherEngine === 'pocketbase' ? ' (and its mail/SSO hooks ConfigMap).' : '.'),
-            'Persistent data (PVC / Commons database) is not touched by this step.',
-        ])) {
-            return false;
-        }
-
-        $resources = "deployment/{$otherDeployName} service/{$otherDeployName}";
-        $resources .= $otherEngine === 'pocketbase'
-            ? " ingress/{$otherDeployName}-ingress configmap/{$otherDeployName}-hooks"
-            : " ingress/{$otherDeployName}";
-
-        return $this->removeResources(
-            "Removing {$otherLabel}'s resources for instance '{$instance}'...",
-            "{$kubectl} delete {$resources} -n {$ns} --ignore-not-found",
-        );
     }
 
     protected function deploymentExists(string $kubectl, string $namespace, string $deployment): bool

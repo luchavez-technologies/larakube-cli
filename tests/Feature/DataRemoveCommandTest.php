@@ -6,11 +6,11 @@ use Illuminate\Support\Facades\Process;
 test('data:remove tears down single default instance cleanly', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'main', 'host' => 'data.dev.test'],
+            ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
         ]))),
-        '*get deployment data-pocketbase*' => Process::result(output: ''),
-        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
-        '*delete deployment/data-directus*' => Process::result(output: 'deleted'),
+        '*get deployment directus-data-dev-test*' => Process::result(output: 'directus-data-dev-test   1/1   1   1   10d'),
+        '*get deployment pocketbase*' => Process::result(output: ''),
+        '*delete deployment/directus-data-dev-test*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: 'deleted'),
     ]);
 
@@ -24,11 +24,11 @@ test('data:remove tears down single default instance cleanly', function (): void
 test('data:remove targets explicit domain instance', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'blog', 'host' => 'blog.dev.test'],
+            ['tool' => 'data', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
         ]))),
-        '*get deployment data-pocketbase-blog*' => Process::result(output: ''),
-        '*get deployment data-directus-blog*' => Process::result(output: 'data-directus-blog   1/1   1   1   10d'),
-        '*delete deployment/data-directus-blog*' => Process::result(output: 'deleted'),
+        '*get deployment directus-blog-dev-test*' => Process::result(output: 'directus-blog-dev-test   1/1   1   1   10d'),
+        '*get deployment pocketbase*' => Process::result(output: ''),
+        '*delete deployment/directus-blog-dev-test*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: 'deleted'),
     ]);
 
@@ -48,8 +48,8 @@ test('data:remove hard-errors non-interactively when 2+ instances are registered
     // init time. Failing loudly beats guessing.
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'main', 'host' => 'data.dev.test'],
-            ['tool' => 'data', 'instance' => 'blog', 'host' => 'blog.dev.test'],
+            ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
+            ['tool' => 'data', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
         ]))),
     ]);
 
@@ -63,11 +63,12 @@ test('data:remove hard-errors non-interactively when 2+ instances are registered
 test('data:remove --all removes all registered instances', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'main', 'host' => 'data.dev.test'],
-            ['tool' => 'data', 'instance' => 'blog', 'host' => 'blog.dev.test'],
+            ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
+            ['tool' => 'data', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
         ]))),
-        '*get deployment data-pocketbase*' => Process::result(output: ''),
-        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
+        '*get deployment directus-data-dev-test*' => Process::result(output: 'directus-data-dev-test   1/1   1   1   10d'),
+        '*get deployment directus-blog-dev-test*' => Process::result(output: 'directus-blog-dev-test   1/1   1   1   10d'),
+        '*get deployment pocketbase*' => Process::result(output: ''),
         '*' => Process::result(output: 'deleted'),
     ]);
 
@@ -85,8 +86,9 @@ test('data:remove --all --purge deletes every PocketBase instance and its data v
             ['tool' => 'data', 'instance' => 'data-test', 'host' => 'data.test'],
             ['tool' => 'data', 'instance' => 'data-second-test', 'host' => 'data-second.test'],
         ]))),
-        '*get deployment data-directus*' => Process::result(output: ''),
-        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
+        '*get deployment directus*' => Process::result(output: ''),
+        '*get deployment pocketbase-data-test*' => Process::result(output: 'pocketbase-data-test   1/1   1   1   10d'),
+        '*get deployment pocketbase-data-second-test*' => Process::result(output: 'pocketbase-data-second-test   1/1   1   1   10d'),
         '*' => Process::result(output: 'deleted'),
     ]);
 
@@ -99,8 +101,8 @@ test('data:remove --all --purge deletes every PocketBase instance and its data v
     ])->assertExitCode(0);
 
     foreach (['data-test', 'data-second-test'] as $instance) {
-        Process::assertRan(fn ($process) => str_contains($process->command, "delete deployment/data-pocketbase-{$instance} "));
-        Process::assertRan(fn ($process) => str_contains($process->command, "delete pvc/data-pocketbase-pvc-{$instance} "));
+        Process::assertRan(fn ($process) => str_contains($process->command, "delete deployment/pocketbase-{$instance} "));
+        Process::assertRan(fn ($process) => str_contains($process->command, "delete pvc/pocketbase-storage-{$instance} "));
     }
 });
 
@@ -109,8 +111,8 @@ test('data:remove without --purge keeps the PocketBase data volume', function ()
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'data-test', 'host' => 'data.test'],
         ]))),
-        '*get deployment data-directus*' => Process::result(output: ''),
-        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
+        '*get deployment directus*' => Process::result(output: ''),
+        '*get deployment pocketbase-data-test*' => Process::result(output: 'pocketbase-data-test   1/1   1   1   10d'),
         '*' => Process::result(output: 'deleted'),
     ]);
 

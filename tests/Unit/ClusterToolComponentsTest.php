@@ -54,9 +54,9 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     // {category}-{component}-{instance} like every other tool.
     expect(ClusterTool::VPN->deploymentName())->toBe('vpn-management')
         ->and(ClusterTool::VPN->deploymentName('blog-example-com'))->toBe('vpn-management-blog-example-com')
-        ->and(ClusterTool::DATA->deploymentName(engine: 'pocketbase'))->toBe('data-pocketbase')
-        ->and(ClusterTool::DATA->deploymentName(engine: 'directus'))->toBe('data-directus')
-        ->and(ClusterTool::DATA->deploymentName())->toBe('data-directus');
+        ->and(ClusterTool::DATA->deploymentName(engine: 'pocketbase'))->toBe('pocketbase')
+        ->and(ClusterTool::DATA->deploymentName(engine: 'directus'))->toBe('directus')
+        ->and(ClusterTool::DATA->deploymentName())->toBe('directus');
 });
 
 test('GIT always requires a real instance — there is no bare/default deployment name', function (): void {

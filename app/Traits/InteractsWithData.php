@@ -16,11 +16,27 @@ trait InteractsWithData
         return ClusterTool::DATA->namespace();
     }
 
-    protected function readDataSecret(string $kubectl, string $ns, string $key, string $instance = ''): ?string
+    protected function readDataSecret(string $kubectl, string $ns, string $key, string $instance = '', ?string $engine = null): ?string
     {
-        $secretName = $instance !== '' ? "data-secrets-{$instance}" : 'data-secrets';
+        if ($instance === '') {
+            return null;
+        }
 
-        return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
+        if ($engine !== null) {
+            $secretName = \App\Data\ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine)->secret();
+
+            return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
+        }
+
+        foreach (['pocketbase', 'directus'] as $eng) {
+            $secretName = \App\Data\ToolInstance::forInstance(ClusterTool::DATA, $instance, $eng)->secret();
+            $val = $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
+            if ($val !== null) {
+                return $val;
+            }
+        }
+
+        return null;
     }
 
     protected function resolveDataHostReadOnly(string $env, ?ConfigData $config): ?string

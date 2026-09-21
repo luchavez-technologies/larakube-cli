@@ -27,9 +27,9 @@ test('mail:unwire --tool=data unsets PocketBase\'s own vars, not Directus\'s, on
     // PocketBase-only install would have its Directus env var names
     // "unset" (which don't exist on that Deployment) instead of its own.
     Process::fake([
-        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
-        '*get deployment data-directus*' => Process::result(output: '', exitCode: 1),
-        '*set env deployment/data-pocketbase*' => Process::result(output: 'env updated'),
+        '*get deployment pocketbase*' => Process::result(output: 'pocketbase   1/1   1   1   10d'),
+        '*get deployment directus*' => Process::result(output: '', exitCode: 1),
+        '*set env deployment/pocketbase*' => Process::result(output: 'env updated'),
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
 
@@ -37,7 +37,7 @@ test('mail:unwire --tool=data unsets PocketBase\'s own vars, not Directus\'s, on
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer routes mail through Stalwart');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-pocketbase')
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/pocketbase')
         && str_contains($process->command, 'POCKETBASE_SMTP_HOST-'));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'deployment/data-directus'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'deployment/directus'));
 });

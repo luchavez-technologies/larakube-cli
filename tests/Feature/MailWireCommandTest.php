@@ -46,12 +46,12 @@ test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
 test('mail:wire local --tool=data configures Directus SMTP via deployment secret', function (): void {
     Process::fake([
         '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
-        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
+        '*get deployment directus*' => Process::result(output: 'directus   1/1   1   1   10d'),
         '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/data-directus*' => Process::result(output: 'updated'),
-        '*rollout restart deployment/data-directus*' => Process::result(output: 'restarted'),
+        '*set env deployment/directus*' => Process::result(output: 'updated'),
+        '*rollout restart deployment/directus*' => Process::result(output: 'restarted'),
     ]);
 
     $this->artisan('mail:wire local --tool=data')
@@ -64,26 +64,26 @@ test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a
     // multi-engine tool (DATA) got a null $engine, and smtpEnv(null, ...)
     // for DATA falls through to Directus's schema regardless of what's
     // actually installed. A PocketBase-only install would previously have
-    // tried to patch a nonexistent data-directus Deployment.
+    // tried to patch a nonexistent directus Deployment.
     Process::fake([
         '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
-        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
-        '*get deployment data-directus*' => Process::result(output: '', exitCode: 1),
+        '*get deployment pocketbase*' => Process::result(output: 'pocketbase   1/1   1   1   10d'),
+        '*get deployment directus*' => Process::result(output: '', exitCode: 1),
         '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/data-pocketbase*' => Process::result(output: 'updated'),
-        '*rollout restart deployment/data-pocketbase*' => Process::result(output: 'restarted'),
+        '*set env deployment/pocketbase*' => Process::result(output: 'updated'),
+        '*rollout restart deployment/pocketbase*' => Process::result(output: 'restarted'),
     ]);
 
     $this->artisan('mail:wire local --tool=data')
         ->expectsOutputToContain('Wired to Stalwart: Headless CMS & Data API (PocketBase or Directus)');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-pocketbase')
-        && str_contains($process->command, '--from=secret/data-smtp'));
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'data-smtp')
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/pocketbase')
+        && str_contains($process->command, '--from=secret/pocketbase-smtp'));
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'pocketbase-smtp')
         && isset(appliedSecret($process)['data']['POCKETBASE_SMTP_HOST']));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'deployment/data-directus'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'deployment/directus'));
 });
 
 test('mail:wire local --tool=design configures Penpot SMTP via deployment secret', function (): void {

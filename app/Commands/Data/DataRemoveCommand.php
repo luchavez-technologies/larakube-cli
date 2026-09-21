@@ -3,11 +3,15 @@
 namespace App\Commands\Data;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Traits\InteractsWithData;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
+
+use LogicException;
 
 class DataRemoveCommand extends AbstractToolRemoveCommand
 {
@@ -29,9 +33,26 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get secret data-secrets -n {$namespace} --ignore-not-found",
-        )->output()) === '';
+        return false;
+    }
+
+    /** The engine whose Deployment serves this instance. */
+    protected function instanceEngine(string $kubectl, ?string $instance): ?string
+    {
+        if ($instance === null || $instance === '') {
+            return null;
+        }
+
+        foreach (['pocketbase', 'directus'] as $engine) {
+            $names = ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine);
+            if ($this->deploymentExists($kubectl, $names->namespace(), $names->deployment())) {
+                return $engine;
+            }
+        }
+
+        $entry = $this->findToolInstanceEntry($kubectl, ClusterTool::DATA, $instance);
+
+        return $entry['engine'] ?? null;
     }
 
     /**
@@ -39,34 +60,29 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
      * named instances), but never under the SAME instance — data:init's
      * engine-swap step tears down the previous engine before applying a new
      * one. So for any single instance, at most one engine should ever be
-     * live at once. Deleting both unconditionally (the old behavior, copied
-     * from Flow's "always remove both engines" precedent — safe there
-     * because Flow has no instance concept) is exactly wrong here: it would
-     * take out a real, intentional deployment just because it happens to
-     * share this instance name with another engine's stale leftovers.
-     * Detect what's actually there instead, and only ever touch that. If
-     * both are genuinely deployed, ask (interactively, via flagOrPrompt() —
-     * a select() prompt beats making every caller memorize --engine=) rather
-     * than guess or hard-fail. Confirmed live 2026-08-08 — this would have
-     * deleted both engines at once with no way to target just one.
+     * live at once.
      */
     protected function teardown(string $kubectl, string $namespace): bool
     {
         $instance = $this->resolveInstance($kubectl);
-        // resolveInstance() can return null (unregistered, no --all/--domain
-        // — see resolveInstanceTargets()) as well as '', both meaning the
-        // same "default instance". Checking only the literal string here
-        // silently produced a trailing-dash name ("data-secrets-") for the
-        // null/'' cases (ADR 0012, amended 2026-08-15).
-        $isDefault = $instance === null || $instance === '';
-        $secretName = $isDefault ? 'data-secrets' : "data-secrets-{$instance}";
-        $smtpSecret = $isDefault ? 'data-smtp' : "data-smtp-{$instance}";
-        $oidcSecret = $isDefault ? 'data-oidc' : "data-oidc-{$instance}";
+        if ($instance === null || $instance === '') {
+            $domain = (string) ($this->option('domain') ?? '');
+            if ($domain !== '') {
+                $instance = $this->tool()->instanceSlugFromHost($domain);
+            } else {
+                $host = $this->singleRecordedToolHost($kubectl, $this->tool())
+                    ?? $this->tool()->service()?->hostFor(\App\Data\GlobalConfigData::load()->getLocalTld());
+                $instance = $host !== null ? $this->tool()->instanceSlugFromHost($host) : null;
+            }
+        }
 
-        // Directus's Service/Ingress are named after deploymentName()
-        // (data-directus[-instance]) since the instance-parity fix.
-        $directusDeploy = $isDefault ? 'data-directus' : "data-directus-{$instance}";
-        $pocketbaseDeploy = ClusterTool::DATA->deploymentName($instance, 'pocketbase');
+        $instance ??= throw new LogicException('data: an instance is always a host-derived slug, never empty.');
+
+        $namesPb = ToolInstance::forInstance(ClusterTool::DATA, $instance, 'pocketbase');
+        $namesDir = ToolInstance::forInstance(ClusterTool::DATA, $instance, 'directus');
+
+        $directusDeploy = $namesDir->deployment();
+        $pocketbaseDeploy = $namesPb->deployment();
 
         $requested = strtolower((string) ($this->option('engine') ?: ''));
         $hasDirectus = $this->deploymentExists($kubectl, $namespace, $directusDeploy);
@@ -93,29 +109,36 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
         $removeDirectus = $requested === 'directus' || $requested === 'all' || ($requested === '' && $hasDirectus);
         $removePocketbase = $requested === 'pocketbase' || $requested === 'all' || ($requested === '' && $hasPocketbase);
 
-        if (! $removeDirectus && ! $removePocketbase) {
-            $this->laraKubeInfo("No Data engine deployment found for instance '{$instance}' — nothing to remove.");
-
-            return true;
+        // If neither deployment is found and no specific engine requested,
+        // clean up both so any lingering resources or PVCs are purged.
+        if (! $removeDirectus && ! $removePocketbase && $requested === '') {
+            $removeDirectus = true;
+            $removePocketbase = true;
         }
 
         $labels = array_filter([$removeDirectus ? 'Directus' : null, $removePocketbase ? 'PocketBase' : null]);
         $this->laraKubeInfo('Removing '.implode(' and ', $labels)." for instance '{$instance}'...");
 
         $resources = '';
+        $secretsToDelete = [];
         if ($removeDirectus) {
-            $resources .= "deployment/{$directusDeploy} service/{$directusDeploy} ingress/{$directusDeploy} "
-                // Legacy pre-instance-parity names, harmless via --ignore-not-found if absent.
-                ."service/data service/data-{$instance} ingress/data ingress/data-{$instance} ";
+            $resources .= "deployment/{$directusDeploy} service/{$directusDeploy} ingress/{$directusDeploy} ";
+            $secretsToDelete[] = $namesDir->secret();
+            $secretsToDelete[] = $namesDir->secret(SecretKind::SMTP);
+            $secretsToDelete[] = $namesDir->secret(SecretKind::OIDC);
         }
         if ($removePocketbase) {
             $resources .= "deployment/{$pocketbaseDeploy} service/{$pocketbaseDeploy} "
-                ."ingress/{$pocketbaseDeploy}-ingress configmap/{$pocketbaseDeploy}-hooks ";
+                ."ingress/{$pocketbaseDeploy}-ingress configmap/{$namesPb->configMap('hooks')} ";
+            $secretsToDelete[] = $namesPb->secret();
+            $secretsToDelete[] = $namesPb->secret(SecretKind::SMTP);
+            $secretsToDelete[] = $namesPb->secret(SecretKind::OIDC);
         }
 
+        $secretArgs = implode(' ', array_map(fn ($s) => "secret/{$s}", array_unique($secretsToDelete)));
         $ok = $this->removeResources(
             'Removing Data resources...',
-            "{$kubectl} delete {$resources}secret/{$secretName} secret/{$smtpSecret} secret/{$oidcSecret} -n {$namespace} --ignore-not-found",
+            "{$kubectl} delete {$resources}{$secretArgs} -n {$namespace} --ignore-not-found",
         );
 
         // PocketBase keeps its SQLite database and uploads on its own volume,
@@ -145,8 +168,8 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
     }
 
     /** The volume data:init gives a PocketBase instance. */
-    private function pocketbaseVolume(?string $instance): string
+    private function pocketbaseVolume(string $instance): string
     {
-        return 'data-pocketbase-pvc-'.$instance;
+        return ToolInstance::forInstance(ClusterTool::DATA, $instance, 'pocketbase')->volume();
     }
 }

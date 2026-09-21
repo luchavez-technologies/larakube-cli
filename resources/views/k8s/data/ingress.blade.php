@@ -3,6 +3,10 @@ kind: Ingress
 metadata:
   name: {{ $ingressName ?? 'data' }}
   namespace: larakube-shared
+  labels:
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"

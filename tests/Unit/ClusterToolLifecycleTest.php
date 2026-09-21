@@ -303,7 +303,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
         'notes' => ['outline-secrets-inst', 'outline-secrets-inst'],
         'mail' => ['stalwart-inst', 'stalwart-inst'],
         'sign' => [null, 'documenso-secrets-inst'],
-        'data' => [null, 'data-secrets-inst'],
+        'data' => [null, 'directus-secrets-inst'],
         'vpn' => ['vpn-management-secrets-inst', 'vpn-management-store-inst'],
     ]);
 });

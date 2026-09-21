@@ -5,6 +5,9 @@ metadata:
   namespace: larakube-shared
   labels:
     app: {{ $deployName }}
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
     app.kubernetes.io/component: data
 spec:
   replicas: 1
@@ -17,6 +20,9 @@ spec:
     metadata:
       labels:
         app: {{ $deployName }}
+@foreach($labels ?? [] as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
         app.kubernetes.io/component: data
     spec:
       containers:
@@ -184,6 +190,11 @@ kind: Service
 metadata:
   name: {{ $deployName }}
   namespace: larakube-shared
+  labels:
+    app: {{ $deployName }}
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
     app: {{ $deployName }}
@@ -193,4 +204,4 @@ spec:
       targetPort: 8055
   type: ClusterIP
 ---
-@include('k8s.data.ingress', ['ingressName' => $deployName, 'serviceName' => $deployName])
+@include('k8s.data.ingress', ['ingressName' => $deployName, 'serviceName' => $deployName, 'labels' => $labels ?? []])

@@ -21,7 +21,7 @@ test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support name
         ->and(ClusterTool::NOTES->commonsDatabases('sister'))->toBe(['outline_sister'])
         ->and(ClusterTool::DATA->dbSecretRef('sister'))->toBe([
             'namespace' => 'larakube-shared',
-            'secret' => 'data-secrets-sister',
+            'secret' => 'directus-secrets-sister',
             'key' => 'db-password',
         ]);
 });

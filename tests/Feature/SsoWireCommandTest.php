@@ -1062,13 +1062,13 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
 test('sso:wire registers a new OIDC client and wires it to Directus (data)', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   1d'),
+        '*get deployment directus*' => Process::result(output: 'directus   1/1   1   1   1d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret data-directus-sso*' => Process::result(output: ''),
+        '*get secret directus-oidc*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/data-directus*' => Process::result(output: 'deployment.apps/data-directus env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/data-directus restarted'),
+        '*set env deployment/directus*' => Process::result(output: 'deployment.apps/directus env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/directus restarted'),
     ]);
 
     Saloon::fake([
@@ -1086,14 +1086,14 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
     Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
         && $request->body()->get('redirectUris')[0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-directus'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/directus'));
 });
 
 test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
-        '*get deployment -n larakube-shared*' => Process::result(output: 'data-pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
+        '*get deployment pocketbase*' => Process::result(output: 'pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
+        '*get deployment -n larakube-shared*' => Process::result(output: 'pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
         '*get configmap larakube-registry*' => Process::result(output: json_encode([
             'services' => [
                 'sso' => ['host' => 'sso.luchtech.dev'],
@@ -1101,7 +1101,7 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
             ],
         ])),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret data-directus-sso*' => Process::result(output: ''),
+        '*get secret pocketbase-oidc*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment*' => Process::result(output: 'env updated'),
@@ -1171,18 +1171,18 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
     // scoping, so a second PocketBase instance's Deployment name containing
     // "pocketbase" would make sso:wire wrongly conclude the MAIN
     // (Directus) instance was PocketBase too. The new instance-scoped
-    // resolution checks data-directus (main) specifically, never confused
-    // by a second data-pocketbase-blog-example-com Deployment coexisting.
+    // resolution checks directus specifically, never confused
+    // by a second pocketbase-blog-example-com Deployment coexisting.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
-        '*get deployment data-pocketbase-blog-example-com*' => Process::result(output: 'data-pocketbase-blog-example-com   1/1   1   1   1d'),
+        '*get deployment directus*' => Process::result(output: 'directus   1/1   1   1   10d'),
+        '*get deployment pocketbase-blog-example-com*' => Process::result(output: 'pocketbase-blog-example-com   1/1   1   1   1d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret data-directus-sso*' => Process::result(output: ''),
+        '*get secret directus-oidc*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/data-directus*' => Process::result(output: 'deployment.apps/data-directus env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/data-directus restarted'),
+        '*set env deployment/directus*' => Process::result(output: 'deployment.apps/directus env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/directus restarted'),
     ]);
 
     Saloon::fake([
@@ -1200,8 +1200,8 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
     // engine was resolved, not the OTHER instance's.
     Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
         && $request->body()->get('redirectUris')[0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/data-directus'));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/data-pocketbase'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/directus'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/pocketbase'));
 });
 
 test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC secret (also_patch)', function (): void {

@@ -160,8 +160,8 @@ test('data:init --domain re-targets an already-registered instance in place, nev
     // The manifest applied must reuse the already-registered 'main' instance
     // (now suffixed like any other instance, per ADR 0012's amendment), not
     // a fresh slug derived from the host.
-    Process::assertRan(fn ($p) => str_contains((string) $p->command, 'data-pocketbase-main'))
-        ->assertNotRan(fn ($p) => str_contains((string) $p->command, 'data-pocketbase-pocket-luchtech-dev'));
+    Process::assertRan(fn ($p) => str_contains((string) $p->command, 'pocketbase-main'))
+        ->assertNotRan(fn ($p) => str_contains((string) $p->command, 'pocketbase-pocket-luchtech-dev'));
 
     $dataEntries = collect($captured ?? [])->where('tool', 'data');
     expect($dataEntries)->toHaveCount(1)
@@ -211,8 +211,8 @@ test('data:remove --domain derives the same instance data:init would have, not m
     // value, so removal always targets what you actually meant, not the
     // default instance.
     Process::fake([
-        '*get deployment data-pocketbase-blog-example-com*' => Process::result(output: 'data-pocketbase-blog-example-com   1/1   1   1   10d'),
-        '*get deployment data-directus-blog-example-com*' => Process::result(output: ''),
+        '*get deployment pocketbase-blog-example-com*' => Process::result(output: 'pocketbase-blog-example-com   1/1   1   1   10d'),
+        '*get deployment directus-blog-example-com*' => Process::result(output: ''),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -220,7 +220,7 @@ test('data:remove --domain derives the same instance data:init would have, not m
     $this->artisan('data:remove local --domain=blog.example.com --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
-        && str_contains($process->command, 'deployment/data-pocketbase-blog-example-com')
+        && str_contains($process->command, 'deployment/pocketbase-blog-example-com')
         && ! str_contains($process->command, 'secret/data-secrets '));
 });
 
@@ -249,8 +249,8 @@ test('data:remove --domain removes EVERY instance registered for the host (dupli
 
             return Process::result();
         },
-        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
-        '*get deployment data-directus*' => Process::result(output: ''),
+        '*get deployment pocketbase*' => Process::result(output: 'pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
+        '*get deployment directus*' => Process::result(output: ''),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -258,10 +258,7 @@ test('data:remove --domain removes EVERY instance registered for the host (dupli
     $this->artisan('data:remove local --domain=pocket.luchtech.dev --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
-        && str_contains($process->command, 'deployment/data-pocketbase')
-        && ! str_contains($process->command, 'deployment/data-pocketbase-'))
-        ->assertRan(fn ($process) => str_contains($process->command, 'delete')
-            && str_contains($process->command, 'deployment/data-pocketbase-pocket-luchtech-dev'));
+        && str_contains($process->command, 'deployment/pocketbase-pocket-luchtech-dev'));
 
     // The loop ran ONE unregister per instance (two registry writes), each
     // dropping a DIFFERENT data entry — the fake re-seeds on every read, so
@@ -275,7 +272,7 @@ test('data:remove --domain removes EVERY instance registered for the host (dupli
 });
 
 test('data:remove --engine=pocketbase removes pocketbase resources', function (): void {
-    Process::fake([...registeredToolRemoveFakes('data:remove'),
+    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -292,16 +289,16 @@ test('data:remove tears down pocketbase\'s own Service and Ingress, not just Dir
     // real names (service/data-pocketbase, ingress/data-pocketbase-ingress).
     // Every past data:remove left those orphaned, and the next data:init for
     // either engine collided with them on the shared Data host.
-    Process::fake([...registeredToolRemoveFakes('data:remove'),
+    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
     $this->artisan('data:remove local --engine=pocketbase --force')->assertExitCode(0);
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'service/data-pocketbase')
-        && str_contains($process->command, 'ingress/data-pocketbase-ingress')
-        && str_contains($process->command, 'configmap/data-pocketbase-hooks'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'service/pocketbase-tool-example-com')
+        && str_contains($process->command, 'ingress/pocketbase-tool-example-com-ingress')
+        && str_contains($process->command, 'configmap/pocketbase-hooks-tool-example-com'));
 });
 
 test('data:remove asks which engine when both are deployed for the same instance, rather than guessing', function (): void {
@@ -314,9 +311,9 @@ test('data:remove asks which engine when both are deployed for the same instance
     // ::cannotPrompt() is true under runningUnitTests()), so this exercises
     // the "ask" path as the flag-required failure — interactively it's a
     // select() prompt instead, per flagOrPrompt()'s contract.
-    Process::fake([...registeredToolRemoveFakes('data:remove'),
-        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
-        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
+    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
+        '*get deployment directus-tool-example-com*' => Process::result(output: 'directus-tool-example-com   1/1   1   1   10d'),
+        '*get deployment pocketbase-tool-example-com*' => Process::result(output: 'pocketbase-tool-example-com   1/1   1   1   10d'),
         '*' => Process::result(output: ''),
     ]);
 
@@ -326,9 +323,9 @@ test('data:remove asks which engine when both are deployed for the same instance
 })->throws(MissingFlagException::class, 'Missing required --engine');
 
 test('data:remove --engine=all removes both when both are genuinely deployed', function (): void {
-    Process::fake([...registeredToolRemoveFakes('data:remove'),
-        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
-        '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase   1/1   1   1   10d'),
+    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
+        '*get deployment directus-tool-example-com*' => Process::result(output: 'directus-tool-example-com   1/1   1   1   10d'),
+        '*get deployment pocketbase-tool-example-com*' => Process::result(output: 'pocketbase-tool-example-com   1/1   1   1   10d'),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -336,14 +333,14 @@ test('data:remove --engine=all removes both when both are genuinely deployed', f
     $this->artisan('data:remove local --engine=all --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
-        && str_contains($process->command, 'deployment/data-directus')
-        && str_contains($process->command, 'deployment/data-pocketbase'));
+        && str_contains($process->command, 'deployment/directus-tool-example-com')
+        && str_contains($process->command, 'deployment/pocketbase-tool-example-com'));
 });
 
 test('data:remove auto-detects the single engine actually deployed, without needing --engine', function (): void {
-    Process::fake([...registeredToolRemoveFakes('data:remove'),
-        '*get deployment data-directus*' => Process::result(output: 'data-directus   1/1   1   1   10d'),
-        '*get deployment data-pocketbase*' => Process::result(output: ''),
+    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
+        '*get deployment directus-tool-example-com*' => Process::result(output: 'directus-tool-example-com   1/1   1   1   10d'),
+        '*get deployment pocketbase*' => Process::result(output: ''),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -351,6 +348,6 @@ test('data:remove auto-detects the single engine actually deployed, without need
     $this->artisan('data:remove local --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
-        && str_contains($process->command, 'deployment/data-directus')
-        && ! str_contains($process->command, 'deployment/data-pocketbase'));
+        && str_contains($process->command, 'deployment/directus-tool-example-com')
+        && ! str_contains($process->command, 'deployment/pocketbase-tool-example-com'));
 });
