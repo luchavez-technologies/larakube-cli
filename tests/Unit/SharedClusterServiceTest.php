@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\View;
 
 // SharedClusterService::templatePayload() for FLOW shells out to a live
-// `kubectl get deployment flow-windmill` to detect the installed engine. Fake
+// `kubectl get deployment windmill` to detect the installed engine. Fake
 // Process so these tests never touch the real cluster — otherwise, when the
 // current kube-context points at a remote cluster, the call blocks and the run
 // appears to hang on the *previous* test file (alphabetically ServicesManifestTest).

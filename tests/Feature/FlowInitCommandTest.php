@@ -35,7 +35,7 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
             return Process::result(output: in_array($m[1], $liveDeployments, true) ? "deployment/{$m[1]}" : '');
         }
 
-        if (preg_match("#get secret flow-n8n-secrets-flow-example-com .*jsonpath='?\\{\\.data\\.([a-z-]+)\\}#", $cmd, $m) === 1) {
+        if (preg_match("#get secret n8n-secrets-flow-example-com .*jsonpath='?\\{\\.data\\.([a-z-]+)\\}#", $cmd, $m) === 1) {
             return Process::result(output: isset($secret[$m[1]]) ? base64_encode($secret[$m[1]]) : '');
         }
 
@@ -65,15 +65,15 @@ test('flow:init names every n8n resource after its host and pins the image from 
 
     runFlowInit()->assertExitCode(0);
 
-    expect($seen['manifest'])->toContain('name: flow-n8n-flow-example-com')
-        ->toContain('name: flow-n8n-secrets-flow-example-com')
-        ->toContain('claimName: flow-n8n-storage-flow-example-com')
+    expect($seen['manifest'])->toContain('name: n8n-flow-example-com')
+        ->toContain('name: n8n-secrets-flow-example-com')
+        ->toContain('claimName: n8n-storage-flow-example-com')
         ->toContain('value: n8n_flow_example_com')
         ->toContain('image: '.(new App\Tools\N8n)->image('n8n'))
         ->toContain('larakube-tool: flow')
         ->not->toContain('flow-secrets')
-        ->not->toContain('name: flow-n8n'.PHP_EOL)
-        ->and($seen['secret']['metadata']['name'] ?? null)->toBe('flow-n8n-secrets-flow-example-com');
+        ->not->toContain('  name: n8n'.PHP_EOL)
+        ->and($seen['secret']['metadata']['name'] ?? null)->toBe('n8n-secrets-flow-example-com');
 });
 
 test('flow:init reuses the instance\'s encryption key and never puts it in argv', function (): void {
@@ -86,7 +86,7 @@ test('flow:init reuses the instance\'s encryption key and never puts it in argv'
 });
 
 test('flow:init refuses a second engine on a host that already runs one', function (): void {
-    fakeFlowInitCluster($seen, liveDeployments: ['flow-n8n-flow-example-com']);
+    fakeFlowInitCluster($seen, liveDeployments: ['n8n-flow-example-com']);
 
     runFlowInit('windmill')
         ->expectsOutputToContain('flow.example.com already runs n8n')
@@ -100,8 +100,8 @@ test('flow:init windmill names its resources after its host too', function (): v
 
     runFlowInit('windmill')->assertExitCode(0);
 
-    expect($seen['manifest'])->toContain('name: flow-windmill-flow-example-com')
-        ->toContain('name: flow-windmill-secrets-flow-example-com')
+    expect($seen['manifest'])->toContain('name: windmill-flow-example-com')
+        ->toContain('name: windmill-secrets-flow-example-com')
         ->toContain('windmill_flow_example_com')
         ->toContain('image: '.(new App\Tools\Windmill)->image('windmill'))
         ->not->toContain('flow-secrets');
@@ -115,7 +115,7 @@ test('flow:init deploys each engine locally at its default host using Plex Commo
         ->expectsOutputToContain("Applying Flow ({$label}) manifests...")
         ->expectsOutputToContain("Flow ({$label}) stack is live.");
 
-    expect($seen['manifest'])->toContain("name: flow-{$engine}-")
+    expect($seen['manifest'])->toContain("name: {$engine}-")
         ->toContain('postgres.larakube-plex.svc.cluster.local');
 })->with([['n8n', 'n8n'], ['windmill', 'Windmill']]);
 

@@ -23,21 +23,21 @@ test('FLOW commonsDatabaseList() returns both when the engine is unspecified, on
         ->and(ClusterTool::FLOW->commonsDatabases(engine: 'windmill'))->toBe(['windmill']);
 });
 
-test('FLOW deploymentName() targets the real per-engine Deployment name, not always flow-n8n', function (): void {
+test('FLOW deploymentName() targets the real per-engine Deployment name, not always n8n', function (): void {
     // Confirmed against the real Blade manifests: n8n.blade.php deploys
-    // "flow-n8n", windmill.blade.php deploys "flow-windmill" — two
+    // "n8n", windmill.blade.php deploys "windmill" — two
     // genuinely different Deployments. deploymentName() ignoring $engine
     // meant any engine-aware caller (e.g. resolveInstanceEngine()'s live
     // Deployment probe) could never actually tell them apart.
-    expect(ClusterTool::FLOW->deploymentName())->toBe('flow-n8n')
-        ->and(ClusterTool::FLOW->deploymentName(engine: 'n8n'))->toBe('flow-n8n')
-        ->and(ClusterTool::FLOW->deploymentName(engine: 'windmill'))->toBe('flow-windmill');
+    expect(ClusterTool::FLOW->deploymentName())->toBe('n8n')
+        ->and(ClusterTool::FLOW->deploymentName(engine: 'n8n'))->toBe('n8n')
+        ->and(ClusterTool::FLOW->deploymentName(engine: 'windmill'))->toBe('windmill');
 });
 
 test('FLOW smtpEnv() refuses for a known Windmill engine instead of targeting the n8n Deployment', function (): void {
     $default = ClusterTool::FLOW->smtpEnv();
     expect($default)->not->toBeNull()
-        ->and($default['deployment'])->toBe('flow-n8n');
+        ->and($default['deployment'])->toBe('n8n');
 
     $n8n = ClusterTool::FLOW->smtpEnv('n8n');
     expect($n8n)->toBe($default)
@@ -48,16 +48,16 @@ test('each FLOW engine names its resources per instance through ToolInstance', f
     $n8n = App\Data\ToolInstance::forHost(ClusterTool::FLOW, 'flow.example.com', 'n8n');
     $windmill = App\Data\ToolInstance::forHost(ClusterTool::FLOW, 'jobs.example.com', 'windmill');
 
-    expect($n8n->deployment())->toBe('flow-n8n-flow-example-com')
-        ->and($n8n->secret())->toBe('flow-n8n-secrets-flow-example-com')
-        ->and($n8n->volume())->toBe('flow-n8n-storage-flow-example-com')
+    expect($n8n->deployment())->toBe('n8n-flow-example-com')
+        ->and($n8n->secret())->toBe('n8n-secrets-flow-example-com')
+        ->and($n8n->volume())->toBe('n8n-storage-flow-example-com')
         ->and($n8n->database())->toBe('n8n_flow_example_com')
         ->and($n8n->vpnMiddleware()?->name)->toBe('flow-vpn-only-flow-example-com')
         ->and(ClusterTool::FLOW->smtpEnv('n8n', $n8n->instance))->toMatchArray([
-            'deployment' => 'flow-n8n-flow-example-com',
-            'secret' => 'flow-n8n-smtp-flow-example-com',
+            'deployment' => 'n8n-flow-example-com',
+            'secret' => 'n8n-smtp-flow-example-com',
         ])
-        ->and($windmill->deployment())->toBe('flow-windmill-jobs-example-com')
+        ->and($windmill->deployment())->toBe('windmill-jobs-example-com')
         ->and($windmill->database())->toBe('windmill_jobs_example_com');
 });
 

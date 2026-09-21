@@ -3,12 +3,17 @@
     $tool = \App\Enums\ClusterTool::FLOW->vendor('n8n');
     $dbName ??= $names->database();
     $deployment = $names->deployment();
+    $labels = $names->labels();
 @endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ $names->volume() }}
   namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   accessModes:
     - ReadWriteOnce
@@ -25,6 +30,9 @@ metadata:
     app: {{ $deployment }}
     larakube-tool: flow
     larakube-engine: n8n
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 @if($noPlex)
     larakube-storage: bundled
 @endif
@@ -39,6 +47,9 @@ spec:
     metadata:
       labels:
         app: {{ $deployment }}
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: n8n
@@ -115,6 +126,10 @@ kind: Service
 metadata:
   name: {{ $deployment }}
   namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
     app: {{ $deployment }}
@@ -124,4 +139,4 @@ spec:
       targetPort: 5678
   type: ClusterIP
 ---
-@include('k8s.flow.ingress', ['names' => $names, 'servicePort' => 5678])
+@include('k8s.flow.ingress', ['names' => $names, 'labels' => $labels, 'servicePort' => 5678])

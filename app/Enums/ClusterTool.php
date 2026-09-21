@@ -1342,7 +1342,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function resourceNaming(): ResourceNaming
     {
         return match ($this) {
-            self::MONITOR, self::GIT, self::NOTES => ResourceNaming::CANONICAL,
+            self::MONITOR, self::GIT, self::NOTES, self::FLOW => ResourceNaming::CANONICAL,
             self::CHAT, self::PASSWORDS, self::SSO, self::LINK, self::RECORD,
             self::SHEETS, self::RESUME, self::TASKS, self::SUPPORT,
             self::ANALYTICS => ResourceNaming::AS_SHIPPED,

@@ -30,9 +30,9 @@ test('resolves an instance-suffixed Deployment to its base component', function 
 });
 
 test('checks every engine variant, not just the default', function (): void {
-    // FLOW's default engine is n8n (flow-n8n); flow-windmill must still
-    // resolve correctly since it's a real, live-possible Deployment name.
-    $match = ClusterTool::forDeployment('flow-windmill');
+    // FLOW's default engine is n8n; a windmill instance must still resolve,
+    // since it's a real, live-possible Deployment name.
+    $match = ClusterTool::forDeployment('windmill-flow-example-com');
     expect($match['tool'])->toBe(ClusterTool::FLOW);
 });
 

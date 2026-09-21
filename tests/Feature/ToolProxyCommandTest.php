@@ -26,11 +26,11 @@ function toolProxyCluster(?array &$annotations, bool $vpnOnly = false, bool $dns
                 return Process::result(output: 'annotated');
             })(),
             str_contains($cmd, 'get ingress -n larakube-shared -o json') => Process::result(output: (string) json_encode(['items' => [[
-                'metadata' => ['name' => 'flow-n8n-flow-example-com', 'namespace' => 'larakube-shared'],
+                'metadata' => ['name' => 'n8n-flow-example-com', 'namespace' => 'larakube-shared'],
                 'spec' => ['rules' => [['host' => 'flow.example.com']]],
             ]]])),
-            str_contains($cmd, 'get ingress/flow-n8n-flow-example-com') => Process::result(output: (string) json_encode([
-                'metadata' => ['name' => 'flow-n8n-flow-example-com', 'annotations' => $vpnOnly
+            str_contains($cmd, 'get ingress/n8n-flow-example-com') => Process::result(output: (string) json_encode([
+                'metadata' => ['name' => 'n8n-flow-example-com', 'annotations' => $vpnOnly
                     ? ['traefik.ingress.kubernetes.io/router.middlewares' => 'larakube-shared-flow-vpn-only-flow-example-com@kubernetescrd']
                     : []],
             ])),
@@ -67,7 +67,7 @@ test('tool:proxy annotates the instance\'s Ingress and remembers it', function (
     $this->artisan('tool:proxy production --domain=flow.example.com --context=ctx')->assertExitCode(0);
 
     expect($annotations)->toHaveCount(1)
-        ->and($annotations[0])->toContain('annotate ingress flow-n8n-flow-example-com -n larakube-shared external-dns.alpha.kubernetes.io/cloudflare-proxied=true --overwrite')
+        ->and($annotations[0])->toContain('annotate ingress n8n-flow-example-com -n larakube-shared external-dns.alpha.kubernetes.io/cloudflare-proxied=true --overwrite')
         ->and($registry->entryForHost(App\Enums\ClusterTool::FLOW, 'flow.example.com')['proxied'])->toBeTrue();
 });
 

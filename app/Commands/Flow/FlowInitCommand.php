@@ -120,7 +120,7 @@ class FlowInitCommand extends Command
         $this->withSpin('Syncing secrets...', fn () => $cluster->putSecret($ns, $names->secret(), [
             'encryption-key' => $encryptionKey,
             'db-password' => $dbPassword,
-        ], ['larakube-tool' => 'flow']));
+        ], $names->labels()));
 
         $manifest = view("k8s.flow.{$engine}", [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),

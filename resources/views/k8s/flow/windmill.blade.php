@@ -5,6 +5,7 @@
     $deployment = $names->deployment();
     $bundledDb = $names->name('db');
     $bundledDbVolume = $names->volume('db-storage');
+    $labels = $names->labels();
 @endphp
 @if($noPlex)
 apiVersion: v1
@@ -80,6 +81,9 @@ metadata:
     app: {{ $deployment }}
     larakube-tool: flow
     larakube-engine: windmill
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 @if($noPlex)
     larakube-storage: bundled
 @endif
@@ -94,6 +98,9 @@ spec:
     metadata:
       labels:
         app: {{ $deployment }}
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: windmill-server
@@ -153,6 +160,10 @@ kind: Service
 metadata:
   name: {{ $deployment }}
   namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
     app: {{ $deployment }}
@@ -167,4 +178,4 @@ spec:
       name: lsp
   type: ClusterIP
 ---
-@include('k8s.flow.ingress', ['names' => $names, 'servicePort' => 8000])
+@include('k8s.flow.ingress', ['names' => $names, 'labels' => $labels, 'servicePort' => 8000])

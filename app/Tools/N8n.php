@@ -60,10 +60,14 @@ final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeployment
     public function smtpEnv(?string $instance = null): ?array
     {
         $names = ($instance === null || $instance === '') ? null : ToolInstance::forInstance(ClusterTool::FLOW, $instance, self::ENGINE);
+        // Without an instance there is no ToolInstance to ask, but the name
+        // still has to follow the tool's current naming generation — reading
+        // baseDeploymentName() directly would pin it to the pre-migration one.
+        $base = ClusterTool::FLOW->deploymentName(engine: self::ENGINE);
 
         return [
-            'deployment' => $names?->deployment() ?? $this->baseDeploymentName(),
-            'secret' => $names?->secret(SecretKind::SMTP) ?? $this->baseDeploymentName().'-'.SecretKind::SMTP->value,
+            'deployment' => $names?->deployment() ?? $base,
+            'secret' => $names?->secret(SecretKind::SMTP) ?? $base.'-'.SecretKind::SMTP->value,
             'static' => [
                 'N8N_EMAIL_MODE' => 'smtp',
                 'N8N_SMTP_SSL' => 'true',
