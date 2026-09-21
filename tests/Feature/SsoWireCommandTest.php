@@ -801,13 +801,13 @@ test('sso:wire gates Outline behind Zitadel roles — the actual tool from the l
     // regression guard for that incident, not just a generic RBAC test.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment notes-outline*' => Process::result(output: 'notes-outline   1/1   1   1   10d'),
+        '*get deployment outline*' => Process::result(output: 'outline   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret sso-app-notes*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/notes-outline*' => Process::result(output: 'deployment.apps/notes-outline env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/notes-outline restarted'),
+        '*set env deployment/outline*' => Process::result(output: 'deployment.apps/outline env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/outline restarted'),
     ]);
 
     Saloon::fake([

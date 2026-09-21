@@ -52,8 +52,8 @@ function fakeNotesInitProcess(?string $s3Host, ?string &$appliedManifest, int $a
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
             // Existing, non-pending OIDC creds — takes ensureOidcSecret()'s
             // fast path so the test doesn't have to model Zitadel at all.
-            str_contains($cmd, 'notes-outline-oidc') => Process::result(output: base64_encode('existing-client-id')),
-            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "notes-outline" successfully rolled out'),
+            str_contains($cmd, 'outline-oidc') => Process::result(output: base64_encode('existing-client-id')),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "outline" successfully rolled out'),
             default => Process::result(output: ''),
         };
     });
@@ -130,8 +130,8 @@ test('notes:init registers itself in the cluster tool registry, including the ad
             str_contains($cmd, 'get secret larakube-tools-registry') => Process::result(output: '', exitCode: 1),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
-            str_contains($cmd, 'notes-outline-oidc') => Process::result(output: base64_encode('existing-client-id')),
-            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "notes-outline" successfully rolled out'),
+            str_contains($cmd, 'outline-oidc') => Process::result(output: base64_encode('existing-client-id')),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "outline" successfully rolled out'),
             default => Process::result(output: ''),
         };
     });
@@ -182,7 +182,7 @@ test('notes:init scopes the Service/Ingress name by instance so a second instanc
     ])->assertExitCode(0);
 
     expect($appliedManifest)->not->toBeNull()
-        ->and($appliedManifest)->toContain('name: notes-blog-example-com')
+        ->and($appliedManifest)->toContain('name: outline-blog-example-com')
         ->and($appliedManifest)->not->toContain("name: notes\n");
 });
 

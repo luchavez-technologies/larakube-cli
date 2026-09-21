@@ -107,7 +107,7 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
         // Stalwart (Mail) has its OpenBao KV sync ExternalSecret on the cluster
         '*get externalsecret stalwart*' => Process::result(output: 'stalwart  1m  True  SecretSynced'),
         // Outline (Notes) never got its KV sync wired
-        '*get externalsecret notes-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get externalsecret outline-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
@@ -237,7 +237,7 @@ function toolListRefreshFakes(string $registryJson = ''): void
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: $registryJson),
         '*get deployment -n larakube-shared *' => Process::result(output: implode("\n", [
-            'notes-outline-notes-luchtech-dev',   // conforms
+            'outline-notes-luchtech-dev',   // conforms
             'loki-monitor-luchtech-dev',  // conforms (was an enum gap)
             'external-dns-luchtech-dev',          // conforms, but DNS is headless
             'drive-ocis',                         // no suffix -> skipped

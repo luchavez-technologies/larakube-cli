@@ -136,14 +136,22 @@ final readonly class ToolInstance
      * named after its upstream can't be confused with that upstream's own
      * Deployments.
      *
+     * The component label is the name's own component stem, not the registry
+     * key, so `larakube.io/component` always reads the same as the resource
+     * name it sits on.
+     *
      * @return array<string, string>
      */
     public function labels(?string $component = null): array
     {
+        // Side-car workloads (a DaemonSet, a job) label themselves with a name
+        // the registry doesn't carry as a component; use it as given.
+        $named = $component !== null && $this->tool->componentByKey($component, $this->instance, $this->engine) === null;
+
         return [
             'larakube.io/managed-by' => 'larakube',
             'larakube.io/tool' => $this->tool->value,
-            'larakube.io/component' => $component ?? $this->primaryComponentKey(),
+            'larakube.io/component' => $named ? $component : $this->base($component),
             'larakube.io/instance' => $this->instance,
         ];
     }
@@ -231,10 +239,5 @@ final readonly class ToolInstance
         $ref = $this->tool->dbSecretRef($this->instance, $this->engine);
 
         return $ref === null ? null : new ResourceRef('Secret', $ref['secret'], $ref['namespace']);
-    }
-
-    private function primaryComponentKey(): string
-    {
-        return $this->tool->primaryComponent($this->instance, $this->engine)->key;
     }
 }

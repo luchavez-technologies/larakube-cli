@@ -28,7 +28,7 @@ test('data:show finds an unregistered PocketBase instance by its Deployment name
 });
 
 test('data:show still reports not installed when no Data Deployment exists', function (): void {
-    dataShowFakes(['kube-state-metrics', 'notes-outline-notes-test']);
+    dataShowFakes(['kube-state-metrics', 'outline-notes-test']);
 
     $this->artisan('data:show local --domain=data.test --context=orbstack')
         ->assertExitCode(1)

@@ -69,7 +69,7 @@ test('sso:grant auto-resolves --domain= when a multi-instance tool has exactly o
         ->assertExitCode(0);
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
-        && $request->body()->get('name') === 'notes-outline-notes-luchtech-dev');
+        && $request->body()->get('name') === 'outline-notes-luchtech-dev');
 });
 
 test('sso:grant refuses to guess when a multi-instance tool has more than one registered instance and no --domain', function (): void {
@@ -113,7 +113,7 @@ test('sso:grant --domain= resolves the exact named instance\'s project', functio
         ->assertExitCode(0);
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
-        && $request->body()->get('name') === 'notes-outline-blog-example-com');
+        && $request->body()->get('name') === 'outline-blog-example-com');
 });
 
 test('sso:grant rejects an unknown tool', function (): void {

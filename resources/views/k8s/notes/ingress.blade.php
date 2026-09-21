@@ -1,7 +1,19 @@
+@php
+    // Rendered both by notes:init (which passes these) and by the shared
+    // ingress path (which passes only the host), so derive what is missing.
+    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::NOTES->instanceSlugFromHost($host) : null);
+    $names = $instance ? \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::NOTES, $instance) : null;
+    $serviceName = $serviceName ?? ($names?->deployment() ?? 'notes');
+    $labels = $labels ?? ($names?->labels() ?? []);
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ $serviceName ?? 'notes' }}
+  name: {{ $serviceName }}
+  labels:
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure

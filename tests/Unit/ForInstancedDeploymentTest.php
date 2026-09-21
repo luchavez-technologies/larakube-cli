@@ -3,7 +3,7 @@
 use App\Enums\ClusterTool;
 
 test('a suffixed deployment yields its tool and instance', function (): void {
-    $hit = ClusterTool::forInstancedDeployment('notes-outline-notes-luchtech-dev');
+    $hit = ClusterTool::forInstancedDeployment('outline-notes-luchtech-dev');
 
     expect($hit)->not->toBeNull()
         ->and($hit['tool'])->toBe(ClusterTool::NOTES)

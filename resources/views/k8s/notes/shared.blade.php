@@ -5,6 +5,9 @@ metadata:
   namespace: larakube-shared
   labels:
     app: {{ $deploymentName ?? 'notes-outline' }}
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
@@ -16,6 +19,9 @@ spec:
     metadata:
       labels:
         app: {{ $deploymentName ?? 'notes-outline' }}
+@foreach($labels ?? [] as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: outline
@@ -154,6 +160,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ $serviceName ?? 'notes' }}
+  labels:
+@foreach($labels ?? [] as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   namespace: larakube-shared
 spec:
   selector:

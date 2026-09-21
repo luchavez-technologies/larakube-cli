@@ -17,7 +17,7 @@ afterEach(function (): void {
 });
 
 test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support named instances', function (): void {
-    expect(ClusterTool::NOTES->deploymentName('sister'))->toBe('notes-outline-sister')
+    expect(ClusterTool::NOTES->deploymentName('sister'))->toBe('outline-sister')
         ->and(ClusterTool::NOTES->commonsDatabases('sister'))->toBe(['outline_sister'])
         ->and(ClusterTool::DATA->dbSecretRef('sister'))->toBe([
             'namespace' => 'larakube-shared',
@@ -29,7 +29,7 @@ test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support name
 test('notes:init deploys a named multi-instance with isolated DB and secrets', function (): void {
     // A bare, dot-less --domain so ClusterTool::instanceSlugFromHost() derives
     // exactly 'sister' (no dots to dash-ify) — keeps every fixture below
-    // (notes-secrets-sister, notes-outline-sister, ...) matching the slug the
+    // (outline-secrets-sister, outline-sister, ...) matching the slug the
     // command actually computes now that the instance IS the host, not a
     // separately-typed --instance flag.
     $registryJson = json_encode([
@@ -55,9 +55,9 @@ test('notes:init deploys a named multi-instance with isolated DB and secrets', f
         '*get secret plex-admin*' => Process::result(output: base64_encode('s3-credential-val')),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('pat-token')),
         '*get secret sso-zitadel-host*' => Process::result(output: base64_encode('sso.kube')),
-        '*get secret notes-secrets-sister*' => Process::result(output: '', exitCode: 1),
-        '*get secret notes-outline-oidc-sister*' => Process::result(output: '', exitCode: 1),
-        '*get deployment notes-outline-sister*' => Process::result(output: 'notes-outline-sister 1/1'),
+        '*get secret outline-secrets-sister*' => Process::result(output: '', exitCode: 1),
+        '*get secret outline-oidc-sister*' => Process::result(output: '', exitCode: 1),
+        '*get deployment outline-sister*' => Process::result(output: 'outline-sister 1/1'),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel 1/1'),
         '*' => Process::result(output: 'success'),
     ]);

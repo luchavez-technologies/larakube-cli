@@ -26,7 +26,7 @@ function ssoPruneProjects(): array
         // Registered multi-instance project — unreferenced by any sso-app
         // secret YET, but its instance sits in the tools registry, so the
         // per-instance rbacProjectName() must protect it.
-        ['id' => 'p-notes', 'name' => 'notes-outline-notes-luchtech-dev'],
+        ['id' => 'p-notes', 'name' => 'outline-notes-luchtech-dev'],
         ['id' => 'p-stale', 'name' => 'git-forgejo'],
     ];
 }

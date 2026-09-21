@@ -556,7 +556,7 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
 });
 
 test('secrets:wire supports git, notes, sheets, and chat tools', function (): void {
-    foreach (['git' => 'forgejo', 'notes' => 'notes-secrets', 'sheets' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
+    foreach (['git' => 'forgejo', 'notes' => 'outline-secrets', 'sheets' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
         expect(App\Enums\ClusterTool::from($toolSlug)->dbSecretRef())->not->toBeNull();
     }
 });

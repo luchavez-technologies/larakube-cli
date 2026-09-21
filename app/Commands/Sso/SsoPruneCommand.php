@@ -116,7 +116,7 @@ class SsoPruneCommand extends Command
                 throw new MissingFlagException(
                     'project',
                     'Pruning deletes whole projects non-interactively — pass --force together with the exact --project=<id> list.',
-                    'sso:prune production --project=387127298416967780 --force',
+                    'sso:prune production --project=<project-id-or-name> --force',
                 );
             }
         } else {

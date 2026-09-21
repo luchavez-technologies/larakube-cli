@@ -3,8 +3,10 @@
 namespace App\Commands\Notes;
 
 use App\Data\ConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
@@ -117,9 +119,11 @@ class NotesInitCommand extends Command
         // Ingress host rule instead of getting its own. Every other
         // multi-instance tool (data, chat, ...) already suffixes its
         // Service/Ingress name by instance; Outline just never did.
-        $serviceName = "notes-{$instance}";
-        $secretName = "notes-secrets-{$instance}";
-        $oidcSecretName = "notes-outline-oidc-{$instance}";
+        $names = ToolInstance::forInstance(ClusterTool::NOTES, $instance);
+        $serviceName = $deploymentName;
+        $secretName = $names->secret();
+        $oidcSecretName = $names->secret(SecretKind::OIDC);
+        $labels = $names->labels();
         $dbName = ClusterTool::NOTES->commonsDatabases($instance)[0];
         $s3Bucket = "notes-storage-{$instance}";
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::NOTES, $instance);
@@ -156,12 +160,12 @@ class NotesInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $secretKey, $utilsSecret): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['db-password' => $dbPassword, 'secret-key' => $secretKey, 'utils-secret' => $utilsSecret]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $dbPassword, $secretKey, $utilsSecret, $labels): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['db-password' => $dbPassword, 'secret-key' => $secretKey, 'utils-secret' => $utilsSecret], $labels);
         });
 
         // Outline requires at least one authentication provider to start.
-        if (! $this->ensureOidcSecret($kubectl, $ns, $env, $host, $instance, $oidcSecretName, $aliasHosts)) {
+        if (! $this->ensureOidcSecret($kubectl, $ns, $env, $host, $instance, $oidcSecretName, $aliasHosts, $labels)) {
             return 1;
         }
 
@@ -169,6 +173,7 @@ class NotesInitCommand extends Command
             'host' => $host,
             'aliasHosts' => $aliasHosts,
             'deploymentName' => $deploymentName,
+            'labels' => $labels,
             'serviceName' => $serviceName,
             'secretName' => $secretName,
             'oidcSecretName' => $oidcSecretName,
@@ -233,7 +238,7 @@ class NotesInitCommand extends Command
      * is what both the manifest's valueFrom and sso:wire's own convention use —
      * so a later `sso:wire notes` reuses this app instead of clashing.
      */
-    protected function ensureOidcSecret(string $kubectl, string $ns, string $env, string $host, string $instance = '', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = []): bool
+    protected function ensureOidcSecret(string $kubectl, string $ns, string $env, string $host, string $instance = '', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = [], array $labels = []): bool
     {
         // 1. Existing real credentials?
         $existing = $this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, 'OIDC_CLIENT_ID');
@@ -245,7 +250,7 @@ class NotesInitCommand extends Command
 
         // 2. Zitadel installed → self-wire it (register app + write secret).
         if ($this->isSsoInstalled($kubectl, $this->ssoNamespace())) {
-            return $this->selfWireZitadel($kubectl, $ns, $env, $host, $instance, $oidcSecretName, $aliasHosts);
+            return $this->selfWireZitadel($kubectl, $ns, $env, $host, $instance, $oidcSecretName, $aliasHosts, $labels);
         }
 
         // 3. External SSO — prompt for OIDC details. Unattended there is no one to
@@ -292,7 +297,7 @@ class NotesInitCommand extends Command
             'OIDC_AUTH_URI' => $authUrl,
             'OIDC_TOKEN_URI' => $tokenUrl,
             'OIDC_USERINFO_URI' => $userinfoUrl,
-        ]);
+        ], $labels);
 
         $this->oidcSource = 'external';
         $this->laraKubeInfo('OIDC secret created for Outline.');
@@ -300,7 +305,7 @@ class NotesInitCommand extends Command
         return true;
     }
 
-    protected function selfWireZitadel(string $kubectl, string $ns, string $env, string $host, string $instance = '', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = []): bool
+    protected function selfWireZitadel(string $kubectl, string $ns, string $env, string $host, string $instance = '', string $oidcSecretName = 'notes-outline-oidc', array $aliasHosts = [], array $labels = []): bool
     {
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -351,7 +356,7 @@ class NotesInitCommand extends Command
             'app-id' => $registered['appId'],
             'client-id' => $registered['clientId'],
             'client-secret' => $registered['clientSecret'],
-        ]);
+        ], $labels);
 
         $this->writeNotesOidcSecret($kubectl, $ns, $oidcSecretName, [
             'OIDC_CLIENT_ID' => $registered['clientId'],
@@ -359,7 +364,7 @@ class NotesInitCommand extends Command
             'OIDC_AUTH_URI' => "https://{$ssoHost}/oauth/v2/authorize",
             'OIDC_TOKEN_URI' => "https://{$ssoHost}/oauth/v2/token",
             'OIDC_USERINFO_URI' => "https://{$ssoHost}/oidc/v1/userinfo",
-        ]);
+        ], $labels);
 
         $this->oidcSource = 'zitadel';
         $this->laraKubeInfo("✅ Registered Outline ({$instance}) with Zitadel SSO.");
@@ -367,9 +372,13 @@ class NotesInitCommand extends Command
         return true;
     }
 
-    protected function writeNotesOidcSecret(string $kubectl, string $ns, string $secretName, array $data): void
+    /**
+     * @param  array<string, string>  $data
+     * @param  array<string, string>  $labels
+     */
+    protected function writeNotesOidcSecret(string $kubectl, string $ns, string $secretName, array $data, array $labels = []): void
     {
-        $this->withSpin('Writing OIDC secret...', fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, $data));
+        $this->withSpin('Writing OIDC secret...', fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, $data, $labels));
     }
 
     protected function resolveEnvironment(): string

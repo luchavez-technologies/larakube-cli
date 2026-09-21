@@ -294,7 +294,7 @@ test('the confirmation names the host of the registered instance being removed',
         ->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
-        && str_contains($process->command, 'deployment/notes-outline-notes-example-com'));
+        && str_contains($process->command, 'deployment/outline-notes-example-com'));
 });
 
 test('removing a tool also removes its secrets:wire database-password sync', function (): void {
