@@ -3,6 +3,7 @@
 namespace App\Commands\Secrets;
 
 use App\Data\ConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
@@ -125,7 +126,19 @@ class SecretsUnwireCommand extends Command
             if (! $this->isToolInstalled($kubectl, $candidate)) {
                 continue;
             }
-            if (! $this->option('all') && $this->staticRoleExists($kubectl, $candidate->commonsDatabases()[0] ?? $candidate->value) !== true) {
+            // Same instance-awareness as the Secret probe above: the static
+            // role is named after the Commons tenant, which carries the
+            // instance.
+            $rotated = false;
+            foreach ($this->instancesToProbe($kubectl, $candidate) as $instance) {
+                $tenant = $candidate->commonsDatabases($instance)[0] ?? $candidate->value;
+                if ($this->staticRoleExists($kubectl, $tenant) === true) {
+                    $rotated = true;
+                    break;
+                }
+            }
+
+            if (! $this->option('all') && ! $rotated) {
                 continue;
             }
 
@@ -166,14 +179,43 @@ class SecretsUnwireCommand extends Command
         return [$picked[0]];
     }
 
+    /**
+     * Installed under ANY of its registered instances. A tool's Secret and its
+     * Commons tenant are both named after an instance (ADR 0021), so asking
+     * without one gets the base name the vendor shipped with — which the
+     * cluster does not have, making a live tool look uninstalled. Tools that
+     * register no instance keep the fixed name, which for them is the real one.
+     */
     protected function isToolInstalled(string $kubectl, ClusterTool $tool): bool
     {
-        $ref = $tool->dbSecretRef();
-        if ($ref === null) {
-            return false;
+        foreach ($this->instancesToProbe($kubectl, $tool) as $instance) {
+            $ref = $tool->dbSecretRef($instance);
+            if ($ref === null) {
+                continue;
+            }
+
+            $found = trim(Process::run(
+                "{$kubectl} get secret {$ref['secret']} -n {$ref['namespace']} --no-headers --ignore-not-found",
+            )->output());
+
+            if ($found !== '') {
+                return true;
+            }
         }
 
-        return trim(Process::run("{$kubectl} get secret {$ref['secret']} -n {$ref['namespace']} --no-headers --ignore-not-found")->output()) !== '';
+        return false;
+    }
+
+    /**
+     * Every registered instance slug, or [null] for a tool that registers none.
+     *
+     * @return list<string|null>
+     */
+    protected function instancesToProbe(string $kubectl, ClusterTool $tool): array
+    {
+        $slugs = array_map(fn (ToolInstance $i): ?string => $i->instance, ToolInstance::registered($kubectl, $tool));
+
+        return $slugs === [] ? [null] : $slugs;
     }
 
     protected function unwireTool(string $kubectl, string $secNs, ClusterTool $tool, ?string $instance = null, ?string $engine = null): bool
