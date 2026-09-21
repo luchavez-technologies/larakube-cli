@@ -4,7 +4,9 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
@@ -20,20 +22,16 @@ trait InteractsWithSso
     use InteractsWithToolRegistry, ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /**
-     * The Secret holding a tool's Zitadel client credentials.
-     *
-     * Always instance-suffixed, per ADR 0021: two instances of the same tool
-     * are two distinct Zitadel clients, and an unsuffixed name means the second
-     * wire silently overwrites the first's client-id/secret.
+     * The Secret holding a tool's Zitadel client credentials. It lives in the
+     * SSO namespace but is one of the tool's own resources, so it is named
+     * like the rest of them (ADR 0021) — `outline-sso-notes-luchtech-dev`.
      *
      * $component names the second OIDC client of a tool that has two (chat's
      * Synapse and MAS).
      */
     protected function ssoAppSecretName(ClusterTool $tool, string $instance, ?string $component = null): string
     {
-        $base = $component === null ? "sso-app-{$tool->value}" : "sso-app-{$tool->value}-{$component}";
-
-        return "{$base}-{$instance}";
+        return ToolInstance::forInstance($tool, $instance)->secret(SecretKind::SSO_APP, $component);
     }
 
     /** The namespace the SSO stack lives in — dedicated, not larakube-shared. */

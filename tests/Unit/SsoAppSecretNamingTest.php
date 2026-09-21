@@ -1,7 +1,8 @@
 <?php
 
 /**
- * The Zitadel client credentials Secret is instance-suffixed (ADR 0021).
+ * The Zitadel client credentials Secret is named like every other resource a
+ * tool owns (ADR 0021), instance and all.
  *
  * It was `sso-app-{tool}` with no instance, so two instances of the same tool
  * were two distinct Zitadel clients writing to ONE Secret — the second wire
@@ -27,8 +28,9 @@ function ssoAppNamer(): object
 test('the Zitadel app Secret carries the instance so two instances cannot collide', function (): void {
     $namer = ssoAppNamer();
 
-    expect($namer->name(ClusterTool::VPN, 'vpn-luchtech-dev'))->toBe('sso-app-vpn-vpn-luchtech-dev')
-        ->and($namer->name(ClusterTool::NOTES, 'notes-luchtech-dev'))->toBe('sso-app-notes-notes-luchtech-dev');
+    // {component}-sso-{instance}, the same shape as the tool's other Secrets.
+    expect($namer->name(ClusterTool::NOTES, 'notes-luchtech-dev'))->toBe('outline-sso-notes-luchtech-dev')
+        ->and($namer->name(ClusterTool::GIT, 'git-luchtech-dev'))->toBe('forgejo-sso-git-luchtech-dev');
 
     // Two instances of one tool must not resolve to the same Secret.
     expect($namer->name(ClusterTool::VPN, 'vpn-a-example-com'))
@@ -39,5 +41,5 @@ test('a tool with two OIDC clients names the second after its component', functi
     $namer = ssoAppNamer();
 
     expect($namer->name(ClusterTool::CHAT, 'chat-luchtech-dev', 'mas'))
-        ->toBe('sso-app-chat-mas-chat-luchtech-dev');
+        ->toBe('chat-mas-sso-chat-luchtech-dev');
 });

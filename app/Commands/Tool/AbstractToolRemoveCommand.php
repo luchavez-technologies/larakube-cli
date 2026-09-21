@@ -151,9 +151,10 @@ abstract class AbstractToolRemoveCommand extends Command
                 $ok = $this->dropCommonsTenants($kubectl, $targetInstance) && $ok;
             }
 
-            // No instance means no `sso-app-*` Secret to read the Zitadel ids
-            // from, so there is nothing to deregister.
-            if ($targetInstance !== null && $tool->hasSsoWire() && ! $tool->usesForwardAuth()) {
+            // A row with no instance predates hosts being identity, so there is
+            // no Secret named for it holding the Zitadel ids — nothing to
+            // deregister.
+            if (($targetInstance ?? '') !== '' && $tool->hasSsoWire() && ! $tool->usesForwardAuth()) {
                 $this->deregisterSsoApp($tool, $targetInstance, $kubectl, $env);
             }
 

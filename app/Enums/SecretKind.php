@@ -22,4 +22,7 @@ enum SecretKind: string
 
     /** The Commons database password (rotated by OpenBao). */
     case STORE = 'store';
+
+    /** The Zitadel app's ids and client credentials, written by `sso:wire`. */
+    case SSO_APP = 'sso';
 }

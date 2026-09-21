@@ -62,7 +62,7 @@ test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres pat
         '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret sso-app-chat-mas*' => Process::result(output: '', exitCode: 1),
+        '*get secret chat-mas-sso*' => Process::result(output: '', exitCode: 1),
         '*get secret chat-mas-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret chat-mas-config*' => Process::result(output: '', exitCode: 1),
         '*run chat-mas-config-gen*' => Process::result(output: 'pod/chat-mas-config-gen created'),

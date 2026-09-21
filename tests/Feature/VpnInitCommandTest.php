@@ -307,7 +307,7 @@ test('vpn:remove also targets the CHOSEN environment\'s own saved context', func
             '*larakube-tools-registry*' => Process::result(output: ''),
             '*apply -f -*' => Process::result(output: 'configured'),
             '*delete externalsecret,vaultdynamicsecret*' => Process::result(output: ''),
-            '*get secret sso-app-vpn*' => Process::result(output: ''),
+            '*get secret vpn-management-sso*' => Process::result(output: ''),
         ]);
         Process::preventStrayProcesses();
 

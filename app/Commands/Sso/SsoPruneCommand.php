@@ -159,11 +159,17 @@ class SsoPruneCommand extends Command
     }
 
     /**
-     * The authoritative live-reference set: every `sso-app-*` Secret in the
-     * SSO namespace carries the project-id of the app a tool actually logs
-     * in through (written by sso:wire for native-OIDC, forward-auth, AND
-     * CLI-OIDC tools alike). Null means the sweep itself failed — callers
-     * must refuse to prune rather than treat "unreadable" as "unreferenced".
+     * The authoritative live-reference set: every Secret in the SSO namespace
+     * recording an app a tool actually logs in through (written by sso:wire
+     * for native-OIDC, forward-auth, AND CLI-OIDC tools alike).
+     *
+     * An app record is recognised by carrying BOTH `project-id` and `app-id`,
+     * not by its name: a tool's app Secret is named after the tool (ADR 0021),
+     * so a name-shaped filter would stop matching the moment a tool migrates
+     * and would put its live project up for deletion. Requiring both keys also
+     * keeps some unrelated Secret that happens to carry a `project-id` from
+     * blocking every prune. Null means the sweep itself failed — callers must
+     * refuse to prune rather than treat "unreadable" as "unreferenced".
      *
      * @return list<string>|null
      */
@@ -182,10 +188,9 @@ class SsoPruneCommand extends Command
 
         $ids = [];
         foreach ($decoded['items'] ?? [] as $item) {
-            $name = $item['metadata']['name'] ?? '';
             $projectId = $item['data']['project-id'] ?? null;
 
-            if (str_starts_with($name, 'sso-app-') && is_string($projectId)) {
+            if (is_string($projectId) && is_string($item['data']['app-id'] ?? null)) {
                 $decodedId = base64_decode($projectId, true);
 
                 if ($decodedId !== false && $decodedId !== '') {

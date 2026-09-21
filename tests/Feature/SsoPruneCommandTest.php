@@ -39,13 +39,13 @@ function ssoPruneRegistryJson(): string
 }
 
 /**
- * Only ONE wire-tracked reference exists: git's. A non-sso-app secret
- * carrying a project-id key must NOT count as a reference.
+ * Only ONE wire-tracked reference exists: git's. A Secret carrying a
+ * project-id but no app-id is not an app record and must NOT count.
  */
 function ssoPruneSecretsJson(): string
 {
     return (string) json_encode(['items' => [
-        ['metadata' => ['name' => 'sso-app-git'], 'data' => [
+        ['metadata' => ['name' => 'forgejo-sso-git-example-com'], 'data' => [
             'project-id' => base64_encode('p-live'),
             'app-id' => base64_encode('app-x'),
         ]],
@@ -122,8 +122,14 @@ test('sso:prune is a clean no-op when every project is protected or referenced',
         // forgejo now ALSO tracked — nothing is orphaned anymore (the
         // idempotent second-run case after a successful prune).
         '*get secrets -n larakube-sso -o json*' => Process::result(output: (string) json_encode(['items' => [
-            ['metadata' => ['name' => 'sso-app-git'], 'data' => ['project-id' => base64_encode('p-live')]],
-            ['metadata' => ['name' => 'sso-app-forgejo'], 'data' => ['project-id' => base64_encode('p-stale')]],
+            ['metadata' => ['name' => 'forgejo-sso-git-example-com'], 'data' => [
+                'project-id' => base64_encode('p-live'),
+                'app-id' => base64_encode('app-live'),
+            ]],
+            ['metadata' => ['name' => 'forgejo-sso-forge-example-com'], 'data' => [
+                'project-id' => base64_encode('p-stale'),
+                'app-id' => base64_encode('app-stale'),
+            ]],
         ]])),
     ]);
 

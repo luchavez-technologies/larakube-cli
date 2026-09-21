@@ -3,6 +3,7 @@
 namespace App\Commands\Dashboard;
 
 use App\Data\ConfigData;
+use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithRemoteSsh;
@@ -76,7 +77,10 @@ class DashboardTrustCommand extends Command
         }
 
         $ssoHost = $this->resolveSsoHostReadOnly($environment, $config, $kubectl);
-        $clientId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-dashboard', 'client-id');
+        $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::DASHBOARD, (string) $this->getToolHost($kubectl, ClusterTool::DASHBOARD));
+        $clientId = $instance === ''
+            ? null
+            : $this->readClusterSecretKey($kubectl, $ssoNs, $this->ssoAppSecretName(ClusterTool::DASHBOARD, $instance), 'client-id');
 
         if ($ssoHost === null || $clientId === null) {
             $this->laraKubeError('Headlamp is not wired to Zitadel yet — run `larakube sso:wire '.$environment.' --tool=dashboard` first.');
