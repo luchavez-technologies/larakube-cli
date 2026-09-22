@@ -4,6 +4,8 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
 
@@ -13,17 +15,32 @@ trait InteractsWithAnalytics
 
     protected function analyticsNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::ANALYTICS->namespace();
     }
 
-    protected function isAnalyticsInstalled(string $kubectl, string $ns): bool
+    protected function isAnalyticsInstalled(string $kubectl, string $ns, string|ToolInstance|null $instance = null): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'analytics-umami');
+        $k = Kubectl::fromPrefix($kubectl);
+        $toolInstance = $instance instanceof ToolInstance
+            ? $instance
+            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::ANALYTICS, $instance) : null);
+
+        if ($toolInstance !== null) {
+            return $k->hasDeployment($ns, $toolInstance->deployment());
+        }
+
+        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=analytics');
     }
 
-    protected function readAnalyticsSecret(string $kubectl, string $ns, string $key): ?string
+    protected function readAnalyticsSecret(string $kubectl, string $ns, string $key, string|ToolInstance $instance = ''): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'analytics-secrets', $key);
+        $toolInstance = $instance instanceof ToolInstance
+            ? $instance
+            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::ANALYTICS, $instance) : null);
+
+        return $toolInstance !== null
+            ? $this->readClusterSecretKey($kubectl, $ns, $toolInstance->secret(), $key)
+            : null;
     }
 
     protected function resolveAnalyticsHostReadOnly(string $env, ?ConfigData $config): ?string

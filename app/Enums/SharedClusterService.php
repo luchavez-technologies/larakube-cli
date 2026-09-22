@@ -239,7 +239,7 @@ enum SharedClusterService: string
             self::SSO => 'deployment sso-zitadel -n larakube-sso',
             self::WEBMAIL => 'deployment webmail-bulwark -n larakube-shared',
             self::NOTES => 'deployment notes-outline -n larakube-shared',
-            self::ANALYTICS => 'deployment analytics-umami -n larakube-shared',
+            self::ANALYTICS => 'deployment -l larakube-tool=analytics -n larakube-shared',
             self::TASKS => 'deployment tasks-planka -n larakube-shared',
 
             self::SIGN => 'deployment -l larakube-tool=sign -n larakube-shared',

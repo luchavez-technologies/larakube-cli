@@ -2,6 +2,7 @@
 
 namespace App\Commands\Analytics;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -52,12 +53,16 @@ class AnalyticsInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = Kubectl::forContext($context)->prefix();
+        $cluster = Kubectl::forContext(($context ?? '') !== '' ? $context : null);
+        $kubectl = $cluster->prefix();
         $host = $this->resolveToolHost(SharedClusterService::ANALYTICS, ClusterTool::ANALYTICS, $env, $kubectl);
-        $ns = $this->analyticsNamespace();
+        $names = ToolInstance::forHost(ClusterTool::ANALYTICS, $host);
+        $ns = $names->namespace();
+        $instance = $names->instance;
+        $dbName = $names->database();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::ANALYTICS, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::ANALYTICS, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -69,10 +74,10 @@ class AnalyticsInitCommand extends Command
         }
 
         // Stable secrets across re-runs.
-        $dbPassword = $this->readAnalyticsSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-        $appSecret = $this->readAnalyticsSecret($kubectl, $ns, 'app-secret') ?? bin2hex(random_bytes(32));
+        $dbPassword = $this->readAnalyticsSecret($kubectl, $ns, 'db-password', $names) ?? Str::random(24);
+        $appSecret = $this->readAnalyticsSecret($kubectl, $ns, 'app-secret', $names) ?? bin2hex(random_bytes(32));
 
-        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'umami', $dbPassword)) {
+        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
         }
 
@@ -80,12 +85,15 @@ class AnalyticsInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $appSecret): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'analytics-secrets', ['db-password' => $dbPassword, 'app-secret' => $appSecret]);
-        });
+        $this->withSpin('Syncing secrets...', fn () => $cluster->putSecret($ns, $names->secret(), [
+            'db-password' => $dbPassword,
+            'app-secret' => $appSecret,
+        ], $names->labels()));
 
         $manifest = view('k8s.analytics.shared', [
+            'names' => $names,
             'host' => $host,
+            'dbName' => $dbName,
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
@@ -98,7 +106,7 @@ class AnalyticsInitCommand extends Command
 
         $rolledOut = $this->withSpin(
             'Applying Umami analytics manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'analytics-umami', 300),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300),
         );
         $temporaryDirectory->delete();
 
@@ -112,7 +120,7 @@ class AnalyticsInitCommand extends Command
         $this->laraKubeInfo('✅ Umami analytics stack is live.');
         $this->newLine();
         $this->line("  <fg=gray>Access URL:</>  <fg=blue>https://{$host}</>");
-        $this->line('  <fg=gray>Database:</>    <fg=blue>Commons Postgres</> · DB <fg=blue>umami</>');
+        $this->line("  <fg=gray>Database:</>    <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
         $this->newLine();
 
         return 0;

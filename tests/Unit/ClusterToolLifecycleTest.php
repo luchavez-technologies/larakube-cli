@@ -215,7 +215,7 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
     // regardless of what host was passed. A tool moving in or out of this
     // list means its :remove command grew (or lost) real per-instance
     // teardown — a deliberate capability change, not drift.
-    $expectedTrue = [ClusterTool::DATA, ClusterTool::NOTES, ClusterTool::CRM, ClusterTool::DESIGN, ClusterTool::PASTE, ClusterTool::SIGN, ClusterTool::FLOW, ClusterTool::LINK];
+    $expectedTrue = [ClusterTool::DATA, ClusterTool::NOTES, ClusterTool::CRM, ClusterTool::DESIGN, ClusterTool::PASTE, ClusterTool::SIGN, ClusterTool::FLOW, ClusterTool::LINK, ClusterTool::ANALYTICS];
 
     foreach (ClusterTool::cases() as $tool) {
         $expected = in_array($tool, $expectedTrue, true);

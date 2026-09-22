@@ -1017,7 +1017,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function hasInstanceAwareRemoval(): bool
     {
         return match ($this) {
-            self::DATA, self::NOTES, self::CRM, self::DESIGN, self::PASTE, self::SIGN, self::FLOW, self::LINK => true,
+            self::DATA, self::NOTES, self::CRM, self::DESIGN, self::PASTE, self::SIGN, self::FLOW, self::LINK, self::ANALYTICS => true,
             default => false,
         };
     }
@@ -1342,10 +1342,9 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function resourceNaming(): ResourceNaming
     {
         return match ($this) {
-            self::MONITOR, self::GIT, self::NOTES, self::FLOW, self::SIGN, self::DATA, self::LINK => ResourceNaming::CANONICAL,
+            self::MONITOR, self::GIT, self::NOTES, self::FLOW, self::SIGN, self::DATA, self::LINK, self::ANALYTICS => ResourceNaming::CANONICAL,
             self::CHAT, self::PASSWORDS, self::SSO, self::RECORD,
-            self::SHEETS, self::RESUME, self::TASKS, self::SUPPORT,
-            self::ANALYTICS => ResourceNaming::AS_SHIPPED,
+            self::SHEETS, self::RESUME, self::TASKS, self::SUPPORT => ResourceNaming::AS_SHIPPED,
             default => ResourceNaming::INSTANCE_SUFFIXED,
         };
     }

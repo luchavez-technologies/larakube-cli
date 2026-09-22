@@ -8,6 +8,8 @@ use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasVpnWiring;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 
 /** The single vendor backing the ANALYTICS category — 'Web Analytics'. Only Umami. */
 final class AnalyticsTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasRotatableDatabasePassword, HasVpnWiring
@@ -19,7 +21,9 @@ final class AnalyticsTool implements ClusterToolVendor, HasCommonsDatabases, Has
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'analytics-vpn-only' : "analytics-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '')
+            ? 'umami-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::ANALYTICS, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
@@ -39,7 +43,7 @@ final class AnalyticsTool implements ClusterToolVendor, HasCommonsDatabases, Has
 
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'analytics-secrets', 'key' => 'db-password'];
+        return ['secret' => 'umami-secrets', 'key' => 'db-password'];
     }
 
     public function commonsDatabaseList(): array

@@ -1,21 +1,37 @@
+@php
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::ANALYTICS, $host);
+    $deployment = $names->deployment();
+    $service = $names->deployment();
+    $secret = $names->secret();
+    $dbName = $names->database();
+    $labels = $names->labels();
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: analytics-umami
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: analytics-umami
+    app: {{ $deployment }}
+    larakube-tool: analytics
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: analytics-umami
+      app: {{ $deployment }}
   template:
     metadata:
       labels:
-        app: analytics-umami
+        app: {{ $deployment }}
+        larakube-tool: analytics
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: umami
@@ -27,15 +43,15 @@ spec:
             - name: APP_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: analytics-secrets
+                  name: {{ $secret }}
                   key: app-secret
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: analytics-secrets
+                  name: {{ $secret }}
                   key: db-password
             - name: DATABASE_URL
-              value: "postgres://umami:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/umami"
+              value: "postgres://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}"
           startupProbe:
             httpGet:
               path: /api/heartbeat
@@ -69,11 +85,17 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: analytics
-  namespace: larakube-shared
+  name: {{ $service }}
+  namespace: {{ $names->namespace() }}
+  labels:
+    app: {{ $deployment }}
+    larakube-tool: analytics
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: analytics-umami
+    app: {{ $deployment }}
   ports:
     - protocol: TCP
       port: 80
