@@ -240,7 +240,7 @@ enum SharedClusterService: string
             self::WEBMAIL => 'deployment webmail-bulwark -n larakube-shared',
             self::NOTES => 'deployment notes-outline -n larakube-shared',
             self::ANALYTICS => 'deployment -l larakube-tool=analytics -n larakube-shared',
-            self::TASKS => 'deployment tasks-planka -n larakube-shared',
+            self::TASKS => 'deployment -l larakube-tool=tasks -n larakube-shared',
 
             self::SIGN => 'deployment -l larakube-tool=sign -n larakube-shared',
             self::SUPPORT => 'deployment support-chatwoot -n larakube-shared',

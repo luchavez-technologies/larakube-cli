@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -17,14 +18,29 @@ trait InteractsWithTasks
         return ClusterTool::TASKS->namespace();
     }
 
-    protected function isTasksInstalled(string $kubectl, string $ns): bool
+    protected function isTasksInstalled(string $kubectl, string $ns, string|ToolInstance|null $instance = null): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'tasks-planka');
+        $k = Kubectl::fromPrefix($kubectl);
+        $toolInstance = $instance instanceof ToolInstance
+            ? $instance
+            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::TASKS, $instance, 'planka') : null);
+
+        if ($toolInstance !== null) {
+            return $k->hasDeployment($ns, $toolInstance->deployment());
+        }
+
+        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=tasks');
     }
 
-    protected function readTasksSecret(string $kubectl, string $ns, string $key): ?string
+    protected function readTasksSecret(string $kubectl, string $ns, string $key, string|ToolInstance $instance = ''): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'tasks-planka-secrets', $key);
+        $toolInstance = $instance instanceof ToolInstance
+            ? $instance
+            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::TASKS, $instance, 'planka') : null);
+
+        return $toolInstance !== null
+            ? $this->readClusterSecretKey($kubectl, $ns, $toolInstance->secret(), $key)
+            : null;
     }
 
     protected function resolveTasksHostReadOnly(string $env, ?ConfigData $config): ?string

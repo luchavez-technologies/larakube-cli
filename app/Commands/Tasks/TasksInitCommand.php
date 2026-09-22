@@ -66,16 +66,17 @@ class TasksInitCommand extends Command
             return 1;
         }
 
-        $dbPassword = $this->readTasksSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
+        $names = ToolInstance::forHost(ClusterTool::TASKS, $host, 'planka');
+
         // tasks:init doesn't know or care whether OpenBao is installed —
         // only secrets:wire --tool=tasks may register this instance's database
         // static role. This is a READ-only exception: it defers to OpenBao's
         // current password when a PAST secrets:wire run already made it the
         // owner, so a re-run here never clobbers it back to a fresh local one.
-        $names = ToolInstance::forHost(ClusterTool::TASKS, $host, 'planka');
+        $dbPassword = $this->readTasksSecret($kubectl, $ns, 'db-password', $names) ?? Str::random(24);
         $dbName = $names->database();
         $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
-        $secretKey = $this->readTasksSecret($kubectl, $ns, 'secret-key') ?? bin2hex(random_bytes(32));
+        $secretKey = $this->readTasksSecret($kubectl, $ns, 'secret-key', $names) ?? bin2hex(random_bytes(32));
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
@@ -85,8 +86,8 @@ class TasksInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'tasks-planka-secrets', ['db-password' => $dbPassword, 'secret-key' => $secretKey]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $dbPassword, $secretKey): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'secret-key' => $secretKey], $names->labels());
         });
 
         $manifest = view('k8s.tasks.shared', [
@@ -105,7 +106,7 @@ class TasksInitCommand extends Command
 
         $rolledOut = $this->withSpin(
             'Applying Planka tasks manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'tasks-planka', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180),
         );
         $temporaryDirectory->delete();
 

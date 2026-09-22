@@ -8,6 +8,7 @@ use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
+use App\Data\ToolInstance;
 
 /**
  * The vendor enum backing ClusterTool::TASKS — 'Project Management'.
@@ -32,12 +33,14 @@ enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
 
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'tasks-planka-secrets', 'key' => 'db-password'];
+        return ['secret' => 'planka-secrets', 'key' => 'db-password'];
     }
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'tasks-vpn-only' : "tasks-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '')
+            ? 'planka-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::TASKS, $instance, $this->value)->name('vpn-only');
 
         return [
             'name' => $name,
@@ -58,8 +61,8 @@ enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => 'tasks-planka',
-            'secret' => 'tasks-planka-smtp',
+            'deployment' => ClusterTool::TASKS->deploymentName($instance, $this->value),
+            'secret' => $this->name($instance, SecretKind::SMTP->value),
             'static' => [
                 'SMTP_SECURE' => 'true',
             ],
@@ -82,5 +85,13 @@ enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
     {
         return ['planka'];
     }
+
+    private function name(?string $instance, string $token): string
+    {
+        return ($instance === null || $instance === '')
+            ? "planka-{$token}"
+            : ToolInstance::forInstance(ClusterTool::TASKS, $instance, $this->value)->name($token);
+    }
+
     case PLANKA = 'planka';
 }

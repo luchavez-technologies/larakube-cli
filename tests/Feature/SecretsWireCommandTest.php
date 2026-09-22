@@ -199,11 +199,11 @@ test('secrets:wire --tool=support registers a static role for support_chatwoot a
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/support-chatwoot'));
 });
 
-test('secrets:wire --tool=tasks registers a static role for tasks_planka and restarts tasks-planka', function (): void {
+test('secrets:wire --tool=tasks registers a static role for planka and restarts planka', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret tasks-planka-secrets*' => Process::result(output: base64_encode('db-pw')),
-        '*get deployment tasks-planka*' => Process::result(output: 'tasks-planka'),
+        '*get secret planka-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get deployment planka*' => Process::result(output: 'planka'),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -222,13 +222,13 @@ test('secrets:wire --tool=tasks registers a static role for tasks_planka and res
         ->expectsOutputToContain("Project Management (Planka)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
-        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/tasks_planka')
-        && ($request->body()->get('username') ?? null) === 'tasks_planka'
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/planka')
+        && ($request->body()->get('username') ?? null) === 'planka'
         && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret tasks-planka-secrets-db'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/tasks-planka'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret planka-secrets-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/planka'));
 });
 
 test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', function (): void {

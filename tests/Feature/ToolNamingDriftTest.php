@@ -31,7 +31,6 @@ function toolNamingKnownDrift(): array
         'record' => $refusesDomain,
         'sso' => $refusesDomain,
         'support' => $refusesDomain,
-        'tasks' => $refusesDomain,
         'vpn' => $refusesDomain,
         'dashboard' => $refusesDomain,
         'resume' => $refusesDomain,
