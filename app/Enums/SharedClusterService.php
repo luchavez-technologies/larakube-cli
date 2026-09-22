@@ -230,7 +230,7 @@ enum SharedClusterService: string
             self::SECRETS => 'deployment openbao-backend -n larakube-secrets',
             self::FORGEJO => 'deployment -l larakube.io/tool=git -n larakube-shared',
             self::FLOW => 'deployment -l larakube-tool=flow -n larakube-shared',
-            self::SHEET => 'deployment sheet-teable -n larakube-shared',
+            self::SHEET => 'deployment -l larakube-tool=sheets -n larakube-shared',
             self::DRIVE => 'deployment drive-ocis -n larakube-shared',
             self::INSIGHTS => 'deployment insights-metabase -n larakube-shared',
             self::MAIL => 'deployment stalwart -n larakube-shared',

@@ -29,7 +29,6 @@ function toolNamingKnownDrift(): array
         'monitor' => $refusesDomain,
         'passwords' => $refusesDomain,
         'record' => $refusesDomain,
-        'sheets' => $refusesDomain,
         'sso' => $refusesDomain,
         'support' => $refusesDomain,
         'tasks' => $refusesDomain,

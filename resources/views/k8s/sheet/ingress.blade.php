@@ -1,8 +1,16 @@
+@php
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::SHEETS, $host);
+    $labels ??= $names->labels();
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: sheet
-  namespace: larakube-shared
+  name: {{ $names->deployment() }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -13,7 +21,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-sheet-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->namespace() }}-{{ $names->name('vpn-only') }}@kubernetescrd
 @endif
 spec:
   rules:
@@ -24,7 +32,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: sheet
+                name: {{ $names->deployment() }}
                 port:
                   number: 80
   tls:

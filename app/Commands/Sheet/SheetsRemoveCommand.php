@@ -3,7 +3,10 @@
 namespace App\Commands\Sheet;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ResourceRef;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 
 class SheetsRemoveCommand extends AbstractToolRemoveCommand
 {
@@ -14,12 +17,19 @@ class SheetsRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        return $this->removeResources(
-            'Removing Sheet resources...',
-            "{$kubectl} delete deployment/sheet-teable "
-            .'service/sheet ingress/sheet '
-            .'secret/sheet-teable-smtp secret/sheet-teable-oidc '
-            ."secret/sheet-secrets -n {$namespace} --ignore-not-found",
-        );
+        $instance = (string) $this->resolveInstance($kubectl);
+        $names = ToolInstance::forInstance(ClusterTool::SHEETS, $instance);
+        $deployment = $names->deployment();
+
+        $targets = [
+            new ResourceRef('Deployment', $deployment, $namespace),
+            new ResourceRef('Service', $deployment, $namespace),
+            new ResourceRef('Ingress', $deployment, $namespace),
+            new ResourceRef('Secret', $names->secret(), $namespace),
+            new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $namespace),
+            new ResourceRef('Secret', $names->secret(SecretKind::OIDC), $namespace),
+        ];
+
+        return $this->deleteResources('Removing Sheet (Teable) resources...', $targets);
     }
 }

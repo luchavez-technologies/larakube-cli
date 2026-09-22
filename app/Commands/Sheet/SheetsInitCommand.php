@@ -68,8 +68,8 @@ class SheetsInitCommand extends Command
 
         // Keep secrets stable across re-runs: rotating SECRET_KEY would
         // invalidate every Teable session and signed token.
-        $dbPassword = $this->readSheetDbPassword($kubectl, $ns) ?? Str::random(24);
-        $secretKey = $this->readSheetSecret($kubectl, $ns, 'secret-key') ?? Str::random(50);
+        $dbPassword = $this->readSheetDbPassword($kubectl, $ns, $names) ?? Str::random(24);
+        $secretKey = $this->readSheetSecret($kubectl, $ns, 'secret-key', $names) ?? Str::random(50);
 
         $storage = $this->resolveSheetStorage($names);
         if ($storage === null) {
@@ -99,8 +99,8 @@ class SheetsInitCommand extends Command
         $plexNs = $this->plexNamespace();
         $dbUrl = "postgresql://{$dbName}:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/{$dbName}";
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKey, $storage, $dbUrl): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'sheet-secrets', ['db-password' => $dbPassword, 'secret-key' => $secretKey, 's3-access-key' => $storage['access'], 's3-secret-key' => $storage['secret'], 'database-url' => $dbUrl]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $dbPassword, $secretKey, $storage, $dbUrl): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'secret-key' => $secretKey, 's3-access-key' => $storage['access'], 's3-secret-key' => $storage['secret'], 'database-url' => $dbUrl], $names->labels());
         });
 
         $manifest = view('k8s.sheet.teable', [
@@ -122,7 +122,7 @@ class SheetsInitCommand extends Command
 
         $rolledOut = $this->withSpin(
             'Applying Sheet (Teable) manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'sheet-teable', 300),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300),
         );
         $temporaryDirectory->delete();
 
@@ -184,8 +184,8 @@ class SheetsInitCommand extends Command
         $driver = StorageDriver::from($s3Service);
         $internalEndpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
 
-        $publicBucket = $names->bucket('sheet-public');
-        $privateBucket = $names->bucket('sheet-private');
+        $publicBucket = $names->bucket('teable-public');
+        $privateBucket = $names->bucket('teable-private');
 
         if (! $this->allocateStorageBucket($driver, $publicBucket)
             || ! $this->allocateStorageBucket($driver, $privateBucket)) {

@@ -13,6 +13,9 @@ use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 
 /** The single vendor backing the SHEETS category — 'Spreadsheet Database'. Only Teable. */
 final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
@@ -24,7 +27,9 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'sheet-vpn-only' : "sheet-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '')
+            ? 'teable-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::SHEETS, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
@@ -35,7 +40,7 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     public function dbSecretRef(): ?array
     {
         return [
-            'secret' => 'sheet-secrets',
+            'secret' => 'teable-secrets',
             'key' => 'database-url',
             'template' => 'postgresql://teable:{{ .password }}@postgres.larakube-plex.svc.cluster.local:5432/teable',
         ];
@@ -54,8 +59,8 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => 'sheet-teable',
-            'secret' => 'sheet-teable-smtp',
+            'deployment' => ClusterTool::SHEETS->deploymentName($instance),
+            'secret' => $this->name($instance, SecretKind::SMTP->value),
             'static' => [
                 'BACKEND_MAIL_SECURE' => 'true',
             ],
@@ -72,8 +77,8 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     public function oidcEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => 'sheet-teable',
-            'secret' => 'sheet-teable-oidc',
+            'deployment' => ClusterTool::SHEETS->deploymentName($instance),
+            'secret' => $this->name($instance, SecretKind::OIDC->value),
             'static' => [
                 'SOCIAL_AUTH_PROVIDERS' => 'oidc',
                 // Without the email scope the IdP returns no email claim,
@@ -129,8 +134,15 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
-            'secret' => 'sheet-secrets',
+            'secret' => 'teable-secrets',
             'keys' => ['TEABLE_DB_PASSWORD'],
         ];
+    }
+
+    private function name(?string $instance, string $token): string
+    {
+        return ($instance === null || $instance === '')
+            ? "teable-{$token}"
+            : ToolInstance::forInstance(ClusterTool::SHEETS, $instance)->name($token);
     }
 }

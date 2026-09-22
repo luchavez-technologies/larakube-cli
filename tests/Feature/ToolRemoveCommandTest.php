@@ -128,11 +128,11 @@ test('sheets:remove --purge drops the Commons database AND its S3 buckets, not j
     // The bug this guards: --purge dropped the Postgres tenant but silently
     // left every tool's S3 bucket (and its contents) behind — commonsBuckets()
     // was declared but never consulted by the teardown path.
-    Process::fake([...registeredToolRemoveFakes('sheets:remove'),
+    Process::fake([...registeredToolRemoveFakes('sheets:remove', 'sheet-example-com', 'sheet.example.com'),
         '*get configmap plex-registry*' => Process::result(output: json_encode([
             'tenants' => [
-                'sheet-public' => ['s3_bucket' => 'sheet-public', 's3_service' => 'seaweedfs'],
-                'sheet-private' => ['s3_bucket' => 'sheet-private', 's3_service' => 'seaweedfs'],
+                'teable-public-sheet-example-com' => ['s3_bucket' => 'teable-public-sheet-example-com', 's3_service' => 'seaweedfs'],
+                'teable-private-sheet-example-com' => ['s3_bucket' => 'teable-private-sheet-example-com', 's3_service' => 'seaweedfs'],
             ],
         ])),
         '*exec *' => Process::result(output: 'dropped'),
@@ -142,9 +142,9 @@ test('sheets:remove --purge drops the Commons database AND its S3 buckets, not j
 
     $this->artisan('sheets:remove local --force --purge')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Dropping database 'teable' from Plex Commons")
-        ->expectsOutputToContain("Dropping object-storage bucket 'sheet-public' from Plex Commons")
-        ->expectsOutputToContain("Dropping object-storage bucket 'sheet-private' from Plex Commons");
+        ->expectsOutputToContain("Dropping database 'teable_sheet_example_com' from Plex Commons")
+        ->expectsOutputToContain("Dropping object-storage bucket 'teable-public-sheet-example-com' from Plex Commons")
+        ->expectsOutputToContain("Dropping object-storage bucket 'teable-private-sheet-example-com' from Plex Commons");
 });
 
 test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when the registry has no record for it', function (): void {
@@ -152,7 +152,7 @@ test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when th
     // tracked s3_service) has nothing to read the backend from — fall back
     // to whichever S3 service the live Commons spec has enabled, the same
     // discovery order every {tool}:init uses to pick one in the first place.
-    Process::fake([...registeredToolRemoveFakes('sheets:remove'),
+    Process::fake([...registeredToolRemoveFakes('sheets:remove', 'sheet-example-com', 'sheet.example.com'),
         '*get configmap plex-registry*' => Process::result(output: json_encode(['tenants' => []])),
         '*get configmap plex-commons*' => Process::result(output: json_encode([
             'services' => ['seaweedfs' => ['enabled' => true]],
@@ -164,7 +164,7 @@ test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when th
 
     $this->artisan('sheets:remove local --force --purge')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Dropping object-storage bucket 'sheet-public' from Plex Commons");
+        ->expectsOutputToContain("Dropping object-storage bucket 'teable-public-sheet-example-com' from Plex Commons");
 });
 
 test('drive:remove --purge does NOT drop its Commons bucket — oCIS encryption keys would orphan the data', function (): void {

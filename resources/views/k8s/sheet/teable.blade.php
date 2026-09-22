@@ -1,21 +1,36 @@
+@php
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::SHEETS, $host);
+    $deployment = $names->deployment();
+    $service = $names->deployment();
+    $secret = $names->secret();
+    $labels = $names->labels();
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sheet-teable
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: sheet-teable
+    app: {{ $deployment }}
+    larakube-tool: sheets
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: sheet-teable
+      app: {{ $deployment }}
   template:
     metadata:
       labels:
-        app: sheet-teable
+        app: {{ $deployment }}
+        larakube-tool: sheets
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: teable
@@ -38,12 +53,12 @@ spec:
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: sheet-secrets
+                  name: {{ $secret }}
                   key: secret-key
             - name: PRISMA_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: sheet-secrets
+                  name: {{ $secret }}
                   key: database-url
             # Defaults to sqlite. Without this the URI below is ignored for
             # caching, the allocated Valkey index goes unused, and the log fills
@@ -75,12 +90,12 @@ spec:
             - name: BACKEND_STORAGE_S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: sheet-secrets
+                  name: {{ $secret }}
                   key: s3-access-key
             - name: BACKEND_STORAGE_S3_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: sheet-secrets
+                  name: {{ $secret }}
                   key: s3-secret-key
             # Teable wants two buckets, not one. There is no
             # BACKEND_STORAGE_S3_BUCKET — setting it does nothing and leaves
@@ -134,11 +149,17 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sheet
-  namespace: larakube-shared
+  name: {{ $service }}
+  namespace: {{ $names->namespace() }}
+  labels:
+    app: {{ $deployment }}
+    larakube-tool: sheets
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: sheet-teable
+    app: {{ $deployment }}
   ports:
     # Service port stays 80 so the ingress backend is unchanged; only the
     # targetPort follows Teable to 3000.
