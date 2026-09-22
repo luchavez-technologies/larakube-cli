@@ -165,6 +165,9 @@ feature's test plan. Tracker items #29–#30 below just point at it.
 ### Secrets Out of CI (validate before v1.2.0 tags)
 - [ ] **#29 — Secrets Out of CI manual test plan** — full walkthrough (Phases A–G: `dotenv:push`/`pull` with and without OpenBao, `dotenv --strict`'s Plex-rotation exclusion, zero-blob CI generation, `secrets:grant`/`revoke` access boundaries, `sso:revoke`'s incident sweep, a real GitHub Actions run) lives in its own file: `plans/active/secrets-out-of-ci-testing.md`. Don't duplicate it here — check it off there.
 
+### Volume sizing (ADR 0023)
+- [ ] **#31 — Volume sizing manual test plan** — `storage:resize` refusal and grow-in-place paths on an OrbStack fixture, and a grown volume surviving `data:init` re-apply (with a server-side dry-run negative control). Lives in its own file: `plans/active/volume-sizing-testing.md`. Don't duplicate it here — check it off there.
+
 ### Docs backlog (do after testing; `larakube-docs` repo unless noted)
 - [ ] **#18 — Monitoring stack** — expand `development/monitoring.md` (`monitor:init`, exporters, `cloud:configure:monitoring`). Note: a draft `docs/development/monitoring.md` + `sidebars.ts` entry are already uncommitted in the docs repo.
 - [ ] **#19 — GitLab CI deploy** — new page for `cloud:configure --only=ci` on a GitLab remote (mirror `github-actions.md`); register in `sidebars.ts`. Note: the §7.2 consolidation (`plans/active/paas-core-expansion.md`) already **shipped** — `cloud:configure:gitlab` is gone, GitLab is now auto-detected by `--only=ci` from the git remote (no `--platform=gitlab` flag exists — that's deferred to unbuilt Phase 1). Document the current auto-detect surface.
