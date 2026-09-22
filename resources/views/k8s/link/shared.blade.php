@@ -1,27 +1,39 @@
 @php
-    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::LINK->instanceSlugFromHost($host) : 'link');
-    $dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::LINK, $host)->database();
-    $linkDeploymentName = "link-kutt-{$instance}";
-    $linkServiceName = "link-kutt-{$instance}";
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::LINK, $host);
+    $deployment = $names->deployment();
+    $service = $names->deployment();
+    $secret = $names->secret();
+    $smtpSecret = $names->secret(\App\Enums\SecretKind::SMTP);
+    $oidcSecret = $names->secret(\App\Enums\SecretKind::OIDC);
+    $dbName = $names->database();
+    $labels = $names->labels();
 @endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ $linkDeploymentName }}
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: {{ $linkDeploymentName }}
+    app: {{ $deployment }}
+    larakube-tool: link
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: {{ $linkDeploymentName }}
+      app: {{ $deployment }}
   template:
     metadata:
       labels:
-        app: {{ $linkDeploymentName }}
+        app: {{ $deployment }}
+        larakube-tool: link
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: kutt
@@ -37,12 +49,12 @@ spec:
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: link-secrets
+                  name: {{ $secret }}
                   key: jwt-secret
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: link-secrets
+                  name: {{ $secret }}
                   key: db-password
             - name: DB_HOST
               value: "postgres.{{ $plexNamespace }}.svc.cluster.local"
@@ -66,17 +78,17 @@ spec:
             - name: MAIL_HOST
               valueFrom:
                 secretKeyRef:
-                  name: link-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_HOST
                   optional: true
             - name: MAIL_PORT
               valueFrom:
                 secretKeyRef:
-                  name: link-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_PORT
                   optional: true
             # mail:wire sets this as a plain literal (kubectl set env
-            # NAME=value), never through the link-smtp Secret — must
+            # NAME=value), never through the smtp Secret — must
             # stay a literal here too, or a future kubectl apply conflicts
             # with mail:wire's live value (see ClusterTool::LINK's smtpEnv()).
             - name: MAIL_SECURE
@@ -84,38 +96,38 @@ spec:
             - name: MAIL_USER
               valueFrom:
                 secretKeyRef:
-                  name: link-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_USER
                   optional: true
             - name: MAIL_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: link-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_PASSWORD
                   optional: true
             - name: MAIL_FROM
               valueFrom:
                 secretKeyRef:
-                  name: link-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_FROM
                   optional: true
             # OIDC
             - name: OIDC_ISSUER
               valueFrom:
                 secretKeyRef:
-                  name: link-oidc
+                  name: {{ $oidcSecret }}
                   key: OIDC_ISSUER
                   optional: true
             - name: OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: link-oidc
+                  name: {{ $oidcSecret }}
                   key: OIDC_CLIENT_ID
                   optional: true
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: link-oidc
+                  name: {{ $oidcSecret }}
                   key: OIDC_CLIENT_SECRET
                   optional: true
           startupProbe:
@@ -151,11 +163,17 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ $linkServiceName }}
-  namespace: larakube-shared
+  name: {{ $service }}
+  namespace: {{ $names->namespace() }}
+  labels:
+    app: {{ $deployment }}
+    larakube-tool: link
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: {{ $linkDeploymentName }}
+    app: {{ $deployment }}
   ports:
     - protocol: TCP
       port: 80

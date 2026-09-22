@@ -1,13 +1,16 @@
 @php
-    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::LINK->instanceSlugFromHost($host) : 'link');
-    $linkIngressName = "link-{$instance}";
-    $linkServiceName = "link-kutt-{$instance}";
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::LINK, $host);
+    $labels ??= $names->labels();
 @endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ $linkIngressName }}
-  namespace: larakube-shared
+  name: {{ $names->deployment() }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -29,7 +32,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ $linkServiceName }}
+                name: {{ $names->deployment() }}
                 port:
                   number: 80
   tls:

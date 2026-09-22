@@ -11,6 +11,9 @@ use App\Contracts\HasOidcWiring;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasWhiteLabel;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 
 /** The single vendor backing the LINK category — 'Link Management'. Only Kutt. */
 final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel
@@ -32,11 +35,9 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommo
 
     public function smtpEnv(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'link-kutt' : "link-kutt-{$instance}";
-
         return [
-            'deployment' => $name,
-            'secret' => 'link-smtp',
+            'deployment' => ClusterTool::LINK->deploymentName($instance),
+            'secret' => $this->name($instance, SecretKind::SMTP->value),
             'static' => [
                 'MAIL_ENABLED' => 'true',
                 'MAIL_SECURE' => 'true',
@@ -53,18 +54,16 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommo
 
     public function oidcEnv(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'link-kutt' : "link-kutt-{$instance}";
-
         // Kutt has native OIDC support (server/passport.js) driven by
         // plain env vars — OIDC_ENABLED plus the standard trio. The
-        // manifest already mounts the link-oidc secret, so this
+        // manifest already mounts the kutt-oidc secret, so this
         // is what makes `sso:wire link` work end-to-end. Verified
         // against thedevs-network/kutt docs: redirect path is
         // /login/oidc, and OIDC_SCOPE defaults to "openid profile
         // email" (matches Zitadel's default scopes).
         return [
-            'deployment' => $name,
-            'secret' => 'link-oidc',
+            'deployment' => ClusterTool::LINK->deploymentName($instance),
+            'secret' => $this->name($instance, SecretKind::OIDC->value),
             'static' => [
                 'OIDC_ENABLED' => 'true',
             ],
@@ -79,12 +78,12 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommo
 
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'link-secrets', 'key' => 'db-password'];
+        return ['secret' => 'kutt-secrets', 'key' => 'db-password'];
     }
 
     public function commonsRedisKeys(): array
     {
-        return ['link_kutt'];
+        return ['kutt'];
     }
 
     public function commonsDatabaseList(): array
@@ -100,5 +99,16 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommo
     public function whiteLabel(): array
     {
         return ['app_name_key' => 'SITE_NAME'];
+    }
+
+    /**
+     * Every Link name comes from ToolInstance (ADR 0021). Without an instance
+     * there is nothing installed to name, so callers get the bare stem.
+     */
+    private function name(?string $instance, string $token): string
+    {
+        return ($instance === null || $instance === '')
+            ? "kutt-{$token}"
+            : ToolInstance::forInstance(ClusterTool::LINK, $instance)->name($token);
     }
 }

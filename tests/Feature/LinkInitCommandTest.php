@@ -15,7 +15,7 @@ test('link:init deploys Kutt using the Commons postgres and redis', function ():
         ]),
         '*get configmap plex-registry*' => Process::result(output: '', exitCode: 1),
         '*create configmap plex-registry*' => Process::result(output: 'configmap created'),
-        '*get secret link-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret kutt-secrets*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret generic*' => Process::result(output: 'secret created'),
@@ -45,9 +45,29 @@ test('link manifest pins Kutt to the Commons postgres client and enables redis',
         ->toContain('value: "true"');
 });
 
+test('link manifest carries canonical resource naming and identity labels', function (): void {
+    $manifest = view('k8s.link.shared', [
+        'host' => 'link.example.test',
+        'plexNamespace' => 'larakube-plex',
+        'redisIndex' => 3,
+        'vpnOnly' => false,
+        'isLocal' => true,
+    ])->render();
+
+    expect($manifest)
+        ->toContain('name: kutt-link-example-test')
+        ->toContain('larakube.io/tool: link')
+        ->toContain('larakube.io/component: kutt')
+        ->toContain('larakube.io/instance: link-example-test')
+        ->toContain('name: kutt-secrets-link-example-test')
+        ->toContain('name: kutt-smtp-link-example-test')
+        ->toContain('name: kutt-oidc-link-example-test')
+        ->toContain('value: "kutt_link_example_test"');
+});
+
 test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a future kubectl apply never conflicts with mail:wire', function (): void {
     // Regression guard: mail:wire sets MAIL_SECURE via a plain literal
-    // `kubectl set env NAME=value`, never through the link-smtp Secret.
+    // `kubectl set env NAME=value`, never through the kutt-smtp Secret.
     // Declaring it here as valueFrom made a later link:init re-run fail —
     // kubectl apply's merge re-adds valueFrom on top of the live literal
     // value mail:wire already set, and the two are mutually exclusive
@@ -136,7 +156,7 @@ test('link:init --vpn-only refuses — LINK is public infrastructure with no VPN
 
 test('link:init --vpn-only aborts without touching kubectl', function (): void {
     Process::fake([
-        '*get secret link-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret kutt-secrets*' => Process::result(output: '', exitCode: 1),
         '*apply -f *' => Process::result(output: '', exitCode: 1),
     ]);
 

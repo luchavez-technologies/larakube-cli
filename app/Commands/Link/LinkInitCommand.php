@@ -51,10 +51,12 @@ class LinkInitCommand extends Command
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
-        $kubectl = Kubectl::forContext($context)->prefix();
+        $cluster = Kubectl::forContext(($context ?? '') !== '' ? $context : null);
+        $kubectl = $cluster->prefix();
         $host = $this->resolveToolHost(SharedClusterService::LINK, ClusterTool::LINK, $env, $kubectl);
 
-        $ns = $this->linkNamespace();
+        $names = ToolInstance::forHost(ClusterTool::LINK, $host);
+        $ns = $names->namespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
         if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::LINK)) {
@@ -72,11 +74,11 @@ class LinkInitCommand extends Command
             return 1;
         }
 
-        $dbPassword = $this->readLinkSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-        $jwtSecret = $this->readLinkSecret($kubectl, $ns, 'jwt-secret') ?? bin2hex(random_bytes(32));
-
-        $names = ToolInstance::forHost(ClusterTool::LINK, $host);
+        $instance = $names->instance;
         $dbName = $names->database();
+
+        $dbPassword = $this->readLinkSecret($kubectl, $ns, 'db-password', $names) ?? Str::random(24);
+        $jwtSecret = $this->readLinkSecret($kubectl, $ns, 'jwt-secret', $names) ?? bin2hex(random_bytes(32));
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
@@ -88,15 +90,16 @@ class LinkInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $jwtSecret): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'link-secrets', ['db-password' => $dbPassword, 'jwt-secret' => $jwtSecret]);
-        });
+        $this->withSpin('Syncing secrets...', fn () => $cluster->putSecret($ns, $names->secret(), [
+            'db-password' => $dbPassword,
+            'jwt-secret' => $jwtSecret,
+        ], $names->labels()));
 
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::LINK, ClusterTool::LINK->instanceSlugFromHost($host));
-        $instance = ClusterTool::LINK->instanceSlugFromHost($host);
-        $deploymentName = ClusterTool::LINK->primaryComponent($instance)->deployment;
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::LINK, $instance);
+        $deploymentName = $names->deployment();
 
         $manifest = view('k8s.link.shared', [
+            'names' => $names,
             'instance' => $instance,
             'host' => $host,
             'appName' => $branding['appName'],
@@ -110,7 +113,7 @@ class LinkInitCommand extends Command
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-link-kutt.yaml');
+        $tmp = $temporaryDirectory->path('larakube-link.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(

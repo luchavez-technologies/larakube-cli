@@ -121,15 +121,18 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/documenso-sign-kube'));
 });
 
-test('secrets:wire --tool=link registers a static role for link_kutt and restarts link-kutt', function (): void {
+test('secrets:wire --tool=link registers a static role for kutt and restarts kutt', function (): void {
     // fakeSyncedExternalSecret()'s patterns must come BEFORE the catch-all
     // '*' below — Process::fake() matches in array declaration order, and a
     // '*' listed first would swallow the more specific refreshTime/status/
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret link-secrets*' => Process::result(output: base64_encode('db-pw')),
-        '*get deployment link-kutt*' => Process::result(output: 'link-kutt'),
+        '*get secret kutt-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get deployment kutt*' => Process::result(output: 'kutt-link-kube'),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'link', 'instance' => 'link-kube', 'host' => 'link.kube'],
+        ]))),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -141,9 +144,9 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
         MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
         // kubernetesAuthEnabled()
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
-        // registerStaticRole() -> POST /v1/database/static-roles/link_kutt
+        // registerStaticRole() -> POST /v1/database/static-roles/kutt_link_kube
         MockResponse::make([]),
-        // rotateStaticRole() -> POST /v1/database/rotate-role/link_kutt
+        // rotateStaticRole() -> POST /v1/database/rotate-role/kutt_link_kube
         MockResponse::make([]),
     ]);
 
@@ -152,13 +155,16 @@ test('secrets:wire --tool=link registers a static role for link_kutt and restart
         ->expectsOutputToContain("Link Management (Kutt)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
-        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/link_kutt')
-        && ($request->body()->get('username') ?? null) === 'link_kutt'
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/kutt_link_kube')
+        && ($request->body()->get('username') ?? null) === 'kutt_link_kube'
         && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicNoBodyRequest
+        && str_contains($request->resolveEndpoint(), '/v1/database/rotate-role/kutt_link_kube'));
+
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret link-secrets-db'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/link-kutt'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret kutt-secrets-link-kube-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/kutt-link-kube'));
 });
 
 test('secrets:wire --tool=support registers a static role for support_chatwoot and restarts support-chatwoot', function (): void {

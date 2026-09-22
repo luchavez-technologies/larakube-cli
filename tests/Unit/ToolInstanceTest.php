@@ -36,11 +36,11 @@ test('an unknown component is an error, not a guessed name', function (): void {
 test('every other resource shares the component\'s stem (ADR 0021)', function (): void {
     $instance = ToolInstance::forHost(ClusterTool::LINK, 'link.example.com');
 
-    expect($instance->base())->toBe('link-kutt')
-        ->and($instance->secret())->toBe('link-kutt-secrets-link-example-com')
-        ->and($instance->secret(App\Enums\SecretKind::OIDC))->toBe('link-kutt-oidc-link-example-com')
-        ->and($instance->configMap('config'))->toBe('link-kutt-config-link-example-com')
-        ->and($instance->volume())->toBe('link-kutt-storage-link-example-com');
+    expect($instance->base())->toBe('kutt')
+        ->and($instance->secret())->toBe('kutt-secrets-link-example-com')
+        ->and($instance->secret(App\Enums\SecretKind::OIDC))->toBe('kutt-oidc-link-example-com')
+        ->and($instance->configMap('config'))->toBe('kutt-config-link-example-com')
+        ->and($instance->volume())->toBe('kutt-storage-link-example-com');
 });
 
 test('the single-tenant helpers refuse a tool that has none, instead of guessing', function (): void {

@@ -244,7 +244,7 @@ enum SharedClusterService: string
 
             self::SIGN => 'deployment -l larakube-tool=sign -n larakube-shared',
             self::SUPPORT => 'deployment support-chatwoot -n larakube-shared',
-            self::LINK => 'deployment link-kutt -n larakube-shared',
+            self::LINK => 'deployment -l larakube-tool=link -n larakube-shared',
             // CRM's real deployments are always instance-suffixed
             // (crm-twenty-{instance}), so a probe on the bare 'crm-twenty'
             // name never matches — select on the stable 'larakube-tool: crm'

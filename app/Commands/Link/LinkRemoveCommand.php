@@ -3,8 +3,10 @@
 namespace App\Commands\Link;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ResourceRef;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
-use Illuminate\Support\Facades\Process;
+use App\Enums\SecretKind;
 
 class LinkRemoveCommand extends AbstractToolRemoveCommand
 {
@@ -13,25 +15,21 @@ class LinkRemoveCommand extends AbstractToolRemoveCommand
         return ClusterTool::LINK;
     }
 
-    protected function usesBundledStorage(string $kubectl, string $namespace): bool
-    {
-        return trim(Process::run(
-            "{$kubectl} get secret link-secrets -n {$namespace} --ignore-not-found",
-        )->output()) === '';
-    }
-
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $instance = $this->resolveInstance($kubectl);
-        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
-        $deployment = "link-kutt{$suffix}";
-        $service = "link-kutt{$suffix}";
-        $ingress = "link{$suffix}";
+        $instance = (string) $this->resolveInstance($kubectl);
+        $names = ToolInstance::forInstance(ClusterTool::LINK, $instance);
+        $deployment = $names->deployment();
 
-        return $this->removeResources(
-            'Removing Kutt resources...',
-            "{$kubectl} delete deployment/{$deployment} deployment/link-kutt service/{$service} service/link ingress/{$ingress} ingress/link "
-            ."secret/link-secrets secret/link-smtp secret/link-oidc -n {$namespace} --ignore-not-found",
-        );
+        $targets = [
+            new ResourceRef('Deployment', $deployment, $namespace),
+            new ResourceRef('Service', $deployment, $namespace),
+            new ResourceRef('Ingress', $deployment, $namespace),
+            new ResourceRef('Secret', $names->secret(), $namespace),
+            new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $namespace),
+            new ResourceRef('Secret', $names->secret(SecretKind::OIDC), $namespace),
+        ];
+
+        return $this->deleteResources('Removing Kutt resources...', $targets);
     }
 }

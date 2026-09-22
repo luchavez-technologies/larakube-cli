@@ -25,7 +25,6 @@ function toolNamingKnownDrift(): array
         'errors' => $refusesDomain,
         'git' => $refusesDomain,
         'insights' => $refusesDomain,
-        'link' => $refusesDomain,
         'mail' => $refusesDomain,
         'monitor' => $refusesDomain,
         'passwords' => $refusesDomain,

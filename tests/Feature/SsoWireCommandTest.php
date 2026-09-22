@@ -998,15 +998,17 @@ test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0
 });
 
 test('sso:wire registers a new OIDC client and wires it to Kutt (link)', function (): void {
+    $expectedSlug = 'link-'.GlobalConfigData::load()->getLocalTld();
+
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment link-kutt*' => Process::result(output: 'link-kutt   1/1   1   1   1d'),
+        "*get deployment kutt-{$expectedSlug}*" => Process::result(output: "kutt-{$expectedSlug}   1/1   1   1   1d"),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret link-kutt-sso*' => Process::result(output: ''),
+        "*get secret kutt-oidc-{$expectedSlug}*" => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/link-kutt*' => Process::result(output: 'deployment.apps/link-kutt env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/link-kutt restarted'),
+        "*set env deployment/kutt-{$expectedSlug}*" => Process::result(output: "deployment.apps/kutt-{$expectedSlug} env updated"),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/kutt restarted'),
     ]);
 
     Saloon::fake([
@@ -1036,14 +1038,14 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
     Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
         && $request->body()->get('redirectUris')[0] === 'https://link.'.GlobalConfigData::load()->getLocalTld().'/login/oidc');
 
-    // Wiring must still patch the deployment with the link-oidc secret and
+    // Wiring must still patch the deployment with the kutt-oidc secret and
     // flip OIDC_ENABLED on. Per ADR 0018, OIDC_ENABLED reaches the
-    // Deployment declaratively (in the link-oidc Secret, pulled in via
+    // Deployment declaratively (in the kutt-oidc Secret, pulled in via
     // --from=secret), never as a literal `set env KEY=value` override.
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'link-oidc')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'kutt-oidc')
         && isset(appliedSecret($process)['data']['OIDC_ENABLED']));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/link-kutt')
-        && str_contains($process->command, '--from=secret/link-oidc'));
+    Process::assertRan(fn ($process) => str_contains($process->command, "set env deployment/kutt-{$expectedSlug}")
+        && str_contains($process->command, "--from=secret/kutt-oidc-{$expectedSlug}"));
 
     // Link registers under its OWN project, not the shared 'LaraKube RBAC'
     // bucket Monitor is also on — the two must be DIFFERENT projects, or a
@@ -1054,9 +1056,8 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
     // exact same mechanism that gave Outline its 'notes-luchtech-dev' name
     // on its very first wire), so its project name carries that suffix
     // from day one too, not just once a literal second instance exists.
-    $expectedSlug = 'link-'.GlobalConfigData::load()->getLocalTld();
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
-        && $request->body()->get('name') === "link-kutt-{$expectedSlug}");
+        && $request->body()->get('name') === "kutt-{$expectedSlug}");
 });
 
 test('sso:wire registers a new OIDC client and wires it to Directus (data)', function (): void {
