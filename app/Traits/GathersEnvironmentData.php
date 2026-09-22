@@ -191,6 +191,7 @@ trait GathersEnvironmentData
         $providerOptions = [
             RegistryProvider::GHCR->value => RegistryProvider::GHCR->label(),
             RegistryProvider::DOCKERHUB->value => RegistryProvider::DOCKERHUB->label(),
+            RegistryProvider::GAR->value => RegistryProvider::GAR->label(),
             RegistryProvider::GITLAB->value => RegistryProvider::GITLAB->label(),
             RegistryProvider::FORGEJO->value => RegistryProvider::FORGEJO->label(),
         ];

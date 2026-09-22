@@ -4,6 +4,7 @@ namespace App\Commands\Cloud;
 
 use App\Data\ConfigData;
 use App\Data\StackData;
+use App\Enums\CloudProvider;
 use App\State;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithEnvironments;
@@ -12,6 +13,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesEnvironmentContext;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
@@ -25,13 +27,15 @@ class CloudScaleCommand extends Command
 
     protected $signature = 'cloud:scale
         {environment? : Environment bound to a stack (e.g. prod) or direct stack name}
-        {--size=      : Target droplet size slug (e.g. s-4vcpu-8gb, s-8vcpu-16gb)}
-        {--storage=   : Scale CSI Block Storage size (e.g. 100Gi, 500Gi)}
-        {--disk       : Permanently expand the disk along with CPU and RAM}
-        {--no-disk    : Resize CPU and RAM only (reversible, default)}
-        {--do-token=  : DigitalOcean API token for this run}
-        {--force      : Skip confirmation prompt}
-        {--json       : Emit machine-readable JSON result}';
+        {--size=            : Target server size slug (e.g. s-4vcpu-8gb, e2-medium)}
+        {--storage=         : Scale CSI Block Storage size (e.g. 100Gi, 500Gi)}
+        {--disk             : Permanently expand the disk along with CPU and RAM}
+        {--no-disk          : Resize CPU and RAM only (reversible, default)}
+        {--do-token=        : DigitalOcean API token for this run}
+        {--gcp-project=     : Google Cloud project ID}
+        {--gcp-credentials= : Path to GCP Service Account JSON key or raw JSON}
+        {--force            : Skip confirmation prompt}
+        {--json             : Emit machine-readable JSON result}';
 
     protected $description = 'Scale an existing VPS stack (CPU, RAM, and optional disk size) via OpenTofu';
 
@@ -91,6 +95,114 @@ class CloudScaleCommand extends Command
         return true;
     }
 
+    protected function ensureGcpCredentials(): bool
+    {
+        if ($flagProject = $this->flag('gcp-project')) {
+            State::$transientGcpProject = trim($flagProject);
+        }
+
+        if ($flagCreds = $this->flag('gcp-credentials')) {
+            $path = str_replace('~', home_path(), trim($flagCreds));
+            if (! file_exists($path)) {
+                $this->laraKubeError("GCP credentials file not found at: {$path}");
+
+                return false;
+            }
+            State::$transientGcpCredentials = $path;
+            $this->registerSecret(State::$transientGcpCredentials);
+        }
+
+        $projectId = $this->getGcpProjectId();
+        if (! $projectId) {
+            if ($this->flag('no-interaction')) {
+                $this->laraKubeError('No Google Cloud Project ID found. Pass --gcp-project= or set GOOGLE_PROJECT when running non-interactively.');
+
+                return false;
+            }
+
+            $projectId = text(
+                label: 'Google Cloud Project ID',
+                placeholder: 'my-project-12345',
+                required: true,
+                hint: 'Find this in your Google Cloud Console dashboard.',
+            );
+            $this->setGcpProjectId($projectId);
+            $this->laraKubeInfo('Saved GCP project ID to your global LaraKube config.');
+        }
+
+        $credentials = $this->getGcpCredentials();
+        if (! $credentials) {
+            $gcloudAuthed = Process::run('gcloud auth print-access-token 2>/dev/null')->successful();
+            if ($gcloudAuthed) {
+                $this->line('  <fg=green>✓</> <fg=gray>Detected active authentication via local</> <fg=cyan>gcloud</> <fg=gray>CLI.</>');
+
+                return true;
+            }
+
+            if ($this->flag('no-interaction')) {
+                $this->laraKubeError('No GCP credentials detected. Pass --gcp-credentials= or authenticate via `gcloud auth application-default login`.');
+
+                return false;
+            }
+
+            $this->newLine();
+            $this->laraKubeWarn('No active gcloud login or GCP service account credentials found.');
+            $this->line('  <fg=gray>Options: (1) Run `gcloud auth application-default login` in another terminal, or</>');
+            $this->line('  <fg=gray>         (2) Provide a path to a downloaded Service Account JSON key.</>');
+            $credsPath = text(
+                label: 'Path to Service Account JSON key (or leave blank if using default credentials)',
+                required: false,
+                hint: 'Leave blank if you logged in via gcloud auth application-default login.',
+            );
+
+            if ($credsPath !== '') {
+                $resolvedPath = str_replace('~', home_path(), trim($credsPath));
+                if (! file_exists($resolvedPath)) {
+                    $this->laraKubeError("GCP credentials file not found at: {$resolvedPath}");
+
+                    return false;
+                }
+                $this->setGcpCredentials($resolvedPath);
+                $this->laraKubeInfo('Saved GCP credentials path to your global LaraKube config.');
+            }
+        }
+
+        return true;
+    }
+
+    /** Ensure we have valid API credentials for the stack provider. */
+    protected function ensureProviderToken(string $provider): bool
+    {
+        return match ($provider) {
+            'gcp' => $this->ensureGcpCredentials(),
+            default => $this->ensureDoToken(),
+        };
+    }
+
+    protected function resolveSize(string $provider = 'do'): ?string
+    {
+        $size = $this->flag('size');
+        if ($size) {
+            return $size;
+        }
+
+        $cloud = CloudProvider::tryFrom($provider) ?? CloudProvider::DO;
+        $defaultSize = $cloud->defaultVpsSize();
+
+        if ($this->flag('no-interaction')) {
+            $this->laraKubeError("No size specified — pass --size=<slug> (e.g. --size={$defaultSize}) when running non-interactively.");
+
+            return null;
+        }
+
+        return select(
+            label: 'Select new server size',
+            options: $cloud->vpsSizes(),
+            default: $defaultSize,
+            hint: 'Need a custom size? Pass --size=<slug>.',
+        );
+    }
+
     private function scale(): int
     {
         $bin = $this->ensureTofu();
@@ -117,11 +229,12 @@ class CloudScaleCommand extends Command
             return 1;
         }
 
-        if (! $this->ensureDoToken()) {
+        $provider = $stack->provider ?? 'do';
+        if (! $this->ensureProviderToken($provider)) {
             return 1;
         }
 
-        $newSize = $this->resolveSize();
+        $newSize = $this->resolveSize($provider);
         if (! $newSize) {
             return 1;
         }
@@ -154,8 +267,12 @@ class CloudScaleCommand extends Command
             return 1;
         }
 
-        // Update size in main.tf
-        $tfContent = preg_replace('/size\s*=\s*"[^"]+"/', 'size     = "'.$newSize.'"', $tfContent);
+        // Update size or machine_type in main.tf
+        if ($provider === 'gcp') {
+            $tfContent = preg_replace('/machine_type\s*=\s*"[^"]+"/', 'machine_type = "'.$newSize.'"', $tfContent);
+        } else {
+            $tfContent = preg_replace('/size\s*=\s*"[^"]+"/', 'size     = "'.$newSize.'"', $tfContent);
+        }
 
         // Update or insert resize_disk in main.tf
         $diskBoolStr = $resizeDisk ? 'true' : 'false';
@@ -255,35 +372,6 @@ class CloudScaleCommand extends Command
         );
 
         return $stacks[$selectedName] ?? null;
-    }
-
-    private function resolveSize(): ?string
-    {
-        $size = $this->flag('size');
-        if ($size) {
-            return $size;
-        }
-
-        if ($this->flag('no-interaction')) {
-            $this->laraKubeError('No size specified — pass --size=<slug> (e.g. --size=s-4vcpu-8gb) when running non-interactively.');
-
-            return null;
-        }
-
-        return select(
-            label: 'Select new server size',
-            options: [
-                's-1vcpu-1gb' => 's-1vcpu-1gb   —  1 vCPU,  1 GB RAM  (~$6/mo)',
-                's-1vcpu-2gb' => 's-1vcpu-2gb   —  1 vCPU,  2 GB RAM  (~$12/mo)',
-                's-2vcpu-2gb' => 's-2vcpu-2gb   —  2 vCPU,  2 GB RAM  (~$18/mo)',
-                's-2vcpu-4gb' => 's-2vcpu-4gb   —  2 vCPU,  4 GB RAM  (~$24/mo)',
-                's-4vcpu-8gb' => 's-4vcpu-8gb   —  4 vCPU,  8 GB RAM  (~$48/mo)',
-                's-8vcpu-16gb' => 's-8vcpu-16gb  —  8 vCPU, 16 GB RAM  (~$96/mo)',
-                's-8vcpu-32gb' => 's-8vcpu-32gb  —  8 vCPU, 32 GB RAM  (~$192/mo)',
-            ],
-            default: 's-4vcpu-8gb',
-            hint: 'Need a custom size? Pass --size=<slug> (e.g. c-2, m-2vcpu-16gb).',
-        );
     }
 
     private function resolveDiskOption(): bool

@@ -60,6 +60,10 @@ class GlobalConfigData extends Data
         public ?string $latestVersionCheckedAt = null,
         /** Cloudflare API token for ExternalDNS and tunnel configuration (optional). */
         public ?string $cloudflareToken = null,
+        /** Google Cloud Platform project ID. */
+        public ?string $gcpProjectId = null,
+        /** Google Cloud Platform credentials path or JSON (optional if using ADC). */
+        public ?string $gcpCredentials = null,
     ) {}
 
     public function getEmail(): ?string
@@ -173,6 +177,26 @@ class GlobalConfigData extends Data
     public function setCloudflareToken(?string $token): void
     {
         $this->cloudflareToken = $token ? trim($token) : null;
+    }
+
+    public function getGcpProjectId(): ?string
+    {
+        return $this->gcpProjectId;
+    }
+
+    public function setGcpProjectId(?string $projectId): void
+    {
+        $this->gcpProjectId = $projectId ? trim($projectId) : null;
+    }
+
+    public function getGcpCredentials(): ?string
+    {
+        return $this->gcpCredentials;
+    }
+
+    public function setGcpCredentials(?string $credentials): void
+    {
+        $this->gcpCredentials = $credentials ? trim($credentials) : null;
     }
 
     /**

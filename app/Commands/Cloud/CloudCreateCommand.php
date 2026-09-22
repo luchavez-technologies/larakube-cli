@@ -4,6 +4,7 @@ namespace App\Commands\Cloud;
 
 use App\Data\ConfigData;
 use App\Data\StackData;
+use App\Enums\CloudProvider;
 use App\Enums\ManagedProvider;
 use App\Services\Kubectl;
 use App\State;
@@ -36,27 +37,29 @@ class CloudCreateCommand extends Command
 {
     use EmitsJsonOutput, InteractsWithEnvironments, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
 
-    /** Available providers we can provision (add AWS/GCP later as template dirs appear). */
+    /** Available providers we can provision. */
     private const PROVIDERS = [
         'do' => 'DigitalOcean',
-        // 'aws' => 'Amazon Web Services',
-        // 'gcp' => 'Google Cloud Platform',
+        'gcp' => 'Google Cloud Platform',
     ];
 
     protected $signature = 'cloud:create
-        {--provider= : Cloud provider slug (do, aws, …). Default or prompted.}
+        {--provider= : Cloud provider slug (do, gcp, …). Default or prompted.}
         {--vps : Create a VPS / droplet (SSH + k3s, single-node)}
         {--managed : Create a managed Kubernetes cluster}
         {--stack-name= : Stack name (skips the prompt; slugified)}
-        {--region= : Provider region slug (e.g. nyc1)}
+        {--region= : Provider region slug (e.g. nyc1, us-central1)}
+        {--zone= : GCP Compute zone (defaults to <region>-a)}
         {--size= : Droplet/node size slug}
         {--key= : Path to the SSH private key (VPS)}
         {--admin-cidr= : Restrict SSH + the k3s API to this CIDR (VPS); omit = open}
         {--node-count= : Managed cluster node count (min 1)}
-        {--ha : Enable HA (High-Availability) control plane (+$40/mo, irreversible)}
+        {--ha : Enable HA (High-Availability) control plane (+$40/mo on DOKS, irreversible)}
         {--k8s-version-prefix= : Managed Kubernetes minor version prefix (e.g. "1.31.")}
         {--do-token= : DigitalOcean API token for this run only (never persisted)}
-        {--email= : Let\'s Encrypt email, forwarded to cloud:init:doks (managed)}
+        {--gcp-project= : Google Cloud Project ID for this run only}
+        {--gcp-credentials= : Path to Google Cloud Service Account JSON key for this run only}
+        {--email= : Let\'s Encrypt email, forwarded to cloud:init:doks / cloud:init:gke (managed)}
         {--json : Emit one machine-readable JSON result on stdout}
         {environment? : Inside a project, the environment to bind to this stack. Outside one, used as the stack name.}';
 
@@ -148,11 +151,11 @@ class CloudCreateCommand extends Command
         return $this->getGlobalConfig()->findStack($this->slug($nameBase.'-'.$targetKind));
     }
 
-    protected function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment): void
+    protected function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment, string $provider = 'do'): void
     {
         $stack = new StackData(
             name: $name,
-            provider: 'do',
+            provider: $provider,
             kind: $kind,
             region: $region,
             context: $context,
@@ -228,6 +231,130 @@ class CloudCreateCommand extends Command
         $this->laraKubeInfo('Saved DO token to your global LaraKube config.');
 
         return true;
+    }
+
+    /** Ensure we have a valid API token or credentials for the chosen provider. */
+    protected function ensureProviderToken(string $provider): bool
+    {
+        return match ($provider) {
+            'do' => $this->ensureDoToken(),
+            'gcp' => $this->ensureGcpCredentials(),
+            default => true,
+        };
+    }
+
+    /** Prompt for + persist GCP project ID and verify authentication. */
+    protected function ensureGcpCredentials(): bool
+    {
+        if ($flagProject = $this->flag('gcp-project')) {
+            State::$transientGcpProject = trim($flagProject);
+        }
+
+        if ($flagCreds = $this->flag('gcp-credentials')) {
+            $path = str_replace('~', home_path(), trim($flagCreds));
+            if (! file_exists($path)) {
+                $this->laraKubeError("GCP credentials file not found at: {$path}");
+
+                return false;
+            }
+            State::$transientGcpCredentials = $path;
+            $this->registerSecret(State::$transientGcpCredentials);
+        }
+
+        $projectId = $this->getGcpProjectId();
+        if (! $projectId) {
+            if ($this->flag('no-interaction')) {
+                $this->laraKubeError('No Google Cloud Project ID found. Pass --gcp-project= or set GOOGLE_PROJECT when running non-interactively.');
+
+                return false;
+            }
+
+            $this->laraKubeWarn('No Google Cloud Project ID found.');
+            $projectId = text(
+                label: 'Google Cloud Project ID',
+                placeholder: 'my-project-12345',
+                required: true,
+                hint: 'Find this in your Google Cloud Console dashboard.',
+            );
+            $this->setGcpProjectId($projectId);
+            $this->laraKubeInfo('Saved GCP project ID to your global LaraKube config.');
+        }
+
+        $credentials = $this->getGcpCredentials();
+        if (! $credentials) {
+            $gcloudAuthed = Process::run('gcloud auth print-access-token 2>/dev/null')->successful();
+            if ($gcloudAuthed) {
+                $this->line('  <fg=green>✓</> <fg=gray>Detected active authentication via local</> <fg=cyan>gcloud</> <fg=gray>CLI.</>');
+
+                return true;
+            }
+
+            if ($this->flag('no-interaction')) {
+                $this->laraKubeError('No GCP credentials detected. Pass --gcp-credentials= or authenticate via `gcloud auth application-default login`.');
+
+                return false;
+            }
+
+            $this->newLine();
+            $this->laraKubeWarn('No active gcloud login or GCP service account credentials found.');
+            $this->line('  <fg=gray>Options: (1) Run `gcloud auth application-default login` in another terminal, or</>');
+            $this->line('  <fg=gray>         (2) Provide a path to a downloaded Service Account JSON key.</>');
+            $credsPath = text(
+                label: 'Path to Service Account JSON key (or leave blank if using default credentials)',
+                required: false,
+                hint: 'Leave blank if you logged in via gcloud auth application-default login.',
+            );
+
+            if ($credsPath !== '') {
+                $resolvedPath = str_replace('~', home_path(), trim($credsPath));
+                if (! file_exists($resolvedPath)) {
+                    $this->laraKubeError("GCP credentials file not found at: {$resolvedPath}");
+
+                    return false;
+                }
+                $this->setGcpCredentials($resolvedPath);
+                $this->laraKubeInfo('Saved GCP credentials path to your global LaraKube config.');
+            }
+        }
+
+        return true;
+    }
+
+    protected function promptRegion(string $provider = 'do'): string
+    {
+        if ($flag = $this->flag('region')) {
+            return $flag;
+        }
+
+        $cloud = CloudProvider::tryFrom($provider) ?? CloudProvider::DO;
+
+        return select(
+            label: "{$cloud->label()} region",
+            options: $cloud->regions(),
+            default: $cloud->defaultRegion(),
+            hint: 'Need a different region? Re-run with --region=<slug>.',
+        );
+    }
+
+    protected function promptSize(string $provider, string $kind): string
+    {
+        if ($flag = $this->flag('size')) {
+            return $flag;
+        }
+
+        $cloud = CloudProvider::tryFrom($provider) ?? CloudProvider::DO;
+        $options = $kind === 'vps' ? $cloud->vpsSizes() : $cloud->managedSizes();
+        $default = $kind === 'vps' ? $cloud->defaultVpsSize() : $cloud->defaultManagedSize();
+        $label = $kind === 'vps'
+            ? ($cloud === CloudProvider::GCP ? 'Machine type' : 'Droplet size')
+            : 'Node size';
+
+        return select(
+            label: $label,
+            options: $options,
+            default: $default,
+            hint: 'Need a different size? Re-run with --size=<slug>.',
+        );
     }
 
     private function create(): int
@@ -349,15 +476,6 @@ class CloudCreateCommand extends Command
         );
     }
 
-    /** Ensure we have a valid API token for the chosen provider. */
-    private function ensureProviderToken(string $provider): bool
-    {
-        return match ($provider) {
-            'do' => $this->ensureDoToken(),
-            default => true, // future providers implement their own ensure method
-        };
-    }
-
     /** Map a provider slug to its ManagedProvider enum (DOKS, EKS, …). */
     private function resolveManagedProvider(string $provider): ManagedProvider
     {
@@ -433,19 +551,9 @@ class CloudCreateCommand extends Command
 
         $stackName = $this->promptStackName($nameBase, 'vps');
         $this->result = ['stackName' => $stackName, 'kind' => 'vps'];
-        $region = $this->promptRegion();
-        $size = $this->flag('size') ?: select(
-            label: 'Droplet size',
-            options: [
-                's-1vcpu-1gb' => 's-1vcpu-1gb   —  1 vCPU,  1 GB RAM  (~$6/mo)',
-                's-1vcpu-2gb' => 's-1vcpu-2gb   —  1 vCPU,  2 GB RAM  (~$12/mo)',
-                's-2vcpu-2gb' => 's-2vcpu-2gb   —  2 vCPU,  2 GB RAM  (~$18/mo)',
-                's-2vcpu-4gb' => 's-2vcpu-4gb   —  2 vCPU,  4 GB RAM  (~$24/mo)',
-                's-4vcpu-8gb' => 's-4vcpu-8gb   —  4 vCPU,  8 GB RAM  (~$48/mo)',
-            ],
-            default: 's-1vcpu-1gb',
-            hint: 'Need a different size? Re-run with --size=<slug> (e.g. c-2, m-2vcpu-16gb).',
-        );
+        $region = $this->promptRegion($provider);
+        $zone = $this->flag('zone') ?: ($region.'-a');
+        $size = $this->promptSize($provider, 'vps');
         $adminCidr = $this->promptAdminCidr(viaCreate: true);
         if ($adminCidr === false) {
             return 1;
@@ -456,6 +564,7 @@ class CloudCreateCommand extends Command
 
         $hcl = view("tofu.{$provider}.vps", [
             'region' => $region,
+            'zone' => $zone,
             'size' => $size,
             'dropletName' => $stackName,
             'sshKeyName' => $stackName,
@@ -466,21 +575,22 @@ class CloudCreateCommand extends Command
         ])->render();
         $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
-        if (! $this->applyStack($bin, $stackName, "droplet '{$stackName}' in {$region} ({$size})")) {
+        $serverLabel = $provider === 'gcp' ? 'VM instance' : 'droplet';
+        if (! $this->applyStack($bin, $stackName, "{$serverLabel} '{$stackName}' in {$region} ({$size})", $provider)) {
             return 1;
         }
 
         $ip = $this->tofuOutput($bin, $stackName, 'ip');
         if (! $ip) {
-            $this->laraKubeError('Provisioned, but could not read the droplet IP from Tofu outputs.');
+            $this->laraKubeError("Provisioned, but could not read the {$serverLabel} IP from Tofu outputs.");
 
             return 1;
         }
-        $this->laraKubeInfo("✅ Droplet ready at <fg=cyan>{$ip}</>");
+        $this->laraKubeInfo("✅ {$serverLabel} ready at <fg=cyan>{$ip}</>");
 
         // Register the stack now (before the long provisioning run) so a later
         // failure still leaves a destroyable record.
-        $this->registerStack($stackName, 'vps', $region, $ip, null, $config, $environment);
+        $this->registerStack($stackName, 'vps', $region, $ip, null, $config, $environment, $provider);
 
         // Wait for sshd, then run the shared single-node pipeline as root.
         if (! $this->waitForSsh('root', $ip, '22', $keyPath)) {
@@ -520,19 +630,9 @@ class CloudCreateCommand extends Command
     {
         $stackName = $this->promptStackName($nameBase, 'managed');
         $this->result = ['stackName' => $stackName, 'kind' => 'managed'];
-        $region = $this->promptRegion();
-        $size = $this->flag('size') ?: select(
-            label: 'Node size',
-            options: [
-                's-1vcpu-2gb' => 's-1vcpu-2gb   —  1 vCPU,  2 GB RAM  (~$12/mo per node)',
-                's-2vcpu-2gb' => 's-2vcpu-2gb   —  2 vCPU,  2 GB RAM  (~$18/mo per node)',
-                's-2vcpu-4gb' => 's-2vcpu-4gb   —  2 vCPU,  4 GB RAM  (~$24/mo per node)',
-                's-4vcpu-8gb' => 's-4vcpu-8gb   —  4 vCPU,  8 GB RAM  (~$48/mo per node)',
-                's-8vcpu-16gb' => 's-8vcpu-16gb  —  8 vCPU, 16 GB RAM  (~$96/mo per node)',
-            ],
-            default: 's-1vcpu-2gb',
-            hint: 'Need a different size? Re-run with --size=<slug> (e.g. c-2, m-2vcpu-16gb).',
-        );
+        $region = $this->promptRegion($provider);
+        $zone = $this->flag('zone') ?: ($region.'-a');
+        $size = $this->promptSize($provider, 'managed');
         $nodeCount = (int) ($this->flag('node-count') ?? text(label: 'Node count', default: '2', validate: fn ($v) => ((int) $v) >= 1 ? null : 'At least 1 node.'));
         if ($nodeCount < 1) {
             // The flag path bypasses the prompt's validator — re-check here.
@@ -547,6 +647,7 @@ class CloudCreateCommand extends Command
 
         $hcl = view("tofu.{$provider}.managed", [
             'region' => $region,
+            'zone' => $zone,
             'clusterName' => $stackName,
             'size' => $size,
             'nodeCount' => $nodeCount,
@@ -555,7 +656,8 @@ class CloudCreateCommand extends Command
         ])->render();
         $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
-        if (! $this->applyStack($bin, $stackName, "DOKS cluster '{$stackName}' in {$region} ({$nodeCount}× {$size})")) {
+        $clusterLabel = $provider === 'gcp' ? 'GKE cluster' : 'DOKS cluster';
+        if (! $this->applyStack($bin, $stackName, "{$clusterLabel} '{$stackName}' in {$region} ({$nodeCount}× {$size})", $provider)) {
             return 1;
         }
 
@@ -569,17 +671,23 @@ class CloudCreateCommand extends Command
 
         $this->mergeKubeconfig($kubeconfig);
         $this->laraKubeInfo("✅ Cluster ready. Context: <fg=cyan>{$context}</>");
-        $this->registerStack($stackName, 'managed', $region, null, $context, $config, $environment);
+        $this->registerStack($stackName, 'managed', $region, null, $context, $config, $environment, $provider);
 
-        // Traefik + Let's Encrypt via the existing managed flow (idempotent).
+        // Traefik + Let's Encrypt via the managed flow (idempotent).
         // --no-interaction propagates to the child automatically; --email doesn't.
         $this->newLine();
-        $this->laraKubeInfo('Installing Traefik + Let\'s Encrypt via cloud:init:doks...');
+        $initCommand = $provider === 'gcp' ? 'cloud:init:gke' : 'cloud:init:doks';
+        $this->laraKubeInfo("Installing Traefik + Let's Encrypt via {$initCommand}...");
         $doksArgs = ['--context' => $context];
         if ($email = $this->flag('email')) {
             $doksArgs['--email'] = $email;
         }
-        $this->call('cloud:init:doks', $doksArgs);
+
+        if ($provider === 'gcp' && $projectId = $this->getGcpProjectId()) {
+            Process::run("gcloud container clusters get-credentials {$stackName} --zone {$zone} --project {$projectId} 2>/dev/null");
+        }
+
+        $this->call($initCommand, $doksArgs);
 
         if ($config && $environment) {
             $this->recordManagedTarget($config, $environment, $projectPath, $context, $managedProvider);
@@ -598,9 +706,10 @@ class CloudCreateCommand extends Command
     // --- shared helpers -----------------------------------------------------
 
     /** `tofu init` + a confirmed `tofu apply`. */
-    private function applyStack(array $bin, string $stack, string $what): bool
+    private function applyStack(array $bin, string $stack, string $what, string $provider = 'do'): bool
     {
-        $this->laraKubeInfo('Initializing OpenTofu (downloading the DigitalOcean provider)...');
+        $providerName = CloudProvider::tryFrom($provider)?->label() ?? 'the cloud';
+        $this->laraKubeInfo("Initializing OpenTofu (downloading {$providerName} provider)...");
         if (! $this->tofuInit($bin, $stack)) {
             $this->laraKubeError('tofu init failed.');
 
@@ -608,7 +717,7 @@ class CloudCreateCommand extends Command
         }
 
         $this->newLine();
-        if (! confirm("Apply now — this creates {$what} on DigitalOcean (real resources, real cost)?", true)) {
+        if (! confirm("Apply now — this creates {$what} on {$providerName} (real resources, real cost)?", true)) {
             $this->laraKubeInfo('Cancelled. (Tofu files are saved; re-run to apply.)');
 
             return false;
@@ -759,31 +868,6 @@ class CloudCreateCommand extends Command
         }
 
         return trim((string) file_get_contents($pub));
-    }
-
-    private function promptRegion(): string
-    {
-        return $this->flag('region') ?: select(
-            label: 'DigitalOcean region',
-            options: [
-                'nyc1' => 'nyc1  —  New York 1',
-                'nyc2' => 'nyc2  —  New York 2',
-                'nyc3' => 'nyc3  —  New York 3',
-                'sfo2' => 'sfo2  —  San Francisco 2',
-                'sfo3' => 'sfo3  —  San Francisco 3',
-                'atl1' => 'atl1  —  Atlanta 1',
-                'ric1' => 'ric1  —  Richmond 1',
-                'tor1' => 'tor1  —  Toronto 1',
-                'ams3' => 'ams3  —  Amsterdam 3',
-                'lon1' => 'lon1  —  London 1',
-                'fra1' => 'fra1  —  Frankfurt 1',
-                'sgp1' => 'sgp1  —  Singapore 1',
-                'blr1' => 'blr1  —  Bangalore 1',
-                'syd1' => 'syd1  —  Sydney 1',
-            ],
-            default: 'nyc1',
-            hint: 'Need a different region? Re-run with --region=<slug>.',
-        );
     }
 
     private function slug(string $value): string

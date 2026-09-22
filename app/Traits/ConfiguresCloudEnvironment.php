@@ -700,6 +700,14 @@ trait ConfiguresCloudEnvironment
             $token = $credentials['token'] ?? password(label: 'Forgejo Password (or Personal Access Token)', required: true);
             $server = 'https://'.$registry->host;
             $secretName = 'forgejo-login';
+        } elseif ($provider === RegistryProvider::GAR) {
+            $username = '_json_key';
+            $keyPath = $this->getGcpCredentials() ?? text(label: 'Path to GCP Service Account JSON key', required: true);
+            $keyPathResolved = str_replace('~', home_path(), trim($keyPath));
+            $token = file_exists($keyPathResolved) ? trim((string) file_get_contents($keyPathResolved)) : $keyPath;
+            $garHost = $registry?->getRegistryHost() ?? 'us-central1-docker.pkg.dev';
+            $server = 'https://'.$garHost;
+            $secretName = 'gar-login';
         }
 
         if (! $username || ! $token || ! $server || ! $secretName) {

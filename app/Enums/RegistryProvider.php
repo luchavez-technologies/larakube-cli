@@ -11,6 +11,7 @@ enum RegistryProvider: string
             self::DOCKERHUB => 'Docker Hub',
             self::GITLAB => 'GitLab Container Registry',
             self::FORGEJO => 'Forgejo Container Registry',
+            self::GAR => 'Google Artifact Registry (GAR)',
         };
     }
 
@@ -21,6 +22,7 @@ enum RegistryProvider: string
             self::DOCKERHUB => 'docker.io',
             self::GITLAB => 'registry.gitlab.com',
             self::FORGEJO => 'git.dev.test',
+            self::GAR => 'docker.pkg.dev',
         };
     }
 
@@ -31,6 +33,7 @@ enum RegistryProvider: string
             self::DOCKERHUB => $githubRepo,
             self::GITLAB => $githubRepo,
             self::FORGEJO => $githubRepo,
+            self::GAR => $githubRepo,
         };
     }
 
@@ -43,4 +46,5 @@ enum RegistryProvider: string
     case DOCKERHUB = 'dockerhub';
     case GITLAB = 'gitlab';
     case FORGEJO = 'forgejo';
+    case GAR = 'gar';
 }

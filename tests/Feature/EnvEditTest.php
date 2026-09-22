@@ -138,6 +138,7 @@ test('env --edit with an existing registry re-confirms it (default flips to true
         ->expectsChoice('Which container registry for staging?', 'ghcr', [
             'ghcr' => 'GitHub Container Registry (GHCR)',
             'dockerhub' => 'Docker Hub',
+            'gar' => 'Google Artifact Registry (GAR)',
             'gitlab' => 'GitLab Container Registry',
             'forgejo' => 'Forgejo Container Registry',
         ])

@@ -177,12 +177,13 @@ trait ResolvesEnvironmentContext
         if (! preg_match('/^larakube-(.+)$/', $context, $m)) {
             // Managed cluster — identified by the context name; no SSH. Ask which
             // provider, then delegate to the shared managed writer.
+            $defaultProvider = str_starts_with($context, 'gke_') ? ManagedProvider::GKE->value : ManagedProvider::DOKS->value;
             $provider = select(
                 label: 'Which managed Kubernetes provider is this?',
                 options: collect(ManagedProvider::cases())
                     ->mapWithKeys(fn (ManagedProvider $p) => [$p->value => $p->label()])
                     ->all(),
-                default: ManagedProvider::DOKS->value,
+                default: $defaultProvider,
             );
 
             return $this->recordManagedTarget($config, $environment, $projectPath, $context, ManagedProvider::from($provider));

@@ -321,6 +321,20 @@ HCL;
             $env['TF_VAR_do_token'] = $token;
         }
 
+        if ($projectId = $this->getGcpProjectId()) {
+            $env['TF_VAR_gcp_project_id'] = $projectId;
+        }
+
+        if ($creds = $this->getGcpCredentials()) {
+            if (file_exists($creds)) {
+                $env['GOOGLE_APPLICATION_CREDENTIALS'] = $creds;
+                $env['TF_VAR_gcp_credentials'] = file_get_contents($creds);
+            } else {
+                $env['GOOGLE_CREDENTIALS'] = $creds;
+                $env['TF_VAR_gcp_credentials'] = $creds;
+            }
+        }
+
         $encryption = $this->tofuEncryptionEnv($stack, $isOpenTofu);
         if ($encryption !== '') {
             $env['TF_ENCRYPTION'] = $encryption;

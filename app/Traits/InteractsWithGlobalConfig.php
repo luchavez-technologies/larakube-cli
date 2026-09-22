@@ -193,6 +193,70 @@ trait InteractsWithGlobalConfig
         $config->save();
     }
 
+    protected function getGcpProjectId(): ?string
+    {
+        if (State::$transientGcpProject) {
+            return State::$transientGcpProject;
+        }
+
+        $envProject = getenv('GOOGLE_PROJECT') ?: (getenv('CLOUDSDK_CORE_PROJECT') ?: getenv('GCP_PROJECT'));
+        if ($envProject) {
+            return trim($envProject);
+        }
+
+        $persisted = $this->getGlobalConfig()->getGcpProjectId();
+        if ($persisted) {
+            return $persisted;
+        }
+
+        // Auto-detect from local gcloud CLI if available
+        $gcloudProject = trim(Process::run('gcloud config get-value project 2>/dev/null')->output());
+        if ($gcloudProject !== '' && $gcloudProject !== '(unset)' && ! str_contains($gcloudProject, 'ERROR:')) {
+            return $gcloudProject;
+        }
+
+        return null;
+    }
+
+    protected function setGcpProjectId(?string $projectId): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->setGcpProjectId($projectId);
+        $config->save();
+    }
+
+    protected function getGcpCredentials(): ?string
+    {
+        if (State::$transientGcpCredentials) {
+            return State::$transientGcpCredentials;
+        }
+
+        $envCreds = getenv('GOOGLE_APPLICATION_CREDENTIALS') ?: getenv('GOOGLE_CREDENTIALS');
+        if ($envCreds) {
+            return trim($envCreds);
+        }
+
+        $persisted = $this->getGlobalConfig()->getGcpCredentials();
+        if ($persisted) {
+            return $persisted;
+        }
+
+        // Standard gcloud Application Default Credentials (ADC) location
+        $adcPath = home_path('.config/gcloud/application_default_credentials.json');
+        if (file_exists($adcPath)) {
+            return $adcPath;
+        }
+
+        return null;
+    }
+
+    protected function setGcpCredentials(?string $credentials): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->setGcpCredentials($credentials);
+        $config->save();
+    }
+
     protected function getCloudflareToken(): ?string
     {
         // Precedence: run-only --cloudflare-token (transient, never persisted)

@@ -28,7 +28,7 @@ enum ManagedProvider: string
         return match ($this) {
             self::DOKS => 'do-block-storage',
             self::EKS => 'gp3',
-            self::GKE => 'standard',
+            self::GKE => 'standard-rwo',
             self::AKS => 'managed-csi',
             self::CIVO => 'civo-volume',
             self::LKE => 'linode-block-storage',

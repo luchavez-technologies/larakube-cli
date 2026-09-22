@@ -34,6 +34,7 @@ class CloudStacksCommand extends Command
         foreach ($stacks as $stack) {
             $rows[] = [
                 $stack->name,
+                $stack->provider ? strtoupper($stack->provider) : 'DO',
                 $stack->kind,
                 $stack->region ?? '—',
                 $stack->ip ?? '—',
@@ -43,7 +44,7 @@ class CloudStacksCommand extends Command
         }
 
         table(
-            headers: ['Name', 'Kind', 'Region', 'IP', 'Context', 'Bindings'],
+            headers: ['Name', 'Provider', 'Kind', 'Region', 'IP', 'Context', 'Bindings'],
             rows: $rows,
         );
 

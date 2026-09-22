@@ -37,6 +37,16 @@ class State
     public static ?string $transientCloudflareToken = null;
 
     /**
+     * A GCP project ID supplied for this run only (--gcp-project), never persisted.
+     */
+    public static ?string $transientGcpProject = null;
+
+    /**
+     * A GCP credentials path/token supplied for this run only (--gcp-credentials), never persisted.
+     */
+    public static ?string $transientGcpCredentials = null;
+
+    /**
      * The last laraKubeError() message (already secret-masked), so a JSON-mode
      * wrapper can report the failure without threading it through every
      * `return 1` site.
