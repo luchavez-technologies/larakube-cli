@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Http\Integrations\Cloudflare\CloudflareConnector;
 use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneByNameRequest;
+use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListDnsRecordsRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
 use App\Http\Integrations\Cloudflare\Requests\PatchDnsRecordRequest;
@@ -13,6 +14,7 @@ use Illuminate\Support\Arr;
 use JsonException;
 use Saloon\Exceptions\Request\FatalRequestException;
 use Saloon\Exceptions\Request\RequestException;
+use Throwable;
 
 /**
  * Thin, one-off wrapper over Cloudflare's DNS API — used for writes that
@@ -98,6 +100,33 @@ trait InteractsWithCloudflareApi
         } while ($page <= $totalPages);
 
         return $zones;
+    }
+
+    /**
+     * Read each managed zone's SSL mode — the /zones/{zoneId}/settings/ssl
+     * leaf (the exact Cloudflare 9109 seam ChecksCloudflareProxy probes at
+     * proxy-verify time). A token that can write DNS but not read this leaf
+     * is still fully functional for what larakube stores it for — this probe
+     * is the read-only, non-blocking informer (tls:show surfaces it live,
+     * on demand), never a gate that refuses to store.
+     *
+     * @param  array<string, string>  $zones  [zoneId => zoneName] from cloudflareListZones()
+     * @return array<string, string|null> [zoneName => mode] — 'strict'|'full'|'off'|'flexible', or null when the token can't read the leaf (needs Zone → Zone Settings → Read / Cloudflare 9109)
+     */
+    protected function cloudflareReadZoneSslModes(string $token, array $zones): array
+    {
+        $modes = [];
+
+        foreach ($zones as $zoneId => $zoneName) {
+            try {
+                $response = CloudflareConnector::make($token)->send(GetZoneSettingRequest::make((string) $zoneId, 'ssl'));
+                $modes[(string) $zoneName] = $response->successful() ? (string) Arr::get($response->json(), 'result.value') : null;
+            } catch (Throwable) {
+                $modes[(string) $zoneName] = null;
+            }
+        }
+
+        return $modes;
     }
 
     /**

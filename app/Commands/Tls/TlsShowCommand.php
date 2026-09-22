@@ -58,6 +58,15 @@ class TlsShowCommand extends Command
             $zones = $token !== '' ? $this->cloudflareListZones($token) : [];
             $this->line('  <fg=gray>Zones:</>      '.($zones !== [] ? implode(', ', $zones) : '<fg=red>none (the stored token is invalid or revoked)</>'));
 
+            foreach ($this->cloudflareReadZoneSslModes($token, $zones) as $zone => $mode) {
+                $this->line('  <fg=gray>SSL:</>        '.match (true) {
+                    $mode === 'strict' => "<fg=green>Full (strict) ✓</>  <fg=gray>{$zone}</>",
+                    $mode === 'full' => "<fg=yellow>Full — switch to Full (strict)</>  <fg=gray>{$zone}</>",
+                    $mode === null => "<fg=red>can't read SSL mode</> — the stored token needs Zone → Zone Settings → Read (Cloudflare 9109)  <fg=gray>{$zone}</>",
+                    default => "<fg=red>{$mode} — unencrypted to origin, set Full (strict)</>  <fg=gray>{$zone}</>",
+                });
+            }
+
             $uncovered = array_values(array_filter($hosts, fn (string $host) => $this->zoneForHost($host, $zones) === null));
             if ($uncovered !== []) {
                 $ok = false;

@@ -2,6 +2,7 @@
 
 use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneByNameRequest;
+use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListDnsRecordsRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
 use App\Http\Integrations\Cloudflare\Requests\PatchDnsRecordRequest;
@@ -29,6 +30,11 @@ function cloudflareApiHarness(): object
         public function upsertTxtRecord(string $zoneId, string $token, string $name, string $content, int $ttl = 120): bool
         {
             return $this->cloudflareUpsertTxtRecord($zoneId, $token, $name, $content, $ttl);
+        }
+
+        public function readZoneSslModes(string $token, array $zones): array
+        {
+            return $this->cloudflareReadZoneSslModes($token, $zones);
         }
     };
 }
@@ -176,4 +182,24 @@ test('cloudflareUpsertTxtRecord returns false when the write fails', function ()
     ]);
 
     expect(cloudflareApiHarness()->upsertTxtRecord('zone-1', 'test-token', '_challenge.example.com', 'abc'))->toBeFalse();
+});
+
+test('cloudflareReadZoneSslModes reads Full (strict) for a zone the token can read', function (): void {
+    $zones = ['zone-1' => 'example.com'];
+
+    Saloon::fake([
+        GetZoneSettingRequest::class => MockResponse::make(['success' => true, 'result' => ['value' => 'strict']]),
+    ]);
+
+    expect(cloudflareApiHarness()->readZoneSslModes('test-token', $zones))->toBe(['example.com' => 'strict']);
+});
+
+test('cloudflareReadZoneSslModes is null — the 9109 truth — when the token lacks Zone Settings → Read', function (): void {
+    $zones = ['zone-1' => 'example.com'];
+
+    Saloon::fake([
+        GetZoneSettingRequest::class => MockResponse::make(['success' => false, 'errors' => [['code' => 9109]], 'result' => null], 403),
+    ]);
+
+    expect(cloudflareApiHarness()->readZoneSslModes('test-token', $zones))->toBe(['example.com' => null]);
 });

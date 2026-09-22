@@ -3,14 +3,10 @@
 namespace App\Traits;
 
 use App\Enums\ClusterTool;
-use App\Http\Integrations\Cloudflare\CloudflareConnector;
-use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Services\Kubectl;
 use App\Services\ToolRegistry;
 use Closure;
-use Illuminate\Support\Arr;
 use RuntimeException;
-use Throwable;
 
 /**
  * Whether a host can safely sit behind Cloudflare's proxy (orange cloud). One
@@ -152,19 +148,16 @@ trait ChecksCloudflareProxy
             ?? (array_values($this->storedCloudflareTokens($kubectl, 'larakube-shared'))[0] ?? null);
 
         $zones = array_unique(array_filter(array_map(fn (string $host) => $this->zoneForHost($host, $managedZones), $hosts)));
-        $zoneIds = $token !== null ? array_flip(array_map('strtolower', $this->cloudflareListZones($token))) : [];
+        $allZones = $token !== null ? $this->cloudflareListZones($token) : [];
+        $relevantZones = array_filter($allZones, fn (string $name): bool => in_array(strtolower($name), array_map('strtolower', $zones), true));
+        $sslModes = $token !== null && $relevantZones !== [] ? $this->cloudflareReadZoneSslModes($token, $relevantZones) : [];
+        $normalizedSslModes = [];
+        foreach ($sslModes as $name => $m) {
+            $normalizedSslModes[strtolower($name)] = $m;
+        }
 
         foreach ($zones as $zone) {
-            $mode = null;
-
-            if ($token !== null && isset($zoneIds[$zone])) {
-                try {
-                    $response = CloudflareConnector::make($token)->send(GetZoneSettingRequest::make((string) $zoneIds[$zone], 'ssl'));
-                    $mode = $response->successful() ? Arr::get($response->json(), 'result.value') : null;
-                } catch (Throwable) {
-                    $mode = null;
-                }
-            }
+            $mode = $normalizedSslModes[strtolower($zone)] ?? null;
 
             match ($mode) {
                 'strict' => null,

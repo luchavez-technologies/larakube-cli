@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Process;
@@ -42,11 +43,17 @@ test('on the HTTP challenge, tls:show flags proxied hosts that can\'t renew', fu
 
 test('on the DNS challenge, tls:show flags hosts outside the token\'s zones', function (): void {
     Process::fake(tlsShowFakes(dnsChallenge: true, proxied: true));
-    Saloon::fake([ListZonesRequest::class => MockResponse::make([
-        'success' => true,
-        'result' => [['id' => 'zone-1', 'name' => 'example.com']],
-        'result_info' => ['total_pages' => 1],
-    ])]);
+    Saloon::fake([
+        ListZonesRequest::class => MockResponse::make([
+            'success' => true,
+            'result' => [['id' => 'zone-1', 'name' => 'example.com']],
+            'result_info' => ['total_pages' => 1],
+        ]),
+        GetZoneSettingRequest::class => MockResponse::make([
+            'success' => true,
+            'result' => ['value' => 'strict'],
+        ]),
+    ]);
 
     $this->artisan('tls:show production --context=ctx')
         ->expectsOutputToContain('Cloudflare DNS')
@@ -56,6 +63,67 @@ test('on the DNS challenge, tls:show flags hosts outside the token\'s zones', fu
 
     // Reading the token back never puts it on a command line.
     Process::assertNotRan(fn (PendingProcess $process) => str_contains($process->command, 'cf-token-123'));
+});
+
+test('on the DNS challenge, tls:show reports Full (strict) when the zone setting is strict', function (): void {
+    Process::fake(tlsShowFakes(dnsChallenge: true, proxied: false));
+    Saloon::fake([
+        ListZonesRequest::class => MockResponse::make([
+            'success' => true,
+            'result' => [['id' => 'zone-1', 'name' => 'example.com']],
+            'result_info' => ['total_pages' => 1],
+        ]),
+        GetZoneSettingRequest::class => MockResponse::make([
+            'success' => true,
+            'result' => ['value' => 'strict'],
+        ]),
+    ]);
+
+    $this->artisan('tls:show production --context=ctx')
+        ->expectsOutputToContain('Full (strict) ✓')
+        ->expectsOutputToContain('example.com')
+        ->assertExitCode(0);
+});
+
+test('on the DNS challenge, tls:show reports Full and recommends switching to strict', function (): void {
+    Process::fake(tlsShowFakes(dnsChallenge: true, proxied: false));
+    Saloon::fake([
+        ListZonesRequest::class => MockResponse::make([
+            'success' => true,
+            'result' => [['id' => 'zone-1', 'name' => 'example.com']],
+            'result_info' => ['total_pages' => 1],
+        ]),
+        GetZoneSettingRequest::class => MockResponse::make([
+            'success' => true,
+            'result' => ['value' => 'full'],
+        ]),
+    ]);
+
+    $this->artisan('tls:show production --context=ctx')
+        ->expectsOutputToContain('Full — switch to Full (strict)')
+        ->expectsOutputToContain('example.com')
+        ->assertExitCode(0);
+});
+
+test('on the DNS challenge, tls:show reports 9109 read error when token lacks Zone Settings read', function (): void {
+    Process::fake(tlsShowFakes(dnsChallenge: true, proxied: false));
+    Saloon::fake([
+        ListZonesRequest::class => MockResponse::make([
+            'success' => true,
+            'result' => [['id' => 'zone-1', 'name' => 'example.com']],
+            'result_info' => ['total_pages' => 1],
+        ]),
+        GetZoneSettingRequest::class => MockResponse::make([
+            'success' => false,
+            'errors' => [['code' => 9109]],
+            'result' => null,
+        ], 403),
+    ]);
+
+    $this->artisan('tls:show production --context=ctx')
+        ->expectsOutputToContain("can't read SSL mode — the stored token needs Zone → Zone Settings → Read (Cloudflare 9109)")
+        ->expectsOutputToContain('example.com')
+        ->assertExitCode(0);
 });
 
 test('tls:show lists stored certificates that no ingress uses', function (): void {
