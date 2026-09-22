@@ -77,15 +77,18 @@ git commit -m "feat(data): complete migration to canonical resource naming (ADR 
 According to `ClusterTool::resourceNaming()` (line 1342 of `app/Enums/ClusterTool.php`), the remaining companion services belong to two categories:
 
 ### Group A: `AS_SHIPPED` (Legacy Bare Names)
-| Tool | Product | Complexity | State / Tenants |
+| Tool | Product | Status | Result |
 |---|---|---|---|
-| **`LINK`** | Kutt | **Low** | PostgreSQL (`link_kutt_{$dbInstance}`) + Redis index + Ingress |
-| **`ANALYTICS`** | Umami | **Low** | PostgreSQL (`analytics_umami_{$dbInstance}`) + Ingress |
-| **`SHEETS`** | Teable | **Medium** | PostgreSQL (`sheet_teable_{$dbInstance}`) + Redis + S3 object backing |
-| **`TASKS`** | Planka | **Medium** | PostgreSQL (`tasks_planka_{$dbInstance}`) + S3 object backing |
-| **`PASSWORDS`** | Vaultwarden | **High (Crypto)** | Master secrets (`ADMIN_TOKEN`, RSA keys) + PostgreSQL + PVC |
-| **`SSO`** | Zitadel | **High (Auth)** | PostgreSQL (`zitadel`) + Master keys + Domain mappings |
-| **`CHAT`** | Matrix Synapse / MAS | **High (Singleton)** | PostgreSQL (`chat_matrix`, `chat_mas`) + Coturn + MAS admin |
+| **`DATA`** | PocketBase / Directus | **DONE** (`8c9acfa`) | Canonical workloads, PVCs, and DB tenants (`data_directus_{$dbInstance}`). |
+| **`LINK`** | Kutt | **DONE** (`ca4f924`) | Canonical `kutt-{$instance}`, `kutt-secrets-{$instance}`, DB `kutt_{$dbInstance}`. |
+| **`ANALYTICS`** | Umami | **DONE** (`1bc8d1d`) | Canonical `umami-{$instance}`, `umami-secrets-{$instance}`, DB `umami_{$dbInstance}`. |
+| **`SHEETS`** | Teable | **DONE** (`15d9e6c`) | Canonical `teable-{$instance}`, `teable-secrets-{$instance}`, buckets `teable-*-{$instance}`, DB `teable_{$dbInstance}`. |
+| **`TASKS`** | Planka | **DONE** (`7150c52`) | Canonical `planka-{$instance}`, `planka-secrets-{$instance}`, DB `planka_{$dbInstance}`. |
+| **`PASSWORDS`** | Vaultwarden | Next up | Master secrets (`ADMIN_TOKEN`, RSA keys) + PostgreSQL + PVC |
+| **`SSO`** | Zitadel | Pending | PostgreSQL (`zitadel`) + Master keys + Domain mappings |
+| **`CHAT`** | Matrix Synapse / MAS | Pending | PostgreSQL (`chat_matrix`, `chat_mas`) + Coturn + MAS admin |
+| **`RESUME`** | Reactive Resume | Pending | PostgreSQL + Redis + S3 object backing |
+| **`SUPPORT`** | Chatwoot | Pending | PostgreSQL + Redis + S3 object backing |
 
 ### Group B: `INSTANCE_SUFFIXED` (Hybrid)
 | Tool | Product | Next Action |
