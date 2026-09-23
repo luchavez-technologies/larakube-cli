@@ -45,7 +45,7 @@ redeploy procedures**, and conflating them produces wrong advice:
   `:wire` command *is* the direct-apply mechanism, on purpose — that's how
   `data:init` has always worked, and how every other tool's `:init` works.
   Editing the tool's Blade template in `resources/views/k8s/**`, rebuilding
-  the CLI (`./php vendor/bin/pint && ./build`), and re-running the same
+  the CLI (`composer format && ./build`), and re-running the same
   `:init`/`:wire` command **is** the fix-forward path. Telling a user to
   "push and let CI/CD deploy it" for a Cluster Tool is simply wrong — there
   is no CI/CD in that path to push to.

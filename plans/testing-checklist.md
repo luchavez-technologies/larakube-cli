@@ -14,7 +14,7 @@ Covers everything shipped in commits `c531e3d`..`80a5024` (tags `v0.22.0`,
 `v0.23.0`): opt-in environments, the `cloud:configure` consolidation, the
 Grafana `/etc/hosts` fix, multi-host web hosts (`additionalWebHosts`),
 `larakube env {name} --edit`, and the `cloud:create` stack-naming fix. The
-automated suite (`./php vendor/bin/pest`, 547 passing) already covers unit/
+automated suite (`composer test`, 547 passing) already covers unit/
 feature-level correctness — this is the manual, real-project walkthrough to
 build confidence before wider use. Ordered by blast radius: free/local steps
 first, real-cloud-cost steps (💰) last.
@@ -148,7 +148,7 @@ feature's test plan. Tracker items #29–#30 below just point at it.
 ## ✅ Persisted task tracker
 
 ### Manual test phases (validate the v0.21.x batch before wider rollout)
-- [ ] **#5 — Phase 0: Smoke** (do first; if `larakube up` fails, stop). `larakube about` boots; `larakube up` → pods Running + URLs render; `./php vendor/bin/pest` all green.
+- [ ] **#5 — Phase 0: Smoke** (do first; if `larakube up` fails, stop). `larakube about` boots; `larakube up` → pods Running + URLs render; `composer test` all green.
 - [ ] **#6 — Phase 1: `config:tld` TLD propagation** (HIGHEST RISK). `View::share` removal + fresh-TLD companion fix. Set `.kube` → `companion:add` → `up` → switch to `.test`; ALL hosts move, ZERO stranded on `.kube`.
 - [ ] **#7 — Phase 2a: `ext:add`** (imagick → no crash, idempotent, Dockerfile updated).
 - [ ] **#8 — Phase 2b: `ext:remove`** (clean removal, not-installed is a no-op).
@@ -201,7 +201,7 @@ before tagging/committing. Detailed step-by-step lives in the **Manual Test Guid
 section further down in this file; this part is the tickable tracker. Test by
 **blast radius** — shared infrastructure first, then per-feature.
 
-> Build step before testing: `./php vendor/bin/pint && ./build`
+> Build step before testing: `composer format && ./build`
 
 ---
 
@@ -209,7 +209,7 @@ section further down in this file; this part is the tickable tracker. Test by
 
 - [ ] `larakube about` boots, no stack trace
 - [ ] `larakube up` in a test project → pods Running, summary URLs render
-- [ ] `./php vendor/bin/pest` → all green, no output leaks
+- [ ] `composer test` → all green, no output leaks
 
 ---
 
@@ -1766,5 +1766,5 @@ A full manual pass across every major deploy path and scaffolding command to con
 ## Notes
 
 - Test app: see the test-app memory — do NOT reference it by name in any committed output
-- Rebuild CLI before each test pass: `./php vendor/bin/pint && ./build`
+- Rebuild CLI before each test pass: `composer format && ./build`
 - Check `docker history <image>` to confirm no secrets in layers after every build

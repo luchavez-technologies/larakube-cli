@@ -164,14 +164,14 @@ one needs to be **created**.
    in any of the three.
 2. `larakube {sso,mail,vpn}:unwire --help` — confirm each is a real command with
    its own description (not "See sso:wire --remove" or similar).
-3. `./php vendor/bin/pest` — full suite green. Per this repo's CLAUDE.md, every
+3. `composer test` — full suite green. Per this repo's CLAUDE.md, every
    `Process::run`/`Process::start` and `Http::` call in the moved code needs a
    matching fake — moving code between files doesn't change what needs faking,
    but re-check nothing was faked via a pattern that assumed the old
    `sso:wire ... --remove` command string specifically (e.g. a fake keyed on
    `str_contains($process->command, ...)` is fine; a fake keyed on the Artisan
    command name string `'sso:wire'` would need updating to `'sso:unwire'`).
-4. `./php vendor/bin/pint && ./build` (user runs this, not the agent, per this
+4. `composer format && ./build` (user runs `./build`, not the agent, per this
    repo's existing convention).
 5. Grep for stragglers before closing this out:
    `grep -rn "option('remove')" app/Commands/` should return nothing, and

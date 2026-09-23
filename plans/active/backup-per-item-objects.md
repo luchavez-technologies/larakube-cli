@@ -113,7 +113,7 @@ Extend `tests/Feature/BackupCommandTest.php` (46 tests, all `Process::fake()`):
 
 ## Verification
 
-1. `./php vendor/bin/pint && ./php vendor/bin/phpstan && ./php vendor/bin/pest`, then **you**
+1. `composer format && composer analyse && composer test`, then **you**
    run `./build`.
 2. `larakube backup:run production` → 19 objects + manifest at the new prefix.
 3. `larakube backup:restore production --deep` → every item verifies.
@@ -164,7 +164,7 @@ Nothing below has been run. The gate is green and the restore paths it replaces 
 live on 2026-08-07, but the per-item layout itself has never touched R2.
 
 ```bash
-cd cli && ./php vendor/bin/pint && ./build
+cd cli && composer format && ./build
 cd ../luchtech
 ```
 

@@ -77,9 +77,9 @@ Workflow:
 ### Automated Tests
 Run Pest test suite and code quality checks:
 ```bash
-./php vendor/bin/pest tests/Feature/MailDnsCommandTest.php
-./php vendor/bin/pint --test
-./php vendor/bin/phpstan analyse
+pest tests/Feature/MailDnsCommandTest.php
+composer format
+composer analyse
 ```
 
 ### Manual Verification

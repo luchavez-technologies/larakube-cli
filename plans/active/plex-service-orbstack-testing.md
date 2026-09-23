@@ -15,7 +15,7 @@ tenant you didn't create in this plan, stop.**
 ## 0. Before you start
 
 - [ ] Start OrbStack.
-- [ ] Rebuild the CLI: `./php vendor/bin/pint && ./build`. Build from a committed
+- [ ] Rebuild the CLI: `composer format && ./build`. Build from a committed
       state — if another session has uncommitted work in `GeneratesProjectInfrastructure.php`
       or the Dockerfile templates, wait for it to land first.
 - [ ] Check the current kube-context. Scaffolders join the Commons, and `down`

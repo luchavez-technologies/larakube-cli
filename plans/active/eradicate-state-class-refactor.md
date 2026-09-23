@@ -61,7 +61,7 @@ Because PHP static properties persist on the class loader across all test execut
 
 5. **Quality Verification**:
    - Run unit tests for `RuntimeContext` and `State` facade.
-   - Run Pint (`./vendor/bin/pint --test`).
-   - Run PHPStan (`php -d memory_limit=2G ./vendor/bin/phpstan analyse --no-progress`).
-   - Run Pest (`./vendor/bin/pest`).
+   - Run Code Formatting (`composer format`).
+   - Run PHPStan (`composer analyse`).
+   - Run Test Suite (`composer test`).
    - Remind user to run `./build`.

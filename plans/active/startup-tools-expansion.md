@@ -243,5 +243,5 @@ Per the **OpenBao Secrets Prioritization Standard**:
 - [ ] Implement `app/Commands/Api/ApiInitCommand.php` (`larakube api:init`)
 - [ ] Create Blade templates for `k8s.design.*` (`backend`, `frontend`, `ingress`, `exporter`)
 - [ ] Create Pest feature tests: `tests/Feature/DesignInitCommandTest.php` and `tests/Feature/ApiInitCommandTest.php`
-- [ ] Format with `./php vendor/bin/pint` and verify PHPStan (0 errors)
+- [ ] Format with `composer format` and verify PHPStan (`composer analyse`)
 

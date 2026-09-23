@@ -43,7 +43,7 @@ sequenceDiagram
 - [ ] Update `runLaravelNew()` in `cli/app/Commands/NewCommand.php` to inject DB env vars (`DB_HOST=host.docker.internal`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`), `--add-host=host.docker.internal:host-gateway`, and `--database=pgsql`.
 - [ ] Update `cli/app/Commands/Statamic/StatamicNewCommand.php`.
 - [ ] Create Pest feature test suite (`cli/tests/Feature/PlexAutoProvisioningTest.php`).
-- [ ] Run Pest unit tests & static analysis (`./php vendor/bin/phpstan`).
+- [ ] Run Pest tests & static analysis (`composer analyse`).
 
 ---
 

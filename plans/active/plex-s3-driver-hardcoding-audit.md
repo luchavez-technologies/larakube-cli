@@ -80,10 +80,10 @@ Not in scope: the various `*NewCommand.php` files (SpringBoot, Wordpress, Nextjs
 ## Verification Plan
 
 Per file fixed:
-1. `./php vendor/bin/pint`
-2. `./php vendor/bin/phpstan analyse --memory-limit=1G`
+1. `composer format`
+2. `composer analyse`
 3. Existing feature test for that tool's `:init` command, plus a new regression test mirroring `CrmInitCommandTest.php`'s `'crm:init detects MinIO rather than assuming SeaweedFS...'` — fake the Commons spec with `minio: enabled` (no `seaweedfs` key), assert the bucket-allocation `exec` targets `deploy/minio` not `deploy/seaweedfs`, and assert nothing SeaweedFS-specific ran.
-4. Full suite (`./php vendor/bin/pest`) before considering the pass done.
+4. Full suite (`composer test`) before considering the pass done.
 
 See `docs/decisions/0015-commons-storage-driver-is-runtime-resolved.md` for
 the standing rule this plan exists to bring every consumer into compliance

@@ -62,9 +62,11 @@ Hybrid tools are compatible with both the native **AI SDK** (`larakube chat`) an
    ```bash
    git config core.hooksPath .githooks
    ```
-3. **Linting**: We use **Laravel Pint**.
+3. **Formatting, Analysis & Testing**:
    ```bash
-   ./vendor/bin/pint
+   composer format    # Refactor & format code (Rector + Pint)
+   composer analyse   # Static analysis (PHPStan)
+   composer test      # Automated test suite (Pest in parallel)
    ```
 
 ## 🧪 Deployment Testing

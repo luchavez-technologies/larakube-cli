@@ -88,7 +88,7 @@ loudly if no row matches rather than promoting nothing and reporting success.
       `plans/active/vpn-split-dns-and-single-account.md`.)
 - [ ] Dropping `--admin` demotes in both systems.
 - [ ] An identifier that matches no MAS user fails loudly.
-- [ ] `./php vendor/bin/pint` and `./php vendor/bin/pest` pass.
+- [ ] `composer format` and `composer test` pass.
 
 ## Follow-up found while investigating
 

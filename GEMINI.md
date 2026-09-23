@@ -17,11 +17,12 @@ LaraKube is designed for the age of AI agents:
 ## 🛠 Technical Standards
 
 ### 🔄 Development Workflow
-Whenever you modify the LaraKube CLI codebase, you **must** proactively run tests and linters to ensure code consistency. Requires PHP 8.4 installed locally.
+Whenever you modify the LaraKube CLI codebase, you **must** proactively run formatters, linters, and tests to ensure code consistency. Requires PHP 8.4+ installed locally.
 
 ```bash
-./vendor/bin/pint
-./vendor/bin/phpstan
+composer format    # Runs rector process && pint
+composer analyse   # Runs phpstan analyse with memory limit
+composer test      # Runs pest --parallel
 ```
 
 **CRITICAL RULE FOR AI AGENTS**: You are STRICTLY FORBIDDEN from running the `./build` command. When a build is required to update the global binary, you must tell the user to run `./build` and wait for them to do it.

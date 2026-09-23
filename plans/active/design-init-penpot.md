@@ -205,4 +205,4 @@ Executing `larakube vpn:wire production --tool=design` restricts `design.{domain
 - [ ] `DesignRemoveCommand`/`DesignShowCommand` need no custom instance handling if built on `AbstractToolRemoveCommand`/`AbstractToolShowCommand` — `--domain=` is already wired generically there
 - [ ] Create Blade templates `k8s.design.backend`, `k8s.design.frontend`, `k8s.design.ingress`, `k8s.design.exporter` — pass an explicit, instance-suffixed `serviceName`/`deploymentName` to every one of them if multi-instance (see the Service/Ingress note above)
 - [ ] Create Pest test `tests/Feature/DesignInitCommandTest.php`
-- [ ] Run `./php vendor/bin/pint` and `./php vendor/bin/phpstan`
+- [ ] Run `composer format` and `composer analyse`

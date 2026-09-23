@@ -213,9 +213,9 @@ exist live, which looks like the same churn. Not fixed here.
 ## 6. Verification Plan
 
 ### Automated Tests
-- `./php vendor/bin/pest --parallel` (All unit/feature tests for `sso:wire`, `mail:wire`, `*:init`, `*:remove`).
-- `./php vendor/bin/phpstan analyse` (Static analysis level 5).
-- `./php vendor/bin/pint` (Code formatting).
+- `composer test` (All unit/feature tests for `sso:wire`, `mail:wire`, `*:init`, `*:remove` via Pest in parallel).
+- `composer analyse` (Static analysis).
+- `composer format` (Code refactoring and formatting via Rector and Pint).
 
 ### Live Safety Verification
 - Pre-flight secret checksum match before any scale-down.

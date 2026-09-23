@@ -255,7 +255,7 @@ even when the IP does not.
 - [ ] `docs.luchtech.dev` and `luchtech.dev` still resolve to Cloudflare while
       connected. This is the regression that matters most.
 - [ ] `vpn:unwire` removes the host from both resolver and group.
-- [ ] `./php vendor/bin/pint` and `./php vendor/bin/pest` pass.
+- [ ] `composer format` and `composer test` pass.
 
 ---
 

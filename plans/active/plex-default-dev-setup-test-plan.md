@@ -128,10 +128,10 @@ This document provides a step-by-step test plan for team members and QA engineer
 #### Commands to Run:
 ```bash
 # 1. Run Pest Feature Test Suite
-./php vendor/bin/pest tests/Feature/PlexAutoProvisioningTest.php
+pest tests/Feature/PlexAutoProvisioningTest.php
 
 # 2. Run PHPStan Static Analysis
-./php vendor/bin/phpstan
+composer analyse
 ```
 
 #### Expected Results:

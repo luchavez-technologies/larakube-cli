@@ -19,7 +19,7 @@ Provide a zero-data-loss backup, restore, and pruning architecture powered by **
 - [ ] Create `BackupPruneCommand.php` (`larakube backup:prune` - 7 Daily / 4 Weekly / 3 Monthly GFS retention)
 - [ ] Create `BackupInitCommand.php` (`larakube backup:init` - Nightly 02:00 AM CronJob)
 - [ ] Write Pest feature tests (`tests/Feature/BackupCommandTest.php`)
-- [ ] Run PHPStan static analysis (`./php vendor/bin/phpstan`)
+- [ ] Run PHPStan static analysis (`composer analyse`)
 
 ---
 

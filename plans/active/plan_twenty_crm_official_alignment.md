@@ -86,7 +86,7 @@ Strip all non-standard trial flags (`SERVER_TYPE`, `IS_AUTO_MIGRATION_ENABLED`, 
 ### Automated Tests
 Run Pest test suite to ensure manifest rendering and command execution tests pass:
 ```bash
-./php vendor/bin/pest tests/Feature/CrmInitCommandTest.php
+pest tests/Feature/CrmInitCommandTest.php
 ```
 
 ### Manual Verification

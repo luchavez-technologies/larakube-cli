@@ -128,10 +128,10 @@ Per this repo's hard rule (`feedback_no_manual_kubectl.md` in memory / CLAUDE.md
 Exact existing test files (verified — use these, not guesses): `tests/Feature/SupportInitCommandTest.php`, `tests/Feature/LinkInitCommandTest.php`, `tests/Feature/ErrorsInitCommandTest.php`, `tests/Feature/DataInitCommandTest.php`. **`Crm` has no test file at all today** (`find tests -iname "*Crm*"` returns nothing) — the `CrmTool` fix can't be regression-tested against an existing file; either add a new `tests/Feature/CrmInitCommandTest.php` (there may be a reason none exists — check `app/Commands/Crm/` is even wired/registered before assuming this is an oversight) or at minimum confirm the full suite still passes with the change.
 
 ```bash
-./php -l <every changed file>
-./php vendor/bin/pest tests/Feature/SupportInitCommandTest.php tests/Feature/LinkInitCommandTest.php tests/Feature/DataInitCommandTest.php tests/Feature/ErrorsInitCommandTest.php
-./php vendor/bin/pest   # full suite, run WITHOUT --parallel for a clean read — this repo has a known pre-existing parallel-test-worker race in ServerManifestTest/ServicesManifestTest/FrontendManifestTest (shared temp dir), unrelated to this work; if only those fail under --parallel, re-run serially to confirm
-./php vendor/bin/phpstan analyse app/   # must end "[OK] No errors"
+php -l <every changed file>
+pest tests/Feature/SupportInitCommandTest.php tests/Feature/LinkInitCommandTest.php tests/Feature/DataInitCommandTest.php tests/Feature/ErrorsInitCommandTest.php
+composer test      # full suite in parallel
+composer analyse   # static analysis
 git status --porcelain   # review the diff before considering this done — only intended files should show as modified
 ```
 

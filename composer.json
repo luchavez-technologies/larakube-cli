@@ -64,7 +64,8 @@
         "format": [
             "rector process",
             "pint"
-        ]
+        ],
+        "test": "pest --parallel"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,

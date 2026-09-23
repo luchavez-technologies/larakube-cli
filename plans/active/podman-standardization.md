@@ -279,8 +279,8 @@ necessary.
 
 1. **AI agents must NOT run `./build`.** Tell the user when a build is needed and
    wait — per `cli/CLAUDE.md` and standing user preference.
-2. Proactively run `./php vendor/bin/pint`, `./php vendor/bin/phpstan`, and
-   `./php vendor/bin/pest` after edits.
+2. Proactively run `composer format`, `composer analyse`, and
+   `composer test` after edits.
 3. Work one phase at a time and stop for review between phases — this is a wide,
    multi-file change and the user prefers incremental, à la carte work over one
    bundled sweep.
@@ -293,9 +293,9 @@ necessary.
 
 ### Automated (each phase)
 ```bash
-./php vendor/bin/pint --test
-./php vendor/bin/phpstan
-./php vendor/bin/pest
+composer format
+composer analyse
+composer test
 ```
 
 ### Manual Battle-Testing (operator runs, not the AI agent)

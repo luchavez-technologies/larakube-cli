@@ -110,8 +110,8 @@ A thorough inspection of `cli/app` revealed:
 
 ## 4. Verification & Quality Gates
 
-1. Run Pint: `./php vendor/bin/pint`
-2. Run PHPStan: `./php vendor/bin/phpstan`
-3. Run Pest: `./php vendor/bin/pest tests/Feature/ToolEnvironmentResolutionTest.php`
+1. Run Format: `composer format`
+2. Run PHPStan: `composer analyse`
+3. Run Pest: `composer test` (or `pest tests/Feature/ToolEnvironmentResolutionTest.php`)
 4. Prompt user to execute `./build` and test:
    `larakube data:init --context=larakube-34.27.253.31 --domain=pocket-test.luchtech.dev`

@@ -36,8 +36,7 @@ flowchart TD
 - [ ] Update `cli/app/Traits/GathersInfrastructureConfig.php` to use `SupportedDriversTrait` and pre-select active Plex engines
 - [ ] Update `cli/app/Commands/Statamic/StatamicNewCommand.php` to filter and pre-select Plex drivers
 - [ ] Update `cli/app/Commands/NewCommand.php` and `cli/app/Commands/InitCommand.php`
-- [ ] Create Pest feature test suite (`cli/tests/Feature/PlexDriverMatrixTest.php`)
-- [ ] Run Pest tests & static analysis (`./php vendor/bin/phpstan`)
+- [ ] Run Pest tests & static analysis (`composer analyse`)
 
 ---
 

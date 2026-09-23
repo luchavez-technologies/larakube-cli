@@ -1,23 +1,27 @@
-#!/bin/sh
+echo "==================================="
+echo "Running Pre-Commit Checks..."
+echo "==================================="
 
-echo "🎨 [LARAKUBE] Running Laravel Pint to clean up the code..."
-
-# Get a list of staged PHP files
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep "\.php$")
-
-if [ -n "$STAGED_FILES" ]; then
-    # Run Pint only on staged files
-    ./vendor/bin/pint $STAGED_FILES
-
-    # Check the exit code of Pint
-    if [ $? -ne 0 ]; then
-        echo "❌ [LARAKUBE] Pint found issues that couldn't be automatically fixed. Commit aborted."
-        exit 1
-    fi
-
-    # Automatically re-stage the files that Pint just formatted
-    echo "$STAGED_FILES" | xargs git add
+echo "👉 Running Code Formatting (Rector + Pint)..."
+composer format
+if [ $? -ne 0 ]; then
+    echo "❌ Code formatting failed. Please check the errors above."
+    exit 1
 fi
 
-echo "✅ [LARAKUBE] Code is clean! Proceeding with commit..."
+echo "👉 Running PHPStan (Static Analysis)..."
+composer analyse
+if [ $? -ne 0 ]; then
+    echo "❌ PHPStan failed. Please fix the static analysis errors."
+    exit 1
+fi
+
+echo "👉 Running Pest (Unit & Feature Tests)..."
+composer test
+if [ $? -ne 0 ]; then
+    echo "❌ Pest tests failed. Please fix the failing tests."
+    exit 1
+fi
+
+echo "✅ All checks passed! Proceeding with commit."
 exit 0

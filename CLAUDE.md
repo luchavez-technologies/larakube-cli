@@ -2,8 +2,9 @@
 
 Requires PHP 8.4 installed locally (see CONTRIBUTING.md for the extension list) — run everything directly on the host.
 
-- `./vendor/bin/pest --parallel` (tests — parallel is the default; shared-state races that broke it were fixed 2026-08-19, see `tests/TestCase.php`), `./vendor/bin/pint` (formatting, per repo-wide hard rule), `./vendor/bin/phpstan` (static analysis)
-- `./vendor/bin/rector process` (automated refactoring — applies `rector.php`'s `PestSetList::CODING_STYLE` set across `app/`, `bootstrap/`, `config/`, `resources/`, `scripts/`, `tests/`: adds explicit `: void` return types to test closures, merges chained `expect()->and()` assertions, and similar Pest coding-style normalizations). Run it, then `./vendor/bin/pint` to clean up formatting afterward, then `./vendor/bin/pest --parallel` to confirm nothing broke — Rector rewrites code structure, so always re-verify rather than trusting the diff on sight.
+- `composer format` (automated refactoring and code formatting — runs `rector process` and `pint` per repo-wide hard rule)
+- `composer analyse` (static analysis — runs `phpstan analyse --memory-limit=2G`)
+- `composer test` (tests — runs `pest --parallel`)
 - `composer <args>` for dependency management
 - Never run `./build` yourself — tell the user to run it and wait.
 

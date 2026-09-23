@@ -116,7 +116,7 @@ and never silently skipped by an environment quirk. Concretely:
    behavior) gets its own file named after *that* concern — never split
    across files by who happened to write which test, and never dumped into
    an unrelated file for convenience.
-10. **`./vendor/bin/pest --parallel` is the default way the suite is run**,
+10. **`composer test` (`pest --parallel`) is the default way the suite is run**,
     including in CI and pre-commit. A test that isn't safe under `--parallel`
     (shared state, a fixed temp path, a real network/process side effect)
     is a bug in the test — see rules 1–4 for exactly the shapes that break.

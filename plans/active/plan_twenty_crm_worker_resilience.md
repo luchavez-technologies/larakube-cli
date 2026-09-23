@@ -81,7 +81,7 @@ $resources = "deployment/{$deploymentName} deployment/{$workerName} service/{$se
 ```
 
 ### Step 3: Verification Strategy
-1. Run `./php vendor/bin/pest tests/Feature/CrmInitCommandTest.php` to verify manifest rendering and command test assertions.
+1. Run `pest tests/Feature/CrmInitCommandTest.php` to verify manifest rendering and command test assertions.
 2. Deploy live via `./build && larakube crm:init local`.
 3. Check pod status via `kubectl get pods -n larakube-shared` (verify `crm-twenty-worker-*` is `1/1 Running`).
 4. Inspect Twenty CRM Health Settings UI: verify **Worker** status transitions to **Operational** 🟢.
