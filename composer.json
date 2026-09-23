@@ -60,7 +60,11 @@
         }
     },
     "scripts": {
-        "analyse": "phpstan analyse --memory-limit=2G"
+        "analyse": "phpstan analyse --memory-limit=2G",
+        "format": [
+            "rector process",
+            "pint"
+        ]
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
