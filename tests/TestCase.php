@@ -75,6 +75,14 @@ abstract class TestCase extends BaseTestCase
         // not leak between tests.
         State::$jsonMode = false;
         State::$transientDoToken = null;
+        State::$transientHetznerToken = null;
+        State::$transientGcpAccount = null;
+        State::$transientGcpProject = null;
+        State::$transientGcpCredentials = null;
+        State::$transientAwsProfile = null;
+        State::$transientAwsRegion = null;
+        State::$transientAwsAccessKeyId = null;
+        State::$transientAwsSecretAccessKey = null;
         State::$lastError = null;
         State::$stdout = null;
         State::$registeredSecrets = [];
@@ -195,7 +203,7 @@ abstract class TestCase extends BaseTestCase
             $dir = sys_get_temp_dir().'/larakube-test-stubs-'.getmypid();
             @mkdir($dir, 0755, true);
 
-            foreach (['kubectl', 'docker', 'podman', 'netbird', 'helm', 'k3s', 'crictl', 'ctr', 'sudo', 'systemctl'] as $bin) {
+            foreach (['kubectl', 'docker', 'podman', 'netbird', 'helm', 'k3s', 'crictl', 'ctr', 'sudo', 'systemctl', 'gcloud', 'aws', 'hcloud'] as $bin) {
                 $path = "$dir/$bin";
                 @file_put_contents($path, "#!/bin/sh\nexit 0\n");
                 @chmod($path, 0755);

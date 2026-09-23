@@ -11,6 +11,7 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 beforeEach(function (): void {
     Prompt::interactive(false);
+    State::$transientGcpAccount = null;
     State::$transientGcpProject = null;
     State::$transientGcpCredentials = null;
 });

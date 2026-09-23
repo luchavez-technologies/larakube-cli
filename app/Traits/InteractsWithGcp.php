@@ -133,6 +133,7 @@ trait InteractsWithGcp
                 $singleAccount = array_key_first($accounts);
                 State::$transientGcpAccount = $singleAccount;
                 $this->setGcpAccount($singleAccount);
+                Process::run("{$gcloudBin} config set account ".escapeshellarg($singleAccount).' 2>/dev/null');
             }
         }
 
@@ -211,7 +212,9 @@ trait InteractsWithGcp
         }
 
         $projects = [];
-        $result = Process::run("{$gcloudBin} projects list --format=\"json(projectId,name)\"");
+        $account = $this->getGcpAccount();
+        $accountArg = $account ? ' --account='.escapeshellarg($account) : '';
+        $result = Process::run("{$gcloudBin} projects list --format=\"json(projectId,name)\"{$accountArg}");
         if ($result->successful() && ! empty(trim($result->output()))) {
             $decoded = json_decode($result->output(), true);
             if (is_array($decoded)) {
@@ -300,8 +303,10 @@ trait InteractsWithGcp
             hint: 'Must be globally unique across all Google Cloud customers.',
         );
 
+        $account = $this->getGcpAccount();
+        $accountArg = $account ? ' --account='.escapeshellarg($account) : '';
         $this->line("Creating Google Cloud project '<fg=cyan>{$projectId}</>'...");
-        $createCmd = "{$gcloudBin} projects create ".escapeshellarg($projectId).' --name='.escapeshellarg($projectName);
+        $createCmd = "{$gcloudBin} projects create ".escapeshellarg($projectId).' --name='.escapeshellarg($projectName).$accountArg;
         $result = Process::run($createCmd);
 
         if (! $result->successful()) {
@@ -330,7 +335,9 @@ trait InteractsWithGcp
      */
     protected function linkBillingAccountIfAvailable(string $gcloudBin, string $projectId): void
     {
-        $billingCmd = "{$gcloudBin} billing accounts list --format=\"json(name,displayName,open)\" --filter=\"open=true\" 2>/dev/null";
+        $account = $this->getGcpAccount();
+        $accountArg = $account ? ' --account='.escapeshellarg($account) : '';
+        $billingCmd = "{$gcloudBin} billing accounts list --format=\"json(name,displayName,open)\" --filter=\"open=true\"{$accountArg} 2>/dev/null";
         $billingResult = Process::run($billingCmd);
 
         if (! $billingResult->successful() || empty(trim($billingResult->output()))) {
@@ -387,7 +394,9 @@ trait InteractsWithGcp
      */
     protected function linkBillingAccount(string $gcloudBin, string $projectId, string $billingAccountId): bool
     {
-        $linkCmd = "{$gcloudBin} billing projects link ".escapeshellarg($projectId).' --billing-account='.escapeshellarg($billingAccountId);
+        $account = $this->getGcpAccount();
+        $accountArg = $account ? ' --account='.escapeshellarg($account) : '';
+        $linkCmd = "{$gcloudBin} billing projects link ".escapeshellarg($projectId).' --billing-account='.escapeshellarg($billingAccountId).$accountArg;
         $linkResult = Process::run($linkCmd);
 
         if ($linkResult->successful()) {
@@ -407,8 +416,10 @@ trait InteractsWithGcp
      */
     protected function enableGcpBaselineApis(string $gcloudBin, string $projectId): void
     {
+        $account = $this->getGcpAccount();
+        $accountArg = $account ? ' --account='.escapeshellarg($account) : '';
         $this->line('Enabling required Google Cloud APIs (Compute Engine, GKE, & Resource Manager)...');
-        $servicesCmd = "{$gcloudBin} services enable compute.googleapis.com container.googleapis.com cloudresourcemanager.googleapis.com --project=".escapeshellarg($projectId);
+        $servicesCmd = "{$gcloudBin} services enable compute.googleapis.com container.googleapis.com cloudresourcemanager.googleapis.com --project=".escapeshellarg($projectId).$accountArg;
         $servicesResult = Process::run($servicesCmd);
 
         if ($servicesResult->successful()) {
