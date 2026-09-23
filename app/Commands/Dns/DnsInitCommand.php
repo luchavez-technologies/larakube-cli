@@ -105,9 +105,19 @@ class DnsInitCommand extends Command
             return 1;
         }
 
-        $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
-            "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
-        ));
+        $nsResult = null;
+        $this->withSpin("Ensuring namespace {$ns}...", function () use ($kubectl, $ns, &$nsResult): void {
+            $nsResult = Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        });
+
+        if ($nsResult !== null && ! $nsResult->successful()) {
+            if ($err = trim($nsResult->errorOutput() ?: $nsResult->output())) {
+                $this->line("  <fg=red>{$err}</>");
+            }
+            $this->laraKubeError("Could not create/apply the '{$ns}' namespace.");
+
+            return 1;
+        }
 
         // Must come after the namespace exists — the ID lives in a ConfigMap there.
         $clusterId = $this->clusterIdentity($kubectl);

@@ -101,10 +101,10 @@ class CloudCreateCommand extends Command
 
         $exit = $this->create();
 
-        if (State::$jsonMode) {
+        if (State::isJsonMode()) {
             $this->jsonOutput($exit === 0
                 ? array_merge(['success' => true, 'stackName' => null, 'kind' => null, 'ip' => null, 'context' => null], $this->result, ['error' => null])
-                : ['success' => false, 'stackName' => $this->result['stackName'] ?? null, 'error' => State::$lastError ?? 'Provisioning did not complete.']);
+                : ['success' => false, 'stackName' => $this->result['stackName'] ?? null, 'error' => State::lastError() ?? 'Provisioning did not complete.']);
         }
 
         return $exit;
@@ -227,8 +227,8 @@ class CloudCreateCommand extends Command
         // in-memory only — getDoToken() consults it ahead of the global
         // config, so it reaches TF_VAR_do_token without touching disk.
         if ($token = ($this->flag('do-token') ?: getenv('TF_VAR_do_token'))) {
-            State::$transientDoToken = trim($token);
-            $this->registerSecret(State::$transientDoToken);
+            State::setTransientDoToken($token);
+            $this->registerSecret(State::transientDoToken());
 
             return true;
         }
@@ -588,6 +588,10 @@ class CloudCreateCommand extends Command
 
         if (! $this->flag('no-interaction') && confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
             $this->call('dns:init', ['environment' => $environment ?: 'production', '--context' => $context]);
+        }
+
+        if (! $this->flag('no-interaction') && confirm('Would you like to enable the Cloudflare DNS challenge for SSL certificates (so proxied hosts keep renewing)?', default: true)) {
+            $this->call('tls:init', ['environment' => $environment ?: 'production', '--context' => $context]);
         }
 
         return 0;

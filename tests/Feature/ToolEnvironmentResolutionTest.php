@@ -1,9 +1,13 @@
 <?php
 
+use App\Commands\Snapshot\SnapshotInitCommand;
+use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Exceptions\AmbiguousEnvironmentException;
+use App\Traits\DeploysClusterTool;
 use App\Traits\ResolvesToolEnvironment;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Process;
 
 /**
  * `--domain` answers "what hostname", never "which cluster".
@@ -12,17 +16,27 @@ use Illuminate\Contracts\Console\Kernel;
  * environment to `local`, so a real public domain got wired into a local-TLS
  * ingress and applied to whatever kube-context happened to be current.
  */
-function envResolver(array $arguments = [], array $options = []): object
+function envResolver(array $arguments = [], array $options = [], ?ConfigData $config = null, array $availableContexts = []): object
 {
-    return new class($arguments, $options)
+    return new class($arguments, $options, $config, $availableContexts)
     {
         use ResolvesToolEnvironment;
 
-        public function __construct(private array $arguments, private array $options) {}
+        public function __construct(
+            private array $arguments,
+            private array $options,
+            private ?ConfigData $config = null,
+            private array $availableContexts = [],
+        ) {}
 
         public function argument(string $key): mixed
         {
             return $this->arguments[$key] ?? null;
+        }
+
+        public function hasArgument(string $key): bool
+        {
+            return array_key_exists($key, $this->arguments);
         }
 
         public function option(string $key): mixed
@@ -30,9 +44,29 @@ function envResolver(array $arguments = [], array $options = []): object
             return $this->options[$key] ?? null;
         }
 
+        public function hasOption(string $key): bool
+        {
+            return array_key_exists($key, $this->options);
+        }
+
         public function resolve(ClusterTool $tool): string
         {
-            return $this->resolveToolEnvironment($tool);
+            return $this->resolveToolEnvironment($tool, $this->config);
+        }
+
+        protected function getAvailableKubeContexts(): array
+        {
+            return $this->availableContexts;
+        }
+
+        protected function getCurrentKubeContext(): string
+        {
+            return $this->availableContexts[0] ?? '';
+        }
+
+        protected function loadProjectConfigIfAny(): ?ConfigData
+        {
+            return $this->config;
         }
     };
 }
@@ -75,6 +109,129 @@ test('the refusal names the command and the domain so the fix is copy-pasteable'
         expect($e->command)->toBe('mail:init')
             ->and($e->domain)->toBe('example.com');
     }
+});
+
+test('remote context without environment defaults to production even with --domain', function (): void {
+    $resolver = envResolver([], [
+        'context' => 'larakube-34.27.253.31',
+        'domain' => 'pocket-test.luchtech.dev',
+    ]);
+
+    expect($resolver->resolve(ClusterTool::DATA))->toBe('production')
+        ->and($resolver->getResolvedToolContext())->toBe('larakube-34.27.253.31');
+});
+
+test('local context without environment defaults to local even with --domain', function (): void {
+    $resolver = envResolver([], [
+        'context' => 'k3s-larakube',
+        'domain' => 'pocket.test',
+    ]);
+
+    expect($resolver->resolve(ClusterTool::DATA))->toBe('local')
+        ->and($resolver->getResolvedToolContext())->toBe('k3s-larakube');
+});
+
+test('remote context without environment defaults to production without --domain', function (): void {
+    $resolver = envResolver([], [
+        'context' => 'doks-sgp1-production',
+    ]);
+
+    expect($resolver->resolve(ClusterTool::DATA))->toBe('production')
+        ->and($resolver->getResolvedToolContext())->toBe('doks-sgp1-production');
+});
+
+test('an explicit positional environment overrides --context deduction', function (): void {
+    $resolver = envResolver(
+        ['environment' => 'staging'],
+        ['context' => 'larakube-34.27.253.31', 'domain' => 'pocket-stage.luchtech.dev'],
+    );
+
+    expect($resolver->resolve(ClusterTool::DATA))->toBe('staging')
+        ->and($resolver->getResolvedToolContext())->toBe('larakube-34.27.253.31');
+});
+
+test('project-mapped context resolves to the matching project environment', function (): void {
+    $config = ConfigData::from([
+        'name' => 'test-project',
+        'environments' => [
+            'local' => [],
+            'staging' => [
+                'cloud' => [
+                    'context' => 'custom-staging-k8s',
+                ],
+            ],
+        ],
+    ]);
+
+    $resolver = envResolver(
+        [],
+        ['context' => 'custom-staging-k8s', 'domain' => 'pocket.luchtech.dev'],
+        $config,
+    );
+
+    expect($resolver->resolve(ClusterTool::DATA))->toBe('staging');
+});
+
+test('DeploysClusterTool resolveToolContext seamlessly reuses resolvedToolContext', function (): void {
+    $toolDeployer = new class
+    {
+        use DeploysClusterTool, ResolvesToolEnvironment;
+
+        public function testResolveContext(string $env): ?string
+        {
+            return $this->resolveToolContext($env);
+        }
+
+        public function setResolvedContext(string $ctx): void
+        {
+            $this->resolvedToolContext = $ctx;
+        }
+    };
+
+    $toolDeployer->setResolvedContext('larakube-34.27.253.31');
+    expect($toolDeployer->testResolveContext('production'))->toBe('larakube-34.27.253.31');
+});
+
+test('snapshot:init supports --context option and configures Kubectl accordingly', function (): void {
+    $cmd = app(SnapshotInitCommand::class);
+    expect($cmd->getDefinition()->hasOption('context'))->toBeTrue();
+
+    Process::fake([
+        '*volumesnapshots.yaml*' => Process::result(output: 'customresourcedefinition.apiextensions.k8s.io/volumesnapshots.snapshot.storage.k8s.io created', exitCode: 0),
+    ]);
+
+    $this->artisan('snapshot:init', ['--context' => 'larakube-34.27.253.31'])
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, '--context') && str_contains($process->command, 'larakube-34.27.253.31'));
+});
+
+test('standalone interactive prompt asks for available kube context when outside project without --context or --domain', function (): void {
+    Laravel\Prompts\Prompt::fake([Laravel\Prompts\Key::ENTER]);
+
+    $resolver = envResolver(
+        [],
+        [],
+        null,
+        ['larakube-34.27.253.31', 'docker-desktop'],
+    );
+
+    expect($resolver->resolve(ClusterTool::DATA))->toBe('production')
+        ->and($resolver->getResolvedToolContext())->toBe('larakube-34.27.253.31');
+});
+
+test('standalone interactive prompt resolves to local if user selects local context', function (): void {
+    Laravel\Prompts\Prompt::fake([Laravel\Prompts\Key::DOWN, Laravel\Prompts\Key::ENTER]);
+
+    $resolver = envResolver(
+        [],
+        [],
+        null,
+        ['larakube-34.27.253.31', 'docker-desktop'],
+    );
+
+    expect($resolver->resolve(ClusterTool::DATA))->toBe('local')
+        ->and($resolver->getResolvedToolContext())->toBe('docker-desktop');
 });
 
 test('no init command still forces the environment from --domain', function (): void {

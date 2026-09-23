@@ -8,6 +8,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesToolEnvironment;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 use stdClass;
@@ -22,12 +23,12 @@ use stdClass;
  */
 class TlsPruneCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, LaraKubeOutput, ProvisionsK3sNode, RequiresFlagsWhenNonInteractive;
+    use ConfirmsDestructiveAction, DeploysClusterTool, LaraKubeOutput, ProvisionsK3sNode, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment;
 
     private const ACME_FILE = '/acme/acme.json';
 
     protected $signature = 'tls:prune
-        {environment : The cloud environment whose unused certificates to remove}
+        {environment? : The cloud environment whose unused certificates to remove}
         {--context=  : Target a specific kube-context}
         {--force     : Skip the confirmation prompt}';
 
@@ -37,7 +38,7 @@ class TlsPruneCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) $this->argument('environment');
+        $env = $this->resolveToolEnvironment('TLS');
 
         if ($env === 'local') {
             $this->laraKubeError('Local clusters use the LaraKube Local CA, not Let\'s Encrypt.');

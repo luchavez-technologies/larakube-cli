@@ -7,6 +7,7 @@ use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithCloudflareApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
+use App\Traits\ResolvesToolEnvironment;
 use LaravelZero\Framework\Commands\Command;
 
 /**
@@ -15,10 +16,10 @@ use LaravelZero\Framework\Commands\Command;
  */
 class TlsShowCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithCloudflareApi, LaraKubeOutput, ProvisionsK3sNode;
+    use DeploysClusterTool, InteractsWithCloudflareApi, LaraKubeOutput, ProvisionsK3sNode, ResolvesToolEnvironment;
 
     protected $signature = 'tls:show
-        {environment : The cloud environment to inspect}
+        {environment? : The cloud environment to inspect}
         {--context=  : Target a specific kube-context}';
 
     protected $description = 'Show how Let\'s Encrypt certificates are issued on a cluster, and what would break renewal';
@@ -27,7 +28,7 @@ class TlsShowCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) $this->argument('environment');
+        $env = $this->resolveToolEnvironment('TLS');
 
         if ($env === 'local') {
             $this->laraKubeInfo('Local clusters use the LaraKube Local CA, not Let\'s Encrypt.');

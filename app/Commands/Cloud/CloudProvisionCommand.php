@@ -111,15 +111,19 @@ class CloudProvisionCommand extends Command
 
         // The full single-node pipeline (k3s, larakube user, harden, lock root,
         // kubeconfig, Traefik) lives in ProvisionsK3sNode so cloud:create shares it.
-        $this->provisionK3sNode($user, $ip, $port, $keyPath, $config);
+        $context = $this->provisionK3sNode($user, $ip, $port, $keyPath, $config);
 
         $this->laraKubeInfo('✅ Provisioning complete!');
         $this->info('Your VPS is now a LaraKube-hardened K3s node (firewall, fail2ban, key-only SSH, encrypted Secrets, auto security updates).');
         $this->line('  <fg=gray>Recommended follow-up: add default-deny NetworkPolicies, and restrict the k3s API (6443) to your IP.</>');
 
         $this->newLine();
-        if (confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
-            $this->call('dns:init', ['environment' => $environment ?: 'production']);
+        if (! $this->option('no-interaction') && confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
+            $this->call('dns:init', ['environment' => $environment ?: 'production', '--context' => $context]);
+        }
+
+        if (! $this->option('no-interaction') && confirm('Would you like to enable the Cloudflare DNS challenge for SSL certificates (so proxied hosts keep renewing)?', default: true)) {
+            $this->call('tls:init', ['environment' => $environment ?: 'production', '--context' => $context]);
         }
 
         return 0;

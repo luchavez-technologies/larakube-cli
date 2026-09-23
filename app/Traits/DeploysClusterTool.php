@@ -44,6 +44,11 @@ trait DeploysClusterTool
     use InteractsWithTraefik, ManagesLocalCa;
 
     /**
+     * Target kube-context resolved or chosen during environment resolution.
+     */
+    protected ?string $resolvedToolContext = null;
+
+    /**
      * Resolve the kube-context for a tool's deploy/remove. An explicit
      * --context always wins; local always means "whatever kubectl currently
      * points at" (null, unchanged behavior); otherwise the env's saved cloud
@@ -55,6 +60,7 @@ trait DeploysClusterTool
     protected function resolveToolContext(string $env, ?string $explicitContext = null): ?string
     {
         $explicitContext = $explicitContext !== null && $explicitContext !== '' ? $explicitContext : null;
+        $explicitContext ??= $this->resolvedToolContext ?? null;
 
         // An explicit flag is the escape hatch and bypasses everything —
         // deliberately not recorded, so passing it can never trigger the

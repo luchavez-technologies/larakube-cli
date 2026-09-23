@@ -11,6 +11,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
 use App\Traits\ReadsStoredCloudflareTokens;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesToolEnvironment;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -29,10 +30,10 @@ use LaravelZero\Framework\Commands\Command;
 class TlsInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi, LaraKubeOutput,
-        ProvisionsK3sNode, ReadsStoredCloudflareTokens, RequiresFlagsWhenNonInteractive;
+        ProvisionsK3sNode, ReadsStoredCloudflareTokens, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment;
 
     protected $signature = 'tls:init
-        {environment : The cloud environment whose cluster gets the DNS challenge}
+        {environment? : The cloud environment whose cluster gets the DNS challenge}
         {--context=  : Target a specific kube-context}
         {--group=    : Reuse the Cloudflare token of this dns:init group}
         {--force     : Skip the confirmation prompt}';
@@ -43,7 +44,7 @@ class TlsInitCommand extends Command
     {
         $this->renderHeader();
 
-        $env = (string) $this->argument('environment');
+        $env = $this->resolveToolEnvironment('TLS');
 
         if ($env === 'local') {
             $this->laraKubeError('Local clusters use the LaraKube Local CA, not Let\'s Encrypt. tls:init is for cloud environments.');

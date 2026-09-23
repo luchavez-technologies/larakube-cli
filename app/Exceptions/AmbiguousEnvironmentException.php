@@ -36,15 +36,16 @@ class AmbiguousEnvironmentException extends RuntimeException implements ConsoleE
     public function renderForConsole(OutputInterface $output): void
     {
         $output->writeln('');
-        $output->writeln('  <fg=red;options=bold>Which environment?</>');
-        $output->writeln("  <fg=gray>You passed --domain={$this->domain} but no environment.</>");
+        $output->writeln('  <fg=red;options=bold>Which environment or cluster?</>');
+        $output->writeln("  <fg=gray>You passed --domain={$this->domain} without an environment or --context.</>");
         $output->writeln('');
-        $output->writeln('  A domain does not say which cluster to deploy to. Naming it explicitly');
-        $output->writeln('  avoids wiring a real hostname into a local-TLS ingress on the wrong cluster.');
+        $output->writeln('  A domain does not say which cluster to deploy to. Passing --context or naming');
+        $output->writeln('  the environment explicitly avoids wiring a real hostname to the wrong cluster.');
         $output->writeln('');
 
         $example = $this->known !== [] ? $this->known[0] : 'production';
         $output->writeln("  <fg=gray>e.g.</> <fg=yellow>larakube {$this->command} {$example} --domain={$this->domain}</>");
+        $output->writeln("       <fg=yellow>larakube {$this->command} --context=<kube-context> --domain={$this->domain}</>");
 
         if ($this->known !== []) {
             $output->writeln('  <fg=gray>known environments: </>'.implode(', ', $this->known));

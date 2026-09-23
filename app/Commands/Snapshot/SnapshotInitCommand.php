@@ -15,7 +15,8 @@ class SnapshotInitCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'snapshot:init';
+    protected $signature = 'snapshot:init
+        {--context= : Target a specific kube-context}';
 
     /**
      * The console command description.
@@ -28,9 +29,12 @@ class SnapshotInitCommand extends Command
 
         $this->laraKubeInfo('Initializing Kubernetes VolumeSnapshot CRDs and CSI Snapshot Controller...');
 
-        $this->withSpin('Deploying VolumeSnapshot CRDs...', function (): void {
+        $context = (string) ($this->option('context') ?: '');
+        $kubectl = Kubectl::forContext($context !== '' ? $context : null)->prefix();
+
+        $this->withSpin('Deploying VolumeSnapshot CRDs...', function () use ($kubectl): void {
             // Apply snapshot CRDs
-            $cmd = Kubectl::current()->prefix().' apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.3/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml || true';
+            $cmd = $kubectl.' apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.3/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml || true';
             Process::run($cmd);
         });
 

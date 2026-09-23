@@ -117,6 +117,40 @@ test('tls:init reuses the dns:init token and renders the DNS challenge with the 
         ->and($sent[DeleteDnsRecordRequest::class] ?? 0)->toBe(2);
 });
 
+test('tls:init works without environment positional when targeted with --context', function (): void {
+    $captured = [];
+    Process::fake(tlsInitFakes(['example-com' => 'cf-token-123'], ['app.example.com', 'example.org'], $captured, [
+        '*get secret traefik-acme-cloudflare -n traefik -o name*' => Process::result(output: 'secret/traefik-acme-cloudflare'),
+    ]));
+    tlsInitCloudflare();
+
+    $this->artisan('tls:init --context=larakube-34.27.253.31 --force --no-interaction')
+        ->expectsOutputToContain('now uses the Cloudflare DNS challenge')
+        ->assertExitCode(0);
+
+    expect($captured['token'])->toBe('cf-token-123');
+});
+
+test('tls:init works interactively without arguments by prompting for context', function (): void {
+    $captured = [];
+    Process::fake(array_merge(
+        [
+            '*config get-contexts -o name*' => Process::result(output: "larakube-34.27.253.31\n"),
+            '*config current-context*' => Process::result(output: "larakube-34.27.253.31\n"),
+            '*get secret traefik-acme-cloudflare -n traefik -o name*' => Process::result(output: 'secret/traefik-acme-cloudflare'),
+        ],
+        tlsInitFakes(['example-com' => 'cf-token-123'], ['app.example.com', 'example.org'], $captured),
+    ));
+    tlsInitCloudflare();
+
+    $this->artisan('tls:init', ['--force' => true])
+        ->expectsQuestion('Which Kubernetes context would you like to target for TLS?', 'larakube-34.27.253.31')
+        ->expectsOutputToContain('now uses the Cloudflare DNS challenge')
+        ->assertExitCode(0);
+
+    expect($captured['token'])->toBe('cf-token-123');
+});
+
 test('a host outside the token\'s zones stops tls:init before anything is written', function (): void {
     $captured = [];
     Process::fake(tlsInitFakes(['example-com' => 'cf-token-123'], ['app.example.com', 'shop.elsewhere.net'], $captured));
