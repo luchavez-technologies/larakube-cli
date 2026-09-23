@@ -12,10 +12,6 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 beforeEach(function (): void {
     Prompt::interactive(false);
-    State::$transientAwsProfile = null;
-    State::$transientAwsRegion = null;
-    State::$transientAwsAccessKeyId = null;
-    State::$transientAwsSecretAccessKey = null;
 });
 
 function awsFlagRunner(array $options = []): CloudCreateCommand
@@ -73,7 +69,7 @@ test('cloud:create accepts --provider=aws and rejects missing kind under --no-in
     $this->artisan('cloud:create', ['--provider' => 'aws', '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--vps or --managed');
+    expect(State::lastError())->toContain('--vps or --managed');
 });
 
 test('cloud:create with --provider=aws fails clearly if credentials missing under --no-interaction', function (): void {
@@ -85,7 +81,7 @@ test('cloud:create with --provider=aws fails clearly if credentials missing unde
     $this->artisan('cloud:create', ['--provider' => 'aws', '--vps' => true, '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('No active AWS credentials detected');
+    expect(State::lastError())->toContain('No active AWS credentials detected');
 });
 
 test('--aws-access-key-id and --aws-secret-access-key satisfy credentials requirement', function (): void {
@@ -96,8 +92,8 @@ test('--aws-access-key-id and --aws-secret-access-key satisfy credentials requir
     ]);
 
     expect($runner->awsCredentials())->toBeTrue()
-        ->and(State::$transientAwsAccessKeyId)->toBe('AKIAIOSFODNN7EXAMPLE')
-        ->and(State::$transientAwsSecretAccessKey)->toBe('wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY')
+        ->and(State::transientAwsAccessKeyId())->toBe('AKIAIOSFODNN7EXAMPLE')
+        ->and(State::transientAwsSecretAccessKey())->toBe('wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY')
         ->and($runner->fakeGlobalConfig->getAwsAccessKeyId())->toBeNull();
 });
 
@@ -222,7 +218,7 @@ test('cloud:init:eks rejects invalid --email before anything is installed', func
         '--email' => 'not-an-email',
     ])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('Invalid --email');
+    expect(State::lastError())->toContain('Invalid --email');
 });
 
 test('cloud:init:eks headless with no stored email fails clearly, pointing at --email=', function (): void {
@@ -233,7 +229,7 @@ test('cloud:init:eks headless with no stored email fails clearly, pointing at --
         '--no-interaction' => true,
     ])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--email=');
+    expect(State::lastError())->toContain('--email=');
 });
 
 test('cloud:init:managed delegates to cloud:init:eks when provider is aws', function (): void {
@@ -245,7 +241,7 @@ test('cloud:init:managed delegates to cloud:init:eks when provider is aws', func
         '--email' => 'not-an-email',
     ])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('Invalid --email');
+    expect(State::lastError())->toContain('Invalid --email');
 });
 
 test('cloud:scale updates instance_type in main.tf for aws stack', function (): void {

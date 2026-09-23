@@ -30,10 +30,7 @@ trait LaraKubeOutput
      */
     public function registerSecret(?string $value): void
     {
-        $value = trim((string) $value);
-        if (strlen($value) >= 8) {
-            State::$registeredSecrets[$value] = true;
-        }
+        State::registerSecret($value);
     }
 
     /**
@@ -45,7 +42,7 @@ trait LaraKubeOutput
      */
     public function maskSecrets(string $text): string
     {
-        foreach (array_keys(State::$registeredSecrets) as $secret) {
+        foreach (array_keys(State::registeredSecrets()) as $secret) {
             $text = str_replace($secret, '••••••', $text);
         }
 
@@ -61,7 +58,7 @@ trait LaraKubeOutput
      */
     protected function renderHeader(): void
     {
-        if (State::$headerRendered || State::$jsonMode || State::$isTesting) {
+        if (State::isHeaderRendered() || State::isJsonMode() || app()->runningUnitTests()) {
             return;
         }
 
@@ -130,7 +127,7 @@ trait LaraKubeOutput
             </div>
         HTML);
 
-        State::$headerRendered = true;
+        State::setHeaderRendered(true);
     }
 
     /**
@@ -138,7 +135,7 @@ trait LaraKubeOutput
      */
     protected function laraKubeInfo(string $message): void
     {
-        if ($this->isAiAgent() && ! State::$jsonMode) {
+        if ($this->isAiAgent() && ! State::isJsonMode()) {
             return;
         }
 
@@ -267,7 +264,7 @@ trait LaraKubeOutput
     {
         $lines = str_repeat("\n", $count);
 
-        State::$jsonMode ? fwrite(STDERR, $lines) : $this->writeConsole($lines);
+        State::isJsonMode() ? fwrite(STDERR, $lines) : $this->writeConsole($lines);
     }
 
     /**
@@ -277,7 +274,7 @@ trait LaraKubeOutput
     {
         $line = '  '.$this->stripConsoleTags($this->maskSecrets($message))."\n";
 
-        State::$jsonMode ? fwrite(STDERR, $line) : $this->writeConsole($line);
+        State::isJsonMode() ? fwrite(STDERR, $line) : $this->writeConsole($line);
     }
 
     /**
@@ -368,7 +365,8 @@ trait LaraKubeOutput
      */
     protected function laraKubeError(string $message): void
     {
-        State::$lastError = $message = $this->maskSecrets($message);
+        $message = $this->maskSecrets($message);
+        State::setLastError($message);
         render(<<<HTML
             <div class="flex mx-2 mt-1">
                 <span class="px-1 bg-red-500 text-white font-bold uppercase">LaraKube</span>

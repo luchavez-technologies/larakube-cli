@@ -21,11 +21,11 @@ trait InteractsWithGcp
     protected function ensureGcpCredentials(): bool
     {
         if ($flagAccount = $this->flag('gcp-account')) {
-            State::$transientGcpAccount = trim($flagAccount);
+            State::setTransientGcpAccount($flagAccount);
         }
 
         if ($flagProject = $this->flag('gcp-project')) {
-            State::$transientGcpProject = trim($flagProject);
+            State::setTransientGcpProject($flagProject);
         }
 
         if ($flagCreds = $this->flag('gcp-credentials')) {
@@ -35,8 +35,8 @@ trait InteractsWithGcp
 
                 return false;
             }
-            State::$transientGcpCredentials = $path;
-            $this->registerSecret(State::$transientGcpCredentials);
+            State::setTransientGcpCredentials($path);
+            $this->registerSecret(State::transientGcpCredentials());
         }
 
         // Offer gcloud install if missing and running interactively
@@ -96,7 +96,7 @@ trait InteractsWithGcp
             }
 
             // Multi-account picker if multiple accounts are logged in and no specific flag was given
-            if (count($accounts) > 1 && ! $this->flag('gcp-account') && ! State::$transientGcpAccount) {
+            if (count($accounts) > 1 && ! $this->flag('gcp-account') && ! State::transientGcpAccount()) {
                 $options = [];
                 $activeAccount = null;
                 foreach ($accounts as $email => $isActive) {
@@ -125,13 +125,13 @@ trait InteractsWithGcp
 
                 if ($chosen && $chosen !== '__add__') {
                     Process::run("{$gcloudBin} config set account ".escapeshellarg($chosen));
-                    State::$transientGcpAccount = $chosen;
+                    State::setTransientGcpAccount($chosen);
                     $this->setGcpAccount($chosen);
                     $this->line("  <fg=green>✓</> <fg=gray>Switched to Google Cloud account</> <fg=cyan>{$chosen}</>");
                 }
-            } elseif (count($accounts) === 1 && ! State::$transientGcpAccount && ! $this->flag('gcp-account')) {
+            } elseif (count($accounts) === 1 && ! State::transientGcpAccount() && ! $this->flag('gcp-account')) {
                 $singleAccount = array_key_first($accounts);
-                State::$transientGcpAccount = $singleAccount;
+                State::setTransientGcpAccount($singleAccount);
                 $this->setGcpAccount($singleAccount);
                 Process::run("{$gcloudBin} config set account ".escapeshellarg($singleAccount).' 2>/dev/null');
             }
@@ -169,7 +169,7 @@ trait InteractsWithGcp
         }
 
         // Step 3: Resolve Project ID interactively
-        if ($this->flag('gcp-project') || State::$transientGcpProject) {
+        if ($this->flag('gcp-project') || State::transientGcpProject()) {
             return true;
         }
 

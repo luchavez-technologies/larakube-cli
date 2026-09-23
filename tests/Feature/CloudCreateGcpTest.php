@@ -11,9 +11,6 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 beforeEach(function (): void {
     Prompt::interactive(false);
-    State::$transientGcpAccount = null;
-    State::$transientGcpProject = null;
-    State::$transientGcpCredentials = null;
 });
 
 function gcpFlagRunner(array $options = []): CloudCreateCommand
@@ -71,14 +68,14 @@ test('cloud:create accepts --provider=gcp and rejects unknown provider', functio
     $this->artisan('cloud:create', ['--provider' => 'gcp', '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--vps or --managed');
+    expect(State::lastError())->toContain('--vps or --managed');
 });
 
 test('cloud:create with --provider=gcp fails clearly if project ID is missing under --no-interaction', function (): void {
     $this->artisan('cloud:create', ['--provider' => 'gcp', '--vps' => true, '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--gcp-project=');
+    expect(State::lastError())->toContain('--gcp-project=');
 });
 
 test('--gcp-project is stored in transient state and satisfies project ID requirement', function (): void {
@@ -89,7 +86,7 @@ test('--gcp-project is stored in transient state and satisfies project ID requir
 
     // Will pass project ID check, and if local gcloud is authed or ADC exists, credentials check succeeds
     expect($runner->gcpCredentials())->toBeBool()
-        ->and(State::$transientGcpProject)->toBe('my-workshop-project-12345')
+        ->and(State::transientGcpProject())->toBe('my-workshop-project-12345')
         ->and($runner->fakeGlobalConfig->getGcpProjectId())->toBeNull();
 });
 
@@ -101,7 +98,7 @@ test('invalid --gcp-credentials file path fails clearly', function (): void {
     ]);
 
     expect($runner->gcpCredentials())->toBeFalse()
-        ->and(State::$lastError)->toContain('GCP credentials file not found');
+        ->and(State::lastError())->toContain('GCP credentials file not found');
 });
 
 test('GCP region and size prompts default properly', function (): void {

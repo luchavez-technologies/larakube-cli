@@ -19,12 +19,12 @@ test('an invalid --email is rejected before anything is installed', function ():
     $this->artisan('cloud:init:doks', ['--context' => 'do-nyc1-test', '--email' => 'not-an-email'])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('Invalid --email');
+    expect(State::lastError())->toContain('Invalid --email');
 });
 
 test('headless with no stored email fails clearly, pointing at --email=', function (): void {
     $this->artisan('cloud:init:doks', ['--context' => 'do-nyc1-test', '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--email=');
+    expect(State::lastError())->toContain('--email=');
 });

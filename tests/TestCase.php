@@ -2,7 +2,6 @@
 
 namespace Tests;
 
-use App\State;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Sleep;
@@ -63,29 +62,8 @@ abstract class TestCase extends BaseTestCase
         // the header tagline) renders via termwind's render(), which writes to its
         // own console output — NOT the BufferedOutput that Artisan::call captures —
         // so command banners spill straight into the test report. Redirect termwind
-        // to a NullOutput, and pre-set the "header already shown" flag so the raw
-        // echo'd ASCII logo is skipped too. This is purely cosmetic: it never
-        // touches Artisan::output(), so output-asserting tests are unaffected, and
-        // unlike forcing AI_AGENT=true it triggers no agent-mode logic branches.
+        // to a NullOutput.
         Termwind::renderUsing(new NullOutput);
-        State::$headerRendered = true;
-        State::$isTesting = true;
-
-        // Process-wide statics from JSON mode / transient-token handling must
-        // not leak between tests.
-        State::$jsonMode = false;
-        State::$transientDoToken = null;
-        State::$transientHetznerToken = null;
-        State::$transientGcpAccount = null;
-        State::$transientGcpProject = null;
-        State::$transientGcpCredentials = null;
-        State::$transientAwsProfile = null;
-        State::$transientAwsRegion = null;
-        State::$transientAwsAccessKeyId = null;
-        State::$transientAwsSecretAccessKey = null;
-        State::$lastError = null;
-        State::$stdout = null;
-        State::$registeredSecrets = [];
 
         // Force non-interactive prompts in EVERY test. Laravel Prompts only
         // renders to the terminal when STDIN is a TTY (`static::$interactive
@@ -138,8 +116,7 @@ abstract class TestCase extends BaseTestCase
         // Sleep::$fake false by the time the test body ran; calling
         // Sleep::fake() explicitly inside the SAME test worked, so this is
         // a real hook-ordering quirk, not a Sleep::fake() bug). setUp() is
-        // the same proven hook point already used for the State::* resets
-        // above.
+        // the proven hook point.
         //
         // syncWithCarbon: true advances Carbon's test-"now" by each faked
         // sleep's duration — required for waitForExternalSecretSynced()'s

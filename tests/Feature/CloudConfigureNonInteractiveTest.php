@@ -182,5 +182,5 @@ test('cloud:configure --only=registry with a bad flag exits 1 with a clear error
         '--no-interaction' => true,
     ])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain("Invalid --registry-provider 'bogus'");
+    expect(State::lastError())->toContain("Invalid --registry-provider 'bogus'");
 });

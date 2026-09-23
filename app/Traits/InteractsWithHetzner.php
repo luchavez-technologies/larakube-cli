@@ -18,15 +18,15 @@ trait InteractsWithHetzner
     protected function ensureHetznerToken(): bool
     {
         if ($flagToken = $this->flag('hetzner-token')) {
-            State::$transientHetznerToken = trim($flagToken);
-            $this->registerSecret(State::$transientHetznerToken);
+            State::setTransientHetznerToken($flagToken);
+            $this->registerSecret(State::transientHetznerToken());
 
             return true;
         }
 
         if ($envToken = getenv('HCLOUD_TOKEN') ?: getenv('HETZNER_TOKEN')) {
-            State::$transientHetznerToken = trim($envToken);
-            $this->registerSecret(State::$transientHetznerToken);
+            State::setTransientHetznerToken($envToken);
+            $this->registerSecret(State::transientHetznerToken());
 
             return true;
         }

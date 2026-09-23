@@ -57,10 +57,10 @@ class ClusterGrantCommand extends Command
 
         $exit = $this->grant();
 
-        if (State::$jsonMode) {
+        if (State::isJsonMode()) {
             $this->jsonOutput($exit === 0
                 ? array_merge(['success' => true], $this->result, ['error' => null])
-                : ['success' => false, 'error' => State::$lastError ?? 'Grant did not complete.']);
+                : ['success' => false, 'error' => State::lastError() ?? 'Grant did not complete.']);
         }
 
         return $exit;

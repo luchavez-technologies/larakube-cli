@@ -14,7 +14,6 @@ use App\Http\Integrations\Netbird\Requests\ListSetupKeysRequest;
 use App\Http\Integrations\Netbird\Requests\ListUsersRequest;
 use App\Http\Integrations\Netbird\Requests\SetupOwnerRequest;
 use App\Services\Kubectl;
-use App\State;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -425,7 +424,7 @@ class VpnInitCommand extends Command
                     $setup = NetbirdConnector::make($host)->send(SetupOwnerRequest::make($email, 'larakube', $password, 365));
                     break;
                 } catch (FatalRequestException $e) {
-                    if ($attempt === $maxAttempts || State::$isTesting) {
+                    if ($attempt === $maxAttempts || app()->runningUnitTests()) {
                         $this->laraKubeWarn('Could not reach NetBird management after multiple attempts — run `larakube vpn:init` again once the endpoint is reachable.');
 
                         return;
@@ -729,9 +728,14 @@ class VpnInitCommand extends Command
      * treats that as a brand-new router and retries immediately rather than
      * respecting the earlier attempt's backoff.
      */
+    protected function shouldSkipTlsWait(): bool
+    {
+        return app()->runningUnitTests();
+    }
+
     protected function waitForTls(string $kubectl, string $ns, string $host, bool $isLocal): bool
     {
-        if (State::$isTesting) {
+        if ($this->shouldSkipTlsWait()) {
             return true;
         }
 
@@ -815,9 +819,14 @@ class VpnInitCommand extends Command
      * is serving. Returns whether it came up; the caller proceeds either way so a
      * slow cluster degrades to the existing retry rather than a hard failure.
      */
+    protected function shouldSkipVpnEndpointWait(): bool
+    {
+        return app()->runningUnitTests();
+    }
+
     protected function waitForVpnEndpoint(string $host, int $maxWait): bool
     {
-        if (State::$isTesting) {
+        if ($this->shouldSkipVpnEndpointWait()) {
             return true;
         }
 

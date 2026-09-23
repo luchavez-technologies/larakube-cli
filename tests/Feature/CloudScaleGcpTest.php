@@ -9,10 +9,6 @@ use Symfony\Component\Console\Input\ArrayInput;
 
 beforeEach(function (): void {
     Prompt::interactive(false);
-    State::$transientGcpProject = null;
-    State::$transientGcpCredentials = null;
-    State::$transientDoToken = null;
-    State::$lastError = null;
 });
 
 function cloudScaleFlagRunner(array $options = [], ?GlobalConfigData $config = null): CloudScaleCommand
@@ -82,7 +78,7 @@ test('cloud:scale ensureProviderToken delegates to ensureGcpCredentials for gcp'
     ]);
 
     expect($runner->providerToken('gcp'))->toBeBool()
-        ->and(State::$transientGcpProject)->toBe('my-scale-project-123');
+        ->and(State::transientGcpProject())->toBe('my-scale-project-123');
 });
 
 test('cloud:scale ensureProviderToken delegates to ensureDoToken for do', function (): void {
@@ -91,7 +87,7 @@ test('cloud:scale ensureProviderToken delegates to ensureDoToken for do', functi
     ]);
 
     expect($runner->providerToken('do'))->toBeTrue()
-        ->and(State::$transientDoToken)->toBe('dop_v1_faketokenforcloudscale');
+        ->and(State::transientDoToken())->toBe('dop_v1_faketokenforcloudscale');
 });
 
 test('cloud:scale resolves size appropriately per provider', function (): void {

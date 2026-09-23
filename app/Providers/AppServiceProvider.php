@@ -110,5 +110,6 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->register(LaravelDataServiceProvider::class);
+        $this->app->singleton(\App\Services\RuntimeContext::class);
     }
 }

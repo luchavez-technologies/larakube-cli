@@ -14,7 +14,6 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 beforeEach(function (): void {
     Prompt::interactive(false);
-    State::$transientHetznerToken = null;
     putenv('HCLOUD_TOKEN');
     putenv('HETZNER_TOKEN');
     unset($_ENV['HCLOUD_TOKEN'], $_ENV['HETZNER_TOKEN'], $_SERVER['HCLOUD_TOKEN'], $_SERVER['HETZNER_TOKEN']);
@@ -75,14 +74,14 @@ test('cloud:create accepts --provider=hetzner and rejects --managed with clear e
     $this->artisan('cloud:create', ['--provider' => 'hetzner', '--managed' => true, '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('Hetzner Cloud does not offer a managed Kubernetes service');
+    expect(State::lastError())->toContain('Hetzner Cloud does not offer a managed Kubernetes service');
 });
 
 test('cloud:create with --provider=hetzner fails clearly if token missing under --no-interaction', function (): void {
     $this->artisan('cloud:create', ['--provider' => 'hetzner', '--vps' => true, '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('No Hetzner Cloud API token');
+    expect(State::lastError())->toContain('No Hetzner Cloud API token');
 });
 
 test('--hetzner-token flag satisfies credentials requirement without persisting to disk', function (): void {
@@ -92,7 +91,7 @@ test('--hetzner-token flag satisfies credentials requirement without persisting 
     ]);
 
     expect($runner->hetznerCredentials())->toBeTrue()
-        ->and(State::$transientHetznerToken)->toBe('hcloud_test_token_12345')
+        ->and(State::transientHetznerToken())->toBe('hcloud_test_token_12345')
         ->and($runner->fakeGlobalConfig->getHetznerToken())->toBeNull();
 });
 
@@ -104,7 +103,7 @@ test('HCLOUD_TOKEN environment variable satisfies credentials requirement', func
     ]);
 
     expect($runner->hetznerCredentials())->toBeTrue()
-        ->and(State::$transientHetznerToken)->toBe('env_token_hcloud_xyz');
+        ->and(State::transientHetznerToken())->toBe('env_token_hcloud_xyz');
 });
 
 test('saved global config hetzner token satisfies credentials requirement', function (): void {

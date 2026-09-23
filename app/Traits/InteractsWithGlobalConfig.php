@@ -166,7 +166,7 @@ trait InteractsWithGlobalConfig
     {
         // A run-only token (--do-token / TF_VAR_do_token on cloud:create)
         // wins over the persisted one and never touches disk.
-        return State::$transientDoToken ?? $this->getGlobalConfig()->getDoToken();
+        return State::transientDoToken() ?? $this->getGlobalConfig()->getDoToken();
     }
 
     protected function setDoToken(?string $token): void
@@ -178,8 +178,8 @@ trait InteractsWithGlobalConfig
 
     protected function getHetznerToken(): ?string
     {
-        if (State::$transientHetznerToken) {
-            return State::$transientHetznerToken;
+        if (State::transientHetznerToken()) {
+            return State::transientHetznerToken();
         }
 
         $envToken = getenv('HCLOUD_TOKEN') ?: getenv('HETZNER_TOKEN');
@@ -199,8 +199,8 @@ trait InteractsWithGlobalConfig
 
     protected function getGcpAccount(): ?string
     {
-        if (State::$transientGcpAccount) {
-            return State::$transientGcpAccount;
+        if (State::transientGcpAccount()) {
+            return State::transientGcpAccount();
         }
 
         $envAccount = getenv('CLOUDSDK_CORE_ACCOUNT') ?: getenv('GCP_ACCOUNT');
@@ -231,8 +231,8 @@ trait InteractsWithGlobalConfig
 
     protected function getGcpProjectId(): ?string
     {
-        if (State::$transientGcpProject) {
-            return State::$transientGcpProject;
+        if (State::transientGcpProject()) {
+            return State::transientGcpProject();
         }
 
         $envProject = getenv('GOOGLE_PROJECT') ?: (getenv('CLOUDSDK_CORE_PROJECT') ?: getenv('GCP_PROJECT'));
@@ -263,8 +263,8 @@ trait InteractsWithGlobalConfig
 
     protected function getGcpCredentials(): ?string
     {
-        if (State::$transientGcpCredentials) {
-            return State::$transientGcpCredentials;
+        if (State::transientGcpCredentials()) {
+            return State::transientGcpCredentials();
         }
 
         $envCreds = getenv('GOOGLE_APPLICATION_CREDENTIALS') ?: getenv('GOOGLE_CREDENTIALS');
@@ -295,8 +295,8 @@ trait InteractsWithGlobalConfig
 
     protected function getAwsProfile(): ?string
     {
-        if (State::$transientAwsProfile) {
-            return State::$transientAwsProfile;
+        if (State::transientAwsProfile()) {
+            return State::transientAwsProfile();
         }
 
         $envProfile = getenv('AWS_PROFILE');
@@ -316,8 +316,8 @@ trait InteractsWithGlobalConfig
 
     protected function getAwsRegion(): ?string
     {
-        if (State::$transientAwsRegion) {
-            return State::$transientAwsRegion;
+        if (State::transientAwsRegion()) {
+            return State::transientAwsRegion();
         }
 
         $envRegion = getenv('AWS_DEFAULT_REGION') ?: getenv('AWS_REGION');
@@ -337,8 +337,8 @@ trait InteractsWithGlobalConfig
 
     protected function getAwsAccessKeyId(): ?string
     {
-        if (State::$transientAwsAccessKeyId) {
-            return State::$transientAwsAccessKeyId;
+        if (State::transientAwsAccessKeyId()) {
+            return State::transientAwsAccessKeyId();
         }
 
         $envKey = getenv('AWS_ACCESS_KEY_ID');
@@ -358,8 +358,8 @@ trait InteractsWithGlobalConfig
 
     protected function getAwsSecretAccessKey(): ?string
     {
-        if (State::$transientAwsSecretAccessKey) {
-            return State::$transientAwsSecretAccessKey;
+        if (State::transientAwsSecretAccessKey()) {
+            return State::transientAwsSecretAccessKey();
         }
 
         $envSecret = getenv('AWS_SECRET_ACCESS_KEY');
@@ -384,7 +384,7 @@ trait InteractsWithGlobalConfig
         // operator's global token. The project token is what lets two clusters
         // on different domains each carry a zone-scoped token so their
         // ExternalDNS instances can't create/delete each other's records.
-        return State::$transientCloudflareToken
+        return State::transientCloudflareToken()
             ?? $this->projectCloudflareToken()
             ?? $this->getGlobalConfig()->getCloudflareToken();
     }

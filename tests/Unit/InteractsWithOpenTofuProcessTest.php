@@ -123,7 +123,7 @@ test('tofuOutput returns the trimmed raw output value, or null on failure/empty'
 test('tofu env vars travel via Process::env(), not the command string', function (): void {
     $bin = ['path' => '/usr/local/bin/terraform', 'isOpenTofu' => false];
     $dir = home_path('.larakube/tofu/mystack');
-    State::$transientDoToken = 'dop_v1_transient-token-abc';
+    State::setTransientDoToken('dop_v1_transient-token-abc');
 
     Process::fake(["*{$dir}* output -raw *" => "203.0.113.10\n"]);
     tofuHelper()->output($bin, 'mystack', 'ip');

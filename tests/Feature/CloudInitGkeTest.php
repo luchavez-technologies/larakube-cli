@@ -11,14 +11,14 @@ test('cloud:init:gke rejects invalid --email before anything is installed', func
     $this->artisan('cloud:init:gke', ['--context' => 'gke_my-project_us-central1-a_larakube-cluster', '--email' => 'not-an-email'])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('Invalid --email');
+    expect(State::lastError())->toContain('Invalid --email');
 });
 
 test('cloud:init:gke headless with no stored email fails clearly, pointing at --email=', function (): void {
     $this->artisan('cloud:init:gke', ['--context' => 'gke_my-project_us-central1-a_larakube-cluster', '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--email=');
+    expect(State::lastError())->toContain('--email=');
 });
 
 test('cloud:init:managed delegates to cloud:init:gke when provider is gcp', function (): void {
@@ -28,7 +28,7 @@ test('cloud:init:managed delegates to cloud:init:gke when provider is gcp', func
         '--email' => 'not-an-email',
     ])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('Invalid --email');
+    expect(State::lastError())->toContain('Invalid --email');
 });
 
 test('cloud:init:managed delegates to cloud:init:doks when provider is do', function (): void {
@@ -38,5 +38,5 @@ test('cloud:init:managed delegates to cloud:init:doks when provider is do', func
         '--email' => 'not-an-email',
     ])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('Invalid --email');
+    expect(State::lastError())->toContain('Invalid --email');
 });

@@ -39,7 +39,7 @@ trait StreamsProcessOutput
         }
 
         return $process->run($command, function (string $type, string $output): void {
-            State::$jsonMode ? fwrite(STDERR, $output) : print $output;
+            State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
         })->exitCode();
     }
 }

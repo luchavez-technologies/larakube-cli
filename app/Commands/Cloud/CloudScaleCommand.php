@@ -57,10 +57,10 @@ class CloudScaleCommand extends Command
 
         $exit = $this->scale();
 
-        if (State::$jsonMode) {
+        if (State::isJsonMode()) {
             $this->jsonOutput($exit === 0
                 ? array_merge(['success' => true, 'stackName' => null, 'size' => null, 'resizeDisk' => false], $this->result, ['error' => null])
-                : ['success' => false, 'stackName' => $this->result['stackName'] ?? null, 'error' => State::$lastError ?? 'Scaling did not complete.']);
+                : ['success' => false, 'stackName' => $this->result['stackName'] ?? null, 'error' => State::lastError() ?? 'Scaling did not complete.']);
         }
 
         return $exit;
@@ -70,14 +70,14 @@ class CloudScaleCommand extends Command
     {
         $flag = $this->option('do-token');
         if ($flag) {
-            State::$transientDoToken = (string) $flag;
+            State::setTransientDoToken((string) $flag);
 
             return true;
         }
 
         $envToken = getenv('DIGITALOCEAN_TOKEN') ?: getenv('DO_TOKEN');
         if ($envToken) {
-            State::$transientDoToken = (string) $envToken;
+            State::setTransientDoToken((string) $envToken);
 
             return true;
         }
@@ -153,15 +153,15 @@ class CloudScaleCommand extends Command
         $provider = $stack->provider ?? 'do';
 
         if ($provider === 'aws' && ! $this->flag('aws-profile') && $stack->account) {
-            State::$transientAwsProfile = $stack->account;
+            State::setTransientAwsProfile($stack->account);
         }
 
         if ($provider === 'gcp') {
             if (! $this->flag('gcp-account') && $stack->account) {
-                State::$transientGcpAccount = $stack->account;
+                State::setTransientGcpAccount($stack->account);
             }
             if (! $this->flag('gcp-project') && $stack->projectId) {
-                State::$transientGcpProject = $stack->projectId;
+                State::setTransientGcpProject($stack->projectId);
             }
         }
 

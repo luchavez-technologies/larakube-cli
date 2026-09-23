@@ -37,7 +37,7 @@ test('a missing --name fails clearly under --no-interaction instead of prompting
         '--no-interaction' => true,
     ])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--name=');
+    expect(State::lastError())->toContain('--name=');
 });
 
 test('a missing namespace/context target fails clearly, not with a hang', function (): void {
@@ -46,7 +46,7 @@ test('a missing namespace/context target fails clearly, not with a hang', functi
     $this->artisan('cluster:grant', ['--name' => 'lloyd', '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('namespace');
+    expect(State::lastError())->toContain('namespace');
 });
 
 test('--json on a failing grant emits one parseable failure object', function (): void {

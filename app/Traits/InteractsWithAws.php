@@ -20,20 +20,20 @@ trait InteractsWithAws
     protected function ensureAwsCredentials(): bool
     {
         if ($flagProfile = $this->flag('aws-profile')) {
-            State::$transientAwsProfile = trim($flagProfile);
+            State::setTransientAwsProfile($flagProfile);
         }
 
         if ($flagRegion = $this->flag('aws-region')) {
-            State::$transientAwsRegion = trim($flagRegion);
+            State::setTransientAwsRegion($flagRegion);
         }
 
         if ($flagAccessKey = $this->flag('aws-access-key-id')) {
-            State::$transientAwsAccessKeyId = trim($flagAccessKey);
+            State::setTransientAwsAccessKeyId($flagAccessKey);
         }
 
         if ($flagSecretKey = $this->flag('aws-secret-access-key')) {
-            State::$transientAwsSecretAccessKey = trim($flagSecretKey);
-            $this->registerSecret(State::$transientAwsSecretAccessKey);
+            State::setTransientAwsSecretAccessKey($flagSecretKey);
+            $this->registerSecret(State::transientAwsSecretAccessKey());
         }
 
         // Offer aws install if missing and running interactively
@@ -48,7 +48,7 @@ trait InteractsWithAws
         $profiles = $this->listAwsProfiles();
 
         if (! $hasExplicitKeys && ! empty($profiles)) {
-            if (count($profiles) > 1 && ! $this->flag('aws-profile') && ! State::$transientAwsProfile) {
+            if (count($profiles) > 1 && ! $this->flag('aws-profile') && ! State::transientAwsProfile()) {
                 if ($this->flag('no-interaction')) {
                     $this->laraKubeError('Multiple AWS profiles detected ('.implode(', ', $profiles).'). Pass --aws-profile= when running non-interactively.');
 
@@ -90,10 +90,10 @@ trait InteractsWithAws
                     $chosen = $newProfile;
                 }
 
-                State::$transientAwsProfile = $chosen;
+                State::setTransientAwsProfile($chosen);
                 $this->setAwsProfile($chosen);
-            } elseif (count($profiles) === 1 && ! State::$transientAwsProfile && ! $this->flag('aws-profile')) {
-                State::$transientAwsProfile = $profiles[0];
+            } elseif (count($profiles) === 1 && ! State::transientAwsProfile() && ! $this->flag('aws-profile')) {
+                State::setTransientAwsProfile($profiles[0]);
                 $this->setAwsProfile($profiles[0]);
             }
         }

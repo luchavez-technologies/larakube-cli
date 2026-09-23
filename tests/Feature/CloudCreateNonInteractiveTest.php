@@ -74,26 +74,26 @@ function cloudCreateFlagRunner(array $options = []): CloudCreateCommand
 test('bare --no-interaction fails fast with a clear provider error instead of hanging', function (): void {
     $this->artisan('cloud:create', ['--no-interaction' => true])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--provider=');
+    expect(State::lastError())->toContain('--provider=');
 });
 
 test('--provider without a kind fails clearly under --no-interaction', function (): void {
     $this->artisan('cloud:create', ['--provider' => 'do', '--no-interaction' => true])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--vps or --managed');
+    expect(State::lastError())->toContain('--vps or --managed');
 });
 
 test('--vps and --managed together are rejected', function (): void {
     $this->artisan('cloud:create', ['--provider' => 'do', '--vps' => true, '--managed' => true, '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('not both');
+    expect(State::lastError())->toContain('not both');
 });
 
 test('an unknown --provider is rejected', function (): void {
     $this->artisan('cloud:create', ['--provider' => 'bogus', '--no-interaction' => true])->assertExitCode(1);
 
-    expect(State::$lastError)->toContain("Unknown provider: 'bogus'");
+    expect(State::lastError())->toContain("Unknown provider: 'bogus'");
 });
 
 test('--json emits one parseable failure object on failure', function (): void {
@@ -106,14 +106,14 @@ test('a missing DO token fails clearly under --no-interaction instead of prompti
     $this->artisan('cloud:create', ['--provider' => 'do', '--vps' => true, '--no-interaction' => true])
         ->assertExitCode(1);
 
-    expect(State::$lastError)->toContain('--do-token=');
+    expect(State::lastError())->toContain('--do-token=');
 });
 
 test('--do-token becomes a run-only transient token and never touches the global config', function (): void {
     $runner = cloudCreateFlagRunner(['--do-token' => 'dop_v1_headless-job-token']);
 
     expect($runner->doToken())->toBeTrue()
-        ->and(State::$transientDoToken)->toBe('dop_v1_headless-job-token')
+        ->and(State::transientDoToken())->toBe('dop_v1_headless-job-token')
         ->and($runner->fakeGlobalConfig->getDoToken())->toBeNull();
 });
 

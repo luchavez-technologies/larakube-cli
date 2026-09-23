@@ -15,11 +15,6 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 beforeEach(function (): void {
     Prompt::interactive(false);
-    State::$transientAwsProfile = null;
-    State::$transientAwsRegion = null;
-    State::$transientAwsAccessKeyId = null;
-    State::$transientAwsSecretAccessKey = null;
-    State::$lastError = null;
 });
 
 function awsMultiAccountRunner(array $options = []): CloudCreateCommand
@@ -87,7 +82,7 @@ test('single AWS profile is auto-selected and saved to transient state', functio
     ]);
 
     expect($runner->awsCredentials())->toBeTrue()
-        ->and(State::$transientAwsProfile)->toBe('default')
+        ->and(State::transientAwsProfile())->toBe('default')
         ->and($runner->fakeGlobalConfig->getAwsProfile())->toBe('default');
 });
 
@@ -103,8 +98,8 @@ test('multiple AWS profiles under --no-interaction fail fast without --aws-profi
     ]);
 
     expect($runner->awsCredentials())->toBeFalse()
-        ->and(State::$lastError)->toContain('Multiple AWS profiles detected')
-        ->and(State::$lastError)->toContain('--aws-profile=');
+        ->and(State::lastError())->toContain('Multiple AWS profiles detected')
+        ->and(State::lastError())->toContain('--aws-profile=');
 });
 
 test('multiple AWS profiles under --no-interaction succeed when --aws-profile is passed', function (): void {
@@ -124,7 +119,7 @@ test('multiple AWS profiles under --no-interaction succeed when --aws-profile is
     ]);
 
     expect($runner->awsCredentials())->toBeTrue()
-        ->and(State::$transientAwsProfile)->toBe('work');
+        ->and(State::transientAwsProfile())->toBe('work');
 });
 
 test('multiple AWS profiles interactively prompt and allow selection', function (): void {
@@ -152,11 +147,11 @@ test('multiple AWS profiles interactively prompt and allow selection', function 
     ]);
 
     expect($runner->awsCredentials())->toBeTrue()
-        ->and(State::$transientAwsProfile)->toBe('work');
+        ->and(State::transientAwsProfile())->toBe('work');
 });
 
 test('AWS profile is saved to StackData upon registerStack', function (): void {
-    State::$transientAwsProfile = 'production-role';
+    State::setTransientAwsProfile('production-role');
 
     $runner = awsMultiAccountRunner([
         '--provider' => 'aws',
@@ -236,7 +231,7 @@ test('cloud:scale hydrates AWS profile from StackData', function (): void {
 
     $command->testScale();
 
-    expect(State::$transientAwsProfile)->toBe('dev-team-profile');
+    expect(State::transientAwsProfile())->toBe('dev-team-profile');
 });
 
 test('cloud:destroy hydrates AWS profile from StackData', function (): void {
@@ -299,5 +294,5 @@ test('cloud:destroy hydrates AWS profile from StackData', function (): void {
 
     $command->testHandle();
 
-    expect(State::$transientAwsProfile)->toBe('client-aws-profile');
+    expect(State::transientAwsProfile())->toBe('client-aws-profile');
 });

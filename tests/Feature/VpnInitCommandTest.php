@@ -14,7 +14,6 @@ use App\Http\Integrations\Netbird\Requests\ListUsersRequest;
 use App\Http\Integrations\Netbird\Requests\SetupOwnerRequest;
 use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
-use App\State;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
@@ -814,6 +813,11 @@ test('waitForTls refuses to continue when only this machine cannot resolve', fun
 
         protected function nudgeExternalDns(string $kubectl): void {}
 
+        protected function shouldSkipTlsWait(): bool
+        {
+            return false;
+        }
+
         protected function forceFreshAcmeAttempt(string $kubectl, string $ns, string $host, bool $isLocal): void
         {
             $this->forcedAcme[] = $host;
@@ -826,12 +830,7 @@ test('waitForTls refuses to continue when only this machine cannot resolve', fun
         new Symfony\Component\Console\Output\BufferedOutput,
     ));
 
-    State::$isTesting = false;
-    try {
-        $verdict = $command->callWaitForTls('vpn.example.com');
-    } finally {
-        State::$isTesting = true;
-    }
+    $verdict = $command->callWaitForTls('vpn.example.com');
 
     // No certificate retry — a fresh cert cannot fix a name this machine cannot
     // resolve — and a false verdict so the caller aborts instead of pressing on.
@@ -849,6 +848,11 @@ test('waitForTls still forces a fresh ACME attempt when the name resolves fine',
         public function callWaitForTls(string $host): bool
         {
             return $this->waitForTls('kubectl', 'larakube-vpn', $host, false);
+        }
+
+        protected function shouldSkipTlsWait(): bool
+        {
+            return false;
         }
 
         protected function pollForValidTls(string $host, int $maxWait): bool
@@ -880,12 +884,7 @@ test('waitForTls still forces a fresh ACME attempt when the name resolves fine',
         new Symfony\Component\Console\Output\BufferedOutput,
     ));
 
-    State::$isTesting = false;
-    try {
-        $verdict = $command->callWaitForTls('vpn.example.com');
-    } finally {
-        State::$isTesting = true;
-    }
+    $verdict = $command->callWaitForTls('vpn.example.com');
 
     expect($verdict)->toBeTrue()
         ->and($command->forcedAcme)->toBe(['vpn.example.com']);

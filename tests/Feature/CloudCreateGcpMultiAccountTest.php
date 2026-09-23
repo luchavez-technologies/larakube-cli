@@ -15,10 +15,6 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 beforeEach(function (): void {
     Prompt::interactive(false);
-    State::$transientGcpAccount = null;
-    State::$transientGcpProject = null;
-    State::$transientGcpCredentials = null;
-    State::$lastError = null;
 });
 
 function gcpMultiAccountRunner(array $options = []): CloudCreateCommand
@@ -86,7 +82,7 @@ test('single GCP account is auto-selected and saved to transient state', functio
     ]);
 
     expect($runner->gcpCredentials())->toBeTrue()
-        ->and(State::$transientGcpAccount)->toBe('john.doe@company.com')
+        ->and(State::transientGcpAccount())->toBe('john.doe@company.com')
         ->and($runner->fakeGlobalConfig->getGcpAccount())->toBe('john.doe@company.com');
 });
 
@@ -108,7 +104,7 @@ test('multiple GCP accounts with --gcp-account switch to specified account', fun
     ]);
 
     expect($runner->gcpCredentials())->toBeTrue()
-        ->and(State::$transientGcpAccount)->toBe('john.personal@gmail.com');
+        ->and(State::transientGcpAccount())->toBe('john.personal@gmail.com');
 });
 
 test('multiple GCP accounts interactively prompt and switch active account', function (): void {
@@ -134,12 +130,12 @@ test('multiple GCP accounts interactively prompt and switch active account', fun
     ]);
 
     expect($runner->gcpCredentials())->toBeTrue()
-        ->and(State::$transientGcpAccount)->toBe('john.personal@gmail.com');
+        ->and(State::transientGcpAccount())->toBe('john.personal@gmail.com');
 });
 
 test('GCP account and projectId are saved to StackData upon registerStack', function (): void {
-    State::$transientGcpAccount = 'ops@corp.org';
-    State::$transientGcpProject = 'corp-cloud-999';
+    State::setTransientGcpAccount('ops@corp.org');
+    State::setTransientGcpProject('corp-cloud-999');
 
     $runner = gcpMultiAccountRunner([
         '--provider' => 'gcp',
@@ -218,8 +214,8 @@ test('cloud:scale hydrates GCP account and projectId from StackData', function (
 
     $command->testScale();
 
-    expect(State::$transientGcpAccount)->toBe('devops@myorg.io')
-        ->and(State::$transientGcpProject)->toBe('myorg-production-101');
+    expect(State::transientGcpAccount())->toBe('devops@myorg.io')
+        ->and(State::transientGcpProject())->toBe('myorg-production-101');
 });
 
 test('cloud:destroy hydrates GCP account and projectId from StackData', function (): void {
@@ -284,6 +280,6 @@ test('cloud:destroy hydrates GCP account and projectId from StackData', function
 
     $command->testHandle();
 
-    expect(State::$transientGcpAccount)->toBe('lead@enterprise.com')
-        ->and(State::$transientGcpProject)->toBe('ent-prod-777');
+    expect(State::transientGcpAccount())->toBe('lead@enterprise.com')
+        ->and(State::transientGcpProject())->toBe('ent-prod-777');
 });

@@ -39,7 +39,7 @@ test('applyAndVerifyRollout fails fast when the apply itself fails, without chec
     ]);
 
     expect(rolloutVerifier()->apply('kubectl', '/tmp/manifest.yaml', 'traefik', 'traefik'))->toBeFalse()
-        ->and(State::$lastError)->toContain('Could not apply the traefik manifest');
+        ->and(State::lastError())->toContain('Could not apply the traefik manifest');
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout status'));
 });
@@ -51,7 +51,7 @@ test('applyAndVerifyRollout fails when apply succeeds but the Deployment never b
     ]);
 
     expect(rolloutVerifier()->apply('kubectl', '/tmp/manifest.yaml', 'traefik', 'traefik'))->toBeFalse()
-        ->and(State::$lastError)->toContain('never became Ready');
+        ->and(State::lastError())->toContain('never became Ready');
 });
 
 test('applyAndVerifyRollout appends extra apply flags verbatim', function (): void {

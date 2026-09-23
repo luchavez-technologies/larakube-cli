@@ -23,7 +23,7 @@ trait EmitsJsonOutput
      */
     protected function jsonOutput(array $data): void
     {
-        (State::$stdout ?? $this->output)->writeln(json_encode($data, JSON_UNESCAPED_SLASHES));
+        (State::stdout() ?? $this->output)->writeln(json_encode($data, JSON_UNESCAPED_SLASHES));
     }
 
     /**
@@ -31,14 +31,14 @@ trait EmitsJsonOutput
      * human-readable channel to stderr: Termwind's render() sink (all
      * laraKube* helpers, including ones in shared traits) and $this->output
      * ($this->line()/newLine()/task()). Raw-echo sites (laraKubeLine,
-     * renderHeader, runStreaming) check State::$jsonMode themselves. Under
+     * renderHeader, runStreaming) check State::isJsonMode() themselves. Under
      * tests the output isn't a ConsoleOutputInterface, so everything stays
      * on the capturable buffer.
      */
     protected function enableJsonMode(): void
     {
-        State::$jsonMode = true;
-        State::$stdout = $this->output;
+        State::setJsonMode(true);
+        State::setStdout($this->output);
 
         $out = $this->output->getOutput();
         $stderr = $out instanceof ConsoleOutputInterface
