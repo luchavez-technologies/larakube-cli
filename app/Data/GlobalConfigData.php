@@ -36,6 +36,8 @@ class GlobalConfigData extends Data
         public array $shareUrls = [],
         /** DigitalOcean API token, passed to OpenTofu as TF_VAR_do_token (never written into HCL). */
         public ?string $doToken = null,
+        /** Hetzner Cloud API token, passed to OpenTofu as TF_VAR_hcloud_token (never written into HCL). */
+        public ?string $hetznerToken = null,
         /**
          * OpenTofu stack registry, keyed by stack name. Each value is a StackData
          * array. Global (not per-repo) so multiple projects can share one VPS/cluster.
@@ -177,6 +179,16 @@ class GlobalConfigData extends Data
     public function setDoToken(?string $token): void
     {
         $this->doToken = $token ? trim($token) : null;
+    }
+
+    public function getHetznerToken(): ?string
+    {
+        return $this->hetznerToken;
+    }
+
+    public function setHetznerToken(?string $token): void
+    {
+        $this->hetznerToken = $token ? trim($token) : null;
     }
 
     public function getCloudflareToken(): ?string

@@ -176,6 +176,27 @@ trait InteractsWithGlobalConfig
         $config->save();
     }
 
+    protected function getHetznerToken(): ?string
+    {
+        if (State::$transientHetznerToken) {
+            return State::$transientHetznerToken;
+        }
+
+        $envToken = getenv('HCLOUD_TOKEN') ?: getenv('HETZNER_TOKEN');
+        if ($envToken) {
+            return trim($envToken);
+        }
+
+        return $this->getGlobalConfig()->getHetznerToken();
+    }
+
+    protected function setHetznerToken(?string $token): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->setHetznerToken($token);
+        $config->save();
+    }
+
     protected function getGcpAccount(): ?string
     {
         if (State::$transientGcpAccount) {

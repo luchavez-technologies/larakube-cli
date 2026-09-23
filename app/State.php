@@ -32,6 +32,11 @@ class State
     public static ?string $transientDoToken = null;
 
     /**
+     * A Hetzner Cloud API token supplied for this run only (--hetzner-token / HCLOUD_TOKEN), never persisted.
+     */
+    public static ?string $transientHetznerToken = null;
+
+    /**
      * A Cloudflare API token supplied for this run only, never persisted.
      */
     public static ?string $transientCloudflareToken = null;

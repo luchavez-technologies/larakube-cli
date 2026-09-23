@@ -12,6 +12,7 @@ use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithAws;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGcp;
+use App\Traits\InteractsWithHetzner;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -37,21 +38,22 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 class CloudCreateCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
+    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
 
     /** Available providers we can provision. */
     private const PROVIDERS = [
         'do' => 'DigitalOcean',
+        'hetzner' => 'Hetzner Cloud',
         'gcp' => 'Google Cloud Platform',
         'aws' => 'Amazon Web Services',
     ];
 
     protected $signature = 'cloud:create
-        {--provider= : Cloud provider slug (do, gcp, aws, …). Default or prompted.}
+        {--provider= : Cloud provider slug (do, hetzner, gcp, aws, …). Default or prompted.}
         {--vps : Create a VPS / droplet (SSH + k3s, single-node)}
         {--managed : Create a managed Kubernetes cluster}
         {--stack-name= : Stack name (skips the prompt; slugified)}
-        {--region= : Provider region slug (e.g. nyc1, us-central1, us-east-1)}
+        {--region= : Provider region slug (e.g. nyc1, fsn1, us-central1, us-east-1)}
         {--zone= : GCP Compute zone (defaults to <region>-a)}
         {--size= : Droplet/node size slug}
         {--key= : Path to the SSH private key (VPS)}
@@ -60,6 +62,7 @@ class CloudCreateCommand extends Command
         {--ha : Enable HA (High-Availability) control plane (+$40/mo on DOKS, irreversible)}
         {--k8s-version-prefix= : Managed Kubernetes minor version prefix (e.g. "1.31.")}
         {--do-token= : DigitalOcean API token for this run only (never persisted)}
+        {--hetzner-token= : Hetzner Cloud API token for this run only}
         {--gcp-project= : Google Cloud Project ID for this run only}
         {--gcp-account= : Google Cloud account email for this run only}
         {--gcp-credentials= : Path to Google Cloud Service Account JSON key for this run only}
@@ -258,6 +261,7 @@ class CloudCreateCommand extends Command
     {
         return match ($provider) {
             'do' => $this->ensureDoToken(),
+            'hetzner' => $this->ensureHetznerToken(),
             'gcp' => $this->ensureGcpCredentials(),
             'aws' => $this->ensureAwsCredentials(),
             default => true,
@@ -289,9 +293,12 @@ class CloudCreateCommand extends Command
         $cloud = CloudProvider::tryFrom($provider) ?? CloudProvider::DO;
         $options = $kind === 'vps' ? $cloud->vpsSizes() : $cloud->managedSizes();
         $default = $kind === 'vps' ? $cloud->defaultVpsSize() : $cloud->defaultManagedSize();
-        $label = $kind === 'vps'
-            ? ($cloud === CloudProvider::GCP || $cloud === CloudProvider::AWS ? 'Machine type' : 'Droplet size')
-            : 'Node size';
+        $label = match (true) {
+            $kind !== 'vps' => 'Node size',
+            $cloud === CloudProvider::GCP, $cloud === CloudProvider::AWS => 'Machine type',
+            $cloud === CloudProvider::HETZNER => 'Server type',
+            default => 'Droplet size',
+        };
 
         return select(
             label: $label,
@@ -314,7 +321,7 @@ class CloudCreateCommand extends Command
         }
 
         // 2. Resolve target kind (vps vs managed).
-        $targetKind = $this->resolveTargetKind();
+        $targetKind = $this->resolveTargetKind($provider);
         if (! $targetKind) {
             return 1;
         }
@@ -387,18 +394,28 @@ class CloudCreateCommand extends Command
     }
 
     /** Resolve vps vs managed kind. */
-    private function resolveTargetKind(): ?string
+    private function resolveTargetKind(?string $provider = null): ?string
     {
         if ($this->option('vps') && $this->option('managed')) {
             $this->laraKubeError('Use --vps or --managed, not both.');
 
             return null;
         }
+        if ($this->option('managed')) {
+            if ($provider === 'hetzner') {
+                $this->laraKubeError('Hetzner Cloud does not offer a managed Kubernetes service. Use --vps to provision a Single-Node K3s server on Hetzner Cloud.');
+
+                return null;
+            }
+
+            return 'managed';
+        }
         if ($this->option('vps')) {
             return 'vps';
         }
-        if ($this->option('managed')) {
-            return 'managed';
+
+        if ($provider === 'hetzner') {
+            return 'vps';
         }
 
         // Kind-defining input: never silently default headlessly — fail clearly.
@@ -524,6 +541,7 @@ class CloudCreateCommand extends Command
         $serverLabel = match ($provider) {
             'gcp' => 'VM instance',
             'aws' => 'EC2 instance',
+            'hetzner' => 'Hetzner server',
             default => 'droplet',
         };
         if (! $this->applyStack($bin, $stackName, "{$serverLabel} '{$stackName}' in {$region} ({$size})", $provider)) {
@@ -544,7 +562,7 @@ class CloudCreateCommand extends Command
 
         // Wait for sshd, then run the shared single-node pipeline as root.
         if (! $this->waitForSsh('root', $ip, '22', $keyPath)) {
-            $this->laraKubeError("SSH never came up at root@{$ip}. The droplet exists — re-run provisioning once it's reachable.");
+            $this->laraKubeError("SSH never came up at root@{$ip}. The {$serverLabel} exists — re-run provisioning once it's reachable.");
 
             return 1;
         }

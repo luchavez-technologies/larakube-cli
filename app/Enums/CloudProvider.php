@@ -68,6 +68,13 @@ enum CloudProvider: string
                 'ap-southeast-2' => 'ap-southeast-2  —  Sydney',
                 'ap-northeast-1' => 'ap-northeast-1  —  Tokyo',
             ],
+            self::HETZNER => [
+                'fsn1' => 'fsn1  —  Falkenstein, Germany (Recommended)',
+                'nbg1' => 'nbg1  —  Nuremberg, Germany',
+                'hel1' => 'hel1  —  Helsinki, Finland',
+                'ash' => 'ash   —  Ashburn, Virginia, USA',
+                'hil' => 'hil   —  Hillsboro, Oregon, USA',
+            ],
             default => [],
         };
     }
@@ -76,6 +83,7 @@ enum CloudProvider: string
     {
         return match ($this) {
             self::DO => 'nyc1',
+            self::HETZNER => 'fsn1',
             self::GCP => 'us-central1',
             self::AWS => 'us-east-1',
             default => 'us-central1',
@@ -107,6 +115,14 @@ enum CloudProvider: string
                 't3.large' => 't3.large    —  2 vCPU,  8 GB RAM  (~$60/mo)',
                 't3.xlarge' => 't3.xlarge   —  4 vCPU, 16 GB RAM  (~$120/mo)',
             ],
+            self::HETZNER => [
+                'cx22' => 'cx22   —  2 vCPU,  4 GB RAM  (~€3.80/mo, Recommended)',
+                'cax11' => 'cax11  —  2 vCPU (ARM), 4 GB RAM  (~€3.30/mo)',
+                'cx32' => 'cx32   —  4 vCPU,  8 GB RAM  (~€7.50/mo)',
+                'cax21' => 'cax21  —  4 vCPU (ARM), 8 GB RAM  (~€6.50/mo)',
+                'cpx31' => 'cpx31  —  4 vCPU (Dedicated AMD), 8 GB RAM  (~€13.40/mo)',
+                'cx42' => 'cx42   —  8 vCPU, 16 GB RAM  (~€16.00/mo)',
+            ],
             default => [],
         };
     }
@@ -115,6 +131,7 @@ enum CloudProvider: string
     {
         return match ($this) {
             self::DO => 's-1vcpu-1gb',
+            self::HETZNER => 'cx22',
             self::GCP => 'e2-medium',
             self::AWS => 't3.medium',
             default => 'e2-medium',
@@ -162,6 +179,7 @@ enum CloudProvider: string
     {
         return [
             self::DO->value => self::DO->label(),
+            self::HETZNER->value => self::HETZNER->label(),
             self::GCP->value => self::GCP->label(),
             self::AWS->value => self::AWS->label(),
         ];

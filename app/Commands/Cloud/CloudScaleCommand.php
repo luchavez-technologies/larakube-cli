@@ -10,6 +10,7 @@ use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithAws;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGcp;
+use App\Traits\InteractsWithHetzner;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -24,7 +25,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class CloudScaleCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ReadsCommandOptions, ResolvesEnvironmentContext;
+    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ReadsCommandOptions, ResolvesEnvironmentContext;
 
     protected $signature = 'cloud:scale
         {environment? : Environment bound to a stack (e.g. prod) or direct stack name}
@@ -33,6 +34,7 @@ class CloudScaleCommand extends Command
         {--disk             : Permanently expand the disk along with CPU and RAM}
         {--no-disk          : Resize CPU and RAM only (reversible, default)}
         {--do-token=        : DigitalOcean API token for this run}
+        {--hetzner-token=   : Hetzner Cloud API token}
         {--gcp-project=     : Google Cloud project ID}
         {--gcp-account=     : Google Cloud account email}
         {--gcp-credentials= : Path to GCP Service Account JSON key or raw JSON}
@@ -105,6 +107,7 @@ class CloudScaleCommand extends Command
     protected function ensureProviderToken(string $provider): bool
     {
         return match ($provider) {
+            'hetzner' => $this->ensureHetznerToken(),
             'gcp' => $this->ensureGcpCredentials(),
             'aws' => $this->ensureAwsCredentials(),
             default => $this->ensureDoToken(),
@@ -213,21 +216,25 @@ class CloudScaleCommand extends Command
             return 1;
         }
 
-        // Update size, machine_type, or instance_type in main.tf
+        // Update size, machine_type, instance_type, or server_type in main.tf
         if ($provider === 'gcp') {
             $tfContent = preg_replace('/machine_type\s*=\s*"[^"]+"/', 'machine_type = "'.$newSize.'"', $tfContent);
         } elseif ($provider === 'aws') {
             $tfContent = preg_replace('/instance_type\s*=\s*"[^"]+"/', 'instance_type = "'.$newSize.'"', $tfContent);
+        } elseif ($provider === 'hetzner') {
+            $tfContent = preg_replace('/server_type\s*=\s*"[^"]+"/', 'server_type  = "'.$newSize.'"', $tfContent);
         } else {
             $tfContent = preg_replace('/size\s*=\s*"[^"]+"/', 'size     = "'.$newSize.'"', $tfContent);
         }
 
-        // Update or insert resize_disk in main.tf
-        $diskBoolStr = $resizeDisk ? 'true' : 'false';
-        if (preg_match('/resize_disk\s*=/', $tfContent)) {
-            $tfContent = preg_replace('/resize_disk\s*=\s*(true|false)/', 'resize_disk = '.$diskBoolStr, $tfContent);
-        } else {
-            $tfContent = preg_replace('/(size\s*=\s*"[^"]+")/', "$1\n  resize_disk = ".$diskBoolStr, $tfContent);
+        // Update or insert resize_disk in main.tf (for DigitalOcean droplets)
+        if ($provider === 'do') {
+            $diskBoolStr = $resizeDisk ? 'true' : 'false';
+            if (preg_match('/resize_disk\s*=/', $tfContent)) {
+                $tfContent = preg_replace('/resize_disk\s*=\s*(true|false)/', 'resize_disk = '.$diskBoolStr, $tfContent);
+            } else {
+                $tfContent = preg_replace('/(size\s*=\s*"[^"]+")/', "$1\n  resize_disk = ".$diskBoolStr, $tfContent);
+            }
         }
 
         // Update storage_size_gb if --storage is provided

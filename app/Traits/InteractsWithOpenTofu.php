@@ -321,6 +321,11 @@ HCL;
             $env['TF_VAR_do_token'] = $token;
         }
 
+        if ($hcloudToken = $this->getHetznerToken()) {
+            $env['HCLOUD_TOKEN'] = $hcloudToken;
+            $env['TF_VAR_hcloud_token'] = $hcloudToken;
+        }
+
         if ($projectId = $this->getGcpProjectId()) {
             $env['TF_VAR_gcp_project_id'] = $projectId;
         }

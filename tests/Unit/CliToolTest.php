@@ -4,15 +4,17 @@ use App\Enums\CliTool;
 use Illuminate\Support\Facades\Process;
 
 test('cli tools define expected cases and properties', function (): void {
-    expect(CliTool::cases())->toHaveCount(6)
+    expect(CliTool::cases())->toHaveCount(7)
         ->and(CliTool::K9S->binary())->toBe('k9s')
         ->and(CliTool::TOFU->binary())->toBe('tofu')
+        ->and(CliTool::HCLOUD->binary())->toBe('hcloud')
         ->and(CliTool::GCLOUD->binary())->toBe('gcloud')
         ->and(CliTool::AWS->binary())->toBe('aws')
         ->and(CliTool::GH->binary())->toBe('gh')
         ->and(CliTool::TEA->binary())->toBe('tea')
         ->and(CliTool::K9S->isDefault())->toBeTrue()
         ->and(CliTool::TOFU->isDefault())->toBeTrue()
+        ->and(CliTool::HCLOUD->isDefault())->toBeFalse()
         ->and(CliTool::GCLOUD->isDefault())->toBeFalse()
         ->and(CliTool::AWS->isDefault())->toBeFalse()
         ->and(CliTool::GH->isDefault())->toBeFalse()
@@ -51,6 +53,7 @@ test('resolveBinary finds binary if available', function (): void {
 test('ensureAuth returns true immediately for non-interactive tools', function (): void {
     expect(CliTool::K9S->ensureAuth())->toBeTrue()
         ->and(CliTool::TOFU->ensureAuth())->toBeTrue()
+        ->and(CliTool::HCLOUD->ensureAuth())->toBeTrue()
         ->and(CliTool::GH->ensureAuth())->toBeTrue()
         ->and(CliTool::TEA->ensureAuth())->toBeTrue();
 });

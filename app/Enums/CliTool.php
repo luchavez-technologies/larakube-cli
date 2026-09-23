@@ -15,6 +15,7 @@ enum CliTool: string
             self::TOFU => 'OpenTofu (Infrastructure Provisioner)',
             self::GCLOUD => 'Google Cloud SDK (gcloud CLI)',
             self::AWS => 'AWS CLI (Amazon Web Services)',
+            self::HCLOUD => 'Hetzner Cloud CLI (hcloud)',
             self::GH => 'GitHub CLI (gh)',
             self::TEA => 'Tea CLI (Forgejo / Gitea)',
         };
@@ -27,6 +28,7 @@ enum CliTool: string
             self::TOFU => 'Infrastructure-as-Code provisioner for cloud:create (VPS & Managed)',
             self::GCLOUD => 'CLI for GCP Compute Engine, GKE clusters, and ADC authentication',
             self::AWS => 'CLI for Amazon Web Services (EC2, EKS, IAM, and STS)',
+            self::HCLOUD => 'CLI for Hetzner Cloud servers, networks, and firewalls',
             self::GH => 'Native GitHub Actions and GHCR container registry management',
             self::TEA => 'Native Forgejo and Gitea git forge management',
         };
@@ -39,6 +41,7 @@ enum CliTool: string
             self::TOFU => 'tofu',
             self::GCLOUD => 'gcloud',
             self::AWS => 'aws',
+            self::HCLOUD => 'hcloud',
             self::GH => 'gh',
             self::TEA => 'tea',
         };
@@ -150,6 +153,7 @@ enum CliTool: string
             self::TOFU => $this->installTofu(),
             self::GCLOUD => $this->installGcloud(),
             self::AWS => $this->installAws(),
+            self::HCLOUD => $this->installHcloud(),
             self::GH => $this->installGh(),
             self::TEA => $this->installTea(),
         };
@@ -372,10 +376,39 @@ enum CliTool: string
         return false;
     }
 
+    protected function installHcloud(): bool
+    {
+        if (PHP_OS_FAMILY === 'Darwin') {
+            if (trim(Process::run('command -v brew')->output()) === '') {
+                return false;
+            }
+
+            return Process::forever()->run('brew install hcloud')->exitCode() === 0;
+        }
+
+        if (PHP_OS_FAMILY === 'Linux') {
+            $machine = php_uname('m');
+            $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+            $binDir = home_path('.larakube/bin');
+            @mkdir($binDir, 0755, true);
+            $url = "https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-{$arch}.tar.gz";
+
+            $code = Process::forever()->run('curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' hcloud')->exitCode();
+            if ($code === 0 && file_exists($binDir.'/hcloud')) {
+                @chmod($binDir.'/hcloud', 0755);
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     case K9S = 'k9s';
     case TOFU = 'tofu';
     case GCLOUD = 'gcloud';
     case AWS = 'aws';
+    case HCLOUD = 'hcloud';
     case GH = 'gh';
     case TEA = 'tea';
 }

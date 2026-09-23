@@ -25,6 +25,7 @@ class CloudDestroyCommand extends Command
     protected $signature = 'cloud:destroy
         {stack? : The stack name to destroy. Omit to pick from the registry.}
         {--force : Skip the confirmation prompt}
+        {--hetzner-token= : Hetzner Cloud API token}
         {--aws-profile= : AWS CLI profile name}
         {--gcp-account= : Google Cloud account email}
         {--gcp-project= : Google Cloud project ID}';
@@ -54,6 +55,10 @@ class CloudDestroyCommand extends Command
             $this->laraKubeError("No registered stack named '{$name}'.");
 
             return 1;
+        }
+
+        if ($flagHetzner = $this->option('hetzner-token')) {
+            State::$transientHetznerToken = trim($flagHetzner);
         }
 
         if ($flagProfile = $this->option('aws-profile')) {
