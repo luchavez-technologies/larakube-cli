@@ -3,8 +3,10 @@
 namespace App\Commands\Cloud;
 
 use App\Data\StackData;
+use App\State;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\LaraKubeOutput;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
@@ -22,7 +24,10 @@ class CloudDestroyCommand extends Command
 
     protected $signature = 'cloud:destroy
         {stack? : The stack name to destroy. Omit to pick from the registry.}
-        {--force : Skip the confirmation prompt}';
+        {--force : Skip the confirmation prompt}
+        {--aws-profile= : AWS CLI profile name}
+        {--gcp-account= : Google Cloud account email}
+        {--gcp-project= : Google Cloud project ID}';
 
     protected $description = 'Destroy an OpenTofu-provisioned stack (droplet or DOKS cluster) and remove it from the registry';
 
@@ -49,6 +54,26 @@ class CloudDestroyCommand extends Command
             $this->laraKubeError("No registered stack named '{$name}'.");
 
             return 1;
+        }
+
+        if ($flagProfile = $this->option('aws-profile')) {
+            State::$transientAwsProfile = trim($flagProfile);
+        } elseif ($stack->provider === 'aws' && $stack->account) {
+            State::$transientAwsProfile = $stack->account;
+        }
+
+        if ($flagAccount = $this->option('gcp-account')) {
+            State::$transientGcpAccount = trim($flagAccount);
+            Process::run('gcloud config set account '.escapeshellarg(State::$transientGcpAccount).' 2>/dev/null');
+        } elseif ($stack->provider === 'gcp' && $stack->account) {
+            State::$transientGcpAccount = $stack->account;
+            Process::run('gcloud config set account '.escapeshellarg($stack->account).' 2>/dev/null');
+        }
+
+        if ($flagProject = $this->option('gcp-project')) {
+            State::$transientGcpProject = trim($flagProject);
+        } elseif ($stack->provider === 'gcp' && $stack->projectId) {
+            State::$transientGcpProject = $stack->projectId;
         }
 
         $bin = $this->ensureTofu();

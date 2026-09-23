@@ -37,6 +37,11 @@ class State
     public static ?string $transientCloudflareToken = null;
 
     /**
+     * A GCP account email supplied for this run only (--gcp-account), never persisted.
+     */
+    public static ?string $transientGcpAccount = null;
+
+    /**
      * A GCP project ID supplied for this run only (--gcp-project), never persisted.
      */
     public static ?string $transientGcpProject = null;

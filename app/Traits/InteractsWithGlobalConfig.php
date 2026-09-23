@@ -176,6 +176,38 @@ trait InteractsWithGlobalConfig
         $config->save();
     }
 
+    protected function getGcpAccount(): ?string
+    {
+        if (State::$transientGcpAccount) {
+            return State::$transientGcpAccount;
+        }
+
+        $envAccount = getenv('CLOUDSDK_CORE_ACCOUNT') ?: getenv('GCP_ACCOUNT');
+        if ($envAccount) {
+            return trim($envAccount);
+        }
+
+        $persisted = $this->getGlobalConfig()->getGcpAccount();
+        if ($persisted) {
+            return $persisted;
+        }
+
+        // Auto-detect from local gcloud CLI if available
+        $gcloudAccount = trim(Process::run('gcloud config get-value account 2>/dev/null')->output());
+        if ($gcloudAccount !== '' && $gcloudAccount !== '(unset)' && ! str_contains($gcloudAccount, 'ERROR:')) {
+            return $gcloudAccount;
+        }
+
+        return null;
+    }
+
+    protected function setGcpAccount(?string $account): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->setGcpAccount($account);
+        $config->save();
+    }
+
     protected function getGcpProjectId(): ?string
     {
         if (State::$transientGcpProject) {

@@ -32,6 +32,13 @@ class CloudStacksCommand extends Command
 
         $rows = [];
         foreach ($stacks as $stack) {
+            $account = $stack->account ?? '—';
+            if ($stack->projectId && $stack->account) {
+                $account .= " ({$stack->projectId})";
+            } elseif ($stack->projectId) {
+                $account = $stack->projectId;
+            }
+
             $rows[] = [
                 $stack->name,
                 $stack->provider ? strtoupper($stack->provider) : 'DO',
@@ -39,12 +46,13 @@ class CloudStacksCommand extends Command
                 $stack->region ?? '—',
                 $stack->ip ?? '—',
                 $stack->context ?? '—',
+                $account,
                 $stack->bindings === [] ? '—' : implode("\n", $stack->bindings),
             ];
         }
 
         table(
-            headers: ['Name', 'Provider', 'Kind', 'Region', 'IP', 'Context', 'Bindings'],
+            headers: ['Name', 'Provider', 'Kind', 'Region', 'IP', 'Context', 'Account / Project', 'Bindings'],
             rows: $rows,
         );
 

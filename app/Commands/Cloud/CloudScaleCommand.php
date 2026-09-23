@@ -34,6 +34,7 @@ class CloudScaleCommand extends Command
         {--no-disk          : Resize CPU and RAM only (reversible, default)}
         {--do-token=        : DigitalOcean API token for this run}
         {--gcp-project=     : Google Cloud project ID}
+        {--gcp-account=     : Google Cloud account email}
         {--gcp-credentials= : Path to GCP Service Account JSON key or raw JSON}
         {--aws-profile=     : AWS CLI profile name}
         {--aws-region=      : AWS region}
@@ -146,6 +147,21 @@ class CloudScaleCommand extends Command
             return 1;
         }
 
+        $provider = $stack->provider ?? 'do';
+
+        if ($provider === 'aws' && ! $this->flag('aws-profile') && $stack->account) {
+            State::$transientAwsProfile = $stack->account;
+        }
+
+        if ($provider === 'gcp') {
+            if (! $this->flag('gcp-account') && $stack->account) {
+                State::$transientGcpAccount = $stack->account;
+            }
+            if (! $this->flag('gcp-project') && $stack->projectId) {
+                State::$transientGcpProject = $stack->projectId;
+            }
+        }
+
         if ($stack->kind !== 'vps') {
             $this->laraKubeError("Only 'vps' stacks can be scaled via cloud:scale currently. Stack '{$stack->name}' is a '{$stack->kind}' stack.");
 
@@ -160,7 +176,6 @@ class CloudScaleCommand extends Command
             return 1;
         }
 
-        $provider = $stack->provider ?? 'do';
         if (! $this->ensureProviderToken($provider)) {
             return 1;
         }

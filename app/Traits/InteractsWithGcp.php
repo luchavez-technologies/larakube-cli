@@ -20,6 +20,10 @@ trait InteractsWithGcp
      */
     protected function ensureGcpCredentials(): bool
     {
+        if ($flagAccount = $this->flag('gcp-account')) {
+            State::$transientGcpAccount = trim($flagAccount);
+        }
+
         if ($flagProject = $this->flag('gcp-project')) {
             State::$transientGcpProject = trim($flagProject);
         }
@@ -42,9 +46,17 @@ trait InteractsWithGcp
             }
         }
 
+        $gcloudBin = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+
+        // Switch to explicit account if specified
+        if ($account = $this->getGcpAccount()) {
+            if (CliTool::GCLOUD->isInstalled()) {
+                Process::run("{$gcloudBin} config set account ".escapeshellarg($account).' 2>/dev/null');
+            }
+        }
+
         // Step 1: Handle non-interactive mode cleanly
         $credentials = $this->getGcpCredentials();
-        $gcloudBin = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
         $gcloudAuthed = CliTool::GCLOUD->isInstalled() && Process::run("{$gcloudBin} auth print-access-token 2>/dev/null")->successful();
 
         if ($this->flag('no-interaction')) {
@@ -64,21 +76,70 @@ trait InteractsWithGcp
             return true;
         }
 
-        // Step 2: Interactive authentication FIRST
-        if (CliTool::GCLOUD->isInstalled() && ! $gcloudAuthed) {
-            $this->newLine();
-            $this->laraKubeWarn('Google Cloud CLI (gcloud) is not logged in.');
+        // Step 2: Interactive authentication & Multi-Account Selection
+        if (CliTool::GCLOUD->isInstalled()) {
+            $accounts = $this->listGcpAccounts($gcloudBin);
 
-            if (! app()->runningUnitTests() && ! Process::isRecording() && confirm('Open browser to log in via gcloud now?', default: true)) {
-                passthru("{$gcloudBin} auth login --update-adc", $loginCode);
-                if ($loginCode === 0) {
-                    $this->line('  <fg=green>✓</> <fg=gray>Successfully authenticated with Google Cloud.</>');
-                    $gcloudAuthed = Process::run("{$gcloudBin} auth print-access-token 2>/dev/null")->successful();
-                    $credentials = $this->getGcpCredentials();
+            if (empty($accounts) && ! $gcloudAuthed) {
+                $this->newLine();
+                $this->laraKubeWarn('Google Cloud CLI (gcloud) is not logged in.');
+
+                if (! app()->runningUnitTests() && ! Process::isRecording() && confirm('Open browser to log in via gcloud now?', default: true)) {
+                    passthru("{$gcloudBin} auth login --update-adc", $loginCode);
+                    if ($loginCode === 0) {
+                        $this->line('  <fg=green>✓</> <fg=gray>Successfully authenticated with Google Cloud.</>');
+                        $gcloudAuthed = Process::run("{$gcloudBin} auth print-access-token 2>/dev/null")->successful();
+                        $credentials = $this->getGcpCredentials();
+                        $accounts = $this->listGcpAccounts($gcloudBin);
+                    }
                 }
             }
-        } elseif ($gcloudAuthed) {
-            $this->line('  <fg=green>✓</> <fg=gray>Detected active authentication via local</> <fg=cyan>gcloud</> <fg=gray>CLI.</>');
+
+            // Multi-account picker if multiple accounts are logged in and no specific flag was given
+            if (count($accounts) > 1 && ! $this->flag('gcp-account') && ! State::$transientGcpAccount) {
+                $options = [];
+                $activeAccount = null;
+                foreach ($accounts as $email => $isActive) {
+                    if ($isActive) {
+                        $activeAccount = $email;
+                    }
+                    $options[$email] = "{$email}".($isActive ? ' [active]' : '');
+                }
+                $options['__add__'] = '+ Log in to another Google account';
+
+                $default = $activeAccount ?? array_key_first($options);
+
+                $chosen = select(
+                    label: 'Which Google Cloud account would you like to use?',
+                    options: $options,
+                    default: $default,
+                );
+
+                if ($chosen === '__add__') {
+                    if (! app()->runningUnitTests() && ! Process::isRecording()) {
+                        passthru("{$gcloudBin} auth login --update-adc", $loginCode);
+                    }
+                    $accounts = $this->listGcpAccounts($gcloudBin);
+                    $chosen = array_key_first(array_filter($accounts, fn ($active) => $active)) ?? array_key_first($accounts) ?? null;
+                }
+
+                if ($chosen && $chosen !== '__add__') {
+                    Process::run("{$gcloudBin} config set account ".escapeshellarg($chosen));
+                    State::$transientGcpAccount = $chosen;
+                    $this->setGcpAccount($chosen);
+                    $this->line("  <fg=green>✓</> <fg=gray>Switched to Google Cloud account</> <fg=cyan>{$chosen}</>");
+                }
+            } elseif (count($accounts) === 1 && ! State::$transientGcpAccount && ! $this->flag('gcp-account')) {
+                $singleAccount = array_key_first($accounts);
+                State::$transientGcpAccount = $singleAccount;
+                $this->setGcpAccount($singleAccount);
+            }
+        }
+
+        if ($gcloudAuthed) {
+            $activeAcc = $this->getGcpAccount();
+            $accLabel = $activeAcc ? " (<fg=cyan>{$activeAcc}</>)" : '';
+            $this->line("  <fg=green>✓</> <fg=gray>Detected active authentication via local</> <fg=cyan>gcloud</> <fg=gray>CLI{$accLabel}.</>");
         }
 
         if (! $gcloudAuthed && ! $credentials) {
@@ -185,8 +246,10 @@ trait InteractsWithGcp
             $default = '__create__';
         }
 
+        $account = $this->getGcpAccount();
+        $accountSuffix = $account ? " (for {$account})" : '';
         $chosen = select(
-            label: 'Google Cloud Project',
+            label: "Google Cloud Project{$accountSuffix}",
             options: $options,
             default: $default,
         );
@@ -355,5 +418,36 @@ trait InteractsWithGcp
             $this->laraKubeWarn("Could not enable APIs automatically: {$err}");
             $this->line('  <fg=gray>You can enable Compute Engine in the Google Cloud Console if needed.</>');
         }
+    }
+
+    /**
+     * Discover authenticated Google Cloud accounts on this machine.
+     *
+     * @return array<string, bool> Map of email => is_active
+     */
+    protected function listGcpAccounts(string $gcloudBin): array
+    {
+        if (! CliTool::GCLOUD->isInstalled()) {
+            return [];
+        }
+
+        $result = Process::run("{$gcloudBin} auth list --format=\"json(account,status)\" 2>/dev/null");
+        if (! $result->successful() || empty(trim($result->output()))) {
+            return [];
+        }
+
+        $data = json_decode($result->output(), true);
+        if (! is_array($data)) {
+            return [];
+        }
+
+        $accounts = [];
+        foreach ($data as $item) {
+            if (! empty($item['account'])) {
+                $accounts[$item['account']] = ($item['status'] ?? '') === 'ACTIVE';
+            }
+        }
+
+        return $accounts;
     }
 }

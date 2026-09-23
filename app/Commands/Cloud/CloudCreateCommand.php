@@ -61,6 +61,7 @@ class CloudCreateCommand extends Command
         {--k8s-version-prefix= : Managed Kubernetes minor version prefix (e.g. "1.31.")}
         {--do-token= : DigitalOcean API token for this run only (never persisted)}
         {--gcp-project= : Google Cloud Project ID for this run only}
+        {--gcp-account= : Google Cloud account email for this run only}
         {--gcp-credentials= : Path to Google Cloud Service Account JSON key for this run only}
         {--aws-profile= : AWS CLI profile name for this run only}
         {--aws-region= : AWS region for this run only}
@@ -160,6 +161,16 @@ class CloudCreateCommand extends Command
 
     protected function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment, string $provider = 'do'): void
     {
+        $account = match ($provider) {
+            'aws' => $this->getAwsProfile(),
+            'gcp' => $this->getGcpAccount(),
+            default => null,
+        };
+        $projectId = match ($provider) {
+            'gcp' => $this->getGcpProjectId(),
+            default => null,
+        };
+
         $stack = new StackData(
             name: $name,
             provider: $provider,
@@ -167,6 +178,8 @@ class CloudCreateCommand extends Command
             region: $region,
             context: $context,
             ip: $ip,
+            account: $account,
+            projectId: $projectId,
             createdAt: gmdate('c'),
         );
         if ($config && $environment) {

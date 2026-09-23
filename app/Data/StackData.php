@@ -35,6 +35,10 @@ class StackData extends Data
          * @var array<int, string>
          */
         public array $bindings = [],
+        /** Cloud account identifier: AWS profile name or GCP account email. */
+        public ?string $account = null,
+        /** Cloud project identifier: GCP project ID. */
+        public ?string $projectId = null,
         /** ISO-8601 creation timestamp. */
         public ?string $createdAt = null,
     ) {}

@@ -43,9 +43,65 @@ trait InteractsWithAws
             }
         }
 
+        // Step 1: Multi-profile discovery & selection
+        $hasExplicitKeys = ($this->getAwsAccessKeyId() && $this->getAwsSecretAccessKey());
+        $profiles = $this->listAwsProfiles();
+
+        if (! $hasExplicitKeys && ! empty($profiles)) {
+            if (count($profiles) > 1 && ! $this->flag('aws-profile') && ! State::$transientAwsProfile) {
+                if ($this->flag('no-interaction')) {
+                    $this->laraKubeError('Multiple AWS profiles detected ('.implode(', ', $profiles).'). Pass --aws-profile= when running non-interactively.');
+
+                    return false;
+                }
+
+                $activeProfile = getenv('AWS_PROFILE') ?: ($this->getGlobalConfig()->getAwsProfile() ?: (in_array('default', $profiles, true) ? 'default' : $profiles[0]));
+
+                $options = [];
+                foreach ($profiles as $prof) {
+                    $isActive = ($prof === $activeProfile);
+                    $identity = $this->getAwsProfileIdentity($prof);
+                    $meta = $identity ? "(Account: {$identity['account']}, arn: {$identity['arn']})" : '(unverified)';
+                    $options[$prof] = "{$prof}  {$meta}".($isActive ? ' [active]' : '');
+                }
+                $options['__add__'] = '+ Add new AWS profile';
+
+                $chosen = select(
+                    label: 'Which AWS profile would you like to use?',
+                    options: $options,
+                    default: isset($options[$activeProfile]) ? $activeProfile : array_key_first($options),
+                );
+
+                if ($chosen === '__add__') {
+                    $newProfile = text(
+                        label: 'Enter new AWS profile name',
+                        placeholder: 'e.g. staging, client-prod',
+                        required: true,
+                        validate: fn ($v) => preg_match('/^[a-zA-Z0-9_-]+$/', $v) ? null : 'Profile name may only contain alphanumeric characters, hyphens, and underscores.',
+                    );
+
+                    $awsBin = CliTool::AWS->resolveBinary() ?? 'aws';
+                    if (! app()->runningUnitTests() && ! Process::isRecording()) {
+                        passthru("{$awsBin} configure --profile ".escapeshellarg($newProfile), $code);
+                        if ($code === 0) {
+                            $this->line("  <fg=green>✓</> <fg=gray>AWS profile '{$newProfile}' configured.</>");
+                        }
+                    }
+                    $chosen = $newProfile;
+                }
+
+                State::$transientAwsProfile = $chosen;
+                $this->setAwsProfile($chosen);
+            } elseif (count($profiles) === 1 && ! State::$transientAwsProfile && ! $this->flag('aws-profile')) {
+                State::$transientAwsProfile = $profiles[0];
+                $this->setAwsProfile($profiles[0]);
+            }
+        }
+
         $envVars = $this->buildAwsEnv();
         $awsBin = CliTool::AWS->resolveBinary() ?? 'aws';
-        $profileArg = $this->getAwsProfile() ? ' --profile '.escapeshellarg($this->getAwsProfile()) : '';
+        $profile = $this->getAwsProfile();
+        $profileArg = $profile ? ' --profile '.escapeshellarg($profile) : '';
 
         // Check active caller identity
         $identityProcess = Process::env($envVars)->run("{$awsBin} sts get-caller-identity{$profileArg} 2>/dev/null");
@@ -72,7 +128,8 @@ trait InteractsWithAws
                 $arn = $data['Arn'] ?? 'unknown';
             }
 
-            $this->line("  <fg=green>✓</> <fg=gray>Detected active AWS credentials (Account: {$account}, Arn: {$arn}).</>");
+            $profileLabel = $profile ? " (Profile: <fg=cyan>{$profile}</>)" : '';
+            $this->line("  <fg=green>✓</> <fg=gray>Detected active AWS credentials{$profileLabel} (Account: {$account}, Arn: {$arn}).</>");
 
             return true;
         }
@@ -87,7 +144,8 @@ trait InteractsWithAws
             $this->laraKubeWarn('AWS CLI is not configured with active credentials.');
 
             if (! app()->runningUnitTests() && ! Process::isRecording() && confirm('Run `aws configure` in your terminal now?', default: true)) {
-                passthru("{$awsBin} configure", $code);
+                $configureArg = $profile ? ' --profile '.escapeshellarg($profile) : '';
+                passthru("{$awsBin} configure{$configureArg}", $code);
                 if ($code === 0) {
                     $this->line('  <fg=green>✓</> <fg=gray>AWS CLI configuration completed.</>');
                     $retry = Process::env($envVars)->run("{$awsBin} sts get-caller-identity{$profileArg} 2>/dev/null");
@@ -139,6 +197,59 @@ trait InteractsWithAws
         $this->laraKubeError('AWS credentials are required to continue provisioning.');
 
         return false;
+    }
+
+    /**
+     * List configured AWS profiles from the local AWS CLI.
+     *
+     * @return array<int, string>
+     */
+    protected function listAwsProfiles(): array
+    {
+        if (! CliTool::AWS->isInstalled()) {
+            return [];
+        }
+
+        $awsBin = CliTool::AWS->resolveBinary() ?? 'aws';
+        $result = Process::run("{$awsBin} configure list-profiles 2>/dev/null");
+        if (! $result->successful()) {
+            return [];
+        }
+
+        $lines = explode("\n", trim($result->output()));
+        $profiles = [];
+        foreach ($lines as $line) {
+            $profile = trim($line);
+            if ($profile !== '') {
+                $profiles[] = $profile;
+            }
+        }
+
+        return $profiles;
+    }
+
+    /**
+     * Query caller identity for a specific AWS profile.
+     *
+     * @return array{account: string, arn: string}|null
+     */
+    protected function getAwsProfileIdentity(string $profile): ?array
+    {
+        $awsBin = CliTool::AWS->resolveBinary() ?? 'aws';
+        $result = Process::run("{$awsBin} sts get-caller-identity --profile ".escapeshellarg($profile).' 2>/dev/null');
+        if (! $result->successful()) {
+            return null;
+        }
+
+        $data = json_decode($result->output(), true);
+        if (! is_array($data)) {
+            return null;
+        }
+
+        return [
+            'account' => $data['Account'] ?? 'unknown',
+            'arn' => $data['Arn'] ?? 'unknown',
+        ];
     }
 
     /**
