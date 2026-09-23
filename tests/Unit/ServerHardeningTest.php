@@ -126,3 +126,16 @@ test('joinNetBirdScript installs NetBird only if missing and joins with the give
         ->toContain('curl -fsSL https://pkgs.netbird.io/install.sh | sh')
         ->toContain("netbird up --setup-key 'nb_setup_key_test' --management-url 'https://vpn.example.com'");
 });
+
+test('ensureK3sTlsSanScript configures config.yaml and rotates certificates when SAN is missing', function (): void {
+    $script = hardening()->ensureK3sTlsSanScript('34.27.253.31');
+
+    expect($script)
+        ->toContain('/etc/rancher/k3s/config.yaml')
+        ->toContain('34.27.253.31')
+        ->toContain('tls-san:')
+        ->toContain('serving-kube-apiserver.crt')
+        ->toContain('k3s certificate rotate')
+        ->toContain('systemctl stop k3s')
+        ->toContain('systemctl start k3s');
+});

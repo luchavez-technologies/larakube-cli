@@ -39,6 +39,8 @@ resource "google_compute_instance" "larakube" {
   machine_type = "{{ $size }}"
   zone         = "{{ $zone ?? ($region . '-a') }}"
 
+  allow_stopping_for_update = true
+
   tags = ["larakube", "larakube-vps", "http-server", "https-server"]
 
   boot_disk {

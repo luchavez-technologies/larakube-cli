@@ -129,6 +129,8 @@ class CloudHardenCommand extends Command
 
         $this->rebootIfRequired($user, $sshIp, $port, $keyPath);
 
+        $this->runRemoteCommand($user, $sshIp, $port, $keyPath, $this->ensureK3sTlsSanScript($ip));
+
         $accessNote = collect([
             $adminCidr ? "restricted to {$adminCidr}" : null,
             $vpnCidr ? "restricted to NetBird ({$vpnCidr})" : null,

@@ -35,6 +35,7 @@ trait ProvisionsK3sNode
 
         $installK3s = $this->k3sInstallCommand($this->k3sVersion($config), [
             '--disable=traefik',
+            '--tls-san='.$ip,
             '--write-kubeconfig-mode 644',
             '--kubelet-arg=fail-swap-on=false',
             // Encrypts Secret data at rest in k3s's datastore (AES-CBC) — otherwise
@@ -44,9 +45,12 @@ trait ProvisionsK3sNode
             '--secrets-encryption',
         ]);
 
+        $tlsSanScript = $this->ensureK3sTlsSanScript($ip);
+
         // 1. Create Swap (Dynamic size based on RAM)
         // 2. Enable IP Forwarding
-        // 3. Install K3s (optimized for single-node)
+        // 3. Ensure TLS SAN for public IP (required for NAT on GCP/AWS)
+        // 4. Install K3s (optimized for single-node)
         $remoteCommand = <<<BASH
     if [ ! -f /swapfile ]; then
         echo "Calculating optimal swap size..."
@@ -75,6 +79,9 @@ trait ProvisionsK3sNode
     grep -qxF 'net.ipv4.ip_forward=1' /etc/sysctl.conf || echo 'net.ipv4.ip_forward=1' | tee -a /etc/sysctl.conf
     grep -qxF 'net.core.rmem_max=5000000' /etc/sysctl.conf || echo 'net.core.rmem_max=5000000' | tee -a /etc/sysctl.conf
     grep -qxF 'net.core.wmem_max=5000000' /etc/sysctl.conf || echo 'net.core.wmem_max=5000000' | tee -a /etc/sysctl.conf
+
+    echo "Ensuring k3s TLS SAN for {$ip}..."
+    {$tlsSanScript}
 
     echo "Installing K3s..."
     {$installK3s}
@@ -395,7 +402,11 @@ BASH;
         $namespace = 'traefik';
         $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
 
-        if (! Process::run("{$kubectl} create namespace {$namespace} --dry-run=client -o yaml | {$kubectl} apply -f -")->successful()) {
+        $nsRes = Process::run("{$kubectl} create namespace {$namespace} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        if (! $nsRes->successful()) {
+            if ($err = trim($nsRes->errorOutput() ?: $nsRes->output())) {
+                $this->line("  <fg=red>{$err}</>");
+            }
             $this->laraKubeError("Could not create/apply the '{$namespace}' namespace — see the output above.");
 
             return false;

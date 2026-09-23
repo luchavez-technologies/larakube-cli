@@ -189,6 +189,45 @@ BASH;
     }
 
     /**
+     * Script to configure k3s TLS Subject Alternative Names (SAN) for $ip.
+     * Essential for cloud providers (like GCP and AWS) where instances sit behind NAT
+     * and only know their internal private IP on eth0/ens4.
+     */
+    public function ensureK3sTlsSanScript(string $ip): string
+    {
+        return <<<BASH
+mkdir -p /etc/rancher/k3s
+NEEDS_RESTART=0
+if [ ! -f /etc/rancher/k3s/config.yaml ]; then
+    printf "tls-san:\n  - \"%s\"\n" "{$ip}" > /etc/rancher/k3s/config.yaml
+    NEEDS_RESTART=1
+elif ! grep -q "{$ip}" /etc/rancher/k3s/config.yaml; then
+    if grep -q "tls-san:" /etc/rancher/k3s/config.yaml; then
+        sed -i '/tls-san:/a \ \ - "{$ip}"' /etc/rancher/k3s/config.yaml
+    else
+        printf "\ntls-san:\n  - \"%s\"\n" "{$ip}" >> /etc/rancher/k3s/config.yaml
+    fi
+    NEEDS_RESTART=1
+fi
+
+if [ -f /var/lib/rancher/k3s/server/tls/serving-kube-apiserver.crt ]; then
+    if ! openssl x509 -in /var/lib/rancher/k3s/server/tls/serving-kube-apiserver.crt -noout -text 2>/dev/null | grep -q "{$ip}"; then
+        NEEDS_RESTART=1
+    fi
+fi
+
+if [ "\$NEEDS_RESTART" -eq 1 ] && systemctl is-active --quiet k3s 2>/dev/null; then
+    echo "Updating k3s TLS SAN and rotating certificates for {$ip}..."
+    systemctl stop k3s 2>/dev/null || true
+    rm -f /var/lib/rancher/k3s/server/tls/dynamic-cert.json
+    rm -f /var/lib/rancher/k3s/server/tls/serving-kube-apiserver.*
+    k3s certificate rotate 2>/dev/null || true
+    systemctl start k3s 2>/dev/null || true
+fi
+BASH;
+    }
+
+    /**
      * The admin CIDR to restrict SSH + the k3s API to: a CIDR string, null for
      * open (matches the confirm's "no" default — this stays opt-in, never
      * forced, since a fresh box's admin often doesn't have a stable IP/VPN
