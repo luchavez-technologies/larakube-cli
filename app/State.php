@@ -47,6 +47,26 @@ class State
     public static ?string $transientGcpCredentials = null;
 
     /**
+     * An AWS profile supplied for this run only (--aws-profile), never persisted.
+     */
+    public static ?string $transientAwsProfile = null;
+
+    /**
+     * An AWS region supplied for this run only (--aws-region), never persisted.
+     */
+    public static ?string $transientAwsRegion = null;
+
+    /**
+     * An AWS Access Key ID supplied for this run only (--aws-access-key-id), never persisted.
+     */
+    public static ?string $transientAwsAccessKeyId = null;
+
+    /**
+     * An AWS Secret Access Key supplied for this run only (--aws-secret-access-key), never persisted.
+     */
+    public static ?string $transientAwsSecretAccessKey = null;
+
+    /**
      * The last laraKubeError() message (already secret-masked), so a JSON-mode
      * wrapper can report the failure without threading it through every
      * `return 1` site.

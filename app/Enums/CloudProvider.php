@@ -57,6 +57,17 @@ enum CloudProvider: string
                 'asia-northeast1' => 'asia-northeast1  —  Tokyo',
                 'australia-southeast1' => 'australia-southeast1  —  Sydney',
             ],
+            self::AWS => [
+                'us-east-1' => 'us-east-1  —  N. Virginia (Recommended)',
+                'us-east-2' => 'us-east-2  —  Ohio',
+                'us-west-1' => 'us-west-1  —  N. California',
+                'us-west-2' => 'us-west-2  —  Oregon',
+                'eu-west-1' => 'eu-west-1  —  Ireland',
+                'eu-central-1' => 'eu-central-1  —  Frankfurt',
+                'ap-southeast-1' => 'ap-southeast-1  —  Singapore',
+                'ap-southeast-2' => 'ap-southeast-2  —  Sydney',
+                'ap-northeast-1' => 'ap-northeast-1  —  Tokyo',
+            ],
             default => [],
         };
     }
@@ -66,6 +77,7 @@ enum CloudProvider: string
         return match ($this) {
             self::DO => 'nyc1',
             self::GCP => 'us-central1',
+            self::AWS => 'us-east-1',
             default => 'us-central1',
         };
     }
@@ -88,6 +100,13 @@ enum CloudProvider: string
                 'e2-standard-2' => 'e2-standard-2 — 2 vCPU,  8 GB RAM  (~$49/mo)',
                 'e2-standard-4' => 'e2-standard-4 — 4 vCPU, 16 GB RAM  (~$97/mo)',
             ],
+            self::AWS => [
+                't3.micro' => 't3.micro    —  2 vCPU,  1 GB RAM  (Free Tier eligible)',
+                't3.small' => 't3.small    —  2 vCPU,  2 GB RAM  (~$15/mo)',
+                't3.medium' => 't3.medium   —  2 vCPU,  4 GB RAM  (~$30/mo, Recommended)',
+                't3.large' => 't3.large    —  2 vCPU,  8 GB RAM  (~$60/mo)',
+                't3.xlarge' => 't3.xlarge   —  4 vCPU, 16 GB RAM  (~$120/mo)',
+            ],
             default => [],
         };
     }
@@ -97,6 +116,7 @@ enum CloudProvider: string
         return match ($this) {
             self::DO => 's-1vcpu-1gb',
             self::GCP => 'e2-medium',
+            self::AWS => 't3.medium',
             default => 'e2-medium',
         };
     }
@@ -117,6 +137,12 @@ enum CloudProvider: string
                 'e2-standard-2' => 'e2-standard-2 — 2 vCPU,  8 GB RAM  (~$49/mo per node)',
                 'e2-standard-4' => 'e2-standard-4 — 4 vCPU, 16 GB RAM  (~$97/mo per node)',
             ],
+            self::AWS => [
+                't3.medium' => 't3.medium   —  2 vCPU,  4 GB RAM  (~$30/mo per node)',
+                't3.large' => 't3.large    —  2 vCPU,  8 GB RAM  (~$60/mo per node)',
+                'm5.large' => 'm5.large    —  2 vCPU,  8 GB RAM  (~$70/mo per node)',
+                'm5.xlarge' => 'm5.xlarge   —  4 vCPU, 16 GB RAM  (~$140/mo per node)',
+            ],
             default => [],
         };
     }
@@ -126,6 +152,7 @@ enum CloudProvider: string
         return match ($this) {
             self::DO => 's-1vcpu-2gb',
             self::GCP => 'e2-medium',
+            self::AWS => 't3.medium',
             default => 'e2-medium',
         };
     }
@@ -136,6 +163,7 @@ enum CloudProvider: string
         return [
             self::DO->value => self::DO->label(),
             self::GCP->value => self::GCP->label(),
+            self::AWS->value => self::AWS->label(),
         ];
     }
     case DO = 'do';

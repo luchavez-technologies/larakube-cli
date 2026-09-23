@@ -335,6 +335,23 @@ HCL;
             }
         }
 
+        if ($profile = $this->getAwsProfile()) {
+            $env['AWS_PROFILE'] = $profile;
+        }
+
+        if ($accessKeyId = $this->getAwsAccessKeyId()) {
+            $env['AWS_ACCESS_KEY_ID'] = $accessKeyId;
+        }
+
+        if ($secretAccessKey = $this->getAwsSecretAccessKey()) {
+            $env['AWS_SECRET_ACCESS_KEY'] = $secretAccessKey;
+        }
+
+        if ($awsRegion = $this->getAwsRegion()) {
+            $env['AWS_DEFAULT_REGION'] = $awsRegion;
+            $env['AWS_REGION'] = $awsRegion;
+        }
+
         $encryption = $this->tofuEncryptionEnv($stack, $isOpenTofu);
         if ($encryption !== '') {
             $env['TF_ENCRYPTION'] = $encryption;

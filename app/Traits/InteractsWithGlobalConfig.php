@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\AiProvider;
+use App\Enums\CliTool;
 use App\State;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Validator;
@@ -27,19 +28,9 @@ trait InteractsWithGlobalConfig
 
     protected function getGhCommand(?string $workDir = null, bool $interactive = false): string
     {
-        // command -v uses the non-interactive shell PATH which may miss tools
-        // installed by Homebrew or similar. Check common locations as a fallback.
-        $candidates = array_filter([
-            trim(Process::run('command -v gh')->output()),
-            '/usr/local/bin/gh',
-            '/opt/homebrew/bin/gh',
-            '/home/linuxbrew/.linuxbrew/bin/gh',
-        ]);
-
-        foreach ($candidates as $path) {
-            if ($path !== '' && @is_executable($path)) {
-                return $path;
-            }
+        $resolved = CliTool::GH->resolveBinary();
+        if ($resolved !== null) {
+            return $resolved;
         }
 
         // Fall back to running gh inside a throw-away Docker container.
@@ -89,17 +80,9 @@ trait InteractsWithGlobalConfig
      */
     protected function getTeaCommand(bool $interactive = false, array $envNames = []): string
     {
-        $candidates = array_filter([
-            trim(Process::run('command -v tea')->output()),
-            '/usr/local/bin/tea',
-            '/opt/homebrew/bin/tea',
-            '/home/linuxbrew/.linuxbrew/bin/tea',
-        ]);
-
-        foreach ($candidates as $path) {
-            if ($path !== '' && @is_executable($path)) {
-                return $path;
-            }
+        $resolved = CliTool::TEA->resolveBinary();
+        if ($resolved !== null) {
+            return $resolved;
         }
 
         $configPath = $this->getTeaConfigPath();
@@ -254,6 +237,90 @@ trait InteractsWithGlobalConfig
     {
         $config = $this->getGlobalConfig();
         $config->setGcpCredentials($credentials);
+        $config->save();
+    }
+
+    protected function getAwsProfile(): ?string
+    {
+        if (State::$transientAwsProfile) {
+            return State::$transientAwsProfile;
+        }
+
+        $envProfile = getenv('AWS_PROFILE');
+        if ($envProfile) {
+            return trim($envProfile);
+        }
+
+        return $this->getGlobalConfig()->getAwsProfile();
+    }
+
+    protected function setAwsProfile(?string $profile): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->setAwsProfile($profile);
+        $config->save();
+    }
+
+    protected function getAwsRegion(): ?string
+    {
+        if (State::$transientAwsRegion) {
+            return State::$transientAwsRegion;
+        }
+
+        $envRegion = getenv('AWS_DEFAULT_REGION') ?: getenv('AWS_REGION');
+        if ($envRegion) {
+            return trim($envRegion);
+        }
+
+        return $this->getGlobalConfig()->getAwsRegion();
+    }
+
+    protected function setAwsRegion(?string $region): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->setAwsRegion($region);
+        $config->save();
+    }
+
+    protected function getAwsAccessKeyId(): ?string
+    {
+        if (State::$transientAwsAccessKeyId) {
+            return State::$transientAwsAccessKeyId;
+        }
+
+        $envKey = getenv('AWS_ACCESS_KEY_ID');
+        if ($envKey) {
+            return trim($envKey);
+        }
+
+        return $this->getGlobalConfig()->getAwsAccessKeyId();
+    }
+
+    protected function setAwsAccessKeyId(?string $keyId): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->setAwsAccessKeyId($keyId);
+        $config->save();
+    }
+
+    protected function getAwsSecretAccessKey(): ?string
+    {
+        if (State::$transientAwsSecretAccessKey) {
+            return State::$transientAwsSecretAccessKey;
+        }
+
+        $envSecret = getenv('AWS_SECRET_ACCESS_KEY');
+        if ($envSecret) {
+            return trim($envSecret);
+        }
+
+        return $this->getGlobalConfig()->getAwsSecretAccessKey();
+    }
+
+    protected function setAwsSecretAccessKey(?string $secret): void
+    {
+        $config = $this->getGlobalConfig();
+        $config->setAwsSecretAccessKey($secret);
         $config->save();
     }
 

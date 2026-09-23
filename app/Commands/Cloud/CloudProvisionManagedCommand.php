@@ -16,11 +16,11 @@ class CloudProvisionManagedCommand extends Command
 
     protected $signature = 'cloud:init:managed
         {environment? : Inside a project, the environment to bind to this cluster.}
-        {--provider= : Managed provider (gcp, do)}
+        {--provider= : Managed provider (gcp, do, aws)}
         {--context= : Target a specific kube-context}
         {--email= : Email for Let\'s Encrypt certificate notices}';
 
-    protected $description = 'Provision Traefik and Let\'s Encrypt TLS on a managed Kubernetes cluster (GKE, DOKS, etc.)';
+    protected $description = 'Provision Traefik and Let\'s Encrypt TLS on a managed Kubernetes cluster (GKE, DOKS, EKS, etc.)';
 
     public function handle(): int
     {
@@ -40,6 +40,8 @@ class CloudProvisionManagedCommand extends Command
                 $provider = 'gcp';
             } elseif (str_starts_with($context, 'do-')) {
                 $provider = 'do';
+            } elseif (str_starts_with($context, 'arn:aws:eks:')) {
+                $provider = 'aws';
             } else {
                 $provider = select(
                     label: 'Which managed Kubernetes provider is this cluster on?',
@@ -51,6 +53,7 @@ class CloudProvisionManagedCommand extends Command
 
         $command = match ($provider) {
             'gcp' => 'cloud:init:gke',
+            'aws' => 'cloud:init:eks',
             default => 'cloud:init:doks',
         };
 

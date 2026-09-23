@@ -75,19 +75,29 @@ resource "google_compute_firewall" "larakube_ingress" {
     ports    = ["22"]
   }
 
-  # HTTP / HTTPS — open for Traefik + Let's Encrypt HTTP-01 challenges.
-  allow {
-    protocol = "tcp"
-    ports    = ["80", "443"]
-  }
-
   # k3s API (6443) — restricted to admin CIDR when provided, else open.
   allow {
     protocol = "tcp"
     ports    = ["6443"]
   }
 
-  source_ranges = [{!! $sshSources !!}]
+  source_ranges = [{!! trim(str_replace([', "::/0"', '"::/0",', '"::/0"', '[', ']'], '', $sshSources)) !!}]
+  target_tags   = ["larakube"]
+
+  depends_on = [google_project_service.compute]
+}
+
+# HTTP / HTTPS (80, 443) — open for Traefik ingress + ACME HTTP-01 challenges.
+resource "google_compute_firewall" "larakube_http" {
+  name    = "{{ $dropletName }}-fw-http"
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
   target_tags   = ["larakube"]
 
   depends_on = [google_project_service.compute]

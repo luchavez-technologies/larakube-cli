@@ -9,7 +9,9 @@ use App\Enums\ManagedProvider;
 use App\Services\Kubectl;
 use App\State;
 use App\Traits\EmitsJsonOutput;
+use App\Traits\InteractsWithAws;
 use App\Traits\InteractsWithEnvironments;
+use App\Traits\InteractsWithGcp;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -35,20 +37,21 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 class CloudCreateCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithEnvironments, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
+    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
 
     /** Available providers we can provision. */
     private const PROVIDERS = [
         'do' => 'DigitalOcean',
         'gcp' => 'Google Cloud Platform',
+        'aws' => 'Amazon Web Services',
     ];
 
     protected $signature = 'cloud:create
-        {--provider= : Cloud provider slug (do, gcp, …). Default or prompted.}
+        {--provider= : Cloud provider slug (do, gcp, aws, …). Default or prompted.}
         {--vps : Create a VPS / droplet (SSH + k3s, single-node)}
         {--managed : Create a managed Kubernetes cluster}
         {--stack-name= : Stack name (skips the prompt; slugified)}
-        {--region= : Provider region slug (e.g. nyc1, us-central1)}
+        {--region= : Provider region slug (e.g. nyc1, us-central1, us-east-1)}
         {--zone= : GCP Compute zone (defaults to <region>-a)}
         {--size= : Droplet/node size slug}
         {--key= : Path to the SSH private key (VPS)}
@@ -59,7 +62,11 @@ class CloudCreateCommand extends Command
         {--do-token= : DigitalOcean API token for this run only (never persisted)}
         {--gcp-project= : Google Cloud Project ID for this run only}
         {--gcp-credentials= : Path to Google Cloud Service Account JSON key for this run only}
-        {--email= : Let\'s Encrypt email, forwarded to cloud:init:doks / cloud:init:gke (managed)}
+        {--aws-profile= : AWS CLI profile name for this run only}
+        {--aws-region= : AWS region for this run only}
+        {--aws-access-key-id= : AWS Access Key ID for this run only}
+        {--aws-secret-access-key= : AWS Secret Access Key for this run only}
+        {--email= : Let\'s Encrypt email, forwarded to cloud:init:doks / cloud:init:gke / cloud:init:eks (managed)}
         {--json : Emit one machine-readable JSON result on stdout}
         {environment? : Inside a project, the environment to bind to this stack. Outside one, used as the stack name.}';
 
@@ -239,85 +246,9 @@ class CloudCreateCommand extends Command
         return match ($provider) {
             'do' => $this->ensureDoToken(),
             'gcp' => $this->ensureGcpCredentials(),
+            'aws' => $this->ensureAwsCredentials(),
             default => true,
         };
-    }
-
-    /** Prompt for + persist GCP project ID and verify authentication. */
-    protected function ensureGcpCredentials(): bool
-    {
-        if ($flagProject = $this->flag('gcp-project')) {
-            State::$transientGcpProject = trim($flagProject);
-        }
-
-        if ($flagCreds = $this->flag('gcp-credentials')) {
-            $path = str_replace('~', home_path(), trim($flagCreds));
-            if (! file_exists($path)) {
-                $this->laraKubeError("GCP credentials file not found at: {$path}");
-
-                return false;
-            }
-            State::$transientGcpCredentials = $path;
-            $this->registerSecret(State::$transientGcpCredentials);
-        }
-
-        $projectId = $this->getGcpProjectId();
-        if (! $projectId) {
-            if ($this->flag('no-interaction')) {
-                $this->laraKubeError('No Google Cloud Project ID found. Pass --gcp-project= or set GOOGLE_PROJECT when running non-interactively.');
-
-                return false;
-            }
-
-            $this->laraKubeWarn('No Google Cloud Project ID found.');
-            $projectId = text(
-                label: 'Google Cloud Project ID',
-                placeholder: 'my-project-12345',
-                required: true,
-                hint: 'Find this in your Google Cloud Console dashboard.',
-            );
-            $this->setGcpProjectId($projectId);
-            $this->laraKubeInfo('Saved GCP project ID to your global LaraKube config.');
-        }
-
-        $credentials = $this->getGcpCredentials();
-        if (! $credentials) {
-            $gcloudAuthed = Process::run('gcloud auth print-access-token 2>/dev/null')->successful();
-            if ($gcloudAuthed) {
-                $this->line('  <fg=green>✓</> <fg=gray>Detected active authentication via local</> <fg=cyan>gcloud</> <fg=gray>CLI.</>');
-
-                return true;
-            }
-
-            if ($this->flag('no-interaction')) {
-                $this->laraKubeError('No GCP credentials detected. Pass --gcp-credentials= or authenticate via `gcloud auth application-default login`.');
-
-                return false;
-            }
-
-            $this->newLine();
-            $this->laraKubeWarn('No active gcloud login or GCP service account credentials found.');
-            $this->line('  <fg=gray>Options: (1) Run `gcloud auth application-default login` in another terminal, or</>');
-            $this->line('  <fg=gray>         (2) Provide a path to a downloaded Service Account JSON key.</>');
-            $credsPath = text(
-                label: 'Path to Service Account JSON key (or leave blank if using default credentials)',
-                required: false,
-                hint: 'Leave blank if you logged in via gcloud auth application-default login.',
-            );
-
-            if ($credsPath !== '') {
-                $resolvedPath = str_replace('~', home_path(), trim($credsPath));
-                if (! file_exists($resolvedPath)) {
-                    $this->laraKubeError("GCP credentials file not found at: {$resolvedPath}");
-
-                    return false;
-                }
-                $this->setGcpCredentials($resolvedPath);
-                $this->laraKubeInfo('Saved GCP credentials path to your global LaraKube config.');
-            }
-        }
-
-        return true;
     }
 
     protected function promptRegion(string $provider = 'do'): string
@@ -346,7 +277,7 @@ class CloudCreateCommand extends Command
         $options = $kind === 'vps' ? $cloud->vpsSizes() : $cloud->managedSizes();
         $default = $kind === 'vps' ? $cloud->defaultVpsSize() : $cloud->defaultManagedSize();
         $label = $kind === 'vps'
-            ? ($cloud === CloudProvider::GCP ? 'Machine type' : 'Droplet size')
+            ? ($cloud === CloudProvider::GCP || $cloud === CloudProvider::AWS ? 'Machine type' : 'Droplet size')
             : 'Node size';
 
         return select(
@@ -433,15 +364,12 @@ class CloudCreateCommand extends Command
             return null;
         }
 
-        // Prompt unless a default is set globally.
         $default = $this->getDefaultCloudProvider();
-        if ($default && isset(self::PROVIDERS[$default]) && confirm("Use {$default} (".self::PROVIDERS[$default].') as the provider?', true)) {
-            return $default;
-        }
 
         return select(
             label: 'Which cloud provider?',
-            options: collect(self::PROVIDERS)->map(fn (string $label, string $slug) => [$slug => $label])->collapse()->all(),
+            options: self::PROVIDERS,
+            default: isset(self::PROVIDERS[$default]) ? $default : 'do',
         );
     }
 
@@ -560,7 +488,11 @@ class CloudCreateCommand extends Command
         }
 
         // Restrict SSH + the k3s API to the admin CIDR when given; else open.
-        $sources = $adminCidr ? '"'.$adminCidr.'"' : '"0.0.0.0/0", "::/0"';
+        // Google Cloud and AWS security groups do not permit mixing IPv4 and IPv6 in the same CIDR array.
+        $sources = match ($provider) {
+            'gcp', 'aws' => $adminCidr ? '"'.$adminCidr.'"' : '"0.0.0.0/0"',
+            default => $adminCidr ? '"'.$adminCidr.'"' : '"0.0.0.0/0", "::/0"',
+        };
 
         $hcl = view("tofu.{$provider}.vps", [
             'region' => $region,
@@ -572,10 +504,15 @@ class CloudCreateCommand extends Command
             'keyFingerprint' => $fingerprint,
             'sshSources' => $sources,
             'apiSources' => $sources,
+            'adminCidr' => $adminCidr,
         ])->render();
         $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
-        $serverLabel = $provider === 'gcp' ? 'VM instance' : 'droplet';
+        $serverLabel = match ($provider) {
+            'gcp' => 'VM instance',
+            'aws' => 'EC2 instance',
+            default => 'droplet',
+        };
         if (! $this->applyStack($bin, $stackName, "{$serverLabel} '{$stackName}' in {$region} ({$size})", $provider)) {
             return 1;
         }
@@ -656,7 +593,11 @@ class CloudCreateCommand extends Command
         ])->render();
         $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
-        $clusterLabel = $provider === 'gcp' ? 'GKE cluster' : 'DOKS cluster';
+        $clusterLabel = match ($provider) {
+            'gcp' => 'GKE cluster',
+            'aws' => 'EKS cluster',
+            default => 'DOKS cluster',
+        };
         if (! $this->applyStack($bin, $stackName, "{$clusterLabel} '{$stackName}' in {$region} ({$nodeCount}× {$size})", $provider)) {
             return 1;
         }
@@ -676,7 +617,11 @@ class CloudCreateCommand extends Command
         // Traefik + Let's Encrypt via the managed flow (idempotent).
         // --no-interaction propagates to the child automatically; --email doesn't.
         $this->newLine();
-        $initCommand = $provider === 'gcp' ? 'cloud:init:gke' : 'cloud:init:doks';
+        $initCommand = match ($provider) {
+            'gcp' => 'cloud:init:gke',
+            'aws' => 'cloud:init:eks',
+            default => 'cloud:init:doks',
+        };
         $this->laraKubeInfo("Installing Traefik + Let's Encrypt via {$initCommand}...");
         $doksArgs = ['--context' => $context];
         if ($email = $this->flag('email')) {
@@ -685,6 +630,9 @@ class CloudCreateCommand extends Command
 
         if ($provider === 'gcp' && $projectId = $this->getGcpProjectId()) {
             Process::run("gcloud container clusters get-credentials {$stackName} --zone {$zone} --project {$projectId} 2>/dev/null");
+        }
+        if ($provider === 'aws') {
+            Process::run("aws eks update-kubeconfig --name {$stackName} --region {$region} 2>/dev/null");
         }
 
         $this->call($initCommand, $doksArgs);

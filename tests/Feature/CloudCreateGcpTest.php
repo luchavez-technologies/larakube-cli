@@ -3,8 +3,11 @@
 use App\Commands\Cloud\CloudCreateCommand;
 use App\Data\GlobalConfigData;
 use App\State;
+use Illuminate\Console\OutputStyle;
+use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
 use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 beforeEach(function (): void {
     Prompt::interactive(false);
@@ -26,11 +29,15 @@ function gcpFlagRunner(array $options = []): CloudCreateCommand
 
         public function line($string, $style = null, $verbosity = null) {}
 
-        public function newLine($count = 1) {}
+        public function newLine($count = 1)
+        {
+            return $this;
+        }
 
         public function bindOptions(array $options): void
         {
             $this->input = new ArrayInput($options, $this->getDefinition());
+            $this->output = new OutputStyle($this->input, new BufferedOutput);
         }
 
         public function gcpCredentials(): bool
@@ -92,8 +99,8 @@ test('invalid --gcp-credentials file path fails clearly', function (): void {
         '--gcp-credentials' => '/path/to/nonexistent/key.json',
     ]);
 
-    expect($runner->gcpCredentials())->toBeFalse();
-    expect(State::$lastError)->toContain('GCP credentials file not found');
+    expect($runner->gcpCredentials())->toBeFalse()
+        ->and(State::$lastError)->toContain('GCP credentials file not found');
 });
 
 test('GCP region and size prompts default properly', function (): void {
@@ -124,14 +131,16 @@ test('GCP VPS tofu template renders required compute resources and metadata', fu
         'dropletName' => 'larakube-vps-test',
         'size' => 'e2-medium',
         'sshPubKey' => 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGcpTestKey',
-        'sshSources' => '["0.0.0.0/0"]',
-        'apiSources' => '["0.0.0.0/0"]',
+        'sshSources' => '"0.0.0.0/0", "::/0"',
+        'apiSources' => '"0.0.0.0/0", "::/0"',
     ])->render();
 
     expect($rendered)->toContain('resource "google_compute_instance" "larakube"')
         ->and($rendered)->toContain('machine_type = "e2-medium"')
         ->and($rendered)->toContain('enable-oslogin = "FALSE"')
-        ->and($rendered)->toContain('resource "google_compute_firewall" "larakube_ingress"');
+        ->and($rendered)->toContain('resource "google_compute_firewall" "larakube_ingress"')
+        ->and($rendered)->toContain('resource "google_compute_firewall" "larakube_http"')
+        ->and($rendered)->not->toContain('::/0');
 });
 
 test('GCP GKE managed tofu template renders cluster with deletion_protection disabled', function (): void {
@@ -156,4 +165,137 @@ test('cloud:scale command accepts GCP project and credentials options', function
 
     expect($definition->hasOption('gcp-project'))->toBeTrue()
         ->and($definition->hasOption('gcp-credentials'))->toBeTrue();
+});
+
+test('ensureGcpCredentials detects active authentication from gcloud', function (): void {
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*gcloud auth print-access-token*' => Process::result('ya29.fake-token'),
+    ]);
+
+    $runner = gcpFlagRunner([
+        '--provider' => 'gcp',
+        '--gcp-project' => 'my-detected-project',
+    ]);
+
+    expect($runner->gcpCredentials())->toBeTrue();
+});
+
+test('interactive ensureGcpCredentials lists projects and selects project', function (): void {
+    Prompt::interactive(true);
+    Prompt::fake([Key::ENTER]);
+
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*gcloud auth print-access-token*' => Process::result('fake-token'),
+        '*gcloud config get-value project*' => Process::result('p1'),
+        '*gcloud projects list*' => Process::result(json_encode([
+            ['projectId' => 'p1', 'name' => 'Project One'],
+            ['projectId' => 'p2', 'name' => 'Project Two'],
+        ])),
+    ]);
+
+    $runner = gcpFlagRunner(['--provider' => 'gcp']);
+    $success = $runner->gcpCredentials();
+
+    expect($success)->toBeTrue()
+        ->and($runner->fakeGlobalConfig->getGcpProjectId())->toBe('p1');
+});
+
+test('interactive ensureGcpCredentials allows manual entry when custom is selected', function (): void {
+    Prompt::interactive(true);
+    // Project list has 1 item, so __custom__ is 2 down arrows away
+    Prompt::fake([
+        Key::DOWN, // __create__
+        Key::DOWN, // __custom__
+        Key::ENTER,
+        'm', 'y', '-', 'm', 'a', 'n', 'u', 'a', 'l', '-', 'i', 'd',
+        Key::ENTER,
+    ]);
+
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*gcloud auth print-access-token*' => Process::result('fake-token'),
+        '*gcloud config get-value project*' => Process::result(''),
+        '*gcloud projects list*' => Process::result(json_encode([
+            ['projectId' => 'p1', 'name' => 'Project One'],
+        ])),
+    ]);
+
+    $runner = gcpFlagRunner(['--provider' => 'gcp']);
+    $success = $runner->gcpCredentials();
+
+    expect($success)->toBeTrue()
+        ->and($runner->fakeGlobalConfig->getGcpProjectId())->toBe('my-manual-id');
+});
+
+test('interactive ensureGcpCredentials creates new project, links billing, and enables APIs', function (): void {
+    Prompt::interactive(true);
+    // Project list has 1 item, __create__ is 1 down arrow away
+    Prompt::fake([
+        Key::DOWN, // __create__
+        Key::ENTER,
+        'L', 'a', 'r', 'a', 'K', 'u', 'b', 'e', ' ', 'A', 'p', 'p', // project name
+        Key::ENTER,
+        Key::ENTER, // accept default generated slug project ID
+        Key::ENTER, // confirm linking billing account (default: true)
+    ]);
+
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*gcloud auth print-access-token*' => Process::result('fake-token'),
+        '*gcloud config get-value project*' => Process::result('p1'),
+        '*gcloud projects list*' => Process::result(json_encode([
+            ['projectId' => 'p1', 'name' => 'Project One'],
+        ])),
+        '*gcloud projects create*' => Process::result(''),
+        '*gcloud config set project*' => Process::result(''),
+        '*gcloud billing accounts list*' => Process::result(json_encode([
+            ['name' => 'billingAccounts/012345-6789AB-CDEF01', 'displayName' => 'My Org Billing', 'open' => true],
+        ])),
+        '*gcloud billing projects link*' => Process::result(''),
+        '*gcloud services enable*' => Process::result(''),
+    ]);
+
+    $runner = gcpFlagRunner(['--provider' => 'gcp']);
+    $success = $runner->gcpCredentials();
+
+    expect($success)->toBeTrue();
+    Process::assertRan(fn ($process) => str_contains($process->command, 'projects create'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'billing projects link') && str_contains($process->command, '012345-6789AB-CDEF01'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'services enable'));
+});
+
+test('interactive ensureGcpCredentials handles multiple billing accounts', function (): void {
+    Prompt::interactive(true);
+    // Empty projects list -> __create__ is default!
+    Prompt::fake([
+        Key::ENTER, // select __create__ (it is the default when list is empty)
+        'T', 'e', 's', 't', ' ', 'A', 'p', 'p',
+        Key::ENTER,
+        Key::ENTER, // accept default generated project ID
+        Key::DOWN, // choose second billing account
+        Key::ENTER,
+    ]);
+
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*gcloud auth print-access-token*' => Process::result('fake-token'),
+        '*gcloud config get-value project*' => Process::result(''),
+        '*gcloud projects list*' => Process::result('[]'),
+        '*gcloud projects create*' => Process::result(''),
+        '*gcloud config set project*' => Process::result(''),
+        '*gcloud billing accounts list*' => Process::result(json_encode([
+            ['name' => 'billingAccounts/AAAAAA-111111-BBBBBB', 'displayName' => 'Account 1', 'open' => true],
+            ['name' => 'billingAccounts/CCCCCC-222222-DDDDDD', 'displayName' => 'Account 2', 'open' => true],
+        ])),
+        '*gcloud billing projects link*' => Process::result(''),
+        '*gcloud services enable*' => Process::result(''),
+    ]);
+
+    $runner = gcpFlagRunner(['--provider' => 'gcp']);
+    $success = $runner->gcpCredentials();
+
+    expect($success)->toBeTrue();
+    Process::assertRan(fn ($process) => str_contains($process->command, 'billing projects link') && str_contains($process->command, 'CCCCCC-222222-DDDDDD'));
 });

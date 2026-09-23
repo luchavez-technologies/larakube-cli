@@ -64,6 +64,14 @@ class GlobalConfigData extends Data
         public ?string $gcpProjectId = null,
         /** Google Cloud Platform credentials path or JSON (optional if using ADC). */
         public ?string $gcpCredentials = null,
+        /** AWS CLI profile name (optional). */
+        public ?string $awsProfile = null,
+        /** AWS default region (optional). */
+        public ?string $awsRegion = null,
+        /** AWS Access Key ID (optional). */
+        public ?string $awsAccessKeyId = null,
+        /** AWS Secret Access Key (optional). */
+        public ?string $awsSecretAccessKey = null,
     ) {}
 
     public function getEmail(): ?string
@@ -197,6 +205,46 @@ class GlobalConfigData extends Data
     public function setGcpCredentials(?string $credentials): void
     {
         $this->gcpCredentials = $credentials ? trim($credentials) : null;
+    }
+
+    public function getAwsProfile(): ?string
+    {
+        return $this->awsProfile;
+    }
+
+    public function setAwsProfile(?string $profile): void
+    {
+        $this->awsProfile = $profile ? trim($profile) : null;
+    }
+
+    public function getAwsRegion(): ?string
+    {
+        return $this->awsRegion;
+    }
+
+    public function setAwsRegion(?string $region): void
+    {
+        $this->awsRegion = $region ? trim($region) : null;
+    }
+
+    public function getAwsAccessKeyId(): ?string
+    {
+        return $this->awsAccessKeyId;
+    }
+
+    public function setAwsAccessKeyId(?string $keyId): void
+    {
+        $this->awsAccessKeyId = $keyId ? trim($keyId) : null;
+    }
+
+    public function getAwsSecretAccessKey(): ?string
+    {
+        return $this->awsSecretAccessKey;
+    }
+
+    public function setAwsSecretAccessKey(?string $secret): void
+    {
+        $this->awsSecretAccessKey = $secret ? trim($secret) : null;
     }
 
     /**

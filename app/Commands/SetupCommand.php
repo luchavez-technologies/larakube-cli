@@ -2,6 +2,8 @@
 
 namespace App\Commands;
 
+use App\Enums\CliTool;
+use App\Services\Kubectl;
 use App\Traits\CollectsReminders;
 use App\Traits\ConfiguresWslNetworking;
 use App\Traits\DetectsWsl;
@@ -15,6 +17,7 @@ use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
@@ -24,14 +27,21 @@ class SetupCommand extends Command
     use CollectsReminders, ConfiguresWslNetworking, DetectsWsl, InstallsK9s, InstallsPodman, InteractsWithOs, InteractsWithTrust, LaraKubeOutput, ResolvesContainerRuntime, StreamsProcessOutput;
 
     protected $signature = 'setup
-        {--runtime= : Container runtime to install without prompting (podman or docker)}';
+        {--runtime= : Container runtime to install without prompting (podman or docker)}
+        {--tool=* : Specific CLI tool(s) to install without running full setup (k9s, tofu, gcloud, gh, tea, aws)}
+        {--tools= : Comma-separated list of CLI tools to install without running full setup}';
 
-    protected $description = 'First-time setup: container runtime (Podman/Docker), k3s cluster, Traefik, dnsmasq, and k9s';
+    protected $description = 'First-time setup: container runtime (Podman/Docker), k3s cluster, Traefik, dnsmasq, and developer CLI tools';
 
     public function handle(): int
     {
         $this->renderHeader();
         $this->laraKubeInfo('LaraKube Environment Setup');
+
+        $requestedTools = $this->resolveRequestedTools();
+        if ($requestedTools !== null) {
+            return $this->handleTargetedToolInstalls($requestedTools);
+        }
 
         if (! $this->isLinux() && ! $this->isDarwin()) {
             $this->laraKubeError('larakube setup only runs on Linux, WSL2, and macOS.');
@@ -52,27 +62,41 @@ class SetupCommand extends Command
             // Step 1 — container runtime (Linux/WSL2 only). Rootless Podman is
             // preferred here — daemonless, no privileged socket, nothing to
             // `systemctl start` — with Docker Engine as the alternative.
-            if (! $this->ensureContainerRuntimeInstalled()) {
-                return 1;
+            if ($this->podmanIsFunctional()) {
+                $this->line('  <fg=green>✓</> Rootless Podman already installed and functional.');
+            } elseif ($this->dockerIsFunctional()) {
+                $this->line('  <fg=green>✓</> Docker Engine already installed and functional.');
+            } else {
+                if (! $this->ensureContainerRuntimeInstalled()) {
+                    return 1;
+                }
             }
 
             $this->newLine();
 
             // Step 2 — k3s cluster (Linux/WSL2 only; delegates entirely to cluster:setup)
-            $result = $this->call('cluster:setup');
+            if ($this->isClusterRunning()) {
+                $this->line('  <fg=green>✓</> Kubernetes cluster already running and reachable.');
+            } else {
+                $result = $this->call('cluster:setup');
 
-            if ($result !== 0) {
-                return $result;
+                if ($result !== 0) {
+                    return $result;
+                }
             }
 
             $this->newLine();
         }
 
         // Step 3 — Traefik ingress controller (delegates entirely to traefik:setup)
-        $result = $this->call('traefik:setup');
+        if ($this->isTraefikRunning()) {
+            $this->line('  <fg=green>✓</> Traefik ingress controller already installed.');
+        } else {
+            $result = $this->call('traefik:setup');
 
-        if ($result !== 0) {
-            return $result;
+            if ($result !== 0) {
+                return $result;
+            }
         }
 
         $this->newLine();
@@ -82,12 +106,18 @@ class SetupCommand extends Command
         // dnsmasq is inside the VM (invisible to the Windows browser) so this
         // is a no-op there — WSL2's real DNS problem is the Windows-side hosts
         // file instead, which `larakube up`/`larakube hosts` handles.
-        $this->setupDnsmasq();
+        if ($this->isWsl()) {
+            // WSL2 host resolution is handled Windows-side
+        } elseif ($this->isDnsmasqConfigured()) {
+            $this->line('  <fg=green>✓</> Wildcard DNS (dnsmasq) already configured.');
+        } else {
+            $this->setupDnsmasq();
+        }
 
         $this->newLine();
 
-        // Step 5 — k9s (terminal UI for browsing the cluster)
-        $this->ensureK9sInstalled();
+        // Step 5 — Developer CLI tools (k9s, tofu, gcloud, gh, tea)
+        $this->setupDeveloperTools();
 
         // Step 6 — WSL2 mirrored networking (WSL only; self-guards otherwise).
         // Gives the Windows browser a stable 127.0.0.1 to the cluster so the
@@ -339,12 +369,134 @@ class SetupCommand extends Command
 
     protected function ensureK9sInstalled(): void
     {
-        if ($this->resolveK9sBin() !== null) {
+        if (CliTool::K9S->isInstalled()) {
             $this->laraKubeInfo('k9s already installed.');
 
             return;
         }
 
         $this->installK9s();
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    protected function resolveRequestedTools(): ?array
+    {
+        $toolOption = $this->option('tool');
+        $toolsOption = $this->option('tools');
+
+        $tools = [];
+        if (! empty($toolOption)) {
+            $tools = array_merge($tools, (array) $toolOption);
+        }
+        if ($toolsOption) {
+            $tools = array_merge($tools, explode(',', (string) $toolsOption));
+        }
+
+        $tools = array_values(array_filter(array_map('trim', $tools)));
+
+        return empty($tools) ? null : $tools;
+    }
+
+    /**
+     * @param  list<string>  $slugs
+     */
+    protected function handleTargetedToolInstalls(array $slugs): int
+    {
+        $validTools = [];
+        $validToolNames = implode(', ', array_map(fn (CliTool $c) => $c->value, CliTool::cases()));
+
+        foreach ($slugs as $slug) {
+            $tool = CliTool::tryFrom(strtolower($slug));
+            if ($tool === null) {
+                $this->laraKubeError("Unknown tool '{$slug}'. Valid tools are: {$validToolNames}");
+
+                return 1;
+            }
+            $validTools[] = $tool;
+        }
+
+        foreach ($validTools as $tool) {
+            $this->laraKubeInfo("Configuring {$tool->label()}...");
+            if ($tool->isInstalled()) {
+                $binPath = $tool->resolveBinary() ?? $tool->binary();
+                $this->line("  <fg=green>✓</> Already installed at: {$binPath}");
+            } else {
+                $this->line("  Installing {$tool->label()}...");
+                $ok = $tool->install();
+                if (! $ok) {
+                    $this->laraKubeError("Failed to install {$tool->label()}.");
+
+                    return 1;
+                }
+                $this->line("  <fg=green>✓</> {$tool->label()} installed successfully.");
+            }
+
+            if ($tool === CliTool::GCLOUD || $tool === CliTool::AWS) {
+                $tool->ensureAuth(prompt: $this->input->isInteractive());
+            }
+        }
+
+        return 0;
+    }
+
+    protected function setupDeveloperTools(): void
+    {
+        $this->laraKubeInfo('Developer CLI Tools');
+
+        $options = [];
+        $defaultSelected = [];
+
+        foreach (CliTool::cases() as $tool) {
+            $status = $tool->isInstalled() ? ' [installed]' : '';
+            $options[$tool->value] = "{$tool->label()}{$status}";
+
+            if ($tool->isInstalled() || $tool->isDefault()) {
+                $defaultSelected[] = $tool->value;
+            }
+        }
+
+        $selected = multiselect(
+            label: 'Select developer CLI tools to install/verify:',
+            options: $options,
+            default: $defaultSelected,
+        );
+
+        foreach ($selected as $value) {
+            $tool = CliTool::from($value);
+            if ($tool->isInstalled()) {
+                $this->line("  <fg=green>✓</> {$tool->label()} already installed.");
+            } else {
+                $this->line("  Installing {$tool->label()}...");
+                $ok = $tool->install();
+                if (! $ok) {
+                    $this->laraKubeWarn("Could not install {$tool->label()}. You can install it manually or retry later.");
+                } else {
+                    $this->line("  <fg=green>✓</> {$tool->label()} installed successfully.");
+                }
+            }
+
+            if ($tool === CliTool::GCLOUD || $tool === CliTool::AWS) {
+                $tool->ensureAuth(prompt: $this->input->isInteractive());
+            }
+        }
+    }
+
+    protected function isClusterRunning(): bool
+    {
+        return Kubectl::forContext(null)->raw(['cluster-info', '--request-timeout=2s'])->ok;
+    }
+
+    protected function isTraefikRunning(): bool
+    {
+        $res = Kubectl::forContext(null)->raw(['get', 'svc', '-n', 'traefik', 'traefik', '-o', 'name']);
+        if ($res->ok && trim($res->output) !== '') {
+            return true;
+        }
+
+        $res2 = Kubectl::forContext(null)->raw(['get', 'svc', '-A', '-l', 'app.kubernetes.io/name=traefik', '-o', 'name']);
+
+        return $res2->ok && trim($res2->output) !== '';
     }
 }
