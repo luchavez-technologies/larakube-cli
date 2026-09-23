@@ -100,13 +100,20 @@ jobs:
           chmod +x artifacts/*
 
       - name: Publish Binaries to Forgejo Release
-        env:
-          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN || secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'canary' }}
-          RELEASE_NAME: ${{ github.ref_type == 'tag' && github.ref_name || 'Canary (Develop Branch)' }}
-          IS_PRERELEASE: ${{ github.ref_type != 'tag' }}
-          ARTIFACTS_DIR: artifacts
-        run: php scripts/publish-forgejo-release.php
+        uses: https://code.forgejo.org/actions/forgejo-release@v2
+        with:
+          direction: upload
+          url: ${{ github.server_url }}
+          repo: ${{ github.repository }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_type == 'tag' && github.ref_name || 'canary' }}
+          release-dir: artifacts
+          release-notes: |
+            LaraKube Standalone Binaries
+            Commit: ${{ github.sha }}
+            Version: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+            
+            Download the binary for your platform and move it to `/usr/local/bin/larakube`.
 
   tap:
     name: Update Homebrew Tap
