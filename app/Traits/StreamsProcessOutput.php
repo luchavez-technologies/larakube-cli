@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Facades\State;
 use Illuminate\Support\Facades\Process;
+use Symfony\Component\Process\Process as SymfonyProcess;
 
 /**
  * Shared by every trait that used to shell out via passthru() for a
@@ -41,5 +42,27 @@ trait StreamsProcessOutput
         return $process->run($command, function (string $type, string $output): void {
             State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
         })->exitCode();
+    }
+
+    /**
+     * Run a command that READS from the terminal — the auth code pasted into
+     * `gcloud auth login`, the keys `aws configure` asks for.
+     *
+     * runStreaming() cannot do these: its output callback forwards what the
+     * child writes but never hands over stdin, so an input prompt waits
+     * forever for something that never arrives. tty() gives the child our
+     * actual terminal.
+     *
+     * Symfony throws rather than degrading when there is no TTY to hand over
+     * (Windows, a pipe, CI), so fall back to streaming there and let the
+     * command fail on its own terms instead of on ours.
+     */
+    protected function runInteractive(string $command): int
+    {
+        if (! SymfonyProcess::isTtySupported()) {
+            return $this->runStreaming($command);
+        }
+
+        return Process::forever()->tty()->run($command)->exitCode();
     }
 }

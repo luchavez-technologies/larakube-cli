@@ -2,12 +2,15 @@
 
 namespace App\Enums;
 
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
 enum CliTool: string
 {
+    use StreamsProcessOutput;
+
     public function label(): string
     {
         return match ($this) {
@@ -161,6 +164,10 @@ enum CliTool: string
 
     /**
      * For tools that support browser/interactive login after installation (e.g. gcloud, aws).
+     *
+     * These read from the terminal, so they go through runInteractive()
+     * (tty()) rather than runStreaming(), whose output callback never attaches
+     * stdin.
      */
     public function ensureAuth(bool $prompt = true): bool
     {
@@ -179,9 +186,8 @@ enum CliTool: string
                 if (app()->runningUnitTests() || Process::isRecording()) {
                     return true;
                 }
-                passthru("{$bin} auth login --update-adc", $code);
 
-                return $code === 0;
+                return $this->runInteractive("{$bin} auth login --update-adc") === 0;
             }
 
             return false;
@@ -202,9 +208,8 @@ enum CliTool: string
                 if (app()->runningUnitTests() || Process::isRecording()) {
                     return true;
                 }
-                passthru("{$bin} configure", $code);
 
-                return $code === 0;
+                return $this->runInteractive("{$bin} configure") === 0;
             }
 
             return false;
@@ -214,71 +219,15 @@ enum CliTool: string
     }
 
     /**
-     * The command that installs the Google Cloud SDK from Google's own script.
-     *
-     * Split out from installGcloud() so it can be asserted without running an
-     * installer: the shape of this one string is the whole bug surface (see
-     * the -s note below), and passthru() is not fakeable.
+     * `bash -s --`, not `bash --`: without -s, bash reads the first argument
+     * after -- as the script FILENAME instead of taking the script from the
+     * pipe, so it died with "bash: --disable-prompts: No such file or
+     * directory" and never ran the installer. -s says "script is on stdin,
+     * the rest are positional arguments".
      */
-    public static function gcloudInstallCommand(string $installDir): string
+    protected function gcloudInstallCommand(string $installDir): string
     {
-        // `bash -s --`, not `bash --`: without -s, bash reads the first
-        // argument after -- as the script FILENAME instead of taking the
-        // script from the pipe, so it died with
-        // "bash: --disable-prompts: No such file or directory" and never ran
-        // the installer. -s says "script is on stdin, the rest are positional
-        // arguments".
         return 'curl -fsSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir='.escapeshellarg($installDir);
-    }
-
-    protected function installK9s(): bool
-    {
-        $version = 'v0.32.5';
-
-        if (PHP_OS_FAMILY === 'Darwin') {
-            if (trim(Process::run('command -v brew')->output()) === '') {
-                return false;
-            }
-
-            return Process::forever()->run('brew install k9s')->exitCode() === 0;
-        }
-
-        if (PHP_OS_FAMILY === 'Linux') {
-            $machine = php_uname('m');
-            $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
-            $binDir = home_path('.larakube/bin');
-            @mkdir($binDir, 0755, true);
-            $url = "https://github.com/derailed/k9s/releases/download/{$version}/k9s_linux_{$arch}.tar.gz";
-
-            $code = Process::forever()->run('curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' k9s')->exitCode();
-            if ($code === 0 && file_exists($binDir.'/k9s')) {
-                @chmod($binDir.'/k9s', 0755);
-
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    protected function installTofu(): bool
-    {
-        if (PHP_OS_FAMILY === 'Darwin') {
-            if (trim(Process::run('command -v brew')->output()) === '') {
-                return false;
-            }
-
-            return Process::forever()->run('brew install opentofu')->exitCode() === 0;
-        }
-
-        if (PHP_OS_FAMILY === 'Linux') {
-            $script = 'curl -fsSL https://get.opentofu.org/install-opentofu.sh -o /tmp/tofu-install.sh && chmod +x /tmp/tofu-install.sh && sudo /tmp/tofu-install.sh --install-method standalone; rm -f /tmp/tofu-install.sh';
-            passthru($script, $code);
-
-            return $code === 0;
-        }
-
-        return false;
     }
 
     protected function installGcloud(): bool
@@ -287,19 +236,19 @@ enum CliTool: string
             if (trim(Process::run('command -v brew')->output()) === '') {
                 // Fallback to official Google user-space script if brew is absent
                 $installDir = home_path();
-                passthru(self::gcloudInstallCommand($installDir), $code);
+                $code = $this->runStreaming($this->gcloudInstallCommand($installDir));
 
                 return $code === 0 && $this->isInstalled();
             }
 
-            passthru('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk', $code);
+            $code = $this->runStreaming('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk');
 
             return $code === 0 && $this->isInstalled();
         }
 
         if (PHP_OS_FAMILY === 'Linux') {
             $installDir = home_path();
-            passthru(self::gcloudInstallCommand($installDir), $code);
+            $code = $this->runStreaming($this->gcloudInstallCommand($installDir));
 
             return $code === 0 && $this->isInstalled();
         }

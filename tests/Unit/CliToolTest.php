@@ -72,9 +72,14 @@ test('the gcloud installer passes its flags to the piped script, not to bash', f
     // --disable-prompts instead of the piped script, so the install died with
     // "bash: --disable-prompts: No such file or directory" and gcloud was
     // never installed. -s is what says "the script is on stdin".
-    $command = CliTool::gcloudInstallCommand('/home/dev');
+    Process::fake([
+        'command -v gcloud' => Process::result('', exitCode: 1),
+        'command -v brew' => Process::result('', exitCode: 1),
+        '*' => Process::result(''),
+    ]);
 
-    expect($command)->toContain('| bash -s -- --disable-prompts')
-        ->and($command)->not->toContain('| bash -- ')
-        ->and($command)->toContain("--install-dir='/home/dev'");
+    CliTool::GCLOUD->install();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, '| bash -s -- --disable-prompts')
+        && ! str_contains($process->command, '| bash -- '));
 });
