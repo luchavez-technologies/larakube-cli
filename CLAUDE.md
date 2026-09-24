@@ -80,3 +80,19 @@ Key rules:
 - One test file per command/feature (ADR 0019 rule 9) — e.g. `mail:create` lives in `MailCreateCommandTest.php`, not folded into a catch-all `MailCommandsTest.php`. Exception: shared base-class/cross-cutting behavior tested once across many commands (`ToolRemoveCommandTest.php`, `WhitelabelInitCommandsTest.php`, `CommandSmokeTest.php`) legitimately lives in one file — that's the correct pattern for that kind of test, not scatter.
 - Fixture setup uses a plain top-of-file helper function (`function xFakes(): array { ... }`), not `beforeEach()` — this is the convention the large majority of the suite already follows. Helper function names must be globally unique across the whole suite (Pest loads every file's top-level functions into one shared namespace per process), so scope the name to the file, e.g. `mailCreateBaseFakes()` not `baseFakes()`.
 - Any `confirm()`/`text()`/`select()`/`multiselect()` a command's code path can reach during a `$this->artisan(...)` call needs a matching `->expectsConfirmation(...)`/`->expectsQuestion(...)`/`->expectsChoice(...)` in the test — `configurePrompts()` runs on every real command execution (including in tests) and always routes prompts through Laravel's own fallback (`$this->components->confirm()`/etc. on a Mockery-mocked `OutputStyle`), never real terminal rendering. An unstubbed prompt throws `Received Mockery_..., but no expectations were specified`. Match the prompt's `label:` text exactly (no suffix is added) and, for `expectsChoice`, the exact `options` array (label text, not just keys) — Mockery compares both. Order matters: stubs are consumed in the order the command asks them. If a command gates its own prompt behind a raw `stream_isatty(STDIN)` check (e.g. `confirmComponentRemoval()`-style guards), that prompt's presence depends on whether the *test runner* has a real TTY — pass `--force`/`--no-interaction` in the test instead of stubbing it, so the test is deterministic across environments. Tests that use Laravel Prompts' own `Prompt::fake([...keys])` + a manually-run `$command->handle()` (bypassing `$this->artisan()`) are unaffected by this as long as they never call `$command->run()` (which is what triggers `configurePrompts()`).
+
+## Conventional Commits & SemVer Standards (ADR 0025)
+
+All commit messages MUST follow Conventional Commits: `<type>(<scope>): <summary in imperative mood>`.
+- `feat(...)`: User-facing CLI command, flag, or capability. (Bumps **Minor** in pre-v1 `0.y.z`).
+- `fix(...)`: Bug fix in CLI command, manifest generation, or runtime wiring. (Bumps **Patch** in pre-v1).
+- `perf(...)`: Runtime or CLI execution performance optimization. (Bumps **Patch** in pre-v1).
+- `refactor(...)`: Internal code restructure without public API or behavioral change. (No release).
+- `test(...)`: Adding, updating, or fixing tests. (No release).
+- `docs(...)`: Updating ADRs, plans, or documentation. (No release).
+- `chore(...)` / `ci(...)`: Workflow files, build tooling, dependency updates. (No release).
+
+Rules for Breaking Changes & Versioning:
+- **Breaking Changes**: ONLY if deleting/renaming a command or flag, breaking `.larakube.json` schema, or invalidating active workloads. Syntax: `feat!:` or footer `BREAKING CHANGE: ...`.
+- **Pre-v1 (`0.y.z`)**: Breaking changes bump **Minor** (`0.34.0` ➔ `0.35.0`).
+- **Strict v1.0.0 Rule**: AI agents MUST NEVER bump to `v1.0.0` automatically. Graduating to `v1.0.0` requires explicit instruction from the user via `Release-As: 1.0.0` footer or a manual git tag.

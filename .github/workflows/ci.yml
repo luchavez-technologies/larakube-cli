@@ -65,17 +65,19 @@ jobs:
   publish:
     name: Build and Publish
     needs: test
-    # Only tag pushes (stable) and pushes to develop (canary) publish a
-    # release — main is a staging branch that only exists to be promoted to a
-    # tag, so a plain push there just runs the test job above and stops.
-    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref_name == 'develop')
+    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref_name == 'develop' || github.ref_name == 'main')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      is_stable: ${{ steps.release_target.outputs.publish == 'true' && steps.release_target.outputs.is_canary == 'false' }}
+      version: ${{ steps.release_target.outputs.tag }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -87,10 +89,50 @@ jobs:
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Calculate Next Version
+        id: version
+        if: github.ref_name == 'main'
+        run: php scripts/calculate-next-version.php
+
+      - name: Determine Release Target
+        id: release_target
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "publish=true" >> $GITHUB_OUTPUT
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "is_canary=false" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_name }}" = "develop" ]; then
+            echo "publish=true" >> $GITHUB_OUTPUT
+            echo "version=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "tag=canary" >> $GITHUB_OUTPUT
+            echo "is_canary=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            if [ "${{ steps.version.outputs.should_release }}" = "true" ]; then
+              echo "publish=true" >> $GITHUB_OUTPUT
+              echo "version=${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+              echo "tag=${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+              echo "is_canary=false" >> $GITHUB_OUTPUT
+            else
+              echo "publish=false" >> $GITHUB_OUTPUT
+              echo "is_canary=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Create and Push Git Tag
+        if: github.ref_name == 'main' && steps.release_target.outputs.publish == 'true'
+        run: |
+          git config user.name "Forgejo Actions"
+          git config user.email "actions@noreply.${{ github.server_url }}"
+          git tag -a "${{ steps.release_target.outputs.tag }}" -m "Release ${{ steps.release_target.outputs.tag }}"
+          git push origin "${{ steps.release_target.outputs.tag }}"
+
       - name: Build Standalone Binaries
-        run: ./build --all ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+        if: steps.release_target.outputs.publish == 'true'
+        run: ./build --all ${{ steps.release_target.outputs.version }}
 
       - name: Organize Artifacts
+        if: steps.release_target.outputs.publish == 'true'
         run: |
           mkdir -p artifacts
           cp builds/standalone/linux/linux-x64 artifacts/larakube-linux-x64
@@ -100,25 +142,21 @@ jobs:
           chmod +x artifacts/*
 
       - name: Publish Binaries to Forgejo Release
+        if: steps.release_target.outputs.publish == 'true'
         uses: https://code.forgejo.org/actions/forgejo-release@v2
         with:
           direction: upload
           url: ${{ github.server_url }}
           repo: ${{ github.repository }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_type == 'tag' && github.ref_name || 'canary' }}
+          tag: ${{ steps.release_target.outputs.tag }}
           release-dir: artifacts
-          release-notes: |
-            LaraKube Standalone Binaries
-            Commit: ${{ github.sha }}
-            Version: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
-            
-            Download the binary for your platform and move it to `/usr/local/bin/larakube`.
+          release-notes: ${{ steps.version.outputs.release_notes || format('LaraKube Standalone Binaries {0}', steps.release_target.outputs.tag) }}
 
   tap:
     name: Update Homebrew Tap
     needs: publish
-    if: github.ref_type == 'tag'
+    if: needs.publish.outputs.is_stable == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout CLI repo
@@ -135,7 +173,7 @@ jobs:
 
       - name: Download mac binaries and compute SHA256
         run: |
-          VERSION="${{ github.ref_name }}"
+          VERSION="${{ needs.publish.outputs.version }}"
           BASE_URL="${{ github.server_url || 'https://git.luchtech.dev' }}/${{ github.repository }}"
           ARM_URL="${BASE_URL}/releases/download/${VERSION}/larakube-mac-arm"
           X64_URL="${BASE_URL}/releases/download/${VERSION}/larakube-mac-x64"
@@ -159,7 +197,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/larakube.rb
           git diff --staged --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: update LaraKube CLI to ${{ github.ref_name }}"
+          git commit -m "chore: update LaraKube CLI to ${{ needs.publish.outputs.version }}"
           git push
 
   tap-canary:

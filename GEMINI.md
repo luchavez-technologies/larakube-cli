@@ -71,3 +71,18 @@ composer test      # Runs pest --parallel
 -   **Total Cleanup**: `larakube uninstall` performs a synchronized wipe of manifests, cluster resources, and Docker images.
 -   **Host PHP**: Local development runs directly on a PHP 8.4 install — see CONTRIBUTING.md.
 
+### 🏷️ Conventional Commits & SemVer Standards (ADR 0025)
+All commit messages MUST follow Conventional Commits: `<type>(<scope>): <summary in imperative mood>`.
+- `feat(...)`: User-facing CLI command, flag, or capability. (Bumps **Minor** in pre-v1 `0.y.z`).
+- `fix(...)`: Bug fix in CLI command, manifest generation, or runtime wiring. (Bumps **Patch** in pre-v1).
+- `perf(...)`: Runtime or CLI execution performance optimization. (Bumps **Patch** in pre-v1).
+- `refactor(...)`: Internal code restructure without public API or behavioral change. (No release).
+- `test(...)`: Adding, updating, or fixing tests. (No release).
+- `docs(...)`: Updating ADRs, plans, or documentation. (No release).
+- `chore(...)` / `ci(...)`: Workflow files, build tooling, dependency updates. (No release).
+
+Rules for Breaking Changes & Versioning:
+- **Breaking Changes**: ONLY if deleting/renaming a command or flag, breaking `.larakube.json` schema, or invalidating active workloads. Syntax: `feat!:` or footer `BREAKING CHANGE: ...`.
+- **Pre-v1 (`0.y.z`)**: Breaking changes bump **Minor** (`0.34.0` ➔ `0.35.0`).
+- **Strict v1.0.0 Rule**: AI agents MUST NEVER bump to `v1.0.0` automatically. Graduating to `v1.0.0` requires explicit instruction from the user via `Release-As: 1.0.0` footer or a manual git tag.
+

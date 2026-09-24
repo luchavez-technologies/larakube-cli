@@ -12,7 +12,7 @@ class UpdateCommand extends Command
 {
     use LaraKubeOutput;
 
-    protected $signature = 'update {--canary : Update to the latest canary (bleeding-edge, unstable) build from main}';
+    protected $signature = 'update {--canary : Update to the latest canary (bleeding-edge, unstable) build from develop}';
 
     protected $description = 'Update the LaraKube CLI to the latest version';
 
@@ -58,11 +58,14 @@ class UpdateCommand extends Command
 
         $this->laraKubeInfo('Checking for latest version...');
 
+        $baseUrl = $this->getForgejoBaseUrl();
+        $repo = $this->getForgejoRepository();
+
         $response = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])
-            ->get('https://api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest');
+            ->get("{$baseUrl}/api/v1/repos/{$repo}/releases/latest");
 
         if ($response->failed()) {
-            $this->laraKubeError('Failed to fetch the latest version from GitHub.');
+            $this->laraKubeError('Failed to fetch the latest version from Forgejo release server.');
 
             return 1;
         }
@@ -85,24 +88,27 @@ class UpdateCommand extends Command
     }
 
     /**
-     * Canary builds are the tip of main, republished under the same GitHub
-     * Release tag ("canary") on every push to main — there's no version to
+     * Canary builds are the tip of develop, republished under the same Forgejo
+     * Release tag ("canary") on every push to develop — there's no version to
      * diff against, so this always re-downloads and re-installs on
      * confirmation rather than checking whether anything changed first.
      */
     protected function updateToCanary(): int
     {
-        $this->laraKubeWarn('⚠ Canary builds are unstable, bleeding-edge builds from the tip of main — they may be broken.');
+        $this->laraKubeWarn('⚠ Canary builds are unstable, bleeding-edge builds from the tip of develop — they may be broken.');
 
         if (! $this->confirm('Update to the latest canary build now?', false)) {
             return 0;
         }
 
+        $baseUrl = $this->getForgejoBaseUrl();
+        $repo = $this->getForgejoRepository();
+
         $response = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])
-            ->get('https://api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary');
+            ->get("{$baseUrl}/api/v1/repos/{$repo}/releases/tags/canary");
 
         if ($response->failed()) {
-            $this->laraKubeError('Failed to fetch the canary release from GitHub.');
+            $this->laraKubeError('Failed to fetch the canary release from Forgejo release server.');
 
             return 1;
         }
@@ -128,8 +134,10 @@ class UpdateCommand extends Command
             return 1;
         }
 
+        $baseUrl = $this->getForgejoBaseUrl();
+        $repo = $this->getForgejoRepository();
         $binaryName = "larakube-$os-$arch";
-        $downloadUrl = "https://github.com/luchavez-technologies/larakube-cli/releases/download/$version/$binaryName";
+        $downloadUrl = "{$baseUrl}/{$repo}/releases/download/$version/$binaryName";
 
         $this->laraKubeInfo("Downloading $binaryName for $os ($arch)...");
 
@@ -187,5 +195,15 @@ class UpdateCommand extends Command
         $real = realpath($binaryPath) ?: $binaryPath;
 
         return str_contains($real, '/Cellar/');
+    }
+
+    protected function getForgejoBaseUrl(): string
+    {
+        return rtrim((string) (config('app.forgejo.url') ?: 'https://git.luchtech.dev'), '/');
+    }
+
+    protected function getForgejoRepository(): string
+    {
+        return (string) (config('app.forgejo.repository') ?: 'luchaveztech/larakube-cli');
     }
 }

@@ -40,3 +40,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0022](0022-environment-names-are-project-relative.md) | An environment name is project-relative; the cluster it means is recorded per project | Accepted |
 | [0023](0023-cluster-tool-volume-sizing-and-growth.md) | A volume's size is a request; growth requires an expandable StorageClass | Accepted |
 | [0024](0024-tool-remove-is-safe-by-default.md) | `*:remove` keeps data by default; `--purge` drops the database, never the bucket | Accepted |
+| [0025](0025-conventional-commits-and-automated-releases.md) | Conventional Commits, Semantic Versioning pre-v1, and automated releases | Accepted |

@@ -6,7 +6,7 @@ test('update command detects if version is up to date', function (): void {
     config(['app.version' => 'v0.2.0']);
 
     Http::fake([
-        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest' => Http::response([
+        'git.luchtech.dev/api/v1/repos/luchaveztech/larakube-cli/releases/latest' => Http::response([
             'tag_name' => 'v0.2.0',
         ], 200),
     ]);
@@ -22,7 +22,7 @@ test('update command handles update availability and cancellation', function ():
     config(['app.version' => 'v0.1.0']);
 
     Http::fake([
-        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest' => Http::response([
+        'git.luchtech.dev/api/v1/repos/luchaveztech/larakube-cli/releases/latest' => Http::response([
             'tag_name' => 'v0.2.0',
         ], 200),
     ]);
@@ -33,13 +33,13 @@ test('update command handles update availability and cancellation', function ():
         ->assertExitCode(0);
 });
 
-test('update command fails gracefully on GitHub API failure', function (): void {
+test('update command fails gracefully on release API failure', function (): void {
     Http::fake([
-        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest' => Http::response([], 500),
+        'git.luchtech.dev/api/v1/repos/luchaveztech/larakube-cli/releases/latest' => Http::response([], 500),
     ]);
 
     $this->artisan('update')
-        ->expectsOutputToContain('Failed to fetch the latest version from GitHub.')
+        ->expectsOutputToContain('Failed to fetch the latest version from Forgejo release server.')
         ->assertExitCode(1);
 });
 
@@ -51,21 +51,21 @@ test('update --canary warns and can be cancelled without ever hitting the networ
     Http::fake();
 
     $this->artisan('update --canary')
-        ->expectsOutputToContain('Canary builds are unstable, bleeding-edge builds from the tip of main')
+        ->expectsOutputToContain('Canary builds are unstable, bleeding-edge builds from the tip of develop')
         ->expectsConfirmation('Update to the latest canary build now?', 'no')
         ->assertExitCode(0);
 
     Http::assertNothingSent();
 });
 
-test('update --canary fails gracefully on GitHub API failure', function (): void {
+test('update --canary fails gracefully on release API failure', function (): void {
     Http::fake([
-        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary' => Http::response([], 500),
+        'git.luchtech.dev/api/v1/repos/luchaveztech/larakube-cli/releases/tags/canary' => Http::response([], 500),
     ]);
 
     $this->artisan('update --canary')
         ->expectsConfirmation('Update to the latest canary build now?', 'yes')
-        ->expectsOutputToContain('Failed to fetch the canary release from GitHub.')
+        ->expectsOutputToContain('Failed to fetch the canary release from Forgejo release server.')
         ->assertExitCode(1);
 });
 
