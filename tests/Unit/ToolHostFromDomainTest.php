@@ -1,5 +1,7 @@
 <?php
 
+use App\Data\InstanceData;
+use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Traits\ResolvesToolHost;
 
@@ -67,4 +69,46 @@ test('no service doubles its own prefix for any of its two readings', function (
             ->and($fromHost)->toBe("{$prefix}.example.com")
             ->and($fromHost)->not->toContain("{$prefix}.{$prefix}.");
     }
+});
+
+/** A resolver whose registry reports $registeredHost for every tool. */
+function domainResolverRegisteredAt(?string $registeredHost): object
+{
+    return new class($registeredHost)
+    {
+        use ResolvesToolHost;
+
+        public function __construct(private ?string $registeredHost) {}
+
+        /** @return list<InstanceData> */
+        public function getAllToolInstanceData(string $kubectl, ClusterTool $tool): array
+        {
+            return $this->registeredHost === null ? [] : [new InstanceData(host: $this->registeredHost)];
+        }
+
+        public function host(SharedClusterService $service, ClusterTool $tool, string $domain): string
+        {
+            return $this->hostFromDomainOption($service, $domain, '', $tool, 'kubectl');
+        }
+    };
+}
+
+test('a host the tool already serves is used as-is, whatever its prefix looks like', function (): void {
+    // monitor's prefix is `grafana`, so its own registered host does not start
+    // with it — prefixing turned `monitor:init --domain=monitor.luchtech.dev`
+    // into grafana.monitor.luchtech.dev and built a second, parallel instance
+    // with its own Deployments, Ingress and Commons database.
+    expect(domainResolverRegisteredAt('monitor.luchtech.dev')
+        ->host(SharedClusterService::GRAFANA, ClusterTool::MONITOR, 'monitor.luchtech.dev'))
+        ->toBe('monitor.luchtech.dev');
+});
+
+test('an unregistered domain is still treated as a base domain', function (): void {
+    // The registry check must not swallow the normal reading.
+    expect(domainResolverRegisteredAt('monitor.luchtech.dev')
+        ->host(SharedClusterService::GRAFANA, ClusterTool::MONITOR, 'example.com'))
+        ->toBe('grafana.example.com')
+        ->and(domainResolverRegisteredAt(null)
+            ->host(SharedClusterService::GRAFANA, ClusterTool::MONITOR, 'luchtech.dev'))
+        ->toBe('grafana.luchtech.dev');
 });

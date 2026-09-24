@@ -111,13 +111,26 @@ trait ResolvesToolHost
      * thing to pass, silently produced `secrets.secrets.luchtech.dev` and
      * deployed an ingress for a hostname that resolves nowhere.
      *
-     * Both readings are now accepted: a value already starting with this
-     * service's own prefix is treated as the full host and used verbatim. A
-     * pasted scheme, trailing slash or stray dots are tolerated too, because
+     * Three readings are now accepted. A value already starting with this
+     * service's own prefix is the full host, used verbatim. So is a host this
+     * tool is ALREADY REGISTERED at, even when it does not start with the
+     * prefix — `monitor:init --domain=monitor.luchtech.dev` names the host
+     * monitor is serving, but the prefix is `grafana`, so prefixing turned it
+     * into `grafana.monitor.luchtech.dev` and built a second, parallel
+     * instance: new Deployments, new Ingress, and a fresh Commons database.
+     * Passing a tool its own host has to be idempotent. Everything else is a
+     * base domain and gets the prefix.
+     *
+     * A pasted scheme, trailing slash or stray dots are tolerated too, because
      * every one of those is a thing an operator will paste from a browser bar.
      */
-    protected function hostFromDomainOption(SharedClusterService $service, string $domain, string $instance = ''): string
-    {
+    protected function hostFromDomainOption(
+        SharedClusterService $service,
+        string $domain,
+        string $instance = '',
+        ?ClusterTool $tool = null,
+        ?string $kubectl = null,
+    ): string {
         // Strip anything copied from a URL: scheme, path, port, surrounding dots.
         $domain = strtolower(trim($domain));
         $domain = (string) preg_replace('#^[a-z]+://#', '', $domain);
@@ -134,7 +147,30 @@ trait ResolvesToolHost
             return $domain;
         }
 
+        // A host this tool already answers on is a host, not a base domain,
+        // whatever its prefix looks like. The registry is the only thing that
+        // knows the difference.
+        if ($domain !== '' && $tool !== null && $kubectl !== null && $this->toolIsRegisteredAt($kubectl, $tool, $domain)) {
+            return $domain;
+        }
+
         return $service->hostFor($domain, $instance);
+    }
+
+    /** Whether $tool already has a registered instance serving exactly $host. */
+    protected function toolIsRegisteredAt(string $kubectl, ClusterTool $tool, string $host): bool
+    {
+        if (! method_exists($this, 'getAllToolInstanceData')) {
+            return false;
+        }
+
+        foreach ($this->getAllToolInstanceData($kubectl, $tool) as $instance) {
+            if (ToolInstance::normalizeHost((string) ($instance->host ?? '')) === $host) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -299,7 +335,7 @@ trait ResolvesToolHost
     ): string {
         $domain = (string) ($this->option('domain') ?? '');
         if ($domain !== '') {
-            return $this->hostFromDomainOption($service, $domain, $instance);
+            return $this->hostFromDomainOption($service, $domain, $instance, $tool, $kubectl);
         }
 
         if ($env === 'local') {
