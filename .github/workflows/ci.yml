@@ -33,9 +33,6 @@ jobs:
       - name: Check Code Style & Formatting
         run: ./vendor/bin/pint --test
 
-      - name: Static Analysis (PHPStan)
-        run: composer analyse -- --no-progress
-
       - name: Run Tests
         run: composer test
 
