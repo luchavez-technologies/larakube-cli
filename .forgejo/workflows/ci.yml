@@ -58,8 +58,40 @@ jobs:
       # the runner's cache survives a restart — see the cache config and /data
       # volume in resources/views/k8s/git/forgejo.blade.php. Its `.phpstan`
       # result cache step went with it — it cached a directory nothing wrote.
+      # 62 sequential registry round-trips, ~5.5 minutes — the slowest step in
+      # the pipeline once PHPStan left it. The answer only changes when a pinned
+      # tag changes, so run it when a manifest (or the checker) actually moved,
+      # and always on the stable release path. Not skipped wholesale on develop:
+      # that is where canary binaries come from, and a bad tag is a cluster
+      # OUTAGE at apply time, not a build failure — see the script's header.
+      - name: Detect manifest changes
+        id: manifests
+        run: |
+          set -e
+          BEFORE="${{ github.event.before }}"
+          ZERO="0000000000000000000000000000000000000000"
+          if [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "reason=stable release path" >> $GITHUB_OUTPUT
+            echo "changed=true" >> $GITHUB_OUTPUT
+          elif [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "reason=no comparable parent, checking to be safe" >> $GITHUB_OUTPUT
+            echo "changed=true" >> $GITHUB_OUTPUT
+          elif git diff --name-only "$BEFORE" "${{ github.sha }}" \
+               | grep -qE '^(resources/views/k8s/|scripts/check-images\.php$)'; then
+            echo "reason=a manifest or the checker changed" >> $GITHUB_OUTPUT
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "reason=no manifest touched" >> $GITHUB_OUTPUT
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Verify Container Images
+        if: steps.manifests.outputs.changed == 'true'
         run: php scripts/check-images.php
+
+      - name: Skipping image verification
+        if: steps.manifests.outputs.changed != 'true'
+        run: echo "Skipped — ${{ steps.manifests.outputs.reason }}."
 
       - name: Run Tests
         run: composer test
