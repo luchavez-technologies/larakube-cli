@@ -15,6 +15,7 @@
     $sshServiceName = $tool->name('ssh', 'server');
     $runnerDeploymentName = $tool->deployment('runner');
     $runnerConfigMapName = $tool->configMap('config', 'runner');
+    $runnerCacheVolumeName = $tool->volume('cache', 'runner');
     $labels = function (string $component) use ($tool) {
         $out = '';
         foreach ($tool->labels($component) as $key => $value) {
@@ -341,6 +342,9 @@ data:
         '    CONTAINER_HOST: "unix:///var/run/docker.sock"',
         '  labels:',
         ...array_map(fn (string $label) => "    - \"{$label}:docker://{$jobImage}\"", $runnerLabels),
+        'cache:',
+        '  enabled: true',
+        '  dir: "/data/.cache"',
         'container:',
         '  docker_host: "unix:///run/podman/podman.sock"',
         '  network: host',
@@ -348,6 +352,21 @@ data:
 @endphp
   config.yml: |
 {!! preg_replace('/^/m', '    ', $runnerConfig) !!}
+---
+{{-- The runner's cache server writes here. Durable on purpose: it holds the
+     `actions/cache` entries a pipeline restores between runs, and an emptyDir
+     drops them on every pod restart, which makes each run a cold one. --}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $runnerCacheVolumeName }}
+  labels:{!! $labels('runner') !!}
+  namespace: larakube-shared
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ $volumeSize($runnerCacheVolumeName, '2Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -472,6 +491,8 @@ spec:
               mountPath: /run/podman
             - name: runner-data
               mountPath: /data
+            - name: runner-cache
+              mountPath: /data/.cache
             - name: tmp
               mountPath: /tmp
             - name: runner-config
@@ -483,7 +504,8 @@ spec:
       volumes:
         {{-- emptyDir, not a PVC: job images land on the node's ephemeral disk and
              are re-pulled after a restart. Swap for a PVC if the cache churn or
-             the disk usage becomes a problem. --}}
+             the disk usage becomes a problem. The runner's own build cache IS a
+             PVC ({{ $runnerCacheVolumeName }}) — see its mount above. --}}
         - name: podman-sock
           emptyDir: {}
         - name: podman-data
@@ -494,6 +516,9 @@ spec:
             type: CharDevice
         - name: runner-data
           emptyDir: {}
+        - name: runner-cache
+          persistentVolumeClaim:
+            claimName: {{ $runnerCacheVolumeName }}
         - name: tmp
           emptyDir: {}
         - name: runner-config

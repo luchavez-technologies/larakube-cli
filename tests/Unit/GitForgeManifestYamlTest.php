@@ -98,6 +98,18 @@ test('runner config mounts the Podman socket into jobs and maps every label to t
 
     expect($runnerConfig['runner']['labels'])->toBe(['ubuntu-latest:docker://node:24-trixie', 'docker:docker://node:24-trixie'])
         ->and($runnerConfig['runner']['envs']['CONTAINER_HOST'])->toBe('unix:///var/run/docker.sock')
+        ->and($runnerConfig['cache']['enabled'])->toBeTrue()
+        ->and($runnerConfig['cache']['dir'])->toBe('/data/.cache')
+        // The cache dir has to be a real volume, or `actions/cache` entries
+        // die with the pod and every pipeline run is a cold one.
+        ->and(collect($documents)->firstWhere('metadata.name', 'forgejo-runner-cache-git-example-com')['kind'])
+        ->toBe('PersistentVolumeClaim')
+        ->and(collect($runner['spec']['template']['spec']['volumes'])
+            ->firstWhere('name', 'runner-cache')['persistentVolumeClaim']['claimName'])
+        ->toBe('forgejo-runner-cache-git-example-com')
+        ->and(collect($runner['spec']['template']['spec']['containers'])
+            ->firstWhere('name', 'runner')['volumeMounts'])
+        ->toContain(['name' => 'runner-cache', 'mountPath' => '/data/.cache'])
         ->and($runnerConfig['container']['docker_host'])->toBe('unix:///run/podman/podman.sock')
         ->and($runnerConfig['container']['network'])->toBe('host')
         ->and($forgejo['metadata']['labels']['larakube.io/tool'])->toBe('git')
