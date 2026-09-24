@@ -4,11 +4,12 @@ namespace App\Commands\Github;
 
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class GhCommand extends Command
 {
-    use InteractsWithGlobalConfig, LaraKubeOutput;
+    use InteractsWithGlobalConfig, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'gh {args?*}';
 
@@ -29,7 +30,7 @@ class GhCommand extends Command
         }
 
         $gh = $this->getGhCommand(interactive: true);
-        passthru("{$gh} {$passthrough}", $code);
+        $code = $this->runInteractive("{$gh} {$passthrough}");
 
         return $code;
     }

@@ -259,3 +259,30 @@ test('Secret values never go in argv: no hand-built patch secret or --from-liter
 
     expect($offenders)->toBeEmpty();
 });
+
+test('nothing in app/ shells out behind the Process facade', function (): void {
+    // passthru() and shell_exec() bypass Process::fake() entirely, so anything
+    // using them runs for real inside the suite — a sudo prompt that hangs it,
+    // a `docker run -it` that takes over the terminal. StreamsProcessOutput
+    // covers both shapes: runStreaming() for output, runInteractive() (tty)
+    // for commands that read from the terminal.
+    $offenders = [];
+
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path('app'))) as $file) {
+        if ($file->getExtension() !== 'php') {
+            continue;
+        }
+
+        foreach (file($file->getPathname()) ?: [] as $n => $line) {
+            $code = trim($line);
+            if (str_starts_with($code, '*') || str_starts_with($code, '//')) {
+                continue;
+            }
+            if (preg_match('/\b(passthru|shell_exec)\s*\(/', $code)) {
+                $offenders[] = str_replace(base_path().'/', '', $file->getPathname()).':'.($n + 1);
+            }
+        }
+    }
+
+    expect($offenders)->toBeEmpty();
+});

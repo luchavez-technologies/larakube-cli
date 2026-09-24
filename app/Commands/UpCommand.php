@@ -785,8 +785,8 @@ class UpCommand extends Command
         }
 
         // Pre-warm sudo so the credential prompt is interactive.
-        passthru('sudo -v');
-        if ((int) shell_exec('sudo -n true 2>/dev/null; echo $?') !== 0) {
+        $this->runInteractive('sudo -v');
+        if (! Process::run('sudo -n true')->successful()) {
             $this->laraKubeError('sudo authentication failed. Docker installation requires elevated privileges.');
 
             return 1;
@@ -846,7 +846,7 @@ BASH;
         file_put_contents($tmpFile, $installScript);
 
         $code = 0;
-        passthru('sudo bash '.escapeshellarg($tmpFile), $code);
+        $code = $this->runInteractive('sudo bash '.escapeshellarg($tmpFile));
         $temporaryDirectory->delete();
 
         if ($code !== 0) {

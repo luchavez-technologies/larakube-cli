@@ -9,6 +9,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromptsForHosts;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
@@ -21,7 +22,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class BundleUpdateCommand extends Command
 {
-    use GeneratesBundleSecrets, GeneratesOfflineCertificates, InteractsWithProjectConfig, InteractsWithRemoteDeploy, LaraKubeOutput, PromptsForHosts;
+    use GeneratesBundleSecrets, GeneratesOfflineCertificates, InteractsWithProjectConfig, InteractsWithRemoteDeploy, LaraKubeOutput, PromptsForHosts, StreamsProcessOutput;
 
     protected $signature = 'bundle:update
                             {--env= : Path to a custom .env file to merge with auto-generated secrets}';

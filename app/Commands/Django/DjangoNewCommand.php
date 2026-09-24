@@ -15,6 +15,7 @@ use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -27,7 +28,7 @@ use Random\RandomException;
 
 class DjangoNewCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.
@@ -210,7 +211,7 @@ class DjangoNewCommand extends Command
         $cmd = "$runtime run --rm -it -v $baseDir/$appName:/app -w /app --user root python:3.12-slim"
             ." sh -c 'pip install --no-cache-dir django && django-admin startproject config .'";
 
-        passthru($cmd);
+        $this->runInteractive($cmd);
 
         // Chown back to host user
         if (is_dir("$baseDir/$appName")) {

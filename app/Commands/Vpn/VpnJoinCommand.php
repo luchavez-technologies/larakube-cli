@@ -9,12 +9,13 @@ use App\Traits\InteractsWithOs;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class VpnJoinCommand extends Command
 {
-    use DetectsWsl, InteractsWithClusterContext, InteractsWithOs, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput;
+    use DetectsWsl, InteractsWithClusterContext, InteractsWithOs, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'vpn:join
         {environment=local : Environment whose NetBird VPN to join}
@@ -87,7 +88,7 @@ class VpnJoinCommand extends Command
             // Omitting --setup-key is what triggers NetBird's own automatic
             // browser-based SSO login when the management server has an
             // OIDC provider registered.
-            passthru('sudo netbird up --management-url https://'.escapeshellarg($host), $exitCode);
+            $exitCode = $this->runInteractive('sudo netbird up --management-url https://'.escapeshellarg($host));
         } else {
             $key = $this->fetchVpnSetupKey($kubectl, $ns);
             if ($key === null) {
@@ -98,7 +99,7 @@ class VpnJoinCommand extends Command
             $this->registerSecret($key);
 
             $this->laraKubeInfo("Joining NetBird VPN at {$host}...");
-            passthru('sudo netbird up --setup-key '.escapeshellarg($key)." --management-url https://{$host}", $exitCode);
+            $exitCode = $this->runInteractive('sudo netbird up --setup-key '.escapeshellarg($key)." --management-url https://{$host}");
         }
 
         if ($exitCode !== 0) {
@@ -118,12 +119,12 @@ class VpnJoinCommand extends Command
     /** Install the official NetBird client if it isn't already on PATH. */
     protected function installNetBirdClient(): bool
     {
-        if (trim((string) shell_exec('command -v netbird 2>/dev/null')) !== '') {
+        if (trim(Process::run('command -v netbird')->output()) !== '') {
             return true;
         }
 
         $this->laraKubeInfo('Installing the NetBird client...');
-        passthru('curl -fsSL https://pkgs.netbird.io/install.sh | sh', $exitCode);
+        $exitCode = $this->runInteractive('curl -fsSL https://pkgs.netbird.io/install.sh | sh');
 
         return $exitCode === 0;
     }

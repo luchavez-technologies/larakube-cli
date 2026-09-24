@@ -6,11 +6,12 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\StreamsProcessOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class LogsCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -44,7 +45,7 @@ class LogsCommand extends Command
 
         if ($this->option('all')) {
             $this->laraKubeInfo("Tailing ALL logs in namespace '{$namespace}'...");
-            passthru("{$kubectl} logs -f -n {$namespace} --all-containers --prefix --max-log-requests=20 --tail=50 --selector='larakube-project'");
+            $this->runInteractive("{$kubectl} logs -f -n {$namespace} --all-containers --prefix --max-log-requests=20 --tail=50 --selector='larakube-project'");
 
             return 0;
         }
@@ -54,7 +55,7 @@ class LogsCommand extends Command
 
         if (count($services) === 1 && $services[0] === 'traefik') {
             $this->laraKubeInfo('Tailing Traefik Ingress logs...');
-            passthru("{$kubectl} logs -f deployment/traefik -n traefik");
+            $this->runInteractive("{$kubectl} logs -f deployment/traefik -n traefik");
 
             return 0;
         }
@@ -73,7 +74,7 @@ class LogsCommand extends Command
         $labelSelector = 'app in ('.implode(',', array_unique($labels)).')';
 
         $this->laraKubeInfo('Tailing logs for ['.implode(', ', $services)."] in namespace '{$namespace}'...");
-        passthru("{$kubectl} logs -f -l '{$labelSelector}' -n {$namespace} --all-containers --prefix --max-log-requests=15 --tail=50");
+        $this->runInteractive("{$kubectl} logs -f -l '{$labelSelector}' -n {$namespace} --all-containers --prefix --max-log-requests=15 --tail=50");
 
         return 0;
     }

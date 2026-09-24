@@ -133,7 +133,7 @@ trait InteractsWithOpenTofu
                 .' && chmod +x '.escapeshellarg($scriptPath)
                 .' && sudo '.escapeshellarg($scriptPath).' --install-method standalone'
                 .'; rm -f '.escapeshellarg($scriptPath);
-            passthru($script, $code);
+            $code = $this->runInteractive($script);
             $temporaryDirectory->delete();
 
             return $code === 0;
@@ -158,11 +158,11 @@ trait InteractsWithOpenTofu
 
         $this->laraKubeWarn('unzip is required by the OpenTofu installer but is not installed.');
         if (file_exists('/usr/bin/apt-get')) {
-            passthru('sudo apt-get update -y && sudo apt-get install -y unzip', $code);
+            $code = $this->runInteractive('sudo apt-get update -y && sudo apt-get install -y unzip');
         } elseif (file_exists('/usr/bin/dnf')) {
-            passthru('sudo dnf install -y unzip', $code);
+            $code = $this->runInteractive('sudo dnf install -y unzip');
         } elseif (file_exists('/usr/bin/pacman')) {
-            passthru('sudo pacman -Sy --noconfirm unzip', $code);
+            $code = $this->runInteractive('sudo pacman -Sy --noconfirm unzip');
         } else {
             $this->laraKubeError('Could not detect a package manager. Install unzip manually, then re-run.');
 

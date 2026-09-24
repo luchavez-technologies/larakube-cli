@@ -19,6 +19,7 @@ use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -32,7 +33,7 @@ use Random\RandomException;
 
 class WordpressNewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.
@@ -248,7 +249,7 @@ class WordpressNewCommand extends Command
         // scaffold command is identical either way — this is purely about
         // whether a terminal is handed over, mirroring ScaffoldsInNode.
         if ($this->canHandOverTerminal()) {
-            passthru("$runtime run --rm -it -v $baseDir:/var/www/html $envFlags --user root $image sh -c '$scaffold'");
+            $this->runInteractive("$runtime run --rm -it -v $baseDir:/var/www/html $envFlags --user root $image sh -c '$scaffold'");
         } else {
             $this->withSpin("Scaffolding WordPress (Bedrock): $appName...", fn (): bool => Process::forever()->run(
                 "$runtime run --rm -v $baseDir:/var/www/html $envFlags --user root $image sh -c '$scaffold'",

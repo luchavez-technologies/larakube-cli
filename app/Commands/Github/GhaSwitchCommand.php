@@ -4,11 +4,12 @@ namespace App\Commands\Github;
 
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class GhaSwitchCommand extends Command
 {
-    use InteractsWithGlobalConfig, LaraKubeOutput;
+    use InteractsWithGlobalConfig, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'gha:switch';
 
@@ -21,7 +22,7 @@ class GhaSwitchCommand extends Command
         $this->laraKubeInfo('Switching GitHub accounts...');
 
         $gh = $this->getGhCommand(interactive: true);
-        passthru("{$gh} auth switch");
+        $this->runInteractive("{$gh} auth switch");
 
         return 0;
     }

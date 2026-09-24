@@ -13,7 +13,7 @@ use function Laravel\Prompts\text;
 
 trait InteractsWithGcp
 {
-    use InteractsWithGlobalConfig;
+    use InteractsWithGlobalConfig, StreamsProcessOutput;
 
     /**
      * Prompt for + persist GCP credentials and project ID, ensuring active authentication.
@@ -85,7 +85,7 @@ trait InteractsWithGcp
                 $this->laraKubeWarn('Google Cloud CLI (gcloud) is not logged in.');
 
                 if (! app()->runningUnitTests() && ! Process::isRecording() && confirm('Open browser to log in via gcloud now?', default: true)) {
-                    passthru("{$gcloudBin} auth login --update-adc", $loginCode);
+                    $loginCode = $this->runInteractive("{$gcloudBin} auth login --update-adc");
                     if ($loginCode === 0) {
                         $this->line('  <fg=green>✓</> <fg=gray>Successfully authenticated with Google Cloud.</>');
                         $gcloudAuthed = Process::run("{$gcloudBin} auth print-access-token 2>/dev/null")->successful();
@@ -117,7 +117,7 @@ trait InteractsWithGcp
 
                 if ($chosen === '__add__') {
                     if (! app()->runningUnitTests() && ! Process::isRecording()) {
-                        passthru("{$gcloudBin} auth login --update-adc", $loginCode);
+                        $loginCode = $this->runInteractive("{$gcloudBin} auth login --update-adc");
                     }
                     $accounts = $this->listGcpAccounts($gcloudBin);
                     $chosen = array_key_first(array_filter($accounts, fn ($active) => $active)) ?? array_key_first($accounts) ?? null;

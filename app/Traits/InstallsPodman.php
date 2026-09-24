@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Process;
  */
 trait InstallsPodman
 {
+    use StreamsProcessOutput;
+
     /**
      * The three companions are what make it rootless: user-mode networking
      * (slirp4netns), an unprivileged overlay driver (fuse-overlayfs), and the

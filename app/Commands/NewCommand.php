@@ -24,6 +24,7 @@ use App\Traits\InteractsWithDynamicOptions;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -38,7 +39,7 @@ use Symfony\Component\Console\Input\InputOption;
 
 class NewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput;
 
     /**
      * Native `laravel new` options (installer v5.x), declared here so Symfony
@@ -351,7 +352,7 @@ class NewCommand extends Command
         $cmd = "$runtime run --rm -it -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false --user root $image ".
                "sh -c '$pkgCommand && composer config -g bin-dir /usr/local/bin && composer global require laravel/installer && laravel new $appName $extraFlags'";
 
-        passthru($cmd);
+        $this->runInteractive($cmd);
 
         // Hand ownership of the scaffolded project back to the host user. Done in a SEPARATE,
         // non-interactive container — not chained inside the -it run above, where the chown

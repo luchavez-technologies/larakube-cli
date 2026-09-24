@@ -7,6 +7,7 @@ use App\Enums\AppFramework;
 use App\Traits\ClonesRepositories;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 
 use function Laravel\Prompts\confirm;
 
@@ -15,7 +16,7 @@ use RuntimeException;
 
 class CloneCommand extends Command
 {
-    use ClonesRepositories, InteractsWithProjectConfig, LaraKubeOutput;
+    use ClonesRepositories, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'clone
         {repo : Repository URL, SSH URL, or user/repo shorthand}
@@ -131,7 +132,7 @@ class CloneCommand extends Command
                 $this->newLine();
 
                 // Run npm install inside Node container or host
-                passthru("cd $targetPath && npm install");
+                $this->runStreaming("cd $targetPath && npm install");
             }
         }
 

@@ -37,7 +37,7 @@ class ClusterStopCommand extends Command
 
         if (Process::run('which k3s')->successful() && $this->isLinux()) {
             $this->info('  Detected native k3s. Using systemctl...');
-            passthru('sudo systemctl stop k3s');
+            $this->runInteractive('sudo systemctl stop k3s');
         } else {
             $this->laraKubeError('No supported cluster engine (k3s) found.');
 

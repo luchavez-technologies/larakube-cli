@@ -76,7 +76,7 @@ trait ScaffoldsInNode
             $this->laraKubeInfo("Scaffolding {$label} — answer the prompts below.");
             $this->newLine();
 
-            passthru(
+            $this->runInteractive(
                 $runtime.' run --rm -it '.$mount.self::NODE_IMAGE.' sh -c '.escapeshellarg($interactive),
             );
         } else {

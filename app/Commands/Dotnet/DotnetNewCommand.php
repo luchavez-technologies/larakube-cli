@@ -14,6 +14,7 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -26,7 +27,7 @@ use Random\RandomException;
 
 class DotnetNewCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, SyncsClusterSecrets;
+    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.
@@ -200,7 +201,7 @@ class DotnetNewCommand extends Command
         $cmd = "$runtime run --rm -it -v $baseDir:/app -w /app --user root mcr.microsoft.com/dotnet/sdk:9.0"
             ." sh -c 'dotnet new webapi -o $appName --no-https'";
 
-        passthru($cmd);
+        $this->runInteractive($cmd);
 
         // Chown back to host user
         if (is_dir("$baseDir/$appName")) {

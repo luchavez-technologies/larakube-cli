@@ -4,11 +4,12 @@ namespace App\Commands\Github;
 
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class GhaLoginCommand extends Command
 {
-    use InteractsWithGlobalConfig, LaraKubeOutput;
+    use InteractsWithGlobalConfig, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'gha:login';
 
@@ -25,7 +26,7 @@ class GhaLoginCommand extends Command
         // also grants pull, so the GHCR pull secret works too. Zero local deps:
         // getGhCommand runs the official CLI in Docker when gh isn't installed.
         $gh = $this->getGhCommand(interactive: true);
-        passthru("{$gh} auth login --scopes write:packages");
+        $this->runInteractive("{$gh} auth login --scopes write:packages");
 
         return 0;
     }

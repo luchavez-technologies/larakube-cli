@@ -4,11 +4,12 @@ namespace App\Commands\Traefik;
 
 use App\Services\Kubectl;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use LaravelZero\Framework\Commands\Command;
 
 class LogsCommand extends Command
 {
-    use LaraKubeOutput;
+    use LaraKubeOutput, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -28,7 +29,7 @@ class LogsCommand extends Command
         $this->renderHeader();
         $this->laraKubeInfo('Tailing Traefik Ingress logs...');
 
-        passthru(Kubectl::current()->prefix().' logs -f deployment/traefik -n traefik');
+        $this->runInteractive(Kubectl::current()->prefix().' logs -f deployment/traefik -n traefik');
 
         return 0;
     }

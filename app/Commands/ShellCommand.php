@@ -9,6 +9,7 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\select;
@@ -17,7 +18,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class ShellCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -158,7 +159,7 @@ class ShellCommand extends Command
         $hasBash = Process::run("{$kubectl} exec -n {$namespace} -c {$container} {$podName} -- test -x /bin/bash")->successful();
         $shell = $hasBash ? '/bin/bash' : '/bin/sh';
 
-        passthru("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- {$shell}");
+        $this->runInteractive("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- {$shell}");
 
         return 0;
     }

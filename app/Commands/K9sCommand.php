@@ -10,6 +10,7 @@ use App\Traits\InteractsWithOs;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -18,7 +19,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class K9sCommand extends Command
 {
-    use DetectsWsl, InstallsK9s, InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithOs, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use DetectsWsl, InstallsK9s, InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithOs, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -93,7 +94,7 @@ class K9sCommand extends Command
     {
         $k9s = $this->resolveK9sBin() ?: 'k9s';
         $namespaceFlag = $namespace !== '' ? ' -n '.escapeshellarg($namespace) : '';
-        passthru(escapeshellarg($k9s).$contextFlag.$namespaceFlag);
+        $this->runInteractive(escapeshellarg($k9s).$contextFlag.$namespaceFlag);
     }
 
     /**

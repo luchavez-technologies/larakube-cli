@@ -12,7 +12,7 @@ use function Laravel\Prompts\text;
 
 trait InteractsWithAws
 {
-    use InteractsWithGlobalConfig;
+    use InteractsWithGlobalConfig, StreamsProcessOutput;
 
     /**
      * Prompt for + persist AWS credentials and profile, ensuring active authentication.
@@ -82,7 +82,7 @@ trait InteractsWithAws
 
                     $awsBin = CliTool::AWS->resolveBinary() ?? 'aws';
                     if (! app()->runningUnitTests() && ! Process::isRecording()) {
-                        passthru("{$awsBin} configure --profile ".escapeshellarg($newProfile), $code);
+                        $code = $this->runInteractive("{$awsBin} configure --profile ".escapeshellarg($newProfile));
                         if ($code === 0) {
                             $this->line("  <fg=green>✓</> <fg=gray>AWS profile '{$newProfile}' configured.</>");
                         }
@@ -145,7 +145,7 @@ trait InteractsWithAws
 
             if (! app()->runningUnitTests() && ! Process::isRecording() && confirm('Run `aws configure` in your terminal now?', default: true)) {
                 $configureArg = $profile ? ' --profile '.escapeshellarg($profile) : '';
-                passthru("{$awsBin} configure{$configureArg}", $code);
+                $code = $this->runInteractive("{$awsBin} configure{$configureArg}");
                 if ($code === 0) {
                     $this->line('  <fg=green>✓</> <fg=gray>AWS CLI configuration completed.</>');
                     $retry = Process::env($envVars)->run("{$awsBin} sts get-caller-identity{$profileArg} 2>/dev/null");

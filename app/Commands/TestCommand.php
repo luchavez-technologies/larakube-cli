@@ -157,7 +157,7 @@ class TestCommand extends Command
             escapeshellarg($inPodCommand),
         );
 
-        passthru($command, $exitCode);
+        $exitCode = $this->runInteractive($command);
 
         return $exitCode;
     }

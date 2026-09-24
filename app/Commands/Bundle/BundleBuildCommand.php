@@ -8,6 +8,7 @@ use App\Traits\InstallsK3s;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
@@ -20,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class BundleBuildCommand extends Command
 {
-    use AssemblesBundle, InstallsK3s, InteractsWithProjectConfig, InteractsWithRemoteDeploy, LaraKubeOutput;
+    use AssemblesBundle, InstallsK3s, InteractsWithProjectConfig, InteractsWithRemoteDeploy, LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'bundle:build
                             {environment? : The environment to bundle (default: auto-detected offline/cloud env)}

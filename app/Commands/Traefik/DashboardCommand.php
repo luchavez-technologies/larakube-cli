@@ -6,6 +6,7 @@ use App\Data\GlobalConfigData;
 use App\Services\Kubectl;
 use App\Traits\InteractsWithSslTrust;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -14,7 +15,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DashboardCommand extends Command
 {
-    use InteractsWithSslTrust, LaraKubeOutput;
+    use InteractsWithSslTrust, LaraKubeOutput, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -81,7 +82,7 @@ class DashboardCommand extends Command
         $this->info('  Press Ctrl+C to stop.');
         $this->line('');
 
-        passthru(Kubectl::current()->prefix().' port-forward -n traefik svc/traefik 8080:8080');
+        $this->runInteractive(Kubectl::current()->prefix().' port-forward -n traefik svc/traefik 8080:8080');
 
         return 0;
     }

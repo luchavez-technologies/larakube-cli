@@ -9,6 +9,7 @@ use App\Traits\InteractsWithKustomize;
 use App\Traits\InteractsWithOs;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PrunesKubeContext;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
@@ -16,7 +17,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ClusterSetupCommand extends Command
 {
-    use DetectsWsl, InstallsK3s, InteractsWithKustomize, InteractsWithOs, LaraKubeOutput, PrunesKubeContext;
+    use DetectsWsl, InstallsK3s, InteractsWithKustomize, InteractsWithOs, LaraKubeOutput, PrunesKubeContext, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -80,7 +81,7 @@ class ClusterSetupCommand extends Command
         // K3S_KUBECONFIG_MODE=644 is the installer env equivalent, applied when the
         // service is (re)started; both are set so re-runs without "No change detected"
         // also get the right mode.
-        passthru($this->k3sInstallCommand($this->k3sVersion(), ['--disable=traefik', '--write-kubeconfig-mode=644'], ['K3S_KUBECONFIG_MODE' => '644'], sudo: true), $installCode);
+        $installCode = $this->runInteractive($this->k3sInstallCommand($this->k3sVersion(), ['--disable=traefik', '--write-kubeconfig-mode=644'], ['K3S_KUBECONFIG_MODE' => '644'], sudo: true));
 
         if ($installCode !== 0) {
             $this->laraKubeError('k3s installation failed. Please review the output above.');
@@ -99,7 +100,7 @@ class ClusterSetupCommand extends Command
         $maxAttempts = $this->isWsl() ? 90 : 40; // 180s on WSL2, 80s on Linux
         $nodeAppeared = false;
         for ($i = 0; $i < $maxAttempts; $i++) {
-            if (trim((string) shell_exec('sudo k3s kubectl get nodes --no-headers 2>/dev/null')) !== '') {
+            if (trim(Process::run('sudo k3s kubectl get nodes --no-headers')->output()) !== '') {
                 $nodeAppeared = true;
                 break;
             }
@@ -113,17 +114,17 @@ class ClusterSetupCommand extends Command
             $this->line('  You can check live progress with: <fg=cyan>sudo journalctl -u k3s -f</>');
             // Still chmod in case the file exists — it won't be overwritten once k3s
             // fully starts (--write-kubeconfig-mode=644 handles future restarts).
-            passthru('sudo chmod 644 /etc/rancher/k3s/k3s.yaml 2>/dev/null');
+            $this->runInteractive('sudo chmod 644 /etc/rancher/k3s/k3s.yaml 2>/dev/null');
 
             return 1;
         }
 
-        passthru('sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s');
+        $this->runInteractive('sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s');
 
         // Belt-and-suspenders: --write-kubeconfig-mode=644 is set as a server flag so
         // k3s writes it 644 on every restart, but chmod here heals re-runs where the
         // installer skips restarting the service ("No change detected").
-        passthru('sudo chmod 644 /etc/rancher/k3s/k3s.yaml 2>/dev/null');
+        $this->runInteractive('sudo chmod 644 /etc/rancher/k3s/k3s.yaml 2>/dev/null');
 
         // Rename k3s's hardcoded "default" context/cluster/user to "k3s-larakube"
         // directly in /etc/rancher/k3s/k3s.yaml, and keep a hook installed so it
@@ -170,7 +171,7 @@ class ClusterSetupCommand extends Command
         }
 
         $this->laraKubeInfo('Unmounting /Docker/host (Docker Desktop WSL mount) before k3s starts...');
-        shell_exec('sudo umount /Docker/host 2>/dev/null');
+        Process::run('sudo umount /Docker/host');
     }
 
     /**
@@ -228,8 +229,8 @@ class ClusterSetupCommand extends Command
             ->create();
         $tmpScript = $temporaryDirectory->path().'/rename-context.sh';
         file_put_contents($tmpScript, $script);
-        passthru('sudo cp '.escapeshellarg($tmpScript).' '.escapeshellarg($scriptPath));
-        passthru('sudo chmod 755 '.escapeshellarg($scriptPath));
+        $this->runInteractive('sudo cp '.escapeshellarg($tmpScript).' '.escapeshellarg($scriptPath));
+        $this->runInteractive('sudo chmod 755 '.escapeshellarg($scriptPath));
         $temporaryDirectory->delete();
 
         $unit = "[Service]\nExecStartPost={$scriptPath}\n";
@@ -242,14 +243,14 @@ class ClusterSetupCommand extends Command
             ->create();
         $tmpUnit = $unitTemporaryDirectory->path().'/larakube-rename-context.conf';
         file_put_contents($tmpUnit, $unit);
-        passthru('sudo mkdir -p '.escapeshellarg($dropInDir));
-        passthru('sudo cp '.escapeshellarg($tmpUnit).' '.escapeshellarg($dropInFile));
+        $this->runInteractive('sudo mkdir -p '.escapeshellarg($dropInDir));
+        $this->runInteractive('sudo cp '.escapeshellarg($tmpUnit).' '.escapeshellarg($dropInFile));
         $unitTemporaryDirectory->delete();
 
-        passthru('sudo systemctl daemon-reload');
+        $this->runInteractive('sudo systemctl daemon-reload');
 
         // Fix the file immediately too — don't make the user wait for the next restart.
-        passthru('sudo '.escapeshellarg($scriptPath));
+        $this->runInteractive('sudo '.escapeshellarg($scriptPath));
     }
 
     /**
@@ -318,7 +319,7 @@ class ClusterSetupCommand extends Command
     {
         $source = '/etc/rancher/k3s/k3s.yaml';
 
-        $raw = shell_exec('sudo cat '.escapeshellarg($source).' 2>/dev/null');
+        $raw = Process::run('sudo cat '.escapeshellarg($source))->output();
 
         if (empty($raw)) {
             $this->laraKubeWarn("Could not read the k3s kubeconfig at {$source}.");

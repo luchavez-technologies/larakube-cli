@@ -7,12 +7,13 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class ExecCommand extends Command
 {
-    use CapturesPassthroughArgs, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use CapturesPassthroughArgs, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -105,7 +106,7 @@ class ExecCommand extends Command
         // No swallowed stderr and no argv-only fallback: a real failure from the
         // command itself should be visible, not masked by a confusing second
         // attempt that treats the whole string as a single binary name.
-        passthru("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- /bin/sh -c ".escapeshellarg($command));
+        $this->runInteractive("{$kubectl} exec -it -n {$namespace} -c {$container} {$podName} -- /bin/sh -c ".escapeshellarg($command));
 
         return 0;
     }

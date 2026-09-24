@@ -245,7 +245,7 @@ class SetupCommand extends Command
             }
 
             $this->laraKubeInfo('Docker Engine found — starting the service...');
-            passthru('sudo systemctl start docker 2>/dev/null', $startCode);
+            $startCode = $this->runInteractive('sudo systemctl start docker 2>/dev/null');
 
             if ($startCode !== 0) {
                 $this->laraKubeError('Could not start Docker. Run: sudo systemctl start docker');
@@ -269,7 +269,7 @@ class SetupCommand extends Command
 
         if ($alreadyInstalled) {
             $this->laraKubeInfo('Docker Engine package found — enabling service...');
-            shell_exec('sudo systemctl enable --now docker 2>/dev/null');
+            Process::run('sudo systemctl enable --now docker');
             $this->laraKubeInfo('✅ Docker Engine running.');
 
             return true;
@@ -286,7 +286,7 @@ class SetupCommand extends Command
         $this->line('  <fg=gray>Docker\'s official installer pauses for a built-in ~20s safety check (maybe twice)</>');
         $this->line('  <fg=gray>before continuing — a line like `+ sleep 20` sitting there is expected, not a hang.</>');
         $this->newLine();
-        passthru('curl -fsSL https://get.docker.com | sh', $installCode);
+        $installCode = $this->runInteractive('curl -fsSL https://get.docker.com | sh');
 
         if ($installCode !== 0) {
             $this->laraKubeError('Docker Engine installation failed. See output above.');
@@ -294,7 +294,7 @@ class SetupCommand extends Command
             return false;
         }
 
-        shell_exec('sudo systemctl enable --now docker 2>/dev/null');
+        Process::run('sudo systemctl enable --now docker');
 
         $this->laraKubeInfo('✅ Docker Engine installed.');
 
@@ -320,7 +320,7 @@ class SetupCommand extends Command
         }
 
         $this->laraKubeInfo('Updating system packages...');
-        passthru('sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y', $code);
+        $code = $this->runInteractive('sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y');
 
         if ($code !== 0) {
             $this->laraKubeWarn('System package upgrade failed or was interrupted — continuing with the install anyway.');
@@ -343,7 +343,7 @@ class SetupCommand extends Command
 
         // passthru (not shell_exec) so a sudo password prompt is actually visible
         // instead of being captured silently into the output buffer.
-        passthru('sudo usermod -aG docker '.escapeshellarg($user), $code);
+        $code = $this->runInteractive('sudo usermod -aG docker '.escapeshellarg($user));
 
         if ($code !== 0 || ! $this->userInDockerGroup($user)) {
             $this->laraKubeWarn('Could not confirm you were added to the docker group.');

@@ -7,6 +7,7 @@ use App\Services\Kubectl;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\multiselect;
@@ -15,7 +16,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class TunnelCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput;
+    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -107,7 +108,7 @@ class TunnelCommand extends Command
 
         // Run all port-forwards in parallel and wait
         $fullCmd = implode(' & ', $kubectlCmds).' & wait';
-        passthru($fullCmd);
+        $this->runInteractive($fullCmd);
 
         return 0;
     }

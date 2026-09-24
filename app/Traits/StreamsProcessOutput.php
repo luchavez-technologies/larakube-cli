@@ -56,10 +56,15 @@ trait StreamsProcessOutput
      * Symfony throws rather than degrading when there is no TTY to hand over
      * (Windows, a pipe, CI), so fall back to streaming there and let the
      * command fail on its own terms instead of on ours.
+     *
+     * JSON mode falls back too: stdout is reserved for the result, and tty()
+     * hands the child the terminal directly, so its output would land in the
+     * middle of the JSON. A caller asking for machine-readable output is not
+     * one a human is sitting at to answer a prompt anyway.
      */
     protected function runInteractive(string $command): int
     {
-        if (! SymfonyProcess::isTtySupported()) {
+        if (State::isJsonMode() || ! SymfonyProcess::isTtySupported()) {
             return $this->runStreaming($command);
         }
 

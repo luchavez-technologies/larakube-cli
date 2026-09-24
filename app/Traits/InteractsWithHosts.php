@@ -13,7 +13,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait InteractsWithHosts
 {
-    use DetectsWsl, InteractsWithOs, InteractsWithProjectConfig, InteractsWithTrust, LaraKubeOutput;
+    use DetectsWsl, InteractsWithOs, InteractsWithProjectConfig, InteractsWithTrust, LaraKubeOutput, StreamsProcessOutput;
 
     /**
      * Resolve the externally-reachable IP for cluster ingress.
@@ -143,7 +143,7 @@ trait InteractsWithHosts
 
         if (confirm('Would you like LaraKube to sync your /etc/hosts?')) {
             $this->line('  <fg=gray>LaraKube requires sudo privileges to update /etc/hosts</>');
-            passthru('sudo -v');
+            $this->runInteractive('sudo -v');
 
             $success = $this->withSpin('Syncing /etc/hosts...', function () use ($currentHosts, $blockIdentifier, $newEntry) {
                 $newHosts = $this->applyHostsBlock($currentHosts, $blockIdentifier, $newEntry);
@@ -249,7 +249,7 @@ trait InteractsWithHosts
         // hosts — see docblock), but the sudo password prompt that follows
         // needs SOME explanation, or it looks like it's coming from nowhere.
         $this->line("  <fg=gray>Updating /etc/hosts for {$appName} (requires sudo)...</>");
-        passthru('sudo -v');
+        $this->runInteractive('sudo -v');
 
         if (! $this->writeToEtcHosts($updated)) {
             $this->laraKubeWarn("Failed to update /etc/hosts for {$appName}. Check your sudo permissions.");
@@ -282,7 +282,7 @@ trait InteractsWithHosts
         }
 
         $this->line("  <fg=gray>Removing stale /etc/hosts entry for {$appName} (dnsmasq already covers this TLD)...</>");
-        passthru('sudo -v');
+        $this->runInteractive('sudo -v');
 
         if (! $this->writeToEtcHosts($stripped)) {
             $this->laraKubeWarn("Failed to update /etc/hosts for {$appName}. Check your sudo permissions.");

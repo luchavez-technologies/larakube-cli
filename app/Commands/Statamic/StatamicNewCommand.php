@@ -24,6 +24,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesStatamicDatabase;
+use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -41,7 +42,7 @@ use Symfony\Component\Process\Process as SymfonyProcess;
 
 class StatamicNewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithEnvironments, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ManagesStatamicDatabase, SyncsClusterSecrets;
+    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithEnvironments, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ManagesStatamicDatabase, StreamsProcessOutput, SyncsClusterSecrets;
 
     /** The Statamic CLI release line the scaffold installs. */
     private const string STATAMIC_CLI = 'statamic/cli:^3.6';

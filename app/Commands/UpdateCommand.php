@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Traits\LaraKubeOutput;
+use App\Traits\StreamsProcessOutput;
 use Exception;
 use Illuminate\Support\Facades\Http;
 use LaravelZero\Framework\Commands\Command;
@@ -10,7 +11,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class UpdateCommand extends Command
 {
-    use LaraKubeOutput;
+    use LaraKubeOutput, StreamsProcessOutput;
 
     protected $signature = 'update {--canary : Update to the latest canary (bleeding-edge, unstable) build from develop}';
 
@@ -168,7 +169,7 @@ class UpdateCommand extends Command
 
         // Atomic swap via sudo
         $installCmd = 'sudo mv '.escapeshellarg($tempPath).' /usr/local/bin/larakube && sudo chmod +x /usr/local/bin/larakube';
-        passthru($installCmd, $exitCode);
+        $exitCode = $this->runInteractive($installCmd);
         $temporaryDirectory->delete();
 
         if ($exitCode !== 0) {

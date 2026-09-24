@@ -266,11 +266,12 @@ trait InteractsWithDocker
         $this->line('  <fg=gray>k3s uses containerd; importing requires sudo.</>');
 
         // Pre-warm sudo so the credential prompt is interactive (the import runs
-        // through a pipe where a prompt would otherwise be swallowed). Skipped
-        // in tests: passthru() bypasses the Process fake, so a real sudo prompt
-        // would leak into (and hang) the suite.
+        // through a pipe where a prompt would otherwise be swallowed). The
+        // runningUnitTests() guard is belt-and-braces now that this goes
+        // through the Process facade — Process::fake() intercepts it — but a
+        // suite that forgets to fake still must not stop on a password prompt.
         if (! app()->runningUnitTests()) {
-            passthru('sudo -v');
+            $this->runInteractive('sudo -v');
         }
 
         // Streamed via the Process facade (not passthru) so it's fakeable and

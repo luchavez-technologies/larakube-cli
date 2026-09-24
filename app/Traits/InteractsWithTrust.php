@@ -49,7 +49,7 @@ trait InteractsWithTrust
                 $certutilPath = $permanentWinPath;
             }
 
-            passthru('certutil.exe -user -addstore -f "Root" '.escapeshellarg($certutilPath), $code);
+            $code = $this->runStreaming('certutil.exe -user -addstore -f "Root" '.escapeshellarg($certutilPath));
 
             if ($stagePath !== null) {
                 @unlink($stagePath);
@@ -76,16 +76,16 @@ trait InteractsWithTrust
 
         if ($this->isDarwin()) {
             $this->info('  🔒 Installing to macOS System Keychain...');
-            passthru('sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain '.escapeshellarg($tmpCa));
+            $this->runInteractive('sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain '.escapeshellarg($tmpCa));
         } elseif ($this->isLinux()) {
             if (file_exists('/usr/local/share/ca-certificates/')) {
                 $this->info('  🔒 Installing to ca-certificates (Debian/Ubuntu)...');
-                passthru('sudo cp '.escapeshellarg($tmpCa).' /usr/local/share/ca-certificates/larakube-local-ca.crt');
-                passthru('sudo update-ca-certificates');
+                $this->runInteractive('sudo cp '.escapeshellarg($tmpCa).' /usr/local/share/ca-certificates/larakube-local-ca.crt');
+                $this->runInteractive('sudo update-ca-certificates');
             } elseif (file_exists('/etc/pki/ca-trust/source/anchors/')) {
                 $this->info('  🔒 Installing to ca-trust (Fedora/RHEL)...');
-                passthru('sudo cp '.escapeshellarg($tmpCa).' /etc/pki/ca-trust/source/anchors/larakube-local-ca.crt');
-                passthru('sudo update-ca-trust extract');
+                $this->runInteractive('sudo cp '.escapeshellarg($tmpCa).' /etc/pki/ca-trust/source/anchors/larakube-local-ca.crt');
+                $this->runInteractive('sudo update-ca-trust extract');
             }
         } else {
             $this->warn("  ⚠ Automatic trust installation not supported for {$os}.");
@@ -109,7 +109,7 @@ trait InteractsWithTrust
             }
 
             $this->info('  🪟 WSL2 detected. Removing from Windows Root Store...');
-            passthru('certutil.exe -delstore "Root" "LaraKube Local CA"');
+            $this->runStreaming('certutil.exe -delstore "Root" "LaraKube Local CA"');
 
             return;
         }
@@ -126,22 +126,22 @@ trait InteractsWithTrust
                 $temporaryDirectory->delete();
 
                 if ($fingerprint) {
-                    passthru("sudo security delete-certificate -Z {$fingerprint} /Library/Keychains/System.keychain 2>/dev/null || sudo security delete-certificate -c \"LaraKube Local CA\" /Library/Keychains/System.keychain");
+                    $this->runInteractive("sudo security delete-certificate -Z {$fingerprint} /Library/Keychains/System.keychain 2>/dev/null || sudo security delete-certificate -c \"LaraKube Local CA\" /Library/Keychains/System.keychain");
                 } else {
-                    passthru('sudo security delete-certificate -c "LaraKube Local CA" /Library/Keychains/System.keychain');
+                    $this->runInteractive('sudo security delete-certificate -c "LaraKube Local CA" /Library/Keychains/System.keychain');
                 }
             } else {
-                passthru('sudo security delete-certificate -c "LaraKube Local CA" /Library/Keychains/System.keychain');
+                $this->runInteractive('sudo security delete-certificate -c "LaraKube Local CA" /Library/Keychains/System.keychain');
             }
         } elseif ($this->isLinux()) {
             if (file_exists('/usr/local/share/ca-certificates/larakube-local-ca.crt')) {
                 $this->info('  🔓 Linux (Debian/Ubuntu) detected. Removing ca-certificate...');
-                passthru('sudo rm -f /usr/local/share/ca-certificates/larakube-local-ca.crt');
-                passthru('sudo update-ca-certificates --fresh');
+                $this->runInteractive('sudo rm -f /usr/local/share/ca-certificates/larakube-local-ca.crt');
+                $this->runInteractive('sudo update-ca-certificates --fresh');
             } elseif (file_exists('/etc/pki/ca-trust/source/anchors/larakube-local-ca.crt')) {
                 $this->info('  🔓 Linux (Fedora/RHEL) detected. Removing ca-trust...');
-                passthru('sudo rm -f /etc/pki/ca-trust/source/anchors/larakube-local-ca.crt');
-                passthru('sudo update-ca-trust extract');
+                $this->runInteractive('sudo rm -f /etc/pki/ca-trust/source/anchors/larakube-local-ca.crt');
+                $this->runInteractive('sudo update-ca-trust extract');
             }
         } else {
             $this->warn("  ⚠ Automatic trust removal is not supported for {$os}.");
@@ -199,9 +199,9 @@ trait InteractsWithTrust
 
         if ($os === 'Linux') {
             if (file_exists('/usr/bin/apt-get')) {
-                passthru('sudo apt-get install -y dnsmasq', $code);
+                $code = $this->runInteractive('sudo apt-get install -y dnsmasq');
             } elseif (file_exists('/usr/bin/dnf')) {
-                passthru('sudo dnf install -y dnsmasq', $code);
+                $code = $this->runInteractive('sudo dnf install -y dnsmasq');
             } else {
                 $this->warn('  Could not detect package manager. Install dnsmasq manually.');
 
@@ -283,7 +283,7 @@ trait InteractsWithTrust
             @mkdir(dirname($confPath), 0755, true);
             file_put_contents($confPath, $conf);
 
-            passthru('sudo mkdir -p /etc/resolver');
+            $this->runInteractive('sudo mkdir -p /etc/resolver');
             foreach ($tlds as $coveredTld) {
                 if (file_exists('/etc/resolver/'.$coveredTld)) {
                     continue;
@@ -291,7 +291,7 @@ trait InteractsWithTrust
                 $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
                 $tmpResolver = $temporaryDirectory->path().'/resolver';
                 file_put_contents($tmpResolver, "nameserver 127.0.0.1\n");
-                passthru('sudo cp '.escapeshellarg($tmpResolver).' /etc/resolver/'.escapeshellarg($coveredTld));
+                $this->runInteractive('sudo cp '.escapeshellarg($tmpResolver).' /etc/resolver/'.escapeshellarg($coveredTld));
                 $temporaryDirectory->delete();
             }
 
@@ -299,15 +299,15 @@ trait InteractsWithTrust
             // Suppress output — it's fine if there's nothing to stop.
             Process::run('brew services stop dnsmasq');
             // Must run as root so dnsmasq can bind port 53.
-            passthru('sudo brew services restart dnsmasq');
+            $this->runInteractive('sudo brew services restart dnsmasq');
         } else {
             $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
             $tmpConf = $temporaryDirectory->path().'/dnsmasq.conf';
             file_put_contents($tmpConf, $conf);
-            passthru('sudo mkdir -p /etc/dnsmasq.d');
-            passthru('sudo cp '.escapeshellarg($tmpConf).' '.escapeshellarg($confPath));
+            $this->runInteractive('sudo mkdir -p /etc/dnsmasq.d');
+            $this->runInteractive('sudo cp '.escapeshellarg($tmpConf).' '.escapeshellarg($confPath));
             $temporaryDirectory->delete();
-            passthru('sudo systemctl restart dnsmasq');
+            $this->runInteractive('sudo systemctl restart dnsmasq');
         }
 
         $covered = implode(', ', array_map(fn (string $t) => "*.{$t}", $tlds));

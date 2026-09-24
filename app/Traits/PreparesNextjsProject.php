@@ -18,6 +18,8 @@ use function Laravel\Prompts\select;
  */
 trait PreparesNextjsProject
 {
+    use StreamsProcessOutput;
+
     /**
      * @return array{database: DatabaseDriver, cache: CacheDriver, storage: ?StorageDriver, search: ?SearchDriver}
      */
