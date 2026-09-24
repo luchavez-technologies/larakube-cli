@@ -107,7 +107,6 @@ function headManifest(string $host, string $repo, string $tag, array $accept, st
     ]);
     $raw = (string) curl_exec($ch);
     $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
 
     $challenge = preg_match('/www-authenticate:\s*Bearer\s+(.+)/i', $raw, $m) ? trim($m[1]) : '';
 

@@ -13,56 +13,8 @@ on:
       - main
 
 jobs:
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl
-          coverage: none
-
-      - name: Install Dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Check Code Style & Formatting
-        run: ./vendor/bin/pint --test
-
-      - name: Run Tests
-        run: composer test
-
-  images:
-    name: Verify Container Images
-    runs-on: ubuntu-latest
-    # Separate job, not a Pest test: it makes real network calls, which the
-    # suite forbids. A manifest with a typo'd tag is valid YAML and passes every
-    # other check — it only fails at pull time, on the cluster, by which point a
-    # single-replica Recreate Deployment has already destroyed the old pod.
-    # `stalwartlabs/stalwart:0.16.14` (published as v0.16.14) took mail down
-    # exactly this way.
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: mbstring, curl
-          coverage: none
-
-      - name: Check every pinned image resolves
-        run: php scripts/check-images.php
-
-  publish:
-    name: Build and Publish
-    needs: test
-    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref_name == 'develop' || github.ref_name == 'main')
+  ci:
+    name: Test, Build & Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -80,19 +32,30 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, phar
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, curl, phar
           ini-values: phar.readonly=0
+          coverage: none
 
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Check Code Style & Formatting
+        run: ./vendor/bin/pint --test
+
+      - name: Verify Container Images
+        run: php scripts/check-images.php
+
+      - name: Run Tests
+        run: composer test
+
       - name: Calculate Next Version
         id: version
-        if: github.ref_name == 'main'
+        if: github.event_name == 'push' && github.ref_name == 'main'
         run: php scripts/calculate-next-version.php
 
       - name: Determine Release Target
         id: release_target
+        if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref_name == 'develop' || github.ref_name == 'main')
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "publish=true" >> $GITHUB_OUTPUT
@@ -117,7 +80,7 @@ jobs:
           fi
 
       - name: Create and Push Git Tag
-        if: github.ref_name == 'main' && steps.release_target.outputs.publish == 'true'
+        if: github.event_name == 'push' && github.ref_name == 'main' && steps.release_target.outputs.publish == 'true'
         run: |
           git config user.name "Forgejo Actions"
           git config user.email "actions@noreply.${{ github.server_url }}"
@@ -152,8 +115,8 @@ jobs:
 
   tap:
     name: Update Homebrew Tap
-    needs: publish
-    if: needs.publish.outputs.is_stable == 'true'
+    needs: ci
+    if: needs.ci.outputs.is_stable == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout CLI repo
@@ -194,12 +157,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/larakube.rb
           git diff --staged --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: update LaraKube CLI to ${{ needs.publish.outputs.version }}"
+          git commit -m "chore: update LaraKube CLI to ${{ needs.ci.outputs.version }}"
           git push
 
   tap-canary:
     name: Update Homebrew Tap (Canary)
-    needs: publish
+    needs: ci
     if: github.ref_type == 'branch' && github.ref_name == 'develop'
     runs-on: ubuntu-latest
     steps:
