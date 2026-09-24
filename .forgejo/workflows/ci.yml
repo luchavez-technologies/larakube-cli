@@ -32,15 +32,36 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, curl, phar
-          ini-values: phar.readonly=0
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, curl, phar, opcache
+          ini-values: phar.readonly=0, opcache.enable_cli=1, opcache.memory_consumption=256, opcache.max_accelerated_files=20000
           coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/composer
+            vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Cache PHPStan result cache
+        uses: actions/cache@v4
+        with:
+          path: .phpstan
+          key: ${{ runner.os }}-phpstan-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-phpstan-
 
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
       - name: Check Code Style & Formatting
         run: ./vendor/bin/pint --test
+
+      - name: Static Analysis
+        run: composer analyse
 
       - name: Verify Container Images
         run: php scripts/check-images.php
@@ -89,7 +110,7 @@ jobs:
 
       - name: Build Standalone Binaries
         if: steps.release_target.outputs.publish == 'true'
-        run: ./build --all ${{ steps.release_target.outputs.version }}
+        run: SKIP_PHPSTAN=true ./build --all ${{ steps.release_target.outputs.version }}
 
       - name: Organize Artifacts
         if: steps.release_target.outputs.publish == 'true'
@@ -133,7 +154,7 @@ jobs:
 
       - name: Download mac binaries and compute SHA256
         run: |
-          VERSION="${{ needs.publish.outputs.version }}"
+          VERSION="${{ needs.ci.outputs.version }}"
           BASE_URL="${{ github.server_url || 'https://git.luchtech.dev' }}/${{ github.repository }}"
           ARM_URL="${BASE_URL}/releases/download/${VERSION}/larakube-mac-arm"
           X64_URL="${BASE_URL}/releases/download/${VERSION}/larakube-mac-x64"

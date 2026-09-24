@@ -1,23 +1,16 @@
 includes:
-    - vendor/pestphp/pest-plugin-phpstan/extension.neon
     - vendor/larastan/larastan/extension.neon
 
 parameters:
-    # Parallel workers. Was pinned to 1 "to avoid Phar extraction locks in Docker
-    # on macOS" — but the project now runs on the host (see CLAUDE.md), where that
-    # lock doesn't apply, and single-process forced all files through one core
-    # (glacial on a many-core box). Bounded at 8 so it uses cores without letting
-    # every worker's peak memory add up on a smaller box.
+    # Parallel workers, sized for RAM rather than cores: --memory-limit is PER
+    # WORKER, so N workers ask for N x the limit. `composer analyse` passes 2G,
+    # and this repo's dev box is 8GB with OrbStack already holding ~2.7GB — at 4
+    # workers the run asks for 8GB, swaps, and hits the worker timeout before the
+    # result cache is ever written, which leaves every following run cold too.
     parallel:
-        # Sized for RAM, not cores. --memory-limit is PER WORKER, so N workers
-        # ask for N x the limit: at 8 (set during a machine switch, tuned on
-        # core count) this 8GB box asked for 16GB at 2G each, swapped, and hit
-        # the worker timeout before the result cache was ever written — making
-        # every following run cold too. OrbStack alone holds ~2.7GB here.
         maximumNumberOfProcesses: 2
-        # A cold run (no/stale result cache) exceeds the 600s default per worker
-        # on this codebase, and the run dies before the cache is ever written —
-        # so every subsequent run is cold too. Raised so the cache can warm once.
+        # A cold run exceeds the 600s default per worker on this codebase, and
+        # dies before the cache is written. Raised so the cache can warm once.
         processTimeout: 1800.0
 
     # Persist the result cache in-project (gitignored) instead of the system temp
