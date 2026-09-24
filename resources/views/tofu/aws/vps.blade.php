@@ -19,11 +19,30 @@ data "aws_vpc" "default" {
   default = true
 }
 
-# Look up subnets in default VPC
+# Which Availability Zones actually offer this instance type? Not every AZ
+# offers every size: us-east-1e has no t3 capacity at all, so taking "the first
+# subnet in the default VPC" landed there at random and RunInstances failed
+# with "Unsupported: Your requested instance type (t3.small) is not supported
+# in your requested Availability Zone (us-east-1e)".
+data "aws_ec2_instance_type_offerings" "supported" {
+  filter {
+    name   = "instance-type"
+    values = ["{{ $size }}"]
+  }
+
+  location_type = "availability-zone"
+}
+
+# Look up subnets in the default VPC, restricted to AZs that offer the size.
 data "aws_subnets" "default" {
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.default.id]
+  }
+
+  filter {
+    name   = "availability-zone"
+    values = data.aws_ec2_instance_type_offerings.supported.locations
   }
 }
 
@@ -122,6 +141,15 @@ resource "aws_instance" "larakube" {
   subnet_id                   = data.aws_subnets.default.ids[0]
   vpc_security_group_ids      = [aws_security_group.larakube.id]
   associate_public_ip_address = true
+
+  lifecycle {
+    # Without this, an unavailable size fails as an opaque index-out-of-range
+    # on ids[0] rather than saying what is actually wrong.
+    precondition {
+      condition     = length(data.aws_subnets.default.ids) > 0
+      error_message = "No subnet in the default VPC of this region sits in an Availability Zone that offers {{ $size }}. Choose a different --size, or a different region."
+    }
+  }
 
   root_block_device {
     volume_size           = {{ $diskSize ?? 30 }}

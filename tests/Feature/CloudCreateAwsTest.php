@@ -156,6 +156,32 @@ test('AWS VPS tofu template renders required EC2 resources, security groups, and
         ->and($rendered)->toContain('ipv6_cidr_blocks = ["::/0"]');
 });
 
+test('AWS VPS tofu template only places the instance in an AZ that offers its size', function (): void {
+    // Not every AZ offers every size — us-east-1e has no t3 capacity — so
+    // "the first subnet in the default VPC" landed there at random and
+    // RunInstances failed with "Unsupported: Your requested instance type
+    // (t3.small) is not supported in your requested Availability Zone".
+    $rendered = view('tofu.aws.vps', [
+        'region' => 'us-east-1',
+        'dropletName' => 'larakube-vps-test',
+        'size' => 't3.small',
+        'sshKeyName' => 'larakube-key',
+        'sshPubKey' => 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAwsTestKey',
+        'sshSources' => '"0.0.0.0/0"',
+        'apiSources' => '"0.0.0.0/0"',
+        'adminCidr' => null,
+    ])->render();
+
+    expect($rendered)->toContain('data "aws_ec2_instance_type_offerings" "supported"')
+        ->and($rendered)->toContain('location_type = "availability-zone"')
+        // The subnet lookup itself is filtered, so ids[0] cannot be an AZ
+        // without the size.
+        ->and($rendered)->toContain('values = data.aws_ec2_instance_type_offerings.supported.locations')
+        ->and($rendered)->toContain('values = ["t3.small"]')
+        // And an unavailable size fails saying so, not as index-out-of-range.
+        ->and($rendered)->toContain('length(data.aws_subnets.default.ids) > 0');
+});
+
 test('AWS VPS tofu template with admin CIDR restricts port 22 and 6443 without IPv6 mix', function (): void {
     $rendered = view('tofu.aws.vps', [
         'region' => 'us-east-1',
