@@ -1,9 +1,24 @@
-@php($suffix = ($instance ?? '') !== '' ? "-{$instance}" : '')
+@php
+    // Rendered both by dashboard:init (which passes these) and by the shared
+    // ingress path (which passes only the host), so derive what is missing.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::DASHBOARD->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    // Every name comes from ToolInstance (ADR 0021).
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::DASHBOARD, $instance);
+    $deployment = $names->deployment();
+    $oidcSecret = $names->secret(\App\Enums\SecretKind::OIDC);
+    $labels = $names->labels();
+@endphp
 apiVersion: v1
 kind: Secret
 metadata:
-  name: dashboard-headlamp-oidc{{ $suffix }}
+  name: {{ $oidcSecret }}
   namespace: larakube-shared
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 type: Opaque
 data:
 @if($oidc ?? null)
@@ -16,20 +31,28 @@ data:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: dashboard-headlamp{{ $suffix }}
+  name: {{ $deployment }}
   namespace: larakube-shared
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: dashboard-headlamp-admin{{ $suffix }}
+  name: {{ $names->name('admin') }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: cluster-admin
 subjects:
   - kind: ServiceAccount
-    name: dashboard-headlamp{{ $suffix }}
+    name: {{ $deployment }}
     namespace: larakube-shared
 ---
 # Grants the OIDC-authenticated identity, not the ServiceAccount above, actual
@@ -59,7 +82,11 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: dashboard-oidc-admins{{ $suffix }}
+  name: {{ $names->name('oidc-admins') }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -72,23 +99,26 @@ subjects:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dashboard-headlamp{{ $suffix }}
+  name: {{ $deployment }}
   namespace: larakube-shared
   labels:
-    app: dashboard-headlamp{{ $suffix }}
+    app: {{ $deployment }}
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: dashboard-headlamp{{ $suffix }}
+      app: {{ $deployment }}
   template:
     metadata:
       labels:
-        app: dashboard-headlamp{{ $suffix }}
+        app: {{ $deployment }}
     spec:
-      serviceAccountName: dashboard-headlamp{{ $suffix }}
+      serviceAccountName: {{ $deployment }}
       containers:
         - name: headlamp
           image: ghcr.io/headlamp-k8s/headlamp:v0.29.0
@@ -101,7 +131,7 @@ spec:
 @if($oidc ?? null)
           envFrom:
             - secretRef:
-                name: dashboard-headlamp-oidc{{ $suffix }}
+                name: {{ $oidcSecret }}
 @endif
           readinessProbe:
             httpGet:
@@ -119,14 +149,18 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: dashboard-headlamp{{ $suffix }}
+  name: {{ $deployment }}
   namespace: larakube-shared
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: dashboard-headlamp{{ $suffix }}
+    app: {{ $deployment }}
   ports:
     - protocol: TCP
       port: 4466
       targetPort: 4466
 ---
-@include('k8s.dashboard.ingress')
+@include('k8s.dashboard.ingress', ['names' => $names, 'labels' => $labels])

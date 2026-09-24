@@ -94,9 +94,9 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
 
         Process::fake([
             '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-            '*get deployment dashboard-headlamp*' => Process::result(output: 'dashboard-headlamp   1/1   1   1   10d'),
+            '*get deployment headlamp*' => Process::result(output: 'headlamp   1/1   1   1   10d'),
             '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-            '*get secret dashboard-headlamp-sso*' => Process::result(output: ''),
+            '*get secret headlamp-sso*' => Process::result(output: ''),
             '*get secret larakube-tools-registry*' => Process::result(
                 output: base64_encode((string) json_encode([
                     ['tool' => 'dashboard', 'instance' => 'main', 'installed_at' => '2026-08-01T00:00:00+00:00', 'host' => 'dashboard.luchtech.dev'],
@@ -105,8 +105,8 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
             '*create secret generic*' => Process::result(output: 'secret created'),
             '*apply -f -*' => Process::result(output: 'applied'),
             '*apply -f*' => Process::result(output: 'ingress applied'),
-            '*set env deployment/dashboard-headlamp*' => Process::result(output: 'deployment.apps/dashboard-headlamp env updated'),
-            '*rollout restart*' => Process::result(output: 'deployment.apps/dashboard-headlamp restarted'),
+            '*set env deployment/headlamp*' => Process::result(output: 'deployment.apps/headlamp env updated'),
+            '*rollout restart*' => Process::result(output: 'deployment.apps/headlamp restarted'),
         ]);
 
         Saloon::fake([
@@ -613,13 +613,13 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
     // place, same self-heal as flattenOcisRoles above.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment dashboard-headlamp*' => Process::result(output: 'dashboard-headlamp   1/1   1   1   10d'),
+        '*get deployment headlamp*' => Process::result(output: 'headlamp   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret dashboard-headlamp-sso*' => Process::result(output: ''),
+        '*get secret headlamp-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/dashboard-headlamp*' => Process::result(output: 'deployment.apps/dashboard-headlamp env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/dashboard-headlamp restarted'),
+        '*set env deployment/headlamp*' => Process::result(output: 'deployment.apps/headlamp env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/headlamp restarted'),
     ]);
 
     Saloon::fake([

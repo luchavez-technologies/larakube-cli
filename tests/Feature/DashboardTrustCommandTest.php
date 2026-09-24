@@ -103,7 +103,7 @@ test('dashboard:trust errors when Headlamp has not been wired to Zitadel yet', f
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(dashboardTrustRegistryJson())),
-        '*get secret dashboard-headlamp-sso*' => Process::result(output: '', exitCode: 1),
+        '*get secret headlamp-sso*' => Process::result(output: '', exitCode: 1),
     ]);
 
     withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function (): void {
@@ -127,7 +127,7 @@ test('dashboard:trust is a no-op when the API server already trusts Zitadel', fu
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(dashboardTrustRegistryJson())),
-        '*get secret dashboard-headlamp-sso*' => Process::result(output: base64_encode('cid-1')),
+        '*get secret headlamp-sso*' => Process::result(output: base64_encode('cid-1')),
         "*'echo success'" => Process::result(output: "success\n"),
         '*larakube@1.2.3.4*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: $desired),
     ]);
@@ -145,7 +145,7 @@ test('dashboard:trust writes the config and restarts k3s when the OIDC trust is 
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(dashboardTrustRegistryJson())),
-        '*get secret dashboard-headlamp-sso*' => Process::result(output: base64_encode('cid-1')),
+        '*get secret headlamp-sso*' => Process::result(output: base64_encode('cid-1')),
         '*get ingress -n*' => Process::result(output: ''),
         "*'echo success'" => Process::result(output: "success\n"),
         '*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: ''),
@@ -184,7 +184,7 @@ test('dashboard:trust cancels cleanly when the operator declines the restart', f
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(dashboardTrustRegistryJson())),
-        '*get secret dashboard-headlamp-sso*' => Process::result(output: base64_encode('cid-1')),
+        '*get secret headlamp-sso*' => Process::result(output: base64_encode('cid-1')),
         "*'echo success'" => Process::result(output: "success\n"),
         '*cat /etc/rancher/k3s/config.yaml*' => Process::result(output: ''),
     ]);

@@ -126,7 +126,7 @@ test('dashboard manifest binds cluster-admin to the OIDC-authenticated -dashboar
         'proxied' => false,
     ])->render();
 
-    expect($manifest)->toContain('dashboard-oidc-admins')
+    expect($manifest)->toContain('headlamp-oidc-admins')
         ->and($manifest)->toContain('kind: Group')
         ->and($manifest)->toContain('name: -dashboard-admin');
 });

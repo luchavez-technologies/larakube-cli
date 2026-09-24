@@ -40,7 +40,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         'secrets' => 'openbao-backend', 'sheets' => 'teable', 'sign' => 'documenso',
         'sso' => 'sso-zitadel', 'support' => 'support-chatwoot', 'tasks' => 'planka',
         'uptime' => 'uptime-kuma', 'webmail' => 'webmail-bulwark',
-        'dns' => 'external-dns', 'dashboard' => 'dashboard-headlamp', 'meet' => 'meet-livekit',
+        'dns' => 'external-dns', 'dashboard' => 'headlamp', 'meet' => 'meet-livekit',
         'design' => 'design-penpot-backend',
     ];
 
