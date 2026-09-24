@@ -18,6 +18,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolBranding;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
+use App\Traits\RunsKubectlSteps;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
@@ -31,7 +32,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MonitorInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, RunsKubectlSteps, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'monitor:init
         {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Grafana host.}
@@ -175,12 +176,16 @@ class MonitorInitCommand extends Command
         // this command claims success regardless (confirmed live on
         // Documenso, 2026-08-05 — same root cause as the missing-timeout
         // ProcessTimedOutException crash found the same day).
-        $applied = $this->withSpin('Applying monitoring manifests...', fn () => Process::timeout(70)->run("{$kubectl} apply -f {$tmp} --request-timeout=60s")->successful());
+        // Through kubectlStep(), not a bare withSpin(): the spinner discards the
+        // process result, so a rejected apply printed "see the output above"
+        // with no output above it and nothing to act on.
+        $applied = $this->kubectlStep(
+            'Applying monitoring manifests...',
+            fn () => Kubectl::fromPrefix($kubectl)->raw(['apply', '-f', $tmp, '--request-timeout=60s'], timeoutSeconds: 70),
+        );
         $temporaryDirectory->delete();
 
         if (! $applied) {
-            $this->laraKubeError('Could not apply the monitoring manifest — see the output above.');
-
             return 1;
         }
 
