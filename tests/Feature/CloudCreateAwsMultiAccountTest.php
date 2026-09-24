@@ -203,6 +203,11 @@ test('cloud:scale hydrates AWS profile from StackData', function (): void {
         {
             return $this->fakeGlobalConfig;
         }
+
+        protected function ensureTofu(): ?array
+        {
+            return ['path' => '/usr/bin/tofu', 'isOpenTofu' => true];
+        }
     };
 
     $stack = new StackData(

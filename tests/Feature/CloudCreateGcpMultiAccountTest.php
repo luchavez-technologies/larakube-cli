@@ -188,6 +188,11 @@ test('cloud:scale hydrates GCP account and projectId from StackData', function (
         {
             return $this->fakeGlobalConfig;
         }
+
+        protected function ensureTofu(): ?array
+        {
+            return ['path' => '/usr/bin/tofu', 'isOpenTofu' => true];
+        }
     };
 
     $stack = new StackData(
