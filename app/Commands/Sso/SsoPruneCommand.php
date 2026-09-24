@@ -245,8 +245,16 @@ class SsoPruneCommand extends Command
      */
     protected function resolveRequested(array $requested, array $candidates): array
     {
-        $byKey = collect($candidates)
-            ->flatMap(fn (array $p) => [$p['id'] => $p, $p['name'] => $p]);
+        // Built by assignment, not flatMap: a Zitadel project id is a numeric
+        // string, so it becomes an INTEGER array key — and flatMap collapses
+        // with array_merge(), which renumbers integer keys. The id entry was
+        // silently replaced by 0, so --project= only ever matched names and
+        // every id was reported "not a prunable project" even when it was one.
+        $byKey = [];
+        foreach ($candidates as $candidate) {
+            $byKey[$candidate['id']] = $candidate;
+            $byKey[$candidate['name']] = $candidate;
+        }
 
         $selected = [];
         $rejected = [];

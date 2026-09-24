@@ -182,3 +182,31 @@ test('sso:prune refuses to run when the reference-set sweep itself fails', funct
 
     Saloon::assertNotSent(ListProjectsRequest::class);
 });
+
+test('--project accepts a Zitadel id, not just a name', function (): void {
+    // Zitadel ids are numeric strings, so they become INTEGER array keys — and
+    // Collection::flatMap collapses with array_merge(), which renumbers integer
+    // keys. The id entry was replaced by 0, so every --project=<id> was refused
+    // as "not a prunable project" even when it was one. Only a numeric id
+    // reproduces it; the other fixtures here use p-* ids that stay strings.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(ssoPruneRegistryJson())),
+        '*get secrets -n larakube-sso -o json*' => Process::result(output: ssoPruneSecretsJson()),
+    ]);
+
+    Saloon::fake([
+        ListProjectsRequest::class => MockResponse::make(['result' => [
+            ['id' => '384565131515920554', 'name' => 'ZITADEL'],
+            ['id' => '387711458479177871', 'name' => 'git-forgejo'],
+        ]]),
+        DeleteProjectRequest::class => MockResponse::make([]),
+    ]);
+
+    $this->artisan('sso:prune', ['--context' => 'ctx', '--project' => ['387711458479177871'], '--force' => true])
+        ->assertExitCode(0);
+
+    Saloon::assertSent(fn ($request) => $request instanceof DeleteProjectRequest
+        && $request->resolveEndpoint() === 'management/v1/projects/387711458479177871');
+});
