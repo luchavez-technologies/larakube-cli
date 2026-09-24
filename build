@@ -59,8 +59,9 @@ if [ -n "$SKIP_PHPSTAN" ]; then
 else
     echo -e "🔍 ${BOLD}Static analysis${RESET} (PHPStan/Larastan) — live progress below:"
     # NO --no-progress here: this is an interactive build, so let PHPStan stream its
-    # progress bar so a long run is visibly working, not apparently hung. (CI keeps
-    # --no-progress in .github/workflows/ci.yml for clean logs.) --memory-limit is a
+    # progress bar so a long run is visibly working, not apparently hung. (CI runs
+    # `composer analyse`, where PHPStan drops the bar itself on a non-TTY.)
+    # --memory-limit is a
     # cap only — a packaged PHP's CLI php.ini already sets memory_limit=-1. Override
     # on a tight box with: PHPSTAN_MEMORY_LIMIT=2G ./build
     ./vendor/bin/phpstan analyse --memory-limit="${PHPSTAN_MEMORY_LIMIT:-6G}"

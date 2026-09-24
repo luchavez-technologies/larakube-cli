@@ -71,7 +71,9 @@ Codify an official ADR in `cli/docs/decisions/0025-conventional-commits-and-auto
    - Evaluates SemVer rules (Pre-v1 and Post-v1), supports `Release-As:` footer.
    - Outputs release notes markdown and JSON payload with `should_release`, `version`, `notes`.
 2. Provide automated tests for the script in `cli/tests/Unit/CalculateNextVersionTest.php`.
-3. Update `.github/workflows/ci.yml` and `.forgejo/workflows/ci.yml`:
+3. Update `.forgejo/workflows/ci.yml` (the only pipeline — the GitHub copy was
+   deleted, since Forgejo is the sole remote and its release action uses a URL
+   in `uses:`, which GitHub Actions cannot parse):
    - On push to `develop`: build and publish `canary` release.
    - On push to `main`: run version calculation. If `should_release == true`:
      - Tag commit with calculated version.
@@ -96,6 +98,6 @@ Update:
 - [ ] Modernize `cli/app/Commands/UpdateCommand.php` for Forgejo
 - [ ] Update `cli/tests/Feature/UpdateCommandTest.php`
 - [ ] Create `cli/scripts/calculate-next-version.php` and its unit test
-- [ ] Update `.github/workflows/ci.yml` and `.forgejo/workflows/ci.yml`
+- [ ] Update `.forgejo/workflows/ci.yml`
 - [ ] Run `composer format`, `composer analyse`, `composer test`
 - [ ] Commit all changes with pre-commit verification
