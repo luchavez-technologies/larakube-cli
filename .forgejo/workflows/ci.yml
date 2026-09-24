@@ -46,23 +46,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-composer-
 
-      - name: Cache PHPStan result cache
-        uses: actions/cache@v4
-        with:
-          path: .phpstan
-          key: ${{ runner.os }}-phpstan-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-phpstan-
-
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
       - name: Check Code Style & Formatting
         run: ./vendor/bin/pint --test
 
-      - name: Static Analysis
-        run: composer analyse
-
+      # No PHPStan here on purpose. The runner is a pod on the production VPS
+      # (4 CPU / 8GB, ~1.8GB free) and `composer analyse` caps memory PER
+      # WORKER, so a cold run over ~650 files pages badly and dominates the
+      # pipeline. .githooks/pre-commit runs `composer analyse` on every commit,
+      # so nothing unanalysed reaches the remote. Restore this step only once
+      # the runner's cache survives a restart — see the cache config and /data
+      # volume in resources/views/k8s/git/forgejo.blade.php. Its `.phpstan`
+      # result cache step went with it — it cached a directory nothing wrote.
       - name: Verify Container Images
         run: php scripts/check-images.php
 
