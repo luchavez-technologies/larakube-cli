@@ -213,6 +213,24 @@ enum CliTool: string
         return true;
     }
 
+    /**
+     * The command that installs the Google Cloud SDK from Google's own script.
+     *
+     * Split out from installGcloud() so it can be asserted without running an
+     * installer: the shape of this one string is the whole bug surface (see
+     * the -s note below), and passthru() is not fakeable.
+     */
+    public static function gcloudInstallCommand(string $installDir): string
+    {
+        // `bash -s --`, not `bash --`: without -s, bash reads the first
+        // argument after -- as the script FILENAME instead of taking the
+        // script from the pipe, so it died with
+        // "bash: --disable-prompts: No such file or directory" and never ran
+        // the installer. -s says "script is on stdin, the rest are positional
+        // arguments".
+        return 'curl -fsSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir='.escapeshellarg($installDir);
+    }
+
     protected function installK9s(): bool
     {
         $version = 'v0.32.5';
@@ -269,7 +287,7 @@ enum CliTool: string
             if (trim(Process::run('command -v brew')->output()) === '') {
                 // Fallback to official Google user-space script if brew is absent
                 $installDir = home_path();
-                passthru('curl -fsSL https://sdk.cloud.google.com | bash -- --disable-prompts --install-dir='.escapeshellarg($installDir), $code);
+                passthru(self::gcloudInstallCommand($installDir), $code);
 
                 return $code === 0 && $this->isInstalled();
             }
@@ -281,7 +299,7 @@ enum CliTool: string
 
         if (PHP_OS_FAMILY === 'Linux') {
             $installDir = home_path();
-            passthru('curl -fsSL https://sdk.cloud.google.com | bash -- --disable-prompts --install-dir='.escapeshellarg($installDir), $code);
+            passthru(self::gcloudInstallCommand($installDir), $code);
 
             return $code === 0 && $this->isInstalled();
         }

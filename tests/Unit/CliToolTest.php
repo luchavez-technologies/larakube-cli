@@ -66,3 +66,15 @@ test('ensureAuth handles aws authentication detection', function (): void {
 
     expect(CliTool::AWS->ensureAuth(prompt: false))->toBeTrue();
 });
+
+test('the gcloud installer passes its flags to the piped script, not to bash', function (): void {
+    // `bash -- --disable-prompts` makes bash read a FILE named
+    // --disable-prompts instead of the piped script, so the install died with
+    // "bash: --disable-prompts: No such file or directory" and gcloud was
+    // never installed. -s is what says "the script is on stdin".
+    $command = CliTool::gcloudInstallCommand('/home/dev');
+
+    expect($command)->toContain('| bash -s -- --disable-prompts')
+        ->and($command)->not->toContain('| bash -- ')
+        ->and($command)->toContain("--install-dir='/home/dev'");
+});

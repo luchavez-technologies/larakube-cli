@@ -465,19 +465,24 @@ class SetupCommand extends Command
 
         foreach ($selected as $value) {
             $tool = CliTool::from($value);
+            $available = true;
+
             if ($tool->isInstalled()) {
                 $this->line("  <fg=green>✓</> {$tool->label()} already installed.");
             } else {
                 $this->line("  Installing {$tool->label()}...");
-                $ok = $tool->install();
-                if (! $ok) {
-                    $this->laraKubeWarn("Could not install {$tool->label()}. You can install it manually or retry later.");
-                } else {
+                $available = $tool->install();
+                if ($available) {
                     $this->line("  <fg=green>✓</> {$tool->label()} installed successfully.");
+                } else {
+                    $this->laraKubeWarn("Could not install {$tool->label()}. You can install it manually or retry later.");
                 }
             }
 
-            if ($tool === CliTool::GCLOUD || $tool === CliTool::AWS) {
+            // Only when the binary is actually there. Asking to open a browser
+            // and log in to a tool whose install just failed offers a step that
+            // cannot work, right after saying the tool is missing.
+            if ($available && ($tool === CliTool::GCLOUD || $tool === CliTool::AWS)) {
                 $tool->ensureAuth(prompt: $this->input->isInteractive());
             }
         }
