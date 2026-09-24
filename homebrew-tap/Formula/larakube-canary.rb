@@ -1,10 +1,10 @@
 class LarakubeCanary < Formula
-  desc "Kubernetes for Laravel — bleeding-edge builds from the tip of main (unstable)"
+  desc "Kubernetes for Laravel — bleeding-edge builds from the tip of develop (unstable)"
   homepage "https://larakube.luchtech.dev"
   version "CANARY_VERSION"
   license "MIT"
 
-  # Republished under the same "canary" release tag on every push to main, so
+  # Republished under the same "canary" release tag on every push to develop, so
   # the binary's bytes at this URL change without the URL itself changing.
   # sha256 :no_check is Homebrew's documented escape hatch for exactly that —
   # a pinned checksum would just go stale and break every subsequent install.
@@ -33,7 +33,7 @@ class LarakubeCanary < Formula
   def caveats
     <<~EOS
       This is the CANARY (bleeding-edge, unstable) build of LaraKube CLI,
-      built from the latest commit on main — it may be broken. It installs
+      built from the latest commit on develop — it may be broken. It installs
       as `larakube-canary`, side by side with the stable `larakube` formula,
       so it never touches your stable install.
 
