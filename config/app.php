@@ -62,9 +62,13 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'forgejo' => [
-        'url' => env('FORGEJO_URL', 'https://git.luchtech.dev'),
-        'repository' => env('FORGEJO_REPOSITORY', 'luchaveztech/larakube-cli'),
+    'github' => [
+        // api.github.com serves the release metadata; github.com serves the
+        // binaries. Forgejo/Gitea put both on one host under /api/v1, so these
+        // are two settings rather than one base URL.
+        'api' => env('GITHUB_API_URL', 'https://api.github.com'),
+        'url' => env('GITHUB_URL', 'https://github.com'),
+        'repository' => env('GITHUB_REPOSITORY', 'luchavez-technologies/larakube-cli'),
     ],
 
     /*

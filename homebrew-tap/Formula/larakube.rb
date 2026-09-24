@@ -6,11 +6,11 @@ class Larakube < Formula
 
   on_macos do
     on_arm do
-      url "https://git.luchtech.dev/luchaveztech/larakube-cli/releases/download/v#{version}/larakube-mac-arm"
+      url "https://github.com/luchavez-technologies/larakube-cli/releases/download/v#{version}/larakube-mac-arm"
       sha256 "SHA256_MAC_ARM"
     end
     on_intel do
-      url "https://git.luchtech.dev/luchaveztech/larakube-cli/releases/download/v#{version}/larakube-mac-x64"
+      url "https://github.com/luchavez-technologies/larakube-cli/releases/download/v#{version}/larakube-mac-x64"
       sha256 "SHA256_MAC_X64"
     end
   end

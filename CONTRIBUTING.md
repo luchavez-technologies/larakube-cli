@@ -17,7 +17,7 @@ All command classes must use the `App\Traits\LaraKubeOutput` trait.
 
 Install PHP 8.4 locally. `kubectl` also needs to be on your `PATH` for anything that talks to a cluster.
 
-Required PHP extensions (matches CI's `setup-php` step in `.forgejo/workflows/ci.yml`): `mbstring`, `xml`, `ctype`, `iconv`, `intl`, `pdo_sqlite`, `bcmath`, `zip`, `pcntl`, `posix`, `openssl`, `curl` — plus `phar` (with `phar.readonly=0`) if you're building standalone binaries yourself. CI also loads `opcache` to speed itself up; you don't need it locally.
+Required PHP extensions (matches CI's `setup-php` step in `.github/workflows/ci.yml`): `mbstring`, `xml`, `ctype`, `iconv`, `intl`, `pdo_sqlite`, `bcmath`, `zip`, `pcntl`, `posix`, `openssl`, `curl` — plus `phar` (with `phar.readonly=0`) if you're building standalone binaries yourself. CI also loads `opcache` to speed itself up; you don't need it locally.
 
 ### 1. Running the CLI in dev mode
 `./larakube` runs directly against your current source (as opposed to `/usr/local/bin/larakube`, the last **built** binary):

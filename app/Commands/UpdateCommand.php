@@ -58,14 +58,13 @@ class UpdateCommand extends Command
 
         $this->laraKubeInfo('Checking for latest version...');
 
-        $baseUrl = $this->getForgejoBaseUrl();
-        $repo = $this->getForgejoRepository();
+        $repo = $this->getGithubRepository();
 
         $response = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])
-            ->get("{$baseUrl}/api/v1/repos/{$repo}/releases/latest");
+            ->get($this->getGithubApiUrl()."/repos/{$repo}/releases/latest");
 
         if ($response->failed()) {
-            $this->laraKubeError('Failed to fetch the latest version from Forgejo release server.');
+            $this->laraKubeError('Failed to fetch the latest version from the GitHub release server.');
 
             return 1;
         }
@@ -88,7 +87,7 @@ class UpdateCommand extends Command
     }
 
     /**
-     * Canary builds are the tip of develop, republished under the same Forgejo
+     * Canary builds are the tip of develop, republished under the same GitHub
      * Release tag ("canary") on every push to develop — there's no version to
      * diff against, so this always re-downloads and re-installs on
      * confirmation rather than checking whether anything changed first.
@@ -101,14 +100,13 @@ class UpdateCommand extends Command
             return 0;
         }
 
-        $baseUrl = $this->getForgejoBaseUrl();
-        $repo = $this->getForgejoRepository();
+        $repo = $this->getGithubRepository();
 
         $response = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])
-            ->get("{$baseUrl}/api/v1/repos/{$repo}/releases/tags/canary");
+            ->get($this->getGithubApiUrl()."/repos/{$repo}/releases/tags/canary");
 
         if ($response->failed()) {
-            $this->laraKubeError('Failed to fetch the canary release from Forgejo release server.');
+            $this->laraKubeError('Failed to fetch the canary release from the GitHub release server.');
 
             return 1;
         }
@@ -134,10 +132,9 @@ class UpdateCommand extends Command
             return 1;
         }
 
-        $baseUrl = $this->getForgejoBaseUrl();
-        $repo = $this->getForgejoRepository();
+        $repo = $this->getGithubRepository();
         $binaryName = "larakube-$os-$arch";
-        $downloadUrl = "{$baseUrl}/{$repo}/releases/download/$version/$binaryName";
+        $downloadUrl = $this->getGithubUrl()."/{$repo}/releases/download/$version/$binaryName";
 
         $this->laraKubeInfo("Downloading $binaryName for $os ($arch)...");
 
@@ -197,13 +194,18 @@ class UpdateCommand extends Command
         return str_contains($real, '/Cellar/');
     }
 
-    protected function getForgejoBaseUrl(): string
+    protected function getGithubApiUrl(): string
     {
-        return rtrim((string) (config('app.forgejo.url') ?: 'https://git.luchtech.dev'), '/');
+        return rtrim((string) (config('app.github.api') ?: 'https://api.github.com'), '/');
     }
 
-    protected function getForgejoRepository(): string
+    protected function getGithubUrl(): string
     {
-        return (string) (config('app.forgejo.repository') ?: 'luchaveztech/larakube-cli');
+        return rtrim((string) (config('app.github.url') ?: 'https://github.com'), '/');
+    }
+
+    protected function getGithubRepository(): string
+    {
+        return (string) (config('app.github.repository') ?: 'luchavez-technologies/larakube-cli');
     }
 }

@@ -202,7 +202,7 @@ class ReleaseVersionCalculator
         }
 
         if ($repo && $previousVersion !== 'v0.0.0') {
-            $lines[] = "**Full Changelog**: https://git.luchtech.dev/{$repo}/compare/{$previousVersion}...{$nextVersion}";
+            $lines[] = "**Full Changelog**: https://github.com/{$repo}/compare/{$previousVersion}...{$nextVersion}";
         }
 
         return trim(implode("\n", $lines));

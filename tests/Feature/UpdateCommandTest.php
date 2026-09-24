@@ -6,7 +6,7 @@ test('update command detects if version is up to date', function (): void {
     config(['app.version' => 'v0.2.0']);
 
     Http::fake([
-        'git.luchtech.dev/api/v1/repos/luchaveztech/larakube-cli/releases/latest' => Http::response([
+        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest' => Http::response([
             'tag_name' => 'v0.2.0',
         ], 200),
     ]);
@@ -22,7 +22,7 @@ test('update command handles update availability and cancellation', function ():
     config(['app.version' => 'v0.1.0']);
 
     Http::fake([
-        'git.luchtech.dev/api/v1/repos/luchaveztech/larakube-cli/releases/latest' => Http::response([
+        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest' => Http::response([
             'tag_name' => 'v0.2.0',
         ], 200),
     ]);
@@ -35,11 +35,11 @@ test('update command handles update availability and cancellation', function ():
 
 test('update command fails gracefully on release API failure', function (): void {
     Http::fake([
-        'git.luchtech.dev/api/v1/repos/luchaveztech/larakube-cli/releases/latest' => Http::response([], 500),
+        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/latest' => Http::response([], 500),
     ]);
 
     $this->artisan('update')
-        ->expectsOutputToContain('Failed to fetch the latest version from Forgejo release server.')
+        ->expectsOutputToContain('Failed to fetch the latest version from the GitHub release server.')
         ->assertExitCode(1);
 });
 
@@ -60,12 +60,12 @@ test('update --canary warns and can be cancelled without ever hitting the networ
 
 test('update --canary fails gracefully on release API failure', function (): void {
     Http::fake([
-        'git.luchtech.dev/api/v1/repos/luchaveztech/larakube-cli/releases/tags/canary' => Http::response([], 500),
+        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary' => Http::response([], 500),
     ]);
 
     $this->artisan('update --canary')
         ->expectsConfirmation('Update to the latest canary build now?', 'yes')
-        ->expectsOutputToContain('Failed to fetch the canary release from Forgejo release server.')
+        ->expectsOutputToContain('Failed to fetch the canary release from the GitHub release server.')
         ->assertExitCode(1);
 });
 

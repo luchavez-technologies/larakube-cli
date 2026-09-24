@@ -54,12 +54,14 @@ Codify an official ADR in `cli/docs/decisions/0025-conventional-commits-and-auto
    - Post-v1: `BREAKING CHANGE` bumps major (`2.0.0`), `feat` bumps minor (`1.1.0`), `fix` bumps patch (`1.0.1`).
 
 ### B. Modernize `UpdateCommand.php` (Plan C)
-1. Point default endpoints to Forgejo:
-   - Base URL: `https://git.luchtech.dev` (configurable via `FORGEJO_URL` / `config('app.forgejo.url')`)
-   - Repository: `luchaveztech/larakube-cli` (configurable via `FORGEJO_REPOSITORY` / `config('app.forgejo.repository')`)
-   - Latest release API: `/api/v1/repos/{repo}/releases/latest`
-   - Canary release API: `/api/v1/repos/{repo}/releases/tags/canary`
-   - Binary download: `/{repo}/releases/download/{version}/{binaryName}`
+1. Point default endpoints to GitHub (this repo moved off Forgejo 2026-09-24;
+   Forgejo stays as a Cluster Tool the CLI deploys, not as its own host):
+   - API base: `https://api.github.com` (configurable via `GITHUB_API_URL` / `config('app.github.api')`)
+   - Web base: `https://github.com` (configurable via `GITHUB_URL` / `config('app.github.url')`)
+   - Repository: `luchavez-technologies/larakube-cli` (configurable via `GITHUB_REPOSITORY` / `config('app.github.repository')`)
+   - Latest release API: `/repos/{repo}/releases/latest`
+   - Canary release API: `/repos/{repo}/releases/tags/canary`
+   - Binary download: `{web}/{repo}/releases/download/{version}/{binaryName}`
 2. Update user-facing strings ("Forgejo" / "release server" instead of "GitHub").
 3. Update `cli/tests/Feature/UpdateCommandTest.php` to mock and assert against Forgejo URLs.
 
@@ -71,9 +73,7 @@ Codify an official ADR in `cli/docs/decisions/0025-conventional-commits-and-auto
    - Evaluates SemVer rules (Pre-v1 and Post-v1), supports `Release-As:` footer.
    - Outputs release notes markdown and JSON payload with `should_release`, `version`, `notes`.
 2. Provide automated tests for the script in `cli/tests/Unit/CalculateNextVersionTest.php`.
-3. Update `.forgejo/workflows/ci.yml` (the only pipeline — the GitHub copy was
-   deleted, since Forgejo is the sole remote and its release action uses a URL
-   in `uses:`, which GitHub Actions cannot parse):
+3. Update `.github/workflows/ci.yml` (the only pipeline):
    - On push to `develop`: build and publish `canary` release.
    - On push to `main`: run version calculation. If `should_release == true`:
      - Tag commit with calculated version.
@@ -98,6 +98,6 @@ Update:
 - [ ] Modernize `cli/app/Commands/UpdateCommand.php` for Forgejo
 - [ ] Update `cli/tests/Feature/UpdateCommandTest.php`
 - [ ] Create `cli/scripts/calculate-next-version.php` and its unit test
-- [ ] Update `.forgejo/workflows/ci.yml`
+- [ ] Update `.github/workflows/ci.yml`
 - [ ] Run `composer format`, `composer analyse`, `composer test`
 - [ ] Commit all changes with pre-commit verification

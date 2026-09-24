@@ -13,11 +13,11 @@ class LarakubeCanary < Formula
   # as new and re-downloads instead of serving a stale cached copy.
   on_macos do
     on_arm do
-      url "https://git.luchtech.dev/luchaveztech/larakube-cli/releases/download/canary/larakube-mac-arm"
+      url "https://github.com/luchavez-technologies/larakube-cli/releases/download/canary/larakube-mac-arm"
       sha256 :no_check
     end
     on_intel do
-      url "https://git.luchtech.dev/luchaveztech/larakube-cli/releases/download/canary/larakube-mac-x64"
+      url "https://github.com/luchavez-technologies/larakube-cli/releases/download/canary/larakube-mac-x64"
       sha256 :no_check
     end
   end
