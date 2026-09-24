@@ -3,7 +3,7 @@
 namespace App\Commands\Cloud;
 
 use App\Data\StackData;
-use App\State;
+use App\Facades\State;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;

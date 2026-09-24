@@ -5,7 +5,7 @@ use App\Commands\Cloud\CloudDestroyCommand;
 use App\Commands\Cloud\CloudScaleCommand;
 use App\Data\GlobalConfigData;
 use App\Data\StackData;
-use App\State;
+use App\Facades\State;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Key;

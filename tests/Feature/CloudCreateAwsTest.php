@@ -2,7 +2,7 @@
 
 use App\Commands\Cloud\CloudCreateCommand;
 use App\Data\GlobalConfigData;
-use App\State;
+use App\Facades\State;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;

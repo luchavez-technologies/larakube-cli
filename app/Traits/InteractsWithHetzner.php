@@ -3,7 +3,7 @@
 namespace App\Traits;
 
 use App\Enums\CliTool;
-use App\State;
+use App\Facades\State;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;

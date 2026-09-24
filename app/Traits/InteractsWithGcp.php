@@ -3,7 +3,7 @@
 namespace App\Traits;
 
 use App\Enums\CliTool;
-use App\State;
+use App\Facades\State;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 

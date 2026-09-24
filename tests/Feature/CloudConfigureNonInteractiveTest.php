@@ -19,7 +19,7 @@ use App\Data\ConfigData;
 use App\Data\RegistryData;
 use App\Enums\IngressController;
 use App\Enums\RegistryProvider;
-use App\State;
+use App\Facades\State;
 use Laravel\Prompts\Prompt;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;

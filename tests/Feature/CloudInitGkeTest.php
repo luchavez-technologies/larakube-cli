@@ -1,6 +1,6 @@
 <?php
 
-use App\State;
+use App\Facades\State;
 use Illuminate\Support\Facades\Process;
 
 beforeEach(function (): void {

@@ -1,7 +1,7 @@
 <?php
 
 use App\Enums\AppFramework;
-use App\State;
+use App\Facades\State;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;

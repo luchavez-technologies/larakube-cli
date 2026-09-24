@@ -6,7 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\AiProvider;
 use App\Enums\CliTool;
-use App\State;
+use App\Facades\State;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;

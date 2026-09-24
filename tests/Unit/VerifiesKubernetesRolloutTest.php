@@ -7,7 +7,7 @@
  * means the API server accepted the manifest, not that the pod came up.
  */
 
-use App\State;
+use App\Facades\State;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 

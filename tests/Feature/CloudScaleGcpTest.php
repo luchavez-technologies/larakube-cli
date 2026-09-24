@@ -2,7 +2,7 @@
 
 use App\Commands\Cloud\CloudScaleCommand;
 use App\Data\GlobalConfigData;
-use App\State;
+use App\Facades\State;
 use Laravel\Prompts\Prompt;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;

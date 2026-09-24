@@ -4,8 +4,8 @@ namespace App\Traits;
 
 use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
+use App\Facades\State;
 use App\Services\Kubectl;
-use App\State;
 use Exception;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;

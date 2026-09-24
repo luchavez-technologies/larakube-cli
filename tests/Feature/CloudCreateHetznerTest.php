@@ -4,7 +4,7 @@ use App\Commands\Cloud\CloudCreateCommand;
 use App\Data\GlobalConfigData;
 use App\Enums\CliTool;
 use App\Enums\CloudProvider;
-use App\State;
+use App\Facades\State;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Artisan;
 use Laravel\Prompts\Prompt;

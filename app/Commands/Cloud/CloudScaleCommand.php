@@ -5,7 +5,7 @@ namespace App\Commands\Cloud;
 use App\Data\ConfigData;
 use App\Data\StackData;
 use App\Enums\CloudProvider;
-use App\State;
+use App\Facades\State;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithAws;
 use App\Traits\InteractsWithEnvironments;

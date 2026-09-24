@@ -14,7 +14,7 @@
 
 use App\Commands\Cloud\CloudCreateCommand;
 use App\Data\GlobalConfigData;
-use App\State;
+use App\Facades\State;
 use Laravel\Prompts\Prompt;
 use Symfony\Component\Console\Input\ArrayInput;
 

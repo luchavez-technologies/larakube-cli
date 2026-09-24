@@ -2,7 +2,7 @@
 
 namespace App\Traits;
 
-use App\State;
+use App\Facades\State;
 use Illuminate\Console\OutputStyle;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 

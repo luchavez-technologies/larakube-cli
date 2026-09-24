@@ -10,7 +10,7 @@
  * the pre-kubectl guards only.
  */
 
-use App\State;
+use App\Facades\State;
 use Laravel\Prompts\Prompt;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 

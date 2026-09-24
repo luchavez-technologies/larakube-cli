@@ -1,6 +1,6 @@
 <?php
 
-namespace App;
+namespace App\Facades;
 
 use App\Services\RuntimeContext;
 use Illuminate\Console\OutputStyle;

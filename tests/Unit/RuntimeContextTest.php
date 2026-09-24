@@ -1,7 +1,7 @@
 <?php
 
+use App\Facades\State;
 use App\Services\RuntimeContext;
-use App\State;
 
 test('RuntimeContext is bound as a singleton in the Laravel container', function (): void {
     $instance1 = app(RuntimeContext::class);

@@ -8,7 +8,7 @@
  */
 
 use App\Data\GlobalConfigData;
-use App\State;
+use App\Facades\State;
 use App\Traits\InteractsWithOpenTofu;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;

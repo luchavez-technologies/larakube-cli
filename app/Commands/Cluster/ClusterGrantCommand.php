@@ -2,8 +2,8 @@
 
 namespace App\Commands\Cluster;
 
+use App\Facades\State;
 use App\Services\Kubectl;
-use App\State;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithScopedRbac;

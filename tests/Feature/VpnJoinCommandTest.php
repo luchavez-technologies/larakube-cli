@@ -3,7 +3,7 @@
 use App\Commands\Vpn\VpnJoinCommand;
 use App\Data\CloudData;
 use App\Data\ConfigData;
-use App\State;
+use App\Facades\State;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
