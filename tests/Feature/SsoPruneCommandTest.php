@@ -210,3 +210,40 @@ test('--project accepts a Zitadel id, not just a name', function (): void {
     Saloon::assertSent(fn ($request) => $request instanceof DeleteProjectRequest
         && $request->resolveEndpoint() === 'management/v1/projects/387711458479177871');
 });
+
+test('a project named after a tool nobody installed is prunable', function (): void {
+    // Protection keys on the tools registry, not on every name the CLI could
+    // emit. Protecting shippedCases() wholesale meant a project left behind by
+    // an uninstalled tool could never be pruned — the one case prune exists for.
+    Process::fake([
+        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        // Only notes is registered; resume is not installed at all.
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(ssoPruneRegistryJson())),
+        '*get secrets -n larakube-sso -o json*' => Process::result(output: ssoPruneSecretsJson()),
+    ]);
+
+    Saloon::fake([
+        ListProjectsRequest::class => MockResponse::make(['result' => [
+            ['id' => '111', 'name' => 'resume-reactive'],
+            ['id' => '222', 'name' => 'outline-notes-luchtech-dev'],
+        ]]),
+        DeleteProjectRequest::class => MockResponse::make([]),
+    ]);
+
+    $this->artisan('sso:prune', ['--context' => 'ctx', '--project' => ['resume-reactive'], '--force' => true])
+        ->assertExitCode(0);
+
+    Saloon::assertSent(fn ($request) => $request instanceof DeleteProjectRequest
+        && $request->resolveEndpoint() === 'management/v1/projects/111');
+});
+
+test('a registered tool keeps its project even with no sso-app secret yet', function (): void {
+    // The other half: notes IS in the registry, so both its unnamed and
+    // per-instance project names stay protected whether or not it is wired.
+    ssoPruneFakes();
+
+    $this->artisan('sso:prune', ['--context' => 'ctx', '--project' => ['outline-notes-luchtech-dev'], '--force' => true])
+        ->assertExitCode(1)
+        ->expectsOutputToContain('not a prunable project');
+});

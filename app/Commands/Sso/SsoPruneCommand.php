@@ -204,11 +204,15 @@ class SsoPruneCommand extends Command
 
     /**
      * Names sso:prune never touches regardless of references: the Zitadel
-     * system project, the shared open-to-org project, every shipped tool's
-     * unnamed RBAC project name, and every REGISTERED instance's per-instance
-     * project name from the tools registry (multi-instance tools key projects
-     * off deploymentName($instance), so a registered-but-unwired-yet
-     * instance's project must survive even with no sso-app secret yet).
+     * system project, the shared open-to-org project, and — for every tool
+     * the REGISTRY says is installed — both its unnamed RBAC project name and
+     * its per-instance one, so a registered-but-unwired-yet tool's project
+     * survives even with no sso-app secret yet.
+     *
+     * Keyed on the registry, not on ClusterTool::shippedCases(): protecting
+     * every name the CLI could ever emit meant a project left behind by a
+     * tool nobody has installed could never be pruned, which is the one case
+     * this command exists for.
      *
      * @return list<string>
      */
@@ -216,17 +220,17 @@ class SsoPruneCommand extends Command
     {
         $names = ['ZITADEL', ClusterTool::ssoAdminProjectName()];
 
-        foreach (ClusterTool::shippedCases() as $tool) {
-            if ($tool->hasSsoWire()) {
-                $names[] = $tool->rbacProjectName();
-            }
-        }
-
         foreach ($this->getRegisteredTools($kubectl) as $entry) {
             $tool = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
-            $instance = $entry['instance'] ?? null;
 
-            if ($tool !== null && $tool->hasSsoWire() && is_string($instance) && $instance !== '') {
+            if ($tool === null || ! $tool->hasSsoWire()) {
+                continue;
+            }
+
+            $names[] = $tool->rbacProjectName();
+
+            $instance = $entry['instance'] ?? null;
+            if (is_string($instance) && $instance !== '') {
                 $names[] = $tool->rbacProjectName($instance);
             }
         }
