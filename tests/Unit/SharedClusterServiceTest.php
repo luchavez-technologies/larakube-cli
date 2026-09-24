@@ -77,7 +77,7 @@ test('hostFor dash-suffixes the prefix for any named instance, and leaves the so
     expect(SharedClusterService::DATA->hostFor('data-blog.example.com', 'blog'))->toBe('data-blog.example.com');
 });
 
-test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Forgejo, Flow, Sheet, Insights, Mail, Desk, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function (): void {
+test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Forgejo, Flow, Sheet, Insights, Mail, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function (): void {
     foreach (SharedClusterService::cases() as $service) {
         $localOnly = ! in_array($service, [
             SharedClusterService::GRAFANA,
@@ -91,7 +91,6 @@ test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, F
             SharedClusterService::SHEET,
             SharedClusterService::INSIGHTS,
             SharedClusterService::MAIL,
-            SharedClusterService::DESK,
             SharedClusterService::CHAT,
             SharedClusterService::SSO,
             SharedClusterService::WEBMAIL,

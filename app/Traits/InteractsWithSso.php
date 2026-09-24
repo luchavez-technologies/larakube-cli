@@ -12,8 +12,8 @@ use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 /**
- * Helpers for the Zitadel identity-provider tool. Mirrors InteractsWithDesk,
- * except its own dedicated `larakube-sso` namespace — same posture as
+ * Helpers for the Zitadel identity-provider tool. Uses its own dedicated
+ * `larakube-sso` namespace — same posture as
  * Vaultwarden/OpenBao/NetBird: if this is compromised, everything
  * federated to it is compromised, so it doesn't share larakube-shared.
  */

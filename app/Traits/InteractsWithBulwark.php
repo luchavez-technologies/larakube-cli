@@ -9,8 +9,8 @@ use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
 
 /**
- * Helpers for the Bulwark webmail tool — a JMAP client for Stalwart. Mirrors
- * InteractsWithDesk's shape (a shared-namespace deployment), minus any Commons:
+ * Helpers for the Bulwark webmail tool — a JMAP client for Stalwart. A
+ * shared-namespace deployment, minus any Commons:
  * Bulwark keeps only its own small config on a PVC, no database. It is
  * meaningless without Stalwart, so its commands gate on isMailInstalled().
  */

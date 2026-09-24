@@ -27,7 +27,7 @@ use Symfony\Component\Process\Exception\ProcessTimedOutException;
  *     `monitor:init production` (no explicit --context) silently applied
  *     manifests to whatever the ambient current kube-context happened to be,
  *     not production's actual saved cluster target.
- *   - desk:init and insights:init got deploy right but skipped context
+ *   - insights:init got deploy right but skipped context
  *     resolution entirely on --remove, same bug, narrower blast radius.
  *   - Every tool's remove path ran its steps via `withSpin(..., fn () =>
  *     Process::run(...))` with no return, so a failed step correctly painted

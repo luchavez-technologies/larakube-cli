@@ -42,7 +42,6 @@ enum SharedClusterService: string
             self::SHEET => 'k8s.sheet.ingress',
             self::INSIGHTS => 'k8s.insights.ingress',
             self::MAIL => 'k8s.mail.ingress',
-            self::DESK => 'k8s.desk.ingress',
             self::CHAT => 'k8s.chat.ingress',
             self::SSO => 'k8s.sso.ingress',
             self::WEBMAIL => 'k8s.webmail.ingress',
@@ -152,7 +151,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::FORGEJO, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::DESK, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN, self::RESUME, self::PASTE => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::FORGEJO, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN, self::RESUME, self::PASTE => false,
             default => true,
         };
     }
@@ -182,7 +181,6 @@ enum SharedClusterService: string
             self::DRIVE => 'Drive',
             self::INSIGHTS => 'Metabase',
             self::MAIL => 'Stalwart',
-            self::DESK => 'FreeScout',
             self::CHAT => 'Team Chat (Matrix)',
             self::SSO => 'Zitadel',
             self::WEBMAIL => 'Bulwark',
@@ -234,7 +232,6 @@ enum SharedClusterService: string
             self::DRIVE => 'deployment drive-ocis -n larakube-shared',
             self::INSIGHTS => 'deployment insights-metabase -n larakube-shared',
             self::MAIL => 'deployment stalwart -n larakube-shared',
-            self::DESK => 'deployment desk-freescout -n larakube-shared',
             self::CHAT => 'deployment chat-synapse -n larakube-shared',
             self::SSO => 'deployment sso-zitadel -n larakube-sso',
             self::WEBMAIL => 'deployment webmail-bulwark -n larakube-shared',
@@ -357,7 +354,6 @@ enum SharedClusterService: string
             self::DRIVE => 'Refreshing Drive ingress...',
             self::INSIGHTS => 'Refreshing Insights (Metabase) ingress...',
             self::MAIL => 'Refreshing Stalwart (Mail) ingress...',
-            self::DESK => 'Refreshing FreeScout (Help Desk) ingress...',
             self::CHAT => 'Refreshing Matrix (Chat) ingress...',
             self::SSO => 'Refreshing Zitadel (SSO) ingress...',
             self::WEBMAIL => 'Refreshing Bulwark (Webmail) ingress...',
@@ -401,7 +397,6 @@ enum SharedClusterService: string
     case SHEET = 'sheet';
     case INSIGHTS = 'insights';
     case MAIL = 'mail';
-    case DESK = 'desk';
     case CHAT = 'chat';
     case SSO = 'sso';
     case WEBMAIL = 'webmail';

@@ -180,8 +180,7 @@ class SsoInitCommand extends Command
         file_put_contents($tmp, $manifest);
 
         // First boot runs Zitadel's own DB init + schema setup before it starts
-        // serving traffic — give it generous headroom, mirroring FreeScout's
-        // "first boot runs migrations" wait.
+        // serving traffic — give it generous headroom (up to 300s).
         $rolledOut = $this->withSpin(
             'Applying Zitadel manifests (first boot runs schema setup)...',
             fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'sso-zitadel', 300),

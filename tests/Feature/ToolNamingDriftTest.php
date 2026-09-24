@@ -20,7 +20,6 @@ function toolNamingKnownDrift(): array
         'chat' => $refusesDomain,
         'meet' => $refusesDomain,
         'design' => 'init hand-builds design-backend/-secrets/-oidc names remove never deletes',
-        'desk' => $refusesDomain,
         'drive' => $refusesDomain,
         'errors' => $refusesDomain,
         'git' => $refusesDomain,

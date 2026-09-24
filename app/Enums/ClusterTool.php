@@ -54,9 +54,9 @@ enum ClusterTool: string implements HasWorkloadComponents
 {
     /**
      * The vendor backing this category — an enum case for a multi-vendor
-     * category (DATA, GIT, CHAT, DESIGN, TASKS, DESK), the engine's class in
-     * app/Tools for FLOW, a plain class instance for a single-vendor one. Total
-     * over all 29 cases — every category has exactly one vendor.
+     * category (DATA, GIT, CHAT, DESIGN, TASKS), the engine's class in
+     * app/Tools for FLOW, a plain class instance for a single-vendor one.
+     * Every category has exactly one vendor.
      */
     public function vendor(?string $engine = null): ClusterToolVendor
     {
@@ -67,7 +67,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CHAT => ChatTool::MATRIX,
             self::DESIGN => DesignTool::PENPOT,
             self::TASKS => TaskTool::PLANKA,
-            self::DESK => DeskTool::FREESCOUT,
             self::MAIL => new MailTool,
             self::SECRETS => new SecretTool,
             self::DRIVE => new DriveTool,
@@ -110,7 +109,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::INSIGHTS => 'Business Intelligence (Metabase)',
             self::DNS => 'Automated DNS (ExternalDNS + Cloudflare)',
             self::MAIL => 'Mail Server (Stalwart)',
-            self::DESK => 'Help Desk & Shared Inbox (FreeScout)',
             self::CHAT => 'Team Chat (Matrix)',
             self::SSO => 'Identity Provider / SSO (Zitadel)',
             self::WEBMAIL => 'Webmail UI (Bulwark)',
@@ -148,7 +146,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CHAT => '💬',
             self::CRM => '🤝',
             self::DATA => '🗄️',
-            self::DESK => '🎫',
             self::DNS => '🌐',
             self::DRIVE => '☁️',
             self::ERRORS => '🐛',
@@ -192,7 +189,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CHAT => 'Chat',
             self::CRM => 'CRM',
             self::DATA => 'Data',
-            self::DESK => 'Help Desk',
             self::DNS => 'DNS',
             self::DRIVE => 'Drive',
             self::ERRORS => 'Error Tracking',
@@ -254,7 +250,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CHAT => SharedClusterService::CHAT,
             self::CRM => SharedClusterService::CRM,
             self::DATA => SharedClusterService::DATA,
-            self::DESK => SharedClusterService::DESK,
             self::DNS => null,
             self::DRIVE => SharedClusterService::DRIVE,
             self::ERRORS => SharedClusterService::ERRORS,
@@ -539,7 +534,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DRIVE => ['ocis' => 'oCIS'],
             self::FLOW => ['n8n' => 'n8n', 'windmill' => 'Windmill'],
             self::TASKS => ['planka' => 'Planka'],
-            self::DESK => ['freescout' => 'FreeScout'],
             default => [],
         };
     }
@@ -559,7 +553,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function supportsNoPlex(): bool
     {
         return match ($this) {
-            self::CHAT, self::DESK, self::DRIVE, self::ERRORS,
+            self::CHAT, self::DRIVE, self::ERRORS,
             self::FLOW, self::GIT, self::INSIGHTS, self::SSO => true,
             default => false,
         };
@@ -1533,7 +1527,6 @@ enum ClusterTool: string implements HasWorkloadComponents
     case MEET = 'meet';
     case CRM = 'crm';
     case DATA = 'data';
-    case DESK = 'desk';
     case DNS = 'dns';
     case DRIVE = 'drive';
     case ERRORS = 'errors';

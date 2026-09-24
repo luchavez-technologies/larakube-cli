@@ -15,7 +15,7 @@ function capturedRegistrationWrite(string $command): ?array
 }
 
 test('registerDeployedTool merges $extra metadata alongside the host, e.g. adminEmail', function (): void {
-    // data:init/sso:init/desk:init all pass adminEmail through this same
+    // data:init/sso:init all pass adminEmail through this same
     // seam — a regression here silently drops it from the registry for
     // every one of them at once.
     $trait = new class

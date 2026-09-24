@@ -291,15 +291,13 @@ test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND
 });
 
 test('secrets:wire rejects a tool with no wireable Commons database password', function (): void {
-    // Desk (FreeScout) has a Commons database (HasCommonsDatabases) but no
+    // Insights (Metabase) has a Commons database (HasCommonsDatabases) but no
     // simple single-key password to hand OpenBao (no HasDbSecretRef) — the
     // other reason a tool can be rejected here, distinct from Drive's "no
-    // Commons DB at all" case covered separately below. Monitor used to be
-    // this test's example until it grew a real Commons Postgres tenant for
-    // Grafana (2026-08-18) — see MonitorInitCommandTest's allocation test.
+    // Commons DB at all" case covered separately below.
     Process::fake([
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get deployment desk-freescout*' => Process::result(output: 'desk-freescout'),
+        '*get deployment insights-metabase*' => Process::result(output: 'insights-metabase'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -309,7 +307,7 @@ test('secrets:wire rejects a tool with no wireable Commons database password', f
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=desk --force')
+    $this->artisan('secrets:wire local --tool=insights --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('does not have a Commons database password OpenBao can rotate');
 });

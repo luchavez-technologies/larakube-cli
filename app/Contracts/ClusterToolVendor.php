@@ -4,8 +4,8 @@ namespace App\Contracts;
 
 /**
  * Marker + minimum contract every category's vendor (DataTool, the FLOW engines in app/Tools,
- * GitForgeTool, ChatTool, DesignTool, TasksTool, DeskTool, and the 22
- * single-vendor classes under app/Vendors/) implements, so the category
+ * GitForgeTool, ChatTool, DesignTool, TasksTool, and the single-vendor
+ * classes under app/Vendors/) implements, so the category
  * enum's `vendor()` dispatch method has a return type to hang `instanceof`
  * capability checks off of.
  *
