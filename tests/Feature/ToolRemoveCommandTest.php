@@ -60,7 +60,7 @@ test('flow:remove keeps the database, the encryption key and the data volume by 
         ->expectsOutputToContain('Persistent data (Plex Commons DB + S3 buckets) was preserved.');
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'delete deployment/n8n-flow-example-com service/n8n-flow-example-com ingress/n8n-flow-example-com secret/n8n-smtp-flow-example-com')
-        && str_contains($p->command, 'middleware/flow-vpn-only-flow-example-com'));
+        && str_contains($p->command, 'middleware/n8n-vpn-only-flow-example-com'));
     Process::assertNotRan(fn ($p) => str_contains($p->command, 'secret/n8n-secrets-')
         || str_contains($p->command, 'persistentvolumeclaim/'));
 });

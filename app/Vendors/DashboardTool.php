@@ -7,6 +7,8 @@ use App\Contracts\HasOidcWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the DASHBOARD category — 'Kubernetes Control Plane'. Only Headlamp. */
@@ -19,11 +21,13 @@ final class DashboardTool implements ClusterToolVendor, HasOidcWiring, HasVpnWir
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'dashboard-vpn-only' : "dashboard-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '')
+            ? 'dashboard-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::DASHBOARD, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => 'larakube-shared',
+            'namespace' => ClusterTool::DASHBOARD->namespace(),
         ];
     }
 
@@ -35,8 +39,14 @@ final class DashboardTool implements ClusterToolVendor, HasOidcWiring, HasVpnWir
      */
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
-        $deployment = "dashboard-headlamp{$suffix}";
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        // ClusterTool::components() strips the category for a migrated tool;
+        // these nested resource names have to follow the same rule. Composed
+        // here rather than read back from ToolInstance, which derives every
+        // name FROM this list and would recurse.
+        $canonical = fn (string $n) => ClusterTool::DASHBOARD->withoutCategory($n);
+        $deployment = $canonical($name('dashboard-headlamp'));
+        $owned = fn (string $token) => $canonical($name("dashboard-headlamp-{$token}"));
 
         return [
             new ClusterToolComponentData(
@@ -45,11 +55,11 @@ final class DashboardTool implements ClusterToolVendor, HasOidcWiring, HasVpnWir
                 deployment: $deployment,
                 resources: [
                     ['kind' => 'service', 'name' => $deployment],
-                    ['kind' => 'secret', 'name' => "dashboard-headlamp-oidc{$suffix}"],
+                    ['kind' => 'secret', 'name' => $owned('oidc')],
                     ['kind' => 'serviceaccount', 'name' => $deployment],
-                    ['kind' => 'clusterrolebinding', 'name' => "dashboard-headlamp-admin{$suffix}"],
-                    ['kind' => 'clusterrolebinding', 'name' => "dashboard-oidc-admins{$suffix}"],
-                    ['kind' => 'ingress', 'name' => "dashboard{$suffix}"],
+                    ['kind' => 'clusterrolebinding', 'name' => $owned('admin')],
+                    ['kind' => 'clusterrolebinding', 'name' => $owned('oidc-admins')],
+                    ['kind' => 'ingress', 'name' => $deployment],
                 ],
             ),
         ];

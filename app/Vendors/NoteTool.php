@@ -14,6 +14,8 @@ use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 
 /** The single vendor backing the NOTES category — 'Team Wiki & Knowledge Base'. Only Outline. */
 final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
@@ -30,11 +32,13 @@ final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommo
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'notes-vpn-only' : "notes-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '')
+            ? 'notes-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::NOTES, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => 'larakube-shared',
+            'namespace' => ClusterTool::NOTES->namespace(),
         ];
     }
 

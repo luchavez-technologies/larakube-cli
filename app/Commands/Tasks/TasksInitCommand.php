@@ -56,17 +56,17 @@ class TasksInitCommand extends Command
         $ns = $this->tasksNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::TASKS, $kubectl)) {
-            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
-
-            return 1;
-        }
-
         if (! $this->ensureCommons(['postgres'])) {
             return 1;
         }
 
         $names = ToolInstance::forHost(ClusterTool::TASKS, $host, 'planka');
+
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::TASKS, $kubectl, $names->instance)) {
+            $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
+
+            return 1;
+        }
 
         // tasks:init doesn't know or care whether OpenBao is installed —
         // only secrets:wire --tool=tasks may register this instance's database

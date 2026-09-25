@@ -25,7 +25,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-forgejo-vpn-only-{{ $instance }}@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $tool->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:

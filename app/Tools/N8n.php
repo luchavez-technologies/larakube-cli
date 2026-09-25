@@ -57,7 +57,9 @@ final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeployment
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
         return [
-            'name' => ($instance === null || $instance === '') ? 'flow-vpn-only' : "flow-vpn-only-{$instance}",
+            'name' => ($instance === null || $instance === '')
+                ? 'flow-vpn-only'
+                : ToolInstance::forInstance(ClusterTool::FLOW, $instance, self::ENGINE)->name('vpn-only'),
             'namespace' => ClusterTool::FLOW->namespace(),
         ];
     }

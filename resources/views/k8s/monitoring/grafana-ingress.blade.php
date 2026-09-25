@@ -2,7 +2,8 @@
     $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor');
     $ingressName = "grafana-{$instance}";
     $serviceName = "grafana-{$instance}";
-    $labels = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MONITOR, $instance)->labels('grafana');
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MONITOR, $instance);
+    $labels = $names->labels('grafana');
 @endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -23,7 +24,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-grafana-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:

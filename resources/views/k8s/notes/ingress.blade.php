@@ -24,8 +24,8 @@ metadata:
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 @endif
 @endunless
-@if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-notes-vpn-only@kubernetescrd
+@if(($vpnOnly ?? false) && $names?->vpnMiddleware())
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:

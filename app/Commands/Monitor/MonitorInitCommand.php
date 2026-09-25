@@ -135,7 +135,7 @@ class MonitorInitCommand extends Command
         $vpnOnly = (bool) $this->option('vpn-only');
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::MONITOR, ClusterTool::MONITOR->instanceSlugFromHost($host));
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MONITOR, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MONITOR, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;

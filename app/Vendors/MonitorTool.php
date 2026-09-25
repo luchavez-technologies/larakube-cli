@@ -166,12 +166,13 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
-        $name = "grafana-vpn-only-{$instanceName}";
+        $name = ($instance === null || $instance === '')
+            ? 'grafana-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::MONITOR, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => 'larakube-shared',
+            'namespace' => ClusterTool::MONITOR->namespace(),
         ];
     }
 

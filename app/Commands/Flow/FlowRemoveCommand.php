@@ -77,10 +77,11 @@ class FlowRemoveCommand extends AbstractToolRemoveCommand
             }
 
             $data[] = new ResourceRef('Secret', $names->secret(), $ns);
-        }
 
-        if ($instance !== null && $instance !== '') {
-            $middleware = ToolInstance::forInstance(ClusterTool::FLOW, $instance)->vpnMiddleware();
+            // Per engine, not once per instance: the Middleware is named after
+            // the engine that owns it, so a single instance-only lookup would
+            // strand Windmill's and delete an n8n one that was never created.
+            $middleware = $names->vpnMiddleware();
             if ($middleware !== null) {
                 $workloads[] = $middleware;
             }

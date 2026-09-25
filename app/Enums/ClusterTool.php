@@ -1168,9 +1168,9 @@ enum ClusterTool: string implements HasWorkloadComponents
      *
      * @return array{name: string, namespace: string}|null
      */
-    public function vpnMiddlewareTarget(?string $instance = null): ?array
+    public function vpnMiddlewareTarget(?string $instance = null, ?string $engine = null): ?array
     {
-        $vendor = $this->vendor();
+        $vendor = $this->vendor($engine);
         if ($vendor instanceof HasVpnWiring) {
             return $vendor->vpnMiddlewareTarget($instance);
         }

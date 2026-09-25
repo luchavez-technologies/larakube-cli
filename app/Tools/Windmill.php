@@ -8,6 +8,7 @@ use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasImages;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Tools\Concerns\PinsImages;
 
@@ -57,7 +58,9 @@ final class Windmill implements ClusterToolVendor, HasCommonsDatabases, HasDeplo
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
         return [
-            'name' => ($instance === null || $instance === '') ? 'flow-vpn-only' : "flow-vpn-only-{$instance}",
+            'name' => ($instance === null || $instance === '')
+                ? 'flow-vpn-only'
+                : ToolInstance::forInstance(ClusterTool::FLOW, $instance, self::ENGINE)->name('vpn-only'),
             'namespace' => ClusterTool::FLOW->namespace(),
         ];
     }

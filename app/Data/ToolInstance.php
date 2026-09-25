@@ -228,7 +228,7 @@ final readonly class ToolInstance
     /** The Middleware `--vpn-only` attaches, or null when the tool has none. */
     public function vpnMiddleware(): ?ResourceRef
     {
-        $target = $this->tool->vpnMiddlewareTarget($this->instance);
+        $target = $this->tool->vpnMiddlewareTarget($this->instance, $this->engine);
 
         return $target === null ? null : new ResourceRef('Middleware', $target['name'], $target['namespace']);
     }

@@ -349,3 +349,39 @@ test('a migrated tool never keeps its category on a Commons tenant', function ()
 
     expect($offenders)->toBeEmpty();
 });
+
+test('a migrated tool never keeps its category on any resource name', function (): void {
+    // The ledger flip is the whole migration: every name a CANONICAL tool
+    // hands out — teardown targets, the VPN Middleware, every wired Secret —
+    // has to have dropped the category, not just the Deployment. No
+    // exemptions (ADR 0021).
+    $offenders = [];
+
+    foreach (ClusterTool::cases() as $tool) {
+        if ($tool->resourceNaming() !== ResourceNaming::CANONICAL) {
+            continue;
+        }
+
+        $flag = function (string $what, ?string $name) use (&$offenders, $tool): void {
+            if ($name !== null && str_starts_with($name, "{$tool->value}-")) {
+                $offenders[] = "{$tool->value} {$what}: {$name}";
+            }
+        };
+
+        foreach ($tool->components('inst') as $component) {
+            $flag("component {$component->key} deployment", $component->deployment);
+
+            foreach ($component->resources as $resource) {
+                $flag("component {$component->key} {$resource['kind']}", $resource['name']);
+            }
+        }
+
+        $flag('vpn middleware', $tool->vpnMiddlewareTarget('inst')['name'] ?? null);
+        $flag('oidc secret', $tool->oidcEnv(null, 'inst')['secret'] ?? null);
+        $flag('smtp secret', $tool->smtpEnv(null, 'inst')['secret'] ?? null);
+        $flag('db secret', $tool->dbSecretRef('inst')['secret'] ?? null);
+        $flag('openbao secret', $tool->openbaoSyncConfig('inst')['secret'] ?? null);
+    }
+
+    expect($offenders)->toBeEmpty(implode("\n", $offenders));
+});

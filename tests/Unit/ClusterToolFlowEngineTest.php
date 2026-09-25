@@ -52,13 +52,14 @@ test('each FLOW engine names its resources per instance through ToolInstance', f
         ->and($n8n->secret())->toBe('n8n-secrets-flow-example-com')
         ->and($n8n->volume())->toBe('n8n-storage-flow-example-com')
         ->and($n8n->database())->toBe('n8n_flow_example_com')
-        ->and($n8n->vpnMiddleware()?->name)->toBe('flow-vpn-only-flow-example-com')
+        ->and($n8n->vpnMiddleware()?->name)->toBe('n8n-vpn-only-flow-example-com')
         ->and(ClusterTool::FLOW->smtpEnv('n8n', $n8n->instance))->toMatchArray([
             'deployment' => 'n8n-flow-example-com',
             'secret' => 'n8n-smtp-flow-example-com',
         ])
         ->and($windmill->deployment())->toBe('windmill-jobs-example-com')
-        ->and($windmill->database())->toBe('windmill_jobs_example_com');
+        ->and($windmill->database())->toBe('windmill_jobs_example_com')
+        ->and($windmill->vpnMiddleware()?->name)->toBe('windmill-vpn-only-jobs-example-com');
 });
 
 test('FLOW templates take every image from the engine class, never a literal tag', function (string $template): void {
