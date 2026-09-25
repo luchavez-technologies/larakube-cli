@@ -3,6 +3,7 @@
 namespace App\Commands\Webmail;
 
 use App\Data\ConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -63,7 +64,8 @@ class WebmailInitCommand extends Command
         // Every tool's instance identifier is a real, host-derived slug now
         // — Webmail included, even though it's 1:1 bound to the one Stalwart
         // and will never have a second instance.
-        $instance = ClusterTool::WEBMAIL->instanceSlugFromHost($host);
+        $names = ToolInstance::forHost(ClusterTool::WEBMAIL, $host);
+        $instance = $names->instance;
         $vpnOnly = (bool) $this->option('vpn-only');
 
         // Bulwark is a client for Stalwart — refuse if there's no Stalwart to
@@ -81,7 +83,7 @@ class WebmailInitCommand extends Command
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::WEBMAIL, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::WEBMAIL, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -94,14 +96,19 @@ class WebmailInitCommand extends Command
             ?? $this->readBulwarkSecret($kubectl, $ns, 'admin-password', $instance)
             ?? Str::random(24);
         $appName = (string) ($this->option('app-name') ?: 'Webmail');
-        $secretName = "webmail-secrets-{$instance}";
+        $secretName = $names->secret();
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secretName, $sessionSecret, $adminPassword, $env): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['WEBMAIL_SESSION_SECRET' => $sessionSecret, 'WEBMAIL_ADMIN_PASSWORD' => $adminPassword]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $secretName, $sessionSecret, $adminPassword, $env): void {
+            Kubectl::fromPrefix($kubectl)->putSecret(
+                $ns,
+                $secretName,
+                ['WEBMAIL_SESSION_SECRET' => $sessionSecret, 'WEBMAIL_ADMIN_PASSWORD' => $adminPassword],
+                $names->labels(),
+            );
 
             if ($this->secretsBackendAvailable($kubectl)) {
                 $clusterEnv = $env === 'local' ? 'dev' : $env;
@@ -133,7 +140,7 @@ class WebmailInitCommand extends Command
         $tmp = $temporaryDirectory->path('larakube-webmail.yaml');
         file_put_contents($tmp, $manifest);
 
-        $deploymentName = ClusterTool::WEBMAIL->deploymentName($instance);
+        $deploymentName = $names->deployment();
 
         $rolledOut = $this->withSpin(
             'Applying Bulwark manifests...',

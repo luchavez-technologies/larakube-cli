@@ -43,7 +43,7 @@ test('mail:show <email> displays that account\'s client setup, never a password'
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
-        '*part-of=webmail*' => Process::result(output: ''),
+        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: ''),
     ]);
 
     Saloon::fake([
@@ -82,7 +82,7 @@ test('mail:show <email> shows the webmail URL when Bulwark is installed', functi
         '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment sso-zitadel*' => Process::result(output: ''),
-        '*part-of=webmail*' => Process::result(output: 'webmail-bulwark   1/1   1   1   10d'),
+        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
     ]);
 
     Saloon::fake([

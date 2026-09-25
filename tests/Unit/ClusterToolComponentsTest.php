@@ -39,7 +39,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         'notes' => 'outline', 'passwords' => 'passwords-vaultwarden', 'record' => 'record-sendrec',
         'secrets' => 'openbao-backend', 'sheets' => 'teable', 'sign' => 'documenso',
         'sso' => 'sso-zitadel', 'support' => 'support-chatwoot', 'tasks' => 'planka',
-        'uptime' => 'uptime-kuma', 'webmail' => 'webmail-bulwark',
+        'uptime' => 'uptime-kuma', 'webmail' => 'bulwark',
         'dns' => 'external-dns', 'dashboard' => 'headlamp', 'meet' => 'livekit',
         'design' => 'design-penpot-backend',
     ];

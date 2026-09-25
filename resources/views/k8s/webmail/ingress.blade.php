@@ -1,9 +1,21 @@
-@php($suffix = ($instance ?? '') !== '' ? "-{$instance}" : '')
+@php
+    // Rendered both by webmail:init (which passes these) and by the shared
+    // ingress path (which passes only the host), so derive what is missing.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::WEBMAIL->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::WEBMAIL, $instance);
+    $labels = $names->labels();
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: webmail-bulwark{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $names->deployment() }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -14,7 +26,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-webmail-vpn-only{{ $suffix }}@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:
@@ -25,7 +37,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: webmail-bulwark{{ $suffix }}
+                name: {{ $names->deployment() }}
                 port:
                   number: 80
   tls:

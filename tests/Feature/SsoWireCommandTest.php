@@ -989,7 +989,7 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
 test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0001)', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment webmail-bulwark*' => Process::result(output: 'webmail-bulwark   1/1   1   1   10d'),
+        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'webmail', '--no-interaction' => true])

@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -25,23 +26,25 @@ trait InteractsWithBulwark
     }
 
     /**
-     * Bulwark Deployment present? Label-based, not an exact deployment name
-     * — the Deployment itself is instance-suffixed now (a real, host-derived
-     * slug), but this stable `app.kubernetes.io/part-of: webmail` label
-     * survives regardless, so callers don't need to know or derive the
-     * current instance just to check presence.
+     * Bulwark Deployment present? Label-based, not an exact deployment name —
+     * the Deployment is named per instance, but the identity label every
+     * manifest carries holds regardless, so callers don't need to know or
+     * derive the current instance just to check presence.
      */
     protected function isBulwarkInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app.kubernetes.io/part-of=webmail');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=webmail');
     }
 
-    /** Read a key from the webmail-secrets secret (optionally instance-suffixed). */
-    protected function readBulwarkSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
+    /** Read a key from this instance's credentials Secret. */
+    protected function readBulwarkSecret(string $kubectl, string $ns, string $key, string $instance): ?string
     {
-        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
-
-        return $this->readClusterSecretKey($kubectl, $ns, "webmail-secrets{$suffix}", $key);
+        return $this->readClusterSecretKey(
+            $kubectl,
+            $ns,
+            ToolInstance::forInstance(ClusterTool::WEBMAIL, $instance)->secret(),
+            $key,
+        );
     }
 
     /** Read-only Bulwark host for the given environment. */

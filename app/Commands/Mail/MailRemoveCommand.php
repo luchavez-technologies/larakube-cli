@@ -3,6 +3,7 @@
 namespace App\Commands\Mail;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Traits\InteractsWithMail;
 use Illuminate\Support\Facades\Process;
@@ -29,15 +30,15 @@ class MailRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        // Webmail's own secret is instance-suffixed now — best-effort lookup
-        // of its current instance so this doesn't leave a real, live-named
-        // credential Secret orphaned (an unsuffixed 'webmail-secrets' never
-        // exists post-migration, so --ignore-not-found alone would silently
-        // skip it).
+        // Webmail's own credentials Secret is named per instance — a
+        // best-effort lookup of its current one, so removing Stalwart doesn't
+        // leave a real, live-named Secret orphaned behind it.
         $webmailInstance = $this->getToolHost($kubectl, ClusterTool::WEBMAIL) !== null
             ? (string) ($this->getToolInstanceData($kubectl, ClusterTool::WEBMAIL)?->instance ?? '')
             : '';
-        $webmailSecret = $webmailInstance !== '' ? "webmail-secrets-{$webmailInstance}" : 'webmail-secrets';
+        $webmailSecret = $webmailInstance !== ''
+            ? ToolInstance::forInstance(ClusterTool::WEBMAIL, $webmailInstance)->secret()
+            : 'webmail-secrets';
 
         // Mail's OWN resources are instance-suffixed too, same reasoning.
         $instance = (string) ($this->getToolInstanceData($kubectl, ClusterTool::MAIL)?->instance ?? '');

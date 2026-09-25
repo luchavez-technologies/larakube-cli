@@ -1,14 +1,25 @@
-@php($suffix = ($instance ?? '') !== '' ? "-{$instance}" : '')
+@php
+    // Every name comes from ToolInstance (ADR 0021). Rendered both by
+    // webmail:init (which passes the instance) and by the shared reconcile
+    // path (which passes only the host), so derive what is missing.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::WEBMAIL->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::WEBMAIL, $instance);
+    $deployment = $names->deployment();
+    $secretName = $names->secret();
+    $volume = $names->volume();
+    $labels = $names->labels();
+@endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  # Deliberately NOT instance-suffixed, unlike every other resource here:
-  # renaming a PVC means a brand-new empty volume, not the existing one —
-  # this holds Bulwark's real accumulated admin config + settings-sync data,
-  # and Webmail can only ever have one instance anyway (1:1 bound to the one
-  # Stalwart), so there's no collision risk to avoid by suffixing it.
-  name: webmail-storage
-  namespace: larakube-shared
+  name: {{ $volume }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   accessModes:
     - ReadWriteOnce
@@ -16,27 +27,31 @@ spec:
     requests:
       # Bulwark stores only its own admin config + per-user settings-sync here,
       # never mail (that lives in Stalwart). 1Gi is generous.
-      storage: {{ $volumeSize('webmail-storage', '1Gi', true) }}
+      storage: {{ $volumeSize($volume, '1Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: webmail-bulwark{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: webmail-bulwark{{ $suffix }}
-    app.kubernetes.io/part-of: webmail
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: webmail-bulwark{{ $suffix }}
+      app: {{ $deployment }}
   template:
     metadata:
       labels:
-        app: webmail-bulwark{{ $suffix }}
+        app: {{ $deployment }}
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: bulwark
@@ -59,12 +74,12 @@ spec:
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: webmail-secrets{{ $suffix }}
+                  name: {{ $secretName }}
                   key: WEBMAIL_SESSION_SECRET
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: webmail-secrets{{ $suffix }}
+                  name: {{ $secretName }}
                   key: WEBMAIL_ADMIN_PASSWORD
             # Persist admin config + settings-sync across restarts so the
             # wizard/admin state isn't re-initialised on every rollout.
@@ -104,16 +119,20 @@ spec:
       volumes:
         - name: webmail-data
           persistentVolumeClaim:
-            claimName: webmail-storage
+            claimName: {{ $volume }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: webmail-bulwark{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: webmail-bulwark{{ $suffix }}
+    app: {{ $deployment }}
   ports:
     - protocol: TCP
       port: 80

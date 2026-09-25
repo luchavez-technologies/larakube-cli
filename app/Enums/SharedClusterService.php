@@ -234,7 +234,9 @@ enum SharedClusterService: string
             self::MAIL => 'deployment stalwart -n larakube-shared',
             self::CHAT => 'deployment chat-synapse -n larakube-shared',
             self::SSO => 'deployment sso-zitadel -n larakube-sso',
-            self::WEBMAIL => 'deployment webmail-bulwark -n larakube-shared',
+            // Bulwark's Deployment is named per instance, so a probe on a bare
+            // name never matches — select on the identity label instead.
+            self::WEBMAIL => 'deployment -l larakube.io/tool=webmail -n larakube-shared',
             self::NOTES => 'deployment notes-outline -n larakube-shared',
             self::ANALYTICS => 'deployment -l larakube-tool=analytics -n larakube-shared',
             self::TASKS => 'deployment -l larakube-tool=tasks -n larakube-shared',
