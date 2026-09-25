@@ -2,6 +2,7 @@
 
 namespace App\Commands\Meet;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -51,8 +52,9 @@ class MeetInitCommand extends Command
         // Meet included, even though its hostPort-bound RTC ports make a
         // genuine second instance impossible on one node regardless of
         // naming (see ClusterTool::supportsMultipleInstances()'s docblock).
-        $instance = ClusterTool::MEET->instanceSlugFromHost($host);
-        $ns = $this->meetNamespace();
+        $names = ToolInstance::forHost(ClusterTool::MEET, $host);
+        $instance = $names->instance;
+        $ns = $names->namespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
         if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::MEET)) {
@@ -71,9 +73,9 @@ class MeetInitCommand extends Command
 
         // Re-read rather than regenerate: consumers already hold these keys in
         // their .env / lk-jwt Deployment, so a re-run must not invalidate them.
-        $registry = $this->readMeetKeys($kubectl, $ns);
-        $this->withSpin('Syncing consumer keys...', function () use ($kubectl, $ns, &$registry): void {
-            $registry = $this->writeMeetKeys($kubectl, $ns, $registry);
+        $registry = $this->readMeetKeys($kubectl, $names);
+        $this->withSpin('Syncing consumer keys...', function () use ($kubectl, $names, &$registry): void {
+            $registry = $this->writeMeetKeys($kubectl, $names, $registry);
         });
 
         $manifest = view('k8s.meet.livekit', [
@@ -89,14 +91,14 @@ class MeetInitCommand extends Command
                 'isLocal' => $env === 'local',
                 'proxied' => $this->resolveProxied($env === 'local'),
                 'vpnOnly' => $vpnOnly,
-                'jwtWired' => $this->isMeetChatWired($kubectl, $ns),
+                'jwtWired' => $this->isMeetBridgeDeployed($kubectl, $ns),
             ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-meet.yaml');
         file_put_contents($tmp, $manifest);
 
-        $deploymentName = ClusterTool::MEET->deploymentName($instance);
+        $deploymentName = $names->deployment();
 
         $this->withSpin('Applying LiveKit (Meet) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
         $temporaryDirectory->delete();
@@ -135,13 +137,5 @@ class MeetInitCommand extends Command
     protected function resolveEnvironment(): string
     {
         return $this->resolveToolEnvironment(ClusterTool::MEET);
-    }
-
-    /** Is the Matrix bridge deployed? Drives the /jwt route in the ingress. */
-    protected function isMeetChatWired(string $kubectl, string $ns): bool
-    {
-        // Label-based: the bridge's Deployment name is instance-suffixed but
-        // its pod label stays stable (app: meet-lk-jwt).
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app=meet-lk-jwt');
     }
 }

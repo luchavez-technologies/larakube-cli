@@ -23,10 +23,10 @@ Three concrete problems:
 Matrix and by Laravel apps.
 
 **Each consumer gets its own key pair.** LiveKit's `keys:` map accepts any number of
-apiKey/apiSecret pairs. The `meet-keys` Secret holds a JSON registry (`consumer` →
+apiKey/apiSecret pairs. The instance's credentials Secret holds a JSON registry (`consumer` →
 key/secret/roomPrefix/webhookUrl) and `livekit.yaml` is rendered from it, never hand-edited.
 
-**The Matrix bridge belongs to the wiring, not to either service.** `meet-lk-jwt` is deployed by
+**The Matrix bridge belongs to the wiring, not to either service.** `lk-jwt` is deployed by
 `meet:wire --tool=chat` and removed by `meet:unwire`. Serving it from `meet.<domain>/jwt` rather
 than `chat.<domain>/livekit/jwt` means the wire command never mutates the chat Ingress, and let
 chat drop both stripPrefix middlewares.

@@ -4,8 +4,8 @@ use Illuminate\Support\Facades\Process;
 
 test('meet:init deploys the shared LiveKit SFU', function (): void {
     Process::fake([
-        '*get secret meet-keys*' => Process::result(output: '', exitCode: 1),
-        '*get deployment -l app=meet-lk-jwt*' => Process::result(output: ''),
+        '*get secret livekit-secrets-*' => Process::result(output: '', exitCode: 1),
+        '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -22,8 +22,8 @@ test('meet:init deploys the shared LiveKit SFU', function (): void {
 
 test('a fresh meet:init points you at the wire command instead of pretending it is usable', function (): void {
     Process::fake([
-        '*get secret meet-keys*' => Process::result(output: '', exitCode: 1),
-        '*get deployment -l app=meet-lk-jwt*' => Process::result(output: ''),
+        '*get secret livekit-secrets-*' => Process::result(output: '', exitCode: 1),
+        '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -36,7 +36,7 @@ test('a fresh meet:init points you at the wire command instead of pretending it 
 });
 
 test('meet:remove tears down the SFU and its bridge', function (): void {
-    Process::fake([...registeredToolRemoveFakes('meet:remove'),
+    Process::fake([...registeredToolRemoveFakes('meet:remove', instance: 'meet-example-com', host: 'meet.example.com'),
         '*delete *' => Process::result(output: 'deleted'),
         '*get *' => Process::result(output: '', exitCode: 1),
     ]);
@@ -46,13 +46,18 @@ test('meet:remove tears down the SFU and its bridge', function (): void {
         ->expectsOutputToContain('Removing LiveKit (Meet) resources...');
 
     // The bridge is meet:wire's artifact, but leaving it pointed at a deleted
-    // LiveKit is worse than removing it alongside. Targeted by label — its
-    // Deployment name is instance-suffixed, its pod label stays stable.
-    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment,service -l app=meet-lk-jwt'));
+    // LiveKit is worse than removing it alongside — and its Middleware goes
+    // with it. Both come from the vendor's component list, not a hand-written
+    // delete string.
+    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment/lk-jwt-meet-example-com')
+        && str_contains($job->command, 'middleware/lk-jwt-stripprefix-meet-example-com')
+        && str_contains($job->command, 'secret/livekit-secrets-meet-example-com')
+        && str_contains($job->command, 'service/livekit-rtc-meet-example-com')
+        && str_contains($job->command, 'ingress/livekit-meet-example-com'));
 });
 
 test('meet:remove aborts when a delete step fails', function (): void {
-    Process::fake([...registeredToolRemoveFakes('meet:remove'),
+    Process::fake([...registeredToolRemoveFakes('meet:remove', instance: 'meet-example-com', host: 'meet.example.com'),
         '*delete *' => Process::result(output: '', exitCode: 1),
         '*get *' => Process::result(output: '', exitCode: 1),
     ]);

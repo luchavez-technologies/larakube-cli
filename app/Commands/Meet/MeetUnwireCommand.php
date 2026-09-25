@@ -49,13 +49,16 @@ class MeetUnwireCommand extends Command
             return 1;
         }
 
-        $registry = $this->readMeetKeys($kubectl, $ns);
+        $names = $this->meetInstance($kubectl);
 
-        // Label-based, not by exact name — meet-lk-jwt's Deployment name is
-        // instance-suffixed but its pod label stays stable (app: meet-lk-jwt),
-        // matching the Mail rename's precedent for the same reason: this
-        // check has no resolved $instance in hand.
-        $bridgeExists = Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app=meet-lk-jwt');
+        if ($names === null) {
+            $this->laraKubeInfo('Meet is not registered on this cluster — nothing to unwire.');
+
+            return 0;
+        }
+
+        $registry = $this->readMeetKeys($kubectl, $names);
+        $bridgeExists = $this->isMeetBridgeDeployed($kubectl, $ns);
 
         if (! isset($registry['chat']) && ! $bridgeExists) {
             $this->laraKubeInfo('Team Chat is not wired to Meet — nothing to do.');
@@ -69,12 +72,10 @@ class MeetUnwireCommand extends Command
             return 1;
         }
 
-        // 2. Tear the bridge down. Deployment/Service by label (name is
-        //    instance-suffixed, label is stable); Middleware by exact name
-        //    (never suffixed — see the naming plan).
+        // 2. Tear the bridge down.
         $this->withSpin('Removing the Matrix bridge...', fn () => Process::run(
-            "{$kubectl} delete deployment,service -l app=meet-lk-jwt -n {$ns} --ignore-not-found "
-            ."&& {$kubectl} delete middleware/meet-jwt-stripprefix -n {$ns} --ignore-not-found",
+            "{$kubectl} delete deployment,service -l {$names->selector('lk-jwt')} -n {$ns} --ignore-not-found "
+            ."&& {$kubectl} delete middleware/{$names->name('stripprefix', 'lk-jwt')} -n {$ns} --ignore-not-found",
         ));
 
         // 3. Revoke chat's key and reload LiveKit without it. writeMeetKeys
@@ -82,14 +83,14 @@ class MeetUnwireCommand extends Command
         //    when this was the only consumer.
         $registry = $this->revokeMeetKey($registry, 'chat');
         // withSpin() returns a success bool, not the callback's value.
-        $this->withSpin('Revoking the Chat LiveKit key...', function () use ($kubectl, $ns, &$registry): void {
-            $registry = $this->writeMeetKeys($kubectl, $ns, $registry);
+        $this->withSpin('Revoking the Chat LiveKit key...', function () use ($kubectl, $names, &$registry): void {
+            $registry = $this->writeMeetKeys($kubectl, $names, $registry);
         });
 
         $meetHost = $this->getToolHost($kubectl, ClusterTool::MEET);
 
         if ($meetHost !== null && $this->isMeetInstalled($kubectl, $ns)) {
-            $instance = ClusterTool::MEET->instanceSlugFromHost($meetHost);
+            $instance = $names->instance;
 
             $this->withSpin('Reloading LiveKit without the Chat key...', function () use ($kubectl, $meetHost, $registry, $env, $instance): void {
                 // 'instance' MUST be passed to both views — see the identical

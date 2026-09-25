@@ -213,7 +213,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
                 'REVERB_APP_SECRET' => 'larakubesecret',
             ],
             // Placeholders only. The real pair is allocated per project in the
-            // meet-keys registry by onPostInstall(), which can reach the
+            // consumer registry by onPostInstall(), which can reach the
             // cluster; this method is called from render and test paths that
             // must never do I/O.
             self::MEET => [
@@ -562,7 +562,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
     }
 
     /**
-     * Allocate this project's own LiveKit key pair from the shared meet-keys
+     * Allocate this project's own LiveKit key pair from the shared consumer
      * registry, and read the real deployed Meet host from the tool registry.
      *
      * Runs only from onPostInstall(), which is the single install-time hook —
@@ -579,14 +579,16 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
         $kubectl = Kubectl::forContext(null)->prefix();
         $ns = $this->meetNamespace();
 
-        if (! $this->isMeetInstalled($kubectl, $ns)) {
+        $names = $this->meetInstance($kubectl);
+
+        if ($names === null || ! $this->isMeetInstalled($kubectl, $ns)) {
             return [];
         }
 
         $consumer = 'app-'.($context?->getName() ?? 'app');
-        $registry = $this->readMeetKeys($kubectl, $ns);
+        $registry = $this->readMeetKeys($kubectl, $names);
         $registry = $this->allocateMeetKey($registry, $consumer, ($context?->getName() ?? 'app').'-');
-        $registry = $this->writeMeetKeys($kubectl, $ns, $registry);
+        $registry = $this->writeMeetKeys($kubectl, $names, $registry);
 
         $values = [
             'LIVEKIT_API_KEY' => $registry[$consumer]['key'],

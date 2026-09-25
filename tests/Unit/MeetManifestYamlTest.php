@@ -1,8 +1,16 @@
 <?php
 
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Traits\InteractsWithMeet;
 use Illuminate\Support\Facades\Process;
 use Symfony\Component\Yaml\Yaml;
+
+/** Every name the manifest renders, for the host the fixtures deploy at. */
+function meetNames(): ToolInstance
+{
+    return ToolInstance::forHost(ClusterTool::MEET, 'meet.example.com');
+}
 
 /** @param array<string, array<string, mixed>> $consumers */
 function meetManifest(array $consumers = [], array $overrides = []): string
@@ -35,7 +43,7 @@ function meetLivekitConfig(string $rendered): array
 {
     $secret = collect(meetDocuments($rendered))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Secret'
-            && ($doc['metadata']['name'] ?? null) === 'meet-livekit-config');
+            && ($doc['metadata']['name'] ?? null) === meetNames()->secret(App\Enums\SecretKind::CONFIG));
 
     return Yaml::parse($secret['stringData']['livekit.yaml']);
 }
@@ -44,7 +52,7 @@ function meetChecksum(string $rendered): string
 {
     $deployment = collect(meetDocuments($rendered))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
-            && ($doc['metadata']['name'] ?? null) === 'meet-livekit');
+            && ($doc['metadata']['name'] ?? null) === meetNames()->deployment());
 
     return $deployment['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
 }
@@ -74,7 +82,7 @@ test('livekit-server refuses to boot on an empty keys map, so a persisted regist
         {
             Process::fake();
 
-            return $this->writeMeetKeys('kubectl', 'larakube-shared', $registry);
+            return $this->writeMeetKeys('kubectl', meetNames(), $registry);
         }
     };
 
@@ -132,7 +140,7 @@ test('registry ordering does not affect the checksum — an unrelated re-run mus
 test('the SFU has a memory limit but no CPU limit', function (): void {
     $container = collect(meetDocuments(meetManifest()))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
-            && ($doc['metadata']['name'] ?? null) === 'meet-livekit')['spec']['template']['spec']['containers'][0];
+            && ($doc['metadata']['name'] ?? null) === meetNames()->deployment())['spec']['template']['spec']['containers'][0];
 
     expect($container['resources']['limits']['memory'])->not->toBeNull()
         ->and($container['resources']['limits'])->not->toHaveKey('cpu')
@@ -184,4 +192,52 @@ test('a cloud meet ingress requests a real ACME cert, a local one never does', f
 
     expect($render(false))->toContain('router.tls.certresolver: letsencrypt')
         ->and($render(true))->not->toContain('certresolver');
+});
+
+test('every Meet resource is named from its component, never the category', function (): void {
+    $rendered = meetManifest()
+        ."\n---\n".view('k8s.meet.ingress', [
+            'host' => 'meet.example.com',
+            'isLocal' => false,
+            'jwtWired' => true,
+        ])->render()
+        ."\n---\n".view('k8s.meet.lk-jwt', [
+            'meetHost' => 'meet.example.com',
+            'chatHost' => 'chat.example.com',
+            'livekitApiKey' => 'k',
+            'livekitApiSecret' => 's',
+        ])->render();
+
+    $declared = array_map(fn (array $doc) => (string) $doc['metadata']['name'], meetDocuments($rendered));
+
+    expect($declared)->toBe([
+        'livekit-config-meet-example-com',
+        'livekit-meet-example-com',
+        'livekit-meet-example-com',
+        'livekit-rtc-meet-example-com',
+        'livekit-meet-example-com',
+        'lk-jwt-stripprefix-meet-example-com',
+        'lk-jwt-meet-example-com',
+        'lk-jwt-meet-example-com',
+    ]);
+});
+
+test('the Ingress references the bridge Middleware Traefik actually has', function (): void {
+    // The annotation is namespace-qualified and instance-scoped; a literal here
+    // would break the whole router the moment the Middleware's name moved.
+    $ingress = collect(meetDocuments(view('k8s.meet.ingress', [
+        'host' => 'meet.example.com',
+        'isLocal' => false,
+        'jwtWired' => true,
+    ])->render()))->first();
+
+    $middleware = collect(meetDocuments(view('k8s.meet.lk-jwt', [
+        'meetHost' => 'meet.example.com',
+        'chatHost' => 'chat.example.com',
+        'livekitApiKey' => 'k',
+        'livekitApiSecret' => 's',
+    ])->render()))->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Middleware');
+
+    expect($ingress['metadata']['annotations']['traefik.ingress.kubernetes.io/router.middlewares'])
+        ->toBe("{$middleware['metadata']['namespace']}-{$middleware['metadata']['name']}@kubernetescrd");
 });

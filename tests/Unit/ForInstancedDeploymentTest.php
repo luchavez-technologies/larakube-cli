@@ -36,7 +36,7 @@ test('components added to close the enum gaps are now discoverable', function ()
     foreach ([
         'loki-monitor-luchtech-dev' => [ClusterTool::MONITOR, 'monitor-luchtech-dev'],
         'prometheus-monitor-luchtech-dev' => [ClusterTool::MONITOR, 'monitor-luchtech-dev'],
-        'meet-lk-jwt-meet-luchtech-dev' => [ClusterTool::MEET, 'meet-luchtech-dev'],
+        'lk-jwt-meet-luchtech-dev' => [ClusterTool::MEET, 'meet-luchtech-dev'],
     ] as $deployment => [$tool, $instance]) {
         $hit = ClusterTool::forInstancedDeployment($deployment);
 

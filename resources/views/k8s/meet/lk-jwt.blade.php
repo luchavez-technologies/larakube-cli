@@ -3,7 +3,15 @@
      is why it lives here rather than in either tool's own manifest. --}}
 @php
     $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/meet/lk-jwt.blade.php')), 0, 12);
-    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
+    // Every name comes from ToolInstance (ADR 0021). The bridge is always
+    // applied for the Meet install serving $meetHost, so that host is the
+    // instance when the caller didn't thread one through.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::MEET->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $meetHost));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MEET, $instance);
+    $bridge = $names->deployment('lk-jwt');
+    $labels = $names->labels('lk-jwt');
 @endphp
 # lk-jwt-service implements POST /sfu/get at its own root, but Element Call
 # always calls {livekit_service_url}/sfu/get — so the /jwt prefix that routes
@@ -11,8 +19,12 @@
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: meet-jwt-stripprefix
-  namespace: larakube-shared
+  name: {{ $names->name('stripprefix', 'lk-jwt') }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   stripPrefix:
     prefixes:
@@ -21,20 +33,24 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: meet-lk-jwt{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $bridge }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: meet-lk-jwt
-    app.kubernetes.io/part-of: meet
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: meet-lk-jwt
+      app: {{ $bridge }}
   template:
     metadata:
       labels:
-        app: meet-lk-jwt
+        app: {{ $bridge }}
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
       annotations:
         larakube.io/config-checksum: "{{ substr(hash('sha256', $meetHost.$chatHost.$livekitApiKey.$livekitApiSecret.$__tplHash), 0, 16) }}"
     spec:
@@ -66,11 +82,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: meet-lk-jwt{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $bridge }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: meet-lk-jwt
+    app: {{ $bridge }}
   ports:
     - name: http
       port: 8080

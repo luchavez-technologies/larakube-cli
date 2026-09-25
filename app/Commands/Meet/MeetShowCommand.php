@@ -3,6 +3,7 @@
 namespace App\Commands\Meet;
 
 use App\Commands\Tool\AbstractToolShowCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Traits\InteractsWithMeet;
 
@@ -31,7 +32,8 @@ class MeetShowCommand extends AbstractToolShowCommand
 
         // The bootstrap key is an implementation detail of "LiveKit refuses to
         // start with no keys" — listing it would read as a consumer you wired.
-        $registry = $this->meetConsumers($this->readMeetKeys($kubectl, $this->meetNamespace()));
+        $names = $instance !== '' ? ToolInstance::forInstance(ClusterTool::MEET, $instance) : $this->meetInstance($kubectl);
+        $registry = $names !== null ? $this->meetConsumers($this->readMeetKeys($kubectl, $names)) : [];
 
         if ($registry === []) {
             $rows[] = ['Consumers', "<fg=gray>none — run meet:wire {$env} --tool=chat</>"];

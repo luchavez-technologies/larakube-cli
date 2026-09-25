@@ -271,7 +271,7 @@ class ToolListCommand extends Command
      * Deployments are recognised, because only those carry a recoverable
      * identity. A bare name like `stalwart` or `drive-ocis` is deliberately
      * skipped — the tool it belongs to is still found through any sibling
-     * component that IS suffixed (chat via chat-web, meet via meet-livekit),
+     * component that IS suffixed (chat via chat-web, meet via livekit),
      * so an intentionally-unsuffixed component never hides its tool.
      *
      * This only ADDS or CORRECTS rows. It never deletes: a row whose Deployment

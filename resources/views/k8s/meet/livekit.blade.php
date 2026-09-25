@@ -4,7 +4,16 @@
      changes to literal strings in this file. --}}
 @php
     $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/meet/livekit.blade.php')), 0, 12);
-    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
+    // Every name comes from ToolInstance (ADR 0021). Rendered both by
+    // meet:init/meet:wire (which pass the instance) and by the shared
+    // reconcile path (which passes only the host), so derive what is missing.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::MEET->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MEET, $instance);
+    $deployment = $names->deployment();
+    $configSecret = $names->secret(\App\Enums\SecretKind::CONFIG);
+    $labels = $names->labels();
 
     $registry = $consumers ?? [];
     ksort($registry);
@@ -23,8 +32,12 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: meet-livekit-config{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $configSecret }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 type: Opaque
 stringData:
   livekit.yaml: |
@@ -50,22 +63,26 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: meet-livekit{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: meet-livekit{{ $suffix }}
-    app.kubernetes.io/part-of: meet
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: meet-livekit{{ $suffix }}
+      app: {{ $deployment }}
   template:
     metadata:
       labels:
-        app: meet-livekit{{ $suffix }}
+        app: {{ $deployment }}
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
       annotations:
         {{-- The registry is in the hash because livekit.yaml bakes every key in:
              without it, wiring a consumer rewrites the Secret and the pod keeps
@@ -95,17 +112,21 @@ spec:
       volumes:
         - name: config
           secret:
-            secretName: meet-livekit-config{{ $suffix }}
+            secretName: {{ $configSecret }}
 ---
 # Signaling only (WS/HTTP) — always ClusterIP, fronted by the Traefik Ingress.
 apiVersion: v1
 kind: Service
 metadata:
-  name: meet-livekit{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: meet-livekit{{ $suffix }}
+    app: {{ $deployment }}
   ports:
     - name: http
       port: 7880
@@ -119,11 +140,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: meet-livekit-rtc{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $names->name('rtc') }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: meet-livekit{{ $suffix }}
+    app: {{ $deployment }}
   ports:
     - name: rtc-udp
       protocol: UDP

@@ -12,13 +12,13 @@ function meetWireFakes(array $overrides = []): array
     $homeserver = base64_encode("server_name: \"chat.example.com\"\nreport_stats: false\n");
 
     return array_merge([
-        '*part-of=meet*' => Process::result(output: 'meet-livekit 1/1'),
+        '*-l larakube.io/tool=meet --no-headers*' => Process::result(output: 'livekit-meet-example-com 1/1'),
         '*get deployment chat-synapse*' => Process::result(output: 'chat-synapse 1/1'),
-        '*get deployment -l app=meet-lk-jwt*' => Process::result(output: ''),
-        '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
+        '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
+        '*get secret livekit-secrets-meet-example-com*' => Process::result(output: base64_encode($registry)),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'meet', 'host' => 'meet.example.com', 'instance' => 'main'],
-            ['tool' => 'chat', 'host' => 'chat.example.com', 'instance' => 'main'],
+            ['tool' => 'meet', 'host' => 'meet.example.com', 'instance' => 'meet-example-com'],
+            ['tool' => 'chat', 'host' => 'chat.example.com', 'instance' => 'chat-example-com'],
         ]))),
         '*get secret chat-synapse-config*' => Process::result(output: $homeserver),
         '*create secret*' => Process::result(output: 'secret created'),
@@ -29,7 +29,7 @@ function meetWireFakes(array $overrides = []): array
 }
 
 test('meet:wire refuses when Meet is not installed instead of half-wiring chat', function (): void {
-    Process::fake(meetWireFakes(['*part-of=meet*' => Process::result(output: '')]));
+    Process::fake(meetWireFakes(['*-l larakube.io/tool=meet --no-headers*' => Process::result(output: '')]));
 
     $this->artisan('meet:wire local --tool=chat --no-interaction')
         ->assertExitCode(1)
@@ -89,14 +89,14 @@ test('meet:unwire removes the bridge and revokes the key', function (): void {
     ]);
 
     Process::fake(meetWireFakes([
-        '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
-        '*get deployment -l app=meet-lk-jwt*' => Process::result(output: 'meet-lk-jwt 1/1'),
+        '*get secret livekit-secrets-meet-example-com*' => Process::result(output: base64_encode($registry)),
+        '*larakube.io/component=lk-jwt*' => Process::result(output: 'lk-jwt-meet-example-com 1/1'),
     ]));
 
     $this->artisan('meet:unwire local --tool=chat --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('disconnected from Meet');
 
-    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment,service -l app=meet-lk-jwt'));
+    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment,service -l larakube.io/tool=meet,larakube.io/component=lk-jwt,larakube.io/instance=meet-example-com'));
     Process::assertRan(fn ($job) => str_contains($job->command, 'delete secret chat-meet'));
 });

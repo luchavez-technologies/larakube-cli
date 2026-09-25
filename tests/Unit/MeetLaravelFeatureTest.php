@@ -73,7 +73,7 @@ test('adding meet to a project does not fail when Meet is not installed', functi
     // `larakube add meet` must work offline / before meet:init. Falling back to
     // the declared placeholders is correct; blowing up is not.
     Process::fake([
-        '*part-of=meet*' => Process::result(output: ''),
+        '*-l larakube.io/tool=meet --no-headers*' => Process::result(output: ''),
     ]);
 
     $method = new ReflectionMethod(LaravelFeature::MEET, 'resolveMeetCredentials');
@@ -88,14 +88,12 @@ test('when Meet is installed the project gets its own consumer key', function ()
     ]]);
 
     Process::fake([
-        '*part-of=meet*' => Process::result(output: 'meet-livekit 1/1'),
-        '*get secret meet-keys*' => Process::result(output: base64_encode($registry)),
-        '*get secret larakube-tools-registry*' => Process::result(
-            output: base64_encode(json_encode([['tool' => 'meet', 'instance' => '', 'host' => 'meet.example.com']])),
-        ),
+        '*-l larakube.io/tool=meet --no-headers*' => Process::result(output: 'livekit-meet-example-com 1/1'),
+        '*get secret livekit-secrets-meet-example-com*' => Process::result(output: base64_encode($registry)),
         '*create secret*' => Process::result(output: 'applied'),
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
+    Tests\Support\FakeToolRegistry::install([['tool' => 'meet', 'instance' => 'meet-example-com', 'host' => 'meet.example.com']]);
 
     $method = new ReflectionMethod(LaravelFeature::MEET, 'resolveMeetCredentials');
     $method->setAccessible(true);
@@ -109,8 +107,8 @@ test('when Meet is installed the project gets its own consumer key', function ()
 
 test('the deployed Meet host is found under its real, host-derived instance', function (): void {
     Process::fake([
-        '*part-of=meet*' => Process::result(output: 'meet-livekit 1/1'),
-        '*get secret meet-keys*' => Process::result(output: base64_encode(json_encode([]))),
+        '*-l larakube.io/tool=meet --no-headers*' => Process::result(output: 'livekit-meet-example-com 1/1'),
+        '*get secret livekit-secrets-meet-example-com*' => Process::result(output: base64_encode(json_encode([]))),
         '*create secret*' => Process::result(output: 'applied'),
         '*apply -f *' => Process::result(output: 'applied'),
     ]);

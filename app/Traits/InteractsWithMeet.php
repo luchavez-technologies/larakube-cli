@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use Illuminate\Support\Str;
 
@@ -11,8 +13,8 @@ use Illuminate\Support\Str;
  * LiveKit's `keys:` block is a map of apiKey => apiSecret, and it accepts any
  * number of pairs. Every consumer — Synapse via lk-jwt, each Laravel project —
  * gets its own pair so one can be rotated or revoked without touching the
- * others. The `meet-keys` Secret is the source of truth; livekit.yaml is
- * rendered from it, never hand-edited.
+ * others. The instance's credentials Secret is the source of truth;
+ * livekit.yaml is rendered from it, never hand-edited.
  *
  * Note the isolation boundary this does NOT give you: OSS LiveKit has no
  * per-key room restriction, so any valid key can mint a token for any room.
@@ -35,19 +37,35 @@ trait InteractsWithMeet
     /** The namespace the meet stack lives in. */
     protected function meetNamespace(): string
     {
-        return 'larakube-shared';
+        return ClusterTool::MEET->namespace();
+    }
+
+    /**
+     * The one registered Meet install, or null when none is. Meet is
+     * single-instance in practice (LiveKit's RTC ports are bound with
+     * hostPort), but its resources are named from a real host-derived slug
+     * like every other tool's, so callers need the instance to address them.
+     */
+    protected function meetInstance(string $kubectl): ?ToolInstance
+    {
+        return ToolInstance::registered($kubectl, ClusterTool::MEET)[0] ?? null;
     }
 
     /**
      * Is the shared LiveKit deployed? Label-based, not an exact deployment
-     * name — the Deployment itself is instance-suffixed now (a real,
-     * host-derived slug), but this stable `app.kubernetes.io/part-of: meet`
-     * label survives regardless, so callers don't need to know or derive
-     * the current instance just to check presence.
+     * name — the Deployment is named per instance, but the identity label
+     * every manifest carries holds regardless, so callers don't need to know
+     * or derive the current instance just to check presence.
      */
     protected function isMeetInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app.kubernetes.io/part-of=meet');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=meet');
+    }
+
+    /** Is the Matrix bridge deployed? Same label reasoning as isMeetInstalled(). */
+    protected function isMeetBridgeDeployed(string $kubectl, string $ns): bool
+    {
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=meet,larakube.io/component=lk-jwt');
     }
 
     /**
@@ -57,9 +75,9 @@ trait InteractsWithMeet
      *
      * @return array<string, array{key: string, secret: string, roomPrefix: string, webhookUrl: ?string}>
      */
-    protected function readMeetKeys(string $kubectl, string $ns): array
+    protected function readMeetKeys(string $kubectl, ToolInstance $names): array
     {
-        $raw = $this->readClusterSecretKey($kubectl, $ns, 'meet-keys', 'consumers.json');
+        $raw = $this->readClusterSecretKey($kubectl, $names->namespace(), $names->secret(), 'consumers.json');
 
         if ($raw === null || trim($raw) === '') {
             return [];
@@ -118,7 +136,7 @@ trait InteractsWithMeet
      * @param  array<string, array{key: string, secret: string, roomPrefix: string, webhookUrl: ?string}>  $registry
      * @return array<string, array{key: string, secret: string, roomPrefix: string, webhookUrl: ?string}> the persisted registry, including the seeded system key
      */
-    protected function writeMeetKeys(string $kubectl, string $ns, array $registry): array
+    protected function writeMeetKeys(string $kubectl, ToolInstance $names, array $registry): array
     {
         if (! isset($registry[self::MEET_SYSTEM_CONSUMER])) {
             $registry = $this->allocateMeetKey($registry, self::MEET_SYSTEM_CONSUMER, 'system-');
@@ -127,7 +145,12 @@ trait InteractsWithMeet
         ksort($registry);
         $json = (string) json_encode($registry, JSON_UNESCAPED_SLASHES);
 
-        Kubectl::fromPrefix($kubectl)->putSecret($ns, 'meet-keys', ['consumers.json' => $json]);
+        Kubectl::fromPrefix($kubectl)->putSecret(
+            $names->namespace(),
+            $names->secret(),
+            ['consumers.json' => $json],
+            $names->labels(),
+        );
 
         return $registry;
     }

@@ -79,9 +79,9 @@ enum SharedClusterService: string
             // so a plain `up` reconcile re-renders the /jwt route it needs
             // instead of dropping it. Same short-timeout degradation as FLOW.
             self::MEET => [
-                // Label-based: meet-lk-jwt's Deployment name is instance-
-                // suffixed but its pod label stays stable.
-                'jwtWired' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l app=meet-lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
+                // Label-based: the bridge's Deployment is named per instance,
+                // but the identity label every manifest carries holds.
+                'jwtWired' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l larakube.io/tool=meet,larakube.io/component=lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
             ],
             self::TASKS => [
                 'engine' => 'planka',
@@ -251,7 +251,9 @@ enum SharedClusterService: string
             self::DATA => 'deployment data-directus -n larakube-shared',
             self::RECORD => 'deployment record-sendrec -n larakube-shared',
             self::DASHBOARD => 'deployment dashboard-headlamp -n larakube-shared',
-            self::MEET => 'deployment meet-livekit -n larakube-shared',
+            // LiveKit's Deployment is named per instance, so a probe on a bare
+            // name never matches — select on the identity label instead.
+            self::MEET => 'deployment -l larakube.io/tool=meet -n larakube-shared',
             self::DESIGN => 'deployment design-penpot-backend -n larakube-shared',
             self::RESUME => 'deployment resume-reactive -n larakube-shared',
             self::PASTE => 'deployment paste-yopass -n larakube-shared',

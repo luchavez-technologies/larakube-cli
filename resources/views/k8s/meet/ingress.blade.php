@@ -1,23 +1,38 @@
 @php
-    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
+    // Rendered both by meet:init (which passes these) and by the shared
+    // ingress path (which passes only the host), so derive what is missing.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::MEET->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MEET, $instance);
+    $labels = $names->labels();
+
     // Middlewares compose — vpn-only used to write this annotation outright, so
     // enabling it alongside anything else would silently drop one.
     $middlewares = [];
-    if ($vpnOnly ?? false) {
-        $middlewares[] = 'larakube-shared-meet-vpn-only@kubernetescrd';
+    if (($vpnOnly ?? false) && $names->vpnMiddleware() !== null) {
+        $middlewares[] = $names->vpnMiddleware()->traefikMiddleware();
     }
     // Traefik applies an Ingress annotation's middlewares to every router the
     // Ingress generates, so this also lands on the "/" (LiveKit) router — where
     // it is a no-op, because stripPrefix only fires on a matching prefix.
     if ($jwtWired ?? false) {
-        $middlewares[] = 'larakube-shared-meet-jwt-stripprefix@kubernetescrd';
+        $middlewares[] = (new \App\Data\ResourceRef(
+            'Middleware',
+            $names->name('stripprefix', 'lk-jwt'),
+            $names->namespace(),
+        ))->traefikMiddleware();
     }
 @endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: meet{{ $suffix }}
-  namespace: larakube-shared
+  name: {{ $names->deployment() }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -43,7 +58,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: meet-lk-jwt{{ $suffix }}
+                name: {{ $names->deployment('lk-jwt') }}
                 port:
                   number: 8080
 @endif
@@ -53,7 +68,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: meet-livekit{{ $suffix }}
+                name: {{ $names->deployment() }}
                 port:
                   number: 7880
   tls:

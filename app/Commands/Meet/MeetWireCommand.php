@@ -21,7 +21,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  * Connect a consumer to the shared LiveKit SFU.
  *
  * For chat this means three things that have to happen together: a key pair
- * minted in the meet-keys registry, the Matrix↔LiveKit bridge deployed at
+ * minted in the consumer registry, the Matrix↔LiveKit bridge deployed at
  * meet.<domain>/jwt, and Synapse's calling config pointed at that bridge.
  * Doing any one alone leaves calling broken in a way that looks like a media
  * fault, so this command owns all three.
@@ -66,17 +66,25 @@ class MeetWireCommand extends Command
             return 1;
         }
 
+        $names = $this->meetInstance($kubectl);
+
+        if ($names === null) {
+            $this->laraKubeError('Meet is deployed but not registered — run `larakube tool:list '.$env.' --refresh`, then try again.');
+
+            return 1;
+        }
+
         $jwtUrl = "https://{$meetHost}/jwt";
-        $instance = ClusterTool::MEET->instanceSlugFromHost($meetHost);
+        $instance = $names->instance;
 
         // 1. Mint chat's own key pair. Re-running keeps the existing one, so the
         //    bridge's credentials survive a re-wire.
-        $registry = $this->readMeetKeys($kubectl, $ns);
+        $registry = $this->readMeetKeys($kubectl, $names);
         $registry = $this->allocateMeetKey($registry, 'chat', 'matrix-');
         // withSpin() proxies Laravel Zero's task(), which returns a success
         // bool — never the callback's value. Hand the registry back by ref.
-        $this->withSpin('Allocating a LiveKit key for Chat...', function () use ($kubectl, $ns, &$registry): void {
-            $registry = $this->writeMeetKeys($kubectl, $ns, $registry);
+        $this->withSpin('Allocating a LiveKit key for Chat...', function () use ($kubectl, $names, &$registry): void {
+            $registry = $this->writeMeetKeys($kubectl, $names, $registry);
         });
 
         $creds = $registry['chat'];
@@ -133,11 +141,10 @@ class MeetWireCommand extends Command
     protected function reapplyMeet(string $kubectl, string $ns, string $meetHost, array $registry, string $env, string $instance): bool
     {
         $ok = $this->withSpin('Reloading LiveKit with the new key...', function () use ($kubectl, $meetHost, $registry, $env, $instance) {
-            // 'instance' MUST be passed to both views below — omitting it used
-            // to silently re-render meet-livekit/meet's ingress as BARE names
-            // on every wire/unwire, next to the real instance-suffixed
-            // Deployment, which never picked up the fresh Secret. Confirmed as
-            // a pre-existing bug during the 2026-08-23 mechanical rename pass.
+            // 'instance' MUST be passed to both views below. Omitting it
+            // renders a SECOND, instance-less set of objects beside the real
+            // ones on every wire/unwire — and the running Deployment never
+            // picks up the fresh Secret, so the new key silently never works.
             $manifest = view('k8s.meet.livekit', [
                 'host' => $meetHost,
                 'instance' => $instance,
