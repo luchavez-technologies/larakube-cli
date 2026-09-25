@@ -319,10 +319,10 @@ test('sso:grant grants Drive\'s ocisAdmin on Drive\'s own project, found by name
     $this->artisan('sso:grant', ['--tool' => 'drive', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev")
-        ->expectsOutputToContain('drive-ocis');
+        ->expectsOutputToContain('ocis');
 
     Saloon::assertSent(fn ($request) => $request instanceof SearchProjectsRequest
-        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'drive-ocis');
+        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'ocis');
     Saloon::assertSent(fn ($request) => $request instanceof CreateUserGrantRequest
         && $request->body()->get('projectId') === 'drive-proj-1'
         && $request->body()->get('roleKeys') === ['ocisAdmin']);
@@ -356,5 +356,5 @@ test('sso:grant for Drive creates its own project when none exists yet', functio
     // The fallback created Drive's own project by name before granting —
     // not the shared LaraKube Shared Tools project.
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
-        && $request->body()->get('name') === 'drive-ocis');
+        && $request->body()->get('name') === 'ocis');
 });

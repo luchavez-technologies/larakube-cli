@@ -1,24 +1,47 @@
-@php($ocisImage = 'owncloud/ocis:8.0.6')
-@php($cspYaml = view('k8s.drive.csp', ['office' => $office ?? false, 'officeHost' => $officeHost ?? ''])->render())
-{{-- Indent here rather than in the partial: rendering drops the leading
-     whitespace of its first line, which silently empties the block scalar. --}}
-@php($cspYaml = implode("\n", array_map(fn ($l) => $l === '' ? '' : '    '.$l, explode("\n", rtrim($cspYaml)))))
+@php
+    $ocisImage = 'owncloud/ocis:8.0.6';
+
+    // Every name comes from ToolInstance (ADR 0021). Rendered both by
+    // drive:init (which passes the instance) and by the shared reconcile path
+    // (which passes only the host), so derive what is missing.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::DRIVE->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::DRIVE, $instance);
+    $deployment = $names->deployment();
+    $secretName = $names->secret();
+    $codeSecret = $names->secret(\App\Enums\SecretKind::CREDENTIALS, 'code');
+    $cspConfigMap = $names->configMap('csp');
+    $volume = $names->volume();
+    $bucket = $names->bucket();
+    $labels = $names->labels();
+
+    $cspYaml = view('k8s.drive.csp', ['office' => $office ?? false, 'officeHost' => $officeHost ?? ''])->render();
+    // Indent here rather than in the partial: rendering drops the leading
+    // whitespace of its first line, which silently empties the block scalar.
+    $cspYaml = implode("\n", array_map(fn ($l) => $l === '' ? '' : '    '.$l, explode("\n", rtrim($cspYaml))));
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: drive-ocis
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: drive-ocis
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: drive-ocis
+      app: {{ $deployment }}
   template:
     metadata:
       labels:
-        app: drive-ocis
+        app: {{ $deployment }}
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
       annotations:
         # csp.yaml is mounted by subPath, which NEVER sees a ConfigMap update —
         # and even a plain mount would need a restart. Without this checksum the
@@ -57,7 +80,7 @@ spec:
             # proxy's default CSP connect-src ('self' + the app-store CDN) blocks
             # those fetches and every SSO login dies with "trouble connecting to
             # the login service" (CSP Network Error, confirmed live 2026-07-31).
-            # Mount a csp.yaml (see the drive-ocis-csp ConfigMap below) that adds
+            # Mount a csp.yaml (see the CSP ConfigMap below) that adds
             # the WIRED OIDC issuer origin to connect-src — mirrors the official
             # Keycloak external-IdP example, which sets
             # PROXY_CSP_CONFIG_FILE_LOCATION and never touches
@@ -108,113 +131,110 @@ spec:
             - name: OCIS_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: OCIS_LDAP_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: IDM_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: IDM_SVC_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: IDM_REVASVC_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: IDM_IDPSVC_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: IDM_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: GROUPS_LDAP_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: USERS_LDAP_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: AUTH_BASIC_LDAP_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: GRAPH_LDAP_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: IDM_LDAP_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: IDP_LDAP_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: IDP_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: admin-password
             - name: OCIS_JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: jwt-secret
             - name: OCIS_TRANSFER_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: transfer-secret
             - name: OCIS_MACHINE_AUTH_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: machine-auth-api-key
             - name: OCIS_SYSTEM_USER_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: system-user-api-key
             - name: OCIS_SERVICE_ACCOUNT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: service-account-secret
             - name: OCIS_REKEY_KEY
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: rekey-key
 @if (! $noPlex && $s3Creds)
-            # User file blobs live on Plex SeaweedFS via the S3NG driver. The old
-            # S3 vars (the default-storage toggle plus the STORAGE_SYSTEM_S3
-            # endpoint/bucket/keys) never switched the driver — STORAGE_SYSTEM_DRIVER
-            # stays `ocis`, so all data (metadata AND blobs) silently landed on the
-            # ephemeral pod disk and every restart wiped it (confirmed live
-            # 2026-07-31: the drive-ocis SeaweedFS bucket stayed empty while the pod
-            # wrote to /var/lib/ocis/storage/metadata). Metadata itself is kept on
-            # the drive-ocis-storage PVC below — official oCIS guidance is to keep
-            # system/space metadata on POSIX and only push blobs to S3.
+            # User file blobs live on Plex SeaweedFS via the S3NG driver.
+            # STORAGE_USERS_DRIVER is what selects it: the STORAGE_SYSTEM_S3
+            # vars alone leave the driver at `ocis`, which writes metadata AND
+            # blobs to the pod's own disk and loses both on every restart.
+            # Metadata stays on the PVC below — official oCIS guidance is to
+            # keep system/space metadata on POSIX and push only blobs to S3.
             - name: STORAGE_USERS_DRIVER
               value: "s3ng"
             - name: STORAGE_USERS_S3NG_ENDPOINT
@@ -222,7 +242,7 @@ spec:
             - name: STORAGE_USERS_S3NG_REGION
               value: "us-east-1"
             - name: STORAGE_USERS_S3NG_BUCKET
-              value: "drive-ocis"
+              value: "{{ $bucket }}"
             - name: STORAGE_USERS_S3NG_ACCESS_KEY
               value: "{{ $s3Creds['access'] }}"
             - name: STORAGE_USERS_S3NG_SECRET_KEY
@@ -236,9 +256,9 @@ spec:
           ports:
             - containerPort: 80
           volumeMounts:
-            - name: drive-ocis-data
+            - name: ocis-data
               mountPath: /var/lib/ocis
-            - name: drive-ocis-csp
+            - name: ocis-csp
               mountPath: /etc/ocis/csp.yaml
               subPath: csp.yaml
               readOnly: true
@@ -267,11 +287,11 @@ spec:
             # What CODE calls back on to read and write the file. Cluster-internal
             # by design — the browser never follows it.
             - name: COLLABORATION_WOPI_SRC
-              value: "http://drive-collaboration.larakube-shared.svc.cluster.local:9300"
+              value: "http://{{ $names->name('collaboration') }}.{{ $names->namespace() }}.svc.cluster.local:9300"
             - name: COLLABORATION_WOPI_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: drive-office-secrets
+                  name: {{ $codeSecret }}
                   key: wopi-secret
             - name: COLLABORATION_APP_NAME
               value: "CollaboraOnline"
@@ -295,43 +315,45 @@ spec:
             - name: OCIS_JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: jwt-secret
             - name: OCIS_TRANSFER_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: transfer-secret
             - name: OCIS_MACHINE_AUTH_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: machine-auth-api-key
             - name: OCIS_SERVICE_ACCOUNT_ID
               value: "4c510ada-c86b-4815-8820-42cdf27c3d51"
             - name: OCIS_SERVICE_ACCOUNT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: drive-secrets
+                  name: {{ $secretName }}
                   key: service-account-secret
           ports:
             - containerPort: 9300
 @endif
       volumes:
-        - name: drive-ocis-data
+        - name: ocis-data
           persistentVolumeClaim:
-            claimName: drive-ocis-storage
-        - name: drive-ocis-csp
+            claimName: {{ $volume }}
+        - name: ocis-csp
           configMap:
-            name: drive-ocis-csp
+            name: {{ $cspConfigMap }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: drive-ocis-csp
-  namespace: larakube-shared
+  name: {{ $cspConfigMap }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: drive-ocis
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 data:
   # Replicates the proxy's built-in default CSP exactly (verified against the
   # live 8.0.6 header: child-src 'self'; connect-src 'self' blob: awesome-ocis;
@@ -354,11 +376,15 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: drive-ocis
-  namespace: larakube-shared
+  name: {{ $deployment }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: drive-ocis
+    app: {{ $deployment }}
   ports:
     - port: 80
       targetPort: 80
@@ -367,11 +393,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: drive-collaboration
-  namespace: larakube-shared
+  name: {{ $names->name('collaboration') }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: drive-ocis
+    app: {{ $deployment }}
   ports:
     - port: 9300
       targetPort: 9300
@@ -380,13 +410,17 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: drive-ocis-storage
-  namespace: larakube-shared
+  name: {{ $volume }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ $volumeSize('drive-ocis-storage', '10Gi', true) }}
+      storage: {{ $volumeSize($volume, '10Gi', true) }}
 ---
-@include('k8s.drive.ingress', ['engine' => 'ocis'])
+@include('k8s.drive.ingress', ['names' => $names])

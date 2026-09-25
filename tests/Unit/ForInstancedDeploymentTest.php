@@ -13,11 +13,11 @@ test('a suffixed deployment yields its tool and instance', function (): void {
 test('a bare component name is deliberately NOT matched', function (): void {
     // No suffix means no recoverable identity, so tool:list --refresh leaves it
     // undiscovered until it is migrated. That absence IS the migration list.
-    expect(ClusterTool::forInstancedDeployment('drive-ocis'))->toBeNull()
+    expect(ClusterTool::forInstancedDeployment('ocis'))->toBeNull()
         ->and(ClusterTool::forInstancedDeployment('chat-synapse'))->toBeNull()
         ->and(ClusterTool::forInstancedDeployment('documenso'))->toBeNull()
         // ...even though the permissive lookup still maps them.
-        ->and(ClusterTool::forDeployment('drive-ocis'))->not->toBeNull();
+        ->and(ClusterTool::forDeployment('ocis'))->not->toBeNull();
 });
 
 test('the longest matching component wins', function (): void {

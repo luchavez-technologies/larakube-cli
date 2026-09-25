@@ -234,7 +234,7 @@ test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on Drive\'s own proj
     // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 (at the
     // user's explicit request) — requiresRbacGating() is now checked FIRST
     // in resolveSsoProject(), so this resolves via zitadelEnsureProject(the
-    // 'drive-ocis' name), never the sso-app-drive secret's cached project-id.
+    // 'ocis' name), never the sso-app-drive secret's cached project-id.
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -257,20 +257,20 @@ test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on Drive\'s own proj
     $this->artisan('sso:revoke', ['--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--force' => true, '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('Revoked [ocisAdmin] from admin@luchtech.dev')
-        ->expectsOutputToContain('drive-ocis');
+        ->expectsOutputToContain('ocis');
 
     // The ocisAdmin grant was the user's last one on Drive's project, so
     // the grant is deleted outright.
     Saloon::assertSent(DeleteUserGrantRequest::class);
     Saloon::assertSent(fn ($request) => $request instanceof SearchProjectsRequest
-        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'drive-ocis');
+        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'ocis');
 });
 
 test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own project beside another tool's RBAC role", function (): void {
     // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 — the
     // sweep now walks every RBAC-gated tool's OWN project (a dozen of them,
     // not "the one RBAC project" vs "the one shared project" as before), so
-    // this routes by EXACT project name: drive-ocis holds ocisAdmin,
+    // this routes by EXACT project name: ocis holds ocisAdmin,
     // openbao-backend holds openbao-admin, everything else (every other
     // role-bearing tool's project, plus the shared LaraKube Shared Tools
     // project) is empty. DRIVE is declared before SECRETS in ClusterTool's
@@ -292,7 +292,7 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
             $queries = $pendingRequest->getRequest()->body()->get('queries');
             $projectId = $queries[1]['projectIdQuery']['projectId'] ?? '';
 
-            if ($projectId === 'proj-drive-ocis') {
+            if ($projectId === 'proj-ocis') {
                 $driveGrantLookups++;
 
                 // Three lookups happen before this grant is truly gone:
@@ -333,7 +333,7 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
 
     expect($exitCode)->toBe(0)
         ->and($output->fetch())->toContain('Revoked [ocisAdmin] from admin@luchtech.dev')
-        ->toContain('now holds no roles on drive-ocis');
+        ->toContain('now holds no roles on ocis');
 
     // Both tools' roles were offered in ONE picker — the old single-project
     // discovery never even saw ocisAdmin, which is the bug this locks in.

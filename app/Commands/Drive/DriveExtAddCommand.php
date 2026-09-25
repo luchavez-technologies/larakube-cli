@@ -84,7 +84,7 @@ class DriveExtAddCommand extends Command
         }
 
         $this->withSpin('Restarting Drive (oCIS) deployment to activate extensions...', function () use ($kubectl, $ns) {
-            return Process::run("{$kubectl} rollout restart deploy/drive-ocis -n {$ns}")->exitCode() === 0;
+            return Process::run("{$kubectl} rollout restart deploy/{$this->driveDeployment($kubectl)} -n {$ns}")->exitCode() === 0;
         });
 
         $this->newLine();

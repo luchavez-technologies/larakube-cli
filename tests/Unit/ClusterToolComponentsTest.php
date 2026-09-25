@@ -33,7 +33,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     // chat-synapse never gains an instance suffix, even when one is given.
     $expected = [
         'analytics' => 'umami', 'crm' => 'crm-twenty',
-        'drive' => 'drive-ocis', 'errors' => 'glitchtip-web',
+        'drive' => 'ocis', 'errors' => 'glitchtip-web',
         'flow' => 'n8n', 'insights' => 'insights-metabase',
         'link' => 'kutt', 'mail' => 'mail-stalwart', 'monitor' => 'grafana',
         'notes' => 'outline', 'passwords' => 'passwords-vaultwarden', 'record' => 'record-sendrec',

@@ -35,11 +35,11 @@ test('ocis manifest renders as valid multi-document YAML', function (): void {
         $kinds[] = $parsed['kind'].'/'.$parsed['metadata']['name'];
     }
 
-    expect($kinds)->toContain('Deployment/drive-ocis')
-        ->toContain('ConfigMap/drive-ocis-csp')
-        ->toContain('Service/drive-ocis')
-        ->toContain('PersistentVolumeClaim/drive-ocis-storage')
-        ->toContain('Ingress/drive-ocis');
+    expect($kinds)->toContain('Deployment/ocis-drive-example-com')
+        ->toContain('ConfigMap/ocis-csp-drive-example-com')
+        ->toContain('Service/ocis-drive-example-com')
+        ->toContain('PersistentVolumeClaim/ocis-storage-drive-example-com')
+        ->toContain('Ingress/ocis-drive-example-com');
 });
 
 test('ocis mounts a csp.yaml that lets the browser reach whichever OIDC issuer is wired', function (): void {
@@ -62,7 +62,7 @@ test('ocis mounts a csp.yaml that lets the browser reach whichever OIDC issuer i
     );
 
     $configMap = collect($documents(renderOcisManifest()))
-        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'ConfigMap' && ($doc['metadata']['name'] ?? null) === 'drive-ocis-csp');
+        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'ConfigMap' && ($doc['metadata']['name'] ?? null) === 'ocis-csp-drive-example-com');
 
     expect($configMap['data']['csp.yaml'] ?? null)
         ->toContain('connect-src:')
@@ -72,21 +72,21 @@ test('ocis mounts a csp.yaml that lets the browser reach whichever OIDC issuer i
         ->toContain('https://raw.githubusercontent.com/owncloud/awesome-ocis/');
 
     $deployment = collect($documents(renderOcisManifest()))
-        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment' && ($doc['metadata']['name'] ?? null) === 'drive-ocis');
+        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment' && ($doc['metadata']['name'] ?? null) === 'ocis-drive-example-com');
 
     $container = $deployment['spec']['template']['spec']['containers'][0];
     $cspEnv = collect($container['env'])->first(fn (array $env) => $env['name'] === 'PROXY_CSP_CONFIG_FILE_LOCATION');
 
     expect($cspEnv['value'])->toBe('/etc/ocis/csp.yaml')
         ->and($container['volumeMounts'])->toContain([
-            'name' => 'drive-ocis-csp',
+            'name' => 'ocis-csp',
             'mountPath' => '/etc/ocis/csp.yaml',
             'subPath' => 'csp.yaml',
             'readOnly' => true,
         ])
         ->and($deployment['spec']['template']['spec']['volumes'])->toContain([
-            'name' => 'drive-ocis-csp',
-            'configMap' => ['name' => 'drive-ocis-csp'],
+            'name' => 'ocis-csp',
+            'configMap' => ['name' => 'ocis-csp-drive-example-com'],
         ]);
 });
 
@@ -105,7 +105,7 @@ test('ocis CSP is identical across hosts — the wired issuer, not the drive sub
     );
 
     $cspYaml = fn (string $rendered): string => collect($documents($rendered))
-        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'ConfigMap' && ($doc['metadata']['name'] ?? null) === 'drive-ocis-csp')['data']['csp.yaml'];
+        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'ConfigMap')['data']['csp.yaml'];
 
     $a = $cspYaml(renderOcisManifest(['host' => 'drive.example.com']));
     $b = $cspYaml(renderOcisManifest(['host' => 'drive.luchtech.dev']));
@@ -122,7 +122,7 @@ test('ocis S3 mode drives user blobs through the Plex SeaweedFS bucket via the s
     expect($rendered)->toContain('name: STORAGE_USERS_DRIVER')
         ->and($rendered)->toContain('value: "s3ng"')
         ->and($rendered)->toContain('http://seaweedfs.larakube-plex.svc.cluster.local:8333')
-        ->and($rendered)->toContain('value: "drive-ocis"')
+        ->and($rendered)->toContain('value: "ocis-storage-drive-example-com"')
         // The old vars silently kept the default `ocis` driver — remove them so
         // nobody mistakes them for a working S3 setup again.
         ->and($rendered)->not->toContain('OCIS_DEFAULT_STORAGE_SYSTEM')
@@ -138,12 +138,12 @@ test('ocis mounts the storage PVC even in Plex S3 mode so metadata survives rest
                 fn (string $doc) => $doc !== '',
             )),
         ),
-    )->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment' && ($doc['metadata']['name'] ?? null) === 'drive-ocis');
+    )->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment' && ($doc['metadata']['name'] ?? null) === 'ocis-drive-example-com');
 
     expect($deployment['spec']['template']['spec']['containers'][0]['volumeMounts'])->toContain([
-        'name' => 'drive-ocis-data',
+        'name' => 'ocis-data',
         'mountPath' => '/var/lib/ocis',
-    ])->and($deployment['spec']['template']['spec']['volumes'][0]['persistentVolumeClaim']['claimName'])->toBe('drive-ocis-storage');
+    ])->and($deployment['spec']['template']['spec']['volumes'][0]['persistentVolumeClaim']['claimName'])->toBe('ocis-storage-drive-example-com');
 });
 
 test('ocis cloud ingress requests a real ACME certificate via Traefik\'s certresolver', function (): void {
@@ -156,7 +156,7 @@ test('ocis cloud ingress requests a real ACME certificate via Traefik\'s certres
     );
 
     $ingress = fn (string $rendered): array => collect($documents($rendered))
-        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Ingress' && ($doc['metadata']['name'] ?? null) === 'drive-ocis');
+        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Ingress' && ($doc['metadata']['name'] ?? null) === 'ocis-drive-example-com');
 
     $cloud = $ingress(renderOcisManifest(['isLocal' => false]));
     $local = $ingress(renderOcisManifest(['isLocal' => true]));
@@ -202,13 +202,13 @@ test('ocis manifest wires the admin password from the drive-secrets Secret', fun
                 fn (string $doc) => $doc !== '',
             )),
         ),
-    )->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment' && ($doc['metadata']['name'] ?? null) === 'drive-ocis');
+    )->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment' && ($doc['metadata']['name'] ?? null) === 'ocis-drive-example-com');
 
     $ocisAdminPassword = collect($deployment['spec']['template']['spec']['containers'][0]['env'])
         ->first(fn (array $env) => $env['name'] === 'OCIS_ADMIN_PASSWORD');
 
     expect($ocisAdminPassword['valueFrom']['secretKeyRef'])->toMatchArray([
-        'name' => 'drive-secrets',
+        'name' => 'ocis-secrets-drive-example-com',
         'key' => 'admin-password',
     ]);
 });

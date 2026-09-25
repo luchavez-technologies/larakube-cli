@@ -2,7 +2,9 @@
 
 namespace App\Commands\Drive\Office;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
@@ -29,7 +31,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  *      on office.{drive host}.
  *   2. oCIS's own `collaboration` service — the WOPI bridge between the two.
  *      It is NOT deployed here: it ships in the same oCIS image and has to share
- *      drive-ocis's network namespace (see the sidecar comment in
+ *      oCIS's network namespace (see the sidecar comment in
  *      k8s/drive/ocis.blade.php), so `drive:init` owns rendering it and this
  *      command re-runs that command once CODE exists. That keeps one source of
  *      truth for the oCIS manifest and means a later plain `drive:init`
@@ -64,29 +66,33 @@ class OfficeInitCommand extends Command
         $env = $this->resolveToolEnvironment(ClusterTool::DRIVE);
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $kubectl = Kubectl::forContext($context)->prefix();
-        $ns = 'larakube-shared';
+        $ns = ClusterTool::DRIVE->namespace();
 
-        if (! $this->driveIsInstalled($kubectl, $ns)) {
+        $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::DRIVE, $env, $kubectl);
+        // Collabora is a component of the Drive instance serving $host, so
+        // every name it writes comes from that instance (ADR 0021).
+        $names = ToolInstance::forHost(ClusterTool::DRIVE, $host);
+
+        if (! $this->driveIsInstalled($kubectl, $ns, $names)) {
             $this->laraKubeError('Drive is not installed on this cluster — run `larakube drive:init` first.');
 
             return 1;
         }
 
-        $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::DRIVE, $env, $kubectl);
         $officeHost = "office.{$host}";
         $isLocal = $env === 'local';
 
-        $adminPassword = $this->readClusterSecretKey($kubectl, $ns, 'drive-office-secrets', 'code-admin-password')
+        $adminPassword = $this->readClusterSecretKey($kubectl, $ns, $names->secret(SecretKind::CREDENTIALS, 'code'), 'code-admin-password')
             ?? Str::random(24);
 
         // The WOPI bridge signs its own access tokens with this. Deliberately
         // NOT drive-secrets' jwt-secret: that is oCIS's internal service JWT, a
         // different trust domain despite the similar name. The service refuses
         // to start without it ("The WOPI secret has not been set properly").
-        $wopiSecret = $this->readClusterSecretKey($kubectl, $ns, 'drive-office-secrets', 'wopi-secret')
+        $wopiSecret = $this->readClusterSecretKey($kubectl, $ns, $names->secret(SecretKind::CREDENTIALS, 'code'), 'wopi-secret')
             ?? Str::random(48);
 
-        $this->withSpin('Syncing Collabora secrets...', fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, 'drive-office-secrets', ['code-admin-password' => $adminPassword, 'wopi-secret' => $wopiSecret]));
+        $this->withSpin('Syncing Collabora secrets...', fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(SecretKind::CREDENTIALS, 'code'), ['code-admin-password' => $adminPassword, 'wopi-secret' => $wopiSecret], $names->labels('code')));
 
         // Issue the local cert BEFORE the ingress exists, so the very first
         // browser hit on office.{host} is already served a trusted certificate.
@@ -97,6 +103,7 @@ class OfficeInitCommand extends Command
 
         $manifest = view('k8s.drive.code', [
             'host' => $host,
+            'instance' => $names->instance,
             'officeHost' => $officeHost,
             'codeImage' => self::CODE_IMAGE,
             'codeAdminPassword' => $adminPassword,
@@ -116,11 +123,11 @@ class OfficeInitCommand extends Command
         // minutes-slow on a cold image pull — well past the 120s every other
         // tool here waits.
         $this->withSpin('Waiting for Collabora Online (CODE)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/drive-code -n {$ns} --timeout=600s",
+            "{$kubectl} rollout status deploy/{$names->deployment('code')} -n {$ns} --timeout=600s",
             610,
         ));
 
-        $this->laraKubeInfo('Re-running drive:init to add the WOPI bridge to drive-ocis...');
+        $this->laraKubeInfo('Re-running drive:init to add the WOPI bridge to oCIS...');
         $this->newLine();
 
         $driveArgs = ['environment' => $env, '--force' => true];
@@ -148,10 +155,10 @@ class OfficeInitCommand extends Command
         return 0;
     }
 
-    protected function driveIsInstalled(string $kubectl, string $ns): bool
+    protected function driveIsInstalled(string $kubectl, string $ns, ToolInstance $names): bool
     {
         return trim(Process::run(
-            "{$kubectl} get deployment drive-ocis -n {$ns} -o name --ignore-not-found",
+            "{$kubectl} get deployment {$names->deployment()} -n {$ns} -o name --ignore-not-found",
         )->output()) !== '';
     }
 }

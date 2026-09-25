@@ -34,7 +34,7 @@ function backupRunFakes(array $overrides = []): array
         // excluded, Synapse signing key included, etc.) still hold under the
         // new discovery mechanism, not the old hardcoded array.
         '*get namespace -o jsonpath*' => Process::result(output: 'larakube-shared larakube-vault larakube-secrets larakube-sso larakube-vpn larakube-plex'),
-        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo-git-luchtech-dev forgejo-runner-git-luchtech-dev drive-ocis stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana-monitor-luchtech-dev prometheus-server loki'),
+        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo-git-luchtech-dev forgejo-runner-git-luchtech-dev ocis-drive-example-com stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana-monitor-luchtech-dev prometheus-server loki'),
         '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'passwords-vaultwarden-vault-luchtech-dev'),
         '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
         '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),
@@ -107,7 +107,7 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
         // under ADR 0021. The hand-maintained legacy-name map is gone — archives
         // predating it were disposable and keeping a fallback would be exactly
         // the temporary compatibility code this repo refuses elsewhere.
-        ->and($names)->toContain('drive-ocis')
+        ->and($names)->toContain('ocis-drive-example-com')
         ->and($names)->toContain('passwords-vaultwarden-vault-luchtech-dev')
         ->and($names)->toContain('forgejo-git-luchtech-dev')
         // Still the unmigrated Deployment name; it becomes

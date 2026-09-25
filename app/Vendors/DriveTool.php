@@ -9,6 +9,8 @@ use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the DRIVE category — 'Cloud Storage & Sync'. Only oCIS. */
@@ -21,22 +23,69 @@ final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWi
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'drive-vpn-only' : "drive-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '')
+            ? 'drive-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::DRIVE, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => 'larakube-shared',
+            'namespace' => ClusterTool::DRIVE->namespace(),
         ];
     }
 
+    /**
+     * oCIS, plus the Collabora editor `drive:office:init` deploys beside it.
+     *
+     * Collabora is listed even though it is optional and only sometimes
+     * present: an undeclared Deployment is one forDeployment() cannot map and
+     * teardown never deletes, and its name has to come from ToolInstance like
+     * everything else. `--ignore-not-found` covers the installs without it.
+     *
+     * @return list<ClusterToolComponentData>
+     */
     public function components(?string $instance = null, ?string $engine = null): array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        // ClusterTool::components() strips the category for a migrated tool;
+        // these nested resource names have to follow the same rule. Composed
+        // here rather than read back from ToolInstance, which derives every
+        // name FROM this list and would recurse.
+        $canonical = fn (string $n) => ClusterTool::DRIVE->withoutCategory($n);
+        $ocis = $canonical($name('drive-ocis'));
+        $code = $canonical($name('drive-code'));
 
         return [
             new ClusterToolComponentData(
-                key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('drive-ocis'),
-                container: 'ocis', backupVolume: true, backupPaths: ['/var/lib/ocis'],
+                key: 'app',
+                role: ClusterToolComponentRole::PRIMARY,
+                deployment: $ocis,
+                container: 'ocis',
+                // The credentials Secret and the metadata PVC are deliberately
+                // absent: oCIS wraps every file's encryption key with the rekey
+                // key in that Secret, so deleting it while the blobs survive
+                // leaves them permanently undecryptable. Both are removed by
+                // hand — see DriveRemoveCommand::teardown().
+                resources: [
+                    ['kind' => 'service', 'name' => $ocis],
+                    ['kind' => 'ingress', 'name' => $ocis],
+                    ['kind' => 'configmap', 'name' => $canonical($name('drive-ocis-csp'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('drive-ocis-oidc'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('drive-ocis-smtp'))],
+                    // The WOPI bridge is a sidecar in the oCIS pod, but its
+                    // Service is its own object.
+                    ['kind' => 'service', 'name' => $canonical($name('drive-ocis-collaboration'))],
+                ],
+                backupVolume: true,
+                backupPaths: ['/var/lib/ocis'],
+            ),
+            new ClusterToolComponentData(
+                key: 'code',
+                role: ClusterToolComponentRole::WORKER,
+                deployment: $code,
+                container: 'code',
+                resources: [
+                    ['kind' => 'service', 'name' => $code],
+                ],
             ),
         ];
     }

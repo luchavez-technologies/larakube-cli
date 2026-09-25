@@ -49,7 +49,7 @@ test('the oCIS manifest is unchanged when the office layer is absent', function 
     // sidecar, a second Service, or any Collabora wiring.
     expect($rendered)
         ->not->toContain('collaboration')
-        ->not->toContain('drive-office-secrets')
+        ->not->toContain('code-secrets-')
         ->not->toContain('COLLABORATION_WOPI_SECRET');
 });
 
@@ -66,7 +66,7 @@ test('the office layer adds the WOPI bridge as a sidecar sharing the oCIS pod', 
         // Collabora never sends WopiProof headers — with verification on, every
         // CheckFileInfo failed with "Invalid timestamp" and the editor stayed blank.
         ->toContain('COLLABORATION_APP_PROOF_DISABLE')
-        ->toContain('name: drive-collaboration');
+        ->toContain('name: ocis-collaboration-drive-test');
 });
 
 test('the bridge signs WOPI tokens with its own secret, never oCIS internal JWT', function (): void {
@@ -75,7 +75,7 @@ test('the bridge signs WOPI tokens with its own secret, never oCIS internal JWT'
     // drive-secrets' jwt-secret is oCIS's service-to-service JWT — a different
     // trust domain despite the similar name.
     expect($rendered)->toContain('key: wopi-secret')
-        ->and($rendered)->toContain('name: drive-office-secrets');
+        ->and($rendered)->toContain('name: code-secrets-drive-test');
 });
 
 test('the CODE manifest pins an exact image and terminates TLS at Traefik', function (): void {

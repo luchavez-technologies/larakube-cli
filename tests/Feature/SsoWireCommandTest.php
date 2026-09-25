@@ -274,13 +274,13 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
 test('sso:wire registers oCIS Drive as a public PKCE client with its real callback URIs', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis   1/1   1   1   10d'),
+        '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret drive-ocis-sso*' => Process::result(output: ''),
+        '*get secret ocis-sso-*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
+        '*set env deployment/ocis-*' => Process::result(output: 'deployment.apps/ocis-drive-example-com env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/ocis-drive-example-com restarted'),
     ]);
 
     // Public SPA clients have no clientSecret — Zitadel omits it from the
@@ -305,7 +305,7 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
         // Already asserted (both flags true) — this test isn't about the
         // projectRoleAssertion/projectRoleCheck state-transition dance,
         // that has its own dedicated coverage below.
-        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         SearchProjectRolesRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
@@ -332,7 +332,7 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
 
     // No client secret is stored for the public client, so nothing stale leaks
     // onto the deployment when applyToolEnv rewrites the secret.
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'drive-ocis-sso')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'ocis-sso-')
         && array_key_exists('client-secret', appliedSecret($process)['data'])
         && appliedSecret($process)['data']['client-secret'] !== 'cid-drive');
 });
@@ -342,18 +342,18 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
 
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis   1/1   1   1   10d'),
+        '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         // A previous sso:wire run cached creds for a confidential client whose
         // only redirect URI was the tool root — the state found live on
         // production 2026-07-31, where the pod already ran the corrected env.
-        '*drive-ocis-sso*client-id*' => Process::result(output: base64_encode('cid-stale')),
-        '*drive-ocis-sso*client-secret*' => Process::result(output: base64_encode('secret-stale')),
-        '*drive-ocis-sso*app-id*' => Process::result(output: base64_encode('app-stale')),
+        '*ocis-sso-*client-id*' => Process::result(output: base64_encode('cid-stale')),
+        '*ocis-sso-*client-secret*' => Process::result(output: base64_encode('secret-stale')),
+        '*ocis-sso-*app-id*' => Process::result(output: base64_encode('app-stale')),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
+        '*set env deployment/ocis-*' => Process::result(output: 'deployment.apps/ocis-drive-example-com env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/ocis-drive-example-com restarted'),
     ]);
 
     Saloon::fake([
@@ -372,7 +372,7 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
         SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
         DeleteProjectAppRequest::class => MockResponse::make([]),
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
-        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         SearchProjectRolesRequest::class => function ($pendingRequest) {
             $key = $pendingRequest->getRequest()->body()->get('queries')[0]['keyQuery']['key'] ?? '';
 
@@ -403,15 +403,15 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
 
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis   1/1   1   1   10d'),
+        '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*drive-ocis-sso*client-id*' => Process::result(output: base64_encode('cid-live')),
-        '*drive-ocis-sso*client-secret*' => Process::result(output: base64_encode('')),
-        '*drive-ocis-sso*app-id*' => Process::result(output: base64_encode('app-live')),
+        '*ocis-sso-*client-id*' => Process::result(output: base64_encode('cid-live')),
+        '*ocis-sso-*client-secret*' => Process::result(output: base64_encode('')),
+        '*ocis-sso-*app-id*' => Process::result(output: base64_encode('app-live')),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
+        '*set env deployment/ocis-*' => Process::result(output: 'deployment.apps/ocis-drive-example-com env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/ocis-drive-example-com restarted'),
     ]);
 
     // This is the exact production state found live 2026-08-01: the public app
@@ -435,7 +435,7 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
         SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
         DeleteProjectAppRequest::class => MockResponse::make([]),
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
-        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         SearchProjectRolesRequest::class => function ($pendingRequest) {
             $key = $pendingRequest->getRequest()->body()->get('queries')[0]['keyQuery']['key'] ?? '';
 
@@ -458,13 +458,13 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
 test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rbacRoles(), and grants ocisAdmin via --admin-email', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis   1/1   1   1   10d'),
+        '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret drive-ocis-sso*' => Process::result(output: ''),
+        '*get secret ocis-sso-*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
+        '*set env deployment/ocis-*' => Process::result(output: 'deployment.apps/ocis-drive-example-com env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/ocis-drive-example-com restarted'),
     ]);
 
     // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 (at
@@ -487,7 +487,7 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
         GetProjectRequest::class => function () use (&$projectGated) {
             return MockResponse::make(['project' => [
                 'id' => 'proj-1',
-                'name' => 'drive-ocis',
+                'name' => 'ocis',
                 'projectRoleAssertion' => $projectGated,
                 'projectRoleCheck' => $projectGated,
             ]]);
@@ -552,13 +552,13 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
 test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the existing Action', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis   1/1   1   1   10d'),
+        '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret drive-ocis-sso*' => Process::result(output: ''),
+        '*get secret ocis-sso-*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/drive-ocis*' => Process::result(output: 'deployment.apps/drive-ocis env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/drive-ocis restarted'),
+        '*set env deployment/ocis-*' => Process::result(output: 'deployment.apps/ocis-drive-example-com env updated'),
+        '*rollout restart*' => Process::result(output: 'deployment.apps/ocis-drive-example-com restarted'),
     ]);
 
     // The Action exists but carries the pre-ocisSpaceAdmin script — the exact
@@ -578,7 +578,7 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-drive', 'clientId' => 'cid-drive']),
-        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'drive-ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'ocis', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         SearchProjectRolesRequest::class => function ($pendingRequest) {
             $key = $pendingRequest->getRequest()->body()->get('queries')[0]['keyQuery']['key'] ?? '';
 

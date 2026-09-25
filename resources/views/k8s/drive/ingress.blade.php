@@ -1,10 +1,25 @@
+@php
+    // Shared by oCIS and by the Collabora editor, which serve different hosts
+    // from different components of the same instance — hence $component. The
+    // instance is derived when the shared reconcile path passes only a host,
+    // and that derivation uses the TOOL's host, never the office one.
+    $component = $component ?? null;
+    $names ??= \App\Data\ToolInstance::forInstance(
+        \App\Enums\ClusterTool::DRIVE,
+        \App\Enums\ClusterTool::DRIVE->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host)),
+    );
+    $labels = $names->labels($component);
+    $backend = $names->deployment($component);
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: drive-{{ $engine }}
-  namespace: larakube-shared
+  name: {{ $backend }}
+  namespace: {{ $names->namespace() }}
   labels:
-    app: drive-{{ $engine }}
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -20,7 +35,7 @@ metadata:
 @endif
 @endunless
 @if ($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-drive-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:
@@ -31,7 +46,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: drive-{{ $engine }}
+                name: {{ $backend }}
                 port:
                   number: 80
   tls:

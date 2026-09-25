@@ -2,6 +2,7 @@
 
 namespace App\Commands\Drive;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
@@ -19,6 +20,7 @@ use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
@@ -26,7 +28,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class DriveInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ReadsClusterSecrets, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ReadsClusterSecrets, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected $signature = 'drive:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -55,12 +57,17 @@ class DriveInitCommand extends Command
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::DRIVE, $env, $kubectl);
+        // Every tool's instance identifier is a real, host-derived slug —
+        // Drive included, even though oCIS's metadata PVC is ReadWriteOnce so
+        // a genuine second instance needs its own node regardless of naming.
+        $names = ToolInstance::forHost(ClusterTool::DRIVE, $host);
+        $instance = $names->instance;
 
-        $ns = $this->driveNamespace();
+        $ns = $names->namespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DRIVE, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DRIVE, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -80,26 +87,26 @@ class DriveInitCommand extends Command
                 return 1;
             }
 
-            if (! $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, 'drive-ocis')) {
+            if (! $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, $names->bucket())) {
                 return 1;
             }
         }
 
-        $adminPassword = $this->readDriveSecret($kubectl, $ns, 'admin-password') ?? Str::random(24);
-        $machineAuth = $this->readDriveSecret($kubectl, $ns, 'machine-auth-api-key') ?? Str::random(32);
-        $jwtSecret = $this->readDriveSecret($kubectl, $ns, 'jwt-secret') ?? Str::random(32);
-        $transferSecret = $this->readDriveSecret($kubectl, $ns, 'transfer-secret') ?? Str::random(32);
-        $systemUserApiKey = $this->readDriveSecret($kubectl, $ns, 'system-user-api-key') ?? Str::random(32);
-        $serviceAccountSecret = $this->readDriveSecret($kubectl, $ns, 'service-account-secret') ?? Str::random(32);
-        $rekeyKey = $this->readDriveSecret($kubectl, $ns, 'rekey-key') ?? Str::random(32);
+        $adminPassword = $this->readDriveSecret($kubectl, $names, 'admin-password') ?? Str::random(24);
+        $machineAuth = $this->readDriveSecret($kubectl, $names, 'machine-auth-api-key') ?? Str::random(32);
+        $jwtSecret = $this->readDriveSecret($kubectl, $names, 'jwt-secret') ?? Str::random(32);
+        $transferSecret = $this->readDriveSecret($kubectl, $names, 'transfer-secret') ?? Str::random(32);
+        $systemUserApiKey = $this->readDriveSecret($kubectl, $names, 'system-user-api-key') ?? Str::random(32);
+        $serviceAccountSecret = $this->readDriveSecret($kubectl, $names, 'service-account-secret') ?? Str::random(32);
+        $rekeyKey = $this->readDriveSecret($kubectl, $names, 'rekey-key') ?? Str::random(32);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $clusterEnv, $adminPassword, $machineAuth, $jwtSecret, $transferSecret, $systemUserApiKey, $serviceAccountSecret, $rekeyKey): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'drive-secrets', ['admin-password' => $adminPassword, 'machine-auth-api-key' => $machineAuth, 'jwt-secret' => $jwtSecret, 'transfer-secret' => $transferSecret, 'system-user-api-key' => $systemUserApiKey, 'service-account-secret' => $serviceAccountSecret, 'rekey-key' => $rekeyKey]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $clusterEnv, $adminPassword, $machineAuth, $jwtSecret, $transferSecret, $systemUserApiKey, $serviceAccountSecret, $rekeyKey): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['admin-password' => $adminPassword, 'machine-auth-api-key' => $machineAuth, 'jwt-secret' => $jwtSecret, 'transfer-secret' => $transferSecret, 'system-user-api-key' => $systemUserApiKey, 'service-account-secret' => $serviceAccountSecret, 'rekey-key' => $rekeyKey], $names->labels());
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 $this->pushClusterSecret($kubectl, 'DRIVE_ADMIN_PASSWORD', $adminPassword, $clusterEnv);
@@ -122,6 +129,7 @@ class DriveInitCommand extends Command
         $manifest = view('k8s.drive.ocis', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
+            'instance' => $instance,
             'office' => $office,
             'officeHost' => "office.{$host}",
             's3Creds' => $s3Creds,
@@ -138,17 +146,18 @@ class DriveInitCommand extends Command
         file_put_contents($tmp, $manifest);
 
         $engineName = 'oCIS';
-        $deployName = 'deploy/drive-ocis';
 
-        $this->withSpin("Applying Drive ({$engineName}) manifests...", fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        $rolledOut = $this->withSpin(
+            "Applying Drive ({$engineName}) manifests...",
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120),
+        );
         $temporaryDirectory->delete();
 
-        $this->withSpin("Waiting for Drive ({$engineName})...", fn () => $this->runStreaming(
-            "{$kubectl} rollout status {$deployName} -n {$ns} --timeout=120s",
-            130,
-        ));
+        if (! $rolledOut) {
+            return 1;
+        }
 
-        $this->registerDeployedTool(ClusterTool::DRIVE, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::DRIVE, $kubectl, $host, $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Drive ({$engineName}) stack is live.");
@@ -203,13 +212,11 @@ class DriveInitCommand extends Command
 
     protected function driveOfficeInstalled(string $kubectl, string $ns): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get deployment drive-code -n {$ns} -o name --ignore-not-found",
-        )->output()) !== '';
+        return ToolInstance::componentDeployed($kubectl, ClusterTool::DRIVE, 'code');
     }
 
-    protected function readDriveSecret(string $kubectl, string $ns, string $key): ?string
+    protected function readDriveSecret(string $kubectl, ToolInstance $names, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'drive-secrets', $key);
+        return $this->readClusterSecretKey($kubectl, $names->namespace(), $names->secret(), $key);
     }
 }

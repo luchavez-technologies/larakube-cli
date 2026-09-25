@@ -58,7 +58,7 @@ class DriveExtRemoveCommand extends Command
         });
 
         $this->withSpin('Restarting Drive (oCIS) deployment...', function () use ($kubectl, $ns) {
-            return Process::run("{$kubectl} rollout restart deploy/drive-ocis -n {$ns}")->exitCode() === 0;
+            return Process::run("{$kubectl} rollout restart deploy/{$this->driveDeployment($kubectl)} -n {$ns}")->exitCode() === 0;
         });
 
         $this->laraKubeInfo("✅ Extension '{$target}' removed. (User document data on S3/volume is preserved).");

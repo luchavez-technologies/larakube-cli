@@ -11,7 +11,7 @@ test('forCommonsResource resolves a tool from its Commons DB name', function ():
 test('forCommonsResource resolves a tool from its Commons bucket name', function (): void {
     expect(ClusterTool::forCommonsResource('documenso-storage'))->toBe(ClusterTool::SIGN)
         ->and(ClusterTool::forCommonsResource('forgejo-lfs'))->toBe(ClusterTool::GIT)
-        ->and(ClusterTool::forCommonsResource('drive-ocis'))->toBe(ClusterTool::DRIVE);
+        ->and(ClusterTool::forCommonsResource('ocis-storage'))->toBe(ClusterTool::DRIVE);
 });
 
 test('forCommonsResource returns null for a genuine Application Tenant', function (): void {
