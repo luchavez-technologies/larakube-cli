@@ -134,7 +134,15 @@ Drive is down from here until step 5.
 ## 3. Copy the metadata volume
 
 The new PVC has to exist before the Job can mount it. `drive:init` would create
-it, but not until step 5 — so create it here, with the same size and class.
+it, but not until step 5 — so create it here, with the same size.
+
+**Do not name a `storageClassName`.** `drive:init`'s own PVC document omits it so
+the cluster default applies on any provider. Setting it here records it in this
+PVC's `last-applied-configuration`, and step 5's `apply` then computes a patch
+that *removes* it — which the API server refuses, because `storageClassName` is
+immutable. The result is a `drive:init` that creates the Deployment, Service,
+Ingress and ConfigMap and then fails on the PVC alone, reporting only "Could not
+apply the ocis-drive-luchtech-dev manifest".
 
 ```zsh
 cat <<'YAML' | lkube apply -f -
@@ -145,12 +153,21 @@ metadata:
   namespace: larakube-shared
 spec:
   accessModes: [ReadWriteOnce]
-  storageClassName: local-path
   resources:
     requests:
       storage: 10Gi
 YAML
+```
 
+> If you already created it with an explicit class, don't recreate it — that
+> would discard the copy. Drop the annotation instead, which makes the next
+> `apply` a pure add and touches no data:
+>
+> ```zsh
+> lkube annotate pvc/ocis-storage-drive-luchtech-dev kubectl.kubernetes.io/last-applied-configuration-
+> ```
+
+```zsh
 lkube delete job/ocis-metadata-copy --ignore-not-found --wait=true
 
 cat <<'YAML' | lkube apply -f -
