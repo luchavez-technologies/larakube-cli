@@ -8,6 +8,7 @@ use App\Facades\State;
 use App\Services\Kubectl;
 use Exception;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -377,9 +378,26 @@ trait LaraKubeOutput
 
     /**
      * Run a task with a spinner.
+     *
+     * task() renders a tick or a cross from its callback's return value read
+     * as a boolean, which is the exact inverse of how the two things our
+     * callbacks actually hand back report failure: a process EXIT CODE is 0
+     * on success and truthy on every failure, and a ProcessResult object is
+     * truthy whatever the command did. Both were rendering a tick over a
+     * failed step — `meet:init` announced the SFU was live while its pod sat
+     * unschedulable. Normalising here fixes every call site at once instead
+     * of asking each one to remember.
      */
-    protected function withSpin(string $message, callable $callback): mixed
+    protected function withSpin(string $message, callable $callback): bool
     {
-        return $this->task($message, $callback);
+        return $this->task($message, function () use ($callback) {
+            $result = $callback();
+
+            if (is_int($result)) {
+                return $result === 0;
+            }
+
+            return $result instanceof ProcessResult ? $result->successful() : $result;
+        });
     }
 }

@@ -66,3 +66,21 @@ test('meet:remove aborts when a delete step fails', function (): void {
         ->assertExitCode(1)
         ->expectsOutputToContain('failed to remove');
 });
+
+test('meet:init fails when LiveKit never becomes Ready instead of announcing it is live', function (): void {
+    // LiveKit binds its RTC ports with hostPort, so a second pod on the same
+    // node can never schedule — the failure mode a rename walks straight into.
+    Process::fake([
+        '*get secret livekit-secrets-*' => Process::result(output: '', exitCode: 1),
+        '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*create secret*' => Process::result(output: 'secret created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout status*' => Process::result(output: 'error: timed out waiting for the condition', exitCode: 1),
+    ]);
+
+    $this->artisan('meet:init local --no-interaction')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('LiveKit did not become Ready')
+        ->doesntExpectOutputToContain('LiveKit (Meet) is live.');
+});

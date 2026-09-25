@@ -17,13 +17,14 @@ use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
+use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MeetInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMeet, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMeet, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected $signature = 'meet:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
@@ -100,12 +101,26 @@ class MeetInitCommand extends Command
 
         $deploymentName = $names->deployment();
 
-        $this->withSpin('Applying LiveKit (Meet) manifests...', fn () => $this->runStreaming("{$kubectl} apply -f {$tmp}"));
+        // runStreaming() hands back an EXIT CODE, and withSpin() reads its
+        // callback's return as a success flag — so a non-zero code rendered a
+        // tick and the command went on to announce the SFU was live. LiveKit
+        // binds its RTC ports with hostPort, so the most likely failure here
+        // is a second pod that can never schedule; reporting that as success
+        // is the one thing that must not happen.
+        $rolledOut = $this->withSpin(
+            'Applying LiveKit (Meet) manifests...',
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
+        );
         $temporaryDirectory->delete();
 
-        $this->withSpin('Waiting for LiveKit (Meet)...', fn () => $this->runStreaming(
-            "{$kubectl} rollout status deploy/{$deploymentName} -n {$ns} --timeout=180s",
-        ));
+        if (! $rolledOut) {
+            $this->laraKubeError(
+                'LiveKit did not become Ready. Its RTC ports are bound with hostPort, so only one '
+                ."LiveKit pod can run per node — check `kubectl get pods -n {$ns}` for one stuck Pending.",
+            );
+
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::MEET, $kubectl, $host, $instance);
 
