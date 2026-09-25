@@ -27,11 +27,12 @@ class SetupCommand extends Command
     use CollectsReminders, ConfiguresWslNetworking, DetectsWsl, InstallsK9s, InstallsPodman, InteractsWithOs, InteractsWithTrust, LaraKubeOutput, ResolvesContainerRuntime, StreamsProcessOutput;
 
     protected $signature = 'setup
+        {--profile= : What this machine is for — "local" (development, needs a container runtime) or "remote" (Cluster Tools and cloud clusters only)}
         {--runtime= : Container runtime to install without prompting (podman or docker)}
         {--tool=* : Specific CLI tool(s) to install without running full setup (k9s, tofu, gcloud, gh, tea, aws)}
         {--tools= : Comma-separated list of CLI tools to install without running full setup}';
 
-    protected $description = 'First-time setup: container runtime (Podman/Docker), k3s cluster, Traefik, dnsmasq, and developer CLI tools';
+    protected $description = 'First-time setup: kubectl and developer CLI tools, plus a local cluster when this machine is for development';
 
     public function handle(): int
     {
@@ -49,6 +50,15 @@ class SetupCommand extends Command
             $this->line('  <fg=gray>On Windows outside WSL2, open a WSL2 terminal and run this command there.</>');
 
             return 1;
+        }
+
+        $profile = $this->resolveProfile();
+        if ($profile === null) {
+            return 1;
+        }
+
+        if ($profile === 'remote') {
+            return $this->setupRemoteProfile();
         }
 
         if ($this->isDarwin()) {
@@ -376,6 +386,113 @@ class SetupCommand extends Command
         }
 
         $this->installK9s();
+    }
+
+    /**
+     * Which track this machine is being set up for.
+     *
+     * A functional container runtime is strong evidence of local development
+     * and its absence of the Cluster-Tools-only track — but it decides the
+     * DEFAULT answer, never the outcome. Plenty of people run setup before
+     * installing OrbStack, meaning to do local work, and silently routing them
+     * into a cloud-only setup would be wrong. Returns null when --profile
+     * carried something unrecognised (already reported).
+     */
+    protected function resolveProfile(): ?string
+    {
+        $flag = strtolower(trim((string) $this->option('profile')));
+
+        if (in_array($flag, ['local', 'remote'], true)) {
+            return $flag;
+        }
+
+        if ($flag !== '') {
+            $this->laraKubeError("Unknown profile '{$flag}'. Use --profile=local or --profile=remote.");
+
+            return null;
+        }
+
+        $hasRuntime = $this->podmanIsFunctional() || $this->dockerIsFunctional();
+        $default = $hasRuntime ? 'local' : 'remote';
+
+        if (! $this->input->isInteractive()) {
+            $this->laraKubeInfo("No --profile given — using '{$default}'.");
+            $this->line('  <fg=gray>'.($hasRuntime ? 'A container runtime is running.' : 'No container runtime found.').'</>');
+
+            return $default;
+        }
+
+        if (! $hasRuntime) {
+            $this->laraKubeWarn('No container runtime found (OrbStack, Docker Desktop, Podman).');
+            $this->newLine();
+        }
+
+        return select(
+            label: 'What is this machine for?',
+            options: [
+                'remote' => 'Cluster Tools and remote clusters — kubectl and OpenTofu, nothing local',
+                'local' => 'Local development — needs a container runtime with Kubernetes',
+            ],
+            default: $default,
+        );
+    }
+
+    /**
+     * The Cluster-Tools track: a machine that talks to clusters it does not
+     * host. No container runtime, no k3s, no dnsmasq, no local Traefik — those
+     * exist to run YOUR apps on this machine, and `{tool}:init` never builds an
+     * image (ADR 0014). kubectl is the one hard requirement, so a failure to
+     * install it fails the command rather than warning.
+     */
+    protected function setupRemoteProfile(): int
+    {
+        $this->laraKubeInfo('Setting this machine up for Cluster Tools and remote clusters.');
+        $this->line('  <fg=gray>No container runtime needed — nothing is built or run locally on this track.</>');
+        $this->newLine();
+
+        if (CliTool::KUBECTL->isInstalled()) {
+            $this->line('  <fg=green>✓</> kubectl already installed at: '.(CliTool::KUBECTL->resolveBinary() ?? 'kubectl'));
+        } else {
+            $this->line('  Installing kubectl...');
+            if (! CliTool::KUBECTL->install()) {
+                $this->laraKubeError('Could not install kubectl, and every cluster command needs it.');
+                $this->newLine();
+                $this->line('  <fg=gray>Install it manually: https://kubernetes.io/docs/tasks/tools/</>');
+
+                return 1;
+            }
+            $this->line('  <fg=green>✓</> kubectl installed.');
+        }
+
+        // OpenTofu is offered rather than installed: it is only needed to
+        // PROVISION a cluster, and someone pointing this machine at a cluster
+        // they already have never touches it.
+        $this->newLine();
+        if (CliTool::TOFU->isInstalled()) {
+            $this->line('  <fg=green>✓</> OpenTofu already installed at: '.(CliTool::TOFU->resolveBinary() ?? 'tofu'));
+        } elseif (! $this->input->isInteractive()) {
+            $this->line('  <fg=gray>OpenTofu is not installed — `larakube setup --tools=tofu` adds it when you want cloud:create.</>');
+        } elseif (confirm('Install OpenTofu too? (needed only to provision new servers with cloud:create)', default: true)) {
+            if (CliTool::TOFU->install()) {
+                $this->line('  <fg=green>✓</> OpenTofu installed.');
+            } else {
+                $this->laraKubeWarn('Could not install OpenTofu. You can retry with: larakube setup --tools=tofu');
+            }
+        }
+
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo('✅ Ready for Cluster Tools.');
+        $this->newLine();
+        $this->line('  <fg=gray>Provision a server:</>   <fg=yellow>larakube cloud:create production</>');
+        $this->line('  <fg=gray>Or use a cluster you already have, then install a tool:</>');
+        $this->line('  <fg=gray></>                     <fg=yellow>larakube sso:init production</>');
+        $this->newLine();
+        $this->line('  <fg=gray>Provider CLIs, when you need them:</> <fg=yellow>larakube setup --tools=gcloud,aws,hcloud</>');
+        $this->newLine();
+
+        $this->renderReminders();
+
+        return 0;
     }
 
     /**

@@ -4,6 +4,10 @@ class LarakubeCanary < Formula
   version "CANARY_VERSION"
   license "MIT"
 
+  # Every cluster command shells out to a bare `kubectl` on PATH, so it is a
+  # hard runtime dependency, not a suggestion.
+  depends_on "kubernetes-cli"
+
   # Republished under the same "canary" release tag on every push to develop, so
   # the binary's bytes at this URL change without the URL itself changing.
   # sha256 :no_check is Homebrew's documented escape hatch for exactly that —

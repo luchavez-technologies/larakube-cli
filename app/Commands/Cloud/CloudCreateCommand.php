@@ -9,6 +9,7 @@ use App\Enums\ManagedProvider;
 use App\Facades\State;
 use App\Services\Kubectl;
 use App\Traits\EmitsJsonOutput;
+use App\Traits\EnsuresKubectl;
 use App\Traits\InteractsWithAws;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGcp;
@@ -38,7 +39,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 class CloudCreateCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
+    use EmitsJsonOutput, EnsuresKubectl, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
 
     /** Available providers we can provision. */
     private const PROVIDERS = [
@@ -332,6 +333,12 @@ class CloudCreateCommand extends Command
         }
         $bin = $this->ensureTofu();
         if (! $bin) {
+            return 1;
+        }
+        // Checked BEFORE anything is provisioned. kubectl is what merges the new
+        // kubeconfig and applies Traefik at the end of this flow, so discovering
+        // it is missing afterwards leaves a paid-for cluster nobody can reach.
+        if (! $this->ensureKubectl()) {
             return 1;
         }
         $this->line('  <fg=gray>Using:</> <fg=cyan>'.$bin['path'].'</> '.($bin['isOpenTofu'] ? '(OpenTofu — encrypted state)' : '(Terraform — plaintext state)'));

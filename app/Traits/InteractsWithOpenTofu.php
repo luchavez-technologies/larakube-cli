@@ -85,23 +85,30 @@ trait InteractsWithOpenTofu
 
     /**
      * Offer a platform-appropriate native install. Never forced — we prompt, then
-     * stream the official installer. macOS uses Homebrew; Linux/WSL2 uses the
-     * official standalone installer (needs sudo).
+     * stream the official installer. Homebrew is preferred on macOS purely
+     * because it manages upgrades; its absence is not a dead end, since the
+     * official standalone installer is uname-generic and resolves the darwin
+     * archive for the running architecture just as it does the linux one.
      */
     protected function offerTofuInstall(): bool
     {
         if ($this->isDarwin()) {
             $brew = trim(Process::run('command -v brew')->output());
-            if ($brew === '') {
-                $this->laraKubeWarn('Homebrew not found — install OpenTofu manually: https://opentofu.org/docs/intro/install/');
+            if ($brew !== '') {
+                if (! confirm('Install OpenTofu now via Homebrew (brew install opentofu)?', true)) {
+                    return false;
+                }
 
+                return $this->runStreaming('brew install opentofu') === 0;
+            }
+
+            $this->laraKubeInfo('Homebrew not found — using OpenTofu\'s official standalone installer instead (needs sudo).');
+            if (! confirm('Install OpenTofu now via the official install script?', true)) {
                 return false;
             }
-            if (! confirm('Install OpenTofu now via Homebrew (brew install opentofu)?', true)) {
-                return false;
-            }
 
-            return $this->runStreaming('brew install opentofu') === 0;
+            // macOS ships unzip, so no ensureUnzip() detour here.
+            return $this->installTofuStandalone();
         }
 
         if ($this->isLinux()) {
@@ -113,35 +120,42 @@ trait InteractsWithOpenTofu
             if (! $this->ensureUnzip()) {
                 return false;
             }
-            // A hardcoded /tmp path here would let any local user race it with a
-            // symlink before `sudo` executes it. tempnam() used to defend
-            // against this by picking an OS-unpredictable name; a 0700
-            // directory (no group/other execute bit — no traversal, so
-            // nothing to symlink over) plus a cryptographically random name
-            // (not TemporaryDirectory's default mt_rand()+microtime(), which
-            // a local attacker could feasibly predict) gives the same
-            // guarantee.
-            $temporaryDirectory = (new TemporaryDirectory)
-                ->name(bin2hex(random_bytes(16)))
-                ->permission(0700)
-                ->deleteWhenDestroyed()
-                ->create();
-            $scriptPath = $temporaryDirectory->path().'/install.sh';
 
-            // Official standalone installer — picks deb/rpm/standalone automatically.
-            $script = 'curl -fsSL https://get.opentofu.org/install-opentofu.sh -o '.escapeshellarg($scriptPath)
-                .' && chmod +x '.escapeshellarg($scriptPath)
-                .' && sudo '.escapeshellarg($scriptPath).' --install-method standalone'
-                .'; rm -f '.escapeshellarg($scriptPath);
-            $code = $this->runInteractive($script);
-            $temporaryDirectory->delete();
-
-            return $code === 0;
+            return $this->installTofuStandalone();
         }
 
         $this->laraKubeWarn('Automatic install is unavailable on this OS. See https://opentofu.org/docs/intro/install/');
 
         return false;
+    }
+
+    /**
+     * OpenTofu's official standalone installer, shared by macOS and Linux.
+     *
+     * A hardcoded /tmp path here would let any local user race it with a
+     * symlink before `sudo` executes it. A 0700 directory (no group/other
+     * execute bit — no traversal, so nothing to symlink over) plus a
+     * cryptographically random name (not TemporaryDirectory's default
+     * mt_rand()+microtime(), which a local attacker could feasibly predict)
+     * closes that.
+     */
+    protected function installTofuStandalone(): bool
+    {
+        $temporaryDirectory = (new TemporaryDirectory)
+            ->name(bin2hex(random_bytes(16)))
+            ->permission(0700)
+            ->deleteWhenDestroyed()
+            ->create();
+        $scriptPath = $temporaryDirectory->path().'/install.sh';
+
+        $script = 'curl -fsSL https://get.opentofu.org/install-opentofu.sh -o '.escapeshellarg($scriptPath)
+            .' && chmod +x '.escapeshellarg($scriptPath)
+            .' && sudo '.escapeshellarg($scriptPath).' --install-method standalone'
+            .'; rm -f '.escapeshellarg($scriptPath);
+        $code = $this->runInteractive($script);
+        $temporaryDirectory->delete();
+
+        return $code === 0;
     }
 
     /**

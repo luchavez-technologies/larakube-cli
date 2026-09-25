@@ -147,8 +147,16 @@ test('only Kubectl builds the ~/.kube/config kubectl prefix', function (): void 
 });
 
 test('no command string starts with a bare kubectl: Kubectl names the cluster', function (): void {
-    // Error messages that mention kubectl by name, not commands.
-    $messages = ['kubectl >= ', 'kubectl apply failed under', 'kubectl (https'];
+    // Prose that mentions kubectl by name — messages and UI labels, not
+    // commands. The guard is about command strings that would run a bare
+    // `kubectl` instead of one Kubectl built with a context.
+    $messages = [
+        'kubectl >= ',
+        'kubectl apply failed under',
+        'kubectl (https',
+        'kubectl (Kubernetes CLI)',
+        'kubectl is not installed',
+    ];
     $bare = [];
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
 

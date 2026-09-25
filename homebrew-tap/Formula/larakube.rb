@@ -4,6 +4,10 @@ class Larakube < Formula
   version "LARAKUBE_VERSION"
   license "MIT"
 
+  # Every cluster command shells out to a bare `kubectl` on PATH, so it is a
+  # hard runtime dependency, not a suggestion.
+  depends_on "kubernetes-cli"
+
   on_macos do
     on_arm do
       url "https://github.com/luchavez-technologies/larakube-cli/releases/download/v#{version}/larakube-mac-arm"

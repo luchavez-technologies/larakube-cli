@@ -31,9 +31,14 @@ trait CheckPrerequisites
             $missing[] = 'a container runtime — install rootless Podman with `larakube setup`, or Docker (https://docs.docker.com/get-docker/)';
         }
 
-        // 2. Check Kubectl Installation
+        // 2. kubectl. Deliberately NOT an install prompt: this check runs deep
+        //    inside every scaffold and snapshot command, and a question there
+        //    would interrupt flows that have their own prompt sequence. The
+        //    offer belongs where the dependency is the point — EnsuresKubectl
+        //    on the provisioning path, and `setup`. Here we only name the
+        //    one-liner that fixes it.
         if (! Process::run('which kubectl')->successful()) {
-            $missing[] = 'kubectl (https://kubernetes.io/docs/tasks/tools/)';
+            $missing[] = 'kubectl (https://kubernetes.io/docs/tasks/tools/) — or run `larakube setup --tools=kubectl`';
         }
 
         // 3. Check K9s (optional but recommended)
