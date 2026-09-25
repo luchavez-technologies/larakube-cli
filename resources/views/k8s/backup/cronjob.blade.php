@@ -128,13 +128,41 @@ spec:
                     [ "$(stat -c%s "db-$db.sql.gz")" -ge 100 ] || { echo "dump of $db is empty" >&2; exit 1; }
                   done
 
+                  # A volume target is archived on its own terms: one that
+                  # cannot be reached is recorded in MISSING and skipped, and
+                  # the rest of the run continues.
+                  #
+                  # This list is frozen at `backup:schedule` time, so a tool
+                  # renamed afterwards points at a Deployment that no longer
+                  # exists. Aborting the whole run on the first such target is
+                  # how one rename cost three consecutive nights of backups —
+                  # databases already dumped, nothing uploaded, and the only
+                  # symptom a Failed Job nobody was watching. Now the archive
+                  # still lands, the manifest names what is absent from it, and
+                  # the Job still fails so the alarm is real.
                   echo "› volumes"
+                  : > MISSING
 @foreach($volumes as $v)
                   echo "  {{ $v['name'] }}"
-                  kubectl exec deploy/{{ $v['deployment'] }} -n {{ $v['namespace'] }} -c {{ $v['container'] }} -- \
-                    tar czf - -C {{ dirname($v['paths'][0]) }} {{ implode(' ', array_map('basename', $v['paths'])) }} > "vol-{{ $v['name'] }}.tar.gz"
-                  [ "$(stat -c%s "vol-{{ $v['name'] }}.tar.gz")" -ge 50 ] || { echo "archive of {{ $v['name'] }} is empty" >&2; exit 1; }
+                  if kubectl exec deploy/{{ $v['deployment'] }} -n {{ $v['namespace'] }} -c {{ $v['container'] }} -- \
+                       tar czf - -C {{ dirname($v['paths'][0]) }} {{ implode(' ', array_map('basename', $v['paths'])) }} > "vol-{{ $v['name'] }}.tar.gz" 2> "err-{{ $v['name'] }}"; then
+                    [ "$(stat -c%s "vol-{{ $v['name'] }}.tar.gz")" -ge 50 ] && ARCHIVED=yes || ARCHIVED=no
+                  else
+                    ARCHIVED=no
+                  fi
+                  if [ "$ARCHIVED" = no ]; then
+                    echo "    ✗ {{ $v['name'] }}: $(tr '\n' ' ' < "err-{{ $v['name'] }}" | tail -c 200)" >&2
+                    rm -f "vol-{{ $v['name'] }}.tar.gz"
+                    echo "{{ $v['name'] }}" >> MISSING
+                  fi
+                  rm -f "err-{{ $v['name'] }}"
 @endforeach
+
+                  if [ -s MISSING ]; then
+                    echo "⚠ incomplete — could not archive: $(tr '\n' ' ' < MISSING)" >&2
+                  else
+                    rm -f MISSING
+                  fi
 
                   ls -lh db-*.sql.gz vol-*.tar.gz
               volumeMounts:
@@ -205,14 +233,33 @@ spec:
                     ITEMS="$ITEMS{\"kind\":\"$KIND\",\"name\":\"$NAME\",\"object\":\"$f\",\"bytes\":$(stat -c%s "$f")},"
                   done
 
+                  # Volume targets the dump stage could not reach. Named in
+                  # the manifest so a restore can see what this archive is NOT
+                  # a complete copy of, rather than discovering it mid-recovery.
+                  MISSED=""
+                  if [ -f MISSING ]; then
+                    while IFS= read -r m; do
+                      [ -n "$m" ] && MISSED="$MISSED\"$m\","
+                    done < MISSING
+                  fi
+
                   # LAST, and only if every object above landed: the manifest is
                   # the commit marker. Without it this prefix is invisible to
                   # backup:list and refused by backup:restore, which is exactly
                   # what a half-uploaded backup should be.
-                  printf '{"version":1,"taken_at":"%s","engine":"%s","items":[%s]}' \
-                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "{{ $dbDriver }}" "${ITEMS%,}" > manifest.json
+                  printf '{"version":1,"taken_at":"%s","engine":"%s","items":[%s],"missing":[%s]}' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "{{ $dbDriver }}" "${ITEMS%,}" "${MISSED%,}" > manifest.json
                   aws --endpoint-url "$ENDPOINT" --no-progress s3 cp manifest.json "s3://$BUCKET/$PREFIX/manifest.json"
                   echo "stored s3://$BUCKET/$PREFIX/ ($(echo "$ITEMS" | tr -cd ',' | wc -c) objects)"
+
+                  # Fail AFTER the upload, never before it. An incomplete backup
+                  # in the bucket beats no backup at all, but the Job must still
+                  # go red — a silent partial is how a gap survives unnoticed
+                  # until the restore that needed it.
+                  if [ -f MISSING ]; then
+                    echo "INCOMPLETE — not in this backup: $(tr '\n' ' ' < MISSING)" >&2
+                    exit 1
+                  fi
               env:
                 - name: ENDPOINT
                   valueFrom:

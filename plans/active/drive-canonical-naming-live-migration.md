@@ -151,6 +151,8 @@ spec:
       storage: 10Gi
 YAML
 
+lkube delete job/ocis-metadata-copy --ignore-not-found --wait=true
+
 cat <<'YAML' | lkube apply -f -
 apiVersion: batch/v1
 kind: Job
@@ -206,8 +208,18 @@ SRC_BUCKET=$(lkube get deploy drive-ocis -o jsonpath="{.spec.template.spec.conta
   || echo "STOP: could not read the credentials off deploy/drive-ocis"
 ```
 
-Do not continue unless that prints `ok:`. Then — note the **unquoted** heredoc
-delimiter, which is what lets the variables expand:
+Do not continue unless that prints `ok:`.
+
+A Job's `spec.template` is immutable, so `apply` cannot replace an existing one —
+it fails with `field is immutable` and leaves the old, failed Job in place. Clear
+it first; this is a no-op on a first run:
+
+```zsh
+lkube delete job/ocis-bucket-copy --ignore-not-found --wait=true
+```
+
+Then apply — note the **unquoted** heredoc delimiter, which is what lets the
+variables expand:
 
 ```zsh
 cat <<YAML | lkube apply -f -
