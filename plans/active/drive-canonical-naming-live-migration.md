@@ -51,6 +51,27 @@ lsso()  { kubectl --context=larakube-159.89.205.239 -n larakube-sso "$@"; }
 lplex() { kubectl --context=larakube-159.89.205.239 -n larakube-plex "$@"; }
 ```
 
+And a helper for waiting on the copy Jobs. **Do not use `kubectl wait
+--for=condition=complete`**: a Job that fails never gains that condition, so the
+wait blocks for the full timeout while the Job has already been dead for hours —
+and Drive is offline for every minute of it. This returns as soon as the Job
+reaches *either* terminal state, and says which:
+
+```zsh
+waitjob() {
+  local job=$1 timeout=${2:-600} waited=0 cond=''
+  while [ "$waited" -lt "$timeout" ]; do
+    cond=$(lkube get job/"$job" -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null)
+    case "$cond" in
+      *Complete*) echo "✅ $job completed"; return 0 ;;
+      *Failed*)   echo "❌ $job FAILED — see: lkube logs job/$job"; return 1 ;;
+    esac
+    sleep 10; waited=$((waited + 10))
+  done
+  echo "⏱  $job still running after ${timeout}s"; return 2
+}
+```
+
 ## 0. Preflight
 
 ```zsh
@@ -155,7 +176,7 @@ spec:
           persistentVolumeClaim: { claimName: ocis-storage-drive-luchtech-dev }
 YAML
 
-lkube wait --for=condition=complete job/ocis-metadata-copy --timeout=600s
+waitjob ocis-metadata-copy 600
 lkube logs job/ocis-metadata-copy
 ```
 
@@ -168,16 +189,28 @@ size suggests.
 
 ## 4. Sync the bucket
 
-Credentials come from the Commons admin Secret, not from the oCIS Deployment.
+Credentials come from the oCIS Deployment itself. They are the pair oCIS has been
+serving this bucket with, so they are known-good by definition — and reading them
+here means there is **no placeholder to forget**. An earlier version of this
+runbook printed `REPLACE` and expected hand-substitution; applied verbatim, that
+fails in 0.1s with `InvalidAccessKeyId` and the copy silently moves nothing.
 
 ```zsh
-lplex get secret plex-admin -o jsonpath='{.data}' | jq 'map_values(@base64d)'
+ENVPATH='{.spec.template.spec.containers[0].env}'
+S3_KEY=$(lkube get deploy drive-ocis -o jsonpath="{.spec.template.spec.containers[0].env[?(@.name=='STORAGE_USERS_S3NG_ACCESS_KEY')].value}")
+S3_SECRET=$(lkube get deploy drive-ocis -o jsonpath="{.spec.template.spec.containers[0].env[?(@.name=='STORAGE_USERS_S3NG_SECRET_KEY')].value}")
+SRC_BUCKET=$(lkube get deploy drive-ocis -o jsonpath="{.spec.template.spec.containers[0].env[?(@.name=='STORAGE_USERS_S3NG_BUCKET')].value}")
+
+[ -n "$S3_KEY" ] && [ -n "$S3_SECRET" ] && [ -n "$SRC_BUCKET" ] \
+  && echo "ok: copying '$SRC_BUCKET' with key '$S3_KEY'" \
+  || echo "STOP: could not read the credentials off deploy/drive-ocis"
 ```
 
-Then, with those values:
+Do not continue unless that prints `ok:`. Then — note the **unquoted** heredoc
+delimiter, which is what lets the variables expand:
 
 ```zsh
-cat <<'YAML' | lkube apply -f -
+cat <<YAML | lkube apply -f -
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -196,20 +229,21 @@ spec:
             - { name: RCLONE_CONFIG_S3_PROVIDER,          value: "Other" }
             - { name: RCLONE_CONFIG_S3_ENDPOINT,          value: "http://seaweedfs.larakube-plex.svc.cluster.local:8333" }
             - { name: RCLONE_CONFIG_S3_REGION,            value: "us-east-1" }
-            - { name: RCLONE_CONFIG_S3_ACCESS_KEY_ID,     value: "REPLACE" }
-            - { name: RCLONE_CONFIG_S3_SECRET_ACCESS_KEY, value: "REPLACE" }
+            - { name: RCLONE_CONFIG_S3_ACCESS_KEY_ID,     value: "${S3_KEY}" }
+            - { name: RCLONE_CONFIG_S3_SECRET_ACCESS_KEY, value: "${S3_SECRET}" }
           command:
             - sh
             - -c
             - |
+              set -e
               rclone mkdir s3:ocis-storage-drive-luchtech-dev
-              rclone sync s3:drive-ocis s3:ocis-storage-drive-luchtech-dev --progress --checksum
+              rclone sync s3:${SRC_BUCKET} s3:ocis-storage-drive-luchtech-dev --progress --checksum
               echo "--- counts ---"
-              rclone size s3:drive-ocis
+              rclone size s3:${SRC_BUCKET}
               rclone size s3:ocis-storage-drive-luchtech-dev
 YAML
 
-lkube wait --for=condition=complete job/ocis-bucket-copy --timeout=1800s
+waitjob ocis-bucket-copy 1800
 lkube logs job/ocis-bucket-copy | tail -20
 ```
 
@@ -298,5 +332,21 @@ deleted, and both original stores are untouched.
 lkube scale deploy/drive-ocis --replicas=1
 ```
 
-brings the old install straight back. The canonical objects can then be deleted
-and the migration retried.
+brings the old install straight back.
+
+### Retrying later
+
+Once oCIS is serving again it writes to the ORIGINAL PVC and bucket, so anything
+copied in steps 3 and 4 is stale the moment a user touches a file. A retry
+therefore starts from scratch, not from where it stopped:
+
+```zsh
+lkube delete job/ocis-metadata-copy job/ocis-bucket-copy --ignore-not-found
+lkube delete pvc/ocis-storage-drive-luchtech-dev --ignore-not-found
+```
+
+The Secrets copied in step 1 can stay — they are exact copies and nothing writes
+to them. If the destination bucket was created but only partly filled, `rclone
+sync` reconciles it on the next run, so it needs no cleanup of its own.
+
+Then resume at step 2.
