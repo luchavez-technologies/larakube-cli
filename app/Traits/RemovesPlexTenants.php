@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
 use Illuminate\Support\Facades\Process;
@@ -170,6 +172,41 @@ trait RemovesPlexTenants
         $lines[] = 'the tenant entry in the Commons registry';
 
         return $lines;
+    }
+
+    /**
+     * The registered Cluster Tool instance that owns $tenant, or null.
+     *
+     * The namespace guard below can only see PROJECT tenants: `namespace` is
+     * written by plex:join and by nothing else, so for a Cluster Tool's
+     * database, bucket or Redis tenant it is absent, the guard answers
+     * "cannot tell", and the eviction proceeds over a live tool.
+     *
+     * This asks the other way round — every instance the tool registry knows
+     * about, for the Commons resources it claims — so a tenant belonging to
+     * something installed is recognised by ownership rather than by a name
+     * pattern. A pre-rename tenant no current instance claims is not matched,
+     * which is what keeps the leftovers of a naming migration evictable.
+     */
+    protected function tenantOwner(string $tenant): ?ToolInstance
+    {
+        $kubectl = $this->plexKubectl();
+
+        foreach (ClusterTool::cases() as $tool) {
+            foreach (ToolInstance::registered($kubectl, $tool) as $names) {
+                $claimed = array_merge(
+                    $names->commonsDatabases(),
+                    $names->commonsBuckets(),
+                    $names->commonsRedisTenants(),
+                );
+
+                if (in_array($tenant, $claimed, true)) {
+                    return $names;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

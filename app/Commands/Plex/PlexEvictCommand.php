@@ -207,6 +207,22 @@ class PlexEvictCommand extends Command
      */
     protected function guardStillDeployed(string $tenant, ?string $namespace): bool
     {
+        // A Cluster Tool's tenant carries no namespace, so the check below can
+        // never speak for one. Ask the tool registry whether an installed
+        // instance claims this tenant first — that is the only guard standing
+        // between a mistyped --tenant and a live tool's database.
+        $owner = $this->tenantOwner($tenant);
+
+        if ($owner !== null && ! $this->option('force')) {
+            $this->laraKubeNewLine();
+            $this->laraKubeError("'{$tenant}' belongs to {$owner->tool->getLabel()} ({$owner->instance}), which is installed on this cluster.");
+            $this->laraKubeLine('  <fg=gray>Evicting it would drop the database out from under a running tool.</>');
+            $this->laraKubeLine("  <fg=gray>Remove the tool instead:</> <fg=cyan>larakube {$owner->tool->removeCommand()} --purge</><fg=gray>.</>");
+            $this->laraKubeLine('  <fg=gray>Or pass</> <fg=cyan>--force</> <fg=gray>if you know this tenant is a leftover the tool no longer uses.</>');
+
+            return false;
+        }
+
         $inUse = $this->tenantNamespaceInUse($namespace);
 
         if ($inUse === true && ! $this->option('force')) {

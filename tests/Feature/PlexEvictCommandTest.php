@@ -172,3 +172,45 @@ test('plex:evict backs up anyway when it cannot read the catalogue', function ()
 
     Process::assertRan(fn ($process) => str_contains((string) $process->command, 'pg_dump'));
 });
+
+test('plex:evict refuses a tenant an installed Cluster Tool still owns', function (): void {
+    // A Cluster Tool's tenant carries no `namespace`, so the namespace guard
+    // answers "cannot tell" and lets the eviction through — which is how a
+    // live tool's database could be dropped with the safety check never
+    // firing. Ownership is read from the tool registry instead.
+    Process::fake(plexEvictFakes([
+        '*get configmap plex-registry*' => Process::result(
+            output: (string) json_encode(['tenants' => [
+                'outline_notes_luchtech_dev' => ['db' => 'outline_notes_luchtech_dev', 'db_service' => 'postgres'],
+            ]]),
+        ),
+    ]));
+    Tests\Support\FakeToolRegistry::install([
+        ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
+    ]);
+
+    $this->artisan('plex:evict local --tenant=outline_notes_luchtech_dev')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('is installed on this cluster');
+
+    Process::assertNotRan(fn ($p) => str_contains($p->command, 'DROP DATABASE'));
+});
+
+test('plex:evict still removes a tenant no installed instance claims', function (): void {
+    // The leftovers of a naming migration: a pre-rename tenant name that the
+    // tool's CURRENT instance no longer uses. These must stay evictable, or
+    // the guard above would strand every corpse a rename leaves behind.
+    Process::fake(plexEvictFakes([
+        '*get configmap plex-registry*' => Process::result(
+            output: (string) json_encode(['tenants' => [
+                'outline_main' => ['db' => 'outline_main', 'db_service' => 'postgres', 'redis_index' => 9],
+            ]]),
+        ),
+    ]));
+    Tests\Support\FakeToolRegistry::install([
+        ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
+    ]);
+
+    $this->artisan('plex:evict local --tenant=outline_main --force --no-backup')
+        ->assertExitCode(0);
+});
