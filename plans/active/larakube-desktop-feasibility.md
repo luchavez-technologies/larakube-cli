@@ -218,9 +218,22 @@ extras.
   shared `DiscoversUnfinishedStacks` trait.
 - **Verified live:** "Destroy leftovers" on an unfinished GCP stack from the
   app succeeded, and the list refreshed to the two real servers.
-- **Next:** Next-steps actions (`dns:init`, `tls:init`) need forms. Then the
-  Tools section, and structured progress events (`--output=ndjson`) to
-  replace log-text matching in the stepper.
+- **Tools section (2026-09-27):** `/servers/{server}/tools` catalog from
+  `tool:list --json --context=…`, plus detail, install and remove.
+  - Install runs `tool:add --tool --context --domain --force`, with SSO/mail
+    wiring offered only when installed. Remove runs `tool:remove` behind
+    type-to-confirm. Open goes to the browser via `Shell::openExternal`.
+  - `tool:list` takes **~30 s against a remote cluster** (per-tool kubectl
+    round trips), so the desktop caches it per context for 10 min, lifts
+    PHP's 30 s limit for that call, and drops the cache when an install or
+    removal run exits. A fast CLI mode (e.g. one registry read + one
+    `get deploy -A`) would remove the wait.
+  - Some `*:init` need more than `--domain`, and those fail with
+    MissingFlagException in the run log. Per-tool install forms are follow-up
+    work.
+- **Next:** Next-steps actions (`dns:init`, `tls:init`) need forms. Also
+  structured progress events (`--output=ndjson`) to replace log-text matching
+  in the stepper, and a fast `tool:list` mode.
 
 ## Spike progress (2026-09-27)
 
