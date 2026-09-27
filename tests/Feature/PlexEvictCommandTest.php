@@ -35,6 +35,10 @@ function plexEvictFakes(array $overrides = []): array
         // The Postgres catalogue query — must be matched BEFORE the generic
         // exec pattern, which Laravel would otherwise claim first.
         '*pg_database*' => Process::result(output: "gone_local\nlive_local"),
+        // The index is empty unless a test says otherwise — the ordinary case
+        // these fixtures were written for. A populated one is guarded now.
+        // "0\n" rather than "0": a falsy output is dropped by the fake.
+        '*DBSIZE*' => Process::result(output: "0\n"),
         '*exec *' => Process::result(output: 'DROP DATABASE'),
         '*create configmap plex-registry*' => Process::result(output: 'configured'),
         '*' => Process::result(output: ''),
@@ -213,4 +217,32 @@ test('plex:evict still removes a tenant no installed instance claims', function 
 
     $this->artisan('plex:evict local --tenant=outline_main --force --no-backup')
         ->assertExitCode(0);
+});
+
+test('a Redis index that still holds keys is not flushed', function (): void {
+    // The registry says this tenant owns db3, but a client that connects
+    // without SELECT lands on whatever index it defaults to — so a dead
+    // tenant's row can name an index a LIVE tool is writing to. FLUSHDB would
+    // take that tool's data with it. Observed on this cluster: the registry
+    // attributed db0 to a long-dead `outline` tenant while the mail server was
+    // actively using it.
+    Process::fake(plexEvictFakes([
+        '*DBSIZE*' => Process::result(output: '13'),
+    ]));
+
+    $this->artisan('plex:evict', ['environment' => 'local', '--tenant' => 'gone_local', '--force' => true, '--no-backup' => true])
+        ->assertExitCode(0);
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'redis-cli -n 3 FLUSHDB'));
+});
+
+test('an empty Redis index is still flushed', function (): void {
+    Process::fake(plexEvictFakes([
+        '*DBSIZE*' => Process::result(output: "0\n"),
+    ]));
+
+    $this->artisan('plex:evict', ['environment' => 'local', '--tenant' => 'gone_local', '--force' => true, '--no-backup' => true])
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'redis-cli -n 3 FLUSHDB'));
 });

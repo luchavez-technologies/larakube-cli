@@ -26,6 +26,10 @@ function downFakes(array $tenants): void
         '*cluster-info*' => Process::result(output: 'Kubernetes control plane is running'),
         '*get configmap plex-registry*' => Process::result(output: (string) json_encode(['tenants' => $tenants])),
         '*pg_database*' => Process::result(output: 'hello_next_local'),
+        // An empty index, so the eviction still flushes it. A populated one is
+        // withheld now — the slot is freed either way. "0\n" rather than "0":
+        // a falsy output is dropped by the fake.
+        '*DBSIZE*' => Process::result(output: "0\n"),
         '*exec *' => Process::result(output: 'ok'),
         '*create configmap plex-registry*' => Process::result(output: 'configured'),
         '*' => Process::result(output: ''),

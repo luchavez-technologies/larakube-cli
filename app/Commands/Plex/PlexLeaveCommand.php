@@ -280,8 +280,14 @@ class PlexLeaveCommand extends Command
 
         // 5. Flush the tenant's Redis logical DB (best-effort — index is freed
         //    by the registry removal regardless).
+        //
+        //    Forced, unlike plex:evict: this tenant belongs to the project
+        //    running the command and its contents were mirrored back in step 4,
+        //    so keys being present is the expected state rather than evidence
+        //    of a squatter. Leaving them would hand the next tenant a dirty
+        //    index.
         if ($redisIndex !== null) {
-            $this->flushTenantRedis($ns, $redisIndex);
+            $this->flushTenantRedis($ns, $redisIndex, force: true);
         }
 
         // 6. Delete the tenant's S3 bucket from the Commons (best-effort) —

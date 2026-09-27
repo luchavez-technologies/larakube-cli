@@ -85,12 +85,53 @@ trait RemovesPlexTenants
      * Flush the tenant's Redis logical DB. Best-effort: the index itself is
      * freed by removing the tenant from the registry, so a failure here leaves
      * stale keys behind for the next tenant to inherit, not a lost slot.
+     *
+     * Skipped when the index still holds keys, because a registry row is not
+     * proof of who is actually using an index. A client that connects without
+     * SELECT lands on db0 whatever the registry says is allocated there, so a
+     * dead tenant's row can name an index a LIVE tool is writing to — and
+     * FLUSHDB would then take that tool's data on the way past. The registry
+     * row is still removed, so the eviction completes; only the destructive
+     * half is withheld.
+     *
+     * Deliberately NOT tied to the caller's --force, which means "skip the
+     * confirmation": not flushing leaves stale keys for the next tenant, while
+     * flushing wrongly loses a live tool's data, so the two do not belong
+     * behind one flag. $force exists for plex:leave, where the tenant is the
+     * caller's own and its keys are expected.
      */
-    protected function flushTenantRedis(string $ns, int $redisIndex): void
+    protected function flushTenantRedis(string $ns, int $redisIndex, bool $force = false): void
     {
+        if (! $force && ($keys = $this->redisKeyCount($ns, $redisIndex)) !== 0) {
+            $this->laraKubeWarn($keys < 0
+                ? "Could not read Redis db {$redisIndex} — not flushing it."
+                : "Redis db {$redisIndex} still holds {$keys} keys — not flushing it.");
+            $this->line('  <fg=gray>The registry says this tenant owns it, but something is using it. Inspect before reusing:</>');
+            $this->line("  <fg=gray>  redis-cli -n {$redisIndex} --scan | head</>");
+            $this->line('  <fg=gray>Flush it by hand once you know what is in it.</>');
+
+            return;
+        }
+
         $this->withSpin("Flushing Redis db {$redisIndex}...", fn () => Process::run(
             $this->plexKubectl().' exec -n '.escapeshellarg($ns)." deploy/redis -- redis-cli -n {$redisIndex} FLUSHDB",
         ));
+    }
+
+    /** Keys currently in a logical DB, or -1 when Redis could not be asked. */
+    protected function redisKeyCount(string $ns, int $redisIndex): int
+    {
+        $result = Process::run(
+            $this->plexKubectl().' exec -n '.escapeshellarg($ns)." deploy/redis -c redis -- redis-cli -n {$redisIndex} DBSIZE",
+        );
+
+        if (! $result->successful()) {
+            return -1;
+        }
+
+        $output = trim($result->output());
+
+        return is_numeric($output) ? (int) $output : -1;
     }
 
     /**
