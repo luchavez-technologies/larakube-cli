@@ -9,6 +9,7 @@ use App\Http\Integrations\Cloudflare\Requests\CreateR2BucketRequest;
 use App\Services\Kubectl;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Process;
+use RuntimeException;
 
 /**
  * Backup inventory and off-site destination config.
@@ -106,9 +107,20 @@ trait InteractsWithBackup
      */
     protected function larakubeNamespaces(string $kubectl): array
     {
-        $out = trim(Kubectl::fromPrefix($kubectl)->raw(
+        $result = Kubectl::fromPrefix($kubectl)->raw(
             ['get', 'namespace', '-o', 'jsonpath={.items[*].metadata.name}'], timeoutSeconds: 30,
-        )->output);
+        );
+
+        // A failed call must not read as "this cluster has no namespaces".
+        // Empty output is what a timeout or a transient API error produces, and
+        // silently treating that as zero namespaces makes discovery return only
+        // the one hardcoded target — which `backup:schedule` then bakes into the
+        // CronJob and reports as a success.
+        if (! $result->ok) {
+            throw new RuntimeException('Could not list namespaces on this cluster, so the backup targets cannot be discovered.');
+        }
+
+        $out = trim($result->output);
 
         if ($out === '') {
             return [];
@@ -120,9 +132,17 @@ trait InteractsWithBackup
     /** @return list<string> */
     protected function namespaceDeploymentNames(string $kubectl, string $namespace): array
     {
-        $out = trim(Kubectl::fromPrefix($kubectl)->raw(
+        $result = Kubectl::fromPrefix($kubectl)->raw(
             ['get', 'deployment', '-n', $namespace, '-o', 'jsonpath={.items[*].metadata.name}'], timeoutSeconds: 30,
-        )->output);
+        );
+
+        // As above: a namespace that could not be read is not an empty one, and
+        // quietly dropping it loses every backup target inside it.
+        if (! $result->ok) {
+            throw new RuntimeException("Could not list deployments in '{$namespace}', so its backup targets cannot be discovered.");
+        }
+
+        $out = trim($result->output);
 
         return $out === '' ? [] : explode(' ', $out);
     }
