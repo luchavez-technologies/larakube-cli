@@ -219,6 +219,14 @@ class VpnInitCommand extends Command
         // them. Both helpers reuse-by-name, so this is idempotent.
         $this->ensureVpnServiceIdentity($kubectl, $ns, $host, $env);
 
+        // The gateway pod mounts the resolver's ConfigMap as a NON-optional
+        // volume, and the only thing that ever writes it with real records is
+        // reconcileVpnSplitDns() — which needs the gateway's overlay address,
+        // which needs the gateway running. Seeding an empty one first is what
+        // breaks that circle; without it the pod sits in ContainerCreating on
+        // a ConfigMap that is waiting for the pod.
+        $this->seedVpnResolverConfig($kubectl, $ns, $host);
+
         $clientManifest = view('k8s.vpn.client', [
             'instance' => ClusterTool::VPN->instanceSlugFromHost($host),
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
@@ -246,6 +254,20 @@ class VpnInitCommand extends Command
         if (! $clientRolledOut) {
             return 1;
         }
+
+        // AFTER the gateway is Ready, never before: split-DNS points peers at
+        // the gateway's own overlay address, which it only has once it is an
+        // enrolled peer. Running this earlier warns and does nothing on every
+        // install where the gateway is not already up — a first install, or
+        // one whose client was replaced — leaving VPN-only hosts unresolvable
+        // until someone re-runs the command.
+        $this->withSpin('Reconciling split-DNS for VPN-only hosts...', function () use ($kubectl, $ns, $host, $env): void {
+            $pat = $this->fetchVpnPat($kubectl, $ns);
+
+            if ($pat !== null && ! $this->reconcileVpnSplitDns($kubectl, $ns, $host, $pat, $env)) {
+                $this->laraKubeWarn('Could not reconcile split-DNS — VPN-only hosts may still need an /etc/hosts entry.');
+            }
+        });
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ NetBird VPN stack is live.');
@@ -541,15 +563,6 @@ class VpnInitCommand extends Command
             $this->ensureVpnGatewayKey($kubectl, $ns, $host, $pat, $groups);
         });
 
-        // Last: the gateway has to be an enrolled peer with an overlay address
-        // before there is anything to point split-DNS at.
-        $this->withSpin('Reconciling split-DNS for VPN-only hosts...', function () use ($kubectl, $ns, $host, $env): void {
-            $pat = $this->fetchVpnPat($kubectl, $ns);
-
-            if ($pat !== null && ! $this->reconcileVpnSplitDns($kubectl, $ns, $host, $pat, $env)) {
-                $this->laraKubeWarn('Could not reconcile split-DNS — VPN-only hosts may still need an /etc/hosts entry.');
-            }
-        });
     }
 
     /**

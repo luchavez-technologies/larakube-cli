@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ResourceRef;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
@@ -886,6 +887,32 @@ trait InteractsWithVpn
         }
 
         return null;
+    }
+
+    /**
+     * Create the resolver's ConfigMap if it does not exist yet, with the
+     * forward block and no host records.
+     *
+     * Create-if-absent, never apply: an existing Corefile holds the gateway
+     * address reconcileVpnSplitDns() worked out, and overwriting it on every
+     * vpn:init would black-hole every VPN-only host until the reconcile ran
+     * again. This exists only so the gateway pod has something to mount on the
+     * very first install, or after the ConfigMap is renamed.
+     */
+    protected function seedVpnResolverConfig(string $kubectl, string $ns, string $vpnHost): bool
+    {
+        $instance = ClusterTool::VPN->instanceSlugFromHost($vpnHost);
+        $name = ToolInstance::forInstance(ClusterTool::VPN, $instance)->configMap('resolver', 'client');
+
+        if (Kubectl::fromPrefix($kubectl)->exists(new ResourceRef('ConfigMap', $name, $ns))) {
+            return true;
+        }
+
+        return Kubectl::fromPrefix($kubectl)->apply(view('k8s.vpn.resolver-config', [
+            'hosts' => [],
+            'gatewayIp' => '',
+            'instance' => $instance,
+        ])->render())->ok;
     }
 
     /** Write the resolver's Corefile and restart it — CoreDNS reads the file once, at startup. */
