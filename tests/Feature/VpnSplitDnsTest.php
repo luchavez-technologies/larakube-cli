@@ -72,9 +72,9 @@ function splitDnsFakes(): array
 {
     return [
         '*get ingress -A -o json*' => Process::result(output: splitDnsIngressJson()),
-        '*get pods*-l app=vpn-client*' => Process::result(output: "'vpn-client-new'"),
+        '*get pods*-l app=netbird-client*' => Process::result(output: "'netbird-client-new'"),
         '*larakube-tools-registry*' => Process::result(output: ''),
-        '*apply -f *' => Process::result(output: 'configmap/vpn-resolver-config created'),
+        '*apply -f *' => Process::result(output: 'configmap/netbird-client-resolver created'),
         '*rollout restart*' => Process::result(output: 'restarted'),
         '*' => Process::result(output: ''),
     ];
@@ -93,7 +93,7 @@ test('the resolver answers VPN-only hosts with the gateway address and still for
     $manifest = view('k8s.vpn.resolver-config', [
         'hosts' => ['admin.chat.example.com'],
         'gatewayIp' => '100.84.155.135',
-        'instance' => '',
+        'instance' => 'vpn-example-com',
     ])->render();
 
     expect($manifest)
@@ -122,7 +122,7 @@ test('reconcile registers a match-domain group on the resolver port, distributed
     Saloon::fake([
         ListNameserverGroupsRequest::class => MockResponse::make([]),
         ListPeersRequest::class => MockResponse::make([
-            ['id' => 'p1', 'name' => 'vpn-client-new', 'ip' => '100.84.155.135', 'connected' => true],
+            ['id' => 'p1', 'name' => 'netbird-client-new', 'ip' => '100.84.155.135', 'connected' => true],
         ]),
         ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
         CreateGroupRequest::class => MockResponse::make(['id' => 'grp-all']),
@@ -159,7 +159,7 @@ test('a second run updates the existing group instead of stacking duplicates', f
             ['id' => 'ns-existing', 'name' => 'LaraKube Cluster Internal'],
         ]),
         ListPeersRequest::class => MockResponse::make([
-            ['id' => 'p1', 'name' => 'vpn-client-new', 'ip' => '100.84.155.135', 'connected' => true],
+            ['id' => 'p1', 'name' => 'netbird-client-new', 'ip' => '100.84.155.135', 'connected' => true],
         ]),
         ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
         SaveNameserverGroupRequest::class => MockResponse::make(['id' => 'ns-existing']),
@@ -198,7 +198,7 @@ test('the gateway address is read back live, never assumed', function (): void {
     Saloon::fake([
         ListPeersRequest::class => MockResponse::make([
             ['name' => 'some-other-peer', 'ip' => '100.1.1.1'],
-            ['name' => 'vpn-client-new', 'ip' => '100.113.100.204'],
+            ['name' => 'netbird-client-new', 'ip' => '100.113.100.204'],
         ]),
     ]);
 
@@ -215,8 +215,8 @@ test('the gateway is the pod running now, not whichever peer still claims to be 
     Saloon::fake([
         ListPeersRequest::class => MockResponse::make([
             // The corpse still claims to be connected; the live pod does not yet.
-            ['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => true],
-            ['id' => 'new', 'name' => 'vpn-client-new', 'ip' => '100.84.209.9', 'connected' => false],
+            ['id' => 'old', 'name' => 'netbird-client-old', 'ip' => '100.84.155.135', 'connected' => true],
+            ['id' => 'new', 'name' => 'netbird-client-new', 'ip' => '100.84.209.9', 'connected' => false],
         ]),
     ]);
 
@@ -230,8 +230,8 @@ test('orphaned gateway peers are retired, and the live one never is', function (
     Saloon::fake([
         ListNameserverGroupsRequest::class => MockResponse::make([]),
         ListPeersRequest::class => MockResponse::make([
-            ['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => false],
-            ['id' => 'new', 'name' => 'vpn-client-new', 'ip' => '100.84.209.9', 'connected' => true],
+            ['id' => 'old', 'name' => 'netbird-client-old', 'ip' => '100.84.155.135', 'connected' => false],
+            ['id' => 'new', 'name' => 'netbird-client-new', 'ip' => '100.84.209.9', 'connected' => true],
             ['id' => 'phone', 'name' => 'someones-iphone', 'ip' => '100.84.3.3', 'connected' => false],
         ]),
         ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
@@ -250,7 +250,7 @@ test('the client PVC is mounted where NetBird actually keeps peer identity', fun
     // /etc/netbird was empty on a live pod: the PVC persisted nothing, so every
     // restart registered a NEW peer with a NEW overlay address and orphaned the
     // old one. Identity lives in /var/lib/netbird (default.json + state.json).
-    $manifest = view('k8s.vpn.client', ['instance' => '', 'isLocal' => false])->render();
+    $manifest = view('k8s.vpn.client', ['instance' => 'vpn-example-com', 'isLocal' => false])->render();
 
     expect($manifest)
         ->toContain('mountPath: /var/lib/netbird')
@@ -271,10 +271,10 @@ test('reconcile waits for a connected gateway rather than writing a dead address
             $polls++;
 
             return MockResponse::make($polls === 1
-                ? [['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => true]]
+                ? [['id' => 'old', 'name' => 'netbird-client-old', 'ip' => '100.84.155.135', 'connected' => true]]
                 : [
-                    ['id' => 'old', 'name' => 'vpn-client-old', 'ip' => '100.84.155.135', 'connected' => true],
-                    ['id' => 'new', 'name' => 'vpn-client-new', 'ip' => '100.84.209.9', 'connected' => false],
+                    ['id' => 'old', 'name' => 'netbird-client-old', 'ip' => '100.84.155.135', 'connected' => true],
+                    ['id' => 'new', 'name' => 'netbird-client-new', 'ip' => '100.84.209.9', 'connected' => false],
                 ]);
         },
         ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),

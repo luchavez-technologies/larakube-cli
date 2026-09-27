@@ -5,7 +5,7 @@ use Symfony\Component\Yaml\Yaml;
 test('vpn shared manifest renders as valid multi-document YAML', function (): void {
     $rendered = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
-        'storeDb' => 'vpn_management',
+        'storeDb' => 'netbird',
         'ssoDomain' => 'example.com'])->render();
 
     $documents = array_values(array_filter(
@@ -22,20 +22,23 @@ test('vpn shared manifest renders as valid multi-document YAML', function (): vo
         $kinds[] = $parsed['kind'].'/'.$parsed['metadata']['name'];
     }
 
-    expect($kinds)->toContain('Deployment/vpn-management')
-        ->toContain('Deployment/vpn-signal')
-        ->toContain('Deployment/vpn-relay')
-        ->toContain('Ingress/vpn-management');
+    // Instance-suffixed, because that is what ships: the templates derive
+    // `vpn-example-com` from the host they are handed, exactly as vpn:init
+    // does. A bare `netbird` here would assert a name nothing ever creates.
+    expect($kinds)->toContain('Deployment/netbird-vpn-example-com')
+        ->toContain('Deployment/netbird-signal-vpn-example-com')
+        ->toContain('Deployment/netbird-relay-vpn-example-com')
+        ->toContain('Ingress/netbird-vpn-example-com');
 });
 
 test('vpn ingress requests a real ACME cert for a cloud install, never a local one', function (): void {
     $cloud = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'isLocal' => false, 'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
-        'storeDb' => 'vpn_management',
+        'storeDb' => 'netbird',
         'ssoDomain' => 'example.com'])->render();
     $local = view('k8s.vpn.shared', ['host' => 'vpn.dev.test', 'isLocal' => true, 'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
-        'storeDb' => 'vpn_management',
+        'storeDb' => 'netbird',
         'ssoDomain' => 'dev.test'])->render();
 
     expect($cloud)->toContain('traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt')
@@ -45,7 +48,7 @@ test('vpn ingress requests a real ACME cert for a cloud install, never a local o
 test('vpn management and signal Services both request h2c backend proxying — both serve gRPC', function (): void {
     $rendered = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
-        'storeDb' => 'vpn_management',
+        'storeDb' => 'netbird',
         'ssoDomain' => 'example.com'])->render();
 
     $documents = array_values(array_filter(
@@ -53,7 +56,7 @@ test('vpn management and signal Services both request h2c backend proxying — b
         fn (string $doc) => $doc !== '',
     ));
 
-    foreach (['vpn-management', 'vpn-signal'] as $name) {
+    foreach (['netbird-vpn-example-com', 'netbird-signal-vpn-example-com'] as $name) {
         $service = collect($documents)
             ->map(fn (string $doc) => Yaml::parse($doc))
             ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Service' && ($doc['metadata']['name'] ?? null) === $name);
@@ -64,7 +67,7 @@ test('vpn management and signal Services both request h2c backend proxying — b
 });
 
 test('vpn client manifest renders as valid multi-document YAML wired to the bootstrapped setup key', function (): void {
-    $rendered = view('k8s.vpn.client')->render();
+    $rendered = view('k8s.vpn.client', ['instance' => 'vpn-example-com'])->render();
 
     $documents = array_values(array_filter(
         array_map('trim', preg_split('/^---$/m', $rendered)),
@@ -75,13 +78,13 @@ test('vpn client manifest renders as valid multi-document YAML wired to the boot
         ->map(fn (string $doc) => Yaml::parse($doc))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment');
 
-    expect($deployment['metadata']['name'])->toBe('vpn-client');
+    expect($deployment['metadata']['name'])->toBe('netbird-client-vpn-example-com');
 
     $env = $deployment['spec']['template']['spec']['containers'][0]['env'];
     $setupKeyEnv = collect($env)->firstWhere('name', 'NB_SETUP_KEY');
 
     expect($setupKeyEnv['valueFrom']['secretKeyRef'])->toBe([
-        'name' => 'vpn-management-secrets',
+        'name' => 'netbird-secrets-vpn-example-com',
         'key' => 'setup-key',
     ]);
 });
@@ -106,7 +109,7 @@ test('the ingress routes every management-owned path explicitly, not via the cat
 
 test('the dashboard authenticates against the embedded IdP, not the external one', function (): void {
     // NetBird 0.77's supported topology: the dashboard logs in against embedded
-    // Dex using its static `vpn-dashboard` public client, and Dex federates
+    // Dex using its static `netbird-dashboard` public client, and Dex federates
     // to whatever /api/identity-providers has registered. Pointing the dashboard
     // straight at the external IdP is the retired standalone setup.
     $rendered = view('k8s.vpn.shared', [
@@ -114,7 +117,7 @@ test('the dashboard authenticates against the embedded IdP, not the external one
         'isLocal' => false,
         'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
-        'storeDb' => 'vpn_management',
+        'storeDb' => 'netbird',
         'ssoDomain' => 'example.com',
     ])->render();
 
@@ -143,11 +146,11 @@ test('management.json always uses the embedded IdP and never an HttpConfig block
 test('the ingress always routes / to the dashboard', function (): void {
     $rendered = view('k8s.vpn.ingress', ['host' => 'vpn.example.com', 'isLocal' => false])->render();
 
-    expect($rendered)->toContain('name: vpn-dashboard');
+    expect($rendered)->toContain('name: netbird-dashboard');
 });
 
 test('the embedded IdP registers the dashboard redirect URI it will actually receive', function (): void {
-    // Dex's static vpn-dashboard client only knows the URIs configured here.
+    // Dex's static netbird-dashboard client only knows the URIs configured here.
     // A mismatch with AUTH_REDIRECT_URI fails at authorize with "Unregistered
     // redirect_uri", before any login form renders.
     $config = json_decode(view('k8s.vpn.management-config', [
@@ -161,7 +164,7 @@ test('the embedded IdP registers the dashboard redirect URI it will actually rec
         'isLocal' => false,
         'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
-        'storeDb' => 'vpn_management',
+        'storeDb' => 'netbird',
         'ssoDomain' => 'example.com',
     ])->render();
 

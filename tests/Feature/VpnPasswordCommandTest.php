@@ -6,7 +6,7 @@
  * embedded Dex rather than the external IdP.
  *
  * Its reason for existing is keeping two things in step: the password inside
- * Dex, and the copy vpn:init stores in vpn-management-secrets and prints. Changing only
+ * Dex, and the copy vpn:init stores in netbird-secrets and prints. Changing only
  * the first (a hand-rolled `netbird-mgmt admin user change-password`) leaves
  * the stored copy stale, and the next vpn:init prints a password that does not
  * work.
@@ -23,16 +23,16 @@ function vpnPasswordKubectl(): string
 function vpnPasswordFakes(string $kubectl, bool $installed = true, string $adminEmail = 'admin@vpn.example.com'): array
 {
     return [
-        "{$kubectl} get deployment vpn-management -n larakube-vpn*" => $installed
-            ? Process::result(output: 'vpn-management 1/1 1 1 3d')
+        "{$kubectl} get deployment netbird -n larakube-vpn*" => $installed
+            ? Process::result(output: 'netbird 1/1 1 1 3d')
             : Process::result(output: '', exitCode: 1),
         '*data.admin-email*' => Process::result(output: base64_encode($adminEmail)),
         '*change-password*' => Process::result(output: 'password updated'),
-        '*patch secret vpn-management-secrets*' => Process::result(output: 'secret/vpn-management-secrets patched'),
+        '*patch secret netbird-secrets*' => Process::result(output: 'secret/netbird-secrets patched'),
     ];
 }
 
-test('vpn:password changes the password in the embedded IdP and records it in vpn-management-secrets', function (): void {
+test('vpn:password changes the password in the embedded IdP and records it in netbird-secrets', function (): void {
     $kubectl = vpnPasswordKubectl();
     Process::fake(vpnPasswordFakes($kubectl));
 
@@ -44,7 +44,7 @@ test('vpn:password changes the password in the embedded IdP and records it in vp
         && str_contains($process->command, '--email '));
 
     // Both halves, or the stored copy silently rots.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'patch secret vpn-management-secrets')
+    Process::assertRan(fn ($process) => str_contains($process->command, 'patch secret netbird-secrets')
         && str_contains((string) $process->input, '"admin-password"'));
 });
 
@@ -85,7 +85,7 @@ test('vpn:password warns rather than lying when the secret cannot be updated', f
     // would misrepresent what happened — the stored copy is just stale.
     $kubectl = vpnPasswordKubectl();
     $fakes = vpnPasswordFakes($kubectl);
-    $fakes['*patch secret vpn-management-secrets*'] = Process::result(output: 'denied', exitCode: 1);
+    $fakes['*patch secret netbird-secrets*'] = Process::result(output: 'denied', exitCode: 1);
     Process::fake($fakes);
 
     $this->artisan('vpn:password local --force --password=hunter2-hunter2')

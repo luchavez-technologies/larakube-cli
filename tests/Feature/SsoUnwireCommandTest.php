@@ -93,13 +93,13 @@ test('sso:unwire deletes a legacy "Login with SSO" Forgejo source', function ():
 test('sso:unwire deregisters NetBird\'s Zitadel identity provider via its own REST API', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment vpn-management*' => Process::result(output: 'vpn-management   1/1   1   1   10d'),
+        '*get deployment netbird*' => Process::result(output: 'netbird   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*vpn-management-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
-        '*vpn-management-sso*app-id*' => Process::result(output: base64_encode('app-vpn')),
-        '*delete secret vpn-management-sso*' => Process::result(output: 'secret deleted'),
-        '*delete secret vpn-management-oidc*' => Process::result(output: 'secret deleted'),
-        '*vpn-management-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+        '*netbird-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
+        '*netbird-sso*app-id*' => Process::result(output: base64_encode('app-vpn')),
+        '*delete secret netbird-sso*' => Process::result(output: 'secret deleted'),
+        '*delete secret netbird-oidc*' => Process::result(output: 'secret deleted'),
+        '*netbird-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
     ]);
 
     Saloon::fake([
@@ -121,12 +121,12 @@ test('sso:unwire deregisters NetBird\'s Zitadel identity provider via its own RE
 test('sso:unwire for NetBird is a clean no-op when no zitadel identity provider is registered', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment vpn-management*' => Process::result(output: 'vpn-management   1/1   1   1   10d'),
+        '*get deployment netbird*' => Process::result(output: 'netbird   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*vpn-management-sso*' => Process::result(output: '', exitCode: 1),
-        '*delete secret vpn-management-sso*' => Process::result(output: 'secret deleted'),
-        '*delete secret vpn-management-oidc*' => Process::result(output: 'secret deleted'),
-        '*vpn-management-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+        '*netbird-sso*' => Process::result(output: '', exitCode: 1),
+        '*delete secret netbird-sso*' => Process::result(output: 'secret deleted'),
+        '*delete secret netbird-oidc*' => Process::result(output: 'secret deleted'),
+        '*netbird-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
     ]);
 
     Saloon::fake([
@@ -141,22 +141,22 @@ test('sso:unwire for NetBird is a clean no-op when no zitadel identity provider 
 });
 
 test('sso:unwire removes the same OIDC secret sso:wire wrote', function (): void {
-    // wire wrote vpn-management-oidc-{instance} (via vpnName()) while unwire
+    // wire wrote netbird-oidc-{instance} (via vpnName()) while unwire
     // deleted $schema['secret'], which was unsuffixed — so the marker survived
     // and tool:list kept reporting the tool as SSO-wired after unwiring it.
     $vpn = ClusterTool::VPN;
     $instance = $vpn->instanceSlugFromHost('vpn.luchtech.dev');
 
     expect($vpn->oidcEnv(instance: $instance)['secret'])
-        ->toBe('vpn-management-oidc-vpn-luchtech-dev');
+        ->toBe('netbird-oidc-vpn-luchtech-dev');
 
     // Bare stays bare — that is the not-yet-registered case, and what
     // ClusterTool::forDeployment()-style lookups match against.
-    expect($vpn->oidcEnv()['secret'])->toBe('vpn-management-oidc');
+    expect($vpn->oidcEnv()['secret'])->toBe('netbird-oidc');
 
     // Both halves of the wiring agree by construction.
     expect($vpn->oidcEnv(instance: $instance)['deployment'])
-        ->toBe('vpn-management-vpn-luchtech-dev');
+        ->toBe('netbird-vpn-luchtech-dev');
 });
 
 test('sso:unwire lists only tools that are actually wired, by host', function (): void {
@@ -169,7 +169,7 @@ test('sso:unwire lists only tools that are actually wired, by host', function ()
             ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
         ]))),
         // Only VPN's marker exists, so only VPN is offered.
-        '*get secret vpn-management-oidc-vpn-luchtech-dev*' => Process::result(output: 'vpn-management-oidc-vpn-luchtech-dev  Opaque  2  1d'),
+        '*get secret netbird-oidc-vpn-luchtech-dev*' => Process::result(output: 'netbird-oidc-vpn-luchtech-dev  Opaque  2  1d'),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         '*' => Process::result(output: ''),

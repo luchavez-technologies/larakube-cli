@@ -23,13 +23,13 @@ function vpnSetupKeyKubectl(): string
 function vpnSetupKeyFakes(string $kubectl, bool $installed = true): array
 {
     return [
-        "{$kubectl} get deployment vpn-management -n larakube-vpn*" => $installed
-            ? Process::result(output: 'vpn-management 1/1 1 1 3d')
+        "{$kubectl} get deployment netbird -n larakube-vpn*" => $installed
+            ? Process::result(output: 'netbird 1/1 1 1 3d')
             : Process::result(output: '', exitCode: 1),
-        '*patch secret vpn-management-secrets*' => Process::result(output: 'secret/vpn-management-secrets patched'),
+        '*patch secret netbird-secrets*' => Process::result(output: 'secret/netbird-secrets patched'),
         '*rm -f /etc/netbird/config.json*' => Process::result(output: ''),
-        '*rollout restart deployment/vpn-client*' => Process::result(output: 'restarted'),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
+        '*rollout restart deployment/netbird-client*' => Process::result(output: 'restarted'),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
     ];
 }
 
@@ -41,13 +41,13 @@ test('vpn:setup-key stores the key and re-enrols the gateway', function (): void
         ->assertExitCode(0)
         ->expectsOutputToContain('Gateway re-enrolled');
 
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret netbird-secrets')
         && str_contains((string) $p->input, '"setup-key"'));
 
     // Without removing config.json the daemon restarts onto its OLD account,
     // which looks like the command silently did nothing.
     Process::assertRan(fn ($p) => str_contains($p->command, 'rm -f /etc/netbird/config.json'));
-    Process::assertRan(fn ($p) => str_contains($p->command, 'rollout restart deployment/vpn-client'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'rollout restart deployment/netbird-client'));
 });
 
 test('vpn:setup-key --no-reenroll leaves the gateway alone', function (): void {
@@ -58,7 +58,7 @@ test('vpn:setup-key --no-reenroll leaves the gateway alone', function (): void {
         ->assertExitCode(0)
         ->expectsOutputToContain('keeps its current identity');
 
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret netbird-secrets'));
     Process::assertDidntRun(fn ($p) => str_contains($p->command, 'rm -f /etc/netbird/config.json'));
 });
 
@@ -74,7 +74,7 @@ test('vpn:setup-key refuses to restart the gateway when the identity could not b
         ->assertExitCode(1)
         ->expectsOutputToContain('OLD account');
 
-    Process::assertDidntRun(fn ($p) => str_contains($p->command, 'rollout restart deployment/vpn-client'));
+    Process::assertDidntRun(fn ($p) => str_contains($p->command, 'rollout restart deployment/netbird-client'));
 });
 
 test('vpn:setup-key fails clearly when NetBird is not installed', function (): void {
@@ -93,9 +93,9 @@ test('vpn:setup-key adopts a PAT alongside the key so both point at one account'
     $this->artisan('vpn:setup-key local --force --key=nbp_abc123 --pat=tok_xyz')
         ->assertExitCode(0);
 
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret netbird-secrets')
         && str_contains((string) $p->input, '"setup-key"'));
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret netbird-secrets')
         && str_contains((string) $p->input, '"pat"'));
 });
 
@@ -145,6 +145,6 @@ test('vpn:setup-key writes the PAT through to OpenBao, not just the Secret', fun
 
     // The Secret still gets it too, for immediate effect and for clusters with
     // no OpenBao at all.
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret netbird-secrets')
         && str_contains((string) $p->input, '"pat"'));
 });

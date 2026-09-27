@@ -1367,14 +1367,14 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
 test('sso:wire registers NetBird as a Zitadel identity provider via its own REST API', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment vpn-management*' => Process::result(output: 'vpn-management   1/1   1   1   10d'),
-        '*rollout restart deployment/vpn-dashboard*' => Process::result(output: 'restarted'),
-        '*patch secret vpn-management-sso*' => Process::result(output: 'patched'),
+        '*get deployment netbird*' => Process::result(output: 'netbird   1/1   1   1   10d'),
+        '*rollout restart deployment/netbird-dashboard*' => Process::result(output: 'restarted'),
+        '*patch secret netbird-sso*' => Process::result(output: 'patched'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret vpn-management-sso*' => Process::result(output: ''),
+        '*get secret netbird-sso*' => Process::result(output: ''),
         // vpnName() resolves the instance suffix from the tool registry.
         '*larakube-tools-registry*' => Process::result(output: ''),
-        '*vpn-management-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+        '*netbird-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
     ]);
@@ -1388,7 +1388,7 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
         SearchProjectsRequest::class => MockResponse::make(['result' => []]),
         CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-vpn', 'clientId' => 'cid-vpn', 'clientSecret' => 'csecret-vpn']),
-        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'vpn-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'netbird', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         // The fixture's project still carries its un-instanced name, so the
         // wire brings it up to date in place instead of making a second one.
         UpdateProjectRequest::class => MockResponse::make(['details' => ['sequence' => '2']]),
@@ -1428,18 +1428,18 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
     // marks an OIDC tool as SSO-wired by probing for the `{tool}-oidc`
     // Secret — NetBird's wiring lives in its own storage (the API call
     // above), so wireNetbirdOidc() must write the marker secret itself.
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-oidc')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'netbird-oidc')
         && appliedSecret($process)['namespace'] === 'larakube-vpn'
         && (appliedSecret($process)['data']['client-id'] ?? null) === 'cid-vpn');
 
     // No auth-* keys: the dashboard logs in against the EMBEDDED IdP with its
     // own static client, and Dex federates to the Zitadel client above.
     // Writing them here is the retired standalone-IdP topology.
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-oidc')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'netbird-oidc')
         && ! isset(appliedSecret($process)['data']['auth-authority'])
         && ! isset(appliedSecret($process)['data']['auth-client-id']));
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vpn-dashboard'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/netbird-dashboard'));
 
     // VPN grants private network access, not just a web login — gated via
     // rbacRoles(), not open to any org member.
@@ -1456,15 +1456,15 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
 test('sso:wire re-wiring NetBird updates the existing identity provider via PUT, not a duplicate POST', function (): void {
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment vpn-management*' => Process::result(output: 'vpn-management   1/1   1   1   10d'),
-        '*rollout restart deployment/vpn-dashboard*' => Process::result(output: 'restarted'),
-        '*patch secret vpn-management-sso*' => Process::result(output: 'patched'),
+        '*get deployment netbird*' => Process::result(output: 'netbird   1/1   1   1   10d'),
+        '*rollout restart deployment/netbird-dashboard*' => Process::result(output: 'restarted'),
+        '*patch secret netbird-sso*' => Process::result(output: 'patched'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*vpn-management-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
-        '*vpn-management-sso*app-id*' => Process::result(output: base64_encode('app-vpn')),
-        '*vpn-management-sso*client-id*' => Process::result(output: base64_encode('cid-vpn')),
-        '*vpn-management-sso*client-secret*' => Process::result(output: base64_encode('csecret-vpn')),
-        '*vpn-management-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
+        '*netbird-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
+        '*netbird-sso*app-id*' => Process::result(output: base64_encode('app-vpn')),
+        '*netbird-sso*client-id*' => Process::result(output: base64_encode('cid-vpn')),
+        '*netbird-sso*client-secret*' => Process::result(output: base64_encode('csecret-vpn')),
+        '*netbird-secrets*data.pat*' => Process::result(output: base64_encode('netbird-pat')),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
     ]);
@@ -1476,7 +1476,7 @@ test('sso:wire re-wiring NetBird updates the existing identity provider via PUT,
         SetFlowTriggerActionsRequest::class => MockResponse::make([]),
         // zitadelEnsureProject() always resolves the project id first, reuse
         // or not.
-        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1', 'name' => 'vpn-management']]]),
+        SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1', 'name' => 'netbird']]]),
         // Registered app still exists, redirect URIs still match — reused,
         // not re-registered.
         SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
@@ -1487,7 +1487,7 @@ test('sso:wire re-wiring NetBird updates the existing identity provider via PUT,
                 'authMethodType' => 'OIDC_AUTH_METHOD_TYPE_BASIC',
             ],
         ]]),
-        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'vpn-management', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
+        GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'netbird', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
         // The fixture's project still carries its un-instanced name, so the
         // wire brings it up to date in place instead of making a second one.
         UpdateProjectRequest::class => MockResponse::make(['details' => ['sequence' => '2']]),

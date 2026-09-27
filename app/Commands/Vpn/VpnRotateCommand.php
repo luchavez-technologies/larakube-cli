@@ -129,7 +129,7 @@ class VpnRotateCommand extends Command
         // The setup key is Secret-only; the PAT writes through to OpenBao first
         // when a KV sync owns it, or ESO would put the old value back within 60s.
         $patched = $this->withSpin('Storing the new credentials...', function () use ($kubectl, $ns, $newPat, $newKey, $env): bool {
-            $ok = Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->vpnName('vpn-management-secrets', $kubectl), ['setup-key' => $newKey])->ok;
+            $ok = Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->vpnSecret($kubectl), ['setup-key' => $newKey])->ok;
 
             return $this->persistVpnPat($kubectl, $newPat, $env) && $ok;
         });

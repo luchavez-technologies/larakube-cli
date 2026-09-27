@@ -53,7 +53,7 @@ test('vpn:join errors when the VPN is not installed for the environment', functi
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
-        "{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} get deployment netbird -n larakube-vpn --no-headers" => Process::result(output: '', exitCode: 1),
     ]);
 
     [$command, $output] = vpnJoinRunner();
@@ -66,8 +66,8 @@ test('vpn:join errors when no setup key has been bootstrapped yet', function ():
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
-        "{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => 'vpn-management   1/1   1   1   5d',
-        "{$kubectl} get secret vpn-management-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
+        "{$kubectl} get deployment netbird -n larakube-vpn --no-headers" => 'netbird   1/1   1   1   5d',
+        "{$kubectl} get secret netbird-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
     ]);
 
     [$command, $output] = vpnJoinRunner();
@@ -94,8 +94,8 @@ test('vpn:join targets the CHOSEN environment\'s own saved context, never the am
 
     try {
         Process::fake([
-            "{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => 'vpn-management   1/1   1   1   5d',
-            "{$kubectl} get secret vpn-management-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
+            "{$kubectl} get deployment netbird -n larakube-vpn --no-headers" => 'netbird   1/1   1   1   5d',
+            "{$kubectl} get secret netbird-secrets -n larakube-vpn -o jsonpath='{.data.setup-key}'" => Process::result(output: '', exitCode: 1),
         ]);
 
         [$command] = vpnJoinRunner('production');
@@ -111,7 +111,7 @@ test('vpn:join --sso errors when NetBird is not wired to SSO yet, without ever t
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
     Process::fake([
-        "{$kubectl} get deployment vpn-management -n larakube-vpn --no-headers" => 'vpn-management   1/1   1   1   5d',
+        "{$kubectl} get deployment netbird -n larakube-vpn --no-headers" => 'netbird   1/1   1   1   5d',
         "{$kubectl} get secret netbird-oidc -n larakube-vpn" => Process::result(output: '', exitCode: 1),
     ]);
 

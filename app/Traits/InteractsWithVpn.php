@@ -4,7 +4,9 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Http\Integrations\Netbird\NetbirdConnector;
 use App\Http\Integrations\Netbird\Requests\CreateGroupRequest;
@@ -28,6 +30,7 @@ use App\Http\Integrations\Netbird\Requests\UpdateSetupKeyRequest;
 use App\Services\Kubectl;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Sleep;
+use LogicException;
 use Throwable;
 
 trait InteractsWithVpn
@@ -69,18 +72,6 @@ trait InteractsWithVpn
     }
 
     /**
-     * Host-based sibling of vpnName(), for vpn:init — which renders and waits on
-     * these resources BEFORE it registers the tool, so the registry lookup
-     * vpnName() uses would still be empty.
-     */
-    protected function vpnNameForHost(string $base, string $host): string
-    {
-        $instance = ClusterTool::VPN->instanceSlugFromHost($host);
-
-        return $instance === '' ? $base : "{$base}-{$instance}";
-    }
-
-    /**
      * Store a new PAT so it actually survives.
      *
      * Patching the Kubernetes Secret alone is not enough once VpnTool declares a
@@ -102,15 +93,42 @@ trait InteractsWithVpn
             $this->pushClusterSecret($kubectl, $kvKey, $pat, $env === 'local' ? 'local' : 'production');
         }
 
-        return Kubectl::fromPrefix($kubectl)->patchSecret($this->vpnNamespace(), $this->vpnName('vpn-management-secrets', $kubectl), ['pat' => $pat])->ok;
+        return Kubectl::fromPrefix($kubectl)->patchSecret($this->vpnNamespace(), $this->vpnSecret($kubectl), ['pat' => $pat])->ok;
     }
 
-    /** `vpn-management` → `vpn-management-vpn-luchtech-dev`, per the naming convention. */
-    protected function vpnName(string $base, string $kubectl): string
+    /**
+     * The Deployment name of a VPN component for the REGISTERED instance —
+     * `management` (the default), `signal`, `relay`, `dashboard`, `client`.
+     *
+     * Falls back to the unsuffixed stem when VPN is not registered, which is
+     * what `componentByKey()` returns for an empty instance. Nothing by that
+     * bare name is ever deployed, so a probe against it correctly finds
+     * nothing rather than matching some other instance's workload.
+     */
+    protected function vpnDeployment(string $kubectl, ?string $component = null): string
     {
-        $instance = $this->vpnInstance($kubectl);
+        return $this->vpnComponentDeployment($this->vpnInstance($kubectl), $component);
+    }
 
-        return $instance === '' ? $base : "{$base}-{$instance}";
+    /** A VPN component's Secret of the given kind, for the registered instance. */
+    protected function vpnSecret(string $kubectl, SecretKind $kind = SecretKind::CREDENTIALS, ?string $component = null): string
+    {
+        return $this->vpnSecretFor($this->vpnInstance($kubectl), $kind, $component);
+    }
+
+    /**
+     * Host-based siblings, for vpn:init — which renders and waits on these
+     * resources BEFORE it registers the tool, so the registry lookup the two
+     * above use would still come back empty.
+     */
+    protected function vpnDeploymentForHost(string $host, ?string $component = null): string
+    {
+        return $this->vpnComponentDeployment(ClusterTool::VPN->instanceSlugFromHost($host), $component);
+    }
+
+    protected function vpnSecretForHost(string $host, SecretKind $kind = SecretKind::CREDENTIALS, ?string $component = null): string
+    {
+        return $this->vpnSecretFor(ClusterTool::VPN->instanceSlugFromHost($host), $kind, $component);
     }
 
     protected function vpnNamespace(): string
@@ -137,7 +155,7 @@ trait InteractsWithVpn
     /** NetBird management Deployment present? A cheap "is NetBird installed" probe. */
     protected function isVpnInstalled(string $kubectl, string $ns): bool
     {
-        $deployment = $this->vpnName('vpn-management', $kubectl);
+        $deployment = $this->vpnDeployment($kubectl);
 
         return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', $deployment, '-n', $ns, '--no-headers'])->output) !== '';
     }
@@ -150,7 +168,7 @@ trait InteractsWithVpn
      */
     protected function fetchVpnSetupKey(string $kubectl, string $ns): ?string
     {
-        $key = Kubectl::fromPrefix($kubectl)->secretValue($ns, $this->vpnName('vpn-management-secrets', $kubectl), 'setup-key');
+        $key = Kubectl::fromPrefix($kubectl)->secretValue($ns, $this->vpnSecret($kubectl), 'setup-key');
 
         return $key !== null && $key !== '' ? $key : null;
     }
@@ -164,7 +182,7 @@ trait InteractsWithVpn
      */
     protected function fetchVpnPat(string $kubectl, string $ns): ?string
     {
-        $pat = Kubectl::fromPrefix($kubectl)->secretValue($ns, $this->vpnName('vpn-management-secrets', $kubectl), 'pat');
+        $pat = Kubectl::fromPrefix($kubectl)->secretValue($ns, $this->vpnSecret($kubectl), 'pat');
 
         return $pat !== null && $pat !== '' ? $pat : null;
     }
@@ -196,7 +214,7 @@ trait InteractsWithVpn
      */
     protected function vpnSsoWired(string $kubectl, string $ns): bool
     {
-        return $this->readClusterSecretKey($kubectl, $ns, $this->vpnName('vpn-management-oidc', $kubectl), 'client-id') !== null;
+        return $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecret($kubectl, SecretKind::OIDC), 'client-id') !== null;
     }
 
     /**
@@ -248,7 +266,7 @@ trait InteractsWithVpn
      */
     protected function vpnSingleAccountState(string $kubectl, string $ns): ?array
     {
-        $logs = Kubectl::fromPrefix($kubectl)->raw(['logs', 'deploy/'.$this->vpnName('vpn-management', $kubectl), '-n', $ns, '--tail=2000'], timeoutSeconds: 30)->output;
+        $logs = Kubectl::fromPrefix($kubectl)->raw(['logs', 'deploy/'.$this->vpnDeployment($kubectl), '-n', $ns, '--tail=2000'], timeoutSeconds: 30)->output;
 
         if (preg_match_all('/single account mode (enabled|disabled), accounts number (\d+)/i', $logs, $matches, PREG_SET_ORDER) === 0) {
             return null;
@@ -608,7 +626,7 @@ trait InteractsWithVpn
      */
     protected function vpnGatewayOverlayIp(string $host, string $pat, string $kubectl): ?string
     {
-        $prefix = $this->vpnName('vpn-client', $kubectl);
+        $prefix = $this->vpnDeployment($kubectl, 'client');
 
         try {
             $response = NetbirdConnector::make($host, $pat)->send(ListPeersRequest::make());
@@ -674,7 +692,7 @@ trait InteractsWithVpn
      */
     protected function currentVpnGatewayPod(string $kubectl, string $ns): ?string
     {
-        $app = $this->vpnName('vpn-client', $kubectl);
+        $app = $this->vpnDeployment($kubectl, 'client');
 
         $name = Kubectl::fromPrefix($kubectl)->raw(
             ['get', 'pods', '-n', $ns, '-l', "app={$app}", '--field-selector=status.phase=Running', '-o', 'jsonpath={.items[0].metadata.name}'],
@@ -794,9 +812,9 @@ trait InteractsWithVpn
             return false;
         }
 
-        $this->pruneOrphanedVpnGateways($host, $pat, $this->vpnPeers($host, $pat), $this->vpnName('vpn-client', $kubectl), $pod);
+        $this->pruneOrphanedVpnGateways($host, $pat, $this->vpnPeers($host, $pat), $this->vpnDeployment($kubectl, 'client'), $pod);
 
-        if (! $this->applyVpnResolverConfig($kubectl, $ns, $hosts, $gatewayIp)) {
+        if (! $this->applyVpnResolverConfig($kubectl, $host, $ns, $hosts, $gatewayIp)) {
             return false;
         }
 
@@ -871,12 +889,17 @@ trait InteractsWithVpn
     }
 
     /** Write the resolver's Corefile and restart it — CoreDNS reads the file once, at startup. */
-    protected function applyVpnResolverConfig(string $kubectl, string $ns, array $hosts, string $gatewayIp): bool
+    protected function applyVpnResolverConfig(string $kubectl, string $vpnHost, string $ns, array $hosts, string $gatewayIp): bool
     {
         $manifest = view('k8s.vpn.resolver-config', [
             'hosts' => $hosts,
             'gatewayIp' => $gatewayIp,
-            'instance' => $this->vpnInstance($kubectl),
+            // The NetBird host, not one of $hosts: the ConfigMap is named for
+            // the VPN instance that mounts it, while $hosts are the VPN-only
+            // hosts it answers for. The registry is deliberately not consulted
+            // — a first vpn:init reconciles split-DNS before it registers, and
+            // an unnamed instance would write a ConfigMap nothing mounts.
+            'instance' => ClusterTool::VPN->instanceSlugFromHost($vpnHost),
         ])->render();
 
         $applied = Kubectl::fromPrefix($kubectl)->apply($manifest)->ok;
@@ -967,5 +990,20 @@ trait InteractsWithVpn
         return NetbirdConnector::make($host, $pat)
             ->send(DeleteIdentityProviderRequest::make($id))
             ->successful();
+    }
+
+    private function vpnComponentDeployment(string $instance, ?string $component): string
+    {
+        $key = $component ?? 'management';
+
+        return ClusterTool::VPN->componentByKey($key, $instance)?->deployment
+            ?? throw new LogicException("vpn declares no '{$key}' component.");
+    }
+
+    private function vpnSecretFor(string $instance, SecretKind $kind, ?string $component): string
+    {
+        return $instance === ''
+            ? $this->vpnComponentDeployment('', $component).'-'.$kind->value
+            : ToolInstance::forInstance(ClusterTool::VPN, $instance)->secret($kind, $component);
     }
 }

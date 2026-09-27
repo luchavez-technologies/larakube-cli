@@ -38,7 +38,7 @@ function backupRunFakes(array $overrides = []): array
         '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'passwords-vaultwarden-vault-luchtech-dev'),
         '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
         '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),
-        '*get deployment -n larakube-vpn -o jsonpath*' => Process::result(output: 'vpn-management'),
+        '*get deployment -n larakube-vpn -o jsonpath*' => Process::result(output: 'netbird'),
         '*get deployment -n larakube-plex -o jsonpath*' => Process::result(output: 'seaweedfs postgres'),
     ], $overrides, ['*' => Process::result(output: '')]);
 }

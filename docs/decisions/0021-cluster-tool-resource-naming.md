@@ -1,6 +1,29 @@
-# 0021 — Every cluster-tool resource is named `{category}-{component}-{instance}`
+# 0021 — Every cluster-tool resource is named `{component}-{instance}`
 
-**Status:** Accepted (2026-08-29)
+**Status:** Accepted (2026-08-29) · **Amended (2026-09-20): the category is gone**
+
+## Amendment — the category token was dropped
+
+The original decision put the tool's category in front of the component:
+`monitor-grafana-{instance}`, `vpn-management-{instance}`. With the instance slug already
+derived from the tool's own host, the category repeated what the instance said —
+`monitor-grafana-storage-monitor-luchtech-dev` names monitoring twice — so it was removed.
+Names are `{component}[-{token}]-{instance}`, and everything below reads that way.
+
+Two consequences that were not obvious when the category was there:
+
+- **The component stem is the product**, because it is now the only thing in the name that
+  says what the resource *is*: `grafana`, `forgejo`, `ocis`, `outline`, `netbird`. A role
+  word like `management` or `dashboard` was fine behind a category and is not on its own.
+- **Identity moved into labels.** Without the category, a component name can collide with
+  the upstream project's own Deployments (`prometheus` against Prometheus's Helm chart), so
+  discovery selects on `larakube.io/tool|component|instance` — `ToolInstance::labels()` —
+  and the name only has to read well. `larakube.io/component` carries the name's own stem,
+  not the registry key.
+
+`ClusterTool::resourceNaming()` is the ledger of which generation a tool's live resources
+use. A tool crosses in one change covering its manifests *and* its cluster; the ledger
+disappears when the last one has.
 
 ## Context
 
@@ -30,26 +53,26 @@ its database, its PVC, or its Secrets — you had to read that tool's code.
 **The instance slug is derived once, from the tool's host, and appended to every resource
 that tool owns.** `drive.luchtech.dev` → `drive-luchtech-dev`.
 
-**The middle token is the component, and it is the same token in every layer.** For a
-Deployment named `{category}-{component}-{instance}`, the database is
-`{category}_{component}_{dbInstance}` — same word, hyphens swapped for underscores.
+**The leading token is the component, and it is the same token in every layer.** For a
+Deployment named `{component}-{instance}`, the database is `{component}_{dbInstance}` —
+same word, hyphens swapped for underscores.
 
 | Layer | Pattern | Example |
 |---|---|---|
-| Deployment / Service / Ingress | `{category}-{component}-{instance}` | `vpn-management-vpn-luchtech-dev` |
-| PVC | `{category}-{component}-storage-{instance}` | `vpn-management-storage-vpn-luchtech-dev` |
-| Credentials Secret | `{category}-{component}-secrets-{instance}` | `vpn-management-secrets-vpn-luchtech-dev` |
-| OIDC Secret | `{category}-{component}-oidc-{instance}` | `vpn-management-oidc-vpn-luchtech-dev` |
-| SMTP Secret | `{category}-{component}-smtp-{instance}` | `monitor-grafana-smtp-monitor-luchtech-dev` |
-| Config Secret | `{category}-{component}-config-{instance}` | `vpn-management-config-vpn-luchtech-dev` |
-| DB Secret | `{category}-{component}-store-{instance}` | `vpn-management-store-vpn-luchtech-dev` |
-| Database + role | `{category}_{component}_{dbInstance}` | `vpn_management_vpn_luchtech_dev` |
-| S3 bucket | `{category}-{component}-{instance}` | `drive-ocis-drive-luchtech-dev` |
-| Commons Redis tenant | `{category}_{component}_{instance}` | `link_kutt_link-luchtech-dev` |
-| Backup archive | the Deployment's own name | `vpn-management-vpn-luchtech-dev` |
-| Zitadel app Secret | `sso-app-{category}-{instance}` | `sso-app-vpn-vpn-luchtech-dev` |
-| Zitadel project | `{category}-{component}-{instance}` | `vpn-management-vpn-luchtech-dev` |
-| OpenBao static role | `{category}_{component}_{dbInstance}` | `vpn_management_vpn_luchtech_dev` |
+| Deployment / Service / Ingress | `{component}-{instance}` | `netbird-vpn-luchtech-dev` |
+| PVC | `{component}-storage-{instance}` | `netbird-storage-vpn-luchtech-dev` |
+| Credentials Secret | `{component}-secrets-{instance}` | `netbird-secrets-vpn-luchtech-dev` |
+| OIDC Secret | `{component}-oidc-{instance}` | `netbird-oidc-vpn-luchtech-dev` |
+| SMTP Secret | `{component}-smtp-{instance}` | `grafana-smtp-monitor-luchtech-dev` |
+| Config Secret | `{component}-config-{instance}` | `netbird-config-vpn-luchtech-dev` |
+| DB Secret | `{component}-store-{instance}` | `netbird-store-vpn-luchtech-dev` |
+| Database + role | `{component}_{dbInstance}` | `netbird_vpn_luchtech_dev` |
+| S3 bucket | `{component}-{token}-{instance}` | `ocis-storage-drive-luchtech-dev` |
+| Commons Redis tenant | `{component}_{instance}` | `kutt_link-luchtech-dev` |
+| Backup archive | the Deployment's own name | `netbird-vpn-luchtech-dev` |
+| Zitadel app Secret | `{component}-sso-{instance}` | `netbird-sso-vpn-luchtech-dev` |
+| Zitadel project | `{component}-{instance}` | `netbird-vpn-luchtech-dev` |
+| OpenBao static role | `{component}_{dbInstance}` | `netbird_vpn_luchtech_dev` |
 | OpenBao KV keys | `{ENVIRONMENT}/{KEY}` | `production/GRAFANA_DB_PASSWORD` |
 
 ### Rules a new cluster tool must follow
@@ -58,10 +81,11 @@ Deployment named `{category}-{component}-{instance}`, the database is
    for tenants, `deploymentName($instance)` / `components($instance)` for workloads,
    `dbSecretRef($instance)` for the DB Secret. A name computed independently in `*InitCommand`
    and in `*RemoveCommand` will drift, and the drift is invisible.
-2. **The vendor name is not a component name.** NetBird's store belongs to the `management`
-   component, so the tenant is `vpn_management_*`, not `vpn_netbird_*` — nothing is ever
-   deployed as `vpn-netbird-*`, and a tenant with no matching workload cannot be reasoned
-   about or safely dropped.
+2. **The component stem names the product, and the tenant matches the workload.** NetBird's
+   store belongs to the management component, which is deployed as `netbird-*`, so the
+   tenant is `netbird_*`. Never a name with no matching workload: one cannot be reasoned
+   about or safely dropped. (This rule read the other way round before the amendment above,
+   when the category still carried the product and the component carried the role.)
 3. **`components()` must be null-safe.** Called without an instance it returns the bare base
    names, which is what `ClusterTool::forDeployment()`'s reverse lookup (dynamic backup
    discovery) matches live Deployments against — it has no instance yet, because the instance
@@ -185,9 +209,11 @@ Do the database first when both are being changed. A tenant is created at `:init
 expensive to rename afterwards; workload names can be changed on any later re-init, so
 getting the tenant right first avoids a second teardown.
 
-Tools migrated so far: **VPN (2026-08-29, fully — all ten layers)**. It was disposable, so no
-data-preservation phase applied, which is why it went first and why it is the reference
-implementation to copy from.
+Tools migrated so far are listed by `ClusterTool::resourceNaming()`. VPN went first
+(2026-08-29) under the original category-ful shape and again under the amended one, with a
+live migration that preserved its store, both PVCs and its Zitadel grants —
+`plans/active/vpn-canonical-naming-live-migration.md` is the worked example for a tool that
+holds data, and Drive's is the one for a tool that also holds a bucket.
 
 Cross-cutting fixes made alongside it, which benefit every tool on a fresh cluster:
 

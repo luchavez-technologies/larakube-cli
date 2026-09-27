@@ -2,7 +2,7 @@
 
 /**
  * NetBird needs TWO Zitadel applications in one project: the confidential
- * vpn-management client (/oauth2/callback), and a public PKCE client for
+ * netbird client (/oauth2/callback), and a public PKCE client for
  * the dashboard SPA (/peers). This file pins the management app's own set —
  * the dashboard app's URIs are registered separately by
  * SsoWireCommand::ensureNetbirdDashboardApp(), because a browser SPA cannot

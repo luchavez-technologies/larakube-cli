@@ -48,7 +48,7 @@ class VpnPasswordCommand extends Command
         // Installs from before 2026-08-28 never stored admin-email, so there is
         // nothing to default to — say which flag fixes it rather than failing
         // on an empty --email.
-        $email = (string) ($this->option('email') ?: $this->readClusterSecretKey($kubectl, $ns, $this->vpnName('vpn-management-secrets', $kubectl), 'admin-email'));
+        $email = (string) ($this->option('email') ?: $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecret($kubectl), 'admin-email'));
 
         if ($email === '') {
             throw new MissingFlagException('email', 'which embedded IdP user to reset', 'larakube vpn:password production --email=you@example.com');
@@ -76,7 +76,7 @@ class VpnPasswordCommand extends Command
         // visible to anything that can read /proc inside that pod.
         $changed = $this->withSpin("Updating {$email}'s password...", fn () => Process::run(
             'printf %s '.escapeshellarg($password)
-            ." | {$kubectl} exec -i deploy/".$this->vpnName('vpn-management', $kubectl)." -n {$ns} --"
+            ." | {$kubectl} exec -i deploy/".$this->vpnDeployment($kubectl)." -n {$ns} --"
             .' /go/bin/netbird-mgmt admin user change-password'
             .' --email '.escapeshellarg($email)
             .' --password-file -',
@@ -84,7 +84,7 @@ class VpnPasswordCommand extends Command
 
         if (! $changed) {
             $this->laraKubeError('Could not change the password — check that the user exists in the embedded IdP.');
-            $mgmt = $this->vpnName('vpn-management', $kubectl);
+            $mgmt = $this->vpnDeployment($kubectl);
             $this->line("  <fg=gray>List them with</> <fg=blue>kubectl exec deploy/{$mgmt} -n {$ns} -- /go/bin/netbird-mgmt admin user --help</>");
 
             return 1;
@@ -96,7 +96,7 @@ class VpnPasswordCommand extends Command
         // `netbird-mgmt admin user change-password` leaves it stale, and then
         // vpn:init prints a password that no longer works.
         $patched = $this->withSpin('Recording it in vpn-secrets...', fn () => Kubectl::fromPrefix($kubectl)->patchSecret(
-            $ns, $this->vpnName('vpn-management-secrets', $kubectl), ['admin-email' => $email, 'admin-password' => $password],
+            $ns, $this->vpnSecret($kubectl), ['admin-email' => $email, 'admin-password' => $password],
         )->ok);
 
         if (! $patched) {

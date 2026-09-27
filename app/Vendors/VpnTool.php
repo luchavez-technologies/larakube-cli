@@ -11,7 +11,10 @@ use App\Contracts\HasPresenceProbe;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Enums\SecretKind;
 
 /** The single vendor backing the VPN category — 'Zero-Trust VPN Mesh'. Only NetBird. */
 final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasWorkloadComponents
@@ -28,7 +31,7 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
 
     public function canonicalComponentName(): string
     {
-        return 'management';
+        return 'netbird';
     }
 
     public function components(?string $instance = null, ?string $engine = null): array
@@ -39,10 +42,16 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
         // without an instance — the instance is what it is trying to discover.
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
+        // `netbird`, not `management`: the stem names the product, the way
+        // every other migrated tool's does (grafana, forgejo, ocis, outline).
+        // NetBird's own compose calls these services management/signal/relay,
+        // but those are role words — without the category in front of them
+        // they would be the only names in the fleet that do not say what the
+        // thing is.
         return [
             new ClusterToolComponentData(
                 key: 'management', role: ClusterToolComponentRole::PRIMARY,
-                deployment: $name('vpn-management'), container: 'management',
+                deployment: $name('netbird'), container: 'management',
                 backupVolume: true,
                 // Scoped past the 73MB of GeoLite2-City.mmdb and geonames.db
                 // that NetBird re-downloads on boot, the same way CHAT scopes
@@ -58,21 +67,21 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
             ),
             new ClusterToolComponentData(
                 key: 'signal', role: ClusterToolComponentRole::WORKER,
-                deployment: $name('vpn-signal'), container: 'signal',
+                deployment: $name('netbird-signal'), container: 'signal',
             ),
             new ClusterToolComponentData(
                 key: 'relay', role: ClusterToolComponentRole::WORKER,
-                deployment: $name('vpn-relay'), container: 'relay',
+                deployment: $name('netbird-relay'), container: 'relay',
             ),
             new ClusterToolComponentData(
                 key: 'dashboard', role: ClusterToolComponentRole::INGRESS,
-                deployment: $name('vpn-dashboard'), container: 'dashboard',
+                deployment: $name('netbird-dashboard'), container: 'dashboard',
             ),
             // The in-cluster gateway peer: a NetBird client, not a server
             // component, but it is deployed and torn down with the stack.
             new ClusterToolComponentData(
                 key: 'client', role: ClusterToolComponentRole::WORKER,
-                deployment: $name('vpn-client'), container: 'client',
+                deployment: $name('netbird-client'), container: 'client',
             ),
         ];
     }
@@ -85,19 +94,17 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
      */
     public function commonsDatabaseList(): array
     {
-        // `management`, not `netbird`: across every migrated tool the database
-        // token is the same token as the Deployment that owns it —
-        // monitor-grafana-* ↔ monitor_grafana, link-kutt-* ↔ link_kutt,
-        // passwords-vaultwarden-* ↔ passwords_vaultwarden. NetBird's store
-        // belongs to the management component, and nothing is ever deployed as
-        // `vpn-netbird-*`, so a `vpn_netbird` tenant would be the one name in
-        // the cluster with no workload to match it.
         return ['vpn_management'];
     }
 
+    /**
+     * The tenant token is the same token as the Deployment that owns it —
+     * `grafana-*` ↔ `grafana_*`, `forgejo-*` ↔ `forgejo_*`. NetBird's store
+     * belongs to the management component, which is deployed as `netbird-*`.
+     */
     public function canonicalDatabaseList(): array
     {
-        return ['management'];
+        return ['netbird'];
     }
 
     /**
@@ -108,11 +115,11 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
      */
     public function dbSecretRef(): ?array
     {
-        // ClusterTool appends the instance suffix. Deliberately its own Secret
-        // and not the credentials one: secrets:wire's ExternalSecret owns every
-        // key in the Secret it targets, so sharing would let a rotation clobber
+        // ClusterTool resolves the real name from `kind`. STORE, not the
+        // default CREDENTIALS: secrets:wire's ExternalSecret owns every key in
+        // the Secret it targets, so sharing one would let a rotation clobber
         // the PAT, setup key and dashboard login stored alongside.
-        return ['secret' => 'vpn-management-store', 'key' => 'db-password'];
+        return ['secret' => 'netbird-store', 'key' => 'db-password', 'kind' => SecretKind::STORE];
     }
 
     /**
@@ -128,7 +135,7 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
      * as a KV name would collide with every other tool in the store.
      *
      * Safe alongside the database's dynamic rotation because that targets a
-     * DIFFERENT Secret (`vpn-management-store`) — the two never write the same
+     * DIFFERENT Secret (SecretKind::STORE) — the two never write the same
      * key, so secrets:init's dynamic-beats-static guard has nothing to arbitrate.
      */
     public function openbaoSyncConfig(?string $instance = null): array
@@ -138,16 +145,18 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
             : 'VPN_'.strtoupper(str_replace('-', '_', $instance));
 
         return [
-            'secret' => 'vpn-management-secrets',
+            'secret' => 'netbird-secrets',
             'keyMap' => ["{$slug}_PAT" => 'pat'],
         ];
     }
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $suffix = ($instance === null || $instance === '') ? '' : "-{$instance}";
+        $names = ToolInstance::forInstance(ClusterTool::VPN, $instance === null || $instance === '' ? 'x' : $instance);
 
-        return "deployment/vpn-management{$suffix} -n larakube-vpn";
+        return ($instance === null || $instance === '')
+            ? 'deployment/netbird -n '.ClusterTool::VPN->namespace()
+            : "deployment/{$names->deployment()} -n {$names->namespace()}";
     }
 
     /**
@@ -163,19 +172,22 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
      */
     public function oidcEnv(?string $instance = null): ?array
     {
+        // Both names are instance-bound, and ClusterTool::wiringSchema()
+        // overwrites them from ToolInstance for a CANONICAL tool. They are
+        // still written out here because sso:wire probes `deployment` to
+        // decide whether the tool is installed at all — a bare dispatch key
+        // made NetBird invisible to the picker and made --tool=vpn report
+        // "not installed" against five running pods. And sso:unwire deletes
+        // exactly $schema['secret'], so a name that disagrees with the one
+        // wire wrote leaves the marker behind and tool:list keeps reporting
+        // the tool as SSO-wired after unwiring it.
+        $names = ($instance === null || $instance === '')
+            ? null
+            : ToolInstance::forInstance(ClusterTool::VPN, $instance);
+
         return [
-            // The REAL deployment name, instance and all. sso:wire probes this
-            // to decide whether the tool is installed, so a bare dispatch key
-            // here made NetBird invisible to the picker and made --tool=vpn
-            // report "not installed" against five running pods. Dispatch happens on the
-            // tool enum instead, which cannot drift from the deployment name.
-            'deployment' => ($instance === null || $instance === '') ? 'vpn-management' : "vpn-management-{$instance}",
-            // Instance-suffixed like 'deployment' above. sso:wire writes this
-            // name and sso:unwire deletes $schema['secret'] — an unsuffixed one
-            // here meant wire wrote vpn-management-oidc-{instance} while unwire
-            // removed vpn-management-oidc, leaving the marker behind so tool:list
-            // still reported the tool as SSO-wired after unwiring it.
-            'secret' => ($instance === null || $instance === '') ? 'vpn-management-oidc' : "vpn-management-oidc-{$instance}",
+            'deployment' => $names?->deployment() ?? 'netbird',
+            'secret' => $names?->secret(SecretKind::OIDC) ?? 'netbird-oidc',
             'vars' => [],
             'redirect_path' => '/oauth2/callback',
         ];

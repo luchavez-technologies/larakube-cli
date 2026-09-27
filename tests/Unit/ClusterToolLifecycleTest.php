@@ -126,9 +126,8 @@ test('command name helpers spell the canonical tool:action shape', function (): 
 
 test('deploymentName() matches the actual Deployment name each tool\'s own manifest creates', function (): void {
     // Regression guard for three real drifts found live 2026-07-31: SSO,
-    // ERRORS, and VPN's deploymentName() didn't match reality (returned
-    // 'zitadel'/'errors-glitchtip'/'netbird' — none of which any manifest
-    // ever creates). Silent for years because most callers resolve presence
+    // ERRORS, and VPN's deploymentName() didn't match the name their
+    // manifests create. Silent for years because most callers resolve presence
     // via SharedClusterService::presenceProbe() instead, a parallel path
     // that already had the correct names — until secrets:wire (2026-07-31)
     // called deploymentName() directly and it silently reported these tools
@@ -137,7 +136,7 @@ test('deploymentName() matches the actual Deployment name each tool\'s own manif
     // not just re-asserting whatever the enum currently says.
     expect(ClusterTool::SSO->deploymentName())->toBe('sso-zitadel');
     expect(ClusterTool::ERRORS->deploymentName())->toBe('glitchtip-web')
-        ->and(ClusterTool::VPN->deploymentName())->toBe('vpn-management');
+        ->and(ClusterTool::VPN->deploymentName())->toBe('netbird');
 });
 
 test('tasks (Planka) does not claim OIDC wiring — it was removed from the OSS edition', function (): void {
@@ -304,7 +303,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
         'mail' => ['stalwart-inst', 'stalwart-inst'],
         'sign' => [null, 'documenso-secrets-inst'],
         'data' => [null, 'directus-secrets-inst'],
-        'vpn' => ['vpn-management-secrets-inst', 'vpn-management-store-inst'],
+        'vpn' => ['netbird-secrets-inst', 'netbird-store-inst'],
     ]);
 });
 

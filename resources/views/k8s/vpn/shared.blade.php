@@ -1,31 +1,67 @@
-@php($sfx = ($instance ?? '') !== '' ? '-'.$instance : '')
+@php
+    // Every name comes from ToolInstance (ADR 0021). The stem is `netbird`,
+    // the product, not NetBird's own compose service names (management,
+    // signal, relay) — those are role words, and with the category dropped
+    // they would be the only names in the fleet that do not say what the
+    // thing is.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::VPN->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::VPN, $instance);
+
+    $mgmt = $names->deployment();
+    $dashboard = $names->deployment('dashboard');
+    $signal = $names->deployment('signal');
+    $relay = $names->deployment('relay');
+
+    $mgmtPvc = $names->volume('storage');
+    $storeSecret = $names->secret(\App\Enums\SecretKind::STORE);
+    $configSecret = $names->secret(\App\Enums\SecretKind::CONFIG);
+
+    $labels = $names->labels();
+    $dashboardLabels = $names->labels('dashboard');
+    $signalLabels = $names->labels('signal');
+    $relayLabels = $names->labels('relay');
+@endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: vpn-management-storage{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $mgmtPvc }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('vpn-management-storage'.$sfx, '2Gi', false) }}
+      storage: {{ $volumeSize($mgmtPvc, '2Gi', false) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vpn-management{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $mgmt }}
+  namespace: {{ $names->namespace() }}
+  labels:
+    app: {{ $mgmt }}
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: vpn-management{{ $sfx }}
+      app: {{ $mgmt }}
   template:
     metadata:
       labels:
-        app: vpn-management{{ $sfx }}
+        app: {{ $mgmt }}
+@foreach($labels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: management
@@ -70,7 +106,7 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: vpn-management-store{{ $sfx }}
+                  name: {{ $storeSecret }}
                   key: db-password
             - name: NETBIRD_STORE_ENGINE
               value: "postgres"
@@ -99,25 +135,33 @@ spec:
       volumes:
         - name: storage
           persistentVolumeClaim:
-            claimName: vpn-management-storage{{ $sfx }}
+            claimName: {{ $mgmtPvc }}
         - name: config
           secret:
-            secretName: vpn-management-config{{ $sfx }}
+            secretName: {{ $configSecret }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vpn-dashboard{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $dashboard }}
+  namespace: {{ $names->namespace() }}
+  labels:
+    app: {{ $dashboard }}
+@foreach($dashboardLabels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vpn-dashboard{{ $sfx }}
+      app: {{ $dashboard }}
   template:
     metadata:
       labels:
-        app: vpn-dashboard{{ $sfx }}
+        app: {{ $dashboard }}
+@foreach($dashboardLabels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: dashboard
@@ -182,11 +226,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vpn-dashboard{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $dashboard }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($dashboardLabels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: vpn-dashboard{{ $sfx }}
+    app: {{ $dashboard }}
   ports:
     - protocol: TCP
       port: 80
@@ -196,13 +244,17 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vpn-management{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $mgmt }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
-    app: vpn-management{{ $sfx }}
+    app: {{ $mgmt }}
   ports:
     - protocol: TCP
       port: 80
@@ -212,17 +264,25 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vpn-signal{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $signal }}
+  namespace: {{ $names->namespace() }}
+  labels:
+    app: {{ $signal }}
+@foreach($signalLabels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vpn-signal{{ $sfx }}
+      app: {{ $signal }}
   template:
     metadata:
       labels:
-        app: vpn-signal{{ $sfx }}
+        app: {{ $signal }}
+@foreach($signalLabels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: signal
@@ -239,13 +299,17 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vpn-signal{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $signal }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($signalLabels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
-    app: vpn-signal{{ $sfx }}
+    app: {{ $signal }}
   ports:
     - protocol: TCP
       port: 80
@@ -255,17 +319,25 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vpn-relay{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $relay }}
+  namespace: {{ $names->namespace() }}
+  labels:
+    app: {{ $relay }}
+@foreach($relayLabels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vpn-relay{{ $sfx }}
+      app: {{ $relay }}
   template:
     metadata:
       labels:
-        app: vpn-relay{{ $sfx }}
+        app: {{ $relay }}
+@foreach($relayLabels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: relay
@@ -280,7 +352,7 @@ spec:
             - name: NB_AUTH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: vpn-management-config{{ $sfx }}
+                  name: {{ $configSecret }}
                   key: relay-secret
           ports:
             - containerPort: 33080
@@ -294,11 +366,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vpn-relay{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $relay }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($relayLabels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   selector:
-    app: vpn-relay{{ $sfx }}
+    app: {{ $relay }}
   ports:
     - protocol: TCP
       port: 33080

@@ -1337,7 +1337,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::MONITOR, self::GIT, self::NOTES, self::FLOW, self::SIGN, self::DATA, self::LINK, self::ANALYTICS, self::SHEETS, self::TASKS, self::DASHBOARD,
-            self::MEET, self::WEBMAIL, self::DRIVE => ResourceNaming::CANONICAL,
+            self::MEET, self::WEBMAIL, self::DRIVE, self::VPN => ResourceNaming::CANONICAL,
             self::CHAT, self::PASSWORDS, self::SSO, self::RECORD,
             self::RESUME, self::SUPPORT => ResourceNaming::AS_SHIPPED,
             default => ResourceNaming::INSTANCE_SUFFIXED,
@@ -1366,7 +1366,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             }
 
             $ref = ['namespace' => $this->namespace()] + $ref;
-            $ref['secret'] = $this->instanceSecretName($ref['secret'], $instance);
+            $ref['secret'] = $this->instanceSecretName($ref['secret'], $instance, $ref['kind'] ?? SecretKind::CREDENTIALS);
+            unset($ref['kind']);
 
             return $ref;
         }
@@ -1431,14 +1432,14 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /** The Secret this tool's manifests write, in whichever generation it is on. */
-    public function instanceSecretName(string $shippedName, ?string $instance): string
+    public function instanceSecretName(string $shippedName, ?string $instance, SecretKind $kind = SecretKind::CREDENTIALS): string
     {
         if ($instance === null || $instance === '') {
             return $shippedName;
         }
 
         return match ($this->resourceNaming()) {
-            ResourceNaming::CANONICAL => ToolInstance::forInstance($this, $instance)->secret(),
+            ResourceNaming::CANONICAL => ToolInstance::forInstance($this, $instance)->secret($kind),
             ResourceNaming::INSTANCE_SUFFIXED => "{$shippedName}-{$instance}",
             ResourceNaming::AS_SHIPPED => $shippedName,
         };

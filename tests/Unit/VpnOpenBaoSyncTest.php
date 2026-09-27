@@ -14,7 +14,7 @@ test('the PAT is readable from OpenBao under an instance-scoped KV key', functio
     // keyMap, not keys: the CLI reads `pat` from the Secret, and `production/pat`
     // as a KV name would collide with every other tool in the same store.
     expect($config['keyMap'])->toBe(['VPN_VPN_LUCHTECH_DEV_PAT' => 'pat'])
-        ->and($config['secret'])->toBe('vpn-management-secrets-vpn-luchtech-dev');
+        ->and($config['secret'])->toBe('netbird-secrets-vpn-luchtech-dev');
 
     // Two instances must not read the same KV entry.
     $other = $vpn->openbaoSyncConfig($vpn->instanceSlugFromHost('vpn.other.example'));

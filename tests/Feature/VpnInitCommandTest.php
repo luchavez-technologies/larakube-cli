@@ -59,20 +59,20 @@ test('vpn:init deploys netbird vpn to larakube-vpn', function (): void {
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
         // Already bootstrapped — vpn:init should skip auth/config setup entirely, no Http calls made.
-        '*get secret vpn-management-secrets*' => Process::result(output: 'vpn-management-secrets', exitCode: 0),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*get secret netbird-secrets*' => Process::result(output: 'netbird-secrets', exitCode: 0),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
@@ -116,20 +116,20 @@ test('vpn:init targets the CHOSEN environment\'s own saved context, never the am
             '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
             '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
             '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-            '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-            '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-            '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+            '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+            '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+            '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
             '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
             '*apply -f *' => Process::result(output: 'applied'),
-            '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-            '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-            '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-            '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
+            '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+            '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+            '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+            '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
             // Not SSO-wired by default: the dashboard is skipped, mirroring a cluster that has not run sso:wire yet.
-            '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-            '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-            '*get secret vpn-management-secrets*' => Process::result(output: 'vpn-management-secrets', exitCode: 0),
-            '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.example.com'), exitCode: 0),
+            '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+            '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+            '*get secret netbird-secrets*' => Process::result(output: 'netbird-secrets', exitCode: 0),
+            '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.example.com'), exitCode: 0),
             '*larakube-tools-registry*' => Process::result(output: ''),
             '*create namespace larakube-shared*' => Process::result(output: 'created'),
         ]);
@@ -156,9 +156,9 @@ test('vpn:remove removes netbird vpn namespace when --remove is passed', functio
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         vpnInitKubectl().' delete namespace larakube-vpn*' => Process::result(output: 'deleted'),
     ]);
 
@@ -180,20 +180,20 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-secrets*' => Process::result(output: 'secret/vpn-management-secrets created'),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-secrets*' => Process::result(output: 'secret/netbird-secrets created'),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
     ]);
     Saloon::fake([
         SetupOwnerRequest::class => MockResponse::make(['personal_access_token' => 'nbp_owner_token']),
@@ -215,7 +215,7 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
     // anything is written, so a token that cannot mint keys never gets stored.
     Saloon::assertSent(fn ($request, $response) => $request instanceof CreateSetupKeyRequest
         && $response->getPendingRequest()->headers()->get('Authorization') === 'Token nbp_service_token');
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-secrets')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'netbird-secrets')
         && (appliedSecret($process)['data']['pat'] ?? null) === 'nbp_service_token');
 
     // The gateway is the routing peer every Network will point at, so it has to
@@ -227,7 +227,7 @@ test('vpn:init bootstraps NetBird auth non-interactively on first run', function
     // password is the only credential that opens it. Discarding it (as this
     // did until 2026-08-28) left the dashboard unreachable, recoverable only
     // via `netbird-mgmt admin user change-password` inside the pod.
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-secrets')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'netbird-secrets')
         && isset(appliedSecret($process)['data']['admin-email'], appliedSecret($process)['data']['admin-password']));
 });
 
@@ -243,19 +243,19 @@ test('vpn:init warns but does not fail when NetBird auth bootstrap fails', funct
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: '', exitCode: 1),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
     ]);
     Saloon::fake([
         SetupOwnerRequest::class => MockResponse::make(status: 500),
@@ -294,9 +294,9 @@ test('vpn:remove also targets the CHOSEN environment\'s own saved context', func
             '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
             '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
             '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-            '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-            '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-            '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+            '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+            '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+            '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
             "{$kubectl} delete namespace larakube-vpn*" => Process::result(output: 'deleted'),
             // The shared base also unregisters the tool from the cluster
             // registry, which the old --remove path skipped entirely.
@@ -306,7 +306,7 @@ test('vpn:remove also targets the CHOSEN environment\'s own saved context', func
             '*larakube-tools-registry*' => Process::result(output: ''),
             '*apply -f -*' => Process::result(output: 'configured'),
             '*delete externalsecret,vaultdynamicsecret*' => Process::result(output: ''),
-            '*get secret vpn-management-sso*' => Process::result(output: ''),
+            '*get secret netbird-sso*' => Process::result(output: ''),
         ]);
         Process::preventStrayProcesses();
 
@@ -350,21 +350,21 @@ test('vpn:init re-renders management.json from the PRESERVED relay secret + encr
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout restart deployment/vpn-management*' => Process::result(output: 'restarted'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: 'vpn-management-secrets', exitCode: 0),
-        '*get secret vpn-management-config*' => Process::result(output: base64_encode($staleConfig), exitCode: 0),
-        '*create secret generic*' => Process::result(output: 'secret/vpn-management-config configured'),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout restart deployment/netbird*' => Process::result(output: 'restarted'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: 'netbird-secrets', exitCode: 0),
+        '*get secret netbird-config*' => Process::result(output: base64_encode($staleConfig), exitCode: 0),
+        '*create secret generic*' => Process::result(output: 'secret/netbird-config configured'),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
@@ -374,9 +374,9 @@ test('vpn:init re-renders management.json from the PRESERVED relay secret + encr
         ->expectsOutputToContain('Restarting NetBird Management to pick up config changes...');
 
     // The real secrets survive unchanged into the re-rendered config.
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-config')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'netbird-config')
         && (appliedSecret($process)['data']['relay-secret'] ?? null) === 'preserved-relay-secret');
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vpn-management'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/netbird'));
 });
 
 test('vpn:init does NOT restart management when the re-rendered config is byte-identical to what is already deployed', function (): void {
@@ -392,19 +392,19 @@ test('vpn:init does NOT restart management when the re-rendered config is byte-i
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: 'vpn-management-secrets', exitCode: 0),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture($host, 'preserved-relay-secret', 'preserved-encryption-key'), exitCode: 0),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: 'netbird-secrets', exitCode: 0),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture($host, 'preserved-relay-secret', 'preserved-encryption-key'), exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
@@ -413,8 +413,8 @@ test('vpn:init does NOT restart management when the re-rendered config is byte-i
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Restarting NetBird Management to pick up config changes...');
 
-    Process::assertNotRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-config'));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vpn-management'));
+    Process::assertNotRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'netbird-config'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/netbird'));
 });
 
 test('vpn:init generates the relay secret + management.json on first run', function (): void {
@@ -429,25 +429,25 @@ test('vpn:init generates the relay secret + management.json on first run', funct
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: 'vpn-management-secrets', exitCode: 0),
-        '*get secret vpn-management-config*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic*' => Process::result(output: 'secret/vpn-management-config created'),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: 'netbird-secrets', exitCode: 0),
+        '*get secret netbird-config*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic*' => Process::result(output: 'secret/netbird-config created'),
     ]);
 
     $this->artisan('vpn:init local')->assertExitCode(0);
 
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'vpn-management-config')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'netbird-config')
         && isset(appliedSecret($process)['data']['relay-secret'], appliedSecret($process)['data']['management.json']));
 });
 
@@ -463,7 +463,7 @@ test('the management manifest always carries a single-account domain we chose', 
         'ssoDomain' => 'example.com',
         'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
-        'storeDb' => 'vpn_management',
+        'storeDb' => 'netbird',
         'instance' => '',
     ])->render();
 
@@ -495,20 +495,20 @@ test('vpn:init deploys the dashboard and waits for it', function (): void {
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        // SSO wired: vpn-management-oidc exists, so the dashboard becomes deployable.
-        '*get secret vpn-management-oidc*' => Process::result(output: 'Y2xpZW50LWlk', exitCode: 0),
-        '*get secret vpn-management-secrets*' => Process::result(output: 'vpn-management-secrets', exitCode: 0),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        // SSO wired: netbird-oidc exists, so the dashboard becomes deployable.
+        '*get secret netbird-oidc*' => Process::result(output: 'Y2xpZW50LWlk', exitCode: 0),
+        '*get secret netbird-secrets*' => Process::result(output: 'netbird-secrets', exitCode: 0),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
@@ -532,19 +532,19 @@ test('vpn:init warns when single-account mode did not come up', function (): voi
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode disabled, accounts number 4'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode disabled, accounts number 4'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: 'vpn-management-secrets', exitCode: 0),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: 'netbird-secrets', exitCode: 0),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
@@ -569,20 +569,20 @@ test('vpn:init reuses an existing larakube-cli service user rather than creating
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-secrets*' => Process::result(output: 'secret/vpn-management-secrets created'),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-secrets*' => Process::result(output: 'secret/netbird-secrets created'),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
     ]);
     Saloon::fake([
         SetupOwnerRequest::class => MockResponse::make(['personal_access_token' => 'nbp_owner_token']),
@@ -620,20 +620,20 @@ test('vpn:init falls back to the owner token when the service user cannot be cre
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         '*create namespace larakube-vpn*' => Process::result(output: 'namespace/larakube-vpn created'),
         '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status deploy/vpn-management*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-signal*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-relay*' => Process::result(output: 'rollout success'),
-        '*rollout status deploy/vpn-dashboard*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-secrets*' => Process::result(output: 'secret/vpn-management-secrets created'),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*rollout status deploy/netbird*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
+        '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-secrets*' => Process::result(output: 'secret/netbird-secrets created'),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
     ]);
     Saloon::fake([
         SetupOwnerRequest::class => MockResponse::make(['personal_access_token' => 'nbp_owner_token']),
@@ -662,17 +662,17 @@ test('the management manifest puts the store on Commons Postgres, engine include
         'ssoDomain' => 'example.com',
         'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
-        'storeDb' => 'vpn_management',
+        'storeDb' => 'netbird',
     ])->render();
 
     expect($manifest)
         ->toContain('name: NETBIRD_STORE_ENGINE')
         ->toContain('value: "postgres"')
-        ->toContain('host=postgres.larakube-plex.svc.cluster.local user=vpn_management password=$(DB_PASSWORD) dbname=vpn_management port=5432')
+        ->toContain('host=postgres.larakube-plex.svc.cluster.local user=netbird password=$(DB_PASSWORD) dbname=netbird port=5432')
         // ADR 0018: the password reaches the DSN through kubelet's $(VAR)
         // expansion, never as a literal on the Deployment.
         ->toContain('secretKeyRef')
-        ->toContain('name: vpn-management-store');
+        ->toContain('name: netbird-store');
 });
 
 test('--no-plex leaves NetBird on its own SQLite store', function (): void {
@@ -682,13 +682,13 @@ test('--no-plex leaves NetBird on its own SQLite store', function (): void {
         'ssoDomain' => 'example.com',
         'noPlex' => true,
         'plexNamespace' => 'larakube-plex',
-        'storeDb' => 'vpn_management',
+        'storeDb' => 'netbird',
     ])->render();
 
     expect($manifest)
         ->not->toContain('NETBIRD_STORE_ENGINE')
         ->not->toContain('NB_STORE_ENGINE_POSTGRES_DSN')
-        ->not->toContain('vpn-management-store');
+        ->not->toContain('netbird-store');
 });
 
 test('vpn:init defers to the OpenBao-owned password when the tenant is already wired', function (): void {
@@ -701,7 +701,7 @@ test('vpn:init defers to the OpenBao-owned password when the tenant is already w
         '*get namespace larakube-vpn*' => Process::result(output: ''),
         '*get pvc -n larakube-vpn*' => Process::result(output: ''),
         '*get storageclass*' => Process::result(output: ''),
-        '*logs deploy/vpn-management*' => Process::result(output: 'single account mode enabled, accounts number 1'),
+        '*logs deploy/netbird*' => Process::result(output: 'single account mode enabled, accounts number 1'),
         // Must precede the presence check below — readOpenBaoBootstrapSecret()
         // base64-decodes this, and an unmatched catch-all yields a binary token
         // that Guzzle rejects as an invalid header value.
@@ -716,15 +716,15 @@ test('vpn:init defers to the OpenBao-owned password when the tenant is already w
         '*configmap plex-registry*' => Process::result(output: 'configmap/plex-registry configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'secret/vpn-management-store created'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'secret/netbird-store created'),
         '*create namespace larakube-vpn*' => Process::result(output: 'created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout status deploy/vpn-*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: 'vpn-management-secrets', exitCode: 0),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: 'netbird-secrets', exitCode: 0),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
         '*port-forward*' => Process::result(),
@@ -742,18 +742,18 @@ test('VpnTool satisfies the secrets:wire rotation contract', function (): void {
     $vpn = ClusterTool::VPN;
 
     expect($vpn->supportsDatabasePasswordRotation())->toBeTrue()
-        ->and($vpn->commonsDatabases())->toBe(['vpn_management'])
-        ->and($vpn->deploymentName())->toBe('vpn-management')
+        ->and($vpn->commonsDatabases())->toBe(['netbird'])
+        ->and($vpn->deploymentName())->toBe('netbird')
         ->and($vpn->dbSecretRef())->toBe([
             'namespace' => 'larakube-vpn',
-            'secret' => 'vpn-management-store',
+            'secret' => 'netbird-store',
             'key' => 'db-password',
         ]);
 
-    // NOT vpn-management-secrets: secrets:wire's ExternalSecret owns every key in the
+    // NOT netbird-secrets: secrets:wire's ExternalSecret owns every key in the
     // Secret it targets, so sharing would let a rotation clobber the PAT,
     // setup key and dashboard login stored alongside.
-    expect($vpn->dbSecretRef()['secret'])->not->toBe('vpn-management-secrets');
+    expect($vpn->dbSecretRef()['secret'])->not->toBe('netbird-secrets');
 });
 
 test('vpn:remove still unregisters the tool when the namespace is slow to drain', function (): void {
@@ -907,16 +907,16 @@ test('the bootstrap owner gets an address inside the SSO domain, not the operato
         '*configmap plex-registry*' => Process::result(output: 'configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'created'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'created'),
         '*create namespace larakube-vpn*' => Process::result(output: 'created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout status deploy/vpn-*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-secrets*' => Process::result(output: 'created'),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-secrets*' => Process::result(output: 'created'),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
@@ -954,15 +954,15 @@ test('vpn:init explains a 412 from /api/setup instead of blaming the dashboard',
         '*configmap plex-registry*' => Process::result(output: 'configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'created'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'created'),
         '*create namespace larakube-vpn*' => Process::result(output: 'created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout status deploy/vpn-*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*get secret vpn-management-secrets*' => Process::result(output: '', exitCode: 1),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*get secret netbird-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
@@ -976,8 +976,8 @@ test('vpn:init explains a 412 from /api/setup instead of blaming the dashboard',
         ->expectsOutputToContain('--purge')
         ->expectsOutputToContain('vpn:setup-key');
 
-    // Nothing was written: a half-built vpn-management-secrets would be worse than none.
-    Process::assertDidntRun(fn ($p) => str_starts_with(appliedSecret($p)['name'] ?? '', 'vpn-management-secrets'));
+    // Nothing was written: a half-built netbird-secrets would be worse than none.
+    Process::assertDidntRun(fn ($p) => str_starts_with(appliedSecret($p)['name'] ?? '', 'netbird-secrets'));
 });
 
 test('vpn:init allocates exactly the database vpn:remove --purge will drop', function (): void {
@@ -991,7 +991,7 @@ test('vpn:init allocates exactly the database vpn:remove --purge will drop', fun
     // What vpn:remove --purge drops, via dropCommonsTenants().
     $purgeTarget = $vpn->commonsDatabases($instance)[0];
 
-    expect($purgeTarget)->toBe('vpn_management_vpn_luchtech_dev');
+    expect($purgeTarget)->toBe('netbird_vpn_luchtech_dev');
 
     // And what vpn:init renders into the DSN must be the same string.
     $manifest = view('k8s.vpn.shared', [
@@ -1022,16 +1022,16 @@ test('vpn:init seeds the PAT into OpenBao so its ExternalSecret is green from th
         '*configmap plex-registry*' => Process::result(output: 'configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'created'),
-        '*get secret vpn-management-secrets*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-secrets*' => Process::result(output: 'created'),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'created'),
+        '*get secret netbird-secrets*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-secrets*' => Process::result(output: 'created'),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
         '*create namespace larakube-vpn*' => Process::result(output: 'created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout status deploy/vpn-*' => Process::result(output: 'rollout success'),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
         '*port-forward*' => Process::result(),
@@ -1077,19 +1077,19 @@ test('vpn:init recreates the service user and groups after the account was repla
         '*configmap plex-registry*' => Process::result(output: 'configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'created'),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'created'),
         // Already bootstrapped, so bootstrapVpnAuth() returns immediately —
         // and the PAT belongs to a HUMAN, the state right after vpn:setup-key
         // adopts one minted by hand in the dashboard.
-        '*get secret vpn-management-secrets*' => Process::result(output: base64_encode('nbp_human')),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
+        '*get secret netbird-secrets*' => Process::result(output: base64_encode('nbp_human')),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
         '*create namespace larakube-vpn*' => Process::result(output: 'created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout status deploy/vpn-*' => Process::result(output: 'rollout success'),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
-        '*patch secret vpn-management-secrets*' => Process::result(output: 'patched'),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
+        '*patch secret netbird-secrets*' => Process::result(output: 'patched'),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
         '*' => Process::result(output: ''),
@@ -1131,16 +1131,16 @@ test('vpn:init registers the tool even when the gateway does not settle', functi
         '*configmap plex-registry*' => Process::result(output: 'configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'created'),
-        '*get secret vpn-management-secrets*' => Process::result(output: base64_encode('nbp_existing')),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'created'),
+        '*get secret netbird-secrets*' => Process::result(output: base64_encode('nbp_existing')),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
         '*create namespace larakube-vpn*' => Process::result(output: 'created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout status deploy/vpn-*' => Process::result(output: 'rollout success'),
         // The gateway never settles — the exact failure that hid the tenant.
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'timed out', exitCode: 1),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'timed out', exitCode: 1),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
         '*' => Process::result(output: ''),
@@ -1174,16 +1174,16 @@ test('vpn:init keeps the owner token, which is the only one that can retire the 
         '*configmap plex-registry*' => Process::result(output: 'configured'),
         '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]])),
         '*exec*postgres*' => Process::result(output: 'CREATE ROLE'),
-        '*get secret vpn-management-store*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-store*' => Process::result(output: 'created'),
-        '*get secret vpn-management-secrets*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic vpn-management-secrets*' => Process::result(output: 'created'),
-        '*get secret vpn-management-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
-        '*get secret vpn-management-oidc*' => Process::result(output: '', exitCode: 1),
+        '*get secret netbird-store*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-store*' => Process::result(output: 'created'),
+        '*get secret netbird-secrets*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic netbird-secrets*' => Process::result(output: 'created'),
+        '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
+        '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
         '*create namespace larakube-vpn*' => Process::result(output: 'created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout status deploy/vpn-*' => Process::result(output: 'rollout success'),
-        '*rollout status deployment/vpn-client*' => Process::result(output: 'rollout success'),
+        '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
         '*' => Process::result(output: ''),
@@ -1203,7 +1203,7 @@ test('vpn:init keeps the owner token, which is the only one that can retire the 
 
     // Routine work uses the service user's token; the owner's is kept beside it
     // purely for the owner-only operations.
-    Process::assertRan(fn ($p) => str_starts_with(appliedSecret($p)['name'] ?? '', 'vpn-management-secrets')
+    Process::assertRan(fn ($p) => str_starts_with(appliedSecret($p)['name'] ?? '', 'netbird-secrets')
         && (appliedSecret($p)['data']['pat'] ?? null) === 'nbp_service'
         && (appliedSecret($p)['data']['owner-pat'] ?? null) === 'nbp_owner');
 });

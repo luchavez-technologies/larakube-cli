@@ -1,10 +1,20 @@
-@php($sfx = ($instance ?? '') !== '' ? '-'.$instance : '')
+@php
+    // Names from ToolInstance (ADR 0021). The Corefile belongs to the gateway
+    // peer's resolver sidecar, so it is named against the client component.
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::VPN, (string) $instance);
+    $resolverConfig = $names->configMap('resolver', 'client');
+    $labels = $names->labels('client');
+@endphp
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: vpn-resolver-config{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $resolverConfig }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 data:
   Corefile: |
     {{-- Port 5353, NOT 53. The NetBird client in this same pod already binds

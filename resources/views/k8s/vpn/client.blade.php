@@ -1,33 +1,58 @@
-@php($sfx = ($instance ?? '') !== '' ? '-'.$instance : '')
+@php
+    // Names from ToolInstance (ADR 0021), same derivation as shared.blade.php.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::VPN->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::VPN, $instance);
+
+    $client = $names->deployment('client');
+    $clientPvc = $names->volume('storage', 'client');
+    $resolverConfig = $names->configMap('resolver', 'client');
+    $mgmt = $names->deployment();
+    $credentials = $names->secret();
+    $clientLabels = $names->labels('client');
+@endphp
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: vpn-client-storage{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $clientPvc }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($clientLabels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ $volumeSize('vpn-client-storage'.$sfx, '128Mi', false) }}
+      storage: {{ $volumeSize($clientPvc, '128Mi', false) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vpn-client{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $client }}
+  namespace: {{ $names->namespace() }}
+  labels:
+    app: {{ $client }}
+@foreach($clientLabels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: vpn-client{{ $sfx }}
+      app: {{ $client }}
   template:
     metadata:
       labels:
-        app: vpn-client{{ $sfx }}
+        app: {{ $client }}
+@foreach($clientLabels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       containers:
         - name: client
@@ -37,11 +62,11 @@ spec:
               add: ["NET_ADMIN"]
           env:
             - name: NB_MANAGEMENT_URL
-              value: "http://vpn-management{{ $sfx }}:80"
+              value: "http://{{ $mgmt }}:80"
             - name: NB_SETUP_KEY
               valueFrom:
                 secretKeyRef:
-                  name: vpn-management-secrets{{ $sfx }}
+                  name: {{ $credentials }}
                   key: setup-key
           volumeMounts:
             {{-- /var/lib/netbird, NOT /etc/netbird. 0.77 keeps the peer's
@@ -91,7 +116,7 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: vpn-client-storage{{ $sfx }}
+            claimName: {{ $clientPvc }}
         - name: resolver-config
           configMap:
-            name: vpn-resolver-config{{ $sfx }}
+            name: {{ $resolverConfig }}

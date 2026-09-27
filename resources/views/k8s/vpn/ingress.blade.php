@@ -1,9 +1,27 @@
-@php($sfx = ($instance ?? '') !== '' ? '-'.$instance : '')
+@php
+    // Names from ToolInstance (ADR 0021). Rendered standalone by
+    // applyVpnIngress() and as an @include from shared.blade.php, so derive
+    // the instance the same way either caller reaches here.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::VPN->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::VPN, $instance);
+
+    $mgmt = $names->deployment();
+    $dashboard = $names->deployment('dashboard');
+    $signal = $names->deployment('signal');
+    $relay = $names->deployment('relay');
+    $labels = $names->labels();
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: vpn-management{{ $sfx }}
-  namespace: larakube-vpn
+  name: {{ $mgmt }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -29,21 +47,21 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: vpn-signal{{ $sfx }}
+                name: {{ $signal }}
                 port:
                   number: 80
           - path: /relay
             pathType: Prefix
             backend:
               service:
-                name: vpn-relay{{ $sfx }}
+                name: {{ $relay }}
                 port:
                   number: 33080
           - path: /ws-proxy/
             pathType: Prefix
             backend:
               service:
-                name: vpn-relay{{ $sfx }}
+                name: {{ $relay }}
                 port:
                   number: 33080
 {{-- `/` belongs to the dashboard, so every path the management service owns
@@ -58,35 +76,35 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: vpn-management{{ $sfx }}
+                name: {{ $mgmt }}
                 port:
                   number: 80
           - path: /management.ProxyService/
             pathType: Prefix
             backend:
               service:
-                name: vpn-management{{ $sfx }}
+                name: {{ $mgmt }}
                 port:
                   number: 80
           - path: /api
             pathType: Prefix
             backend:
               service:
-                name: vpn-management{{ $sfx }}
+                name: {{ $mgmt }}
                 port:
                   number: 80
           - path: /oauth2
             pathType: Prefix
             backend:
               service:
-                name: vpn-management{{ $sfx }}
+                name: {{ $mgmt }}
                 port:
                   number: 80
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: vpn-dashboard{{ $sfx }}
+                name: {{ $dashboard }}
                 port:
                   number: 80
   tls:

@@ -5,6 +5,7 @@ namespace App\Commands\Sso;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Enums\SecretsBackend;
 use App\Http\Integrations\Zitadel\Requests\GetProjectAppRequest;
 use App\Http\Integrations\Zitadel\ZitadelConnector;
@@ -1432,7 +1433,7 @@ class SsoWireCommand extends Command
      */
     protected function wireNetbirdOidc(string $kubectl, string $ns, string $toolHost, string $ssoHost, string $clientId, string $clientSecret): bool
     {
-        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnName('vpn-management-secrets', $kubectl), 'pat');
+        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecret($kubectl), 'pat');
         if ($netbirdPat === null) {
             $this->laraKubeError('NetBird admin token not found — re-run `larakube vpn:init` to bootstrap auth.');
 
@@ -1467,7 +1468,7 @@ class SsoWireCommand extends Command
             // IdP with its own static `netbird-dashboard` OIDC client, and Dex
             // federates to the Zitadel client registered above. Pointing the
             // dashboard straight at Zitadel is the retired standalone topology.
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->vpnName('vpn-management-oidc', $kubectl), ['client-id' => $clientId, 'client-secret' => $clientSecret]);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->vpnSecret($kubectl, SecretKind::OIDC), ['client-id' => $clientId, 'client-secret' => $clientSecret]);
 
             // Per ADR 0018 the values above reach the Deployment through
             // valueFrom, so the running pod keeps its old env until restarted.
@@ -1475,7 +1476,7 @@ class SsoWireCommand extends Command
             // dashboard — on a first wire it does not exist yet, and the next
             // vpn:init creates it with these values already in place.
             $this->withSpin('Restarting the NetBird dashboard...', fn () => Process::run(
-                "{$kubectl} rollout restart deployment/".$this->vpnName('vpn-dashboard', $kubectl)." -n {$ns} >/dev/null 2>&1",
+                "{$kubectl} rollout restart deployment/".$this->vpnDeployment($kubectl, 'dashboard')." -n {$ns} >/dev/null 2>&1",
             ));
 
             $this->retireDomainlessNetbirdAccount($kubectl, $ns, $toolHost, $netbirdPat);
@@ -1541,7 +1542,7 @@ class SsoWireCommand extends Command
         // NetBird permits account deletion to the OWNER only — an admin service
         // user gets 403, and cannot even mint a token for the owner to borrow.
         // vpn:init keeps the owner's token for exactly this.
-        $ownerPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnName('vpn-management-secrets', $kubectl), 'owner-pat') ?? $pat;
+        $ownerPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecret($kubectl), 'owner-pat') ?? $pat;
 
         if (! $this->deleteVpnAccount($toolHost, $ownerPat, $accountId)) {
             $this->laraKubeError('Could not delete the account — nothing was changed.');
@@ -1559,7 +1560,7 @@ class SsoWireCommand extends Command
         // creates. The domain itself is vpn:init's literal — nothing to write
         // here.
         $this->withSpin('Restarting NetBird Management...', function () use ($kubectl, $ns): void {
-            Process::run("{$kubectl} rollout restart deployment/".$this->vpnName('vpn-management', $kubectl)." -n {$ns}");
+            Process::run("{$kubectl} rollout restart deployment/".$this->vpnDeployment($kubectl)." -n {$ns}");
         });
 
         $this->laraKubeNewLine();

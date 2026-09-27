@@ -223,7 +223,9 @@ enum SharedClusterService: string
             self::GRAFANA => 'deployment -l larakube.io/tool=monitor -n larakube-shared',
             self::UPTIME_KUMA => 'deployment uptime-kuma -n larakube-shared',
             self::VAULT => 'deployment vaultwarden -n larakube-vault',
-            self::VPN => 'deployment vpn-management -n larakube-vpn',
+            // By label: NetBird's management Deployment is per-instance
+            // (netbird-{instance}), and a bare name matches nothing.
+            self::VPN => 'deployment -l larakube.io/tool=vpn -n larakube-vpn',
             self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
             self::SECRETS => 'deployment openbao-backend -n larakube-secrets',
             self::FORGEJO => 'deployment -l larakube.io/tool=git -n larakube-shared',

@@ -89,45 +89,46 @@ ALTER ROLE old_user RENAME TO new_user;
 
 ## 3b. VPN (NetBird) — added 2026-08-29
 
-VPN was never in this plan and is the last tool still using raw vendor names. It is also
-the cheapest to migrate: the whole stack is disposable (`vpn:remove --purge` + `vpn:init`
-rebuilds it), so no data-preservation phase applies — every peer simply re-enrols.
+VPN was never in this plan and was the last tool still using raw vendor names.
+
+It was first treated as disposable — `vpn:remove --purge` + `vpn:init` rebuilds the stack,
+every peer re-enrols. That is no longer the plan. The store holds the whole control plane
+(accounts, peers, groups, policies, setup keys), the management PVC holds the embedded
+IdP's user database, and the config Secret holds the key that store is encrypted with.
+Rebuilding means re-enrolling every device by hand and losing the dashboard login, so the
+migration preserves all three instead.
 
 ### The rule this exercise clarified
 
-**The database token is the same token as the Deployment that owns it.** Verified against
-the live cluster: `monitor-grafana-*` ↔ `monitor_grafana`, `link-kutt-*` ↔ `link_kutt`,
-`passwords-vaultwarden-*` ↔ `passwords_vaultwarden`. The middle token is the *component*,
-not the vendor — `chat-admin-*`, `chat-coturn-*`, `chat-mas-*`, `monitor-loki-*` are all
-`{category}-{component}-{instance}`.
+**The tenant token is the same token as the Deployment that owns it.** Verified against
+the live cluster: `grafana-*` ↔ `grafana_*`, `forgejo-*` ↔ `forgejo_*`, `outline-*` ↔
+`outline_*`. A tenant with no matching workload cannot be reasoned about or safely dropped.
 
-That is why NetBird's store is `vpn_management_{dbInstance}` and **not** `vpn_netbird_*`:
-nothing is ever deployed as `vpn-netbird-*`, so a `vpn_netbird` tenant would be the one
-name in the cluster with no workload to match it.
+### VPN target names — superseded 2026-09-20
 
-### VPN target names
+The table this section used to carry aimed at `vpn-management-{$instance}`, which the
+cluster reached and which ADR 0021's amendment then retired along with every other
+category. The stem is the product, so NetBird's components are `netbird-*`:
 
-| Layer | Current | Target |
-|---|---|---|
-| Deployment / Service | `netbird-management` | `vpn-management-{$instance}` |
-| | `netbird-signal` | `vpn-signal-{$instance}` |
-| | `netbird-relay` | `vpn-relay-{$instance}` |
-| | `netbird-dashboard` | `vpn-dashboard-{$instance}` |
-| | `netbird-client` | `vpn-client-{$instance}` |
-| Ingress | `netbird-management` | `vpn-management-{$instance}` |
-| PVC | `netbird-management-storage` | `vpn-management-storage-{$instance}` |
-| | `netbird-client-data` | `vpn-client-storage-{$instance}` |
-| Secrets | `vpn-secrets` | `vpn-management-secrets-{$instance}` |
-| | `vpn-store` | `vpn-management-store-{$instance}` |
-| | `netbird-oidc` | `vpn-management-oidc-{$instance}` |
-| | `netbird-relay-secret` | `vpn-management-config-{$instance}` |
-| Database & role | `vpn_netbird` | `vpn_management_{$dbInstance}` ✅ **done 2026-08-29** |
+| Layer | Target |
+|---|---|
+| Deployment / Service / Ingress | `netbird-{$instance}` |
+| | `netbird-signal-{$instance}` · `netbird-relay-{$instance}` · `netbird-dashboard-{$instance}` · `netbird-client-{$instance}` |
+| PVC | `netbird-storage-{$instance}` · `netbird-client-storage-{$instance}` |
+| ConfigMap | `netbird-client-resolver-{$instance}` |
+| Secrets | `netbird-secrets-` / `-store-` / `-config-` / `-oidc-{$instance}` |
+| Zitadel app Secret | `netbird-sso-{$instance}` *(in `larakube-sso`)* |
+| Database & role | `netbird_{$dbInstance}` |
+
+Code side done; the live migration is
+`plans/active/vpn-canonical-naming-live-migration.md`.
 
 ### Why the database half was done first, separately
 
 A tenant is created at `vpn:init` and is expensive to rename afterwards; the workload names
 can be changed at any time by re-initing. So `VpnTool::commonsDatabaseList()` was corrected
-to `['vpn_management']` immediately, ahead of the rest.
+to `['vpn_management']` immediately, ahead of the rest — the category-ful target of the
+time, which `canonicalDatabaseList()` has since superseded with `['netbird']`.
 
 ### The failure mode this whole item came from
 

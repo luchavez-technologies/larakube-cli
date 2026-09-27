@@ -244,7 +244,7 @@ class VpnSsoLoginCommand extends Command
 
                 // owner-pat too: this user owns the account, and NetBird reserves
                 // deleting an account to its owner.
-                Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->vpnName('vpn-management-secrets', $kubectl), ['pat' => $pat, 'owner-pat' => $pat]);
+                Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->vpnSecret($kubectl), ['pat' => $pat, 'owner-pat' => $pat]);
             } catch (Throwable) {
                 // Best-effort: the account exists either way, which is the point.
             }

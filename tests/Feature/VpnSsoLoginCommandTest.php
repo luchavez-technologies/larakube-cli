@@ -29,9 +29,9 @@ afterEach(function (): void {
 function vpnSsoLoginFakes(): array
 {
     return [
-        '*get deployment vpn-management*' => Process::result(output: 'vpn-management 1/1 1 1 3d'),
+        '*get deployment netbird*' => Process::result(output: 'netbird 1/1 1 1 3d'),
         '*larakube-tools-registry*' => Process::result(output: ''),
-        '*patch secret vpn-management-secrets*' => Process::result(output: 'patched'),
+        '*patch secret netbird-secrets*' => Process::result(output: 'patched'),
         '*' => Process::result(output: ''),
     ];
 }
@@ -64,7 +64,7 @@ test('vpn:sso-login creates a domained account and stores its token', function (
         && $response->getPendingRequest()->headers()->get('Authorization') === 'Bearer jwt-abc');
 
     // And the CLI is wired in without anyone visiting the dashboard.
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret netbird-secrets')
         && str_contains((string) $p->input, '"owner-pat"')
         && ! str_contains($p->command, 'owner-pat'));
 });

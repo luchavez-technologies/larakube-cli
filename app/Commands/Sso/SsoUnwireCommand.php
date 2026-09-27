@@ -388,7 +388,7 @@ class SsoUnwireCommand extends Command
      */
     protected function unwireNetbirdOidc(string $kubectl, string $ns, string $toolHost): void
     {
-        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnName('vpn-management-secrets', $kubectl), 'pat');
+        $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecret($kubectl), 'pat');
         if ($netbirdPat === null) {
             return;
         }

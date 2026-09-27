@@ -16,7 +16,14 @@ interface HasDbSecretRef
      * instance suffix on 'secret' (also applied by ClusterTool, unchanged
      * from today's post-match logic).
      *
-     * @return array{secret: string, key: string, template?: string}|null
+     * 'kind' names which of the component's Secrets this is, for a tool on
+     * canonical naming. It defaults to CREDENTIALS because most tools keep
+     * the database password in the same Secret as everything else they
+     * generate; a vendor that deliberately separates the two (VpnTool) says
+     * STORE, or the two names collapse into one and a rotation writes over
+     * credentials it has nothing to do with.
+     *
+     * @return array{secret: string, key: string, template?: string, kind?: \App\Enums\SecretKind}|null
      */
     public function dbSecretRef(): ?array;
 }

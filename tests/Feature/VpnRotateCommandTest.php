@@ -30,9 +30,9 @@ function vpnRotateKubectl(): string
 function vpnRotateFakes(string $kubectl): array
 {
     return [
-        "{$kubectl} get deployment vpn-management -n larakube-vpn*" => Process::result(output: 'vpn-management 1/1 1 1 3d'),
+        "{$kubectl} get deployment netbird -n larakube-vpn*" => Process::result(output: 'netbird 1/1 1 1 3d'),
         '*data.pat*' => Process::result(output: base64_encode('old-pat')),
-        '*patch secret vpn-management-secrets*' => Process::result(output: 'secret/vpn-management-secrets patched'),
+        '*patch secret netbird-secrets*' => Process::result(output: 'secret/netbird-secrets patched'),
     ];
 }
 
@@ -50,9 +50,9 @@ test('vpn:rotate mints a new PAT and setup key and stores both', function (): vo
         ->assertExitCode(0)
         ->expectsOutputToContain('credentials rotated');
 
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret netbird-secrets')
         && str_contains((string) $p->input, '"setup-key"'));
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets')
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret netbird-secrets')
         && str_contains((string) $p->input, '"pat"'));
 });
 
@@ -88,7 +88,7 @@ test('vpn:rotate leaves the old credentials in place when the setup key cannot b
         ->assertExitCode(1)
         ->expectsOutputToContain('credentials Secret is unchanged');
 
-    Process::assertDidntRun(fn ($p) => str_contains($p->command, 'patch secret vpn-management-secrets'));
+    Process::assertDidntRun(fn ($p) => str_contains($p->command, 'patch secret netbird-secrets'));
 });
 
 test('vpn:rotate says how to recover when the stored PAT is already dead', function (): void {

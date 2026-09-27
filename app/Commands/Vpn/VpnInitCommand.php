@@ -5,6 +5,7 @@ namespace App\Commands\Vpn;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Http\Integrations\Netbird\NetbirdConnector;
 use App\Http\Integrations\Netbird\Requests\CreatePersonalAccessTokenRequest;
@@ -68,12 +69,12 @@ class VpnInitCommand extends Command
 
         // Resolved from $host, not the registry: on a first install vpn:init
         // renders and waits on these resources before it registers the tool.
-        $mgmt = $this->vpnNameForHost('vpn-management', $host);
-        $signal = $this->vpnNameForHost('vpn-signal', $host);
-        $relay = $this->vpnNameForHost('vpn-relay', $host);
-        $dashboard = $this->vpnNameForHost('vpn-dashboard', $host);
-        $client = $this->vpnNameForHost('vpn-client', $host);
-        $storeSecret = $this->vpnNameForHost('vpn-management-store', $host);
+        $mgmt = $this->vpnDeploymentForHost($host);
+        $signal = $this->vpnDeploymentForHost($host, 'signal');
+        $relay = $this->vpnDeploymentForHost($host, 'relay');
+        $dashboard = $this->vpnDeploymentForHost($host, 'dashboard');
+        $client = $this->vpnDeploymentForHost($host, 'client');
+        $storeSecret = $this->vpnSecretForHost($host, SecretKind::STORE);
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -254,8 +255,8 @@ class VpnInitCommand extends Command
         // The dashboard logs in against the EMBEDDED IdP, so this is the
         // credential that actually opens it — print it like mail:init does,
         // rather than leaving the operator with a URL and no way in.
-        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, $this->vpnNameForHost('vpn-management-secrets', $host), 'admin-email');
-        $adminPassword = $this->readClusterSecretKey($kubectl, $ns, $this->vpnNameForHost('vpn-management-secrets', $host), 'admin-password');
+        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecretForHost($host), 'admin-email');
+        $adminPassword = $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecretForHost($host), 'admin-password');
 
         if ($adminEmail !== null && $adminPassword !== null) {
             $this->line("  <fg=gray>Dashboard login:</>              <fg=blue>{$adminEmail}</> / <fg=blue>{$adminPassword}</>");
@@ -325,7 +326,7 @@ class VpnInitCommand extends Command
     protected function ensureVpnConfig(string $kubectl, string $ns, string $host): bool
     {
         $existingRaw = trim(Process::run(
-            "{$kubectl} get secret ".$this->vpnNameForHost('vpn-management-config', $host)." -n {$ns} -o jsonpath='{.data.management\.json}'",
+            "{$kubectl} get secret ".$this->vpnSecretForHost($host, SecretKind::CONFIG)." -n {$ns} -o jsonpath='{.data.management\.json}'",
         )->output());
         $existingConfig = $existingRaw !== '' ? (string) base64_decode($existingRaw) : null;
         $existingDecoded = $existingConfig !== null ? json_decode($existingConfig, true) : null;
@@ -360,7 +361,7 @@ class VpnInitCommand extends Command
         }
 
         $changed = false;
-        $configSecret = $this->vpnNameForHost('vpn-management-config', $host);
+        $configSecret = $this->vpnSecretForHost($host, SecretKind::CONFIG);
         $this->withSpin('Preparing NetBird relay config...', function () use (&$changed, $kubectl, $ns, $relaySecret, $managementConfig, $configSecret): void {
             $changed = Kubectl::fromPrefix($kubectl)->putSecret($ns, $configSecret, [
                 'relay-secret' => $relaySecret,
@@ -383,7 +384,7 @@ class VpnInitCommand extends Command
      */
     protected function bootstrapVpnAuth(string $kubectl, string $ns, string $host, string $env): void
     {
-        if (Process::run("{$kubectl} get secret ".$this->vpnNameForHost('vpn-management-secrets', $host)." -n {$ns}")->successful()) {
+        if (Process::run("{$kubectl} get secret ".$this->vpnSecretForHost($host)." -n {$ns}")->successful()) {
             return;
         }
 
@@ -491,7 +492,7 @@ class VpnInitCommand extends Command
 
             $this->seedVpnPatIntoOpenBao($kubectl, $host, $pat, $env);
 
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->vpnNameForHost('vpn-management-secrets', $host), [
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->vpnSecretForHost($host), [
                 'pat' => $pat,
                 // The owner's own token, kept only because NetBird reserves a
                 // few actions to the account owner (deleting the account, which
@@ -568,7 +569,7 @@ class VpnInitCommand extends Command
      */
     protected function ensureVpnGatewayKey(string $kubectl, string $ns, string $host, string $pat, array $groups): void
     {
-        $secret = $this->vpnNameForHost('vpn-management-secrets', $host);
+        $secret = $this->vpnSecretForHost($host);
         $routers = array_values(array_filter([$groups['routers'] ?? null]));
 
         try {
@@ -601,7 +602,7 @@ class VpnInitCommand extends Command
 
             // The client only reads NB_SETUP_KEY at startup, so a fresh key in the
             // Secret means nothing until the pod restarts.
-            Process::run("{$kubectl} rollout restart deploy/".$this->vpnNameForHost('vpn-client', $host)." -n {$ns}");
+            Process::run("{$kubectl} rollout restart deploy/".$this->vpnDeploymentForHost($host, 'client')." -n {$ns}");
         } catch (Throwable) {
             $this->laraKubeWarn('Could not verify the NetBird gateway setup key.');
         }
@@ -910,7 +911,7 @@ class VpnInitCommand extends Command
         $tmp = $temporaryDirectory->path('larakube-vpn-ingress-retry.yaml');
         file_put_contents($tmp, $manifest);
 
-        Process::run("{$kubectl} delete ingress ".$this->vpnNameForHost('vpn-management', $host)." -n {$ns} --ignore-not-found");
+        Process::run("{$kubectl} delete ingress ".$this->vpnDeploymentForHost($host)." -n {$ns} --ignore-not-found");
         Process::run("{$kubectl} apply -f {$tmp}");
 
         $temporaryDirectory->delete();

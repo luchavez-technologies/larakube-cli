@@ -97,7 +97,7 @@ class VpnSetupKeyCommand extends Command
             $ok = true;
 
             if ($key !== '') {
-                $ok = Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->vpnName('vpn-management-secrets', $kubectl), ['setup-key' => $key])->ok;
+                $ok = Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->vpnSecret($kubectl), ['setup-key' => $key])->ok;
             }
 
             if ($newPat !== '') {
@@ -125,7 +125,7 @@ class VpnSetupKeyCommand extends Command
         // config.json on the vpn-client-storage PVC and keeps the identity it
         // already has. Removing that file is what makes it enrol afresh.
         $cleared = $this->withSpin('Clearing the gateway identity...', fn () => Process::run(
-            "{$kubectl} exec deploy/".$this->vpnName('vpn-client', $kubectl)." -n {$ns} -c client -- rm -f /etc/netbird/config.json",
+            "{$kubectl} exec deploy/".$this->vpnDeployment($kubectl, 'client')." -n {$ns} -c client -- rm -f /etc/netbird/config.json",
         )->successful());
 
         if (! $cleared) {
@@ -136,9 +136,9 @@ class VpnSetupKeyCommand extends Command
         }
 
         $restarted = $this->withSpin('Re-enrolling the gateway...', function () use ($kubectl, $ns) {
-            Process::run("{$kubectl} rollout restart deployment/".$this->vpnName('vpn-client', $kubectl)." -n {$ns}");
+            Process::run("{$kubectl} rollout restart deployment/".$this->vpnDeployment($kubectl, 'client')." -n {$ns}");
 
-            return Process::timeout(180)->run("{$kubectl} rollout status deployment/".$this->vpnName('vpn-client', $kubectl)." -n {$ns} --timeout=170s")->successful();
+            return Process::timeout(180)->run("{$kubectl} rollout status deployment/".$this->vpnDeployment($kubectl, 'client')." -n {$ns} --timeout=170s")->successful();
         });
 
         if (! $restarted) {

@@ -52,8 +52,8 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
 
     // VPN was exempt from instance suffixing until 2026-08-29; it now follows
     // {category}-{component}-{instance} like every other tool.
-    expect(ClusterTool::VPN->deploymentName())->toBe('vpn-management')
-        ->and(ClusterTool::VPN->deploymentName('blog-example-com'))->toBe('vpn-management-blog-example-com')
+    expect(ClusterTool::VPN->deploymentName())->toBe('netbird')
+        ->and(ClusterTool::VPN->deploymentName('blog-example-com'))->toBe('netbird-blog-example-com')
         ->and(ClusterTool::DATA->deploymentName(engine: 'pocketbase'))->toBe('pocketbase')
         ->and(ClusterTool::DATA->deploymentName(engine: 'directus'))->toBe('directus')
         ->and(ClusterTool::DATA->deploymentName())->toBe('directus');
@@ -179,7 +179,7 @@ test('several files from one mount are archived under a single -C', function ():
     $component = new ClusterToolComponentData(
         key: 'management',
         role: ClusterToolComponentRole::PRIMARY,
-        deployment: 'vpn-management',
+        deployment: 'netbird',
         backupVolume: true,
         backupPaths: ['/var/lib/netbird/idp.db', '/var/lib/netbird/events.db'],
     );
