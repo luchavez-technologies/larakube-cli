@@ -207,6 +207,21 @@ extras.
 | Windows via WSL | **NOT STARTED**: spike 0b |
 | Packaged, signed macOS build + auto-update | **NOT STARTED** |
 
+## MVP progress
+
+- **Design:** Figma "LaraKube Desktop" (`5lHxcb5oXNJGpCd4NotBw3`): Foundations
+  plus Setup/Servers/Runs/Tools screens, matching the docs landing.
+- **Built from it (2026-09-27):** restyle (Geist, tokens, sidebar), Servers
+  list/detail, and destroy with type-to-confirm (`cloud:destroy <name>
+  --force`). Also Activity, the run stepper and the result card. The CLI
+  gained `cloud:stacks --json` with `ready`/`incomplete`/`unfinished`, via a
+  shared `DiscoversUnfinishedStacks` trait.
+- **Verified live:** "Destroy leftovers" on an unfinished GCP stack from the
+  app succeeded, and the list refreshed to the two real servers.
+- **Next:** Next-steps actions (`dns:init`, `tls:init`) need forms. Then the
+  Tools section, and structured progress events (`--output=ndjson`) to
+  replace log-text matching in the stepper.
+
 ## Spike progress (2026-09-27)
 
 - **CLI:** `cloud:providers [--json]` added
