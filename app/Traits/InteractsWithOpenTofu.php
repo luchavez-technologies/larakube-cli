@@ -2,7 +2,11 @@
 
 namespace App\Traits;
 
+use App\Facades\State;
+use Closure;
+use Illuminate\Contracts\Process\InvokedProcess;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\confirm;
 
@@ -406,9 +410,57 @@ HCL;
             return ['code' => $result->exitCode(), 'output' => trim($result->output())];
         }
 
-        $code = $this->runStreaming($cmd, env: $envVars);
+        return ['code' => $this->runTofuSurvivingInterrupts($cmd, $envVars), 'output' => ''];
+    }
 
-        return ['code' => $code, 'output' => ''];
+    /**
+     * Stream a long-running tofu command without tying its life to ours.
+     *
+     * tofu writes to a log file this process tails, never to a pipe: if
+     * larakube is killed (a GUI's Cancel, a Job's SIGTERM, a terminal Ctrl+C)
+     * tofu can no longer die of SIGPIPE mid-apply, which would leave cloud
+     * resources created but missing from state — invisible to `cloud:destroy`.
+     * Where pcntl exists, SIGTERM/SIGINT are also caught: tofu gets ONE SIGINT
+     * (its graceful stop: finish in-flight calls, persist state) and we wait
+     * for it. A second SIGINT would force-quit tofu, so a terminal Ctrl+C —
+     * which already reached tofu through the process group — is not forwarded.
+     *
+     * @param  array<string, string>  $env
+     */
+    protected function runTofuSurvivingInterrupts(string $command, array $env): int
+    {
+        $log = (string) tempnam(sys_get_temp_dir(), 'larakube-tofu-');
+        $offset = 0;
+        $interrupted = false;
+
+        $process = null;
+
+        // Handlers go in BEFORE the spawn: a handled signal resets to default
+        // across exec, an ignored one would stay ignored and untrappable in tofu.
+        $restoreHandlers = $this->forwardInterruptsToTofu($process, $interrupted);
+        // `exec` makes tofu itself the signalled PID rather than an `sh -c` wrapper.
+        $process = Process::forever()->env($env)->start('exec '.$command.' > '.escapeshellarg($log).' 2>&1');
+
+        try {
+            while ($process->running()) {
+                $offset = $this->relayTofuLog($log, $offset);
+                Sleep::usleep(200_000);
+            }
+
+            $code = $process->wait()->exitCode() ?? 1;
+            $this->relayTofuLog($log, $offset);
+        } finally {
+            $restoreHandlers();
+            @unlink($log);
+        }
+
+        if ($interrupted) {
+            State::setLastError('Interrupted — OpenTofu stopped after saving its state. Run cloud:destroy to remove anything it created.');
+
+            return $code === 0 ? 130 : $code;
+        }
+
+        return $code;
     }
 
     /** `tofu init` — downloads the provider plugins into the stack workdir. */
@@ -454,6 +506,62 @@ HCL;
         $res = $this->runTofu($bin, $stack, 'output', ['-raw', escapeshellarg($key)], [], capture: true);
 
         return ($res['code'] === 0 && $res['output'] !== '') ? $res['output'] : null;
+    }
+
+    /**
+     * @return Closure(): void restores the previous handlers
+     */
+    private function forwardInterruptsToTofu(?InvokedProcess &$process, bool &$interrupted): Closure
+    {
+        if (! function_exists('pcntl_signal') || ! function_exists('pcntl_async_signals')) {
+            return static function (): void {};
+        }
+
+        $previous = [SIGINT => pcntl_signal_get_handler(SIGINT), SIGTERM => pcntl_signal_get_handler(SIGTERM)];
+        $previousAsync = pcntl_async_signals(true);
+
+        $handler = function (int $signal) use (&$process, &$interrupted): void {
+            if (! $interrupted) {
+                $this->writeTofuStream(PHP_EOL.'Stopping — waiting for OpenTofu to finish its current step and save state...'.PHP_EOL);
+
+                if ($signal === SIGTERM) {
+                    $process?->signal(SIGINT);
+                }
+            }
+
+            $interrupted = true;
+        };
+
+        pcntl_signal(SIGINT, $handler);
+        pcntl_signal(SIGTERM, $handler);
+
+        return static function () use ($previous, $previousAsync): void {
+            foreach ($previous as $signal => $prior) {
+                pcntl_signal($signal, $prior ?: SIG_DFL);
+            }
+
+            pcntl_async_signals($previousAsync);
+        };
+    }
+
+    private function relayTofuLog(string $log, int $offset): int
+    {
+        clearstatcache(true, $log);
+        $size = @filesize($log);
+
+        if ($size === false || $size <= $offset) {
+            return $offset;
+        }
+
+        $chunk = (string) @file_get_contents($log, false, null, $offset, $size - $offset);
+        $this->writeTofuStream($chunk);
+
+        return $offset + strlen($chunk);
+    }
+
+    private function writeTofuStream(string $output): void
+    {
+        State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
     }
 
     /** Recursive delete — the workdir includes a nested .terraform/ provider cache. */
