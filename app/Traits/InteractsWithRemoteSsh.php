@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Facades\State;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 
@@ -118,8 +119,10 @@ trait InteractsWithRemoteSsh
         $fullCommand = $sudo.'bash -c '.escapeshellarg($remoteCommand);
         $sshCommand = "ssh -i {$keyPath} -p {$port} {$user}@{$ip} ".escapeshellarg($fullCommand);
 
+        // Under --json, stdout carries only the one result line, so the
+        // remote script's live output goes to stderr with the rest of the log.
         $result = Process::forever()->run($sshCommand, function (string $type, string $output): void {
-            echo $output;
+            State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
         });
 
         return $result->successful();
