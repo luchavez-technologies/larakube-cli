@@ -4,9 +4,11 @@ namespace App\Commands\Tls;
 
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithCloudflareApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
+use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesToolEnvironment;
 use LaravelZero\Framework\Commands\Command;
 
@@ -16,15 +18,36 @@ use LaravelZero\Framework\Commands\Command;
  */
 class TlsShowCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithCloudflareApi, LaraKubeOutput, ProvisionsK3sNode, ResolvesToolEnvironment;
+    use DeploysClusterTool, EmitsJsonOutput, InteractsWithCloudflareApi, LaraKubeOutput, ProvisionsK3sNode, ReadsCommandOptions, ResolvesToolEnvironment;
 
     protected $signature = 'tls:show
         {environment? : The cloud environment to inspect}
-        {--context=  : Target a specific kube-context}';
+        {--context=  : Target a specific kube-context}
+        {--json      : Emit one machine-readable JSON result on stdout}';
 
     protected $description = 'Show how Let\'s Encrypt certificates are issued on a cluster, and what would break renewal';
 
     public function handle(): int
+    {
+        if ($this->flag('json')) {
+            $this->enableJsonMode();
+        }
+
+        $report = $this->inspect();
+
+        if ($this->flag('json')) {
+            $this->jsonOutput($report);
+        }
+
+        return $report['success'] ? 0 : 1;
+    }
+
+    /**
+     * Prints the human report and returns the same facts for --json.
+     *
+     * @return array<string, mixed>
+     */
+    private function inspect(): array
     {
         $this->renderHeader();
 
@@ -33,14 +56,14 @@ class TlsShowCommand extends Command
         if ($env === 'local') {
             $this->laraKubeInfo('Local clusters use the LaraKube Local CA, not Let\'s Encrypt.');
 
-            return 0;
+            return ['success' => true, 'challenge' => 'local'];
         }
 
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         if ($context === null || $context === '') {
             $this->laraKubeError("No kube-context resolved for '{$env}'. Pass --context=.");
 
-            return 1;
+            return ['success' => false, 'error' => "No kube-context resolved for '{$env}'."];
         }
 
         $kubectl = Kubectl::forContext($context)->prefix();
@@ -53,13 +76,25 @@ class TlsShowCommand extends Command
         $this->line('  <fg=gray>Hosts:</>      '.count($hosts).' with Let\'s Encrypt certificates, '.count($proxied).' proxied');
 
         $ok = true;
+        $report = [
+            'success' => true,
+            'challenge' => $dns ? 'dns' : 'http',
+            'hosts' => $hosts,
+            'proxied' => $proxied,
+            'zones' => [],
+            'sslModes' => [],
+            'cannotRenew' => [],
+            'unusedCertificates' => [],
+        ];
 
         if ($dns) {
             $token = (string) $this->readClusterSecretKey($kubectl, 'traefik', self::TRAEFIK_ACME_TOKEN_SECRET, 'token');
             $zones = $token !== '' ? $this->cloudflareListZones($token) : [];
             $this->line('  <fg=gray>Zones:</>      '.($zones !== [] ? implode(', ', $zones) : '<fg=red>none (the stored token is invalid or revoked)</>'));
+            $report['zones'] = array_values($zones);
 
             foreach ($this->cloudflareReadZoneSslModes($token, $zones) as $zone => $mode) {
+                $report['sslModes'][$zone] = $mode;
                 $this->line('  <fg=gray>SSL:</>        '.match (true) {
                     $mode === 'strict' => "<fg=green>Full (strict) ✓</>  <fg=gray>{$zone}</>",
                     $mode === 'full' => "<fg=yellow>Full — switch to Full (strict)</>  <fg=gray>{$zone}</>",
@@ -71,6 +106,7 @@ class TlsShowCommand extends Command
             $uncovered = array_values(array_filter($hosts, fn (string $host) => $this->zoneForHost($host, $zones) === null));
             if ($uncovered !== []) {
                 $ok = false;
+                $report['cannotRenew'] = $uncovered;
                 $this->newLine();
                 $this->laraKubeWarn('Outside the token\'s zones, so these can\'t renew:');
                 foreach ($uncovered as $host) {
@@ -79,6 +115,7 @@ class TlsShowCommand extends Command
             }
         } elseif ($proxied !== []) {
             $ok = false;
+            $report['cannotRenew'] = array_values($proxied);
             $this->newLine();
             $this->laraKubeWarn('Proxied through Cloudflare, so the HTTP challenge can\'t renew these:');
             foreach ($proxied as $host) {
@@ -92,6 +129,8 @@ class TlsShowCommand extends Command
             array_push($routed, ...$ingress['hosts']);
         }
         $unused = array_values(array_diff($this->storedCertificateDomains($kubectl), $routed));
+
+        $report['unusedCertificates'] = $unused;
 
         if ($unused !== []) {
             $this->newLine();
@@ -107,6 +146,6 @@ class TlsShowCommand extends Command
             $this->laraKubeInfo('Every Let\'s Encrypt host can renew.');
         }
 
-        return 0;
+        return $report + ['renewable' => $ok];
     }
 }

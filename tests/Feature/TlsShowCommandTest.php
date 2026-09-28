@@ -3,6 +3,7 @@
 use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
 use Illuminate\Process\PendingProcess;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
@@ -11,6 +12,19 @@ use Saloon\Laravel\Facades\Saloon;
 afterEach(function (): void {
     MockClient::destroyGlobal();
 });
+
+/**
+ * The --json result line. Under tests the human report shares the captured
+ * buffer (there is no real stderr), so the result is the last line.
+ *
+ * @return array<string, mixed>
+ */
+function tlsShowJsonReport(): array
+{
+    $lines = preg_split('/\R/', trim(Artisan::output())) ?: [];
+
+    return json_decode((string) end($lines), true);
+}
 
 function tlsShowFakes(bool $dnsChallenge, bool $proxied, string $storedCerts = ''): array
 {
@@ -132,4 +146,33 @@ test('tls:show lists stored certificates that no ingress uses', function (): voi
     $this->artisan('tls:show production --context=ctx')
         ->expectsOutputToContain('gone.example.com')
         ->assertExitCode(0);
+});
+
+test('tls:show --json reports the challenge and what cannot renew, on one stdout line', function (): void {
+    Process::fake(tlsShowFakes(dnsChallenge: false, proxied: true));
+
+    Artisan::call('tls:show', ['environment' => 'production', '--context' => 'ctx', '--json' => true]);
+    $report = tlsShowJsonReport();
+
+    expect($report)->toMatchArray([
+        'success' => true,
+        'challenge' => 'http',
+        'cannotRenew' => ['app.example.com'],
+        'renewable' => false,
+    ]);
+});
+
+test('tls:show --json on the DNS challenge lists the token zones and their SSL modes', function (): void {
+    Process::fake(tlsShowFakes(dnsChallenge: true, proxied: false));
+    Saloon::fake([
+        ListZonesRequest::class => MockResponse::make(['success' => true, 'result' => [['id' => 'zone-1', 'name' => 'example.com']], 'result_info' => ['total_pages' => 1]]),
+        GetZoneSettingRequest::class => MockResponse::make(['success' => true, 'result' => ['value' => 'strict']]),
+    ]);
+
+    Artisan::call('tls:show', ['environment' => 'production', '--context' => 'ctx', '--json' => true]);
+    $report = tlsShowJsonReport();
+
+    expect($report['challenge'])->toBe('dns')
+        ->and($report['zones'])->toBe(['example.com'])
+        ->and($report['sslModes'])->toBe(['example.com' => 'strict']);
 });
