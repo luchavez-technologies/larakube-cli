@@ -61,6 +61,24 @@ class ToolListCommand extends Command
         $registryOnly = (bool) $this->option('registry-only');
         $registered = $this->getRegisteredTools($kubectl);
 
+        // Tools running on the cluster but missing from the registry. When
+        // there are any, adopt the convention-named ones into the registry
+        // (as --refresh does), so the fast registry-only view sees them too.
+        $liveUnregistered = [];
+        if (! $registryOnly) {
+            foreach (ClusterTool::shippedCases() as $tool) {
+                $isRegistered = array_filter($registered, fn ($e) => ($e['tool'] ?? null) === $tool->value) !== [];
+
+                if (! $isRegistered) {
+                    $liveUnregistered[$tool->value] = $this->isToolPresentOnCluster($kubectl, $tool);
+                }
+            }
+
+            if (in_array(true, $liveUnregistered, true) && $this->adoptDiscoveredTools($kubectl, $this->discoverConventionTools($kubectl)['found'], $registered) > 0) {
+                $registered = $this->getRegisteredTools($kubectl);
+            }
+        }
+
         $rows = [];
         foreach (ClusterTool::shippedCases() as $tool) {
             $vendor = $tool->vendor();
@@ -70,7 +88,7 @@ class ToolListCommand extends Command
             ));
 
             if ($instances === []) {
-                $isPresent = ! $registryOnly && $this->isToolPresentOnCluster($kubectl, $tool);
+                $isPresent = $liveUnregistered[$tool->value] ?? false;
                 $instances = [['tool' => $tool->value, 'instance' => '', 'installed' => $isPresent]];
             } else {
                 foreach ($instances as &$inst) {
@@ -249,6 +267,112 @@ class ToolListCommand extends Command
      */
     protected function refreshRegistry(string $kubectl): int
     {
+        ['found' => $found, 'skipped' => $skipped, 'headless' => $headless] = $this->discoverConventionTools($kubectl);
+
+        if ($found === []) {
+            $this->laraKubeError('No convention-following Deployments found on this cluster.');
+
+            return 1;
+        }
+
+        $existing = $this->getRegisteredTools($kubectl);
+        $known = $this->registryKeys($existing);
+
+        ksort($found);
+        $rows = [];
+        foreach ($found as $key => $entry) {
+            $rows[] = [
+                $entry['tool']->value,
+                $entry['instance'],
+                $entry['host'] ?? '<no ingress>',
+                isset($known[$key]) ? 'known' : 'NEW',
+            ];
+        }
+
+        table(['Tool', 'Instance', 'Host', 'Registry'], $rows);
+
+        if ($headless !== []) {
+            $this->laraKubeNewLine();
+            $this->laraKubeInfo('Skipped '.count($headless).' headless tool(s) — no host by design: '.implode(', ', array_keys($headless)));
+        }
+
+        if ($skipped !== []) {
+            sort($skipped);
+            $this->laraKubeNewLine();
+            $this->laraKubeWarn(count($skipped).' Deployment(s) skipped — no instance suffix, so no recoverable identity:');
+            foreach ($skipped as $name) {
+                $this->line("  <fg=gray>- {$name}</>");
+            }
+            $this->line('  <fg=gray>Re-run their {tool}:init to adopt the naming convention, then refresh again.</>');
+        }
+
+        $new = array_filter($rows, fn (array $r) => $r[3] === 'NEW');
+
+        if ($new === []) {
+            $this->laraKubeNewLine();
+            $this->laraKubeInfo('Registry already matches the cluster — nothing to write.');
+
+            return 0;
+        }
+
+        $this->laraKubeNewLine();
+
+        if ($this->option('dry-run')) {
+            $this->laraKubeInfo('Dry run — '.count($new).' row(s) would be written. Nothing changed.');
+
+            return 0;
+        }
+
+        if (! $this->option('no-interaction') && ! confirm('Write '.count($new).' new row(s) into the cluster registry?', true)) {
+            $this->laraKubeInfo('Refresh cancelled — nothing written.');
+
+            return 0;
+        }
+
+        $written = $this->adoptDiscoveredTools($kubectl, $found, $existing);
+
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo("✅ Registry refreshed — {$written} row(s) written.");
+
+        return 0;
+    }
+
+    /**
+     * Write the discovered tools the registry doesn't know yet. Additive only:
+     * existing rows are never touched.
+     *
+     * @param  array<string, array{tool: ClusterTool, instance: string, host: ?string}>  $found
+     * @param  array<int, array<string, mixed>>  $existing
+     */
+    protected function adoptDiscoveredTools(string $kubectl, array $found, array $existing): int
+    {
+        $known = $this->registryKeys($existing);
+        $written = 0;
+
+        foreach ($found as $key => $entry) {
+            if (isset($known[$key])) {
+                continue;
+            }
+
+            $metadata = $entry['host'] !== null ? ['host' => $entry['host']] : [];
+
+            if ($this->registerTool($kubectl, $entry['tool'], $metadata, $entry['instance'])) {
+                $written++;
+            }
+        }
+
+        return $written;
+    }
+
+    /**
+     * Tools recoverable from convention-named Deployments: the instance comes
+     * from the Deployment name and the host is the ingress host that slugifies
+     * back to it. Unsuffixed Deployments carry no identity and are skipped.
+     *
+     * @return array{found: array<string, array{tool: ClusterTool, instance: string, host: ?string}>, skipped: list<string>, headless: array<string, true>}
+     */
+    protected function discoverConventionTools(string $kubectl): array
+    {
         $namespaces = array_values(array_unique(
             array_map(fn (ClusterTool $t) => $t->namespace(), ClusterTool::shippedCases()),
         ));
@@ -306,86 +430,7 @@ class ToolListCommand extends Command
             }
         }
 
-        if ($found === []) {
-            $this->laraKubeError('No convention-following Deployments found on this cluster.');
-
-            return 1;
-        }
-
-        $existing = $this->getRegisteredTools($kubectl);
-        $known = [];
-        foreach ($existing as $row) {
-            $known[($row['tool'] ?? '').'|'.($row['instance'] ?? '')] = true;
-        }
-
-        ksort($found);
-        $rows = [];
-        foreach ($found as $key => $entry) {
-            $rows[] = [
-                $entry['tool']->value,
-                $entry['instance'],
-                $entry['host'] ?? '<no ingress>',
-                isset($known[$key]) ? 'known' : 'NEW',
-            ];
-        }
-
-        table(['Tool', 'Instance', 'Host', 'Registry'], $rows);
-
-        if ($headless !== []) {
-            $this->laraKubeNewLine();
-            $this->laraKubeInfo('Skipped '.count($headless).' headless tool(s) — no host by design: '.implode(', ', array_keys($headless)));
-        }
-
-        if ($skipped !== []) {
-            sort($skipped);
-            $this->laraKubeNewLine();
-            $this->laraKubeWarn(count($skipped).' Deployment(s) skipped — no instance suffix, so no recoverable identity:');
-            foreach ($skipped as $name) {
-                $this->line("  <fg=gray>- {$name}</>");
-            }
-            $this->line('  <fg=gray>Re-run their {tool}:init to adopt the naming convention, then refresh again.</>');
-        }
-
-        $new = array_filter($rows, fn (array $r) => $r[3] === 'NEW');
-
-        if ($new === []) {
-            $this->laraKubeNewLine();
-            $this->laraKubeInfo('Registry already matches the cluster — nothing to write.');
-
-            return 0;
-        }
-
-        $this->laraKubeNewLine();
-
-        if ($this->option('dry-run')) {
-            $this->laraKubeInfo('Dry run — '.count($new).' row(s) would be written. Nothing changed.');
-
-            return 0;
-        }
-
-        if (! $this->option('no-interaction') && ! confirm('Write '.count($new).' new row(s) into the cluster registry?', true)) {
-            $this->laraKubeInfo('Refresh cancelled — nothing written.');
-
-            return 0;
-        }
-
-        $written = 0;
-        foreach ($found as $key => $entry) {
-            if (isset($known[$key])) {
-                continue;
-            }
-
-            $metadata = $entry['host'] !== null ? ['host' => $entry['host']] : [];
-
-            if ($this->registerTool($kubectl, $entry['tool'], $metadata, $entry['instance'])) {
-                $written++;
-            }
-        }
-
-        $this->laraKubeNewLine();
-        $this->laraKubeInfo("✅ Registry refreshed — {$written} row(s) written.");
-
-        return 0;
+        return ['found' => $found, 'skipped' => $skipped, 'headless' => $headless];
     }
 
     /** @return list<string> */
@@ -403,6 +448,20 @@ class ToolListCommand extends Command
         $hosts = preg_split('/\s+/', $out) ?: [];
 
         return array_values(array_unique(array_filter(array_map('trim', $hosts))));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<string, true>
+     */
+    private function registryKeys(array $rows): array
+    {
+        $known = [];
+        foreach ($rows as $row) {
+            $known[($row['tool'] ?? '').'|'.($row['instance'] ?? '')] = true;
+        }
+
+        return $known;
     }
 
     /**

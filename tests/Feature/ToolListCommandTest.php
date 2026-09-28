@@ -305,6 +305,32 @@ function toolListRefreshRun(): array
     return [Artisan::output(), $termwind->fetch()];
 }
 
+test('a full tool:list adopts live, unregistered convention tools into the registry', function (): void {
+    $registry = Tests\Support\FakeToolRegistry::install();
+    toolListRefreshFakes();
+
+    expect(Artisan::call('tool:list local --json --no-interaction'))->toBe(0);
+
+    $stored = collect($registry->stored)->keyBy(fn (array $row): string => $row['tool'].'|'.$row['instance']);
+    $notes = collect(json_decode(Artisan::output(), true))->firstWhere('tool', 'notes');
+
+    // Adopted with the identity --refresh derives, so the registry-only view sees it next time.
+    expect($stored['notes|notes-luchtech-dev']['host'] ?? null)->toBe('notes.luchtech.dev')
+        ->and($notes['installed'])->toBeTrue()
+        ->and($notes['instance'])->toBe('notes-luchtech-dev')
+        // An unsuffixed Deployment is never registered under a guessed instance.
+        ->and($stored->keys()->filter(fn (string $key): bool => str_starts_with($key, 'drive|'))->all())->toBe([]);
+});
+
+test('tool:list --registry-only never writes to the registry', function (): void {
+    $registry = Tests\Support\FakeToolRegistry::install();
+    toolListRefreshFakes();
+
+    Artisan::call('tool:list local --json --registry-only --no-interaction');
+
+    expect($registry->writes)->toBe([]);
+});
+
 test('tool:list --refresh discovers only convention-following deployments', function (): void {
     toolListRefreshFakes();
     [$output] = toolListRefreshRun();
