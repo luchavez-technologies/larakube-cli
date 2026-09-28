@@ -74,6 +74,31 @@ trait GathersInfrastructureConfig
     }
 
     /**
+     * Apply an --email option, which answers the wizard's Let's Encrypt email
+     * question headlessly: validated like the prompt, and remembered like a
+     * prompted answer. False when the email is invalid (already reported).
+     */
+    protected function applyEmailOption(ConfigData $config): bool
+    {
+        $email = $this->option('email');
+
+        if (! is_string($email)) {
+            return true;
+        }
+
+        if ($error = $this->acmeEmailError($email)) {
+            $this->laraKubeError("--email: {$error}");
+
+            return false;
+        }
+
+        $config->setEmail($email);
+        $this->setEmail($email);
+
+        return true;
+    }
+
+    /**
      * Gather all configuration needed for infrastructure generation.
      */
     protected function gatherConfig(ConfigData $config, bool $forcePrompts = false): ConfigData

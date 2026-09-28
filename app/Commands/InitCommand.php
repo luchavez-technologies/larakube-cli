@@ -45,6 +45,7 @@ class InitCommand extends Command
     protected $signature = 'init {--fast : Skip the wizard and use ideal defaults}
                                  {--dry-run : Show what will be done without making any changes}
                                  {--framework= : The project\'s framework (skips detection and the picker)}
+                                 {--email= : Laravel, Statamic, WordPress: email for Let\'s Encrypt certificates (skips the email prompt)}
                                  {--no-plex : Next.js only: use a self-hosted database and Redis instead of joining Plex Commons}';
 
     /**
@@ -114,6 +115,11 @@ class InitCommand extends Command
         $config = $isReinit ? $this->buildConfigFromFlags($existingConfig) : $this->buildConfigFromFlags();
         $config->framework = $framework;
         $config->setIsScaffolding(false);
+
+        if (! $this->applyEmailOption($config)) {
+            return 1;
+        }
+
         $config = $this->gatherConfig($config, forcePrompts: $isReinit);
         $config->setPath(getcwd());
 

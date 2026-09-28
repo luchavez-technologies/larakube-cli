@@ -149,15 +149,8 @@ class NewCommand extends Command
         $config = $this->buildConfigFromFlags();
         $config->setIsScaffolding(true);
 
-        if (is_string($email = $this->option('email'))) {
-            if ($error = $this->acmeEmailError($email)) {
-                $this->laraKubeError("--email: {$error}");
-
-                return 1;
-            }
-
-            $config->setEmail($email);
-            $this->setEmail($email);
+        if (! $this->applyEmailOption($config)) {
+            return 1;
         }
 
         $config = $this->gatherConfig($config);
