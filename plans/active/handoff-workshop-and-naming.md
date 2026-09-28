@@ -20,6 +20,11 @@ Docusaurus, Statamic, WordPress) and deploy it from the desktop.
   unconditionally, which fails headlessly; `StatamicNewCommand` offers
   `larakube up` after a confirm, which a headless run answers yes.
 - The user must run `./build` before any of it works in the desktop.
+- **Next and blocking every deploy:** `desktop/plans/active/08-environments-and-server-linking.md`:
+  make `larakube env <name>` fully headless (`--context`, `--web-host`,
+  `--ingress`, `--managed`, …; never silently pick the first kube-context),
+  gate `cloud:deploy`'s `Proceed?` confirm, and add a multi-environment
+  section to the desktop project page.
 
 ## 2. Canonical resource naming (ADR 0021), the other agent's work
 
