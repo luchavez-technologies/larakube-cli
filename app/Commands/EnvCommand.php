@@ -26,6 +26,7 @@ class EnvCommand extends Command
     protected $signature = 'env {name? : The name of the new environment}
                             {--offline : Mark this environment for air-gapped / offline distribution}
                             {--context= : The kube-context of the server this environment deploys to, e.g. larakube-203.0.113.21 (skips the prompt)}
+                            {--web-host= : The environment\'s web host, e.g. app.example.com (skips the prompt)}
                             {--ingress= : Ingress controller slug (skips the prompt)}
                             {--managed= : Comma-separated externally-managed services; pass an empty value for none (skips the prompt)}
                             {--web-hosts= : Comma-separated additional web hostnames; pass an empty value for none (skips the prompt)}

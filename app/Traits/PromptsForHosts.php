@@ -39,7 +39,9 @@ trait PromptsForHosts
         $hosts = [];
 
         // Web host: optional. Empty = no host configured (env still works on internal .kube domains).
-        $webHost = text(
+        // `--web-host=` answers this headlessly, on commands that declare it.
+        $flagged = method_exists($this, 'hasOption') && $this->hasOption('web-host') ? $this->option('web-host') : null;
+        $webHost = is_string($flagged) ? trim($flagged) : text(
             label: "Web host for {$envName} (optional, e.g. staging.example.com)",
             placeholder: 'leave blank to skip',
             default: $currentHosts['web'] ?? '',
