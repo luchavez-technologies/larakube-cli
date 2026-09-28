@@ -431,3 +431,27 @@ test('dns:init reuses the stored Cloudflare token instead of demanding it again'
         ->assertExitCode(0)
         ->expectsOutputToContain('Reusing the stored Cloudflare token');
 });
+
+test('dns:init takes the token from LARAKUBE_CLOUDFLARE_TOKEN so it never reaches argv', function (): void {
+    $secret = null;
+    Process::fake(dnsFakes('abc12345', [
+        '*apply -f -*' => function ($process) use (&$secret) {
+            $manifest = json_decode((string) $process->input, true);
+            if (($manifest['kind'] ?? null) === 'Secret') {
+                $secret = $manifest;
+            }
+
+            return Process::result(output: 'applied');
+        },
+    ]));
+    dnsZonesSaloonFake(['example.com']);
+    putenv('LARAKUBE_CLOUDFLARE_TOKEN=env-token');
+
+    try {
+        $this->artisan('dns:init prod --context=ctx --no-interaction --force')->assertExitCode(0);
+    } finally {
+        putenv('LARAKUBE_CLOUDFLARE_TOKEN');
+    }
+
+    expect(base64_decode($secret['data']['token']))->toBe('env-token');
+});

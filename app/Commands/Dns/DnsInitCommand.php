@@ -61,9 +61,11 @@ class DnsInitCommand extends Command
         LaraKubeOutput, PromotesIngressDns, ReadsStoredCloudflareTokens, RequiresFlagsWhenNonInteractive,
         ResolvesToolEnvironment, StreamsProcessOutput;
 
+    private const CLOUDFLARE_TOKEN_ENV = 'LARAKUBE_CLOUDFLARE_TOKEN';
+
     protected $signature = 'dns:init
         {environment?        : Environment this install targets (a cloud env — ExternalDNS is not supported locally)}
-        {--cloudflare-token= : API token — every zone it can see is discovered and managed, unless --zone= narrows that}
+        {--cloudflare-token= : API token — every zone it can see is discovered and managed, unless --zone= narrows that. Or set LARAKUBE_CLOUDFLARE_TOKEN}
         {--zone=*            : Optional — restrict to a subset of what the token can see. Omit to manage every zone the token has access to.}
         {--group=            : Stable name for this instance. Default: the sole zone\'s own slug (unchanged single-zone behavior) — required when 2+ zones are in scope}
         {--context=          : Target a specific kube-context}
@@ -186,6 +188,13 @@ class DnsInitCommand extends Command
         $token = (string) ($this->option('cloudflare-token') ?? '');
         if ($token !== '') {
             return $token;
+        }
+
+        // The same variable tls:init reads, so a caller can hand the token over
+        // without it ever appearing in the process list.
+        $fromEnv = trim((string) getenv(self::CLOUDFLARE_TOKEN_ENV));
+        if ($fromEnv !== '') {
+            return $fromEnv;
         }
 
         // Reuse what is already stored, so this command is re-runnable like
