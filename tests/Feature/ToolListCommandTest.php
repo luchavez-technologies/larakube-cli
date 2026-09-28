@@ -319,7 +319,7 @@ test('a full tool:list adopts live, unregistered convention tools into the regis
         ->and($notes['installed'])->toBeTrue()
         ->and($notes['instance'])->toBe('notes-luchtech-dev')
         // An unsuffixed Deployment is never registered under a guessed instance.
-        ->and($stored->keys()->filter(fn (string $key): bool => str_starts_with($key, 'drive|'))->all())->toBe([]);
+        ->and($stored->keys()->filter(fn (string $key): bool => str_starts_with($key, 'drive|'))->all())->toBeEmpty();
 });
 
 test('tool:list --registry-only never writes to the registry', function (): void {
@@ -328,7 +328,7 @@ test('tool:list --registry-only never writes to the registry', function (): void
 
     Artisan::call('tool:list local --json --registry-only --no-interaction');
 
-    expect($registry->writes)->toBe([]);
+    expect($registry->writes)->toBeEmpty();
 });
 
 test('tool:list --refresh discovers only convention-following deployments', function (): void {
