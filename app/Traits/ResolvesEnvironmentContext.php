@@ -7,6 +7,7 @@ use App\Enums\DeploymentStrategy;
 use App\Enums\ManagedProvider;
 use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
+use InvalidArgumentException;
 
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
@@ -128,6 +129,17 @@ trait ResolvesEnvironmentContext
         // Prefer picking an existing kube-context — that's the only way to record a
         // MANAGED cluster (DOKS/EKS/…, no IP), and it saves re-typing the IP of a
         // VPS you've already provisioned (its larakube-<ip> context is in kubeconfig).
+        $chosen = method_exists($this, 'hasOption') && $this->hasOption('context') ? trim((string) $this->option('context')) : '';
+        if ($chosen !== '') {
+            return $this->recordContextTarget($config, $environment, $projectPath, $chosen);
+        }
+
+        // Never guess the server: a headless select() would return the first
+        // kube-context on the machine, silently the wrong cluster.
+        if (isset($this->input) && ! $this->input->isInteractive()) {
+            throw new InvalidArgumentException("Pass --context=<kube-context> to choose the server for '{$environment}'.");
+        }
+
         $contexts = $this->availableKubeContexts();
         if (! empty($contexts)) {
             $choice = select(

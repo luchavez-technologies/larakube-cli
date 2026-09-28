@@ -159,7 +159,7 @@ class CloudDeployCommand extends Command
         }
         $this->newLine();
 
-        if (! confirm('Proceed?', true)) {
+        if (! $this->option('no-interaction') && ! confirm('Proceed?', true)) {
             $this->laraKubeInfo('Deployment cancelled.');
 
             return 0;
