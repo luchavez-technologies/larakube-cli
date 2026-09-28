@@ -276,6 +276,17 @@ class NewCommand extends Command
     }
 
     /**
+     * Whether `laravel new` gets the terminal (`docker run -it`) to ask its own
+     * questions. `-t` fails outright without a TTY on stdin, so a headless run
+     * (LaraKube Desktop, CI) gets a plain container and a non-interactive
+     * installer instead. Free of globals so it can be tested directly.
+     */
+    public function installerCanPrompt(bool $noInteraction, bool $hasTty): bool
+    {
+        return $hasTty && ! $noInteraction;
+    }
+
+    /**
      * Declare every flag `laravel new` understands (so binding completes and
      * the name argument + later flags parse), and still ignore validation
      * errors as a forward-compatibility net for installer flags added after
@@ -356,12 +367,19 @@ class NewCommand extends Command
         // LaraKube pre-provisions Plex database/redis/S3 and reconfigures .env during orchestration.
         $extraArgs[] = '--database=sqlite';
 
+        $interactive = $this->installerCanPrompt((bool) $this->option('no-interaction'), ! app()->runningUnitTests() && stream_isatty(STDIN));
+
+        if (! $interactive) {
+            $extraArgs[] = '--no-interaction';
+        }
+
         $extraFlags = implode(' ', $extraArgs);
+        $ttyFlag = $interactive ? '-it ' : '';
 
         $pkgCommand = $this->getNodeInstallationCommand($image);
         $baseDir = dirname($projectPath);
 
-        $cmd = "$runtime run --rm -it -v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false --user root $image ".
+        $cmd = "$runtime run --rm {$ttyFlag}-v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false --user root $image ".
                "sh -c '$pkgCommand && composer config -g bin-dir /usr/local/bin && composer global require laravel/installer && laravel new $appName $extraFlags'";
 
         $this->runInteractive($cmd);
