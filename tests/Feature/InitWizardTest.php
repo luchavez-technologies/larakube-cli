@@ -36,7 +36,7 @@ test('the init wizard runs every prompt step without a missing-symbol crash', fu
         ->setFrontend(FrontendStack::REACT)
         ->setDatabase(DatabaseDriver::SQLITE)
         ->setCacheDriver(CacheDriver::DATABASE)
-        ->setObjectStorage(StorageDriver::MINIO) // its "None" option is null → give a valid default
+        ->setObjectStorage(StorageDriver::MINIO)
         ->setStrategy(DeploymentStrategy::SINGLE_NODE)
         ->setAdditionalExtensions(['gd']);
     $config->setEmail('wizard@example.test');
@@ -63,4 +63,36 @@ test('the init wizard runs every prompt step without a missing-symbol crash', fu
     // GitHub Actions prompt — ran to completion without a missing-symbol fatal.
     expect($result)->toBeInstanceOf(ConfigData::class)
         ->and($result->hasGithubActions())->toBeTrue();
+});
+
+test('"None" answers for frontend and object storage pass a headless run', function (): void {
+    Prompt::interactive(false);
+
+    $config = new ConfigData(name: 'wizardnone');
+    $config->setServerVariation(ServerVariation::FPM_NGINX)
+        ->setPhpVersion(PhpVersion::PHP_8_5)
+        ->setOs(OperatingSystem::ALPINE)
+        ->setDatabase(DatabaseDriver::POSTGRESQL)
+        ->setCacheDriver(CacheDriver::REDIS)
+        ->setStrategy(DeploymentStrategy::SINGLE_NODE)
+        ->setAdditionalExtensions(['gd']);
+    $config->setEmail('wizard@example.test');
+
+    $runner = new class
+    {
+        use GathersInfrastructureConfig;
+
+        public function run(ConfigData $config): ConfigData
+        {
+            return $this->gatherConfig($config);
+        }
+
+        public function laraKubeInfo($text = null) {}
+    };
+
+    // Both selects offer "None" (an empty value) and used to throw "Required.".
+    $result = $runner->run($config);
+
+    expect($result->getFrontend())->toBeNull()
+        ->and($result->getObjectStorage())->toBeNull();
 });

@@ -146,12 +146,14 @@ trait GathersInfrastructureConfig
             } else {
                 $frontend = select(
                     label: 'Which frontend stack are you using?',
-                    options: array_merge([null => 'None (API or Custom)'], FrontendStack::getSelectOptions($config)),
-                    default: $detected?->value,
+                    // "None" needs a non-empty key: select() is always required,
+                    // and an empty answer fails it (headless runs throw).
+                    options: array_merge(['none' => 'None (API or Custom)'], FrontendStack::getSelectOptions($config)),
+                    default: $detected?->value ?? 'none',
                 );
 
-                if ($frontend) {
-                    $config->setFrontend(FrontendStack::from($frontend));
+                if ($stack = FrontendStack::tryFrom($frontend)) {
+                    $config->setFrontend($stack);
                 }
             }
         }
@@ -224,8 +226,8 @@ trait GathersInfrastructureConfig
         // 10. Object Storage
         $storage = select(
             label: 'Which primary object storage would you like to use?',
-            options: array_merge([null => 'None'], StorageDriver::getSelectOptions($config)),
-            default: $config->getObjectStorage()?->value,
+            options: array_merge(['none' => 'None'], StorageDriver::getSelectOptions($config)),
+            default: $config->getObjectStorage()?->value ?? 'none',
         );
 
         if ($driver = StorageDriver::tryFrom($storage)) {
@@ -257,7 +259,7 @@ trait GathersInfrastructureConfig
         } else {
             $cache = select(
                 label: 'Which primary cache driver would you like to use?',
-                options: array_merge([null => 'None'], CacheDriver::getSelectOptions($config)),
+                options: array_merge(['none' => 'None'], CacheDriver::getSelectOptions($config)),
                 default: $config->getCacheDriver()?->value ?? CacheDriver::REDIS->value,
             );
 
