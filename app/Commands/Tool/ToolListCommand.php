@@ -38,6 +38,7 @@ class ToolListCommand extends Command
         {environment? : The environment to inspect}
         {--context=   : Target a specific kube-context}
         {--installed  : Only list tools that are actually installed}
+        {--registry-only : Read only the tool registry on the cluster — fast but unverified, with no live Deployment probes, host lookups or wiring checks}
         {--refresh    : Rebuild the cluster registry from Deployments that follow the naming convention}
         {--dry-run    : With --refresh, show what would be written without touching the registry}
         {--json       : Emit one machine-readable JSON array on stdout}';
@@ -57,6 +58,7 @@ class ToolListCommand extends Command
         }
 
         $onlyInstalled = (bool) $this->option('installed');
+        $registryOnly = (bool) $this->option('registry-only');
         $registered = $this->getRegisteredTools($kubectl);
 
         $rows = [];
@@ -68,7 +70,7 @@ class ToolListCommand extends Command
             ));
 
             if ($instances === []) {
-                $isPresent = $this->isToolPresentOnCluster($kubectl, $tool);
+                $isPresent = ! $registryOnly && $this->isToolPresentOnCluster($kubectl, $tool);
                 $instances = [['tool' => $tool->value, 'instance' => '', 'installed' => $isPresent]];
             } else {
                 foreach ($instances as &$inst) {
@@ -86,7 +88,7 @@ class ToolListCommand extends Command
                 }
 
                 $host = $entry['host'] ?? null;
-                if ($installed && ($host === null || $host === '')) {
+                if (! $registryOnly && $installed && ($host === null || $host === '')) {
                     $host = $this->resolveLiveToolHost($kubectl, $tool, $instance);
                     if ($host !== null && $host !== '') {
                         $this->registerTool($kubectl, $tool, ['host' => $host], $instance);
@@ -113,9 +115,20 @@ class ToolListCommand extends Command
                     'aliases' => $aliasHosts,
                     'url' => $host !== null ? 'https://'.$host.$aliasSuffix : null,
                     'installedAt' => $entry['installedAt'] ?? null,
+                    'verified' => ! $registryOnly,
                     'vendor' => $vendor,
                 ];
             }
+        }
+
+        if ($registryOnly) {
+            foreach ($rows as &$row) {
+                $row = array_merge($row, ['mail' => 'unverified', 'sso' => 'unverified', 'rotation' => 'unverified', 'sync' => 'unverified', 'vpn' => 'unverified', 'db_role' => null]);
+                unset($row['vendor']);
+            }
+            unset($row);
+
+            return $this->renderRows($rows, $env);
         }
 
         // Readiness checks up front
@@ -217,51 +230,7 @@ class ToolListCommand extends Command
         }
         unset($r);
 
-        if ($this->option('json')) {
-            $this->line((string) json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-
-            return 0;
-        }
-
-        if ($rows === []) {
-            $this->laraKubeInfo('No tools installed on this cluster yet.');
-            $this->line('  <fg=gray>Install one with</> <fg=blue>larakube tool:add</><fg=gray>.</>');
-
-            return 0;
-        }
-
-        $color = fn (string $v) => match ($v) {
-            'wired', 'OpenBao', 'mesh', 'synced' => '✅',
-            'unwired', 'public', 'manual (.env)', 'unsynced' => '❌',
-            'unreachable' => '⚠️',
-            'N/A' => '🚫',
-            '—' => '<fg=gray>—</>',
-            default => $v,
-        };
-
-        table(
-            ['', 'Service', 'What it is', 'URL', 'Mail', 'SSO', 'Rotation', 'Secrets', 'VPN'],
-            array_map(fn (array $r) => [
-                $r['installed'] ? '<fg=green>●</>' : '<fg=gray>○</>',
-                $r['brand'],
-                $r['label'],
-                $r['url'] ?? ($r['installed'] ? '<fg=gray>no host recorded</>' : '<fg=gray>—</>'),
-                $color((string) $r['mail']),
-                $color((string) $r['sso']),
-                $color((string) $r['rotation']),
-                $color((string) $r['sync']),
-                $color((string) $r['vpn']),
-            ], $rows),
-        );
-
-        $installedCount = count(array_filter($rows, fn ($r) => $r['installed']));
-
-        $this->newLine();
-        $this->line("  <fg=green>●</> installed ({$installedCount})   <fg=gray>○ available</>");
-        $this->line("  <fg=gray>Details for one tool:</> <fg=blue>larakube tool:show {$env} --tool=<slug></>");
-        $this->newLine();
-
-        return 0;
+        return $this->renderRows($rows, $env);
     }
 
     /**
@@ -434,6 +403,58 @@ class ToolListCommand extends Command
         $hosts = preg_split('/\s+/', $out) ?: [];
 
         return array_values(array_unique(array_filter(array_map('trim', $hosts))));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function renderRows(array $rows, ?string $env): int
+    {
+        if ($this->option('json')) {
+            $this->line((string) json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return 0;
+        }
+
+        if ($rows === []) {
+            $this->laraKubeInfo('No tools installed on this cluster yet.');
+            $this->line('  <fg=gray>Install one with</> <fg=blue>larakube tool:add</><fg=gray>.</>');
+
+            return 0;
+        }
+
+        $color = fn (string $v) => match ($v) {
+            'wired', 'OpenBao', 'mesh', 'synced' => '✅',
+            'unwired', 'public', 'manual (.env)', 'unsynced' => '❌',
+            'unreachable' => '⚠️',
+            'N/A' => '🚫',
+            '—' => '<fg=gray>—</>',
+            default => $v,
+        };
+
+        table(
+            ['', 'Service', 'What it is', 'URL', 'Mail', 'SSO', 'Rotation', 'Secrets', 'VPN'],
+            array_map(fn (array $r) => [
+                $r['installed'] ? '<fg=green>●</>' : '<fg=gray>○</>',
+                $r['brand'],
+                $r['label'],
+                $r['url'] ?? ($r['installed'] ? '<fg=gray>no host recorded</>' : '<fg=gray>—</>'),
+                $color((string) $r['mail']),
+                $color((string) $r['sso']),
+                $color((string) $r['rotation']),
+                $color((string) $r['sync']),
+                $color((string) $r['vpn']),
+            ], $rows),
+        );
+
+        $installedCount = count(array_filter($rows, fn ($r) => $r['installed']));
+
+        $this->newLine();
+        $this->line("  <fg=green>●</> installed ({$installedCount})   <fg=gray>○ available</>");
+        $this->line("  <fg=gray>Details for one tool:</> <fg=blue>larakube tool:show {$env} --tool=<slug></>");
+        $this->newLine();
+
+        return 0;
     }
 
     private function rotationCell(bool $openBaoReady, ?bool $wired): string

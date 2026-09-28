@@ -168,6 +168,38 @@ test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, 
     expect($designRow['sync'])->toBe('synced');
 });
 
+test('tool:list --registry-only answers from the registry alone, with no live probes, and marks rows unverified', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'data', 'instance' => '', 'installedAt' => '2026-09-01T00:00:00+00:00', 'host' => 'pocket.example.com'],
+        ]))),
+        // Stalwart is live on the cluster but unregistered: only the full check may find it.
+        '*deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    expect(Artisan::call('tool:list local --registry-only --json'))->toBe(0);
+    $rows = collect(json_decode(Artisan::output(), true))->keyBy('tool');
+
+    expect($rows['data']['installed'])->toBeTrue()
+        ->and($rows['data']['host'])->toBe('pocket.example.com')
+        ->and($rows['data']['verified'])->toBeFalse()
+        ->and($rows['mail']['installed'])->toBeFalse()
+        ->and($rows['mail']['verified'])->toBeFalse()
+        ->and($rows['mail']['sso'])->toBe('unverified');
+
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'deployment stalwart'));
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'get ingress'));
+});
+
+test('a full tool:list marks its rows verified', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+
+    Artisan::call('tool:list local --json');
+
+    expect(collect(json_decode(Artisan::output(), true))->pluck('verified')->unique()->all())->toBe([true]);
+});
+
 test('tool:list --installed filters out uninstalled tools', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
