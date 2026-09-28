@@ -5,7 +5,9 @@ namespace App\Commands;
 use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
 use App\Enums\Blueprint;
+use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
+use App\Enums\DeploymentStrategy;
 use App\Enums\FrontendStack;
 use App\Enums\LaravelFeature;
 use App\Enums\OperatingSystem;
@@ -94,6 +96,7 @@ class NewCommand extends Command
      */
     protected $signature = 'new {name? : The name of the app}
                             {--fast : Skip the LaraKube wizard and use ideal defaults}
+                            {--email= : Email for Let\'s Encrypt certificates (skips the email prompt)}
                             {--no-plex : Skip Plex Commons auto-provisioning and use self-hosted databases}';
 
     /**
@@ -145,6 +148,18 @@ class NewCommand extends Command
 
         $config = $this->buildConfigFromFlags();
         $config->setIsScaffolding(true);
+
+        if (is_string($email = $this->option('email'))) {
+            if ($error = $this->acmeEmailError($email)) {
+                $this->laraKubeError("--email: {$error}");
+
+                return 1;
+            }
+
+            $config->setEmail($email);
+            $this->setEmail($email);
+        }
+
         $config = $this->gatherConfig($config);
 
         // Architectural Guard: FrankenPHP + SQLite
@@ -222,7 +237,9 @@ class NewCommand extends Command
         ]);
 
         $this->newLine();
-        if (confirm('Would you like to start your application now with `larakube up`?', true)) {
+        // Only offered to a person: a scripted run (the desktop app, CI) must
+        // not have a local cluster started for it by a defaulted answer.
+        if ($this->input->isInteractive() && confirm('Would you like to start your application now with `larakube up`?', true)) {
             chdir($projectPath);
 
             return $this->call('up');
@@ -299,8 +316,10 @@ class NewCommand extends Command
 
         // Skip LaraKube-specific flags (Dynamic from Enums)
         $larakubeFlags = array_merge(
-            ['fast', 'force', 'no-interaction', 'no-plex'],
+            ['fast', 'force', 'no-interaction', 'no-plex', 'email'],
             Blueprint::getCommandOptions(),
+            array_column(CacheDriver::getCommandOptionArrays(), 'name'),
+            DeploymentStrategy::getCommandOptions(),
             ServerVariation::getCommandOptions(),
             OperatingSystem::getCommandOptions(),
             PackageManager::getCommandOptions(),
@@ -320,7 +339,7 @@ class NewCommand extends Command
             }
 
             if (str_starts_with($arg, '--')) {
-                return ! in_array(ltrim($arg, '-'), $larakubeFlags);
+                return ! in_array(strtok(ltrim($arg, '-'), '='), $larakubeFlags);
             }
 
             // Keep any other positional arguments or unknown flags (to be safe)

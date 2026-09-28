@@ -97,3 +97,18 @@ test('architectural enum flags coexist with the installer flags (no duplicate-op
         ->and($definition->hasOption('teams'))->toBeTrue()
         ->and($definition->hasOption('fast'))->toBeTrue();
 });
+
+test('--email takes a value and LaraKube-only flags are never forwarded to laravel new', function (): void {
+    $input = bindNewCommandInput('--email=dev@example.com --redis --fast myapp');
+
+    expect($input->getArgument('name'))->toBe('myapp')
+        ->and($input->getOption('email'))->toBe('dev@example.com');
+
+    // laravel new rejects unknown options, and its own --database takes a
+    // value, so the cache flags and --email must stay on the LaraKube side.
+    $source = (string) file_get_contents(base_path('app/Commands/NewCommand.php'));
+
+    expect($source)->toContain("'no-plex', 'email']")
+        ->and($source)->toContain("array_column(CacheDriver::getCommandOptionArrays(), 'name')")
+        ->and($source)->toContain("strtok(ltrim(\$arg, '-'), '=')");
+});
