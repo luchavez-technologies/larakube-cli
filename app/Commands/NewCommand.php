@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
+use App\Enums\AppFramework;
 use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
@@ -170,6 +171,7 @@ class NewCommand extends Command
             }
         }
 
+        $config->framework = AppFramework::LARAVEL;
         $config->setName(Str::slug($inputName));
 
         $appName = $config->getName();
