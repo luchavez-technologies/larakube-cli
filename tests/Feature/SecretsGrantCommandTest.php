@@ -83,6 +83,12 @@ test('secrets:grant wires an app-scoped OpenBao policy/role and grants the Zitad
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateUserGrantRequest
         && $request->body()->get('roleKeys') === ['secrets-my-app-local-developer']);
+
+    // The project is the registered OpenBao instance's own (the name sso:wire gives
+    // it), not a bare one: a lookup by another name would create a second, empty
+    // project and strand every grant on it.
+    Saloon::assertSent(fn ($request) => $request instanceof SearchProjectsRequest
+        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'openbao-secrets-example-com');
 });
 
 test('secrets:grant rejects an invalid role', function (): void {

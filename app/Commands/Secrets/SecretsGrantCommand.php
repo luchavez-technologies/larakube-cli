@@ -3,6 +3,7 @@
 namespace App\Commands\Secrets;
 
 use App\Data\ConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Traits\InteractsWithAppSecretGrants;
 use App\Traits\LaraKubeOutput;
@@ -70,7 +71,7 @@ class SecretsGrantCommand extends Command
             return 1;
         }
 
-        $projectId = $this->resolveSsoProject(ClusterTool::SECRETS, $ssoHost, $pat, $kubectl);
+        $projectId = $this->resolveSsoProject(ClusterTool::SECRETS, $ssoHost, $pat, $kubectl, ToolInstance::first($kubectl, ClusterTool::SECRETS)?->instance);
         if ($projectId === null) {
             return 1;
         }
@@ -78,7 +79,7 @@ class SecretsGrantCommand extends Command
         $roleKey = $this->appSecretsRoleKey($app, $environment, $role);
 
         if (! $this->zitadelEnsureProjectRole($ssoHost, $pat, $projectId, $roleKey, "Secrets: {$app}/{$environment} ({$role})")) {
-            $this->laraKubeError("Could not ensure the '{$roleKey}' role exists on ".ClusterTool::SECRETS->rbacProjectName().'.');
+            $this->laraKubeError("Could not ensure the '{$roleKey}' role exists on ".ClusterTool::SECRETS->rbacProjectName(ToolInstance::first($kubectl, ClusterTool::SECRETS)?->instance).'.');
 
             return 1;
         }
