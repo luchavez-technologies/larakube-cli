@@ -245,9 +245,18 @@ kubectl --context=$CTX get vaultdynamicsecret.generators.external-secrets.io -A 
   | jq -r '.items[] | select(tostring|contains("openbao-backend")) | .metadata.namespace + "/" + .metadata.name'
 ```
 
-It must print nothing. If it prints a name, that tool is not wired through
-`secrets:wire --all` (its own `secrets:wire --tool=<tool>` re-points it); do not
-continue until it is empty.
+It must print **only** `larakube-sso/sso-secrets-db`: Zitadel's OLD generator, which
+step 7 deletes. Any other name is a tool `secrets:wire --all` did not re-point (its
+own `secrets:wire --tool=<tool>` does); do not continue until only that one is left.
+
+`--all` also wires NetBird's database password for rotation for the first time
+(`netbird-store-vpn-luchtech-dev-db`), so expect one more ExternalSecret and a
+static role `netbird_vpn_luchtech_dev` (10 roles in all, the old `zitadel` included
+until step 8). Check NetBird is healthy:
+
+```zsh
+kubectl --context=$CTX -n larakube-vpn get pods --no-headers | awk '{print $1,$2,$3}'
+```
 
 ## 6. Verify before deleting anything
 
@@ -323,7 +332,8 @@ Then log in to OpenBao through SSO at `https://secrets.luchtech.dev` (method OID
 
 ## 10. Remove the bridge and the old OpenBao records
 
-Only after step 5 printed nothing and step 9 passed:
+Only after step 5 showed no generator but the old Zitadel one (deleted in step 7)
+and step 9 passed:
 
 ```zsh
 lsec delete service openbao-backend --ignore-not-found          # the bridge
