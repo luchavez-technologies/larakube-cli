@@ -3,7 +3,7 @@
 Cluster side of the change that makes the rest of the monitoring stack carry the
 instance. Context `larakube-159.89.205.239`, namespace `larakube-shared`, Grafana at
 `monitor.luchtech.dev`, instance slug `monitor-luchtech-dev`. Part of
-`plans/active/naming-closeout-leftovers.md`; run its steps 1 and 2 first or after,
+`plans/completed/naming-closeout-leftovers.md`; run its steps 1 and 2 first or after,
 they are independent.
 
 Prometheus, Loki, Grafana, their claims, Services, Secrets and the Loki, Prometheus
@@ -126,7 +126,7 @@ dashboards, and `kube_pod_info` back near the baseline (about 106, after a minut
 
 ## 5. Sweep
 
-Run the sweep in `plans/active/naming-closeout-leftovers.md` step 3. The only `CHECK`
+Run the sweep in `plans/completed/naming-closeout-leftovers.md` step 3. The only `CHECK`
 rows left are the hand-made `grafana-matrix-forwarder` (Deployment and Service) and
 `alertbot-credentials`.
 

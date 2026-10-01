@@ -3,9 +3,9 @@
 Cluster side of the change that moves Zitadel onto `ToolInstance` names. Context
 `larakube-159.89.205.239`, namespace `larakube-sso`, host `sso.luchtech.dev`,
 instance slug `sso-luchtech-dev`. **Run it after**
-`plans/active/openbao-canonical-naming-live-migration.md`: this one re-points every
+`plans/completed/openbao-canonical-naming-live-migration.md`: this one re-points every
 OpenBao generator and deletes the bridge that runbook left, so OpenBao must already
-be on its new names. Follows `plans/active/mail-canonical-naming-live-migration.md`.
+be on its new names. Follows `plans/completed/mail-canonical-naming-live-migration.md`.
 
 **Every tool's SSO login goes through this server, so read all of it first. Do not
 run `zitadel:init` or `sso:init` before this runbook:** the code now deploys the

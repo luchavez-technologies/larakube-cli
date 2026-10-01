@@ -35,30 +35,26 @@ migration verbs in the CLI).
 
 State of `ClusterTool::resourceNaming()` (`app/Enums/ClusterTool.php`):
 
-- **CANONICAL (code and cluster):** MONITOR, GIT, NOTES, FLOW, SIGN, DATA, LINK,
-  ANALYTICS, SHEETS, TASKS, DASHBOARD, MEET, WEBMAIL, DRIVE, VPN, CRM,
-  PASSWORDS, CHAT, MAIL.
-- **CANONICAL in code, live migration pending:** SECRETS (OpenBao), SSO
-  (Zitadel). Runbooks: `openbao-canonical-naming-live-migration.md`, then
-  `zitadel-canonical-naming-live-migration.md` (it re-points every OpenBao
-  generator and deletes the bridge Service the first one leaves). Also
-  `secrets-stale-externalsecrets-cleanup.md` (14 dead objects; delete only).
+- **CANONICAL (code and cluster), verified 2026-10-02:** every installed Cluster
+  Tool on `larakube-159.89.205.239`: MONITOR (now including kube-state-metrics,
+  Promtail, the RBAC and the Grafana ConfigMaps), GIT, NOTES, FLOW, SIGN, DATA,
+  LINK, ANALYTICS, SHEETS, TASKS, DASHBOARD, MEET, WEBMAIL, DRIVE, VPN, CRM,
+  PASSWORDS, CHAT, MAIL, SECRETS (OpenBao), SSO (Zitadel).
 - **AS_SHIPPED (not installed, code-only later):** RECORD, RESUME, SUPPORT.
 - **INSTANCE_SUFFIXED (not installed, code-only later):** DNS, ERRORS,
   INSIGHTS, UPTIME, DESIGN, PASTE.
 
-**Live state, `larakube-159.89.205.239` (read 2026-10-02).** Chat, Mail, CRM,
-Vaultwarden, Forgejo, Grafana stack, Documenso, Headlamp, LiveKit, n8n, oCIS,
-Outline, NetBird, Bulwark are canonical and verified. Left on the old names:
-OpenBao (`openbao-backend`, `openbao-data`, `openbao-bootstrap`) and Zitadel
-(`sso-zitadel`, `sso-secrets`, database `zitadel`, tools registry row with an
-empty instance). Not installed, so code-only: RECORD, RESUME, SUPPORT, DESIGN,
-ERRORS, INSIGHTS, UPTIME, PASTE. Leftover: PVC
-`pocketbase-storage-data-luchtech-dev` (PocketBase is not registered; check it
-for data before deleting). Known remaining non-canonical code: the shared
-ForwardAuth proxy is now `proxy-{instance}` but only the AS_SHIPPED RECORD tool
-uses it; `forDeployment()` still matches bare, instance-less names such as
-`vaultwarden`, which is how a dead leftover Deployment can abort `backup:run`.
+**Live state, `larakube-159.89.205.239` (read 2026-10-02).** A sweep of every
+`larakube-*` namespace finds only plumbing (ESO, Reloader, Plex Commons, `eman`,
+`headless-shell`, external-dns) and the hand-made `grafana-matrix-forwarder` +
+`alertbot-credentials` (not created by the CLI; `:latest`, 2000+ restarts). The 16
+tools-registry rows all carry a host-derived instance; Zitadel has 11 projects,
+all named for their instance. The runbooks are in `plans/completed/`. Left:
+PVC `pocketbase-storage-data-luchtech-dev` (PocketBase is not registered; check it
+for data before deleting). Open code items: `forDeployment()` still matches bare,
+instance-less names such as `vaultwarden` (how a dead leftover Deployment aborted
+`backup:run`), and the category `<category>:init` commands go once the migration is
+closed (tool-named ones replace them).
 
 Plans for this: the order and recipe are the memory note
 `project_naming_convention_no_category` and the proven runbook

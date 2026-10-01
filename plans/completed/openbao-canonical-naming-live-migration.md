@@ -4,8 +4,8 @@ Cluster side of the change that moves OpenBao onto `ToolInstance` names. Context
 `larakube-159.89.205.239`, namespace `larakube-secrets`, host `secrets.luchtech.dev`,
 instance slug `secrets-luchtech-dev`. Follows
 `plans/completed/chat-canonical-naming-live-migration.md` and
-`plans/active/mail-canonical-naming-live-migration.md`. Zitadel follows it:
-`plans/active/zitadel-canonical-naming-live-migration.md`.
+`plans/completed/mail-canonical-naming-live-migration.md`. Zitadel follows it:
+`plans/completed/zitadel-canonical-naming-live-migration.md`.
 
 **OpenBao holds every rotating database password in the cluster and 90 KV secrets.
 Read all of it first, and finish Zitadel's runbook within a few days of this one**
