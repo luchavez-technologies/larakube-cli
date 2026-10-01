@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -21,18 +22,33 @@ trait InteractsWithVault
     /** Vaultwarden Deployment present? A cheap "is Vaultwarden installed" probe. */
     protected function isVaultInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'vaultwarden');
+        // By label: the Deployment is named per instance.
+        $found = Kubectl::fromPrefix($kubectl)->raw(
+            ['get', 'deployment', '-l', 'larakube.io/tool=passwords', '-n', $ns, '--no-headers', '--ignore-not-found'],
+        );
+
+        return trim($found->output) !== '';
     }
 
-    /** The existing Vaultwarden admin token, or null when the secret isn't there. */
-    protected function readVaultAdminToken(string $kubectl, string $ns): ?string
+    /**
+     * The existing Vaultwarden admin token, or null when the secret isn't
+     * there. Without an $instance, the registered instance is used.
+     */
+    protected function readVaultAdminToken(string $kubectl, string $ns, ?string $instance = null): ?string
     {
-        $plain = $this->readClusterSecretKey($kubectl, $ns, 'vault-secrets', 'plain-token');
+        $instance ??= ToolInstance::registered($kubectl, ClusterTool::PASSWORDS)[0]->instance ?? null;
+        if ($instance === null || $instance === '') {
+            return null;
+        }
+
+        $secret = ToolInstance::forInstance(ClusterTool::PASSWORDS, $instance)->secret();
+
+        $plain = $this->readClusterSecretKey($kubectl, $ns, $secret, 'plain-token');
         if ($plain !== null) {
             return $plain;
         }
 
-        $legacy = $this->readClusterSecretKey($kubectl, $ns, 'vault-secrets', 'admin-token');
+        $legacy = $this->readClusterSecretKey($kubectl, $ns, $secret, 'admin-token');
         if ($legacy === null) {
             return null;
         }

@@ -21,9 +21,9 @@ function vaultReader(): object
             return $this->isVaultInstalled($kubectl, $ns);
         }
 
-        public function vaultToken(string $kubectl, string $ns): ?string
+        public function vaultToken(string $kubectl, string $ns, ?string $instance = null): ?string
         {
-            return $this->readVaultAdminToken($kubectl, $ns);
+            return $this->readVaultAdminToken($kubectl, $ns, $instance);
         }
 
         public function access(string $env, ?ConfigData $config, ?string $context = null): ?array
@@ -51,35 +51,42 @@ test('cloud Vault host is null when none is configured for the env', function ()
     expect(vaultReader()->host('production', $config))->toBeNull();
 });
 
-test('isVaultInstalled reflects whether the vaultwarden Deployment exists', function (): void {
-    Process::fake(['kubectl get deployment vaultwarden -n larakube-vault --no-headers --ignore-not-found' => 'vaultwarden   1/1   1   1   5d']);
+test('isVaultInstalled finds the Deployment by its identity label, whatever its instance name', function (): void {
+    Process::fake(['*get deployment -l larakube.io/tool=passwords -n larakube-vault*' => 'vaultwarden-vault-example-com   1/1   1   1   5d']);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment vaultwarden -n larakube-vault --no-headers --ignore-not-found' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*get deployment -l larakube.io/tool=passwords -n larakube-vault*' => Process::result(output: '', exitCode: 1)]);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeFalse();
 });
 
-test('readVaultAdminToken decodes the admin secret, null when absent', function (): void {
+test('readVaultAdminToken reads the instance\'s credentials Secret', function (): void {
     Process::fake([
-        "kubectl get secret vault-secrets -n larakube-vault -o jsonpath='{.data.admin-token}'" => base64_encode('s3cr3t-adm1n'),
+        "*get secret vaultwarden-secrets-vault-example-com -n larakube-vault -o jsonpath='{.data.plain-token}'*" => base64_encode('s3cr3t-adm1n'),
     ]);
-    expect(vaultReader()->vaultToken('kubectl', 'larakube-vault'))->toBe('s3cr3t-adm1n');
 
+    expect(vaultReader()->vaultToken('kubectl', 'larakube-vault', 'vault-example-com'))->toBe('s3cr3t-adm1n');
+});
+
+test('readVaultAdminToken is null when the Secret is absent', function (): void {
     Process::fake([
-        "kubectl get secret vault-secrets -n larakube-vault -o jsonpath='{.data.admin-token}'" => Process::result(output: '', exitCode: 1),
+        '*get secret vaultwarden-secrets-vault-example-com*' => Process::result(output: '', exitCode: 1),
     ]);
-    expect(vaultReader()->vaultToken('kubectl', 'larakube-vault'))->toBeNull();
+
+    expect(vaultReader()->vaultToken('kubectl', 'larakube-vault', 'vault-example-com'))->toBeNull();
 });
 
 test('vaultAccess is null when vault is not installed, populated when it is', function (): void {
-    $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
+    $registry = base64_encode((string) json_encode([
+        ['tool' => 'passwords', 'instance' => 'vault-example-com', 'host' => 'vault.example.com'],
+    ]));
 
-    Process::fake(["{$kubectl} get deployment vaultwarden -n larakube-vault --no-headers --ignore-not-found" => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*get deployment -l larakube.io/tool=passwords*' => Process::result(output: '', exitCode: 1)]);
     expect(vaultReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        "{$kubectl} get deployment vaultwarden -n larakube-vault --no-headers --ignore-not-found" => 'vaultwarden   1/1   1   1   5d',
-        "{$kubectl} get secret vault-secrets -n larakube-vault -o jsonpath='{.data.admin-token}'" => base64_encode('s3cr3t-adm1n'),
+        '*get deployment -l larakube.io/tool=passwords*' => 'vaultwarden-vault-example-com   1/1   1   1   5d',
+        '*get secret larakube-tools-registry*' => $registry,
+        "*get secret vaultwarden-secrets-vault-example-com -n larakube-vault -o jsonpath='{.data.plain-token}'*" => base64_encode('s3cr3t-adm1n'),
     ]);
     $access = vaultReader()->access('local', null);
 

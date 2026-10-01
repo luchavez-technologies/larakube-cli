@@ -308,7 +308,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
         // Fixed names — templates haven't adopted the instance suffix yet.
         'chat' => ['chat-secrets', 'chat-secrets'],
         'monitor' => ['grafana-secrets-inst', 'grafana-secrets-inst'],
-        'passwords' => ['vault-secrets', 'vault-secrets'],
+        'passwords' => ['vaultwarden-secrets-inst', 'vaultwarden-secrets-inst'],
         'sso' => [null, 'sso-secrets'],
         // Canonical ({component}-{token}-{instance}) once a tool has migrated,
         // otherwise the shape its manifests still write.

@@ -222,7 +222,9 @@ enum SharedClusterService: string
             // an unrelated Prometheus someone installed.
             self::GRAFANA => 'deployment -l larakube.io/tool=monitor -n larakube-shared',
             self::UPTIME_KUMA => 'deployment uptime-kuma -n larakube-shared',
-            self::VAULT => 'deployment vaultwarden -n larakube-vault',
+            // Vaultwarden's Deployment is named per instance, so a probe on a
+            // bare name never matches; select on the identity label instead.
+            self::VAULT => 'deployment -l larakube.io/tool=passwords -n larakube-vault',
             // By label: NetBird's management Deployment is per-instance
             // (netbird-{instance}), and a bare name matches nothing.
             self::VPN => 'deployment -l larakube.io/tool=vpn -n larakube-vpn',

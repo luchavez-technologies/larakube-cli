@@ -12,14 +12,14 @@ afterEach(function (): void {
 test('passwords:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
     // Same design principle enforced for git:init/monitor:init: {tool}:init
     // must not know or care whether OpenBao is installed. It writes a
-    // locally-generated DATABASE_URL directly into vault-secrets (see the
+    // locally-generated DATABASE_URL directly into its credentials Secret (see the
     // Deployment template's secretKeyRef, rendered straight from the PHP
     // variable). Only secrets:wire may register a tool's DB password as an
     // OpenBao static role. resolveManagedDbPassword() is the one exception:
     // a READ-only check so a re-run doesn't clobber a password OpenBao
     // already owns from a PAST secrets:wire run.
     Process::fake([
-        '*get secret vault-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret vaultwarden-secrets*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
             'services' => ['postgres' => ['enabled' => true]],

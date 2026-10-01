@@ -1,13 +1,22 @@
 @php
-    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::PASSWORDS->instanceSlugFromHost($host) : 'vault');
-    $ingressName = "passwords-vaultwarden-{$instance}";
-    $serviceName = "passwords-vaultwarden-{$instance}";
+    // Rendered on its own by the shared-service reconcile (host only) as well
+    // as included from shared.blade.php, so derive every name here.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::PASSWORDS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::PASSWORDS, $instance);
+    $ingressName = $serviceName = $names->deployment();
+    $ingressLabels = '';
+    foreach ($names->labels() as $key => $value) {
+        $ingressLabels .= "\n    {$key}: {$value}";
+    }
 @endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $ingressName }}
   namespace: larakube-vault
+  labels:{!! $ingressLabels !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -18,7 +27,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-vault-vault-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:

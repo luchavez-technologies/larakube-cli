@@ -2,6 +2,7 @@
 
 namespace App\Commands\Password;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -58,7 +59,12 @@ class PasswordsInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $adminToken = $this->readVaultAdminToken($kubectl, $ns) ?? bin2hex(random_bytes(16));
+        // Every name comes from ToolInstance (ADR 0021).
+        $instance = ClusterTool::PASSWORDS->instanceSlugFromHost($host);
+        $names = ToolInstance::forInstance(ClusterTool::PASSWORDS, $instance);
+        $dbName = $names->database();
+
+        $adminToken = $this->readVaultAdminToken($kubectl, $ns, $instance) ?? bin2hex(random_bytes(16));
         $hashedAdminToken = defined('PASSWORD_ARGON2ID')
             ? password_hash($adminToken, PASSWORD_ARGON2ID)
             : password_hash($adminToken, PASSWORD_DEFAULT);
@@ -68,36 +74,34 @@ class PasswordsInitCommand extends Command
 
         // passwords:init doesn't know or care whether OpenBao exists on this
         // cluster — only secrets:wire --tool=passwords may register the
-        // 'vaultwarden' static role and hand rotation over to it. This is a
+        // static role and hand rotation over to it. This is a
         // READ-only exception: it defers to OpenBao's current password when
         // a PAST secrets:wire run already made it the owner, so a re-run
         // here never clobbers it back to a fresh local one.
-        $dbPassword = $this->resolveManagedDbPassword($kubectl, 'vaultwarden', $dbPassword);
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
         $databaseUrl = null;
         $plexNs = $this->plexNamespace();
 
         if ($this->ensureCommons(['postgres'])) {
             $driver = DatabaseDriver::POSTGRESQL;
-            if ($this->allocateDatabase($driver, 'vaultwarden', $dbPassword)) {
-                $databaseUrl = "postgresql://vaultwarden:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/vaultwarden";
+            if ($this->allocateDatabase($driver, $dbName, $dbPassword)) {
+                $databaseUrl = "postgresql://{$dbName}:{$dbPassword}@postgres.{$plexNs}.svc.cluster.local:5432/{$dbName}";
             }
         }
 
-        // Written straight into vault-secrets by the manifest below (same
-        // pattern as git-secrets/monitor-secrets) — no OpenBao involvement
-        // unless/until secrets:wire merges a rotated value into this same
-        // Secret via the 'vault-secrets-db' ExternalSecret.
+        // Written straight into the credentials Secret by the manifest below —
+        // no OpenBao involvement unless/until secrets:wire merges a rotated
+        // value into this same Secret via its ExternalSecret.
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::PASSWORDS, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::PASSWORDS, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
         }
 
-        $instance = ClusterTool::PASSWORDS->instanceSlugFromHost($host);
-        $deploymentName = ClusterTool::PASSWORDS->primaryComponent($instance)->deployment;
+        $deploymentName = $names->deployment();
 
         $manifest = view('k8s.vault.shared', [
             'instance' => $instance,
@@ -124,7 +128,7 @@ class PasswordsInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::PASSWORDS, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::PASSWORDS, $kubectl, $host, instance: $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Vaultwarden stack is live.');

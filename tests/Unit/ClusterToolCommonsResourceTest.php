@@ -19,17 +19,15 @@ test('forCommonsResource returns null for a genuine Application Tenant', functio
         ->and(ClusterTool::forCommonsResource('demo-production'))->toBeNull();
 });
 
-test('PASSWORDS is wired into openbaoSyncConfig so secrets:init actually maintains vault-secrets', function (): void {
-    // Regression guard, redesigned 2026-08-18: DATABASE_URL now lives in
-    // vault-secrets — the Secret passwords:init itself creates and controls
-    // (alongside admin-token/plain-token), not the never-created
-    // 'vaultwarden-secrets'. secrets:wire's dynamic ExternalSecret merges
-    // (creationPolicy: Merge) a rotated value into this same Secret instead
-    // of depending on a separate one that only existed if secrets:init's
-    // sweep happened to run first — see PasswordTool::dbSecretRef().
+test('PASSWORDS is wired into openbaoSyncConfig so secrets:init actually maintains its credentials Secret', function (): void {
+    // DATABASE_URL lives in the Secret passwords:init itself creates and
+    // controls (alongside admin-token/plain-token). secrets:wire's dynamic
+    // ExternalSecret merges (creationPolicy: Merge) a rotated value into that
+    // same Secret, so the name has to be the one the manifest writes.
     $config = ClusterTool::PASSWORDS->openbaoSyncConfig();
 
     expect($config)->not->toBeNull()
-        ->and($config['secret'])->toBe('vault-secrets')
+        ->and($config['secret'])->toBe('vaultwarden-secrets')
+        ->and(ClusterTool::PASSWORDS->openbaoSyncConfig('vault-example-com')['secret'])->toBe('vaultwarden-secrets-vault-example-com')
         ->and($config['keys'])->toContain('VAULTWARDEN_DATABASE_URL');
 });

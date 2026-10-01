@@ -193,7 +193,7 @@ test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project,
         ->and($searchedNames)->toContain('kutt')
         ->and($searchedNames)->toContain('outline')
         ->and($searchedNames)->toContain('documenso')
-        ->and($searchedNames)->toContain('passwords-vaultwarden')
+        ->and($searchedNames)->toContain('vaultwarden')
         ->and($searchedNames)->toContain('LaraKube Shared Tools');
 });
 

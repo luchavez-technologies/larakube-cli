@@ -1,13 +1,25 @@
 @php
-    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::PASSWORDS->instanceSlugFromHost($host) : 'vault');
-    $deploymentName = "passwords-vaultwarden-{$instance}";
-    $serviceName = "passwords-vaultwarden-{$instance}";
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::PASSWORDS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::PASSWORDS, $instance);
+    $deploymentName = $names->deployment();
+    $serviceName = $deploymentName;
+    $secretName = $names->secret();
+    $volume = $names->volume();
+    $labels = '';
+    foreach ($names->labels() as $key => $value) {
+        $labels .= "\n    {$key}: {$value}";
+    }
+    $podLabels = str_replace("\n    ", "\n        ", $labels);
 @endphp
 apiVersion: v1
 kind: Secret
 metadata:
-  name: vault-secrets
+  name: {{ $secretName }}
   namespace: larakube-vault
+  labels:{!! $labels !!}
 type: Opaque
 data:
   plain-token: {{ base64_encode($adminToken) }}
@@ -19,19 +31,21 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: vaultwarden-storage
+  name: {{ $volume }}
   namespace: larakube-vault
+  labels:{!! $labels !!}
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('vaultwarden-storage', '2Gi', true) }}
+      storage: {{ $volumeSize($volume, '2Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $deploymentName }}
   namespace: larakube-vault
+  labels:{!! $labels !!}
 spec:
   replicas: 1
   strategy:
@@ -43,7 +57,7 @@ spec:
     metadata:
       labels:
         app: {{ $deploymentName }}
-        instance: {{ $instance }}
+        instance: {{ $instance }}{!! $podLabels !!}
     spec:
       containers:
         - name: vaultwarden
@@ -59,13 +73,13 @@ spec:
             - name: ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: vault-secrets
+                  name: {{ $secretName }}
                   key: admin-token
 @if(isset($databaseUrl) && $databaseUrl)
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: vault-secrets
+                  name: {{ $secretName }}
                   key: VAULTWARDEN_DATABASE_URL
 @endif
             {{-- No `envFrom: secretRef` here — a synced Secret mirroring every
@@ -96,13 +110,14 @@ spec:
       volumes:
         - name: vaultwarden-volume
           persistentVolumeClaim:
-            claimName: vaultwarden-storage
+            claimName: {{ $volume }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ $serviceName }}
   namespace: larakube-vault
+  labels:{!! $labels !!}
 spec:
   selector:
     app: {{ $deploymentName }}

@@ -536,8 +536,11 @@ test('secrets:wire --tool=mail does not restart the deployment when the forced r
 test('secrets:wire --tool=passwords registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret vault-secrets*' => Process::result(output: base64_encode('postgresql://vaultwarden:pw@postgres:5432/vaultwarden')),
-        '*get deployment*vaultwarden*' => Process::result(output: 'passwords-vaultwarden-vault-dev-test'),
+        '*get secret vaultwarden-secrets*' => Process::result(output: base64_encode('postgresql://vaultwarden_vault_dev_test:pw@postgres:5432/vaultwarden_vault_dev_test')),
+        '*get deployment*vaultwarden*' => Process::result(output: 'vaultwarden-vault-dev-test'),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'passwords', 'instance' => 'vault-dev-test', 'host' => 'vault.dev.test'],
+        ]))),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -556,13 +559,13 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
         ->expectsOutputToContain("Password Manager (Vaultwarden)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
-        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/vaultwarden')
-        && ($request->body()->get('username') ?? null) === 'vaultwarden'
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/vaultwarden_vault_dev_test')
+        && ($request->body()->get('username') ?? null) === 'vaultwarden_vault_dev_test'
         && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret vault-secrets-db'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/passwords-vaultwarden'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret vaultwarden-secrets-vault-dev-test-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vaultwarden-vault-dev-test'));
 });
 
 test('secrets:wire supports git, notes, sheets, and chat tools', function (): void {

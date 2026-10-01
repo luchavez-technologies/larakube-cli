@@ -14,6 +14,8 @@ use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 use Illuminate\Support\Facades\Process;
 
@@ -36,18 +38,42 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
             // dependency unresolvable on any cluster without OpenBao bootstrapped.
             'secret' => 'vault-secrets',
             'key' => 'VAULTWARDEN_DATABASE_URL',
-            'template' => 'postgresql://vaultwarden:{{ .password }}@postgres.larakube-plex.svc.cluster.local:5432/vaultwarden',
+            // OpenBao's static-creds return the role's own name as `username`, and
+            // a Commons tenant's role and database share one name, so the URL is
+            // right for whichever instance the role belongs to.
+            'template' => 'postgresql://{{ .username }}:{{ .password }}@postgres.larakube-plex.svc.cluster.local:5432/{{ .username }}',
         ];
     }
 
+    /**
+     * One PRIMARY component, with every resource vault/shared.blade.php
+     * declares, so teardown() can't drift from what is deployed.
+     *
+     * @return list<ClusterToolComponentData>
+     */
     public function components(?string $instance = null, ?string $engine = null): array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        // ClusterTool::components() strips the category from the Deployment
+        // name; the nested resource names have to follow the same rule.
+        // Composed here rather than read back from ToolInstance, which
+        // derives every name FROM this list and would recurse.
+        $canonical = fn (string $n) => ClusterTool::PASSWORDS->withoutCategory($n);
+        $deployment = $canonical($name('passwords-vaultwarden'));
 
         return [
             new ClusterToolComponentData(
                 key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('passwords-vaultwarden'),
-                container: 'vaultwarden', backupVolume: true, backupPaths: ['/data'],
+                container: 'vaultwarden',
+                resources: [
+                    ['kind' => 'service', 'name' => $deployment],
+                    ['kind' => 'ingress', 'name' => $deployment],
+                    ['kind' => 'secret', 'name' => $canonical($name('passwords-vaultwarden-secrets'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('passwords-vaultwarden-oidc'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('passwords-vaultwarden-smtp'))],
+                    ['kind' => 'pvc', 'name' => $canonical($name('passwords-vaultwarden-storage'))],
+                ],
+                backupVolume: true, backupPaths: ['/data'],
             ),
         ];
     }
@@ -55,10 +81,11 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
     public function smtpEnv(?string $instance = null): ?array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        $canonical = fn (string $n) => ClusterTool::PASSWORDS->withoutCategory($n);
 
         return [
-            'deployment' => $name('passwords-vaultwarden'),
-            'secret' => 'vaultwarden-smtp',
+            'deployment' => $canonical($name('passwords-vaultwarden')),
+            'secret' => $canonical($name('passwords-vaultwarden-smtp')),
             'static' => [
                 'SMTP_SECURITY' => 'force_tls',
             ],
@@ -75,10 +102,11 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
     public function oidcEnv(?string $instance = null): ?array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        $canonical = fn (string $n) => ClusterTool::PASSWORDS->withoutCategory($n);
 
         return [
-            'deployment' => $name('passwords-vaultwarden'),
-            'secret' => 'vaultwarden-oidc',
+            'deployment' => $canonical($name('passwords-vaultwarden')),
+            'secret' => $canonical($name('passwords-vaultwarden-oidc')),
             'static' => [
                 'SSO_ENABLED' => 'true',
                 'SSO_PKCE' => 'true',
@@ -109,7 +137,9 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
     public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
-            'secret' => 'vault-secrets',
+            'secret' => ($instance === null || $instance === '')
+                ? 'vaultwarden-secrets'
+                : ToolInstance::forInstance(ClusterTool::PASSWORDS, $instance)->secret(),
             'keys' => ['VAULTWARDEN_DATABASE_URL'],
         ];
     }
@@ -126,12 +156,15 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
     public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
-        $ns = ($instance === null || $instance === '') ? 'larakube-vault' : "larakube-vault-{$instance}";
-        // vault-secrets has no ADMIN_TOKEN key — admin-token holds the
+        $ns = ClusterTool::PASSWORDS->namespace();
+        $secret = ($instance === null || $instance === '')
+            ? 'vaultwarden-secrets'
+            : ToolInstance::forInstance(ClusterTool::PASSWORDS, $instance)->secret();
+        // The credentials Secret has no ADMIN_TOKEN key — admin-token holds the
         // Argon2id HASH Vaultwarden itself consumes (irreversible); the raw
         // token an operator actually logs in with is plain-token.
         $tokenVal = trim(Process::run(
-            "{$kubectl} get secret vault-secrets -n {$ns} -o jsonpath='{.data.plain-token}' --ignore-not-found",
+            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.plain-token}' --ignore-not-found",
         )->output());
         $decodedToken = $tokenVal !== '' ? (base64_decode($tokenVal, true) ?: '<unknown>') : '<unknown>';
 
@@ -143,18 +176,19 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'vault-vpn-only' : "vault-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '')
+            ? 'vault-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::PASSWORDS, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => 'larakube-vault',
+            'namespace' => ClusterTool::PASSWORDS->namespace(),
         ];
     }
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
-
-        return "deployment/{$name('passwords-vaultwarden')} -n larakube-vault";
+        // By label: the Deployment is named per instance, so a bare name matches nothing.
+        return 'deployment -l larakube.io/tool=passwords -n '.ClusterTool::PASSWORDS->namespace();
     }
 }
