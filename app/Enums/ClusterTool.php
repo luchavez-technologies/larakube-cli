@@ -1683,9 +1683,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::PASTE, self::YOPASS, self::UPTIME, self::KUMA, self::INSIGHTS, self::METABASE,
             // ExternalDNS is keyed by a zone group, not a host: `external-dns-{group}` already is
             // {component}-{instance}, so listing it changes no name.
-            self::DNS, self::EXTERNAL_DNS, self::ERRORS, self::GLITCHTIP, self::SUPPORT, self::CHATWOOT, self::RECORD, self::SENDREC, self::DESIGN, self::PENPOT => ResourceNaming::CANONICAL,
-            self::RECORD,
-            self::RESUME => ResourceNaming::CANONICAL,
+            self::DNS, self::EXTERNAL_DNS, self::ERRORS, self::GLITCHTIP, self::SUPPORT, self::CHATWOOT, self::RECORD, self::SENDREC, self::RESUME, self::DESIGN, self::PENPOT => ResourceNaming::CANONICAL,
             default => ResourceNaming::INSTANCE_SUFFIXED,
         };
     }

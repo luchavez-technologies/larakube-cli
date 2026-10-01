@@ -41,3 +41,27 @@ test('a migrated tool labels what it deploys with its identity', function (Clust
     expect(ToolInstance::forInstance($tool, 'x-example-com')->labels())
         ->toHaveKeys(['larakube.io/managed-by', 'larakube.io/tool', 'larakube.io/component', 'larakube.io/instance']);
 })->with('tools on the canonical naming');
+
+test('every Cluster Tool is on the canonical naming, so a new one has to choose it', function (): void {
+    foreach (ClusterTool::cases() as $tool) {
+        expect($tool->resourceNaming() === App\Enums\ResourceNaming::CANONICAL)->toBeTrue("{$tool->value} is not on the canonical naming");
+    }
+});
+
+test('a Cluster Tool manifest pack takes its names from ToolInstance', function (): void {
+    // Hand-built names are how init and remove drift apart. `data` (names passed in by
+    // its init) and `dns` (keyed by zone group) are the only packs that do not read it.
+    $exempt = ['data', 'dns'];
+    $packs = ['analytics', 'chat', 'crm', 'dashboard', 'design', 'drive', 'errors', 'flow', 'git', 'insights', 'link', 'mail',
+        'meet', 'monitoring', 'notes', 'paste', 'record', 'resume', 'secrets', 'sheet', 'sign', 'sso', 'support', 'tasks',
+        'uptime', 'vault', 'vpn', 'webmail', ...$exempt];
+
+    foreach (array_diff($packs, $exempt) as $pack) {
+        $source = '';
+        foreach (glob(resource_path("views/k8s/{$pack}/*.blade.php")) as $file) {
+            $source .= file_get_contents($file);
+        }
+
+        expect(str_contains($source, 'ToolInstance'))->toBeTrue("k8s/{$pack} does not read ToolInstance");
+    }
+});
