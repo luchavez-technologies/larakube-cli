@@ -16,7 +16,7 @@ afterEach(function (): void {
  * The '*' catch-all MUST stay last in the resulting array — Process::fake()
  * matches in array order, and array_merge() appends new override keys AFTER
  * existing default keys, so putting '*' inside the defaults would let it
- * shadow any override (e.g. a specific 'openbao-bootstrap' pattern) before
+ * shadow any override (e.g. a specific 'openbao-secrets-secrets-example-com' pattern) before
  * that override is even reached.
  */
 function plexShowFakes(array $overrides = []): array
@@ -36,11 +36,12 @@ function plexShowFakes(array $overrides = []): array
 }
 
 test('plex:show surfaces an OpenBao-wired tenant\'s rotation schedule, never the password', function (): void {
+    openBaoRegistered();
     // Regression guard: staticRoleRotationInfo() reads password+username off
     // the same API response too — this proves plex:show's output never
     // contains either, only the schedule.
     Process::fake(plexShowFakes([
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
     ]));
 
@@ -69,8 +70,9 @@ test('plex:show surfaces an OpenBao-wired tenant\'s rotation schedule, never the
 });
 
 test('plex:show marks a tenant with no OpenBao static role as manual (.env)', function (): void {
+    openBaoRegistered();
     Process::fake(plexShowFakes([
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
     ]));
 
@@ -86,6 +88,7 @@ test('plex:show marks a tenant with no OpenBao static role as manual (.env)', fu
 });
 
 test('plex:show explains a missing DB password instead of leaving a silent gap, for an OpenBao-managed self tenant', function (): void {
+    openBaoRegistered();
     // Regression guard for the confusion a user hit live 2026-08-02: a
     // password WAS showing here, but it was stale — writeTenantConfig now
     // strips it from .env once OpenBao owns it, so this asserts plex:show
@@ -108,7 +111,7 @@ test('plex:show explains a missing DB password instead of leaving a silent gap, 
             '*get configmap plex-registry*' => Process::result(
                 output: (string) json_encode(['tenants' => ['demo_local' => ['db' => 'demo_local', 'db_service' => 'postgres']]]),
             ),
-            '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+            '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
             '*port-forward*' => Process::result(output: ''),
         ]));
 
@@ -135,11 +138,12 @@ test('plex:show explains a missing DB password instead of leaving a silent gap, 
 });
 
 test('plex:show never touches OpenBao when it is not installed', function (): void {
+    openBaoRegistered();
     // Perf/correctness: no bootstrap secret means no port-forward should be
     // attempted at all for the rotation line — the readiness check happens
     // once, up front, not per tenant.
     Process::fake(plexShowFakes([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
     ]));
 
     $this->artisan('plex:show local --context=test-ctx')

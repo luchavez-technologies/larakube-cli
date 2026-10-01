@@ -28,16 +28,6 @@ enum SecretsBackend: string implements HasDockerImage, HasLabel
         return 'larakube-secrets';
     }
 
-    public function getBootstrapSecretName(): string
-    {
-        return 'openbao-bootstrap';
-    }
-
-    public function getDeploymentName(): string
-    {
-        return 'openbao-backend';
-    }
-
     public function getCrdTemplateName(): string
     {
         return 'k8s.secrets.eso-sync';

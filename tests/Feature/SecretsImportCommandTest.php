@@ -30,6 +30,7 @@ function makeExportFile(array $environments = []): TemporaryDirectory
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 test('secrets:import initializes and unseals openbao, then writes secrets', function (): void {
+    openBaoRegistered();
     $temporaryDirectory = makeExportFile([
         'production' => [
             'APP_KEY' => 'base64:abc123',
@@ -40,7 +41,7 @@ test('secrets:import initializes and unseals openbao, then writes secrets', func
 
     Process::fake([
         '*port-forward*' => Process::result(),
-        '*apply -f *' => Process::result(output: 'secret/openbao-bootstrap created'),
+        '*apply -f *' => Process::result(output: 'secret/openbao-secrets-secrets-example-com created'),
         '*' => Process::result(),
     ]);
 
@@ -67,6 +68,7 @@ test('secrets:import initializes and unseals openbao, then writes secrets', func
 });
 
 test('secrets:import unseals an already-initialized but sealed openbao', function (): void {
+    openBaoRegistered();
     $temporaryDirectory = makeExportFile(['production' => ['APP_KEY' => 'abc']]);
     $input = $temporaryDirectory->path('export.json');
 
@@ -98,6 +100,7 @@ test('secrets:import unseals an already-initialized but sealed openbao', functio
 });
 
 test('secrets:import fails when input file does not exist', function (): void {
+    openBaoRegistered();
     Process::fake(['*' => Process::result()]);
 
     $this->artisan('secrets:import local --input=/nonexistent/file.json --no-interaction')

@@ -25,8 +25,9 @@ function fakeSyncedRotateExternalSecret(): array
 }
 
 test('secrets:rotate fails when OpenBao is not deployed', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(),
     ]);
 
@@ -36,8 +37,9 @@ test('secrets:rotate fails when OpenBao is not deployed', function (): void {
 });
 
 test('secrets:rotate fails when the database engine is not mounted', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -50,8 +52,9 @@ test('secrets:rotate fails when the database engine is not mounted', function ()
 });
 
 test('secrets:rotate rotates an OpenBao-wired tool immediately', function (): void {
+    openBaoRegistered();
     Process::fake(array_merge(fakeSyncedRotateExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment*' => Process::result(output: 'forgejo'),
         '*port-forward*' => Process::result(output: ''),
         '*annotate externalsecret*' => Process::result(output: 'annotated'),
@@ -89,8 +92,9 @@ test('secrets:rotate --tool=X with no --domain never resolves the instance again
     // an instance and MAIL registered under none, so the old bug and the
     // fix produce different (wrong vs. correct) target names.
     Process::fake(array_merge(fakeSyncedRotateExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            openBaoRegistryRow(),
             ['tool' => 'secrets', 'host' => 'secrets.example.com', 'instance' => 'secrets-own-instance'],
         ]))),
         // Strict: only the BARE deployment name exists. Anything with an
@@ -121,8 +125,9 @@ test('secrets:rotate --tool=X with no --domain never resolves the instance again
 });
 
 test('secrets:rotate rejects an un-wired tool', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment*' => Process::result(output: 'forgejo'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),

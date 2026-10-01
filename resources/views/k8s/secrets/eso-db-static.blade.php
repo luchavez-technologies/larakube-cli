@@ -7,7 +7,7 @@ spec:
   path: "database/static-creds/{{ $roleName }}"
   method: GET
   provider:
-    server: "http://openbao-backend.{{ $secretsNamespace ?? 'larakube-secrets' }}.svc.cluster.local:8200"
+    server: "{{ $openbaoServer }}"
     auth:
       kubernetes:
         mountPath: kubernetes

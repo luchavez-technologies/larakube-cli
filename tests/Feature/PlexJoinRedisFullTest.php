@@ -80,7 +80,7 @@ function plexJoinRedisFullFakes(): array
         '*get configmap plex-registry*' => Process::result(output: (string) json_encode(['tenants' => $tenants])),
         // Commons admin credentials for the S3 bucket + Meilisearch key.
         '*plex-admin*' => Process::result(output: base64_encode('larakube')),
-        '*openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'CREATE DATABASE'),
         '*create configmap plex-registry*' => Process::result(output: 'configured'),
         '*' => Process::result(output: ''),

@@ -31,11 +31,12 @@ function fakeOpenBaoUnwireHttp(): void
 }
 
 test('secrets:unwire is registered and unwires OpenBao DB rotation for a tool', function (): void {
+    openBaoRegistered();
     fakeOpenBaoUnwireHttp();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('root-token')),
         '*get secret sign-secrets*' => Process::result(output: 'found'),
-        '*exec deploy/openbao-backend*' => Process::result(output: '{"data":{"rotation_period":"86400s"}}'),
+        '*exec deploy/openbao-secrets-example-com*' => Process::result(output: '{"data":{"rotation_period":"86400s"}}'),
         '*delete externalsecret*' => Process::result(output: 'deleted'),
         '*delete vaultdynamicsecret*' => Process::result(output: 'deleted'),
         '*bao delete database/static-roles*' => Process::result(output: 'deleted'),
@@ -47,8 +48,9 @@ test('secrets:unwire is registered and unwires OpenBao DB rotation for a tool', 
 });
 
 test('secrets:unwire errors when OpenBao is not deployed', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('secrets:unwire local --tool=sign --force')
@@ -57,12 +59,13 @@ test('secrets:unwire errors when OpenBao is not deployed', function (): void {
 });
 
 test('secrets:unwire supports unwiring git, notes, sheets, and chat tools', function (): void {
+    openBaoRegistered();
     foreach (['git' => 'forgejo', 'notes' => 'outline-secrets', 'sheets' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
         fakeOpenBaoUnwireHttp();
         Process::fake([
-            '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-token')),
+            '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('root-token')),
             "*get secret {$secretName}*" => Process::result(output: 'found'),
-            '*exec deploy/openbao-backend*' => Process::result(output: '{"data":{"rotation_period":"86400s"}}'),
+            '*exec deploy/openbao-secrets-example-com*' => Process::result(output: '{"data":{"rotation_period":"86400s"}}'),
             '*delete externalsecret*' => Process::result(output: 'deleted'),
             '*delete vaultdynamicsecret*' => Process::result(output: 'deleted'),
             '*bao delete database/static-roles*' => Process::result(output: 'deleted'),
@@ -75,11 +78,12 @@ test('secrets:unwire supports unwiring git, notes, sheets, and chat tools', func
 });
 
 test('secrets:unwire resolves environment context correctly for non-local environment (production)', function (): void {
+    openBaoRegistered();
     fakeOpenBaoUnwireHttp();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('root-token')),
         '*get secret sign-secrets*' => Process::result(output: 'found'),
-        '*exec deploy/openbao-backend*' => Process::result(output: '{"data":{"rotation_period":"86400s"}}'),
+        '*exec deploy/openbao-secrets-example-com*' => Process::result(output: '{"data":{"rotation_period":"86400s"}}'),
         '*delete externalsecret*' => Process::result(output: 'deleted'),
         '*delete vaultdynamicsecret*' => Process::result(output: 'deleted'),
         '*bao delete database/static-roles*' => Process::result(output: 'deleted'),

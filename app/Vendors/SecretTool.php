@@ -10,6 +10,8 @@ use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 use Illuminate\Support\Facades\Process;
 
@@ -27,29 +29,54 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
 
         return [
             'name' => $name,
-            // The ingress annotation is larakube-secrets-openbao-vpn-only@kubernetescrd —
+            // The ingress annotation is larakube-secrets-openbao-vpn-only-{instance}@kubernetescrd —
             // SECRETS' own namespace, not larakube-shared.
             'namespace' => 'larakube-secrets',
         ];
     }
 
+    /**
+     * One PRIMARY component with every resource openbao.blade.php declares, so
+     * teardown() can't drift from what is deployed. The category is stripped from
+     * the Deployment name by ClusterTool::components(); the nested names are
+     * composed here the same way, rather than read back from ToolInstance, which
+     * derives every name FROM this list and would recurse.
+     *
+     * @return list<ClusterToolComponentData>
+     */
     public function components(?string $instance = null, ?string $engine = null): array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        $canonical = fn (string $n) => ClusterTool::SECRETS->withoutCategory($n);
+        $deployment = $canonical($name('secrets-openbao'));
 
         return [
             new ClusterToolComponentData(
-                key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('openbao-backend'),
-                container: 'openbao', backupVolume: true, backupPaths: ['/openbao'],
+                key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('secrets-openbao'),
+                container: 'openbao',
+                resources: [
+                    ['kind' => 'service', 'name' => $deployment],
+                    ['kind' => 'ingress', 'name' => $deployment],
+                    ['kind' => 'configmap', 'name' => $canonical($name('secrets-openbao-config'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('secrets-openbao-secrets'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('secrets-openbao-oidc'))],
+                    ['kind' => 'pvc', 'name' => $canonical($name('secrets-openbao-storage'))],
+                    ['kind' => 'serviceaccount', 'name' => $deployment],
+                    ['kind' => 'clusterrolebinding', 'name' => $canonical($name('secrets-openbao-auth-delegator'))],
+                ],
+                backupVolume: true, backupPaths: ['/openbao'],
             ),
         ];
     }
 
     public function oidcEnv(?string $instance = null): ?array
     {
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        $canonical = fn (string $n) => ClusterTool::SECRETS->withoutCategory($n);
+
         return [
-            'deployment' => 'openbao-backend',
-            'secret' => 'openbao-oidc',
+            'deployment' => $canonical($name('secrets-openbao')),
+            'secret' => $canonical($name('secrets-openbao-oidc')),
             'static' => [],
             'vars' => [],
             'redirect_path' => '/v1/auth/oidc/oidc/callback',
@@ -69,9 +96,12 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
 
     public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
-        $ns = ($instance === null || $instance === '') ? 'larakube-secrets' : "larakube-secrets-{$instance}";
+        $ns = ClusterTool::SECRETS->namespace();
+        $secretName = ($instance === null || $instance === '')
+            ? 'openbao-secrets'
+            : ToolInstance::forInstance(ClusterTool::SECRETS, $instance)->secret();
         $tokenVal = trim(Process::run(
-            "{$kubectl} get secret openbao-bootstrap -n {$ns} -o jsonpath='{.data.root-token}' --ignore-not-found",
+            "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath='{.data.root-token}' --ignore-not-found",
         )->output());
         $decodedToken = $tokenVal !== '' ? (base64_decode($tokenVal, true) ?: '<unknown>') : null;
 
@@ -87,8 +117,7 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '') ? 'openbao-backend' : "openbao-backend-{$instance}";
-
-        return "deployment/{$deployment} -n larakube-secrets";
+        // By label: the Deployment is named per instance, so a bare name matches nothing.
+        return 'deployment -l larakube.io/tool=secrets -n larakube-secrets';
     }
 }

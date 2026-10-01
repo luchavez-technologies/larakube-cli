@@ -323,7 +323,7 @@ class SecretsWireCommand extends Command
         $this->withSpin("Wiring OpenBao rotation into {$ref['secret']}...", function () use ($kubectl, $tenant, $ref): void {
             $manifest = view('k8s.secrets.eso-db-static', [
                 'namespace' => $ref['namespace'],
-                'secretsNamespace' => $this->secretsNamespace(),
+                'openbaoServer' => $this->openBaoServerUrl($kubectl),
                 'secretName' => $ref['secret'],
                 'roleName' => $tenant,
                 'passwordKey' => $ref['key'],

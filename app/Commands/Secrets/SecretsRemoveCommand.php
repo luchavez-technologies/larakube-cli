@@ -4,7 +4,7 @@ namespace App\Commands\Secrets;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
-use App\Enums\SecretsBackend;
+use App\Enums\SecretKind;
 use App\Traits\InteractsWithSecrets;
 use Illuminate\Support\Facades\Process;
 
@@ -51,20 +51,15 @@ class SecretsRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $ok = $this->removeResources(
-            'Removing OpenBao Deployment...',
-            "{$kubectl} delete deployment openbao-backend -n {$namespace} --ignore-not-found",
+        $names = $this->secretsNames($kubectl);
+
+        // Without a registered install there is nothing of OpenBao's own to name.
+        $ok = $names === null || $this->removeResources(
+            'Removing OpenBao...',
+            "{$kubectl} delete deployment/{$names->deployment()} service/{$names->deployment()} ingress/{$names->deployment()} "
+            ."configmap/{$names->configMap('config')} serviceaccount/{$names->deployment()} "
+            ."secret/{$names->secret(SecretKind::OIDC)} -n {$namespace} --ignore-not-found",
         );
-
-        $ok = $this->removeResources(
-            'Removing OpenBao Service...',
-            "{$kubectl} delete service openbao-backend -n {$namespace} --ignore-not-found",
-        ) && $ok;
-
-        $ok = $this->removeResources(
-            'Removing OpenBao ConfigMap & Ingress...',
-            "{$kubectl} delete configmap openbao-config ingress openbao-backend -n {$namespace} --ignore-not-found",
-        ) && $ok;
 
         // Only one Deployment actually exists — eso.blade.php bundles the
         // controller into a single Deployment, not the cert-controller/webhook
@@ -87,14 +82,16 @@ class SecretsRemoveCommand extends AbstractToolRemoveCommand
         // Cluster-scoped, like the binding above — the openbao ServiceAccount
         // it targets dies with the namespace below, but the binding itself
         // wouldn't (cluster-scoped RBAC objects don't cascade with a namespace).
-        $ok = $this->removeResources(
-            "Removing OpenBao's Kubernetes-auth RBAC binding...",
-            "{$kubectl} delete clusterrolebinding openbao-auth-delegator --ignore-not-found",
-        ) && $ok;
+        if ($names !== null) {
+            $ok = $this->removeResources(
+                "Removing OpenBao's Kubernetes-auth RBAC binding...",
+                "{$kubectl} delete clusterrolebinding {$names->name('auth-delegator')} --ignore-not-found",
+            ) && $ok;
+        }
 
-        if ($this->option('purge')) {
-            Process::run("{$kubectl} delete pvc openbao-data -n {$namespace} --ignore-not-found");
-            Process::run("{$kubectl} delete secret openbao-bootstrap -n {$namespace} --ignore-not-found");
+        if ($names !== null && $this->option('purge')) {
+            Process::run("{$kubectl} delete pvc {$names->volume()} -n {$namespace} --ignore-not-found");
+            Process::run("{$kubectl} delete secret {$names->secret()} -n {$namespace} --ignore-not-found");
         }
 
         Process::run("{$kubectl} delete namespace {$namespace} --ignore-not-found");
@@ -112,27 +109,5 @@ class SecretsRemoveCommand extends AbstractToolRemoveCommand
         // sync mechanism cluster-wide" — those are different scopes that
         // just happen to ship together via secrets:init today.
         return $ok;
-    }
-
-    /**
-     * Detect ALL engines currently deployed in the namespace.
-     *
-     * @return list<SecretsBackend>
-     */
-    protected function detectEngines(string $kubectl, string $namespace): array
-    {
-        $found = [];
-
-        foreach (SecretsBackend::cases() as $backend) {
-            $output = trim(Process::run(
-                "{$kubectl} get deployment {$backend->getDeploymentName()} -n {$namespace} --no-headers --ignore-not-found",
-            )->output());
-
-            if ($output !== '') {
-                $found[] = $backend;
-            }
-        }
-
-        return $found;
     }
 }

@@ -164,7 +164,7 @@ class SsoUnwireCommand extends Command
             return 0;
         }
 
-        if ($schema['deployment'] === 'openbao-backend') {
+        if (in_array($tool, [ClusterTool::SECRETS, ClusterTool::OPENBAO], true)) {
             $this->unwireOpenBaoOidc($kubectl, $schema['namespace']);
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
@@ -377,12 +377,12 @@ class SsoUnwireCommand extends Command
 
     protected function unwireOpenBaoOidc(string $kubectl, string $ns): void
     {
-        $rootToken = $this->readClusterSecretKey($kubectl, $ns, 'openbao-bootstrap', 'root-token');
+        $rootToken = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
         if ($rootToken === null) {
             return;
         }
 
-        $exec = "{$kubectl} exec deploy/openbao-backend -n {$ns} -- env BAO_TOKEN=".escapeshellarg($rootToken).' BAO_ADDR=http://127.0.0.1:8200';
+        $exec = "{$kubectl} exec deploy/{$this->secretsNames($kubectl)?->deployment()} -n {$ns} -- env BAO_TOKEN=".escapeshellarg($rootToken).' BAO_ADDR=http://127.0.0.1:8200';
         Process::run("{$exec} bao auth disable oidc");
     }
 

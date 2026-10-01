@@ -3,12 +3,14 @@
 use Illuminate\Support\Facades\Process;
 
 test('secrets:remove is registered', function (): void {
+    openBaoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('secrets:remove');
 });
 
 test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the shared CRDs', function (): void {
+    openBaoRegistered();
     Process::fake([...registeredToolRemoveFakes('secrets:remove'),
         '*' => Process::result(output: ''),
     ]);
@@ -24,10 +26,10 @@ test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the sha
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete clusterrole external-secrets-controller')
         && str_contains($process->command, 'clusterrolebinding external-secrets-controller'));
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete clusterrolebinding openbao-auth-delegator'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete deployment openbao-backend'));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete pvc openbao-data'));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete secret openbao-bootstrap'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete clusterrolebinding openbao-auth-delegator-secrets-example-com'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete deployment/openbao-secrets-example-com'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete pvc'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete secret openbao-secrets-secrets-example-com'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete namespace'));
 
     // The actual point of this test: deleting a CRD cascades to delete every
@@ -42,6 +44,7 @@ test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the sha
 });
 
 test('secrets:remove --purge deletes the PVC and bootstrap secret', function (): void {
+    openBaoRegistered();
     Process::fake([...registeredToolRemoveFakes('secrets:remove'),
         '*' => Process::result(output: ''),
     ]);
@@ -49,6 +52,6 @@ test('secrets:remove --purge deletes the PVC and bootstrap secret', function ():
     $this->artisan('secrets:remove', ['environment' => 'production', '--context' => 'ctx', '--force' => true, '--purge' => true, '--no-interaction' => true])
         ->assertExitCode(0);
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete pvc openbao-data'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret openbao-bootstrap'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete pvc openbao-storage-secrets-example-com'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret openbao-secrets-secrets-example-com'));
 });

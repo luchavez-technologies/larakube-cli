@@ -284,3 +284,25 @@ function appliedSecret(Illuminate\Process\PendingProcess $process): ?array
         'data' => array_map(fn ($value) => (string) base64_decode((string) $value), $manifest['data'] ?? []),
     ];
 }
+
+/**
+ * Registers an OpenBao install in the fake tool registry, so the Secrets helpers
+ * resolve its names (openbao-secrets-example-com, openbao-secrets-secrets-example-com).
+ */
+function openBaoRegistered(string $host = 'secrets.example.com'): Tests\Support\FakeToolRegistry
+{
+    return Tests\Support\FakeToolRegistry::install([
+        ['tool' => 'openbao', 'instance' => 'secrets-example-com', 'host' => $host],
+    ]);
+}
+
+/**
+ * The registry row for the OpenBao install openBaoRegistered() fakes, for tests
+ * that feed the registry through a faked `get secret larakube-tools-registry`.
+ *
+ * @return array<string, string>
+ */
+function openBaoRegistryRow(): array
+{
+    return ['tool' => 'openbao', 'instance' => 'secrets-example-com', 'host' => 'secrets.example.com'];
+}

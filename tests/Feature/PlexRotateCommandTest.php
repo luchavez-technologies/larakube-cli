@@ -49,8 +49,8 @@ function rotateFakes(array $overrides = []): array
         '*get configmap plex-registry*' => Process::result(
             output: (string) json_encode(['tenants' => ['demo-production' => ['db' => 'demo-production', 'db_service' => 'postgres']]]),
         ),
-        // No openbao-bootstrap Secret → literal fallback mode.
-        '*openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        // No openbao-secrets-secrets-example-com Secret → literal fallback mode.
+        '*openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'ALTER ROLE'),
         '*apply -f*' => Process::result(output: 'configured'),
         '*' => Process::result(output: ''),
@@ -58,6 +58,7 @@ function rotateFakes(array $overrides = []): array
 }
 
 test('plex:rotate refuses when there is no Commons', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*get configmap plex-commons*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(output: ''),
@@ -69,6 +70,7 @@ test('plex:rotate refuses when there is no Commons', function (): void {
 });
 
 test('plex:rotate rejects an unknown credential kind by name', function (): void {
+    openBaoRegistered();
     Process::fake(rotateFakes());
 
     $this->artisan('plex:rotate local --only=nope --force')
@@ -78,6 +80,7 @@ test('plex:rotate rejects an unknown credential kind by name', function (): void
 });
 
 test('without the secrets backend it says plainly that a redeploy is required', function (): void {
+    openBaoRegistered();
     // The whole point of the feature is that the weak mode is never mistaken
     // for the strong one.
     Process::fake(rotateFakes());
@@ -88,6 +91,7 @@ test('without the secrets backend it says plainly that a redeploy is required', 
 });
 
 test('--tenant rejects a name that is not actually a tenant', function (): void {
+    openBaoRegistered();
     Process::fake(rotateFakes());
 
     $this->artisan('plex:rotate local --only=db --tenant=ghost --force')
@@ -96,6 +100,7 @@ test('--tenant rejects a name that is not actually a tenant', function (): void 
 });
 
 test('credentials that cannot be rotated yet are reported, never silently skipped', function (): void {
+    openBaoRegistered();
     Process::fake(rotateFakes());
 
     $this->artisan('plex:rotate local --only=s3,admin --force')
@@ -105,6 +110,7 @@ test('credentials that cannot be rotated yet are reported, never silently skippe
 });
 
 test('plex:rotate routes an OpenBao-wired tenant through rotateStaticRole, never ALTER ROLE', function (): void {
+    openBaoRegistered();
     // Regression guard for the real danger found live 2026-08-01: a tenant
     // already wired through OpenBao's static-role mechanism must NEVER be
     // rotated via the legacy ALTER ROLE path — doing so would desync
@@ -120,7 +126,7 @@ test('plex:rotate routes an OpenBao-wired tenant through rotateStaticRole, never
             // self-restart the consumer.
             output: (string) json_encode(['tenants' => ['demo-production' => ['db' => 'demo-production', 'db_service' => 'postgres']]]),
         ),
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*exec *' => Process::result(output: 'ALTER ROLE'),
         '*' => Process::result(output: ''),
@@ -152,6 +158,7 @@ test('plex:rotate routes an OpenBao-wired tenant through rotateStaticRole, never
 });
 
 test('plex:rotate falls back to ALTER ROLE for a tenant with no OpenBao static role', function (): void {
+    openBaoRegistered();
     // The other half of the same guard: a tenant that genuinely predates
     // OpenBao (or joined while it was unreachable) must keep using the
     // legacy path — staticRoleExists() returning false must not be treated
@@ -163,7 +170,7 @@ test('plex:rotate falls back to ALTER ROLE for a tenant with no OpenBao static r
         '*get configmap plex-registry*' => Process::result(
             output: (string) json_encode(['tenants' => ['demo-production' => ['db' => 'demo-production', 'db_service' => 'postgres']]]),
         ),
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*exec *' => Process::result(output: 'ALTER ROLE'),
         '*' => Process::result(output: ''),
@@ -192,6 +199,7 @@ test('plex:rotate falls back to ALTER ROLE for a tenant with no OpenBao static r
 });
 
 test('plex:rotate finds a cluster-tool tenant under the BARE role name, never the "tenant-" prefix', function (): void {
+    openBaoRegistered();
     // Regression guard for a real bug found live 2026-08-02 checking
     // production: cluster tools (secrets:wire, RecordInit, SignInit, …)
     // register their static role under the bare tenant name, not "tenant-"
@@ -212,7 +220,7 @@ test('plex:rotate finds a cluster-tool tenant under the BARE role name, never th
         '*get configmap plex-registry*' => Process::result(
             output: (string) json_encode(['tenants' => ['record_sendrec' => ['db' => 'record_sendrec', 'db_service' => 'postgres']]]),
         ),
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*exec *' => Process::result(output: 'ALTER ROLE'),
         '*get deployment record-sendrec*' => Process::result(output: 'record-sendrec'),
@@ -252,6 +260,7 @@ test('plex:rotate finds a cluster-tool tenant under the BARE role name, never th
 });
 
 test('the per-tenant cluster secret key is namespaced so two tenants never collide', function (): void {
+    openBaoRegistered();
     $a = CommonsSecret::TENANT_DB->clusterSecretKey('shop-production');
     $b = CommonsSecret::TENANT_DB->clusterSecretKey('blog-production');
 
@@ -261,6 +270,7 @@ test('the per-tenant cluster secret key is namespaced so two tenants never colli
 });
 
 test('only the tenant database is per-tenant; the rest are cluster-wide', function (): void {
+    openBaoRegistered();
     expect(CommonsSecret::TENANT_DB->isPerTenant())->toBeTrue()
         ->and(CommonsSecret::COMMONS_S3->isPerTenant())->toBeFalse()
         ->and(CommonsSecret::COMMONS_ADMIN->isPerTenant())->toBeFalse()
@@ -268,6 +278,7 @@ test('only the tenant database is per-tenant; the rest are cluster-wide', functi
 });
 
 test('warningLines previews exactly which tenants db rotation will touch, before the confirm prompt', function (): void {
+    openBaoRegistered();
     // Regression guard: production got "too many, I'm scared" 2026-08-02 —
     // a bare plex:rotate rotated 11 tools in one run with nothing shown
     // beforehand except the credential KIND ("Tenant database"), not who.
@@ -289,6 +300,7 @@ test('warningLines previews exactly which tenants db rotation will touch, before
 });
 
 test('the admin password never leaks into an application env', function (): void {
+    openBaoRegistered();
     // It is an operator credential for the Commons superuser — an app that
     // received it would be able to read every other tenant's data.
     expect(CommonsSecret::COMMONS_ADMIN->envKeys())->toBeEmpty();

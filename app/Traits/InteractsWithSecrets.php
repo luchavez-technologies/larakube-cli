@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
 use App\Enums\SharedClusterService;
@@ -26,6 +27,34 @@ trait InteractsWithSecrets
     /** Status + body of the last failed secrets API call, for diagnostics. */
     protected ?string $lastSecretsBackendError = null;
 
+    /** Set by a command that is deploying OpenBao right now, before the registry has a row for it. */
+    protected ?ToolInstance $secretsNamesOverride = null;
+
+    /** @var array<string, ToolInstance> */
+    private array $secretsNamesMemo = [];
+
+    /**
+     * The OpenBao instance on this cluster: the one being deployed, else the
+     * registered one. Null when none is registered, so a caller can never read
+     * or port-forward to a name nothing deploys.
+     */
+    protected function secretsNames(string $kubectl): ?ToolInstance
+    {
+        if ($this->secretsNamesOverride !== null) {
+            return $this->secretsNamesOverride;
+        }
+
+        return $this->secretsNamesMemo[$kubectl] ??= ToolInstance::first($kubectl, ClusterTool::SECRETS);
+    }
+
+    /** The in-cluster URL ESO and every generator reach OpenBao on, or null when not installed. */
+    protected function openBaoServerUrl(string $kubectl): ?string
+    {
+        $names = $this->secretsNames($kubectl);
+
+        return $names === null ? null : "http://{$names->deployment()}.{$names->namespace()}.svc.cluster.local:8200";
+    }
+
     /** The dedicated namespace the Secrets Manager lives in. */
     protected function secretsNamespace(): string
     {
@@ -35,13 +64,20 @@ trait InteractsWithSecrets
     /** OpenBao secrets backend Deployment present? */
     protected function isSecretsInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'openbao-backend');
+        $names = $this->secretsNames($kubectl);
+
+        return $names !== null && Kubectl::fromPrefix($kubectl)->hasDeployment($ns, $names->deployment());
     }
 
-    /** True when openbao-bootstrap secret exists. */
+    /** True when OpenBao's credentials Secret (root token, unseal key) exists. */
     protected function secretsBackendReady(string $kubectl, string $ns): bool
     {
-        $openbao = Process::run("{$kubectl} get secret openbao-bootstrap -n {$ns} --no-headers 2>/dev/null")->output();
+        $names = $this->secretsNames($kubectl);
+        if ($names === null) {
+            return false;
+        }
+
+        $openbao = Process::run("{$kubectl} get secret {$names->secret()} -n {$ns} --no-headers 2>/dev/null")->output();
 
         return trim($openbao) !== '';
     }
@@ -113,13 +149,21 @@ trait InteractsWithSecrets
         ?array $data = null,
         ?string $token = null,
     ): ?array {
+        $names = $this->secretsNames($kubectl);
+        if ($names === null) {
+            $this->lastSecretsBackendError = 'OpenBao is not registered on this cluster';
+
+            return null;
+        }
+
         $ns = $this->secretsNamespace();
+        $service = $names->deployment();
         $port = random_int(30100, 31100);
 
-        $pf = Process::start("{$kubectl} port-forward -n {$ns} svc/openbao-backend {$port}:8200");
+        $pf = Process::start("{$kubectl} port-forward -n {$ns} svc/{$service} {$port}:8200");
 
         if (! $this->awaitLocalPort($port, $pf)) {
-            $this->lastSecretsBackendError = "port-forward to openbao-backend never became ready on localhost:{$port}";
+            $this->lastSecretsBackendError = "port-forward to {$service} never became ready on localhost:{$port}";
 
             if ($pf->running()) {
                 $pf->stop(0, 2);
@@ -151,7 +195,7 @@ trait InteractsWithSecrets
 
             return $response->json() ?? [];
         } catch (FatalRequestException $e) {
-            $this->lastSecretsBackendError = 'could not reach openbao-backend — '.Str::limit($e->getMessage(), 200);
+            $this->lastSecretsBackendError = "could not reach {$service} — ".Str::limit($e->getMessage(), 200);
 
             return null;
         } finally {
@@ -162,12 +206,14 @@ trait InteractsWithSecrets
     }
 
     /**
-     * Read a key from the openbao-bootstrap Secret.
+     * Read a key from OpenBao's credentials Secret.
      * Returns null when the secret doesn't exist or the key is missing.
      */
     protected function readOpenBaoBootstrapSecret(string $kubectl, string $ns, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'openbao-bootstrap', $key);
+        $names = $this->secretsNames($kubectl);
+
+        return $names === null ? null : $this->readClusterSecretKey($kubectl, $ns, $names->secret(), $key);
     }
 
     /**
@@ -197,7 +243,7 @@ trait InteractsWithSecrets
         });
 
         if ($initStatus === null) {
-            $this->laraKubeError('Could not reach OpenBao. Is the openbao-backend pod running?');
+            $this->laraKubeError('Could not reach OpenBao. Is its pod running?');
 
             return null;
         }
@@ -227,7 +273,7 @@ trait InteractsWithSecrets
                     'apiVersion: v1',
                     'kind: Secret',
                     'metadata:',
-                    '  name: openbao-bootstrap',
+                    "  name: {$this->secretsNames($kubectl)?->secret()}",
                     "  namespace: {$ns}",
                     'type: Opaque',
                     'data:',
@@ -247,8 +293,8 @@ trait InteractsWithSecrets
             $rootToken = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
 
             if ($rootToken === null) {
-                $this->laraKubeError('OpenBao is already initialized but the root token is missing from openbao-bootstrap secret.');
-                $this->line('  Re-initialize manually or restore the openbao-bootstrap secret.');
+                $this->laraKubeError('OpenBao is already initialized but the root token is missing from its credentials Secret.');
+                $this->line('  Re-initialize manually or restore that Secret.');
 
                 return null;
             }
@@ -275,7 +321,7 @@ trait InteractsWithSecrets
 
         $unsealKey = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'unseal-key');
         if ($unsealKey === null) {
-            $this->laraKubeError('OpenBao is sealed and the unseal key is missing from openbao-bootstrap secret.');
+            $this->laraKubeError('OpenBao is sealed and the unseal key is missing from its credentials Secret.');
 
             return false;
         }
@@ -293,7 +339,7 @@ trait InteractsWithSecrets
     {
         $token = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
         if ($token === null) {
-            $this->laraKubeError('OpenBao root token not found in the openbao-bootstrap secret.');
+            $this->laraKubeError('OpenBao root token not found in its credentials Secret.');
 
             return false;
         }
@@ -347,7 +393,7 @@ trait InteractsWithSecrets
      *
      * Idempotent and non-rotating by design: once created, the same
      * username/password persist across repeated secrets:init runs (stored
-     * in openbao-bootstrap, merged in via `kubectl patch --type merge` so
+     * in the credentials Secret, merged in via `kubectl patch --type merge` so
      * root-token/unseal-key are never touched — a plain `kubectl apply`
      * with a partial Secret manifest would 3-way-merge those keys OUT,
      * verified live against a throwaway secret before writing this).
@@ -394,7 +440,7 @@ trait InteractsWithSecrets
         }
 
         if ($isNew) {
-            Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'openbao-bootstrap', ['admin-username' => $username, 'admin-password' => $password]);
+            Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->secretsNames($kubectl)?->secret() ?? '', ['admin-username' => $username, 'admin-password' => $password]);
         }
 
         return [$username, $password, $isNew];
@@ -436,10 +482,8 @@ trait InteractsWithSecrets
 
         if ($kubectl && $namespace) {
             $detected = [];
-            foreach (SecretsBackend::cases() as $backend) {
-                if (Kubectl::fromPrefix($kubectl)->hasDeployment($namespace, $backend->getDeploymentName())) {
-                    $detected[] = $backend;
-                }
+            if ($this->isSecretsInstalled($kubectl, $namespace)) {
+                $detected[] = SecretsBackend::OPENBAO;
             }
 
             if ($detected !== []) {

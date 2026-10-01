@@ -101,10 +101,10 @@ test('sso:org-grant --tool= resolves the project the same way sso:grant does', f
 
     $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--tool' => 'secrets', '--no-interaction' => true])
         ->assertExitCode(0)
-        ->expectsOutputToContain("'partner.example' now has scoped access to 'openbao-backend'");
+        ->expectsOutputToContain("'partner.example' now has scoped access to 'openbao'");
 
     Saloon::assertSent(fn ($request) => $request instanceof SearchProjectsRequest
-        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'openbao-backend');
+        && $request->body()->get('queries')[0]['nameQuery']['name'] === 'openbao');
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectGrantRequest
         && $request->body()->get('grantedOrgId') === 'org-1'
         && $request->body()->get('roleKeys') === ['openbao-admin']);

@@ -28,7 +28,7 @@ test('mail:recover re-mints the automation API key via the recovery admin', func
         '*get secret stalwart-secrets*api-key*' => Process::result(output: '', exitCode: 1),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('recovery-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*patch secret stalwart-secrets*' => Process::result(output: 'patched'),
         '*' => Process::result(),
     ]);

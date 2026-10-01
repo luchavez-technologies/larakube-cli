@@ -1,4 +1,18 @@
 @php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::SECRETS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::SECRETS, $instance);
+    $deploymentName = $names->deployment();
+    $configMapName = $names->configMap('config');
+    $credentialsSecret = $names->secret();
+    $volume = $names->volume();
+    $labels = '';
+    foreach ($names->labels() as $key => $value) {
+        $labels .= "\n    {$key}: {$value}";
+    }
+    $podLabels = str_replace("\n    ", "\n        ", $labels);
     $port = $port ?? 8200;
     $image = $image ?? 'openbao/openbao:2.6.1';
     $namespace = $namespace ?? 'larakube-secrets';
@@ -10,38 +24,42 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: openbao
+  name: {{ $deploymentName }}
   namespace: {{ $namespace }}
+  labels:{!! $labels !!}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: openbao-auth-delegator
+  name: {{ $names->name('auth-delegator') }}
+  labels:{!! $labels !!}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: system:auth-delegator
 subjects:
   - kind: ServiceAccount
-    name: openbao
+    name: {{ $deploymentName }}
     namespace: {{ $namespace }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: openbao-data
+  name: {{ $volume }}
   namespace: {{ $namespace }}
+  labels:{!! $labels !!}
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('openbao-data', '5Gi', false) }}
+      storage: {{ $volumeSize($volume, '5Gi', false) }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: openbao-config
+  name: {{ $configMapName }}
   namespace: {{ $namespace }}
+  labels:{!! $labels !!}
 data:
   bao.hcl: |
     ui = true
@@ -59,10 +77,9 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openbao-backend
+  name: {{ $deploymentName }}
   namespace: {{ $namespace }}
-  labels:
-    app: openbao-backend
+  labels:{!! $labels !!}
 spec:
   type: ClusterIP
   ports:
@@ -70,26 +87,25 @@ spec:
     port: 8200
     targetPort: 8200
   selector:
-    app: openbao-backend
+    app: {{ $deploymentName }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: openbao-backend
+  name: {{ $deploymentName }}
   namespace: {{ $namespace }}
-  labels:
-    app: openbao-backend
+  labels:{!! $labels !!}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: openbao-backend
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: openbao-backend
+        app: {{ $deploymentName }}{!! $podLabels !!}
     spec:
-      serviceAccountName: openbao
+      serviceAccountName: {{ $deploymentName }}
       containers:
       - name: openbao
         image: "{{ $image }}"
@@ -140,14 +156,14 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: openbao-config
+          name: {{ $configMapName }}
       - name: data
         persistentVolumeClaim:
-          claimName: openbao-data
+          claimName: {{ $volume }}
 @if($autoUnseal)
       - name: bootstrap
         secret:
-          secretName: openbao-bootstrap
+          secretName: {{ $credentialsSecret }}
           optional: true
           items:
           - key: unseal-key
@@ -158,8 +174,9 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: openbao-backend
+  name: {{ $deploymentName }}
   namespace: {{ $namespace }}
+  labels:{!! $labels !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -173,7 +190,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: openbao-backend
+            name: {{ $deploymentName }}
             port:
               number: 8200
 @endif

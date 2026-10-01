@@ -55,12 +55,14 @@ function writePushEnvFile(string $dir, array $lines): void
 }
 
 test('dotenv:push must be run inside a project', function (): void {
+    openBaoRegistered();
     $this->artisan('dotenv:push')
         ->assertExitCode(1)
         ->expectsOutputToContain('inside a LaraKube project');
 });
 
 test('dotenv:push errors when .env.<environment> does not exist', function (): void {
+    openBaoRegistered();
     savePushTestConfig($this->tempDir);
 
     $this->artisan('dotenv:push', ['environment' => 'production'])
@@ -69,11 +71,12 @@ test('dotenv:push errors when .env.<environment> does not exist', function (): v
 });
 
 test('dotenv:push warns and skips a Plex/OpenBao-managed key', function (): void {
+    openBaoRegistered();
     savePushTestConfig($this->tempDir, ['plex' => ['postgres']]);
     writePushEnvFile($this->tempDir, ['DB_PASSWORD' => 'should-not-be-pushed', 'APP_KEY' => 'base64:abc']);
 
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*create configmap*' => Process::result(output: 'configured'),
         '*create secret generic laravel-secrets*' => Process::result(output: 'configured'),
         '*' => Process::result(),
@@ -85,11 +88,12 @@ test('dotenv:push warns and skips a Plex/OpenBao-managed key', function (): void
 });
 
 test('dotenv:push writes directly to the cluster Secret when OpenBao is absent', function (): void {
+    openBaoRegistered();
     savePushTestConfig($this->tempDir);
     writePushEnvFile($this->tempDir, ['APP_KEY' => 'base64:abc', 'DB_PASSWORD' => 'super-secret']);
 
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'configured'),
         '*create configmap*' => Process::result(output: 'configured'),
         '*create secret generic laravel-secrets*' => Process::result(output: 'configured'),
@@ -108,11 +112,12 @@ test('dotenv:push writes directly to the cluster Secret when OpenBao is absent',
 });
 
 test('dotenv:push writes each secret key into OpenBao, scoped by app, when OpenBao is present', function (): void {
+    openBaoRegistered();
     savePushTestConfig($this->tempDir);
     writePushEnvFile($this->tempDir, ['APP_KEY' => 'base64:abc']);
 
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'configured'),
         '*apply -f *' => Process::result(output: 'applied'),

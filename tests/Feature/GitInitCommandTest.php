@@ -60,7 +60,7 @@ test('git:init never registers an OpenBao static role itself — only secrets:wi
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
         '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),

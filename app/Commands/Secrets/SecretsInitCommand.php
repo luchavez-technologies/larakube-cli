@@ -2,6 +2,7 @@
 
 namespace App\Commands\Secrets;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
 use App\Enums\SharedClusterService;
@@ -53,6 +54,11 @@ class SecretsInitCommand extends Command
 
         $host = $this->resolveSecretsHost($env, $kubectl);
 
+        // The registry has no row for this install yet, so every helper below
+        // would find nothing; hand them the names this command is deploying.
+        $this->secretsNamesOverride = ToolInstance::forHost(ClusterTool::SECRETS, $host);
+        $names = $this->secretsNamesOverride;
+
         // Ensure namespace exists
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -60,7 +66,7 @@ class SecretsInitCommand extends Command
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SECRETS, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SECRETS, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -72,10 +78,11 @@ class SecretsInitCommand extends Command
             'image' => SecretsBackend::OPENBAO->getDockerImage(),
             'port' => SecretsBackend::OPENBAO->getDefaultPort(),
             'host' => $host,
+            'instance' => $names->instance,
             // Was local-only ("cloud/production stay manual-unseal by
             // design — a security boundary"), reconsidered 2026-08-15: the
             // unseal key already lives in-cluster as a plain Secret
-            // (openbao-bootstrap) regardless of this flag — anyone who can
+            // (its credentials Secret) regardless of this flag — anyone who can
             // read Secrets in this namespace can already unseal manually, so
             // withholding auto-unseal in production defends against a
             // restart, not against a real compromise. What it actually cost:
@@ -105,7 +112,7 @@ class SecretsInitCommand extends Command
 
         $bundle = $crdsManifest."\n---\n".$generatorCrdsManifest."\n---\n".$manifest."\n---\n".$esoManifest;
 
-        // Four resources to verify (openbao-backend + ESO's three), so this
+        // Four resources to verify (OpenBao + ESO's three), so this
         // can't use the single apply+rollout applyAndVerifyRollout() helper;
         // every step below checks its own exit code instead, or a rejected
         // apply / stuck rollout prints ✔ and this command claims success.
@@ -123,8 +130,8 @@ class SecretsInitCommand extends Command
             return 1;
         }
 
-        if (! $this->withSpin('Waiting for OpenBao Backend...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/openbao-backend -n {$ns} --timeout=120s")->successful())) {
-            $this->laraKubeError('openbao-backend never became Ready.');
+        if (! $this->withSpin('Waiting for OpenBao Backend...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$names->deployment()} -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError("{$names->deployment()} never became Ready.");
 
             return 1;
         }
@@ -256,14 +263,14 @@ class SecretsInitCommand extends Command
         });
 
         if ($userpassAdmin === null) {
-            $this->laraKubeWarn('Could not set up the baseline OpenBao admin login — the root token in openbao-bootstrap still works.');
+            $this->laraKubeWarn('Could not set up the baseline OpenBao admin login — the root token in the OpenBao credentials Secret still works.');
         } elseif ($userpassAdmin[2]) {
             [$adminUsername, $adminPassword] = $userpassAdmin;
             $this->newLine();
             $this->line('  <fg=yellow>⚠ OpenBao admin login created — save this now, it will not be shown again:</>');
             $this->line("    <fg=gray>Username:</> <fg=blue>{$adminUsername}</>");
             $this->line("    <fg=gray>Password:</> <fg=blue>{$adminPassword}</>");
-            $this->line('  <fg=gray>Also stored in the openbao-bootstrap Secret (admin-username / admin-password) if you lose this.</>');
+            $this->line('  <fg=gray>Also stored in the {$this->secretsNames($kubectl)?->secret()} Secret (admin-username / admin-password) if you lose this.</>');
             $this->newLine();
         }
 
@@ -271,7 +278,7 @@ class SecretsInitCommand extends Command
             $clusterStore = view('k8s.secrets.cluster-store', [
                 'namespace' => $ns,
                 'token' => base64_encode($token),
-                'hostAPI' => 'http://openbao-backend.'.$ns.'.svc.cluster.local:8200',
+                'hostAPI' => $this->openBaoServerUrl($kubectl),
             ])->render();
 
             $temporaryDirectory = TemporaryDirectory::make();

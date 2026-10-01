@@ -14,7 +14,7 @@ afterEach(function (): void {
 function pruneProcessFakes(array $pgRoles, int $psqlExit = 0): void
 {
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*psql*' => Process::result(output: implode("\n", $pgRoles)."\n", exitCode: $psqlExit),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -34,8 +34,9 @@ function deleteSent(string $role): Closure
 }
 
 test('secrets:prune fails when OpenBao is not deployed', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(),
     ]);
 
@@ -45,6 +46,7 @@ test('secrets:prune fails when OpenBao is not deployed', function (): void {
 });
 
 test('secrets:prune deletes only the static roles whose Postgres role is gone', function (): void {
+    openBaoRegistered();
     pruneProcessFakes(['postgres', 'forgejo_git_luchtech_dev']);
 
     Saloon::fake([
@@ -61,6 +63,7 @@ test('secrets:prune deletes only the static roles whose Postgres role is gone', 
 });
 
 test('secrets:prune --dry-run lists the dead roles and deletes nothing', function (): void {
+    openBaoRegistered();
     pruneProcessFakes(['postgres']);
 
     Saloon::fake([
@@ -76,6 +79,7 @@ test('secrets:prune --dry-run lists the dead roles and deletes nothing', functio
 });
 
 test('secrets:prune deletes nothing when the Postgres roles cannot be listed', function (): void {
+    openBaoRegistered();
     pruneProcessFakes([], psqlExit: 1);
 
     Saloon::fake([
@@ -91,6 +95,7 @@ test('secrets:prune deletes nothing when the Postgres roles cannot be listed', f
 });
 
 test('secrets:prune leaves roles that are not on the Commons Postgres alone', function (): void {
+    openBaoRegistered();
     pruneProcessFakes(['postgres']);
 
     Saloon::fake([
@@ -106,6 +111,7 @@ test('secrets:prune leaves roles that are not on the Commons Postgres alone', fu
 });
 
 test('secrets:prune reports success without deleting when every static role is alive', function (): void {
+    openBaoRegistered();
     pruneProcessFakes(['postgres', 'zitadel']);
 
     Saloon::fake([

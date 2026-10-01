@@ -311,7 +311,7 @@ class SsoWireCommand extends Command
         // NetBird is configured via its own REST API (/api/identity-providers).
         if (in_array($tool, [ClusterTool::CHAT, ClusterTool::MATRIX], true)) {
             $ok = $this->wireSynapseOidc($kubectl, $schema['namespace'], $ssoHost, $logical['issuer'], $clientId, $clientSecret, $env);
-        } elseif ($schema['deployment'] === 'openbao-backend') {
+        } elseif (in_array($tool, [ClusterTool::SECRETS, ClusterTool::OPENBAO], true)) {
             $ok = $this->wireOpenBaoOidc($kubectl, $schema['namespace'], $ssoHost, $toolHost, $clientId, $clientSecret, $env);
         } elseif ($tool === ClusterTool::VPN) {
             $ok = $this->wireNetbirdOidc($kubectl, $schema['namespace'], $toolHost, $ssoHost, $clientId, $clientSecret);
@@ -519,7 +519,7 @@ class SsoWireCommand extends Command
             return 0;
         }
 
-        if ($schema['deployment'] === 'openbao-backend') {
+        if (in_array($tool, [ClusterTool::SECRETS, ClusterTool::OPENBAO], true)) {
             $this->unwireOpenBaoOidc($kubectl, $schema['namespace']);
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
@@ -1315,7 +1315,7 @@ class SsoWireCommand extends Command
         string $clientSecret,
         string $env,
     ): bool {
-        $rootToken = $this->readClusterSecretKey($kubectl, $ns, 'openbao-bootstrap', 'root-token');
+        $rootToken = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
         if ($rootToken === null) {
             $this->laraKubeError('OpenBao is not initialized — no root token found. Run `larakube secrets:import` first.');
 
@@ -1330,7 +1330,7 @@ class SsoWireCommand extends Command
         // 2026-07-30 (this bug predates this rewrite but was never
         // exercised: the old code only wrote the `admin` policy when it
         // didn't already exist, which was never true on this cluster).
-        $exec = "{$kubectl} exec -i deploy/openbao-backend -n {$ns} -- env "
+        $exec = "{$kubectl} exec -i deploy/{$this->secretsNames($kubectl)?->deployment()} -n {$ns} -- env "
             .'BAO_TOKEN='.escapeshellarg($rootToken).' '
             .'BAO_ADDR=http://127.0.0.1:8200';
 
@@ -1420,12 +1420,12 @@ class SsoWireCommand extends Command
 
         if ($ok) {
             // tool:list marks an OIDC tool as SSO-wired by probing for the
-            // `{tool}-oidc` Secret (openbao-oidc, per SecretTool::oidcEnv()).
+            // `{tool}-oidc` Secret (per SecretTool::oidcEnv()).
             // OpenBao's wiring lives in its own storage (`bao auth enable
             // oidc` above), so this CLI path is what must record the marker
             // secret — every env-var-wired tool gets one from applyToolEnv().
             // Without it, tool:list reports a login that works as unwired.
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'openbao-oidc', ['client-id' => $clientId, 'client-secret' => $clientSecret]);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->secretsNames($kubectl)?->secret(SecretKind::OIDC) ?? '', ['client-id' => $clientId, 'client-secret' => $clientSecret]);
         }
 
         return $ok;
@@ -1595,12 +1595,12 @@ class SsoWireCommand extends Command
     /** Disable the OIDC auth backend on OpenBao. */
     protected function unwireOpenBaoOidc(string $kubectl, string $ns): void
     {
-        $rootToken = $this->readClusterSecretKey($kubectl, $ns, 'openbao-bootstrap', 'root-token');
+        $rootToken = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
         if ($rootToken === null) {
             return;
         }
 
-        $exec = "{$kubectl} exec deploy/openbao-backend -n {$ns} -- env "
+        $exec = "{$kubectl} exec deploy/{$this->secretsNames($kubectl)?->deployment()} -n {$ns} -- env "
             .'BAO_TOKEN='.escapeshellarg($rootToken).' '
             .'BAO_ADDR=http://127.0.0.1:8200';
 

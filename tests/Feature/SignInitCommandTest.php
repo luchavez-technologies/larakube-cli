@@ -55,7 +55,7 @@ function fakeSignInitProcess(?string $s3Host, ?string &$appliedManifest, int $ap
         return match (true) {
             str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode($spec)),
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
-            str_contains($cmd, 'get secret openbao-bootstrap') => Process::result(output: $openBao ? base64_encode('hvs.token') : ''),
+            str_contains($cmd, 'get secret openbao-secrets-secrets-example-com') => Process::result(output: $openBao ? base64_encode('hvs.token') : ''),
             str_contains($cmd, 'get service headless-shell') => Process::result(output: '10.43.0.99'),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),

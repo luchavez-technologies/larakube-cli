@@ -23,18 +23,20 @@ afterEach(function (): void {
 function fakeOpenBaoWiring(): array
 {
     return [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.root-token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.root-token')),
         '*port-forward*' => Process::result(output: ''),
     ];
 }
 
 test('secrets:grant is registered', function (): void {
+    openBaoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('secrets:grant');
 });
 
 test('secrets:grant wires an app-scoped OpenBao policy/role and grants the Zitadel role', function (): void {
+    openBaoRegistered();
     Process::fake(array_merge(fakeOpenBaoWiring(), [
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -84,6 +86,7 @@ test('secrets:grant wires an app-scoped OpenBao policy/role and grants the Zitad
 });
 
 test('secrets:grant rejects an invalid role', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
@@ -102,6 +105,7 @@ test('secrets:grant rejects an invalid role', function (): void {
 });
 
 test('secrets:grant errors when Zitadel is not installed', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*get deployment sso-zitadel*' => Process::result(output: ''),
     ]);

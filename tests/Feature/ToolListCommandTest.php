@@ -15,7 +15,7 @@ test('tool:list detects tools live on the cluster even if missing from registry 
         // Empty registry secret
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
         // Stalwart (Mail) is present on cluster
-        '*deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
+        '*deployment -l larakube.io/tool=mail -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
         // Ingress holds send.luchtech.dev
         '*get ingress -n larakube-shared -o jsonpath*' => Process::result(output: 'send.luchtech.dev'),
         // Catch-all process
@@ -41,11 +41,12 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
+                openBaoRegistryRow(),
                 ['tool' => 'stalwart', 'instance' => '', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
             ])),
         ),
         '*deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
@@ -100,6 +101,7 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
+                openBaoRegistryRow(),
                 ['tool' => 'stalwart', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
                 ['tool' => 'outline', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
             ])),
@@ -108,7 +110,7 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
         '*get externalsecret stalwart*' => Process::result(output: 'stalwart  1m  True  SecretSynced'),
         // Outline (Notes) never got its KV sync wired
         '*get externalsecret outline-secrets*' => Process::result(output: '', exitCode: 1),
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
@@ -144,12 +146,13 @@ test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
+                openBaoRegistryRow(),
                 ['tool' => 'penpot', 'instance' => 'design-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'design.luchtech.dev'],
             ])),
         ),
         '*get externalsecret design-secrets-design-luchtech-dev-db*' => Process::result(output: 'design-secrets-design-luchtech-dev-db  1m  True  SecretSynced'),
         '*get externalsecret design-secrets-design-luchtech-dev *' => Process::result(output: '', exitCode: 1),
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);

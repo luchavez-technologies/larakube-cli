@@ -3,10 +3,12 @@
 use Symfony\Component\Yaml\Yaml;
 
 test('openbao manifest renders valid multi-document YAML', function (): void {
+    openBaoRegistered();
     $rendered = view('k8s.secrets.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,
+        'instance' => 'secrets-example-com',
         'host' => 'secrets.luchtech.dev',
     ])->render();
 
@@ -29,6 +31,7 @@ test('openbao manifest renders valid multi-document YAML', function (): void {
 });
 
 test('openbao data volume is a PersistentVolumeClaim, not emptyDir', function (): void {
+    openBaoRegistered();
     // Regression guard: OpenBao's own secret store (storage "file" in
     // bao.hcl, mounted at /openbao/data) was shipped on emptyDir — wiped on
     // any pod restart/reschedule, with nothing to restore from. Found live
@@ -38,6 +41,7 @@ test('openbao data volume is a PersistentVolumeClaim, not emptyDir', function ()
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,
+        'instance' => 'secrets-example-com',
         'host' => null,
     ])->render();
 
@@ -50,10 +54,10 @@ test('openbao data volume is a PersistentVolumeClaim, not emptyDir', function ()
     $deployment = null;
     foreach ($documents as $document) {
         $parsed = Yaml::parse($document);
-        if (($parsed['kind'] ?? null) === 'PersistentVolumeClaim' && ($parsed['metadata']['name'] ?? null) === 'openbao-data') {
+        if (($parsed['kind'] ?? null) === 'PersistentVolumeClaim' && ($parsed['metadata']['name'] ?? null) === 'openbao-storage-secrets-example-com') {
             $pvc = $parsed;
         }
-        if (($parsed['kind'] ?? null) === 'Deployment' && ($parsed['metadata']['name'] ?? null) === 'openbao-backend') {
+        if (($parsed['kind'] ?? null) === 'Deployment' && ($parsed['metadata']['name'] ?? null) === 'openbao-secrets-example-com') {
             $deployment = $parsed;
         }
     }
@@ -65,10 +69,11 @@ test('openbao data volume is a PersistentVolumeClaim, not emptyDir', function ()
     $dataVolume = collect($volumes)->firstWhere('name', 'data');
 
     expect($dataVolume)->not->toBeNull()->not->toHaveKey('emptyDir')
-        ->and($dataVolume['persistentVolumeClaim']['claimName'] ?? null)->toBe('openbao-data');
+        ->and($dataVolume['persistentVolumeClaim']['claimName'] ?? null)->toBe('openbao-storage-secrets-example-com');
 });
 
 test('openbao runs under its own ServiceAccount with a system:auth-delegator binding', function (): void {
+    openBaoRegistered();
     // Needed for OpenBao's Vault Kubernetes auth backend to validate other
     // pods' ServiceAccount tokens via the TokenReview API — without this,
     // auth/kubernetes/login rejects every request. Dedicated SA (not the
@@ -77,6 +82,7 @@ test('openbao runs under its own ServiceAccount with a system:auth-delegator bin
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,
+        'instance' => 'secrets-example-com',
         'host' => null,
     ])->render();
 
@@ -90,13 +96,13 @@ test('openbao runs under its own ServiceAccount with a system:auth-delegator bin
     $deployment = null;
     foreach ($documents as $document) {
         $parsed = Yaml::parse($document);
-        if (($parsed['kind'] ?? null) === 'ServiceAccount' && ($parsed['metadata']['name'] ?? null) === 'openbao') {
+        if (($parsed['kind'] ?? null) === 'ServiceAccount' && ($parsed['metadata']['name'] ?? null) === 'openbao-secrets-example-com') {
             $sa = $parsed;
         }
-        if (($parsed['kind'] ?? null) === 'ClusterRoleBinding' && ($parsed['metadata']['name'] ?? null) === 'openbao-auth-delegator') {
+        if (($parsed['kind'] ?? null) === 'ClusterRoleBinding' && ($parsed['metadata']['name'] ?? null) === 'openbao-auth-delegator-secrets-example-com') {
             $binding = $parsed;
         }
-        if (($parsed['kind'] ?? null) === 'Deployment' && ($parsed['metadata']['name'] ?? null) === 'openbao-backend') {
+        if (($parsed['kind'] ?? null) === 'Deployment' && ($parsed['metadata']['name'] ?? null) === 'openbao-secrets-example-com') {
             $deployment = $parsed;
         }
     }
@@ -104,15 +110,17 @@ test('openbao runs under its own ServiceAccount with a system:auth-delegator bin
     expect($sa)->not->toBeNull()
         ->and($binding)->not->toBeNull()
         ->and($binding['roleRef']['name'] ?? null)->toBe('system:auth-delegator')
-        ->and($binding['subjects'][0]['name'] ?? null)->toBe('openbao')
-        ->and($deployment['spec']['template']['spec']['serviceAccountName'] ?? null)->toBe('openbao');
+        ->and($binding['subjects'][0]['name'] ?? null)->toBe('openbao-secrets-example-com')
+        ->and($deployment['spec']['template']['spec']['serviceAccountName'] ?? null)->toBe('openbao-secrets-example-com');
 });
 
 test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default for other callers of this view — SecretsInitCommand always passes it explicitly)', function (): void {
+    openBaoRegistered();
     $rendered = view('k8s.secrets.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,
+        'instance' => 'secrets-example-com',
         'host' => null,
     ])->render();
 
@@ -121,10 +129,12 @@ test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default f
 });
 
 test('openbao gets an auto-unseal postStart hook when autoUnseal is true', function (): void {
+    openBaoRegistered();
     $rendered = view('k8s.secrets.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,
+        'instance' => 'secrets-example-com',
         'host' => null,
         'autoUnseal' => true,
     ])->render();
@@ -137,7 +147,7 @@ test('openbao gets an auto-unseal postStart hook when autoUnseal is true', funct
     $deployment = null;
     foreach ($documents as $document) {
         $parsed = Yaml::parse($document);
-        if (($parsed['kind'] ?? null) === 'Deployment' && ($parsed['metadata']['name'] ?? null) === 'openbao-backend') {
+        if (($parsed['kind'] ?? null) === 'Deployment' && ($parsed['metadata']['name'] ?? null) === 'openbao-secrets-example-com') {
             $deployment = $parsed;
         }
     }
@@ -150,7 +160,7 @@ test('openbao gets an auto-unseal postStart hook when autoUnseal is true', funct
     $bootstrap = collect($volumes)->firstWhere('name', 'bootstrap');
     expect($bootstrap)->not->toBeNull();
     // optional: true — a fresh install (before secrets:init creates
-    // openbao-bootstrap) must still start; the hook just no-ops.
+    // openbao-secrets-secrets-example-com) must still start; the hook just no-ops.
     expect($bootstrap['secret']['optional'] ?? null)->toBeTrue();
-    expect($bootstrap['secret']['secretName'] ?? null)->toBe('openbao-bootstrap');
+    expect($bootstrap['secret']['secretName'] ?? null)->toBe('openbao-secrets-secrets-example-com');
 });

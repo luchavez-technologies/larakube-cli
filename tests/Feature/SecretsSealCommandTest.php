@@ -11,14 +11,16 @@ afterEach(function (): void {
 });
 
 test('secrets:seal is registered', function (): void {
+    openBaoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('secrets:seal');
 });
 
 test('secrets:seal fails when OpenBao is not deployed', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('secrets:seal local --force')
@@ -27,8 +29,9 @@ test('secrets:seal fails when OpenBao is not deployed', function (): void {
 });
 
 test('secrets:seal seals OpenBao with --force, no prompt', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);

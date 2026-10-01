@@ -30,8 +30,9 @@ function fakeSyncedExternalSecret(): array
 }
 
 test('secrets:wire fails when OpenBao is not deployed', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(),
     ]);
 
@@ -41,8 +42,9 @@ test('secrets:wire fails when OpenBao is not deployed', function (): void {
 });
 
 test('secrets:wire fails when the database engine is not mounted', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -57,8 +59,9 @@ test('secrets:wire fails when the database engine is not mounted', function (): 
 });
 
 test('secrets:wire fails when Vault Kubernetes auth is not configured', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -81,10 +84,11 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
     // '*' listed first would swallow the more specific refreshTime/status/
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment documenso*' => Process::result(output: 'documenso-sign-kube'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            openBaoRegistryRow(),
             ['tool' => 'sign', 'instance' => 'sign-kube', 'host' => 'sign.kube'],
         ]))),
         '*port-forward*' => Process::result(output: ''),
@@ -127,10 +131,11 @@ test('secrets:wire --tool=link registers a static role for kutt and restarts kut
     // '*' listed first would swallow the more specific refreshTime/status/
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret kutt-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment kutt*' => Process::result(output: 'kutt-link-kube'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            openBaoRegistryRow(),
             ['tool' => 'link', 'instance' => 'link-kube', 'host' => 'link.kube'],
         ]))),
         '*port-forward*' => Process::result(output: ''),
@@ -168,8 +173,9 @@ test('secrets:wire --tool=link registers a static role for kutt and restarts kut
 });
 
 test('secrets:wire --tool=support registers a static role for support_chatwoot and restarts support-chatwoot', function (): void {
+    openBaoRegistered();
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret support-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment support-chatwoot*' => Process::result(output: 'support-chatwoot'),
         '*port-forward*' => Process::result(output: ''),
@@ -200,8 +206,9 @@ test('secrets:wire --tool=support registers a static role for support_chatwoot a
 });
 
 test('secrets:wire --tool=tasks registers a static role for planka and restarts planka', function (): void {
+    openBaoRegistered();
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret planka-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment planka*' => Process::result(output: 'planka'),
         '*port-forward*' => Process::result(output: ''),
@@ -232,8 +239,9 @@ test('secrets:wire --tool=tasks registers a static role for planka and restarts 
 });
 
 test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
@@ -253,6 +261,7 @@ test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', f
 });
 
 test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND a fresh refreshTime', function (): void {
+    openBaoRegistered();
     $command = new class extends SecretsWireCommand
     {
         public function wait(string $kubectl, string $ns, string $name, ?string $before, int $timeout): bool
@@ -291,12 +300,13 @@ test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND
 });
 
 test('secrets:wire rejects a tool with no wireable Commons database password', function (): void {
+    openBaoRegistered();
     // Insights (Metabase) has a Commons database (HasCommonsDatabases) but no
     // simple single-key password to hand OpenBao (no HasDbSecretRef) — the
     // other reason a tool can be rejected here, distinct from Drive's "no
     // Commons DB at all" case covered separately below.
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment insights-metabase*' => Process::result(output: 'insights-metabase'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -313,8 +323,9 @@ test('secrets:wire rejects a tool with no wireable Commons database password', f
 });
 
 test('secrets:wire rejects a tool that is not installed', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment documenso*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -336,10 +347,11 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
     // '*' listed first would swallow the more specific refreshTime/status/
     // reason patterns before they ever get a chance to match.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret documenso-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment documenso*' => Process::result(output: 'documenso-sign-kube'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            openBaoRegistryRow(),
             ['tool' => 'sign', 'instance' => 'sign-kube', 'host' => 'sign.kube'],
         ]))),
         '*get deployment record-sendrec*' => Process::result(output: '', exitCode: 1),
@@ -366,8 +378,9 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
 });
 
 test('secrets:wire rejects Drive (oCIS has no Commons database password to rotate)', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment drive-ocis*' => Process::result(output: 'drive-ocis'),
         '*get secret drive-secrets*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
@@ -387,13 +400,14 @@ test('secrets:wire rejects Drive (oCIS has no Commons database password to rotat
 });
 
 test('secrets:wire --tool=data --engine=pocketbase reports no wireable database instead of grabbing Directus\'s secret ref', function (): void {
+    openBaoRegistered();
     // Regression test for the concrete bug this overhaul exists to fix:
     // dbSecretRef()/commonsDatabases() called with NO engine used to always
     // resolve to Directus's shape (the guard only fires for an EXPLICIT
     // 'pocketbase' engine) — so a PocketBase-only instance previously got
     // handed Directus's db-password secret ref/tenant name.
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -420,8 +434,9 @@ test('secrets:wire --tool=data never trusts a stale registry engine hint over wh
     // DataRemoveCommand's existing "registry is a hint, not authoritative"
     // discipline.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            openBaoRegistryRow(),
             ['tool' => 'data', 'host' => 'data.example.com', 'instance' => 'main', 'engine' => 'directus'],
         ]))),
         '*get deployment data-pocketbase*' => Process::result(output: 'data-pocketbase'),
@@ -446,8 +461,9 @@ test('secrets:wire --tool=data never trusts a stale registry engine hint over wh
 });
 
 test('secrets:wire requires --tool or --all when it cannot prompt', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment documenso*' => Process::result(output: 'documenso'),
         '*get deployment record-sendrec*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),
@@ -464,8 +480,9 @@ test('secrets:wire requires --tool or --all when it cannot prompt', function ():
 })->throws(MissingFlagException::class, 'Missing required --tool');
 
 test('secrets:wire --tool=mail registers a static role for stalwart and restarts stalwart deployment', function (): void {
+    openBaoRegistered();
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret stalwart*' => Process::result(output: base64_encode('store-pw')),
         '*get deployment stalwart*' => Process::result(output: 'mail-stalwart'),
         '*port-forward*' => Process::result(output: ''),
@@ -499,6 +516,7 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
 });
 
 test('secrets:wire --tool=mail does not restart the deployment when the forced rotation fails', function (): void {
+    openBaoRegistered();
     // Regression: registerStaticRole()'s create-time rotation is not
     // reliable when re-wiring a role name that previously existed and was
     // deleted (see the docblock added in SecretsWireCommand::wireTool()) —
@@ -509,7 +527,7 @@ test('secrets:wire --tool=mail does not restart the deployment when the forced r
     // deployment against an unconfirmed password) when the explicit
     // rotate-role call it now makes fails.
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret stalwart*' => Process::result(output: base64_encode('store-pw')),
         '*get deployment stalwart*' => Process::result(output: 'mail-stalwart'),
         '*port-forward*' => Process::result(output: ''),
@@ -535,10 +553,11 @@ test('secrets:wire --tool=mail does not restart the deployment when the forced r
 
 test('secrets:wire --tool=passwords registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret vaultwarden-secrets*' => Process::result(output: base64_encode('postgresql://vaultwarden_vault_dev_test:pw@postgres:5432/vaultwarden_vault_dev_test')),
         '*get deployment*vaultwarden*' => Process::result(output: 'vaultwarden-vault-dev-test'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            openBaoRegistryRow(),
             ['tool' => 'passwords', 'instance' => 'vault-dev-test', 'host' => 'vault.dev.test'],
         ]))),
         '*port-forward*' => Process::result(output: ''),
@@ -569,6 +588,7 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
 });
 
 test('secrets:wire supports git, notes, sheets, and chat tools', function (): void {
+    openBaoRegistered();
     foreach (['git' => 'forgejo', 'notes' => 'outline-secrets', 'sheets' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
         expect(App\Enums\ClusterTool::from($toolSlug)->dbSecretRef())->not->toBeNull();
     }

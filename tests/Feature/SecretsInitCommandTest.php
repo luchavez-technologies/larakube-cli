@@ -14,6 +14,7 @@ afterEach(function (): void {
 });
 
 test('secrets:init deploys openbao and external secrets operator, unsealing an already-initialized instance', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
         '*get secret*unseal-key*' => Process::result(output: base64_encode('existing-unseal-key')),
@@ -72,6 +73,7 @@ test('secrets:init deploys openbao and external secrets operator, unsealing an a
 });
 
 test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — no import file required', function (): void {
+    openBaoRegistered();
     // Regression guard for the real gap found live 2026-07-31: secrets:init
     // used to deploy OpenBao but never initialize it, deferring that
     // entirely to secrets:import — which itself refuses to run without an
@@ -122,6 +124,7 @@ test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — n
 });
 
 test('secrets:init creates a new userpass admin and prints the credentials once', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
         '*get secret*unseal-key*' => Process::result(output: base64_encode('existing-unseal-key')),
@@ -156,12 +159,13 @@ test('secrets:init creates a new userpass admin and prints the credentials once'
         ->expectsOutputToContain('Username:')
         ->expectsOutputToContain('admin');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'patch secret openbao-bootstrap')
+    Process::assertRan(fn ($process) => str_contains($process->command, 'patch secret openbao-secrets-secrets-')
         && str_contains((string) $process->input, '"admin-username"')
         && str_contains((string) $process->input, '"admin-password"'));
 });
 
 test('secrets:init reuses an existing userpass admin instead of rotating it, and does not reprint credentials', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
         '*get secret*unseal-key*' => Process::result(output: base64_encode('existing-unseal-key')),
@@ -191,7 +195,7 @@ test('secrets:init reuses an existing userpass admin instead of rotating it, and
 
     // No re-print, and no re-patch of the bootstrap secret — the whole
     // point is a STABLE credential across repeated runs, not a rotating one.
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'patch secret openbao-bootstrap'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'patch secret openbao-secrets-secrets-'));
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
         && str_contains($request->resolveEndpoint(), '/auth/userpass/users/admin')
@@ -199,6 +203,7 @@ test('secrets:init reuses an existing userpass admin instead of rotating it, and
 });
 
 test('secrets:init keeps deploying OpenBao even if the userpass admin setup fails', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
         '*get secret*unseal-key*' => Process::result(output: base64_encode('existing-unseal-key')),
@@ -226,6 +231,7 @@ test('secrets:init keeps deploying OpenBao even if the userpass admin setup fail
 });
 
 test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently skipping ESO wiring', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -241,6 +247,7 @@ test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently 
 });
 
 test('secrets:init patches out a lingering v1alpha1 storedVersion before applying the new CRD bundle', function (): void {
+    openBaoRegistered();
     // ESO v0.16.0 dropped the v1alpha1 CRD API version entirely. A CRD
     // whose status.storedVersions still lists it would reject the new CRD
     // schema outright — this guard clears it first, matching ESO's own

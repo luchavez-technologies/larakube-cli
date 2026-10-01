@@ -565,7 +565,7 @@ class PlexJoinCommand extends Command
 
         $manifest = view('k8s.secrets.eso-db-static', [
             'namespace' => $namespace,
-            'secretsNamespace' => $this->secretsNamespace(),
+            'openbaoServer' => $this->openBaoServerUrl($kubectl),
             'secretName' => 'laravel-secrets',
             'roleName' => $roleName,
             'passwordKey' => 'DB_PASSWORD',

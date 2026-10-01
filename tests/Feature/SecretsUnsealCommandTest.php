@@ -12,14 +12,16 @@ afterEach(function (): void {
 });
 
 test('secrets:unseal is registered', function (): void {
+    openBaoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('secrets:unseal');
 });
 
 test('secrets:unseal fails when OpenBao is not deployed', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('secrets:unseal local')
@@ -28,8 +30,9 @@ test('secrets:unseal fails when OpenBao is not deployed', function (): void {
 });
 
 test('secrets:unseal fails when OpenBao was never initialized', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
@@ -42,8 +45,9 @@ test('secrets:unseal fails when OpenBao was never initialized', function (): voi
 });
 
 test('secrets:unseal unseals a sealed OpenBao', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
@@ -61,8 +65,9 @@ test('secrets:unseal unseals a sealed OpenBao', function (): void {
 });
 
 test('secrets:unseal is a no-op when already unsealed', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => base64_encode('s.test-token'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);

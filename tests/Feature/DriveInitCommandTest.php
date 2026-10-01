@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Process;
 test('drive:init deploys ocis engine', function (): void {
     Process::fake([
         '*get secret drive-secrets*' => Process::result(output: '', exitCode: 1),
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),

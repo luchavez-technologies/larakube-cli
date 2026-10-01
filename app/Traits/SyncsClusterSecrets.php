@@ -165,7 +165,7 @@ trait SyncsClusterSecrets
             'environmentSlug' => $environment,
             'prefix' => $prefix,
             'keys' => array_keys($secretValues),
-            'hostAPI' => "http://openbao-backend.{$secretsNs}.svc.cluster.local:8200",
+            'hostAPI' => $this->openBaoServerUrl($kubectl),
         ])->render();
 
         $cluster->apply($esoManifest);
@@ -575,7 +575,7 @@ trait SyncsClusterSecrets
         // Read the CA cert from OpenBao's own pod — its mounted ServiceAccount
         // trust bundle is the one it needs to validate the K8s API server's TLS
         // cert when it calls TokenReview, and it's always present at this path.
-        $caCert = trim(Kubectl::fromPrefix($kubectl)->raw(['exec', 'deploy/openbao-backend', '-n', $ns, '--', 'cat', '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'])->output);
+        $caCert = trim(Kubectl::fromPrefix($kubectl)->raw(['exec', 'deploy/'.($this->secretsNames($kubectl)?->deployment() ?? ''), '-n', $ns, '--', 'cat', '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'])->output);
 
         if ($caCert === '') {
             return false;

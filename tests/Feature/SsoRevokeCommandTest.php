@@ -187,7 +187,7 @@ test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project,
 
     // Confirms the sweep actually reached every RBAC-gated tool's project,
     // not just the two the old code hardcoded.
-    expect($searchedNames)->toContain('openbao-backend')
+    expect($searchedNames)->toContain('openbao')
         ->and($searchedNames)->toContain('grafana')
         ->and($searchedNames)->toContain('headlamp')
         ->and($searchedNames)->toContain('kutt')
@@ -271,7 +271,7 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
     // sweep now walks every RBAC-gated tool's OWN project (a dozen of them,
     // not "the one RBAC project" vs "the one shared project" as before), so
     // this routes by EXACT project name: ocis holds ocisAdmin,
-    // openbao-backend holds openbao-admin, everything else (every other
+    // openbao holds openbao-admin, everything else (every other
     // role-bearing tool's project, plus the shared LaraKube Shared Tools
     // project) is empty. DRIVE is declared before SECRETS in ClusterTool's
     // case order, so ocisAdmin surfaces FIRST in the picker now, not second.
@@ -305,7 +305,7 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
                     : [['id' => 'grant-1', 'roleKeys' => ['ocisAdmin']]]]);
             }
 
-            if ($projectId === 'proj-openbao-backend') {
+            if ($projectId === 'proj-openbao') {
                 return MockResponse::make(['result' => [['id' => 'grant-2', 'roleKeys' => ['openbao-admin']]]]);
             }
 

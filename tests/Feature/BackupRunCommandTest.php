@@ -36,7 +36,7 @@ function backupRunFakes(array $overrides = []): array
         '*get namespace -o jsonpath*' => Process::result(output: 'larakube-shared larakube-vault larakube-secrets larakube-sso larakube-vpn larakube-plex'),
         '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo-git-luchtech-dev forgejo-runner-git-luchtech-dev ocis-drive-example-com stalwart synapse-chat-luchtech-dev element-web-chat-luchtech-dev coturn-chat-luchtech-dev synapse-db-chat-luchtech-dev webmail-bulwark grafana-monitor-luchtech-dev prometheus-server loki'),
         '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'vaultwarden-vault-luchtech-dev'),
-        '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
+        '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-secrets-example-com'),
         '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),
         '*get deployment -n larakube-vpn -o jsonpath*' => Process::result(output: 'netbird'),
         '*get deployment -n larakube-plex -o jsonpath*' => Process::result(output: 'seaweedfs postgres'),
@@ -113,7 +113,7 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
         // Still the unmigrated Deployment name; it becomes
         // secrets-openbao-{instance} the moment SecretTool adopts the
         // convention, with no separate rename here.
-        ->and($names)->toContain('openbao-backend');
+        ->and($names)->toContain('openbao-secrets-example-com');
 
     // Only Synapse's own component is covered — its sibling Deployments
     // (Cinny, Coturn, the bundled --no-plex Postgres) never opted in, so
@@ -144,7 +144,7 @@ test('archive names are the Deployment name, so they cannot collide', function (
     $names = array_column($cmd->targets(), 'name');
 
     // Derived from the workload, never a hand-maintained alias.
-    expect($names)->toContain('openbao-backend')
+    expect($names)->toContain('openbao-secrets-example-com')
         ->and($names)->not->toContain('openbao')
         // A Deployment carrying an instance carries it into the archive name.
         ->and($names)->toContain('forgejo-git-luchtech-dev')

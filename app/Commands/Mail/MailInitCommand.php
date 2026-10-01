@@ -623,7 +623,7 @@ class MailInitCommand extends Command
             $this->withSpin("Wiring OpenBao rotation into {$openBaoSyncedSecretName}...", function () use ($kubectl, $ns, $tenant, $openBaoSyncedSecretName): void {
                 $manifest = view('k8s.secrets.eso-db-static', [
                     'namespace' => $ns,
-                    'secretsNamespace' => $this->secretsNamespace(),
+                    'openbaoServer' => $this->openBaoServerUrl($kubectl),
                     'secretName' => $openBaoSyncedSecretName,
                     'roleName' => $tenant,
                     'passwordKey' => 'STALWART_STORE_PASSWORD',

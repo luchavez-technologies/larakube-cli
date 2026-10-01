@@ -55,6 +55,7 @@ function plexJoinCommand(): object
 }
 
 test('wireTenantDbSecret applies the manifest, waits for a fresh sync, and restarts an already-running app', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*apply -f *' => Process::result(output: 'applied'),
         '*get deployment web*' => Process::result(output: 'web'),
@@ -86,6 +87,7 @@ test('wireTenantDbSecret applies the manifest, waits for a fresh sync, and resta
 });
 
 test('wireTenantDbSecret does not restart when the app has never been deployed', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*apply -f *' => Process::result(output: 'applied'),
         '*get deployment web*' => Process::result(output: '', exitCode: 1),
@@ -104,6 +106,7 @@ test('wireTenantDbSecret does not restart when the app has never been deployed',
 });
 
 test('wireTenantDbSecret returns false and never restarts when the manifest apply fails', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*apply -f *' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(),
@@ -115,6 +118,7 @@ test('wireTenantDbSecret returns false and never restarts when the manifest appl
 });
 
 test('wireTenantDbSecret returns false and never restarts when the sync never goes fresh', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*apply -f *' => Process::result(output: 'applied'),
         // Stuck: refreshTime never moves past "before".
@@ -130,6 +134,7 @@ test('wireTenantDbSecret returns false and never restarts when the sync never go
 });
 
 test('handle() wires registerStaticRole and wireTenantDbSecret to the SAME OpenBao role name', function (): void {
+    openBaoRegistered();
     // Regression guard for the real bug found live 2026-08-01: handle() called
     // registerStaticRole($kubectl, 'tenant-'.$tenant, ...) to CREATE the OpenBao
     // static role, but wireTenantDbSecret($kubectl, $targetNs, $tenant) — the
@@ -158,7 +163,7 @@ test('handle() wires registerStaticRole and wireTenantDbSecret to the SAME OpenB
         }
 
         return match (true) {
-            str_contains($process->command, 'get secret openbao-bootstrap') => Process::result(output: base64_encode('s.test-token')),
+            str_contains($process->command, 'get secret openbao-secrets-secrets-example-com') => Process::result(output: base64_encode('s.test-token')),
             str_contains($process->command, 'port-forward') => Process::result(output: ''),
             str_contains($process->command, 'get deployment web') => Process::result(output: '', exitCode: 1),
             str_contains($process->command, '].status}') => Process::result(output: 'True'),
@@ -198,6 +203,7 @@ test('handle() wires registerStaticRole and wireTenantDbSecret to the SAME OpenB
 });
 
 test('handle() passes registerStaticRole\'s $roleName, not the bare $tenant, to wireTenantDbSecret', function (): void {
+    openBaoRegistered();
     // The actual regression guard: registerStaticRole() registers under
     // 'tenant-'.$tenant ($roleName), so wireTenantDbSecret() — which reads
     // that same role back — must be called with $roleName too, not $tenant.
@@ -214,6 +220,7 @@ test('handle() passes registerStaticRole\'s $roleName, not the bare $tenant, to 
 });
 
 test('plex:join has no --rotate flag and never force-rotates a credential', function (): void {
+    openBaoRegistered();
     // plex:join used to have a --rotate flag that both (a) let you re-run the
     // join to add a service to an already-joined tenant, and (b) forced a
     // credential reset as a side effect — a flag on a JOIN command for
@@ -232,6 +239,7 @@ test('plex:join has no --rotate flag and never force-rotates a credential', func
 });
 
 test('writeTenantConfig omits DB_PASSWORD from the env file when OpenBao already owns it', function (): void {
+    openBaoRegistered();
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $dir = $temporaryDirectory->path();
 
@@ -252,6 +260,7 @@ test('writeTenantConfig omits DB_PASSWORD from the env file when OpenBao already
 });
 
 test('writeTenantConfig strips a PRE-EXISTING stale DB_PASSWORD line, not just skips writing a new one', function (): void {
+    openBaoRegistered();
     // Regression guard: a tenant that joined BEFORE it was OpenBao-managed
     // already has DB_PASSWORD=<old value> sitting in .env. Omitting the key
     // from what's written left that stale line untouched forever — plex:show
@@ -279,6 +288,7 @@ test('writeTenantConfig strips a PRE-EXISTING stale DB_PASSWORD line, not just s
 });
 
 test('writeTenantConfig writes DB_PASSWORD normally when OpenBao is not involved', function (): void {
+    openBaoRegistered();
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $dir = $temporaryDirectory->path();
 

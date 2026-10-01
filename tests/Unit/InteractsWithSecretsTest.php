@@ -29,10 +29,12 @@ function secretsReader(): object
 }
 
 test('local Secrets host uses the secrets subdomain on the dev TLD', function (): void {
+    openBaoRegistered();
     expect(secretsReader()->host('local', null))->toStartWith('secrets.');
 });
 
 test('cloud Secrets host returns the host persisted for that env', function (): void {
+    openBaoRegistered();
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from(['hosts' => ['secrets' => 'secrets.example.com']]);
 
@@ -40,28 +42,31 @@ test('cloud Secrets host returns the host persisted for that env', function (): 
 });
 
 test('cloud Secrets host is null when none is configured for the env', function (): void {
+    openBaoRegistered();
     $config = ConfigData::from(['name' => 'demo']);
     $config->environments['production'] = EnvironmentData::from([]);
 
     expect(secretsReader()->host('production', $config))->toBeNull();
 });
 
-test('isSecretsInstalled reflects whether the openbao-backend Deployment exists', function (): void {
-    Process::fake(['kubectl get deployment openbao-backend -n larakube-secrets --no-headers --ignore-not-found' => 'openbao-backend   1/1   1   1   5d']);
+test('isSecretsInstalled reflects whether the openbao-secrets-example-com Deployment exists', function (): void {
+    openBaoRegistered();
+    Process::fake(['kubectl get deployment openbao-secrets-example-com -n larakube-secrets --no-headers --ignore-not-found' => 'openbao-secrets-example-com   1/1   1   1   5d']);
     expect(secretsReader()->installed('kubectl', 'larakube-secrets'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment openbao-backend -n larakube-secrets --no-headers --ignore-not-found' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['kubectl get deployment openbao-secrets-example-com -n larakube-secrets --no-headers --ignore-not-found' => Process::result(output: '', exitCode: 1)]);
     expect(secretsReader()->installed('kubectl', 'larakube-secrets'))->toBeFalse();
 });
 
 test('secretsAccess is null when openbao is not installed, populated when it is', function (): void {
+    openBaoRegistered();
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    Process::fake(["{$kubectl} get deployment openbao-backend -n larakube-secrets --no-headers --ignore-not-found" => Process::result(output: '', exitCode: 1)]);
+    Process::fake(["{$kubectl} get deployment openbao-secrets-example-com -n larakube-secrets --no-headers --ignore-not-found" => Process::result(output: '', exitCode: 1)]);
     expect(secretsReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        "{$kubectl} get deployment openbao-backend -n larakube-secrets --no-headers --ignore-not-found" => 'openbao-backend   1/1   1   1   5d',
+        "{$kubectl} get deployment openbao-secrets-example-com -n larakube-secrets --no-headers --ignore-not-found" => 'openbao-secrets-example-com   1/1   1   1   5d',
     ]);
     $access = secretsReader()->access('local', null);
 

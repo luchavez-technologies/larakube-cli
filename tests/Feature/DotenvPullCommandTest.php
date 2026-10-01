@@ -43,16 +43,18 @@ function savePullTestConfig(string $dir): void
 }
 
 test('dotenv:pull must be run inside a project', function (): void {
+    openBaoRegistered();
     $this->artisan('dotenv:pull')
         ->assertExitCode(1)
         ->expectsOutputToContain('inside a LaraKube project');
 });
 
 test('dotenv:pull reads directly from the cluster Secret when OpenBao is absent', function (): void {
+    openBaoRegistered();
     savePullTestConfig($this->tempDir);
 
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*laravel-secrets*' => Process::result(output: json_encode(['data' => ['APP_KEY' => base64_encode('base64:abc')]])),
         '*' => Process::result(),
     ]);
@@ -65,10 +67,11 @@ test('dotenv:pull reads directly from the cluster Secret when OpenBao is absent'
 });
 
 test('dotenv:pull reads OpenBao, scoped by app, when it is present', function (): void {
+    openBaoRegistered();
     savePullTestConfig($this->tempDir);
 
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -87,6 +90,7 @@ test('dotenv:pull reads OpenBao, scoped by app, when it is present', function ()
 });
 
 test('dotenv:pull respects a locked env file', function (): void {
+    openBaoRegistered();
     savePullTestConfig($this->tempDir);
     $config = ConfigData::loadFromFile($this->tempDir);
     $config->addLockedFile('.env.production');
@@ -95,7 +99,7 @@ test('dotenv:pull respects a locked env file', function (): void {
     file_put_contents($this->tempDir.'/.env.production', "APP_KEY=keep-me\n");
 
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(),
     ]);
 

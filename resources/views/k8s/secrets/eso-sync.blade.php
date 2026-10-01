@@ -19,7 +19,7 @@ metadata:
 spec:
   provider:
     vault:
-      server: {{ $hostAPI ?? 'http://openbao-backend.larakube-secrets.svc.cluster.local:8200' }}
+      server: {{ $hostAPI }}
       path: secret
       version: v2
       auth:

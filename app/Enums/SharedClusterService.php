@@ -229,13 +229,15 @@ enum SharedClusterService: string
             // (netbird-{instance}), and a bare name matches nothing.
             self::VPN => 'deployment -l larakube.io/tool=vpn -n larakube-vpn',
             self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
-            self::SECRETS => 'deployment openbao-backend -n larakube-secrets',
+            // By label: OpenBao's Deployment is named per instance.
+            self::SECRETS => 'deployment -l larakube.io/tool=secrets -n larakube-secrets',
             self::FORGEJO => 'deployment -l larakube.io/tool=git -n larakube-shared',
             self::FLOW => 'deployment -l larakube-tool=flow -n larakube-shared',
             self::SHEET => 'deployment -l larakube-tool=sheets -n larakube-shared',
             self::DRIVE => 'deployment drive-ocis -n larakube-shared',
             self::INSIGHTS => 'deployment insights-metabase -n larakube-shared',
-            self::MAIL => 'deployment stalwart -n larakube-shared',
+            // By label: Stalwart's Deployment is named per instance.
+            self::MAIL => 'deployment -l larakube.io/tool=mail -n larakube-shared',
             // Synapse is named per instance, so a probe on a bare name never
             // matches; select on the identity label instead.
             self::CHAT => 'deployment -l larakube.io/tool=chat,larakube.io/component=synapse -n larakube-shared',

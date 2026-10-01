@@ -13,6 +13,7 @@ afterEach(function (): void {
 });
 
 test('secrets:migrate dry-run shows diff without writing', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*' => Process::result(output: base64_encode('hvs.root_token_test')),
     ]);
@@ -33,6 +34,7 @@ test('secrets:migrate dry-run shows diff without writing', function (): void {
 });
 
 test('secrets:migrate orchestrates export then import', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*' => Process::result(output: base64_encode('hvs.root_token_test')),
     ]);

@@ -4,6 +4,8 @@ namespace App\Traits;
 
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
@@ -908,7 +910,9 @@ trait InteractsWithPlex
         // the two paths are mutually exclusive, and an earlier version printed
         // both, so mixing the `postgres` username with STALWART_STORE_PASSWORD
         // (the 'stalwart' role's password) failed authentication.
-        $openBaoBootstrapped = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'secret', 'openbao-bootstrap', '-n', 'larakube-secrets', '--no-headers'])->output) !== '';
+        $openBaoNames = ToolInstance::first($kubectl, ClusterTool::SECRETS);
+        $openBaoBootstrapped = $openBaoNames !== null
+            && trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'secret', $openBaoNames->secret(), '-n', $openBaoNames->namespace(), '--no-headers'])->output) !== '';
 
         $this->newLine();
 

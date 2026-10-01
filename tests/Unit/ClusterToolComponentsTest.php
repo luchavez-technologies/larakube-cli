@@ -12,6 +12,7 @@ use App\Enums\ClusterToolComponentRole;
  * liable to drift from, the Blade manifest that actually deploys them.
  */
 test('every tool declares exactly one PRIMARY component', function (): void {
+    openBaoRegistered();
     foreach (ClusterTool::cases() as $tool) {
         $primaries = array_values(array_filter(
             $tool->components(),
@@ -23,6 +24,7 @@ test('every tool declares exactly one PRIMARY component', function (): void {
 });
 
 test('deploymentName() is unchanged by delegating to primaryComponent()', function (): void {
+    openBaoRegistered();
     // Every tool's deploymentName() used to be one flat match. It now
     // delegates to primaryComponent()->deployment — this pins that the
     // refactor produced byte-identical output for every tool, both
@@ -37,7 +39,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         'flow' => 'n8n', 'insights' => 'insights-metabase',
         'link' => 'kutt', 'mail' => 'stalwart', 'monitor' => 'grafana',
         'notes' => 'outline', 'passwords' => 'vaultwarden', 'record' => 'record-sendrec',
-        'secrets' => 'openbao-backend', 'sheets' => 'teable', 'sign' => 'documenso',
+        'secrets' => 'openbao', 'sheets' => 'teable', 'sign' => 'documenso',
         'sso' => 'sso-zitadel', 'support' => 'support-chatwoot', 'tasks' => 'planka',
         'uptime' => 'uptime-kuma', 'webmail' => 'bulwark',
         'dns' => 'external-dns', 'dashboard' => 'headlamp', 'meet' => 'livekit',
@@ -60,6 +62,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
 });
 
 test('GIT always requires a real instance — there is no bare/default deployment name', function (): void {
+    openBaoRegistered();
     // Unlike every other tool, GIT's server component was rebuilt with the
     // Postgres/OpenBao rename (2026-08-23) to have zero bare-name fallback:
     // the instance is always the host-derived slug, never null/''.
@@ -67,6 +70,7 @@ test('GIT always requires a real instance — there is no bare/default deploymen
 });
 
 test('CHAT names every component per instance, with the product as the stem', function (): void {
+    openBaoRegistered();
     // Synapse holds the server's signing key, which is a reason to copy its
     // volume with care, not to leave it unnamed (ADR 0021 has no exemptions).
     $components = collect(ClusterTool::CHAT->components('chat-luchtech-dev'))->keyBy('key');
@@ -98,6 +102,7 @@ test('CHAT names every component per instance, with the product as the stem', fu
 });
 
 test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown deployment names exactly', function (): void {
+    openBaoRegistered();
     $chatDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::CHAT->components());
     expect($chatDeployments)->toBe(['synapse', 'element-web', 'coturn', 'synapse-db', 'mas', 'mas-db', 'element-admin']);
 
@@ -109,6 +114,7 @@ test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown
 });
 
 test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components share the primary\'s wiring secret', function (): void {
+    openBaoRegistered();
     foreach (ClusterTool::cases() as $tool) {
         $shared = array_values(array_filter($tool->components(), fn ($c) => $c->sharesPrimarySecret));
 
@@ -135,6 +141,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
 });
 
 test('backupVolume is only true for the components InteractsWithBackup already covers today', function (): void {
+    openBaoRegistered();
     // Every other component defaults to backupVolume: false until a future
     // audit pass explicitly opts it in — a false negative here must never
     // silently start (or stop) a backup as a side effect of this refactor.
@@ -170,6 +177,7 @@ test('backupVolume is only true for the components InteractsWithBackup already c
 });
 
 test('backupPaths must share a directory, because one -C is what keeps old archives restorable', function (): void {
+    openBaoRegistered();
     // backup:run archives them as `tar -C <dir> base1 base2`, so members are
     // stored as bare basenames — byte-identical to the single-path layout every
     // archive taken before this was a list. Paths from different directories
@@ -184,6 +192,7 @@ test('backupPaths must share a directory, because one -C is what keeps old archi
 });
 
 test('several files from one mount are archived under a single -C', function (): void {
+    openBaoRegistered();
     $component = new ClusterToolComponentData(
         key: 'management',
         role: ClusterToolComponentRole::PRIMARY,
@@ -200,6 +209,7 @@ test('several files from one mount are archived under a single -C', function ():
 });
 
 test('every component provides human-readable label and description metadata', function (): void {
+    openBaoRegistered();
     foreach (ClusterTool::cases() as $tool) {
         foreach ($tool->components() as $component) {
             expect($component->label())->toBeString()->not->toBeEmpty("{$tool->value}:{$component->key} must have a label")

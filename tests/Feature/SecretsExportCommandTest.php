@@ -14,6 +14,7 @@ afterEach(function (): void {
 });
 
 test('secrets:export exports all environments and secrets to a JSON file', function (): void {
+    openBaoRegistered();
     Process::fake([
         '*' => Process::result(output: base64_encode('hvs.root_token_test')),
     ]);
@@ -41,8 +42,9 @@ test('secrets:export exports all environments and secrets to a JSON file', funct
 });
 
 test('secrets:export fails when openbao is not bootstrapped', function (): void {
+    openBaoRegistered();
     Process::fake([
-        '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(output: ''),
     ]);
 

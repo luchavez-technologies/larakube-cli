@@ -891,13 +891,14 @@ test('sso:wire reuses an already-registered OIDC client', function (): void {
 
 test('sso:wire writes three bound_claims-gated roles to OpenBao, not one unconditional-admin role', function (): void {
     Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([openBaoRegistryRow()]))),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get deployment openbao-backend*' => Process::result(output: 'openbao-backend   1/1   1   1   10d'),
+        '*get deployment openbao-secrets-example-com*' => Process::result(output: 'openbao-secrets-example-com   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret openbao-backend-sso*' => Process::result(output: ''),
+        '*get secret openbao-secrets-example-com-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('root-tok')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('root-tok')),
         '*bao auth list*' => Process::result(output: '{}'),
         '*bao auth enable oidc*' => Process::result(),
         '*bao policy write*' => Process::result(),
@@ -979,9 +980,9 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
     // Regression guard (live 2026-08-12): tool:list marks OIDC tools as
     // wired by probing for the {tool}-oidc Secret. OpenBao's config lives in
     // its own storage (`bao auth enable oidc` above), so this CLI path is
-    // what must record the openbao-oidc marker itself — without it, tool:list
+    // what must record the openbao-oidc-secrets-example-com marker itself — without it, tool:list
     // reports a working SSO login as unwired.
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'openbao-oidc')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'openbao-oidc-secrets-example-com')
         && appliedSecret($process)['namespace'] === 'larakube-secrets'
         && array_key_exists('client-id', appliedSecret($process)['data']));
 });

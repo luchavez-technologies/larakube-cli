@@ -127,9 +127,9 @@ test('vpn:setup-key writes the PAT through to OpenBao, not just the Secret', fun
     // quietly reverted and the command would look like it had worked.
     $kubectl = vpnSetupKeyKubectl();
     $fakes = vpnSetupKeyFakes($kubectl);
-    $fakes['*get secret openbao-bootstrap*root-token*'] = Process::result(output: base64_encode('root'));
-    $fakes['*get secret openbao-bootstrap*'] = Process::result(output: 'openbao-bootstrap');
-    $fakes['*larakube-tools-registry*'] = Process::result(output: '');
+    $fakes['*get secret openbao-secrets-secrets-example-com*root-token*'] = Process::result(output: base64_encode('root'));
+    $fakes['*get secret openbao-secrets-secrets-example-com*'] = Process::result(output: 'openbao-secrets-secrets-example-com');
+    $fakes['*larakube-tools-registry*'] = Process::result(output: base64_encode((string) json_encode([openBaoRegistryRow()])));
     $fakes['*port-forward*'] = Process::result();
     Process::fake($fakes);
 

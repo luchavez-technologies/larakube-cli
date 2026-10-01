@@ -276,7 +276,7 @@ test('monitor:init never registers an OpenBao static role itself — only secret
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create configmap*' => Process::result(output: 'configmap created'),
-        '*get secret openbao-bootstrap*' => Process::result(output: base64_encode('hvs.token')),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
