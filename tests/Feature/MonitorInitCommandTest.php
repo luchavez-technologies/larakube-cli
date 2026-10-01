@@ -350,8 +350,9 @@ test('monitoring shared blade view conditionally renders optional components bas
         ->not->toContain('app: loki')
         ->not->toContain('app: promtail')
         ->not->toContain('app: tempo')
-        ->not->toContain('name: Loki')
-        ->not->toContain('name: Tempo')
+        // the file still names them, under deleteDatasources, so Grafana drops them
+        ->not->toContain('uid: loki-ds')
+        ->not->toContain('uid: tempo-ds')
         ->not->toContain('metrics_generator');
 
     $fullManifest = view('k8s.monitoring.shared', [

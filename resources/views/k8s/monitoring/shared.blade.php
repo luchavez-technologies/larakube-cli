@@ -765,6 +765,19 @@ data:
         url: http://{{ $tempoName }}.larakube-shared.svc.cluster.local:3200
         editable: false
 @endif
+@if(! ($withLogs ?? true) || ! ($withTraces ?? false))
+    {{-- Grafana keeps a provisioned datasource that vanishes from this file, read-only,
+         in its own database, so a component switched off has to be deleted by name. --}}
+    deleteDatasources:
+@unless($withLogs ?? true)
+      - name: Loki
+        orgId: 1
+@endunless
+@unless($withTraces ?? false)
+      - name: Tempo
+        orgId: 1
+@endunless
+@endif
 ---
 # Dashboards-as-code: one static provider scans /var/lib/grafana/dashboards
 # every 10s, so dashboard JSON ConfigMaps added/removed by monitor:init take

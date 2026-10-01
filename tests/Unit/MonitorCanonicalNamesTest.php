@@ -35,7 +35,7 @@ test('every object the monitoring stack deploys carries the instance in its name
         ->values()
         ->all();
 
-    expect($bare)->toBe([]);
+    expect($bare)->toBeEmpty();
 });
 
 test('the stack names its ServiceAccounts, RBAC and ConfigMaps from ToolInstance', function (): void {
@@ -98,4 +98,21 @@ test('every component of the stack carries the identity labels', function (): vo
             expect($doc['metadata']['labels']['larakube.io/instance'] ?? null)->toBe('monitor-example-com', "{$kind}/{$doc['metadata']['name']}");
         }
     }
+});
+
+test('a component that is switched off is deleted from Grafana, not just left out of the datasource file', function (): void {
+    $datasources = fn (array $flags) => Yaml::parse(
+        monitorDocuments($flags)
+            ->firstWhere(fn ($d) => $d['kind'] === 'ConfigMap' && $d['metadata']['name'] === 'grafana-datasources-monitor-example-com')['data']['datasources.yaml'],
+    );
+
+    $metricsOnly = $datasources(['withLogs' => false, 'withTraces' => false]);
+    $logsOnly = $datasources(['withLogs' => true, 'withTraces' => false]);
+    $everything = $datasources(['withLogs' => true, 'withTraces' => true]);
+
+    expect(collect($metricsOnly['deleteDatasources'])->pluck('name')->all())->toBe(['Loki', 'Tempo'])
+        ->and(collect($logsOnly['deleteDatasources'])->pluck('name')->all())->toBe(['Tempo'])
+        ->and(collect($logsOnly['datasources'])->pluck('name')->all())->toBe(['Prometheus', 'Loki'])
+        ->and($everything)->not->toHaveKey('deleteDatasources')
+        ->and(collect($everything['datasources'])->pluck('name')->all())->toBe(['Prometheus', 'Loki', 'Tempo']);
 });

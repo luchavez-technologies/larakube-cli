@@ -27,9 +27,10 @@ Grafana's database is in Postgres. The cost is **one restart each of Prometheus,
 Grafana and Promtail, and a new kube-state-metrics pod** (a few seconds of gap in
 the metrics).
 
-Two things change on purpose, because traces are off: Grafana loses the dead **Tempo
-datasource** and the **Tempo service-graph dashboard**. Expect **2 datasources and 4
-dashboards** afterwards, not 3 and 5.
+One thing is left over on purpose: Grafana keeps a provisioned datasource that
+disappears from its file (read-only, in its own database), so the dead **Tempo
+datasource** survives the first re-apply. Step 2b removes it: `monitor:init` now lists
+the components that are switched off under `deleteDatasources`.
 
 ## Helpers
 
@@ -80,15 +81,17 @@ lsh get pods --no-headers | grep -E "prometheus|promtail|loki|kube-state|grafana
 
 ## 2. Verify before deleting anything
 
-Re-run step 0. It must show: `kube-state-metrics 1/1` (now scraped on the new
-Service), `kubernetes-cadvisor 1/1`, `kubernetes-pods 4/5`, Grafana `"database":"ok"`,
-**2** datasources (Loki, Prometheus), **4** dashboards, and a `kube_pod_info` count
-near 106 (it can take a minute to refill). Then open Grafana at
-`https://monitor.luchtech.dev` through SSO and look at the **Cluster overview** and
-**Loki logs** dashboards: both must show recent data.
+Re-run step 0. Expect `kube-state-metrics 1/1`, `kubernetes-cadvisor 1/1`,
+`kubernetes-pods 5/6` (one more target: the new kube-state-metrics pod; the one down
+target is the same as before), Grafana `"database":"ok"`, **3** datasources (Loki,
+Prometheus, and the Tempo leftover), **5** dashboards (Cluster Overview, LaraKube App
+Monitor, Loki Logs, Nodes, Pods; unchanged) and a `kube_pod_info` count of about
+**double** the baseline (about 212): the old and the new kube-state-metrics both run
+until step 3, and each pod is counted by both. Then open Grafana at
+`https://monitor.luchtech.dev` through SSO and look at **Cluster Overview** and
+**Loki Logs**: both must show recent data.
 
-If a check fails, stop: the old objects are untouched and still in use by nothing,
-so nothing has been lost.
+If a check fails, stop: the old objects are untouched, so nothing has been lost.
 
 ## 3. Remove the old objects
 
@@ -108,7 +111,20 @@ lsh delete cm grafana-datasources grafana-dashboards grafana-dashboard-provider 
 kubectl --context=$CTX delete clusterrole,clusterrolebinding larakube-prometheus larakube-promtail larakube-kube-state-metrics --ignore-not-found
 ```
 
-## 4. Sweep
+## 4. Drop the Tempo datasource
+
+Needs the CLI built with the `deleteDatasources` change. Re-run the same command; the
+datasources ConfigMap changes, and Reloader restarts Grafana:
+
+```zsh
+cd ~/Codes/Ideas/laravel-k8s/cli
+./larakube monitor:init production --context=$CTX --domain=monitor.luchtech.dev --with-logs --no-traces --force
+```
+
+Re-run step 0 once Grafana is back: **2** datasources (Loki, Prometheus), 5
+dashboards, and `kube_pod_info` back near the baseline (about 106, after a minute).
+
+## 5. Sweep
 
 Run the sweep in `plans/active/naming-closeout-leftovers.md` step 3. The only `CHECK`
 rows left are the hand-made `grafana-matrix-forwarder` (Deployment and Service) and
