@@ -292,9 +292,12 @@ spec:
               a=$(find /from | wc -l); b=$(find /to | wc -l)
               echo "from=$a to=$b"
               [ "$a" = "$b" ]
-              sed -i 's/"database": "stalwart"/"database": "stalwart_send_luchtech_dev"/; s/"authUsername": "stalwart"/"authUsername": "stalwart_send_luchtech_dev"/' /to/etc/config.json
+              sed -i -E 's/"database": *"stalwart"/"database":"stalwart_send_luchtech_dev"/; s/"authUsername": *"stalwart"/"authUsername":"stalwart_send_luchtech_dev"/' /to/etc/config.json
               chown 2000:2000 /to/etc/config.json
-              grep -E '"(database|authUsername)"' /to/etc/config.json
+              cat /to/etc/config.json; echo
+              grep -q '"database":"stalwart_send_luchtech_dev"' /to/etc/config.json
+              grep -q '"authUsername":"stalwart_send_luchtech_dev"' /to/etc/config.json
+              ! grep -qE '"(database|authUsername)": *"stalwart"' /to/etc/config.json
               ls -la /to/etc /to
           volumeMounts:
             - { name: from, mountPath: /from, readOnly: true }
@@ -310,8 +313,9 @@ waitjob stalwart-pvc-copy 300
 lmail logs job/stalwart-pvc-copy | tail -12
 ```
 
-`from` equals `to`, **both** lines show `stalwart_send_luchtech_dev`, and
-`config.json` is owned by `2000`.
+`from` equals `to`, the printed `config.json` shows `"database":"stalwart_send_luchtech_dev"`
+and `"authUsername":"stalwart_send_luchtech_dev"`, and the file is larger than 361 bytes
+(the Job now fails if either name is missing). `config.json` is owned by `2000`.
 
 ## 5. Copy the bucket
 
