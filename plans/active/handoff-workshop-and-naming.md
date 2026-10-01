@@ -41,11 +41,33 @@ State of `ClusterTool::resourceNaming()` (`app/Enums/ClusterTool.php`):
 - **INSTANCE_SUFFIXED (remaining, the default):** CRM, DNS, ERRORS,
   INSIGHTS, MAIL, SECRETS, UPTIME, DESIGN, PASTE.
 
-Plans: `unified-resource-naming-and-migration.md` (architecture),
+**Live state, `larakube-159.89.205.239` (read 2026-10-01).** This is what is
+left to close the context; the lists above are the code ledger, not the cluster.
+
+- Canonical and clean: Bulwark, Documenso, Forgejo (Deployment), Grafana
+  stack (Deployment), Headlamp, LiveKit, n8n, oCIS, Outline, NetBird.
+- Ledger says CANONICAL but the PVC is still bare: `forgejo-data`,
+  `loki-storage`, `prometheus-storage`. A ledger flip is not the migration.
+- Not migrated, live: Chat (`chat-*-chat-luchtech-dev` carry the category;
+  `chat-synapse` + `chat-synapse-data` are bare), CRM (`crm-twenty-*`), Mail
+  (`mail-stalwart-send-luchtech-dev`; `stalwart-data` bare), Passwords
+  (`vaultwarden`, `vaultwarden-storage`), Secrets (`openbao-backend`,
+  `openbao-data`), SSO (`sso-zitadel`).
+- Leftovers: Deployment `stalwart` (0 replicas, still mounts `stalwart-data`)
+  and PVC `pocketbase-storage-data-luchtech-dev` (PocketBase is not
+  registered; check it for data before deleting).
+- Not installed, so code-only: RECORD, RESUME, SUPPORT, DESIGN, ERRORS,
+  INSIGHTS, UPTIME, PASTE.
+
+Plans for this: the order and recipe are the memory note
+`project_naming_convention_no_category` and the proven runbook
+`plans/completed/vpn-canonical-naming-live-migration.md`. The PVC half is
+`pvc-naming-convention.md`. Also open: `tool-instance-naming.md`,
+`kubectl-service.md` (lands before ToolInstance Stage 2). Finished or
+superseded naming plans (`unified-resource-naming-and-migration.md`,
 `canonical-resource-naming-next-steps.md`, the per-tool
-`*-canonical-resource-naming.md` files, `tool-instance-naming.md`,
-`pvc-naming-convention.md`, `kubectl-service.md` (lands before ToolInstance
-Stage 2).
+`*-canonical-resource-naming.md`, `drive-canonical-naming-live-migration.md`)
+are in `plans/completed/`.
 
 Rules that bite: never rename live resources ad hoc (fix the code, migrate
 through a runbook, verify); SSO and MAIL are foundational, so migrate them

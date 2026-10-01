@@ -1,6 +1,12 @@
 # Extend the instance-suffixed naming convention to PVCs
 
 **Status:** 🔴 NOT STARTED — **HIGH PRIORITY**, pick up next.
+**Re-read 2026-10-01:** still the right plan for the bare PVCs, but its premise moved. PVCs
+are no longer excluded (ADR 0021 allows no exemptions), the name is `{component}-storage-{instance}`
+with no category, and the copy-Job mechanism now exists (VPN and drive migrated PVCs this way, see
+`plans/completed/vpn-canonical-naming-live-migration.md`). Bare PVCs live on larakube-159.89.205.239:
+`forgejo-data`, `loki-storage`, `prometheus-storage`, `stalwart-data`, `chat-synapse-data`,
+`vaultwarden-storage`, `openbao-data`. Names in the body below are the retired category-first form.
 **Created:** 2026-08-24
 **Related:** `plans/active/openbao-static-role-coverage.md` (the Deployment/Service/Ingress/DB naming convention this extends), the Mail/Stalwart rename and Git/Forgejo server rename (both in recent commit history) — the two live migrations that established the pattern this plan is extending to PVCs.
 
