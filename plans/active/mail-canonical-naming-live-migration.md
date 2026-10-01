@@ -14,11 +14,10 @@ deploys the canonical names, so on its own it would start a second Stalwart with
 empty database, and it would not even schedule: the live pod holds host ports
 25, 465, 587, 993 and 4190.
 
-**Use the OLD installed `larakube` for the "before" checks, and `./larakube` from
-`cli/` only after step 6.** The new source does not recognise the old, unlabelled
-install, so `mail:check`, `mail:show` and the rest report "not installed" until the
-migration is done. Run the checks from your project folder, where the
-`production` environment is defined.
+**Before step 6, `larakube mail:*` cannot find the old install** (the new code looks
+for the canonical labels and names), so `mail:check`, `mail:show` and `mail:test`
+report "not installed". Skip them until step 6; the JMAP and `kubectl` checks below
+need no CLI. Run `./larakube` from `cli/`, or your installed build if it is current.
 
 ## What is at stake
 
@@ -120,14 +119,8 @@ Images: `alpine:3.24.2` and `rclone/rclone:1.75.1` (both current).
 
 ## 0. Preflight, and your own copy
 
-Record these; steps 4, 7 and 9 compare against them. Run `mail:check` with the **old**
-installed binary from your project folder:
-
-```zsh
-larakube mail:check production --context=$CTX
-```
-
-Save its output. Then the live numbers:
+Record these; steps 4, 7 and 9 compare against them. (`mail:check` cannot find the
+old install yet; run it after step 6 and compare with these.) The live numbers:
 
 ```zsh
 for q in x:Account x:Domain x:QueuedMessage x:DkimSignature; do
