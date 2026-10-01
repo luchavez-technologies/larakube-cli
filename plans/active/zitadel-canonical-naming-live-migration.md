@@ -75,7 +75,7 @@ lsec() { kubectl --context=$CTX -n larakube-secrets "$@"; }
 lplex() { kubectl --context=$CTX -n larakube-plex "$@"; }
 lshared() { kubectl --context=$CTX -n larakube-shared "$@"; }
 
-# zapi SERVICE SECRET PATH [JSON-BODY]: the Zitadel API with the CLI's own PAT
+# zapi SERVICE SECRET PATH [JSON-BODY]: the Zitadel API with the CLI own PAT
 zapi() {
   local svc=$1 sec=$2 path=$3 body=${4:-'{}'} port=$((31900 + RANDOM % 90))
   local pat; pat=$(lsso get secret $sec -o jsonpath='{.data.machine-pat}' | base64 -d)
