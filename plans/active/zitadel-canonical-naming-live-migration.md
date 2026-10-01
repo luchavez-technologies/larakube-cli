@@ -143,9 +143,13 @@ Both must be non-trivial in size.
 
 ## 1. Copy the Secret, and prove the master key came across
 
+The copy uses `create`, not `apply`: `apply` records every key in a last-applied note,
+and the init's later rewrite of the Secret then deletes any key it does not list
+(that is how `machine-pat` was lost once).
+
 ```zsh
 lsso get secret sso-secrets -o json \
-  | jq '.metadata = {name:"zitadel-secrets-sso-luchtech-dev", namespace:"larakube-sso"}' | lsso apply -f -
+  | jq '.metadata = {name:"zitadel-secrets-sso-luchtech-dev", namespace:"larakube-sso"}' | lsso create -f -
 
 lsso get secret zitadel-secrets-sso-luchtech-dev -o jsonpath='{.data}' | jq -r 'keys|join(",")'
 for s in sso-secrets zitadel-secrets-sso-luchtech-dev; do
@@ -223,7 +227,21 @@ kubectl --context=$CTX -n larakube-shared get secret larakube-tools-registry -o 
 lplex get cm plex-registry -o jsonpath='{.data.registry\.json}' | jq -c '.tenants["zitadel_sso_luchtech_dev"]'
 ```
 
-`"instance":"sso-luchtech-dev"`, and a registry row for the new tenant.
+`"instance":"sso-luchtech-dev"`, and a registry row for the new tenant. Check the
+Secret kept all five keys, `machine-pat` included (the API token every later step uses):
+
+```zsh
+lsso get secret zitadel-secrets-sso-luchtech-dev -o jsonpath='{.data}' | jq -r 'keys|join(",")'
+```
+
+If `machine-pat` is missing, copy it back from the old Secret (it still exists) with a
+patch, which `apply` never removes:
+
+```zsh
+lsso get secret sso-secrets -o jsonpath='{.data.machine-pat}' \
+  | { read -r v; printf '{"data":{"machine-pat":"%s"}}' "$v"; } \
+  | lsso patch secret zitadel-secrets-sso-luchtech-dev --type=merge --patch-file=/dev/stdin
+```
 
 ## 5. Re-wire OpenBao rotation, and re-point every generator
 

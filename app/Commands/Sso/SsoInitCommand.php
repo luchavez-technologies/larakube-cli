@@ -139,8 +139,18 @@ class SsoInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $dbName, $dbPassword, $masterkey, $adminPassword, $adminEmail): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'masterkey' => $masterkey, 'admin-password' => $adminPassword, 'admin-email' => $adminEmail]);
+        // The CLI's own API token is cached beside these keys; a rewrite that
+        // left it out would drop it, and only a fresh instance can mint another.
+        $machinePat = $this->readSsoSecret($kubectl, $ns, 'machine-pat');
+
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $dbName, $dbPassword, $masterkey, $adminPassword, $adminEmail, $machinePat): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), array_filter([
+                'db-password' => $dbPassword,
+                'masterkey' => $masterkey,
+                'admin-password' => $adminPassword,
+                'admin-email' => $adminEmail,
+                'machine-pat' => $machinePat,
+            ], fn (?string $value): bool => $value !== null));
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 $this->pushClusterSecret($kubectl, 'ZITADEL_ADMIN_EMAIL', $adminEmail, 'production');

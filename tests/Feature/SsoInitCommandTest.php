@@ -50,6 +50,27 @@ test('sso:init deploys standalone zitadel when --no-plex is passed', function ()
         ->expectsOutputToContain('Zitadel is live.');
 });
 
+test('sso:init keeps the cached automation token when it rewrites the credentials Secret', function (): void {
+    // The Secret is rewritten with `kubectl apply`, which deletes a key the manifest
+    // no longer lists: dropping `machine-pat` leaves every later API call a 401, and
+    // only a fresh Zitadel instance can mint another.
+    Process::fake([
+        '*get secret zitadel-secrets-sso-*machine-pat*' => Process::result(output: base64_encode('cached-pat')),
+        '*get secret zitadel-secrets-sso-*' => Process::result(output: '', exitCode: 1),
+        '*get configmap plex-commons*' => json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]]),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+        '*' => Process::result(),
+    ]);
+
+    $this->artisan('sso:init local --admin-email=admin@example.com')->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'zitadel-secrets-sso-')
+        && (appliedSecret($process)['data']['machine-pat'] ?? null) === 'cached-pat');
+});
+
 test('sso:remove removes zitadel namespace and drops the commons database', function (): void {
     Process::fake([...registeredToolRemoveFakes('sso:remove'),
         '*get deployment zitadel-db-sso-example-com*' => Process::result(output: '', exitCode: 1),
