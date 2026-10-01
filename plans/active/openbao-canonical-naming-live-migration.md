@@ -46,7 +46,7 @@ rolling back is a scale-up.
 | `secret/openbao-bootstrap` | `openbao-secrets-secrets-luchtech-dev` |
 | `secret/openbao-oidc` | `openbao-oidc-secrets-luchtech-dev` |
 | `secret/sso-app-secrets` (in `larakube-sso`) | `openbao-sso-secrets-luchtech-dev` |
-| Zitadel project `openbao-backend` | `openbao`, renamed in place by `sso:wire` (Zitadel runbook) |
+| Zitadel project `openbao-backend` | `openbao-secrets-luchtech-dev`, renamed in place by `sso:wire` (Zitadel runbook) |
 
 Left alone on purpose: the `ClusterSecretStore openbao` (its name is the contract
 every ExternalSecret reads; only its server URL changes), `secret/eso-openbao-token`

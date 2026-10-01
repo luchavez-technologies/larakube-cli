@@ -332,7 +332,7 @@ Keep the `zitadel-commons.sql` the eviction writes for a few days.
 
 ## 9. Re-wire OpenBao's own SSO login, renaming its project in place
 
-OpenBao's Zitadel project is `openbao-backend` today and `openbao` after. The record
+OpenBao's Zitadel project is `openbao-backend` today and `openbao-secrets-luchtech-dev` after. The record
 copied in OpenBao's runbook (`openbao-sso-secrets-luchtech-dev`) is what lets
 `sso:wire` rename it instead of creating a second one:
 
@@ -342,7 +342,7 @@ lsso get secret openbao-sso-secrets-luchtech-dev -o jsonpath='{.data.project-id}
 zapi zitadel-sso-luchtech-dev zitadel-secrets-sso-luchtech-dev /management/v1/projects/_search | jq -c '[.result[].name]'
 ```
 
-The id is **the same one as step 0**, and the project list shows `openbao` and no
+The id is **the same one as step 0**, and the project list shows `openbao-secrets-luchtech-dev` and no
 `openbao-backend`, still 11 in all. If the id changed, stop: grants are on the old
 project; do not delete anything and tell me.
 
