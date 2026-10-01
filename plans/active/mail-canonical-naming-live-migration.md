@@ -499,21 +499,15 @@ lmail get deploy,cronjob,externalsecret -o json | jq -r '[.items[] | select(tost
 
 `0`, then `lmail delete secret stalwart-openbao-auth`.
 
-## 10. Clear the old rotation role, the old database and bucket, and the backup
+## 10. Drop the old database, clear the old rotation role, and the backup
 
-```zsh
-./larakube secrets:prune production --dry-run --context=$CTX
-```
+Evict first, then prune. `secrets:prune` only removes a static role whose Postgres
+role is gone, and the old role `stalwart` is dropped by the eviction, so a prune
+run before it correctly reports "Nothing to prune".
 
-It must list `stalwart` and nothing that belongs to an installed tool. Then:
-
-```zsh
-./larakube secrets:prune production --context=$CTX
-```
-
-Now drop the old database, its role and its bucket in one step. The registry row
-`stalwart` holds the database and the bucket and no Redis index; `plex:evict` takes a
-SQL dump first, drops them and clears the row. By exact name, never the picker:
+The registry row `stalwart` holds the database and the bucket and no Redis index;
+`plex:evict` takes a SQL dump first, drops them and clears the row. By exact name,
+never the picker:
 
 ```zsh
 lplex get cm plex-registry -o jsonpath='{.data.registry\.json}' | jq -c '.tenants["stalwart"]'
@@ -523,7 +517,19 @@ lplex get cm plex-registry -o jsonpath='{.data.registry\.json}' | jq -c '.tenant
 Expect `{"db":"stalwart","db_service":"postgres","s3_bucket":"stalwart","s3_service":"seaweedfs"}`
 with no `redis_index`, and afterwards only `stalwart_send_luchtech_dev` and
 `stalwart-storage-send-luchtech-dev` remain. Keep the `stalwart-commons.sql` it
-writes for a few days.
+writes for a few days. Check the old role is gone, then clear its rotation role:
+
+```zsh
+lplex exec deploy/postgres -c postgres -- psql -U postgres -tAc "select rolname from pg_roles where rolname like 'stalwart%';"
+./larakube secrets:prune production --dry-run --context=$CTX
+```
+
+The first prints only `stalwart_send_luchtech_dev`; the dry run must list `stalwart`
+and nothing that belongs to an installed tool. Then:
+
+```zsh
+./larakube secrets:prune production --context=$CTX
+```
 
 Last, the backup:
 
