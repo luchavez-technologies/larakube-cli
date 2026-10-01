@@ -254,8 +254,9 @@ lsec logs job/openbao-pvc-copy
 ```
 
 `from` and `to` both read **1167** (the same count step 0 printed), the log ends
-`IDENTICAL`, and the two sizes match. The Job fails on any
-difference, so a green Job is the proof.
+`IDENTICAL`. The two `du` sizes will differ (disk blocks, not content: a fresh
+volume packs tighter), so ignore them. The Job fails on any difference, so a
+green Job is the proof.
 
 ## 5. Deploy under the new names
 
@@ -328,8 +329,8 @@ lsec exec deploy/$NEW_D -- sh -c 'find /openbao/data | wc -l; du -sk /openbao/da
 
 Everything must equal step 0: the same auth methods, policies, **90** keys, the same
 8 roles with **identical rotation times** (that is the proof no role was recreated or
-rotated by the move), the same discovery URL, and the files and size within a few
-entries.
+rotated by the move), the same discovery URL, and the file count the same
+(1167; the size in kB is lower on the fresh volume, which is fine).
 
 Then, after about five minutes (ESO retries every refresh), every ExternalSecret must
 be `SecretSynced` again:
