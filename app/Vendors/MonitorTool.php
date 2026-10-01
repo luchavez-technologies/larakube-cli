@@ -184,7 +184,7 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
     }
 
     /**
-     * Loki and Prometheus are Monitor's, not free-floating infrastructure —
+     * Loki, Prometheus, Promtail, Tempo and kube-state-metrics are Monitor's, not free-floating infrastructure —
      * MonitorInitCommand has always built these exact names, but they were
      * never declared here, so forDeployment() could not map them and
      * MonitorRemoveCommand had to hand-copy the teardown strings that this
@@ -218,6 +218,24 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
                 key: 'loki',
                 role: ClusterToolComponentRole::WORKER,
                 deployment: $name('loki'),
+            ),
+            // A DaemonSet, one per node; declared so its ServiceAccount, RBAC and
+            // ConfigMap names derive from ToolInstance like every other component.
+            new ClusterToolComponentData(
+                key: 'promtail',
+                role: ClusterToolComponentRole::WORKER,
+                deployment: $name('promtail'),
+            ),
+            // Only deployed when traces are on.
+            new ClusterToolComponentData(
+                key: 'tempo',
+                role: ClusterToolComponentRole::WORKER,
+                deployment: $name('tempo'),
+            ),
+            new ClusterToolComponentData(
+                key: 'kube-state-metrics',
+                role: ClusterToolComponentRole::WORKER,
+                deployment: $name('kube-state-metrics'),
             ),
         ];
     }

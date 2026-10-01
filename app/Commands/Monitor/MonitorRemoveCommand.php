@@ -50,7 +50,7 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
         $secretName = $names->secret();
         $prometheusVolume = $names->volume('storage', 'prometheus');
         $lokiVolume = $names->volume('storage', 'loki');
-        $tempoVolume = "tempo-storage-{$instance}";
+        $tempoVolume = $names->volume('storage', 'tempo');
         $grafanaVolume = $names->volume('storage', 'grafana');
         $prometheusName = "prometheus-{$instance}";
         $prometheusConfigMapName = "prometheus-config-{$instance}";
@@ -58,16 +58,24 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
         $lokiConfigMap = "loki-config-{$instance}";
         $promtailDaemonset = "promtail-{$instance}";
         $promtailConfigMap = "promtail-config-{$instance}";
+        $tempoName = $names->deployment('tempo');
+        $ksmName = $names->deployment('kube-state-metrics');
+        $datasources = $names->configMap('datasources', 'grafana');
+        $dashboardProvider = $names->configMap('dashboard-provider', 'grafana');
+        $dashboards = $names->configMap('dashboards', 'grafana');
+        $prometheusRole = $names->name('role', 'prometheus');
+        $promtailRole = $names->name('role', 'promtail');
+        $ksmRole = $names->name('role', 'kube-state-metrics');
 
         $steps = [
-            'Removing Prometheus...' => "deployment,svc,configmap,pvc,serviceaccount {$prometheusName} prometheus {$prometheusConfigMapName} prometheus-config {$prometheusVolume} -n {$namespace}",
+            'Removing Prometheus...' => "deployment,svc,configmap,pvc,serviceaccount {$prometheusName} {$prometheusConfigMapName} {$prometheusVolume} -n {$namespace}",
             'Removing Loki...' => "deployment,svc,configmap,pvc {$lokiDeployment} {$lokiConfigMap} {$lokiVolume} -n {$namespace}",
             'Removing Promtail...' => "daemonset,configmap {$promtailDaemonset} {$promtailConfigMap} -n {$namespace}",
-            'Removing Promtail RBAC...' => "serviceaccount promtail -n {$namespace}",
-            'Removing Tempo...' => "deployment,svc,configmap,pvc tempo tempo-config {$tempoVolume} -n {$namespace}",
-            'Removing kube-state-metrics...' => "deployment,svc,serviceaccount kube-state-metrics -n {$namespace}",
-            'Removing Grafana...' => "deployment,svc,ingress,secret,configmap,pvc {$grafanaName} grafana {$secretName} grafana-datasources grafana-dashboard-provider grafana-dashboards {$grafanaVolume} -n {$namespace}",
-            'Removing monitoring RBAC...' => 'clusterrole,clusterrolebinding larakube-prometheus larakube-promtail larakube-kube-state-metrics',
+            'Removing Promtail RBAC...' => "serviceaccount {$promtailDaemonset} -n {$namespace}",
+            'Removing Tempo...' => "deployment,svc,configmap,pvc {$tempoName} {$names->configMap('config', 'tempo')} {$tempoVolume} -n {$namespace}",
+            'Removing kube-state-metrics...' => "deployment,svc,serviceaccount {$ksmName} -n {$namespace}",
+            'Removing Grafana...' => "deployment,svc,ingress,secret,configmap,pvc {$grafanaName} {$secretName} {$datasources} {$dashboardProvider} {$dashboards} {$grafanaVolume} -n {$namespace}",
+            'Removing monitoring RBAC...' => "clusterrole,clusterrolebinding {$prometheusRole} {$promtailRole} {$ksmRole}",
         ];
 
         $ok = true;

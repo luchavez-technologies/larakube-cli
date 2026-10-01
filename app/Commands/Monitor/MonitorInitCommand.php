@@ -75,6 +75,9 @@ class MonitorInitCommand extends Command
         $lokiVolume = ToolInstance::forInstance(ClusterTool::MONITOR, $instance)->volume('storage', 'loki');
         $promtailDaemonset = "promtail-{$instance}";
         $promtailConfigMap = "promtail-config-{$instance}";
+        $names = ToolInstance::forInstance(ClusterTool::MONITOR, $instance);
+        $tempoDeployment = $names->deployment('tempo');
+        $ksmDeployment = $names->deployment('kube-state-metrics');
 
         [$withLogs, $withTraces] = $this->resolveMonitoringComponents();
 
@@ -143,7 +146,7 @@ class MonitorInitCommand extends Command
             return 1;
         }
 
-        if (! $this->syncClusterDashboardConfigMaps($kubectl, $ns, $withLogs, $withTraces)) {
+        if (! $this->syncClusterDashboardConfigMaps($kubectl, $ns, $withLogs, $withTraces, $names->configMap('dashboards', 'grafana'))) {
             $this->laraKubeError('Could not sync the Grafana dashboards — see the output above.');
 
             return 1;
@@ -196,7 +199,7 @@ class MonitorInitCommand extends Command
             // got explicit sign-off to wipe its retained logs.
             if (! $this->removeResources('Removing Loki...', "{$kubectl} delete deployment,svc,configmap,pvc {$lokiDeployment} {$lokiConfigMap} {$lokiVolume} -n {$ns} --ignore-not-found")
                 || ! $this->removeResources('Removing Promtail...', "{$kubectl} delete daemonset,configmap {$promtailDaemonset} {$promtailConfigMap} -n {$ns} --ignore-not-found")
-                || ! $this->removeResources('Removing Promtail RBAC...', "{$kubectl} delete serviceaccount promtail -n {$ns} --ignore-not-found")) {
+                || ! $this->removeResources('Removing Promtail RBAC...', "{$kubectl} delete serviceaccount,clusterrole,clusterrolebinding {$promtailDaemonset} {$names->name('role', 'promtail')} -n {$ns} --ignore-not-found")) {
                 $this->laraKubeError('Could not remove the previously-deployed log aggregation stack — see the output above.');
 
                 return 1;
@@ -204,7 +207,7 @@ class MonitorInitCommand extends Command
         }
 
         if ($removedTraces) {
-            if (! $this->removeResources('Removing Tempo...', "{$kubectl} delete deployment,svc,configmap,pvc tempo tempo-config tempo-storage-{$instance} -n {$ns} --ignore-not-found")) {
+            if (! $this->removeResources('Removing Tempo...', "{$kubectl} delete deployment,svc,configmap,pvc {$tempoDeployment} {$names->configMap('config', 'tempo')} {$names->volume('storage', 'tempo')} -n {$ns} --ignore-not-found")) {
                 $this->laraKubeError('Could not remove the previously-deployed trace storage — see the output above.');
 
                 return 1;
@@ -221,7 +224,7 @@ class MonitorInitCommand extends Command
 
             return 1;
         }
-        if (! $this->withSpin('Waiting for kube-state-metrics...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/kube-state-metrics -n {$ns} --timeout=120s")->successful())) {
+        if (! $this->withSpin('Waiting for kube-state-metrics...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$ksmDeployment} -n {$ns} --timeout=120s")->successful())) {
             $this->laraKubeError('kube-state-metrics never became Ready.');
 
             return 1;
@@ -236,7 +239,7 @@ class MonitorInitCommand extends Command
 
             return 1;
         }
-        if ($withTraces && ! $this->withSpin('Waiting for Tempo...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/tempo -n {$ns} --timeout=120s")->successful())) {
+        if ($withTraces && ! $this->withSpin('Waiting for Tempo...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$tempoDeployment} -n {$ns} --timeout=120s")->successful())) {
             $this->laraKubeError('tempo never became Ready.');
 
             return 1;
@@ -367,7 +370,7 @@ class MonitorInitCommand extends Command
 
         $lokiDeployment = "loki-{$instance}";
         $lokiPresent = Process::run("{$kubectl} get deployment/{$lokiDeployment} -n {$ns} --no-headers")->successful();
-        $tempoPresent = Process::run("{$kubectl} get deployment/tempo -n {$ns} --no-headers")->successful();
+        $tempoPresent = Process::run("{$kubectl} get deployment/tempo-{$instance} -n {$ns} --no-headers")->successful();
 
         $lokiMismatch = $withLogs !== $lokiPresent;
         $tempoMismatch = $withTraces !== $tempoPresent;
@@ -422,12 +425,12 @@ class MonitorInitCommand extends Command
     }
 
     /**
-     * Recreate the grafana-dashboards ConfigMap with exactly the JSON files
+     * Recreate the Grafana dashboards ConfigMap with exactly the JSON files
      * for the current component set. kubectl apply preserves the existing
      * ConfigMap, and the dashboard provider rescans its path every 10s, so
      * toggling components adds/removes dashboards without a Grafana restart.
      */
-    protected function syncClusterDashboardConfigMaps(string $kubectl, string $ns, bool $withLogs, bool $withTraces): bool
+    protected function syncClusterDashboardConfigMaps(string $kubectl, string $ns, bool $withLogs, bool $withTraces, string $configMap): bool
     {
         $dir = resource_path('dashboards');
 
@@ -460,7 +463,7 @@ class MonitorInitCommand extends Command
 
         $result = $this->withSpin(
             'Syncing Grafana dashboards...',
-            fn () => Process::timeout(70)->run("{$kubectl} create configmap grafana-dashboards {$fromFiles} -n {$ns} --dry-run=client -o yaml | {$kubectl} apply -f - --request-timeout=60s")->successful(),
+            fn () => Process::timeout(70)->run("{$kubectl} create configmap {$configMap} {$fromFiles} -n {$ns} --dry-run=client -o yaml | {$kubectl} apply -f - --request-timeout=60s")->successful(),
         );
 
         $temporaryDirectory->delete();

@@ -12,7 +12,17 @@
     $dbName = $tool->database();
     $prometheusVolume = $tool->volume('storage', 'prometheus');
     $lokiVolume = $tool->volume('storage', 'loki');
-    $tempoVolume = "tempo-storage-{$instance}";
+    $tempoName = "tempo-{$instance}";
+    $tempoVolume = $tool->volume('storage', 'tempo');
+    $tempoConfigMapName = $tool->configMap('config', 'tempo');
+    $ksmName = "kube-state-metrics-{$instance}";
+    // Cluster-scoped RBAC: the instance has to be in the name or a second install collides.
+    $prometheusRole = $tool->name('role', 'prometheus');
+    $promtailRole = $tool->name('role', 'promtail');
+    $ksmRole = $tool->name('role', 'kube-state-metrics');
+    $datasourcesConfigMap = $tool->configMap('datasources', 'grafana');
+    $providerConfigMap = $tool->configMap('dashboard-provider', 'grafana');
+    $dashboardsConfigMap = $tool->configMap('dashboards', 'grafana');
     $grafanaVolume = $tool->volume('storage', 'grafana');
     // Identity for discovery and teardown. Names are for humans; labels are
     // how anything finds these again — a component named after its upstream
@@ -31,13 +41,15 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: prometheus
+  name: {{ $prometheusName }}
   namespace: larakube-shared
+  labels:{!! $labels('prometheus') !!}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: larakube-prometheus
+  name: {{ $prometheusRole }}
+  labels:{!! $labels('prometheus') !!}
 rules:
   - apiGroups: [""]
     resources: [nodes, nodes/proxy, services, endpoints, pods, namespaces]
@@ -48,14 +60,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: larakube-prometheus
+  name: {{ $prometheusRole }}
+  labels:{!! $labels('prometheus') !!}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: larakube-prometheus
+  name: {{ $prometheusRole }}
 subjects:
   - kind: ServiceAccount
-    name: prometheus
+    name: {{ $prometheusName }}
     namespace: larakube-shared
 ---
 apiVersion: v1
@@ -72,7 +85,7 @@ data:
     scrape_configs:
       - job_name: 'kube-state-metrics'
         static_configs:
-          - targets: ['kube-state-metrics.larakube-shared.svc.cluster.local:8080']
+          - targets: ['{{ $ksmName }}.larakube-shared.svc.cluster.local:8080']
       - job_name: 'kubernetes-pods'
         kubernetes_sd_configs:
           - role: pod
@@ -145,7 +158,7 @@ spec:
         {{ $key }}: {{ $value }}
 @endforeach
     spec:
-      serviceAccountName: prometheus
+      serviceAccountName: {{ $prometheusName }}
       containers:
         - name: prometheus
           image: prom/prometheus:v2.51.2
@@ -335,7 +348,8 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: tempo-config
+  name: {{ $tempoConfigMapName }}
+  labels:{!! $labels('tempo') !!}
   namespace: larakube-shared
 data:
   tempo.yaml: |
@@ -395,17 +409,18 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tempo
+  name: {{ $tempoName }}
+  labels:{!! $labels('tempo') !!}
   namespace: larakube-shared
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: tempo
+      app: {{ $tempoName }}
   template:
     metadata:
       labels:
-        app: tempo
+        app: {{ $tempoName }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "3200"
@@ -442,7 +457,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: tempo-config
+            name: {{ $tempoConfigMapName }}
         - name: storage
           persistentVolumeClaim:
             claimName: {{ $tempoVolume }}
@@ -450,11 +465,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tempo
+  name: {{ $tempoName }}
+  labels:{!! $labels('tempo') !!}
   namespace: larakube-shared
 spec:
   selector:
-    app: tempo
+    app: {{ $tempoName }}
   ports:
     - protocol: TCP
       port: 3200
@@ -472,13 +488,15 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: promtail
+  name: {{ $promtailName }}
   namespace: larakube-shared
+  labels:{!! $labels('promtail') !!}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: larakube-promtail
+  name: {{ $promtailRole }}
+  labels:{!! $labels('promtail') !!}
 rules:
   - apiGroups: [""]
     resources: [nodes, services, pods]
@@ -487,14 +505,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: larakube-promtail
+  name: {{ $promtailRole }}
+  labels:{!! $labels('promtail') !!}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: larakube-promtail
+  name: {{ $promtailRole }}
 subjects:
   - kind: ServiceAccount
-    name: promtail
+    name: {{ $promtailName }}
     namespace: larakube-shared
 ---
 apiVersion: v1
@@ -555,7 +574,7 @@ spec:
         {{ $key }}: {{ $value }}
 @endforeach
     spec:
-      serviceAccountName: promtail
+      serviceAccountName: {{ $promtailName }}
       tolerations:
         - key: node-role.kubernetes.io/master
           operator: Exists
@@ -603,13 +622,15 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kube-state-metrics
+  name: {{ $ksmName }}
   namespace: larakube-shared
+  labels:{!! $labels('kube-state-metrics') !!}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: larakube-kube-state-metrics
+  name: {{ $ksmRole }}
+  labels:{!! $labels('kube-state-metrics') !!}
 rules:
   - apiGroups: [""]
     resources: [configmaps, secrets, nodes, pods, services, resourcequotas, replicationcontrollers, limitranges, persistentvolumeclaims, persistentvolumes, namespaces, endpoints]
@@ -627,35 +648,37 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: larakube-kube-state-metrics
+  name: {{ $ksmRole }}
+  labels:{!! $labels('kube-state-metrics') !!}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: larakube-kube-state-metrics
+  name: {{ $ksmRole }}
 subjects:
   - kind: ServiceAccount
-    name: kube-state-metrics
+    name: {{ $ksmName }}
     namespace: larakube-shared
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kube-state-metrics
+  name: {{ $ksmName }}
   namespace: larakube-shared
+  labels:{!! $labels('kube-state-metrics') !!}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: kube-state-metrics
+      app: {{ $ksmName }}
   template:
     metadata:
       labels:
-        app: kube-state-metrics
+        app: {{ $ksmName }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
     spec:
-      serviceAccountName: kube-state-metrics
+      serviceAccountName: {{ $ksmName }}
       containers:
         - name: kube-state-metrics
           image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.12.0
@@ -680,11 +703,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kube-state-metrics
+  name: {{ $ksmName }}
   namespace: larakube-shared
+  labels:{!! $labels('kube-state-metrics') !!}
 spec:
   selector:
-    app: kube-state-metrics
+    app: {{ $ksmName }}
   ports:
     - name: http-metrics
       protocol: TCP
@@ -709,8 +733,9 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-datasources
+  name: {{ $datasourcesConfigMap }}
   namespace: larakube-shared
+  labels:{!! $labels('grafana') !!}
 data:
   datasources.yaml: |
     apiVersion: 1
@@ -737,7 +762,7 @@ data:
         uid: tempo-ds
         type: tempo
         access: proxy
-        url: http://tempo.larakube-shared.svc.cluster.local:3200
+        url: http://{{ $tempoName }}.larakube-shared.svc.cluster.local:3200
         editable: false
 @endif
 ---
@@ -747,8 +772,9 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-dashboard-provider
+  name: {{ $providerConfigMap }}
   namespace: larakube-shared
+  labels:{!! $labels('grafana') !!}
 data:
   dashboards.yaml: |
     apiVersion: 1
@@ -885,13 +911,13 @@ spec:
       volumes:
         - name: datasources
           configMap:
-            name: grafana-datasources
+            name: {{ $datasourcesConfigMap }}
         - name: dashboard-provider
           configMap:
-            name: grafana-dashboard-provider
+            name: {{ $providerConfigMap }}
         - name: dashboards
           configMap:
-            name: grafana-dashboards
+            name: {{ $dashboardsConfigMap }}
 @if($noPlex ?? false)
         - name: storage
           persistentVolumeClaim:

@@ -9,7 +9,7 @@ found the tool objects canonical, and these leftovers. Nothing here changes data
 | `secret/webmail-oidc`, `secret/sso-proxy` (`larakube-shared`) | Nothing mounts or reads either (checked below). Left by older generations. | step 2: delete |
 | `cm/loki-config`, `cm/prometheus-config`, `cm/grafana-alerting` (`larakube-shared`) | Nothing mounts any of them; Loki and Prometheus run on `…-monitor-luchtech-dev` copies. | step 2: delete |
 | `grafana-matrix-forwarder` (Deployment, Service) and `secret/alertbot-credentials` | **Not created by the CLI**: no label, applied by hand on Aug 27, image `:latest`, no code in the repo names them. | none: yours to keep or retire |
-| `cm/grafana-datasources`, `grafana-dashboards`, `grafana-dashboard-provider`, `sa/prometheus` | In use, and the Monitor manifests still name them bare. | a code change; see the note at the end |
+| `cm/grafana-datasources`, `grafana-dashboards`, `grafana-dashboard-provider`, `sa/prometheus` | In use, and the Monitor manifests named them bare (as they did kube-state-metrics, Promtail's ServiceAccount and the RBAC). | fixed in code; live: `monitor-canonical-leftovers-live-migration.md` |
 | `eman`, `eman-token` (`larakube-access`), `headless-shell` (`larakube-plex`), `cloudflare-token-luchtech-dev`, `external-dns-luchtech-dev`, ESO, Reloader, `postgres`, `redis`, `seaweedfs` | Cluster plumbing and Plex Commons, not Cluster Tools. | none |
 | every `*-db` ExternalSecret and generator | `{secret}-db` is the ADR pattern. | none |
 
@@ -92,16 +92,13 @@ for ns in [n for n in k('get','ns','-o','jsonpath={.items[*].metadata.name}').sp
 PY
 ```
 
-Expected `CHECK` rows after steps 1 and 2: `grafana-datasources`,
-`grafana-dashboards`, `grafana-dashboard-provider`, `prometheus` (the Monitor note),
-and the hand-made `grafana-matrix-forwarder` and `alertbot-credentials`.
+Expected `CHECK` rows after steps 1 and 2 (before the Monitor runbook): the three
+`grafana-*` ConfigMaps and `prometheus` (the Monitor note), and the hand-made
+`grafana-matrix-forwarder` and `alertbot-credentials`. After the Monitor runbook only
+the last two remain.
 
-## Note: Monitor's bare in-use names
+## Monitor's bare in-use names
 
-`monitor:init` still writes `grafana-datasources`, `grafana-dashboards`,
-`grafana-dashboard-provider` and `sa/prometheus` with no instance, and deploys
-kube-state-metrics, Promtail and Tempo under their upstream names. They run and
-nothing breaks; they are drift from ADR 0021 inside a tool the ledger calls
-canonical. Renaming them is a code change to the Monitor manifests plus a
-`monitor:init` re-run (Grafana and Prometheus restart once), then deleting the old
-objects.
+Fixed in `monitor:init`'s manifests (`feat(monitor)!`). Run
+`monitor-canonical-leftovers-live-migration.md` to move the live objects: one restart
+each of Prometheus, Grafana and Promtail, no data moved.
