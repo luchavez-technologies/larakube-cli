@@ -25,9 +25,13 @@ database in Commons Postgres) and `tempo-storage` (traces are off). Their
 templates are renamed too, so a future `--no-plex` or `--with-traces` install
 comes up canonical.
 
-Everything else of these two tools is already canonical: Deployments, Services,
-Ingresses, Secrets, the Commons databases, Forgejo's S3 buckets, the runner
-cache PVC. **No Secret, database or Zitadel project changes in this runbook**,
+Everything else of these two tools is already canonical, checked against the
+live cluster and not just the code: Deployments, Services, Ingresses, Secrets,
+the Commons databases (`forgejo_git_luchtech_dev`, `grafana_monitor_luchtech_dev`),
+Forgejo's three S3 buckets (the Deployment is configured with the
+`-git-luchtech-dev` names), the Zitadel app Secrets (`forgejo-sso-git-luchtech-dev`,
+`grafana-sso-monitor-luchtech-dev`) and the runner cache PVC.
+**No Secret, database or Zitadel project changes in this runbook**,
 so unlike Drive and VPN there is no step that strands SSO grants. The one
 thing that can still lose wiring is the re-apply in step 4 (ADR 0018).
 
@@ -439,8 +443,214 @@ lkube delete pvc/forgejo-data
 
 ## 8. Registry
 
-Nothing to do. Neither tool's registry row, Plex tenant, bucket or Secret name
-changed, so there is no stale row to drop.
+Nothing for these two tools: their own rows, tenants, buckets and Secrets did
+not change. The stale rows and old copies left by earlier migrations are
+Part C below.
+
+---
+
+# Part C — Leftovers from earlier migrations
+
+Old copies and registry rows that earlier runs deliberately kept as their
+rollback. Safe to do now: the tools they belonged to have been serving from
+their canonical names for days. Run it after step 7, in this order.
+
+Every deletion below has a check that proves nothing reads the thing first. If
+a check does not print what it says it must, **skip that item** and tell me;
+none of them is blocking anything.
+
+**Never use the `plex:evict` picker.** Always pass `--tenant=`, and never
+`--no-backup`. Evict takes a SQL dump first (written to the current directory,
+keep it until Part C is done), drops the database and its login, **flushes the
+tenant's Redis index**, deletes its bucket and removes its registry row. Its
+guard may refuse an item as "belongs to a tool installed on this cluster";
+that is expected for leftovers of a migrated tool, and `--force` is for exactly
+this case, but only after the check for that item passed.
+
+```zsh
+lplex() { kubectl --context=larakube-159.89.205.239 -n larakube-plex "$@"; }
+```
+
+## C0. Do not touch
+
+| row | why |
+|---|---|
+| `crm_twenty_crm-luchtech-dev` | Looks like a typo of `crm_twenty_crm_luchtech_dev`, **but it holds Redis index 7, which live CRM is using right now** (`REDIS_URL=…/7`, 1,448 keys). Evicting it would flush CRM's cache and sessions. The mismatch is fixed when CRM is migrated. |
+| `crm_twenty_crm_luchtech_dev`, `crm-twenty-storage-crm-luchtech-dev` | live CRM |
+| Deployment `stalwart` (0 replicas) | still mounts `stalwart-data`, which the live mail server also mounts. Belongs to the Mail migration. |
+| `chat_*`, `stalwart`, `vaultwarden`, `zitadel`, `chat-media` | live, unmigrated tools |
+
+## C1. Old Notes copies: database `outline`, Redis index 0, bucket `notes-storage`
+
+Outline now runs on `outline_notes_luchtech_dev`, Redis index 8 and bucket
+`notes-storage-notes-luchtech-dev`. Prove it, and prove nothing is connected to
+the old ones:
+
+```zsh
+# the live Outline must point at the new database, index and bucket
+lkube get deploy outline-notes-luchtech-dev -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\n"}{end}' \
+  | grep -E '^(DATABASE_URL|REDIS_URL|AWS_S3_UPLOAD_BUCKET_NAME)=' | sed -E 's#(://[^:]+:)[^@]+@#\1***@#'
+
+# nothing may be connected to the old database
+lplex exec deploy/postgres -c postgres -- psql -U postgres -tAc \
+  "select count(*) from pg_stat_activity where datname='outline';"
+```
+
+`DATABASE_URL` must end in `/outline_notes_luchtech_dev`, `REDIS_URL` in `/8`,
+the bucket must be `notes-storage-notes-luchtech-dev`, and the count must be `0`.
+
+Then:
+
+```zsh
+cd ~/Codes/Ideas/laravel-k8s/cli
+./larakube plex:evict production --tenant=outline \
+  --context=larakube-159.89.205.239 --force
+./larakube plex:evict production --tenant=notes-storage \
+  --context=larakube-159.89.205.239 --force
+```
+
+`outline` takes the 13MB database, its role and Redis index 0. Index 0 holds 12
+keys, every one with an expiry (average remaining TTL about 13 hours), no
+registered tenant owns it, and I could not identify the owner (some are named
+after email addresses, which looks like an old Outline cache). The flush
+therefore loses at most entries that were going to expire within a day, but if
+that is not acceptable, skip the `outline` line and take the database and role
+out by hand instead:
+
+```zsh
+lplex exec deploy/postgres -c postgres -- psql -U postgres \
+  -c 'DROP DATABASE outline;' -c 'DROP ROLE outline;'
+```
+
+(the registry row then stays until the jq edit in the VPN runbook's step 10).
+`notes-storage` takes the old 10MB bucket. Then confirm
+Outline still works: open `notes.luchtech.dev`, open a document, attach an image.
+
+## C2. Old Sign bucket: `sign-storage-sign-luchtech-dev`
+
+Documenso uses `documenso-storage-sign-luchtech-dev`; the other is the
+category-first copy. Prove it:
+
+```zsh
+lkube get deploy documenso-sign-luchtech-dev \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="NEXT_PRIVATE_UPLOAD_BUCKET")].value}'; echo
+```
+
+It must print `documenso-storage-sign-luchtech-dev`. Then:
+
+```zsh
+./larakube plex:evict production --tenant=sign-storage-sign-luchtech-dev \
+  --context=larakube-159.89.205.239 --force
+```
+
+## C3. Registry rows whose resource is already gone
+
+These have no database and no live bucket to harm (evict ignores a missing
+bucket, and none carries a Redis index), so this only clears the row. First
+confirm each really is bucket-only and that no Deployment names it:
+
+```zsh
+for t in forgejo-storage forgejo-packages forgejo-lfs notes-storage-main data-storage data-directus-storage; do
+  printf "%-24s " "$t"
+  lplex get cm plex-registry -o jsonpath='{.data.registry\.json}' | jq -c --arg t "$t" '.tenants[$t]'
+  lkube get deploy -o json | jq -r --arg t "$t" '[.items[] | select(.spec.template.spec.containers[0].env // [] | map(.value // "") | any(. == $t))] | length' | sed 's/^/   deployments naming it: /'
+done
+```
+
+Each row must show only `s3_bucket`/`s3_service` and **0** deployments naming
+it. `data-storage` and `data-directus-storage` also have an (empty) bucket in
+SeaweedFS; evict removes that too, which is the point. Then:
+
+```zsh
+for t in forgejo-storage forgejo-packages forgejo-lfs notes-storage-main data-storage data-directus-storage; do
+  ./larakube plex:evict production --tenant=$t --context=larakube-159.89.205.239 --force
+done
+```
+
+`forgejo-storage` here is the **bare** one. Do not confuse it with
+`forgejo-storage-git-luchtech-dev`, which Forgejo is using right now; the
+`for` loop above uses exact names, so it can only hit the bare ones. Run the
+check in C0/C3 again afterwards; `forgejo-storage-git-luchtech-dev` must still be
+listed.
+
+## C4. Roles with no tool and no objects
+
+`penpot_design-luchtech-dev`, `windmill_admin`, `windmill_user`: neither Design
+nor Windmill is installed, there is no database for them, and each owns 0
+relations. Confirm they own nothing at all, then drop them. `DROP ROLE` itself
+refuses if anything still depends on the role, so a wrong guess fails safe:
+
+```zsh
+lplex exec deploy/postgres -c postgres -- psql -U postgres -tAc \
+  "select r.rolname, (select count(*) from pg_shdepend d where d.refobjid=r.oid) from pg_roles r where r.rolname in ('penpot_design-luchtech-dev','windmill_admin','windmill_user');"
+```
+
+Each count must be `0`. Then:
+
+```zsh
+lplex exec deploy/postgres -c postgres -- psql -U postgres \
+  -c 'DROP ROLE "penpot_design-luchtech-dev";' -c 'DROP ROLE windmill_admin;' -c 'DROP ROLE windmill_user;'
+```
+
+## C5. The PocketBase ghost PVC: `pocketbase-storage-data-luchtech-dev` (2Gi)
+
+PocketBase is not installed and nothing mounts this claim. It may still hold
+data, so look first with a read-only Job:
+
+```zsh
+lkube get pods -o json | jq -r '.items[] | select(.spec.volumes[]?.persistentVolumeClaim.claimName=="pocketbase-storage-data-luchtech-dev") | .metadata.name'
+lkube delete job/pocketbase-peek --ignore-not-found --wait=true
+cat <<'YAML' | lkube apply -f -
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pocketbase-peek
+  namespace: larakube-shared
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: peek
+          image: alpine:3.24
+          command: ["/bin/sh", "-c", "du -sk /v; find /v | head -30"]
+          volumeMounts:
+            - { name: v, mountPath: /v, readOnly: true }
+      volumes:
+        - name: v
+          persistentVolumeClaim: { claimName: pocketbase-storage-data-luchtech-dev }
+YAML
+waitjob pocketbase-peek 120
+lkube logs job/pocketbase-peek
+```
+
+The first command must print nothing (no pod mounts it). If the listing shows
+only empty directories or a few KiB, delete the Job and then the claim. **If it
+holds a `data.db` or anything over a few hundred KiB, stop and ask first**:
+that is someone's data.
+
+```zsh
+lkube delete job/pocketbase-peek --wait=true
+lkube delete pvc/pocketbase-storage-data-luchtech-dev
+```
+
+## C6. Confirm the registry
+
+```zsh
+lplex get cm plex-registry -o jsonpath='{.data.registry\.json}' | jq -r '.tenants | keys[]' | sort
+```
+
+It should no longer list `outline`, `notes-storage`, `notes-storage-main`,
+`sign-storage-sign-luchtech-dev`, `forgejo-storage`, `forgejo-packages`,
+`forgejo-lfs`, `data-storage`, `data-directus-storage`. It **must** still list
+`crm_twenty_crm-luchtech-dev`, `crm_twenty_crm_luchtech_dev`,
+`forgejo-storage-git-luchtech-dev`, `forgejo-packages-git-luchtech-dev`,
+`forgejo-lfs-git-luchtech-dev`, `notes-storage-notes-luchtech-dev`,
+`outline_notes_luchtech_dev` and `documenso-storage-sign-luchtech-dev`.
+
+Keep the `*-commons.sql` dumps evict wrote until you have used each tool for a
+few days.
 
 ## If something goes wrong
 
