@@ -124,7 +124,7 @@ old install yet; run it after step 6 and compare with these.) The live numbers:
 
 ```zsh
 for q in x:Account x:Domain x:QueuedMessage x:DkimSignature; do
-  printf "%s " $q; jmap mail-stalwart-send-luchtech-dev "[[\"$q/query\",{\"filter\":{}},\"c0\"]]" mail-secrets-send-luchtech-dev | jq -c '.[0][1].total'
+  printf "%s " $q; jmap mail-stalwart-send-luchtech-dev "[[\"$q/query\",{\"filter\":{}},\"c0\"]]" mail-secrets-send-luchtech-dev | jq -c '.[0][1].ids | length'
 done
 lplex exec deploy/postgres -c postgres -- psql -U postgres -d stalwart -tAc \
   "select count(*) from information_schema.tables where table_schema='public'; select pg_size_pretty(pg_database_size('stalwart'));"
@@ -449,7 +449,7 @@ Now the checks that matter. Run `mail:check` again (new CLI), then compare the c
 cd ~/<your project folder>
 ~/Codes/Ideas/laravel-k8s/cli/larakube mail:check production --context=$CTX
 for q in x:Account x:Domain x:QueuedMessage x:DkimSignature; do
-  printf "%s " $q; jmap stalwart-send-luchtech-dev "[[\"$q/query\",{\"filter\":{}},\"c0\"]]" stalwart-secrets-send-luchtech-dev | jq -c '.[0][1].total'
+  printf "%s " $q; jmap stalwart-send-luchtech-dev "[[\"$q/query\",{\"filter\":{}},\"c0\"]]" stalwart-secrets-send-luchtech-dev | jq -c '.[0][1].ids | length'
 done
 dig +short MX luchtech.dev
 ```
