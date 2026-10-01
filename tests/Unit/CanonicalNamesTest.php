@@ -44,7 +44,7 @@ test('a migrated tool labels what it deploys with its identity', function (Clust
 
 test('every Cluster Tool is on the canonical naming, so a new one has to choose it', function (): void {
     foreach (ClusterTool::cases() as $tool) {
-        expect($tool->resourceNaming() === App\Enums\ResourceNaming::CANONICAL)->toBeTrue("{$tool->value} is not on the canonical naming");
+        expect($tool->resourceNaming())->toBe(App\Enums\ResourceNaming::CANONICAL);
     }
 });
 

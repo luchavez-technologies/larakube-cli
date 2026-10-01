@@ -3,6 +3,7 @@
 namespace App\Commands\Tool;
 
 use App\Data\ConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
@@ -98,6 +99,8 @@ abstract class AbstractToolShowCommand extends Command
                 'namespace' => $tool->namespace(),
                 'host' => $host,
                 'url' => $host !== null ? "https://{$host}" : null,
+                'wirings' => $this->supportedWirings($tool),
+                'components' => $this->componentSummary($tool, $instance),
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             return $installed ? 0 : 1;
@@ -160,6 +163,45 @@ abstract class AbstractToolShowCommand extends Command
         table(['Instance', 'Access'], $rows);
 
         return 0;
+    }
+
+    /**
+     * Which `:wire` pairs this tool supports, from the same predicates the wire
+     * commands' own pickers use, so a UI offers exactly what the CLI will accept.
+     *
+     * @return array<string, bool>
+     */
+    protected function supportedWirings(ClusterTool $tool): array
+    {
+        return [
+            'sso' => $tool->hasSsoWire(),
+            'mail' => $tool->hasMailWire(),
+            'secrets' => $tool->hasSecretsWire(),
+            'vpn' => $tool->hasVpnWire(),
+            'meet' => $tool->hasMeetWire(),
+        ];
+    }
+
+    /**
+     * The instance's workloads with the names and identity labels ToolInstance
+     * derives, so a UI never has to compose either.
+     *
+     * @return list<array{key: string, role: string, deployment: string, labels: array<string, string>}>
+     */
+    protected function componentSummary(ClusterTool $tool, string $instance): array
+    {
+        if ($instance === '') {
+            return [];
+        }
+
+        $names = ToolInstance::forInstance($tool, $instance);
+
+        return array_map(fn ($component) => [
+            'key' => $component->key,
+            'role' => $component->role->name,
+            'deployment' => $component->deployment,
+            'labels' => $names->labels($component->key),
+        ], $names->components());
     }
 
     abstract protected function tool(): ClusterTool;

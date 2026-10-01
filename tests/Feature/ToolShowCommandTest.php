@@ -72,5 +72,8 @@ test('--json emits a machine-readable object instead of a table', function (): v
             'namespace' => 'larakube-shared',
             'host' => 'notes.example.com',
             'url' => 'https://notes.example.com',
-        ]);
+        ])
+        ->and($payload['wirings'])->toHaveKeys(['sso', 'mail', 'secrets', 'vpn', 'meet'])
+        ->and($payload['components'][0])->toHaveKeys(['key', 'role', 'deployment', 'labels'])
+        ->and($payload['components'][0]['deployment'])->toEndWith('-main');
 });
