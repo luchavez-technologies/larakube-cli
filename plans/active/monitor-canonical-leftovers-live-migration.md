@@ -29,7 +29,7 @@ the metrics).
 
 One thing is left over on purpose: Grafana keeps a provisioned datasource that
 disappears from its file (read-only, in its own database), so the dead **Tempo
-datasource** survives the first re-apply. Step 2b removes it: `monitor:init` now lists
+datasource** survives the first re-apply. Step 4 removes it: `monitor:init` now lists
 the components that are switched off under `deleteDatasources`.
 
 ## Helpers
